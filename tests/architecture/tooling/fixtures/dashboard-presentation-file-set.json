@@ -100,8 +100,6 @@
   "src/dashboard/surfaces/shared/status/status.tsx",
   "src/dashboard/surfaces/shell/assistant-panel.css",
   "src/dashboard/surfaces/shell/assistant-panel.tsx",
-  "src/dashboard/surfaces/shell/chat-files.css",
-  "src/dashboard/surfaces/shell/chat-files.tsx",
   "src/dashboard/surfaces/shell/composer-input.css",
   "src/dashboard/surfaces/shell/composer-input.tsx",
   "src/dashboard/surfaces/shell/hub-shell.css",

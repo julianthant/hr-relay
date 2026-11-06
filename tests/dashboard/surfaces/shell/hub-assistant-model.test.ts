@@ -1,7 +1,5 @@
-import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
-import { createSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 import { describe, it, expect } from 'vitest';
-import { createHubAssistantSession, prepareHubWorkflow } from '../../../../src/dashboard/surfaces/shell/hub-assistant-model.js';
+import { prepareHubWorkflow } from '../../../../src/dashboard/surfaces/shell/hub-assistant-model.js';
 import { assistantWorkflowRows, type AssistantFile, type AssistantWorkflowRequest } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 import { workflowComposition } from '../../../../src/dashboard/app/workflow-sources.js';
 import { addSpreadsheetColumn } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
@@ -33,19 +31,4 @@ describe('integrated assistant sample runs', () => {
     const sheet = addSpreadsheetColumn({ id: 's', name: 'Sheet', width: 2, hidden: [], headerRow: 2, rows: [{ id: 'preamble', cells: [{ value: 'Source' }] }, { id: 'head', cells: [{ value: 'Name' }, { value: 'Date' }] }] }, 'Result');
     expect(sheet.rows.map(row => row.cells.map(cell => cell.value))).toEqual([['Source', null, ''], ['Name', 'Date', 'Result']]);
   });
-});
-
-it('publishes non-workbook files only after a committed send and keeps their exact blob', async () => {
-  const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: () => { throw Error('A mock file must not make a served request.'); } });
-  const session = createHubAssistantSession('chat', createSpreadsheetWiringAdapter(client));
-  const raw = new File(['Sample notes'], 'Notes.txt', { type: 'text/plain' });
-  const attached = await session.attach(raw);
-  expect(session.files.snapshot()).toHaveLength(0);
-  const sent = { ...session.producer.initial(), files: [attached] };
-  session.producer.retain(sent); session.producer.retain(sent);
-  expect(session.files.snapshot()).toHaveLength(1);
-  const entry = session.reference(attached), opened = await session.files.open(entry);
-  expect(opened.kind).toBe('mock');
-  if (opened.kind !== 'mock') throw Error('Missing mock file');
-  expect(opened.blob).toBe(raw); expect(await opened.blob.text()).toBe('Sample notes');
 });

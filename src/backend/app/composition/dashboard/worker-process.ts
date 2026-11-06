@@ -1,3 +1,5 @@
+import { readStartupProcessRecords } from "../../../storage/sqlite/runtime-process-locks.js";
+import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { ConfigSchema } from "../../../../models/config/schema.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
@@ -65,6 +67,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   const browserChannel = createWorkerBrowserChannel(input);
   const supervisor = createDashboardWorkerProcessSupervisor({
     onExit: input.onExit,
+    settleNonBirth: () => input.database.settleNeverSpawnedWorkers(),
+    nonBirthOwner: input.database,
     launch: input.launch,
     spawn: input.spawn,
     browserControl: browserChannel,
@@ -75,7 +79,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         await input.preflight.admission.prepare(scope, new AbortController().signal);
         input.preflight.admission.assertReady(input.preflight.currentScope());
       } catch (error) {
-        throw new WorkerControlRefusal(error instanceof PreflightAdmissionRefusal ? error.message : "Worker preflight could not verify readiness.");
+        if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message);
+        throw error;
       }
     },
     admission: request => input.database.withAuthorityTransaction(repositories => {
@@ -201,7 +206,9 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         for (const browser of browsers) {
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
         }
-        return { browsers, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers }) };
+        const launches = repositories.workerControls.list().filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === member.workerId);
+        const requiresNonBirthProof = input.database.workerRequiresNonBirthProof(slot);
+        return { browsers, launches, requiresNonBirthProof, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers, launches, requiresNonBirthProof }) };
       });
       const before = capture(), roots = createBrowserRoots(input.admission);
       const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
@@ -209,6 +216,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       const process = child?.nativeProcess, lifetime = input.admission.lifetime;
       const requiresChild = before.processId !== undefined && before.processId !== null || process !== undefined
         || retained.length !== 0 || lstatSync(directory, { throwIfNoEntry: false }) !== undefined;
+      if (!requiresChild && (before.launches.length !== 0 || before.requiresNonBirthProof)) throw new WorkerControlRefusal("worker-retirement-non-birth-capability-required");
       const rootAssertions: Array<() => void> = [];
       const assertCurrent = () => {
         input.admission.assertProfileRuntime();
@@ -253,9 +261,20 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
     },
     onFault: input.onFault,
   });
+  input.database.bindWorkerNonBirthSupervisor(supervisor, slot => {
+    input.admission.assertProfileRuntime();
+    const roots = createBrowserRoots(input.admission).inventory().roots;
+    const installation = input.admission.readInstallationContext();
+    if (installation === undefined) throw new WorkerControlRefusal("worker-non-birth-installation-unavailable");
+    const processes = readStartupProcessRecords(join(installation.workspace, rebuildRuntimeIsolation.processLockRoot));
+    if (processes.some(record => record.name === "workers" && ("workerId" in record ? record.workerId === slot.workerId
+      : record.admission.authorityPath === join(input.admission.stateRoot, "state.db")))
+      || roots.some(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === slot.workerId)
+      || lstatSync(join(input.profileRoot, `w${String(slot.ordinal)}`), { throwIfNoEntry: false }) !== undefined) throw new WorkerControlRefusal("worker-non-birth-retained-profile");
+  });
   return Object.freeze({
     supervisor,
-    workerRuntime: Object.freeze({ pool: { ...createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots, { database: input.database, clock: input.clock }),
+    workerRuntime: Object.freeze({ recordControlAudit: (commandId: string) => input.database.recordWorkerNonBirthRefusal(commandId), pool: { ...createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots, { database: input.database, clock: input.clock }),
       checkParkedWrite: (context: WorkerRuntimeContext) => browserChannel.check(context.command.commandId) } }),
   });
 }

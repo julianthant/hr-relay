@@ -20,7 +20,7 @@ export function mockBrowserRootPort() {
   let generation = 0, nextHandle = 1;
   const allocations = new Map<string, BrowserRootLaunchInput>();
   const key = (input: SignupBrowserRootInput) => JSON.stringify([input.profileId, input.profileRoot, input.owner]);
-  const launch = () => ({ launchId: randomUUID(), generation: ++generation, opened() {}, closing() {}, closed() {}, uncertain(error: unknown): never { throw error; } });
+  const launch = () => ({ launchId: randomUUID(), generation: ++generation, opened() {}, closing() {}, closed() {}, async recover(_probe: BrowserProfileProbeOptions, assertCurrent: () => void, proof: () => Promise<void>) { assertCurrent(); await proof(); assertCurrent(); }, uncertain(error: unknown): never { throw error; } });
   const probe = async (input: BrowserRootLaunchInput, options: BrowserProfileProbeOptions) => {
     mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
     await options.probe(input.profileRoot, input.profileDirectory);

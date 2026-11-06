@@ -1,4 +1,3 @@
-import { AutomaticRepairNoticeWireSchema } from "./storage.js";
 import { z } from "zod";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
 import { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
@@ -30,7 +29,6 @@ export const ServerClockWireSchema = z.strictObject({
 });
 /** Store failure throws; no reduced handle can report an intermediate availability. */
 export const StorageHealthSummaryWireSchema = z.strictObject({
-  automaticRepair: AutomaticRepairNoticeWireSchema,
   authority: z.enum(["healthy", "unavailable"]),
   backup: z.enum(["current", "stale", "missing", "unavailable"]),
   checkedAt: IsoInstantSchema,

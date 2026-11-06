@@ -182,9 +182,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - name: Install Chromium and its system libraries
+      # ubuntu-24.04 already has Chromium's libraries. --with-deps only apt-installs extra fonts, and azure.archive.ubuntu.com stalls those debs.
+      - name: Install Chromium
         if: matrix.suite == 'integration'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - run: npm run web:build
         if: matrix.suite == 'integration'
       - name: Put test temp on tmpfs
@@ -235,7 +236,7 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-${{ matrix.suite == 'parity' && 'chromium-webkit' || 'chromium' }}-${{ hashFiles('package-lock.json') }}
       - name: Install browsers on cache miss
         if: steps.browsers.outcome == 'success' && steps.browsers.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium ${{ matrix.suite == 'parity' && 'webkit' || '' }}
+        run: npx playwright install chromium ${{ matrix.suite == 'parity' && 'webkit' || '' }}
       - run: npm run web:build
         if: matrix.suite == 'native' && fromJSON(needs.changes.outputs.plan).integration
       - name: Mount test temp on a RAM disk
@@ -465,7 +466,7 @@ jobs:
         with:
           path: ~/Library/Caches/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
         if: steps.browsers.outputs.cache-hit != 'true'
       - run: npm run web:build
       - name: Mount test temp on a RAM disk

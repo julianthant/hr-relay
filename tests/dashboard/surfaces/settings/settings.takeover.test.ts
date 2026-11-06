@@ -24,7 +24,7 @@ function section(id: string, label: string): SettingsSection {
 const STORAGE = section("storage", "Storage checks");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
   authority: "healthy",
-  automaticRepair: { state: "none" }, backup: "current",
+  backup: "current",
   checkedAt: "2026-08-26T16:00:00.000Z",
 });
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient;

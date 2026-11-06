@@ -1,5 +1,5 @@
+import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
-import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import { repeatOccurrenceKey } from "../../../models/run/rerun.js";
 // Resolve only the same workflow, node, schemas, permanent key and binding proof; whole-closure identity is sufficient, not necessary.
 import { z } from "zod";

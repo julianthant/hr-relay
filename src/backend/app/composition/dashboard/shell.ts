@@ -8,16 +8,15 @@ import type { BootstrapQueryDeps } from "../../../runs/queries/bootstrap.js";
 import { createCrossDateSearchService } from "../../../runs/queries/search.js";
 import type { OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";
 import { createDashboardStreamHub, type DashboardStreamHubDeps } from "../../../transports/http/subscriptions/dashboard-stream.js";
-import type { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import type { ShellRouteDeps } from "../../../transports/http/routes/shell-types.js";
 import { composeGeneratedExports } from "./generated-exports.js";
 
 /** Shell bootstrap, search, export and subscription use the same production authority. */
 export function composeShell(input: Pick<BootstrapQueryDeps,
-  "appVersion" | "actorLabel" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "backupSummary" | "automaticRepair">
+  "appVersion" | "actorLabel" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "backupSummary">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"]; runLogsHub: RunLogsStreamHub }
+  & { activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
   const { database, projection, clock, ids, artifacts, descriptors } = input;
   const catalogModules = READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module)
@@ -37,7 +36,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, timeZone: input.timeZone, modules: catalogModules,
       descriptorSetHash: input.descriptorSetHash, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
-      automaticRepair: input.automaticRepair, backupSummary: input.backupSummary },
+      backupSummary: input.backupSummary },
     search,
     searchMetadataExports: {export: request=>exportSearchMetadata({search,sourceIdentity:database.getSourceDatabaseIdentity()},request)},
     calendar: createCalendarQuery(database, clock),
@@ -45,6 +44,5 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
       artifacts, authority: database.authority.operatorXlsxExports, search,
       activityReport: (from, to, token) => input.activity.readSelected(from, to, token) }),
     hub: createDashboardStreamHub(input),
-    runLogsHub: input.runLogsHub,
   };
 }

@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { useDashboardClient } from '../../state/client-context.js';
 import { useSpreadsheetWiringAdapter } from '../../state/spreadsheet-wiring-adapter.js';
 import { spreadsheetChatRegistrationPort, type SpreadsheetFileReference } from '../spreadsheets/spreadsheet-chat-registration-model.js';
 import { addSpreadsheetColumn, editSpreadsheetCell, spreadsheetSaveMatches } from '../spreadsheets/spreadsheet-editor-model.js';
 import { type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import type { ComposerDraft } from './composer-model.js';
-import { createChatFilesPort, type ChatFile } from './chat-files-model.js';
 import { assistantWorkflowOption, createAssistantMockProducer, readAssistantAttachment, type AssistantConversation, type AssistantFile, type AssistantPorts, type AssistantWorkflowRequest, type AssistantWorkflowResult } from './assistant-panel-model.js';
 import { initialMockDraft, mockRunsForDraft, type MockRun } from '../workflows/mocks/workflow-mock-model.js';
 import type { WorkflowComposition } from '../../app/workflow-sources.js';
@@ -51,13 +50,10 @@ export function createHubAssistantSession(id: string, adapter: ReturnType<typeof
   let conversation: AssistantConversation = { ...producer.initial(), id, ...(initialTitle === undefined ? {} : { title: initialTitle }) };
   let renamedTitle: string | undefined;
   let draft: ComposerDraft = { text: retainedDraft?.read() ?? '', files: [] };
-  const files = createChatFilesPort(spreadsheetChatRegistrationPort(adapter));
+  const registry = spreadsheetChatRegistrationPort(adapter);
   const references = new Map<string, SpreadsheetFileReference>();
   const bases = new Map<string, SpreadsheetFileReference>();
-  const pendingFiles = new Map<string, File>();
-  const mockReferences = new Map<string, ChatFile>();
   return {
-    files,
     draft: { read: () => draft, retain(next: ComposerDraft) { draft = next; retainedDraft?.retain(next.text); } },
     autoTitle(title: string) {
       if (conversation.title !== 'New chat') return;
@@ -69,27 +65,21 @@ export function createHubAssistantSession(id: string, adapter: ReturnType<typeof
       retain(next: AssistantConversation) {
         if (renamedTitle !== undefined) next = { ...next, title: renamedTitle };
         const changed = conversation.title !== next.title; conversation = next;
-        for (const file of next.files) {
-          const pending = pendingFiles.get(file.id);
-          if (pending) { mockReferences.set(file.id, files.attachMockFile(pending)); pendingFiles.delete(file.id); }
-        }
         if (changed) onTitle?.(next.title);
     } },
     async attach(file: File): Promise<AssistantFile> {
-      const attachment = await readAssistantAttachment(file);
-      if (!attachment.workbook) pendingFiles.set(attachment.id, file);
-      return attachment;
+      return readAssistantAttachment(file);
     },
     async register(file: AssistantFile): Promise<void> {
       if (!file.workbook) return;
       const confirmed = references.get(file.id);
       if (file.status === 'Attached' && confirmed) {
-        const opened = await files.open({ id: file.id, name: file.name, kind: 'workbook', reference: confirmed });
-        if (opened.kind !== 'workbook' || !spreadsheetSaveMatches(file.workbook, { state: 'confirmed', version: confirmed.version, readback: opened.document })) throw new Error('The attachment differs from its saved version.');
+        const opened = await registry.open(confirmed);
+        if (!spreadsheetSaveMatches(file.workbook, { state: 'confirmed', version: confirmed.version, readback: opened })) throw new Error('The attachment differs from its saved version.');
         return;
       }
       const base = bases.get(file.id);
-      const result = await files.registerSpreadsheet({ operationId: file.id, status: file.status, workbook: base ? { ...file.workbook, libraryId: base.libraryId } : file.workbook, ...(base ? { base } : {}) });
+      const result = await registry.register({ operationId: file.id, status: file.status, workbook: base ? { ...file.workbook, libraryId: base.libraryId } : file.workbook, ...(base ? { base } : {}) });
       if (result.state !== 'confirmed') throw new Error(result.reason);
       references.set(file.id, result.file);
     },
@@ -100,20 +90,7 @@ export function createHubAssistantSession(id: string, adapter: ReturnType<typeof
         if (!base) throw new Error('The original spreadsheet registration is unavailable.');
         bases.set(file.id, base);
       }
-    },
-    reference(file: AssistantFile): ChatFile {
-      const mock = mockReferences.get(file.id);
-      if (mock) return mock;
-      const reference = references.get(file.id);
-      const entry = files.snapshot().find(candidate => reference ? candidate.kind === 'workbook' && candidate.reference.libraryId === reference.libraryId && candidate.reference.version === reference.version : candidate.id === file.id);
-      if (!entry) throw new Error('This chat file has not been registered. Review the library before opening it.');
-      return entry;
-    },
-    async select(file: ChatFile): Promise<AssistantFile> {
-      const opened = await files.open(file);
-      if (file.kind === 'workbook') { references.set(file.id, file.reference); bases.set(file.id, file.reference); }
-      return { id: file.id, name: file.name, status: 'Attached', ...(opened.kind === 'workbook' ? { workbook: opened.document } : {}) };
-    },
+    }
   };
 }
 
@@ -122,35 +99,15 @@ export function useHubAssistant(onRunWorkflow: NonNullable<AssistantPorts['onRun
   const client = useDashboardClient();
   const { adapter } = useSpreadsheetWiringAdapter(false, null);
   const sessions = useMemo(() => ({ adapter, history, values: new Map<string, ReturnType<typeof createHubAssistantSession>>() }), [adapter, history]);
-  const [view, setView] = useState<{ id: string; mode: 'browse' | 'attach'; initialFile?: ChatFile; resolve?: (file: AssistantFile | null) => void }>();
-  const [error, setError] = useState('');
-  const selectionGeneration = useRef(0);
   const session = (id: string, initialTitle?: string) => { let value = sessions.values.get(id); if (!value) { value = createHubAssistantSession(id, sessions.adapter, title => titleChanged.current(id, title), initialTitle, history?.draft(id)); sessions.values.set(id, value); } return value; };
-  const closeFiles = () => { selectionGeneration.current++; view?.resolve?.(null); setView(undefined); setError(''); };
-  return { client, view, error, closeFiles, session, forgetSession: (id: string) => { sessions.values.delete(id); },
+  return { client, session, forgetSession: (id: string) => { sessions.values.delete(id); },
     ports(id: string): AssistantPorts {
       const current = session(id);
       return {
         onAttachFile: async file => file ? current.attach(file) : null,
         onRegisterSpreadsheet: file => current.register(file),
-        onOpenChatFile: async (file, mode = 'browse') => {
-          selectionGeneration.current++;
-          if (file) {
-            try { setView({ id, mode: 'browse', initialFile: current.reference(file) }); setError(''); }
-            catch (error) { setView({ id, mode: 'browse' }); setError(error instanceof Error ? error.message : String(error)); }
-            return;
-          }
-          if (mode === 'browse') { if (view?.id === id) closeFiles(); else setView({ id, mode }); return; }
-          return new Promise<AssistantFile | null>(resolve => setView({ id, mode, resolve }));
-        },
         onRunWorkflow: async request => { const result = await onRunWorkflow(request); current.linkOutputs(request, result); return result; },
       };
-    },
-    async select(file: ChatFile) {
-      if (!view) return;
-      const generation = ++selectionGeneration.current;
-      try { const selected = await session(view.id).select(file); if (generation !== selectionGeneration.current) return; view.resolve?.(selected); setView(undefined); setError(''); }
-      catch (error) { if (generation === selectionGeneration.current) setError(error instanceof Error ? error.message : String(error)); }
     },
   };
 }

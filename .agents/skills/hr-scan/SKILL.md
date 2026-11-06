@@ -27,12 +27,12 @@ HR documents are predictable. The skill's memory is **`references/document-shape
   model and role selection do not belong in this skill. Paste the shape's field list and rails
   into each self-contained brief. Without delegation authorization, extract the blocks directly.
   Readers return one JSON row per document: `{page_range, fields{...}, confidence, unreadable:[...]}`.
-- For the rebuild's own pipeline (spreadsheets/photos destined for a workflow), prefer the platform gate: `npm run cli -- ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>` (D151/D158 — the ONE extraction gate) and the intake surface; hr-scan's job is then to classify and hand over, not to parse by hand.
+- For Relay's own pipeline (spreadsheets/photos destined for a workflow), prefer the platform gate: `npm run cli -- ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>` (D151/D158 — the ONE extraction gate) and the intake surface; hr-scan's job is then to classify and hand over, not to parse by hand.
 - Merge rows; **dedupe** people by normalized `last, first middle` (+ DOB-year when present); keep the first page each appears on.
 
 ## 3 · Resolve (when asked: "add EIDs", "who are these people")
 
-- Person-lookup via the rebuild workflow (`hr-person-lookup` skill if generated, else hr-manage: run `person-lookup` for each name, parallel workers) — N parallel as the operator said (default 5).
+- Person-lookup via the Relay workflow (`hr-person-lookup` skill if generated, else hr-manage: run `person-lookup` for each name, parallel workers) — N parallel as the operator said.
 - Outcomes per person: `matched (EID, source)` · `ambiguous (k candidates — listed)` · `not-found` · `blocked (system down / needs <label>)`. Ambiguous and not-found rows go to the operator with their page numbers; never pick a candidate.
 
 ## 4 · Emit

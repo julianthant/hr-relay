@@ -1,8 +1,11 @@
 import { assertDelegationRefreshEligible, authenticateDelegationRefresh, authenticateDelegationRevisionRefresh } from "./delegation-refresh.js";
-import { RunContinuationRefusedError, captureRunContinuation, validateRunContinuation } from "./run-continuation.js";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { readRunCheckpoint, RunContinuationRefusedError, captureRunContinuation, validateRunContinuation } from "./run-continuation.js";
+import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
+import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
 import { authenticateRootRun, authenticateRunPriority } from "./delegation-root-authority.js";
 import { z } from "zod";
+import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { DependencyRecord } from "../../../rules/workflow/dependencies.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
@@ -10,7 +13,7 @@ import { ChildTerminalDependencySchema, RunResultRecordSchema, readRunPreviewRes
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { delegationChildInputFingerprint, delegationPlanFingerprint } from "../../../models/workflow/delegation.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { delegationInvocationCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -511,6 +514,138 @@ export function authenticateDelegationResume(repositories: AuthorityRepositories
   return true;
 }
 
+export function readManualDelegationResume(repositories: AuthorityRepositories, parent: RunRecord) {
+  const evidence = captureDelegationResume(repositories, parent.envelope.runId);
+  if (evidence === undefined || evidence.length === 0) return;
+  return readAppliedDelegationResume(repositories, parent, evidence);
+}
+
+export function authenticateDelegationRetryPause(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
+  parent: RunRecord, admissionVersion: number): boolean {
+  const pause = parent.pause;
+  if (parent.lifecycle.state !== "running" || pause?.state !== "requested" || parent.version <= admissionVersion) return false;
+  const authorization = authorizeWorkflowDelegationRefresh(descriptor, parent);
+  const plan = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, parent);
+  if (plan === undefined) return false;
+  const command = repositories.lifecycleJournal.getCommand(pause.commandId);
+  const audit = repositories.lifecycleJournal.findAuditByCommand(pause.commandId);
+  if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "pause"
+    || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command))
+    throw new RunContinuationRefusedError("delegation-retry-pause-authority-unavailable");
+  const request = CanonicalPauseRequestSchema.parse(command.request);
+  if (request.runId !== parent.envelope.runId || request.expectedVersion < admissionVersion
+    || audit.result.kind !== "run" || audit.result.runId !== parent.envelope.runId
+    || audit.result.appliedVersion !== request.expectedVersion + 1 || audit.result.appliedVersion > parent.version)
+    throw new RunContinuationRefusedError("delegation-retry-pause-binding-mismatch");
+  return repositories.dependencies.groups(parent.envelope.runId).some(({ group }) => group.invocation.nodeId === plan.joinNodeId
+    && group.children.some(member => member.attempt === "retry" && member.history.slice(0, -1).some(previousRunId => {
+      const holdId = lifecycleCommandId("delegation-manual-pause", lifecycleCommandId("delegation-retry", {
+        dependencyId: member.dependency.dependencyId, previousRunId,
+      }));
+      return pause.commandId === holdId || retryHoldKeptPause(repositories, parent, holdId, admissionVersion);
+    })));
+}
+
+// A Retry hold over an already requested pause keeps that pause and is journaled without a version change.
+function retryHoldKeptPause(repositories: AuthorityRepositories, parent: RunRecord, holdId: string, admissionVersion: number): boolean {
+  const command = repositories.lifecycleJournal.getCommand(holdId);
+  if (command === undefined) return false;
+  const audit = repositories.lifecycleJournal.findAuditByCommand(holdId);
+  if (!("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "pause"
+    || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command))
+    throw new RunContinuationRefusedError("delegation-retry-pause-authority-unavailable");
+  const request = CanonicalPauseRequestSchema.parse(command.request);
+  return request.runId === parent.envelope.runId && request.expectedVersion >= admissionVersion
+    && audit.result.kind === "run" && audit.result.runId === parent.envelope.runId
+    && audit.result.appliedVersion === request.expectedVersion && audit.result.appliedVersion <= parent.version;
+}
+
+function readAppliedDelegationResume(repositories: AuthorityRepositories, parent: RunRecord,
+  evidence: NonNullable<ReturnType<typeof captureDelegationResume>>) {
+  const issue = repositories.lifecycleJournal.findRunResume(parent.envelope.runId, parent.version);
+  if (issue === undefined || issue.result.kind !== "run") return;
+  const request = CanonicalPauseRequestSchema.parse(issue.request.request);
+  if (request.runId !== parent.envelope.runId || issue.result.runId !== parent.envelope.runId
+    || issue.result.appliedVersion !== request.expectedVersion + 1 || issue.result.appliedVersion > parent.version
+    || !authenticateDelegationResume(repositories, request, evidence)) return;
+  const sources = repositories.commands.listRunResumes(request.runId, request.expectedVersion)
+    .filter(source => delegationResumeCommandId(source.commandId, evidence) === request.commandId);
+  const source = sources.length === 1 ? sources[0] : undefined;
+  if (source === undefined || authenticateOperatorSource(repositories, source) === undefined)
+    throw new RunContinuationRefusedError("delegation-resume-source-audit-unavailable");
+  return { commandId: request.commandId, evidence };
+}
+
+export function delegationAccountingExecution(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, parent: RunRecord) {
+  const retainedGroups = repositories.dependencies.groups(parent.envelope.runId);
+  if (!retainedGroups.some(({ group }) => group.children.some(member => member.attempt === "retry"))) return;
+  const authorization = authorizeWorkflowDelegationRefresh(descriptor, parent);
+  const plan = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, parent);
+  if (plan === undefined) return;
+  const groups = retainedGroups.filter(({ group }) => group.invocation.nodeId === plan.joinNodeId);
+  if (!groups.some(({ group }) => group.children.some(member => member.attempt === "retry"))) return;
+  if (groups.length !== 1 || parent.envelope.startAt !== undefined || parent.envelope.injected !== undefined
+    || (parent.envelope.stepOmissions?.length ?? 0) > 0) throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
+  const retainedScope = groups.flatMap(({ group }) => readDelegationScopeEvidence(repositories, parent, group.invocation.scopeEvidence));
+  const snapshot = () => {
+    const current = repositories.runs.get(parent.envelope.runId);
+    const captured = runClaim(parent), held = current === undefined ? undefined : runClaim(current);
+    if (current === undefined || captured === undefined || held === undefined
+      || held.workerId !== captured.workerId || held.claimGeneration !== captured.claimGeneration
+      || canonicalJsonStringify(current.envelope) !== canonicalJsonStringify(parent.envelope)
+      || canonicalJsonStringify(current.input) !== canonicalJsonStringify(parent.input))
+      throw new RunContinuationRefusedError("delegation-accounting-owner-changed");
+    const resumed = readManualDelegationResume(repositories, current);
+    if (resumed === undefined) throw new RunContinuationRefusedError("delegation-accounting-resume-unavailable");
+    const evidence = readDelegationEvidence(repositories, current.envelope.runId, plan.joinNodeId);
+    if (evidence.state !== "delegation-resolved") throw new RunContinuationRefusedError("delegation-accounting-members-unsettled");
+    return canonicalJsonStringify({ resumed, evidence });
+  };
+  const original = snapshot();
+  return { plan, assertCurrent() {
+    if (snapshot() !== original) throw new RunContinuationRefusedError("delegation-accounting-members-changed");
+  }, assertRetained(record: RunCheckpointRecord) {
+    const retained = retainedScope.find(entry => entry.nodeId === record.nodeId);
+    if (retained === undefined || !("checkpoint" in retained) || retained.checkpoint === undefined)
+      throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-unavailable");
+    if (canonicalJsonStringify(record.output) !== canonicalJsonStringify(retained.checkpoint.output))
+      throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-changed");
+  } };
+}
+
+export function assertDelegationRetryUnwritten(repositories: AuthorityRepositories, run: RunRecord, descriptor: AnyWorkflowDescriptor): void {
+  const refusal = delegationRetryWriteRefusal(repositories, run, descriptor);
+  if (refusal !== undefined) throw new RunContinuationRefusedError(refusal);
+}
+
+export function delegationRetryWriteRefusal(repositories: AuthorityRepositories, run: RunRecord, descriptor: AnyWorkflowDescriptor): string | undefined {
+  if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed"
+    || run.envelope.contractFingerprint !== descriptor.contractFingerprint) return "delegation-accounting-child-ineligible";
+  const attempts = [...repositories.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }),
+    ...validateRunContinuation(repositories, run.envelope)];
+  const intents = attempts.flatMap(attempt => repositories.writeIntents.listByRun(attempt.envelope.runId));
+  if (intents.some(intent => intent.status !== "retryable")) return "delegation-accounting-save-already-issued";
+  const transactions = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "transaction");
+  if (repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId)
+    .some(checkpoint => transactions.some(node => node.id === checkpoint.nodeId))) return "delegation-accounting-write-checkpoint-present";
+  for (const node of transactions) {
+    const outputs: Record<string, JsonValue> = {};
+    for (const id of node.dependsOn) {
+      const record = readRunCheckpoint(repositories, run.envelope, id, true);
+      if (record !== undefined) outputs[id] = record.output.value;
+    }
+    if (node.dependsOn.some(id => !Object.hasOwn(outputs, id))) continue;
+    const mapped = node.commit.uses.input.parse(node.commit.bind({ input: run.input.parsed.value, outputs,
+      configuration: {}, protectedInputBindings: retainedRunProtectedBindings(run) }));
+    const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
+    const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [mapped]));
+    if (repositories.writeIntents.listByBusinessKey(system, deriveIdempotencyKeyDigest(system, key))
+      .some(intent => intent.status !== "retryable")) return "delegation-accounting-natural-key-settled-or-unknown";
+  }
+}
+
 export function lifecycleChildEdge(repositories: AuthorityRepositories, parentRunId: string, childRunId: string): DependencyRecord | undefined {
   if (retainedDelegationManifests(repositories, parentRunId).length > 0) return delegationEdgeForChild(repositories, parentRunId, childRunId);
   const parent = repositories.runs.get(parentRunId), child = repositories.runs.get(childRunId);
@@ -576,13 +711,11 @@ export function readDelegationReadiness(repositories: AuthorityRepositories, run
   }
   const members = new Set<string>();
   const resumeEvidence = manualRetryEvidence(repositories, groups);
-  const issue = resumeEvidence !== undefined && resumeEvidence.length > 0 ? repositories.lifecycleJournal.findContinuationIssue(runId) : undefined;
   let manualResumed = false;
-  if (resumeEvidence !== undefined && resumeEvidence.length > 0 && issue?.request.operation === "resume" && issue.result.kind === "run") {
-    const request = CanonicalPauseRequestSchema.parse(issue.request.request), parent = repositories.runs.get(runId);
-    if (parent === undefined || request.runId !== runId || issue.result.runId !== runId
-      || issue.result.appliedVersion !== request.expectedVersion + 1 || issue.result.appliedVersion > parent.version) throw new Error("delegation-resume-binding-mismatch");
-    manualResumed = authenticateDelegationResume(repositories, request, resumeEvidence);
+  if (resumeEvidence !== undefined && resumeEvidence.length > 0) {
+    const parent = repositories.runs.get(runId);
+    if (parent === undefined) throw new Error("delegation-resume-binding-mismatch");
+    manualResumed = readAppliedDelegationResume(repositories, parent, resumeEvidence) !== undefined;
   }
   for (const { manifest, group } of groups) {
     const readiness = delegationReadiness(manifest, group.children.map(member => ({ ...member, resumed: manualResumed })), intent);
@@ -725,12 +858,22 @@ export function prepareDelegationRetry(repositories: AuthorityRepositories, run:
   const selected = groups.flatMap(group => group.children.filter(entry => entry.child.envelope.runId === run.envelope.runId).map(child => ({ group, child })));
   if (selected.length !== 1) throw new Error("delegation-retry-membership-unavailable");
   const selectedChild = selected[0];
+  const accounting = request.refreshAuthorization === undefined ? undefined : workflowDelegationAccounting(request.refreshAuthorization, parent);
+  const accountingMember = accounting !== undefined && accounting.joinNodeId === selectedChild.group.invocation.nodeId;
+  if (accountingMember && continued === undefined) {
+    if (source.type !== "retry") throw new RunContinuationRefusedError("delegation-accounting-recovery-requires-member-retry");
+    assertDelegationRetryUnwritten(repositories, run, accounting.target);
+    if (parent.cancelRequested === true || parent.lifecycle.state === "terminal" && repositories.evidenceReceipts.findByRun(parent.envelope.runId) === undefined)
+      throw new RunContinuationRefusedError("delegation-accounting-parent-receipt-unavailable");
+  }
   if (parent.cancelRequested === true && selectedChild.group.manifest.policy.cascadeCancel !== "independent") {
     throw new Error("delegation-retry-source-unavailable");
   }
   if (continued !== undefined && (parent.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(parent.lifecycle.outcome))) throw new Error("delegation-continuation-parent-ineligible");
-  if (parent.delegationRefresh?.phase === "settled" && parent.lifecycle.state !== "terminal" && parent.lifecycle.state !== "parked-gate" && parent.lifecycle.state !== "queued") throw new RunContinuationRefusedError("delegation-refresh-execution-in-progress");
-  const refresh = request.refreshAuthorization !== undefined && continued === undefined && selectedChild.group.manifest.join !== "none";
+  if (!accountingMember && parent.delegationRefresh?.phase === "settled" && parent.lifecycle.state !== "terminal" && parent.lifecycle.state !== "parked-gate" && parent.lifecycle.state !== "queued") throw new RunContinuationRefusedError("delegation-refresh-execution-in-progress");
+  const refresh = request.refreshAuthorization !== undefined && continued === undefined && selectedChild.group.manifest.join !== "none"
+    && (!accountingMember || parent.lifecycle.state === "terminal" || parent.lifecycle.state === "parked-gate"
+      || parent.lifecycle.state === "queued" && parent.delegationRefresh !== undefined);
   if (refresh) assertDelegationRefreshEligible(repositories, parent, request.refreshAuthorization);
   if (parent.lifecycle.state === "terminal" && continued === undefined && !refresh) {
     const independentCancellation = parent.lifecycle.outcome === "cancelled"
@@ -761,7 +904,8 @@ export function prepareDelegationRetry(repositories: AuthorityRepositories, run:
   const terminal = childTerminalSettlement(run, repositories);
   if (terminal === undefined || terminal.state === "satisfied" || selectedChild.child.dependency.state !== terminal.state
     || repositories.writeIntents.listByRun(run.envelope.runId).some(intent => intent.status === "attempting" || intent.status === "parked")) throw new Error("delegation-retry-terminal-proof-unavailable");
-  return { ...selectedChild, parent, source, terminal, ...(refresh ? { refreshAuthorization: request.refreshAuthorization } : {}) };
+  return { ...selectedChild, parent, source, terminal, ...(refresh ? { refreshAuthorization: request.refreshAuthorization } : {}),
+    ...(accountingMember ? { accountingAuthorization: request.refreshAuthorization } : {}) };
 }
 
 export function authenticateCancellationSource(repositories: AuthorityRepositories, run: RunRecord,

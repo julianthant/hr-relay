@@ -494,14 +494,12 @@
 - region "Assistant panel":
   - region "Relay assistant":
     - button "start selected workflow"
-    - button "Chat files"
     - button "Chats"
     - button "New chat"
     - button "Close assistant"
     - log "Assistant conversation":
-      - text: start selected workflow Review this proposal. No action has been applied. Confirmed action accepted. Start Person Lookup · EID 10101010
-      - status: Started · 1 run
-      - paragraph: Review and confirm each proposed change. Select a served run and send “start selected workflow” to propose its subject. Model, effort and voice controls are unavailable.
+      - text: start selected workflow Review this proposal. No action has been applied. Confirmed action accepted. Start Person Lookup · Avery Sample
+      - status: Started
     - group "Message composer":
       - text: Message Relay
       - textbox "Message Relay":
@@ -509,8 +507,8 @@
       - group "Message controls":
         - button "Add files"
         - button "Ask before every action" [disabled]
-        - 'button "Model: GPT-6.1 Sol" [disabled]': GPT-6.1 Sol
-        - 'button "Thinking effort: Medium" [disabled]': Medium
+        - 'button "Model: gpt-6.1-sol" [disabled]': gpt-6.1-sol
+        - 'button "Thinking effort: medium" [disabled]': medium
         - button "Voice input" [disabled]
         - button "Send message" [disabled]
 - button "Assistant" [expanded]

@@ -78,6 +78,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   let cancelling: number | undefined;
   let ownedPopup: ChatGptAuthorizationWindow | undefined;
   let refreshing: Promise<void> | undefined;
+  let completionController: AbortController | undefined;
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   const listeners = new Set<() => void>();
   const nowMs = options.nowMs ?? (() => systemClock.nowMs());
@@ -98,6 +99,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   };
   const expireSignIn = () => {
     ++epoch;
+    completionController?.abort();
     busy = false;
     cancelling = undefined;
     refreshing = undefined;
@@ -137,17 +139,49 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     } catch { if (current(request)) problem(state, code); }
   };
   const complete = async (attemptId: string, expiresAt: string, request: number) => {
-    let result: ChatGptSignInCompletion;
-    try { result = await readWithDeadline(signal => client.completeChatGptSignIn(attemptId, signal), "CHATGPT_AUTH_UNAVAILABLE", Math.min(2_147_483_647, Math.max(CHATGPT_COMPLETION_READ_DEADLINE_MS, Date.parse(expiresAt) - nowMs()))); }
-    catch { await reconcileProblem(request); return; }
-    if (!current(request)) return;
-    if (result.state === "completed") accept(result.account);
-    else if (result.state === "uncertain") await reconcileProblem(request, result.code);
-    else if (result.code === "CHATGPT_AUTH_EXPIRED") expireSignIn();
-    else problem("refused", result.code);
+    completionController?.abort();
+    let controller: AbortController | undefined;
+    const recheck = () => { controller?.abort(); };
+    const visible = () => { if (document.visibilityState === "visible") recheck(); };
+    window.addEventListener("focus", recheck);
+    document.addEventListener("visibilitychange", visible);
+    try {
+      while (current(request)) {
+        if (Date.parse(expiresAt) <= nowMs()) { expireSignIn(); return; }
+        controller = new AbortController();
+        completionController = controller;
+        try {
+          const result: ChatGptSignInCompletion = await readWithDeadline(signal => client.completeChatGptSignIn(attemptId, signal), "CHATGPT_AUTH_UNAVAILABLE", Math.min(2_147_483_647, Math.max(CHATGPT_COMPLETION_READ_DEADLINE_MS, Date.parse(expiresAt) - nowMs())), controller.signal);
+          if (!current(request)) return;
+          if (result.state === "completed") {
+            const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE", undefined, controller.signal);
+            if (!current(request)) return;
+            if (account.state === "signing-in") problem("refused", "CHATGPT_AUTH_CANCELLED", account);
+            else accept(account);
+          }
+          else if (result.state === "uncertain") await reconcileProblem(request, result.code);
+          else if (result.code === "CHATGPT_AUTH_EXPIRED") expireSignIn();
+          else problem("refused", result.code);
+          return;
+        }
+        catch {
+          if (controller.signal.aborted) continue;
+          await reconcileProblem(request);
+          if (!current(request)) return;
+          scheduleSignInExpiry(expiresAt, request);
+          const signal = controller.signal;
+          if (!signal.aborted) await new Promise<void>(resolve => { signal.addEventListener("abort", () => resolve(), { once: true }); });
+        }
+      }
+    } finally {
+      window.removeEventListener("focus", recheck);
+      document.removeEventListener("visibilitychange", visible);
+      if (completionController === controller) completionController = undefined;
+    }
   };
   async function readAccount(): Promise<void> {
     const request = ++epoch;
+    completionController?.abort();
     busy = true; notify();
     try {
       const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
@@ -175,7 +209,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       return () => { listeners.delete(listener); };
     },
     refresh,
-    dispose: () => { disposed = true; ++epoch; closePopup(); clearTimeout(expiryTimer); listeners.clear(); },
+    dispose: () => { disposed = true; ++epoch; completionController?.abort(); closePopup(); clearTimeout(expiryTimer); listeners.clear(); },
     signIn: async input => {
       if (disposed || busy || resource.state === "loading") return;
       let popup: ChatGptAuthorizationWindow | undefined;
@@ -211,6 +245,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       const attemptId = pending.attemptId;
       const request = ++epoch;
       cancelling = request;
+      completionController?.abort();
       refreshing = undefined;
       scheduleSignInExpiry(pending.expiresAt, request);
       busy = true; notify();

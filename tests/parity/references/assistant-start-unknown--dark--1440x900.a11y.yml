@@ -494,33 +494,22 @@
 - region "Assistant panel":
   - region "Relay assistant":
     - button "start selected workflow"
-    - button "Chat files"
     - button "Chats"
     - button "New chat"
     - button "Close assistant"
     - log "Assistant conversation":
       - text: start selected workflow Review this proposal. No action has been applied.
-      - article "Start Person Lookup":
+      - article "Proposed Start Person Lookup":
         - heading "Start Person Lookup" [level=3]
-        - term: Input
-        - definition: EID 10101010 · Person Lookup
-        - term: Runs
-        - definition: "1"
-        - term: Mode
-        - definition: Live read
-        - term: Browser
-        - definition: Headed
-        - term: Captures
-        - definition: "On"
-        - term: Expires
-        - definition: 2099-01-01T00:00:00Z
-        - term: Output
-        - definition: Run results in Logs
-        - button "Effects and stop points"
-        - status: Action outcome is unknown. Do not retry this action.
-        - button "Not now" [disabled]
-        - button "Start run" [disabled]
-      - paragraph: Review and confirm each proposed change. Select a served run and send “start selected workflow” to propose its subject. Model, effort and voice controls are unavailable.
+        - term: Name
+        - definition: Avery Sample
+        - term: EID
+        - definition: "10101010"
+        - term: Options
+        - definition: Read only
+        - alert: Action outcome is unknown. Do not retry this action.
+        - button "Cancel" [disabled]
+        - button "Confirm" [disabled]
     - group "Message composer":
       - text: Message Relay
       - textbox "Message Relay" [disabled]:
@@ -528,8 +517,8 @@
       - group "Message controls":
         - button "Add files" [disabled]
         - button "Ask before every action" [disabled]
-        - 'button "Model: GPT-6.1 Sol" [disabled]': GPT-6.1 Sol
-        - 'button "Thinking effort: Medium" [disabled]': Medium
+        - 'button "Model: gpt-6.1-sol" [disabled]': gpt-6.1-sol
+        - 'button "Thinking effort: medium" [disabled]': medium
         - button "Voice input" [disabled]
         - button "Send message" [disabled]
 - button "Assistant" [expanded]

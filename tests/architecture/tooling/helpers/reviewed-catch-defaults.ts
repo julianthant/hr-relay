@@ -10,6 +10,17 @@ export interface ReviewedCatchDefault {
 
 export const REVIEWED_CATCH_DEFAULTS = [
   {
+    "path": "src/backend/profiles/profile-onboarding.ts",
+    "reason": "A rejected opening clears only its lease's in-flight Show marker and binds the observed browser generation. The catch records and rethrows the original failure, attempts exact attempt closure, and aggregates retention or cleanup failures. It supplies no success, authority or closure default. Late Show failure controls preserve retired-resource custody after proved Reopen and retain foreign source failures.",
+    "statements": [
+      {
+        "kind": "try",
+        "sha256": "d3eafd256dab0eb2806500d5113268377709d7a508e215bc8bcd59e93d73f17d",
+        "occurrences": 1
+      }
+    ]
+  },
+  {
     "path": "src/backend/storage/artifacts/named-file-output-sink.ts",
     "reason": "Only ENOENT denotes an absent publication destination or parent directory. The sink checks absence before exclusive creation, refuses disappeared retained directory identities, and propagates every other stat error. Staging, publication and close failures remain explicit or retain their original causes as custody uncertainty.",
     "statements": [
@@ -33,7 +44,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "reason": "Failed UNKNOWN retention or failure callbacks retain both causes and keep closure unproved. The browser pump sends a negative acknowledgment on request failure, revokes before retaining its original failure, and aggregates diagnostic-report failures without retrying a failed sink. Setup and slow-warning failures keep their original causes and attempt existing physical closure. Captured software keys stay UNKNOWN; diagnostic failure alone does not make proved physical closure uncertain. Profile removal and replacement still require settled callbacks, exact owner/private paths and native closure proofs; native failures never trigger a second ceremony.",
+    "reason": "Failed UNKNOWN retention or failure callbacks retain both causes and keep closure unproved. The browser pump sends a negative acknowledgment on request failure, revokes before retaining its original failure, and aggregates diagnostic-report failures without retrying a failed sink. Only a Playwright target-close poll failure whose worker did not close before its context may settle with context closing. Genuine poll failures keep their original causes even when closing overtakes their asynchronous catches or a prior failure is already reporting; closing status never substitutes for its event or native proof. A macOS return-to-Relay focus refusal logs its closed diagnostic and preserves the Duo state. Setup and slow-warning failures keep their original causes and attempt existing physical closure. Captured software keys stay UNKNOWN; diagnostic failure alone does not make proved physical closure uncertain. Profile removal and replacement still require settled callbacks, exact owner/private paths and native closure proofs; native failures never trigger a second ceremony.",
     "statements": [
       {
         "kind": "try",
@@ -42,7 +53,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "promise",
-        "sha256": "483b26cef1e77a8e523688d4251c1a7361894e87ed6a6a0f453739ad3e4a3d43",
+        "sha256": "21939e260f26d984c93603c198248d2a5888919a6957d47ac5d305c3f4bcaa58",
         "occurrences": 1
       }
     ]

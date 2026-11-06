@@ -1,3 +1,4 @@
+import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { containsDryRunSample, DryRunSampleSchema } from "../../../models/workflow/dry-run.js";
@@ -8,7 +9,6 @@ import { reconstructConfirmedOperation } from "../../../models/events/confirmed-
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
-import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import { transactionCheckpointProvenance } from "../../runs/provenance/task-provenance.js";
 import { decideDurableIntent } from "../policies/durable-intent.js";
 import { runMandatorySavedVerification, completeProtectedWrite } from "./mandatory-saved-verification.js";

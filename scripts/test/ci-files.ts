@@ -5,6 +5,7 @@ import { isDirectExecution } from "./scope-files.js";
 
 // Storage closure, backup and restore proofs require native platform runners.
 export const NATIVE_FILES: readonly string[] = [
+  "tests/workflows/emergency-contact/workflow.member-retry.crash.integration.test.ts",
   "tests/backend/app/composition/dashboard/profile-session-routes.restart.integration.test.ts",
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
   "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
@@ -17,6 +18,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/profile-local-databases.windows-native.integration.test.ts",
   "tests/backend/storage/maintenance/account-deletion.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
+  "tests/backend/app/composition/dashboard/compose.never-born-worker.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
   "tests/backend/app/composition/worker/artifact-output.integration.test.ts",
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",

@@ -4,9 +4,9 @@ import { it } from "vitest";
 import { assistantKnowledgeArtifact, createAssistantContext, PUBLIC_ASSISTANT_REPOSITORY_ID } from "../../../src/backend/assistant/context.js";
 
 const PUBLIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: "9af76694409eeff5e0ac954fc9501bc69991643a" };
-const file = { path: "docs/rebuild/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
+const file = { path: "docs/reference/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
 const bytes = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, files: [file] }));
-const policy = { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "13b64308f627d12991b2c68f1ee59211763f37393b93fc01f4d5b59a561bab26" };
+const policy = { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "250ee6f34224e2f8324ceb6e2def7360146fb1043bed5fcf8af61a978ec828c3" };
 it("binds exact bytes to separate policy and verifies actual line quotations", () => {
   const context = createAssistantContext(bytes, policy);
   const citation = { path: file.path, revision: policy.revision, startLine: 2, endLine: 2, quote: "Dry runs stop before writes." };
@@ -16,7 +16,7 @@ it("binds exact bytes to separate policy and verifies actual line quotations", (
   assert.throws(() => createAssistantContext(Buffer.from(bytes.toString().replace("Synthetic", "Substitute")), policy));
   assert.equal(Object.isFrozen(context.reference.files[0]), true);
 });
-for (const path of ["../.env", "docs/rebuild/../private.md", "/etc/passwd", "src/models/secrets.ts", ".git/config", "docs/rebuild/credentials.md", "docs/rebuild/a\\b.md"])
+for (const path of ["../.env", "docs/reference/../private.md", "/etc/passwd", "src/models/secrets.ts", ".git/config", "docs/reference/credentials.md", "docs/reference/a\\b.md"])
   it(`refuses non-public path ${path}`, () => {
     const changed = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, files: [{ ...file, path }] }));
     assert.throws(() => createAssistantContext(changed, { ...policy, exportSha256: createHash("sha256").update(changed).digest("hex") }));
@@ -35,7 +35,7 @@ it("rejects binary controls disguised as allowlisted text", () => {
 });
 it("admits a later separately trusted synthetic revision without embedding the runtime HEAD", () => {
   const revision = "b".repeat(40), changed = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, revision, files: [file] }));
-  const trusted = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision, exportSha256: "6976842cc20379b2b4b91cb7beaa7f19a52a9d3c8950eae42d7bf231a3334453" };
+  const trusted = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision, exportSha256: "6f7e48bb7ea5ed793caced0111665b62ee2ebe563734e79d09c9bd4d51191b91" };
   const later = createAssistantContext(changed, trusted);
   later.assertRuntime(trusted);
   assert.equal(later.citation({ path: file.path, revision, startLine: 1, endLine: 1, quote: "Synthetic public reference." }).revision, revision);

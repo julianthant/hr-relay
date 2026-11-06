@@ -4,6 +4,8 @@
 `ds/theme/tokens.ts` supplies named class strings. `kit.html` renders the real primitives through
 `kit/kit-page.tsx`. Start it with `npm run web` at `http://localhost:5174/kit.html`.
 
+Product mock workflows start with empty queues; the parity composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard. Unavailable authority retains its storage warning.
+
 ## Tokens
 
 The neutral palette resolves through `--ui-canvas`, `--ui-panel`, `--ui-table`, `--ui-hover`,
@@ -101,8 +103,8 @@ At compact action widths, Start a run uses its existing icon and accessible name
 Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step footer with confirmation. The setup screen uses the house Select for method choice, with the same Security key and Touch ID names as its cards.
 Settings navigation uses the workflow rail's row height, spacing, padding, and hover/selected fills. Appearance has a Light/Dark toggle and an Animations switch without row descriptions or person names; preference feedback sits below the rows. Delete account is the last section in General. Its confirmation belongs to the active profile/session epoch, checked atomically by the server before deletion effects; pending and uncertain deletion stay disabled with visible feedback. General has no assistant permission row.
 Storage's Clear run history row uses the existing destructive dialog with Cancel focused first. Active runs disable it with a visible reason; uncertain results offer a result-only Check clear result for the original action. Not recorded requires a new destructive confirmation. The Run picker hides parent-only previews; Explorer keeps them available for inspection.
-Assistant start proposals show the canonical plan input, one-run count, mode, browser and capture settings; Start run uses the app Button in both themes. Successful starts and cancellations collapse to a resolved line; uncertain outcomes keep the disabled card.
-Assistant setup uses a compact Test assistant row above the retained composer. Capability failures show their named reason in the thread. Served model and effort labels use the selected person’s preference. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
+Assistant proposals use a card with a tinted title row: the workflow, the served plan title (Name and Employee ID rows appear only when the proposal serves them), the mode, then Cancel and Confirm. Plan ids, fingerprints and stop-point text stay in logs. Confirmed and cancelled proposals collapse to a resolved line; unknown outcomes keep the disabled card.
+The assistant is a floating, draggable bottom-right panel: tinted header (history, new chat, close), flat replies, filled operator bubbles with name-only attachment pills, a rounded composer and a quiet status strip above it. The strip shows the served account reason with its action (Sign in, Open Settings or Open Preflight) and never blocks the dashboard or the composer. Replies show only the answer, with no sources or failure codes. Test assistant lives in Settings › Preflight, and its result clears on account change or after 15 minutes. Served model and effort labels use the selected person’s preference. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
 Browser captures stay inline. A verified before/after pair sits under its declared submit action,
 with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
 
@@ -185,6 +187,6 @@ status fill changes without changing the information's position.
 - Keep focus rings on interactive controls; programmatic takeover focus does not draw an extra default browser ring.
 
 Read [PARITY.md](PARITY.md) before judging a visual difference and
-[the wiring contract](../../docs/rebuild/reference/frontend-backend-integration.md) before replacing a producer.
+[the wiring contract](../../docs/reference/frontend-backend-integration.md) before replacing a producer.
 
 Credentials uses existing ResultRow components for the signed-in profile name and per-word initials. Both are read-only; their values come from bootstrap actor.label.

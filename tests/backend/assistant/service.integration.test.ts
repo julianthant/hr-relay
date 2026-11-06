@@ -23,9 +23,9 @@ import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures
 import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
 
 const PUBLIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: "9af76694409eeff5e0ac954fc9501bc69991643a" };
-const file = { path: "docs/rebuild/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
+const file = { path: "docs/reference/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
 const bytes = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, files: [file] }));
-const context = createAssistantContext(bytes, { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "13b64308f627d12991b2c68f1ee59211763f37393b93fc01f4d5b59a561bab26" });
+const context = createAssistantContext(bytes, { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "250ee6f34224e2f8324ceb6e2def7360146fb1043bed5fcf8af61a978ec828c3" });
 const selected = { subjectRef: "subject-one", displayName: "Synthetic Person", employeeId: "10812345" };
 const answer = { action: "answer", text: "Dry run explanation", citations: [{ path: file.path, revision: PUBLIC_ASSISTANT_SOURCE.revision, startLine: 2, endLine: 2, quote: "Dry runs stop before writes." }] };
 const propose = { action: "propose", workflowId: "write-fixture", intent: "dry-run" };
@@ -542,7 +542,7 @@ it('keeps pre-effect resource uncertainty visible even when verification is canc
   assert.equal(closure.cause, primary); assert.equal(f.calls(), 0); assert.equal(f.planned(), 0);
 });
 
-it.each(['CHATGPT_AUTH_UNAVAILABLE', 'CHATGPT_USAGE_UNAVAILABLE', 'CHATGPT_OCR_FAILED', 'CHATGPT_OCR_INCOMPLETE', 'CHATGPT_SERVICE_CLOSED', 'CHATGPT_ASSISTANT_REFUSED'] as const)('keeps %s capability failure visible instead of returning generic unavailability', async code => {
+it.each(['CHATGPT_AUTH_UNAVAILABLE', 'CHATGPT_USAGE_UNAVAILABLE', 'CHATGPT_MODEL_UNAVAILABLE', 'CHATGPT_MODELS_UNAVAILABLE', 'CHATGPT_REQUEST_REJECTED', 'CHATGPT_RATE_LIMITED', 'CHATGPT_DIAGNOSTICS_UNAVAILABLE', 'CHATGPT_OCR_FAILED', 'CHATGPT_OCR_INCOMPLETE', 'CHATGPT_SERVICE_CLOSED', 'CHATGPT_ASSISTANT_REFUSED'] as const)('keeps %s capability failure visible instead of returning generic unavailability', async code => {
   const f = fixture();
   const service = createAssistantService({ ...f.options, verifySelectedModel: async () => { throw new ChatGptAccountError(code); } });
   const result = await service.respond({ message: ASSISTANT_VERIFY_COMMAND }, new AbortController().signal);

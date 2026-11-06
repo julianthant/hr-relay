@@ -8,7 +8,7 @@ export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "
 export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill", "pause", "resume"]);
 /** The command verbs a served action may name; the two write resolutions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
 export const ActionCommandKeySchema = z.enum([
-  "retry", "restart", "recover-run", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
+  "retry", "recover-run", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
   "recheck-write", "resolve-write-absent", "check-parked-write",
   "resolve-workbook-row", "resolve-workbook-reference-row", "pause", "resume",
 ]);

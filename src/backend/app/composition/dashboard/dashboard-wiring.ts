@@ -37,7 +37,6 @@ import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/time
 import { activeSettingsConfig,activeSettingsRuntimeIdentity } from "../../../runtime/settings/settings-runtime.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
-import { readAutomaticRepairNotice } from "../../../storage/maintenance/automatic-repair-notice.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { startDashboardHttpServer,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
@@ -93,7 +92,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
   const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
 
-  const { noteWriter, runLogsHub, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, lifecycle, startupCleanups, requiredClosure });
+  const { noteWriter, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups });
 
   const reportSupervisorFault = (error: Error): void => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "supervisor",
@@ -159,6 +158,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
     readableDescriptors: { resolve: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor },
     workbookRows: createRunWorkbookService({ database, clock }),
     applicationQuitAvailable: true,
@@ -243,7 +243,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
     actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts,
     reads: createAssistantReadAllowlist({ runDetail: runDetailDeps, assertCurrent }) });
-  const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
+  const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
     context: () => loadProductionAssistantContext(repoRoot, knowledge),
     runtime: () => { assertCurrent(); return knowledge.policy; },
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
@@ -286,7 +286,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     } });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
-  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
+  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
@@ -295,7 +295,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox }),
-    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary, automaticRepair: () => readAutomaticRepairNotice(admission),
+    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
   });
   const { hub } = shell;
   startupCleanups.push(requiredClosure(() => hub.close()));
@@ -322,7 +322,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     assistant,
     chatGptOcrTest,
     chatGptAccount: {
-      readAccount: () => { assertCurrent(); const result = chatGptAccount.readAccount(); assertCurrent(); return result; },
+      refreshAccount: async () => { assertCurrent(); const result = await chatGptAccount.refreshAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
     },
@@ -377,5 +377,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, runLogsHub, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
 }

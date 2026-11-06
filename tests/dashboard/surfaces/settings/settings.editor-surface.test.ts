@@ -18,7 +18,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 
-const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", automaticRepair: { state: "none" }, backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
+const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
 let root: Root | undefined;
 let host: HTMLElement | undefined;
 const authorities: Awaited<ReturnType<typeof syntheticSettingsAuthority>>[] = [];

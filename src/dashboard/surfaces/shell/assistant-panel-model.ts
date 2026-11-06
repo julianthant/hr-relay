@@ -10,7 +10,7 @@ import type { ComposerValue } from './composer-model.js';
 
 export interface AssistantFile { readonly id: string; readonly name: string; readonly status: 'Attached' | 'Updated' | 'Generated'; readonly workbook?: EditableWorkbook }
 export type AssistantScene = 'new' | 'conversation' | 'ask-read' | 'ask-write' | 'permission-changed' | 'working' | 'cancelling' | 'done' | 'failed' | 'handoff' | 'destructive' | 'delete-working' | 'resolved' | 'declined';
-export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string }
+export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
 export interface AssistantRow { readonly sheet: string; readonly row: number; readonly person: string; readonly values: Readonly<Record<string, string>>; readonly issue: string | null }
 export interface AssistantWorkflow { readonly workflowId: string; readonly label: string; readonly file: AssistantFile; readonly rows: readonly AssistantRow[]; readonly state: 'review' | 'running' | 'complete' | 'uncertain' | 'failed'; readonly outputs: readonly AssistantFile[]; readonly message?: string }
 export interface AssistantConversation { readonly id: string; readonly title: string; readonly source: 'mock'; readonly scene: AssistantScene; readonly messages: readonly AssistantMessage[]; readonly files: readonly AssistantFile[]; readonly workflow?: AssistantWorkflow }
@@ -25,7 +25,6 @@ export type AssistantWorkflowResult = { readonly state: 'complete'; readonly sou
 export interface AssistantPorts {
   readonly onAttachFile?: (file?: File) => Promise<AssistantFile | null>;
   readonly onRegisterSpreadsheet?: (file: AssistantFile) => Promise<void>;
-  readonly onOpenChatFile?: (file?: AssistantFile, mode?: 'browse' | 'attach') => Promise<AssistantFile | null | void>;
   readonly onRunWorkflow?: (request: AssistantWorkflowRequest) => Promise<AssistantWorkflowResult>;
 }
 const workflowOptions = [
@@ -87,6 +86,11 @@ export async function readAssistantAttachment(file: File): Promise<AssistantFile
   const workbook = /\.(xlsx?|csv|tsv)$/i.test(file.name) ? await importSpreadsheetInWorker(file.name, await file.arrayBuffer()) : undefined;
   return { id: crypto.randomUUID(), name: file.name, status: 'Attached', ...(workbook ? { workbook } : {}) };
 }
+/** The producer appends this send's operator message at `sentAt`, then any reply after it. */
+function withSentAttachments(conversation: AssistantConversation, sentAt: number, attachments: readonly { id: string; name: string }[]): AssistantConversation {
+  if (!attachments.length || conversation.messages[sentAt]?.role !== 'operator') return conversation;
+  return { ...conversation, messages: conversation.messages.map((message, index) => index === sentAt ? { ...message, attachments } : message) };
+}
 export function useAssistantPanel({ producer, accountClient, ports, served }: { served?: ReturnType<typeof useAssistantController>; producer: AssistantConversationPort; accountClient: Pick<DashboardClient, 'chatGptAccount'>; ports: AssistantPorts }) {
   const [conversation, setConversation] = useState(() => producer.initial());
   useEffect(() => { producer.retain?.(conversation); }, [producer, conversation]);
@@ -131,19 +135,17 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     if (refuseAttachmentInput()) return null;
     return ports.onAttachFile?.(file) ?? null;
   }
-  async function openChatFile(file?: AssistantFile, mode?: Parameters<NonNullable<AssistantPorts['onOpenChatFile']>>[1]) {
-    if (refuseAttachmentInput()) return null;
-    return ports.onOpenChatFile?.(file, mode);
-  }
   async function send(value: ComposerValue) {
     if (refuseAttachments(value)) return false;
     const identity = generation.current, authority = currentAuthority.current;
     let dispatched = false;
     const committed = await perform(async () => {
-      const next = served ? { ...conversation, files: [...conversation.files, ...value.files] } : await producer.send(conversation, value);
+      const attachments = value.files.map(file => ({ id: file.id, name: file.name }));
+      const sentMock = served ? undefined : await producer.send(conversation, value);
+      const next = sentMock === undefined ? { ...conversation, files: [...conversation.files, ...value.files] } : withSentAttachments(sentMock, conversation.messages.length, attachments);
       for (const file of value.files) if (file.workbook) await ports.onRegisterSpreadsheet?.(file);
       if (served && identity === generation.current && authority === currentAuthority.current) {
-        served.onAction({ type: 'edit', value: value.text }); served.onAction({ type: 'send' }); dispatched = true;
+        served.onAction({ type: 'edit', value: value.text }); served.onAction({ type: 'send', attachments }); dispatched = true;
       }
       return next;
     });
@@ -168,7 +170,7 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     });
   }
   function latest() { const element = transcript.current; if (element) element.scrollTop = element.scrollHeight; setShowLatest(false); }
-  return { conversation, account, error, busy, refuseAttachments, attachFile, openChatFile, detail, setDetail, transcript, showLatest, latest, send, runWorkflow,
+  return { conversation, account, error, busy, refuseAttachments, attachFile, detail, setDetail, transcript, showLatest, latest, send, runWorkflow,
     onScroll: () => { const el = transcript.current; if (el) setShowLatest(el.scrollHeight - el.clientHeight - el.scrollTop >= 48); },
     finishMockSignIn: () => { setConversation(current => ({ ...current, scene: 'ask-write' })); setDetail(null); },
     act: (action: 'approve' | 'decline' | 'cancel') => perform(() => producer.act(conversation, action)),

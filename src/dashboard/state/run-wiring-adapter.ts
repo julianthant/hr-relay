@@ -7,7 +7,7 @@ import type { ConfirmedActionEvent } from "../../models/events/confirmed-action.
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandExecutionScope } from "../app/commands/command-executor.js";
-import { childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
+import { batchMemberRetryAction, batchMemberRetrySourceMatches, childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { decisionAnswerValid, type LogDecisionAction, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
@@ -628,6 +628,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detail = value.snapshot?.detail;
+  const batchRetry = batchMemberRetryAction(row);
   const detailGate = detail?.gate;
   const parked = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "parked-write") : undefined;
   const failure = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "failure" && section.payload.state === "available") : undefined;
@@ -654,6 +655,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (envelope.family === "run" && envelope.type === "retry" && row.parent !== null) return envelope.target.runId === row.runId
       && envelope.target.expectedVersion.valueOf() === row.rowRevision.valueOf()
       && row.actions.some(action => action.kind === "command" && action.command === "retry" && action.expectedVersion === row.rowRevision);
+    if (envelope.family === "run" && envelope.type === "retry" && batchRetry !== undefined) return envelope.target.runId === row.runId
+      && envelope.target.expectedVersion.valueOf() === row.rowRevision.valueOf();
     if (envelope.family === "run" && envelope.type === "resolve-workbook-reference-row") {
       const choice = workbookWrites?.section === "workbook-writes" ? workbookWrites.payload.referenceChoices?.find(choice => choice.resolution.state === "available"
         && canonicalJsonStringify(choice.resolution.target) === canonicalJsonStringify(envelope.target)) : undefined;
@@ -689,7 +692,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         commandId: envelope.commandId, requestedAt: envelope.requestedAt,
         ...(envelope.type === "recheck-write" ? { transactionId: envelope.payload.transactionId } : {}) }) : undefined;
     return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
-  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, row.parent, row.actions, workbookWrites, detail]);
+  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, row.parent, row.actions, workbookWrites, detail, batchRetry]);
   const commandApplies = useCallback((attempt: NonNullable<typeof command>) => attempt.state === "pending" || attempt.state === "uncertain"
     || matchesDecision(attempt.envelope) || (attempt.state === "settled" && attempt.envelope.family === "run" && attempt.envelope.type !== "resolve-workbook-reference-row" && parked === undefined
       && row.rowRevision > attempt.envelope.target.expectedVersion) || (attempt.state === "settled" && attempt.envelope.family === "gate" && detailGate?.state === "resolved"
@@ -713,11 +716,15 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     const replayDetail = currentDetail.current;
     if (!mounted.current || currentCommandOwner.current !== commandOwner || binding === undefined
       || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope
-      || envelope.requestedBy !== binding.scope.actorId) return;
+      || envelope.requestedBy !== binding.scope.actorId
+      || envelope.family === "run" && envelope.type === "retry" && bindingRef.current.authority.dayState.day.state !== "loaded") return;
     const retainedChildRetry = envelope.family === "run" && envelope.type === "retry" && replayDetail !== undefined
       && childRetrySourceMatches(replayDetail, envelope.target);
+    const retainedBatchRetry = envelope.family === "run" && envelope.type === "retry" && replayDetail?.rowRevision === row.rowRevision
+      && batchMemberRetrySourceMatches(row, envelope.target);
     if (replay && envelope.family !== "gate" && !currentDecisionMatches.current(envelope)
       && !retainedChildRetry
+      && !retainedBatchRetry
       && !sameHeldOccurrence(envelope, currentParkedWrite.current)
       && !currentWorkbookWrites.current.some(operation => workbookWriteMatchesReplay(operation, envelope))
       && !(replayDetail !== undefined && currentReferenceChoices.current.some(choice => workbookReferenceMatchesReplay(choice, envelope, replayDetail)))) {
@@ -744,14 +751,16 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }
     if (replay) await binding.executor.replay(envelope.commandId, options);
     else await binding.executor.execute(envelope, options);
-  }, [binding, client, commandOwner, launch, correctionCommand, row.runId]);
+  }, [binding, client, commandOwner, launch, correctionCommand, row]);
   const dispatch = useCallback((envelope: CommandRequest) => {
     commandRef.current = { owner: commandOwner, envelope, state: "pending" };
     void send(envelope);
   }, [commandOwner, send]);
   const dispatchIfDecisionCurrent = useRef<(envelope: CommandRequest) => void>(() => undefined);
   dispatchIfDecisionCurrent.current = (envelope: CommandRequest) => {
-    if (mounted.current && currentCommandOwner.current === commandOwner && value.state === "loaded" && matchesDecision(envelope) && !(commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) {
+    if (mounted.current && currentCommandOwner.current === commandOwner && value.state === "loaded" && matchesDecision(envelope)
+      && (!(envelope.family === "run" && envelope.type === "retry") || bindingRef.current?.authority.dayState.day.state === "loaded")
+      && !(commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) {
       dispatch(envelope);
       return;
     }
@@ -764,6 +773,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, childRetry: detail.childRetry });
     if (composed.state === "ready") dispatchIfDecisionCurrent.current(CommandRequestSchema.parse(composed.request));
   }, [value.state, binding, detail, row.runId, row.rowRevision]);
+  const onBatchMemberRetry = useCallback(() => {
+    if (value.state !== "loaded" || binding === undefined || batchRetry === undefined) return;
+    const composed = composeCommandRequest(batchRetry, { runId: row.runId, expectedVersion: row.rowRevision }, {
+      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, batchMemberRetry: row });
+    if (composed.state === "ready") dispatchIfDecisionCurrent.current(CommandRequestSchema.parse(composed.request));
+  }, [value.state, binding, batchRetry, row]);
   const preparingCorrection = useRef(false);
   const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
     if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
@@ -903,10 +918,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
   return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
-    onChildRetry: value.state === "loaded" && binding !== undefined && detail?.childRetry !== undefined
+    onChildRetry: value.state === "loaded" && binding?.authority.dayState.day.state === "loaded" && detail?.childRetry !== undefined
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onChildRetry : undefined,
+    onBatchMemberRetry: value.state === "loaded" && binding?.authority.dayState.day.state === "loaded" && batchRetry !== undefined
+      && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onBatchMemberRetry : undefined,
     onUcpathDecision: value.state === "loaded" && binding !== undefined && parked?.section === "parked-write"
       && parked.payload.actions.some(action => action.kind === "command" && action.command === "check-parked-write")
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onUcpathDecision : undefined,
-    command: currentCommand, replay: replayEnvelope === undefined ? undefined : replay };
+    command: currentCommand, replay: replayEnvelope === undefined || replayEnvelope.family === "run" && replayEnvelope.type === "retry" && binding?.authority.dayState.day.state !== "loaded" ? undefined : replay };
 }

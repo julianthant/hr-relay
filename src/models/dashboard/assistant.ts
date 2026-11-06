@@ -132,6 +132,11 @@ export const ASSISTANT_FAILURES = Object.freeze({
   CHATGPT_AUTH_INVALID: ERROR_CATALOG.CHATGPT_AUTH_INVALID.text,
   CHATGPT_AUTH_UNAVAILABLE: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text,
   CHATGPT_USAGE_UNAVAILABLE: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text,
+  CHATGPT_MODEL_UNAVAILABLE: ERROR_CATALOG.CHATGPT_MODEL_UNAVAILABLE.text,
+  CHATGPT_MODELS_UNAVAILABLE: ERROR_CATALOG.CHATGPT_MODELS_UNAVAILABLE.text,
+  CHATGPT_REQUEST_REJECTED: ERROR_CATALOG.CHATGPT_REQUEST_REJECTED.text,
+  CHATGPT_RATE_LIMITED: ERROR_CATALOG.CHATGPT_RATE_LIMITED.text,
+  CHATGPT_DIAGNOSTICS_UNAVAILABLE: ERROR_CATALOG.CHATGPT_DIAGNOSTICS_UNAVAILABLE.text,
   CHATGPT_SERVICE_CLOSED: ERROR_CATALOG.CHATGPT_SERVICE_CLOSED.text,
   ASSISTANT_VERIFICATION_FAILED: ERROR_CATALOG.ASSISTANT_VERIFICATION_FAILED.text,
   ASSISTANT_CAPABILITY_FAILED: ERROR_CATALOG.ASSISTANT_CAPABILITY_FAILED.text,
@@ -175,7 +180,9 @@ const AssistantActionProposalFields = {
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("none"), effect: z.literal("local-write") }),
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("selected-run"), effect: z.literal("workflow-start"),
-    workflowId: z.string().min(1), dryRun: z.boolean(), startPlan: StartPlanWireSchema.pick({
+    workflowId: z.string().min(1), dryRun: z.boolean(),
+    person: z.strictObject({ name: z.string().min(1).max(160).optional(), employeeId: z.string().regex(/^\d{8}$/u).optional() }).optional(),
+    startPlan: StartPlanWireSchema.pick({
       startPlanId: true, workflowId: true, expectedVersion: true, expiresAt: true, dryRun: true,
       browserMode: true, captureBrowserScreenshots: true, fingerprints: true, planned: true,
     }).extend({

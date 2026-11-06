@@ -195,6 +195,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
+  chatGptAccount.setDebugEvents(debugEvents);
   const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });
   const descriptors = {
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,

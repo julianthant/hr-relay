@@ -8,7 +8,6 @@
 
 - region "Relay assistant":
   - button "New chat"
-  - button "Chat files"
   - button "Chats"
   - button "New chat"
   - button "Close assistant"

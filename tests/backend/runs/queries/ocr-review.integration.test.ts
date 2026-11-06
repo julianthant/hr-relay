@@ -9,7 +9,6 @@ import { createCommandKernel } from "../../../../src/backend/runs/commands/comma
 import { buildOcrReviewSection } from "../../../../src/backend/runs/queries/ocr-review.js";
 import { buildBootstrap } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
-import { RunLogsStreamHub } from "../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { authenticateRootRun } from "../../../../src/backend/storage/sqlite/delegation-root-authority.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -37,11 +36,10 @@ it("projects editable native records, persists corrections/exclusions and freeze
   const initial = read(); assert.ok(initial.ocr?.editing?.state === "available" && initial.ocr.approval);
   assert.equal(buildRunDetail(deps, f.run.envelope.runId).ocrRecordCount, 2);
   const unused = (): never => { throw new Error("Unrequested fixture effect"); };
-  const logsHub = new RunLogsStreamHub({ projection, readRun: unused, store: { tail: unused, snapshot: unused } });
   const shell = composeShell({ database: f.database, projection, clock: f.clock, appVersion: "0.1.0", ids: { uuid: randomUUID },
     artifacts: f.artifacts, descriptors: { resolve: f.resolve }, descriptorSetHash: projection.descriptorSetHash(), actorLabel: () => "Fixture operator",
-    preflightReport: () => healthyDashboardPreflightReport(f.clock), backupSummary: () => "current", automaticRepair: () => ({ state: "none" }),
-    activity: { read: unused, readSelected: unused }, backfillGaps: { detected: unused }, runLogsHub: logsHub });
+    preflightReport: () => healthyDashboardPreflightReport(f.clock), backupSummary: () => "current",
+    activity: { read: unused, readSelected: unused }, backfillGaps: { detected: unused } });
   try {
     const bootstrap = buildBootstrap(shell.bootstrap), workflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
     const ocr = workflows.find(workflow => workflow.id === "ocr");
@@ -52,7 +50,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
     assert.equal(bootstrap.featureAvailability.some(feature => feature.feature === "ocr"), false);
     assert.equal(workflows.some(workflow => workflow.id === "ocr-page"), false);
     for (const { descriptor } of WORKFLOW_MODULES) assert.equal(workflows.filter(workflow => workflow.id === descriptor.id).length, 1);
-  } finally { shell.hub.close(); logsHub.close(); }
+  } finally { shell.hub.close(); }
   const evidence = structuredClone(initial.ocr.revision.seed);
   const record = initial.ocr.revision.records[0];
   const request = CommandRequestSchema.parse({ ...f.command("correct-ocr-record", 1), payload: correctedOcrRecord(initial, record.recordId,

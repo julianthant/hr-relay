@@ -57,7 +57,6 @@ export const ERROR_CATALOG = Object.freeze({
   CONTACT_APPROVED_PLAN_CONFLICT: catalogEntry("The approved selection contains conflicting primary contact plans for an employee. Select one intended contact per employee or correct the OCR records, then approve again.", EmptyParametersSchema),
   CONTACT_APPROVED_FIELDS_INVALID: catalogEntry("The approved contact fields cannot form a complete UCPath contact plan. Correct and approve the OCR record again.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),
-  STORAGE_AUTOMATIC_REPAIR_NOTICE_UNAVAILABLE: catalogEntry("The automatic repair notice could not be read. Stored repair evidence has been retained.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_REPAIR_REFUSED: catalogEntry("Relay could not safely repair saved person data. Your data and unresolved writes have been retained; startup cannot continue.", EmptyParametersSchema),
   STORAGE_PROFILE_UPGRADE_REFUSED: catalogEntry("Relay could not verify and upgrade its saved person data. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_UNDECLARED: catalogEntry("Dry-run sample values require declared preview provenance.", EmptyParametersSchema),
@@ -67,6 +66,9 @@ export const ERROR_CATALOG = Object.freeze({
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("Browser closure could not be verified. No file replacement or credential erasure has started.", EmptyParametersSchema),
+  DUO_SETUP_OPEN_FAILED: catalogEntry("Relay could not start the setup browser. Select Reopen to try again.", EmptyParametersSchema),
+  DUO_SETUP_STOP_FAILED: catalogEntry("Relay could not stop the previous setup browser. Select Reopen to try again.", EmptyParametersSchema),
+  DUO_SETUP_FILES_BUSY: catalogEntry("The setup browser’s files are still in use. Select Reopen to check again.", EmptyParametersSchema),
   BROWSER_ROOT_UNAVAILABLE: catalogEntry("Browser ownership could not be verified. The browser and its files remain unavailable until stopped recovery succeeds.", EmptyParametersSchema),
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),
   LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
@@ -114,8 +116,8 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_RESPONSE_INCOMPLETE: catalogEntry("ChatGPT returned an incomplete assistant response. Test again; if it repeats, review the model and connection.", EmptyParametersSchema),
   ASSISTANT_RESPONSE_FAILED: catalogEntry("ChatGPT could not complete the assistant response. Review the connection and test again.", EmptyParametersSchema),
   ASSISTANT_MODEL_UNVERIFIED: catalogEntry("Test assistant to verify the selected model before chatting.", EmptyParametersSchema),
-  ASSISTANT_USAGE_LIMIT: catalogEntry("The ChatGPT plan usage limit was reached.", EmptyParametersSchema),
-  ASSISTANT_PLAN_DISABLED: catalogEntry("Enable ChatGPT plan usage before using the assistant.", EmptyParametersSchema),
+  ASSISTANT_USAGE_LIMIT: catalogEntry("This request reached a ChatGPT usage limit. Review this app's limit in ChatGPT Settings → Usage before trying again.", EmptyParametersSchema),
+  ASSISTANT_PLAN_DISABLED: catalogEntry("ChatGPT plan use is not enabled or permitted for this connection. Review app permissions and plan eligibility in ChatGPT.", EmptyParametersSchema),
   ASSISTANT_ACCOUNT_EXPIRED: catalogEntry("Reconnect the ChatGPT account before using the assistant.", EmptyParametersSchema),
   ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is unavailable. Check the ChatGPT connection.", EmptyParametersSchema),
   ASSISTANT_VERIFICATION_FAILED: catalogEntry("Assistant verification failed. Review the selected person, model and ChatGPT connection, then test again.", EmptyParametersSchema),
@@ -635,15 +637,35 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   CHATGPT_PLAN_DISABLED: catalogEntry(
-    "ChatGPT plan use is not enabled for this connection.",
+    "ChatGPT plan use is not enabled or permitted for this connection. Review app permissions and plan eligibility in ChatGPT.",
     EmptyParametersSchema,
   ),
   CHATGPT_USAGE_LIMIT: catalogEntry(
-    "The ChatGPT plan usage limit has been reached.",
+    "This request reached a ChatGPT usage limit. Review this app's limit in ChatGPT Settings → Usage before trying again.",
     EmptyParametersSchema,
   ),
   CHATGPT_USAGE_UNAVAILABLE: catalogEntry(
-    "ChatGPT plan usage is unavailable.",
+    "ChatGPT plan usage could not be checked. Keep the connection and try again later.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_MODEL_UNAVAILABLE: catalogEntry(
+    "The requested model is unavailable for this ChatGPT connection. Review the available models before trying again.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_MODELS_UNAVAILABLE: catalogEntry(
+    "Relay could not read the models available to this ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_REQUEST_REJECTED: catalogEntry(
+    "ChatGPT rejected the request Relay sent. Relay's integration needs correction; review the local diagnostics before retrying.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_RATE_LIMITED: catalogEntry(
+    "ChatGPT is limiting request frequency. Keep the connection and wait before trying again.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_DIAGNOSTICS_UNAVAILABLE: catalogEntry(
+    "The ChatGPT request failed and Relay could not save its local diagnostics.",
     EmptyParametersSchema,
   ),
   CHATGPT_OCR_INVALID: catalogEntry(

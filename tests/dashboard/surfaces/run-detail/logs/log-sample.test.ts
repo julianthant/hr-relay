@@ -92,6 +92,25 @@ describe('compact run headers', () => {
     } finally { act(() => root.unmount()); host.remove(); }
   });
 
+  it.each([true, false])('renders one root batch Retry in its own header and uses its separate callback (%s)', available => {
+    const run: MockRun = { id: 'batch-header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), status: 'failed', parent: null,
+      session: { state: 'present', itemScope: 'session', sessionId: '00000000-0000-4000-8000-000000000902', origin: { kind: 'start-plan', startPlanId: '00000000-0000-4000-8000-000000000903', actorId: 'local-operator' },
+        presentation: { layout: 'batch', groupInQueue: true, version: 1, startedAt: '2026-08-03T16:10:00.000Z' } },
+      actions: [{ key: 'retry-batch-member', label: 'Retry', kind: 'command', command: 'retry', expectedVersion: 1, intent: 'neutral', icon: 'retry', placement: ['banner'] }] });
+    const onAction = vi.fn(), onBatchMemberRetry = vi.fn();
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed batch person' }, availableSections: ['logs'] },
+      logs: {}, unavailableEvidence: [] }, ...(available ? { onBatchMemberRetry } : {}) });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    try {
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
+      const buttons = host.querySelectorAll<HTMLButtonElement>('header button[aria-label="Retry"]'); assert.equal(buttons.length, 1);
+      assert.equal(buttons[0].disabled, !available); act(() => buttons[0].click());
+      assert.equal(onBatchMemberRetry.mock.calls.length, Number(available)); assert.equal(onAction.mock.calls.length, 0);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+
   it('shows the source page and revision when earlier review changes no longer apply', () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { readPendingImplBindings } from "../../src/backend/app/registries/workflow-registry.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 
-export const STORE_CATALOG_DOC_PATH = "docs/rebuild/reference/stores.md";
+export const STORE_CATALOG_DOC_PATH = "docs/reference/stores.md";
 export const STORE_CATALOG_START_MARKER = "<!-- store-catalog:start -->";
 export const STORE_CATALOG_END_MARKER = "<!-- store-catalog:end -->";
 const STORE_CATALOG_LAST_UPDATED_LINE =

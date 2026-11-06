@@ -622,6 +622,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
   ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
+  ocrAccount.setDebugEvents(debugEvents);
   accountClosureProven = false;
   const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
   resources = createRunResourcesFactory({runReader:runRecordService,duo,ocr,nominatim:input.lifetimeLock instanceof RuntimeLifetimeLock ? createNominatimGeocodeAdapter({clock}) : createNominatimWorkerAdapter(clock),preflight:runtimePreflight,admission,database,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,

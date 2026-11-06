@@ -25,12 +25,24 @@ import { renameDraftProblem } from "../../surfaces/run-detail/identity/rename-dr
 import type { RunWorkbookWritesWire } from "../../../models/dashboard/run-detail.js";
 import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
 import { workbookReferenceMatchesReplay } from "../../surfaces/run-detail/logs/workbook-write-model.js";
+import { lookupBatchId } from "../../surfaces/queue/queue-model.js";
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
 export function childRetrySourceMatches(detail: RunDetailWire, target: ActionTarget): boolean {
   return detail.runId === target.runId && detail.rowRevision.valueOf() === target.expectedVersion.valueOf()
     && detail.header.status === "failed" && detail.header.parentRunId !== undefined;
+}
+
+export function batchMemberRetrySourceMatches(row: QueueSurfaceWire, target: ActionTarget): boolean {
+  return row.runId === target.runId && row.rowRevision.valueOf() === target.expectedVersion.valueOf()
+    && row.status === "failed" && lookupBatchId(row) !== undefined;
+}
+
+export function batchMemberRetryAction(row: QueueSurfaceWire): CommandAction | undefined {
+  if (!batchMemberRetrySourceMatches(row, { runId: row.runId, expectedVersion: row.rowRevision })) return undefined;
+  return row.actions.find((action): action is CommandAction => action.kind === "command" && action.command === "retry"
+    && action.key === "retry-batch-member" && action.expectedVersion === row.rowRevision && action.placement.includes("banner"));
 }
 
 /** What the app can say about a descriptor it was asked to dispatch; `refused`
@@ -56,6 +68,7 @@ export interface CommandContext {
   readonly gate?: IdentityGatePayload | undefined;
   readonly parkedWrite?: ParkedWriteDetailWire | undefined;
   readonly childRetry?: RunDetailWire["childRetry"];
+  readonly batchMemberRetry?: QueueSurfaceWire;
   readonly transactionId?: string | undefined;
   readonly workbookWrite?: RunWorkbookWritesWire["operations"][number];
   readonly workbookAnswer?: Extract<CommandRequest, { type: "resolve-workbook-row" }>["payload"];
@@ -183,10 +196,14 @@ export function composeCommandRequest(
         && canonicalJsonStringify(action) === canonicalJsonStringify(context.childRetry)) {
         return { state: "ready", request: { ...envelope, family: "run", type: "retry", target: { runId: target.runId, expectedVersion: target.expectedVersion } } };
       }
+      const row = context.batchMemberRetry;
+      const served = row === undefined ? undefined : batchMemberRetryAction(row);
+      if (context.source === "run-detail" && row?.runId === target.runId && row.rowRevision === target.expectedVersion
+        && served !== undefined && canonicalJsonStringify(served) === canonicalJsonStringify(action)) {
+        return { state: "ready", request: { ...envelope, family: "run", type: "retry", target: { runId: target.runId, expectedVersion: target.expectedVersion } } };
+      }
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     }
-    case "restart":
-      return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     case "archive":
       return { state: "refused", reason: "Archive page removed" };
     case "recover-run":
@@ -274,6 +291,7 @@ export async function verifyShellCommandEffect(
   reply: CommandResult | BulkRunCommandOutcome,
 ): Promise<CommandReadbackVerification> {
   const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
+  let batchRetryDetails: readonly RunDetailWire[] | undefined;
   if (request.family === "run" && request.type === "resolve-workbook-reference-row") {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
       || !reply.affectedTargets.some(target => target.family === "run" && target.runId === request.target.runId)
@@ -382,7 +400,13 @@ export async function verifyShellCommandEffect(
     const source = details.find(detail => detail.runId === request.target.runId);
     const replacements = details.filter(detail => detail.runId !== request.target.runId && detail.header.retryOf === request.target.runId);
     const next = replacements[0];
-    return source !== undefined && replacements.length === 1 && next !== undefined && childRetrySourceMatches(source, request.target)
+    if (source?.header.parentRunId === undefined) {
+      if (source === undefined || source.rowRevision.valueOf() !== request.target.expectedVersion.valueOf() || source.header.status !== "failed"
+        || details.length !== 2 || replacements.length !== 1
+        || next === undefined || next.header.parentRunId !== undefined || next.header.workflowId !== source.header.workflowId
+        || next.header.attempt <= source.header.attempt) return mismatch(details);
+      batchRetryDetails = details;
+    } else return replacements.length === 1 && next !== undefined && childRetrySourceMatches(source, request.target)
       && next.header.retryOf === source.runId && next.header.parentRunId === source.header.parentRunId
       && next.header.workflowId === source.header.workflowId && next.header.attempt > source.header.attempt
       && details.every(detail => detail === source || detail === next || detail.runId === source.header.parentRunId)
@@ -457,6 +481,18 @@ export async function verifyShellCommandEffect(
   const rootRead = await readRow(request.target.runId);
   if (rootRead === undefined) return mismatch([...snapshots.values()]);
   const root = rootRead;
+  if (request.type === "retry") {
+    const source = batchRetryDetails?.find(detail => detail.runId === root.runId);
+    const replacement = batchRetryDetails?.find(detail => detail.runId !== root.runId);
+    if (source === undefined || replacement === undefined || !batchMemberRetrySourceMatches(root, request.target)
+      || root.workflowId !== source.header.workflowId || root.traceId !== source.header.traceId
+      || root.attempt !== source.header.attempt || root.session.state !== "present") return mismatch(root);
+    const next = await readRow(replacement.runId);
+    return next !== undefined && next.parent === null && next.workflowId === root.workflowId && next.itemId === root.itemId
+      && next.traceId === replacement.header.traceId && next.attempt === replacement.header.attempt && next.attempt > root.attempt && next.session.state === "present"
+      && next.session.sessionId === root.session.sessionId
+      ? { state: "matched", evidence: { details: batchRetryDetails, rows: [root, next] } } : mismatch(next);
+  }
   if (request.type === "recover-run") {
     if (!("affectedTargets" in reply) || root.rowRevision.valueOf() !== request.target.expectedVersion.valueOf()
       || !reply.affectedTargets.some(target => target.family === "run" && target.runId === root.runId)) return mismatch(reply);

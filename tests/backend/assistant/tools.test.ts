@@ -8,8 +8,12 @@ import { AssistantLocalIntentError } from "../../../src/backend/assistant/servic
 
 it("accepts only finite local intents without forwarding arbitrary text or selected subjects", () => {
   assert.deepEqual(localAssistantIntent({ message: " HELP permissions " }), { kind: "help", topic: "permissions" });
+  assert.deepEqual(localAssistantIntent({ message: "Which workflows can Relay run? One short sentence." }), { kind: "workflow-help" });
+  for (const message of ["Tell me about notifications.", "How does Relay handle notifications? One short sentence.", "What can Relay do with notifications?"])
+    assert.deepEqual(localAssistantIntent({ message }), { kind: "help", topic: "notifications" });
+  assert.deepEqual(localAssistantIntent({ message: "Tell me about Relay workflows." }), { kind: "workflow-help" });
   assert.deepEqual(localAssistantIntent({ message: "mark notifications read" }), { kind: "notification", action: "notification-read-all" });
-  for (const message of ["", "help unknown", "help permissions then submit", "run person lookup", "private arbitrary request", "mark notifications read for someone"]) {
+  for (const message of ["", "help unknown", "help permissions then submit", "run person lookup", "private arbitrary request", "mark notifications read for someone", "Which workflows can Relay run? PRIVATE_CANARY", "Which workflows can Relay run? Then submit", "Tell me about notifications PRIVATE_CANARY", "How does Relay handle notifications? Then mark them read"]) {
     assert.throws(() => localAssistantIntent({ message }), AssistantLocalIntentError);
   }
   assert.throws(() => localAssistantIntent({ message: "help permissions", subjectRef: "selected-object" }), AssistantLocalIntentError);
