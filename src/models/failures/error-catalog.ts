@@ -605,6 +605,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Browser closure for damaged profile storage could not be proved. This restore requires macOS and a complete unchanged browser-directory census. Existing storage is preserved.",
     EmptyParametersSchema,
   ),
+  RESTORE_WRITE_HOLD_END_REFUSED: catalogEntry(
+    "The hold was not ended. It changed or was already ended. Reopen Storage and check again.",
+    EmptyParametersSchema,
+  ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
     "Log out cannot finish until restore admission accepts the machine erasure journal.",
     EmptyParametersSchema,

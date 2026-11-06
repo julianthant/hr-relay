@@ -3,7 +3,7 @@ import { useSettingsRead } from "../../../state/settings-read-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import type { StorageDoctorLatestWire } from "../../../../models/dashboard/storage.js";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useStorageClient } from "./storage-client.js";
 import { z } from "zod";
@@ -100,3 +100,10 @@ export function useStorageDoctor() {
   };
   return { doctor, runDoctor };
 }
+
+export interface RestoreWriteHold { backupCapturedAt: string; waitingWrites: number; version: number }
+export type EndHoldResult = { state: "ended" } | { state: "refused"; code: "RESTORE_WRITE_HOLD_END_REFUSED" };
+export interface RestoreWriteHoldPort { hold: RestoreWriteHold | undefined; end: (version: number) => Promise<EndHoldResult> }
+/** No port means no open hold. The parity harness supplies a fixture port. */
+export const RestoreWriteHoldContext = createContext<RestoreWriteHoldPort | undefined>(undefined);
+export const useRestoreWriteHold = () => useContext(RestoreWriteHoldContext);

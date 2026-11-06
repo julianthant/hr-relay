@@ -9,7 +9,7 @@ import { SkeletonText } from "../../shared/loading/loading.js";
 import "../../shared/run-evidence/diagnostic-presentation.css";
 import { fmtClock,fmtInstantDay } from "../../shared/status/format.js";
 import type { StorageHealthSummary } from "./storage-settings-model.js";
-import { useStorageDoctor } from "./storage-settings-model.js";
+import { useRestoreWriteHold,useStorageDoctor,type RestoreWriteHoldPort } from "./storage-settings-model.js";
 import { useRunHistory } from "./run-history-model.js";
 
 const AUTHORITY_HAZARD = ERROR_CATALOG.STORAGE_AUTHORITY_UNAVAILABLE.text;
@@ -113,11 +113,42 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
   return { tone: "neutral", value: entry.present ? "Present" : "Not set" };
 }
 
+function EndHoldPanel({ port }: { port: RestoreWriteHoldPort & { hold: NonNullable<RestoreWriteHoldPort["hold"]> } }) {
+  const { hold } = port;
+  const [confirming, setConfirming] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [refusal, setRefusal] = useState<string>();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [ended, setEnded] = useState(false);
+  if (ended) return null;
+  const captured = `${fmtInstantDay(hold.backupCapturedAt)} ${fmtClock(hold.backupCapturedAt)}`;
+  const end = () => {
+    setConfirming(false); setSending(true); setRefusal(undefined);
+    void port.end(hold.version).then(result => {
+      setSending(false);
+      if (result.state === "ended") setEnded(true); else setRefusal(ERROR_CATALOG[result.code].text);
+    });
+  };
+  return <Banner tone="warning" title="Writes are on hold after a restore" aria-label="Restore write hold"
+    action={<Button ref={trigger} variant="secondary" disabled={sending} onClick={() => setConfirming(true)}>{sending ? "Ending hold…" : "Transactions checked, end hold"}</Button>}>
+    Relay restored this person’s data from the backup taken {captured}. Any HR write made after that time may be missing here. Until you end this hold, Relay stops before each write so you can check it with Check or Mark absent.
+    <p className="mt-1 font-semibold">{hold.waitingWrites} {hold.waitingWrites === 1 ? "write is" : "writes are"} waiting for a check.</p>
+    {refusal && <p role="alert" className="mt-1">{refusal}</p>}
+    <Dialog open={confirming} onOpenChange={setConfirming}>
+      <DialogContent title="End the hold?" description={`Only do this after checking the system’s transaction list for anything submitted after ${captured}. Writes will then submit normally.`} size="sm"
+        onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }}>
+        <DialogFooter><Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button><Button variant="danger" onClick={end}>Transactions checked, end hold</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </Banner>;
+}
+
 export function StorageSection({ storage, onHistoryCleared }: { storage: StorageHealthSummary; onHistoryCleared?: () => void }) {
   const { doctor, runDoctor } = useStorageDoctor();
   const history = useRunHistory(onHistoryCleared);
   const [confirming, setConfirming] = useState<ClearRunHistoryRequest>();
   const historyTrigger = useRef<HTMLButtonElement>(null);
+  const holdPort = useRestoreWriteHold();
   const show = useDelayedLoading(doctor.state === "reading");
   const report = doctor.state === "reading" ? undefined : doctor.report;
   const pending = report === undefined && (doctor.state === "reading" || doctor.state === "running" || doctor.state === "failed" && !doctor.neverRun);
@@ -128,6 +159,7 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
     { name: "Storage updates", description: "History of changes to saved data.", result: upgradeResult(report) },
   ];
   return <section className="diagnostics-page ds-body-stack" aria-label="Storage checks" aria-busy={doctor.state === "reading" || undefined}>
+    {holdPort?.hold && <EndHoldPanel port={{ ...holdPort, hold: holdPort.hold }} />}
     <PageHeading title="Storage checks" description="Check saved data." className="settings-heading-actions" actions={
       <Button onClick={runDoctor} disabled={doctor.state === "running" || doctor.state === "reading"}>
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}

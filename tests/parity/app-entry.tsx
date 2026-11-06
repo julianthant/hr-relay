@@ -10,6 +10,7 @@ import { DashboardClientProvider } from "../../src/dashboard/state/client-contex
 import { DashboardApp } from "../../src/dashboard/app/dashboard-app.js";
 import { productWorkflowComposition } from "../../src/dashboard/app/workflow-sources.js";
 import { servedFixtureSources, PARITY_WORKFLOW_COMPOSITION } from "./helpers/workflow-composition.js";
+import { RestoreWriteHoldContext, type RestoreWriteHoldPort } from "../../src/dashboard/surfaces/settings/storage/storage-settings-model.js";
 import "../../src/dashboard/app/index.css";
 
 const container = document.getElementById("root");
@@ -31,9 +32,14 @@ const composition = fixture === "product-workflows" || Reflect.get(window, "rela
   : fixture === "workflow-catalog"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), explorerSources: servedFixtureSources(workflows) })
   : PARITY_WORKFLOW_COMPOSITION;
+const holdMode = fixture === "end-hold" ? new URLSearchParams(location.search).get("hold") : null;
+const holdPort: RestoreWriteHoldPort | undefined = holdMode === null || holdMode === "none" ? undefined : {
+  hold: { backupCapturedAt: "2026-11-05T08:42:00-08:00", waitingWrites: 3, version: 4 },
+  end: () => holdMode === "sending" ? new Promise(() => undefined) : Promise.resolve(holdMode === "refused" ? { state: "refused", code: "RESTORE_WRITE_HOLD_END_REFUSED" } : { state: "ended" }),
+};
 const theme: unknown = Reflect.get(window, "relayParityTheme");
 const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark", animations: Reflect.get(window, "relayParityMotion") !== false });
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
 createRoot(container).render(<PersonPreferencesContext.Provider value={preferences}>{ControlPreview ? <Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense> : <StrictMode><DashboardClientProvider client={client}>
-  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" || fixture === "run-history" || personAppearance ? "served" : "mock"} previewPreferences={personAppearance ? undefined : preferences} /></ChatGptAccountContext.Provider>
+  <RestoreWriteHoldContext.Provider value={holdPort}><ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" || fixture === "run-history" || personAppearance ? "served" : "mock"} previewPreferences={personAppearance ? undefined : preferences} /></ChatGptAccountContext.Provider></RestoreWriteHoldContext.Provider>
 </DashboardClientProvider></StrictMode>}</PersonPreferencesContext.Provider>);
