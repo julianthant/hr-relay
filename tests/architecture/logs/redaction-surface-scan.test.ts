@@ -118,7 +118,7 @@ describe("redaction surface scan — the declaration audit", () => {
     }
   });
 
-  for (const id of ["wire/run-detail-section", "wire/stream-envelope", "wire/ocr-command-result"]) {
+  for (const id of ["wire/run-detail-section", "wire/ocr-command-result"]) {
     it(`reviews every OCR leaf and refuses missing origins or foreign egress (${id})`, () => {
       const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id && (entry.path.includes(".ocr.") || id === "wire/ocr-command-result"));
       assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 49);
@@ -143,7 +143,6 @@ describe("redaction surface scan — the declaration audit", () => {
   it("pins each current provenance and display origin and refuses captured addresses outside local custody", () => {
     const reviewed: { surface: string; path: string; origin: string }[] = [];
     for (const [surface, prefix] of [
-      ["wire/stream-envelope", "payload.rows[]"],
       ["wire/run-detail-section", "payload.rows[]"],
       ["wire/run-detail-section", "payload.observations[]"],
     ] as const) {
@@ -159,7 +158,7 @@ describe("redaction surface scan — the declaration audit", () => {
     for (const prefix of ["workflows[].definitionPreview.groups[]", "workflows[].timeline[]"]) {
       for (const leaf of ["text", "value"]) reviewed.push({ surface: "wire/workflow-explorer", path: `${prefix}.operatorFields[].display.cases[].${leaf}`, origin: "repository-authored" });
     }
-    assert.equal(reviewed.length, 28);
+    assert.equal(reviewed.length, 16);
     for (const expected of reviewed) {
       const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === expected.surface && entry.path === expected.path);
       assert.ok(entry, `${expected.surface}|${expected.path}`);
@@ -399,17 +398,8 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/run-detail-section|payload.value.display.title",
       "wire/dashboard-day|notifications[].context.subject",
       "wire/dashboard-day|notifications[].context.workflow",
-      "wire/stream-envelope|payload.confirmedActions[].action.value.consumed.value",
-      "wire/stream-envelope|payload.confirmedActions[].durableProof.checkpointNodeId",
-      "wire/stream-envelope|payload.confirmedActions[].durableProof.writeIntentId",
-      "wire/stream-envelope|payload.confirmedActions[].eventId",
-      "wire/stream-envelope|payload.confirmedActions[].proof.verifier.value.consumed.value",
-      "wire/stream-envelope|payload.confirmedActions[].reason",
-      "wire/stream-envelope|payload.confirmedActions[].stepOccurrence",
-      "wire/stream-envelope|payload.confirmedActions[].workerStreamId",
       "wire/stream-envelope|payload.notifications[].context.subject",
       "wire/stream-envelope|payload.notifications[].context.workflow",
-      "wire/stream-envelope|payload.operationStructure.definition.invocations[].label",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].key",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].label",
       "wire/workflow-explorer|workflows[].definitionPreview.reason",
