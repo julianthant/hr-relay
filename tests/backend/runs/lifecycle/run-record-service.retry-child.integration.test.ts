@@ -8,14 +8,14 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
 async function fixture() { const f = await settingsFixture(); cleanups.push(f.close); return f; }
-for (const operation of ["retry", "restart"] as const) it(`${operation} selects saved configuration without changing inputs or source and replays exactly`, async () => {
+it("retry selects saved configuration without changing inputs or source and replays exactly", async () => {
   const f = await fixture(); const source = f.create();
   const terminal = requireLifecycleApplied(f.service.transition({ commandId: randomUUID(), runId: source.envelope.runId,
     expectedVersion: source.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
   assert.equal(f.save({ "timeouts.taskMs": { set: 90_000 } }).state, "applied");
   const request = { commandId: randomUUID(), runId: terminal.envelope.runId, expectedVersion: terminal.version,
     runtimeConfig: selectRunRuntime(f.database.authority) };
-  const next = requireLifecycleApplied(f.service[operation](request, personLookupDescriptor));
+  const next = requireLifecycleApplied(f.service.retry(request, personLookupDescriptor));
   assert.equal(next.envelope.configSnapshotId, f.database.authority.runtimeConfig.get()?.configSnapshotId);
   assert.notEqual(next.envelope.configSnapshotId, terminal.envelope.configSnapshotId);
   assert.deepEqual(next.input, source.input); assert.equal(next.envelope.dryRun, source.envelope.dryRun);
@@ -24,7 +24,7 @@ for (const operation of ["retry", "restart"] as const) it(`${operation} selects 
   assert.deepEqual(f.database.authority.runs.get(source.envelope.runId), terminal);
   f.save({ "timeouts.taskMs": { set: 120_000 } });
   const generation = f.database.getMeta().authorityGeneration;
-  assert.deepEqual(requireLifecycleApplied(f.service[operation](request, personLookupDescriptor)), next);
+  assert.deepEqual(requireLifecycleApplied(f.service.retry(request, personLookupDescriptor)), next);
   assert.equal(f.database.getMeta().authorityGeneration, generation);
 });
 it("a later parent-linked creation selects current settings while the existing parent retains its own", async () => {

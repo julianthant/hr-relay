@@ -133,9 +133,6 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
     // Accept same-cursor snapshots but reject duplicate patches; only snapshots refresh worker and count rollups.
     if (envelope.type === "snapshot") {
-      if (envelope.topic !== "dashboard-day") {
-        throw protocolError(`unexpected snapshot topic ${envelope.topic}; this subscription serves dashboard-day`);
-      }
       if (envelope.payload.day !== day) throw protocolError("day-request-identity-mismatch");
       if (envelope.payload.descriptorHash !== descriptorHash || envelope.payload.projectionGeneration !== generation) {
         throw protocolError("day-stream-authority-mismatch");
@@ -151,9 +148,6 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
     // patch
     if (lastCursorNumber !== undefined && cursorNumber <= lastCursorNumber) return;
-    if (envelope.topic !== "dashboard-day") {
-      throw protocolError(`unexpected patch topic ${envelope.topic}; this subscription serves dashboard-day`);
-    }
     if (snapshot === undefined || lastCursorNumber === undefined) {
       resnapshot();
       return;

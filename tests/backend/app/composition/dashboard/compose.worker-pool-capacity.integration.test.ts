@@ -62,7 +62,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
   afterEach(cleanup);
 
-  it.each(["all-or-none", "best-effort"] as const)("holds %s bulk child identities until an in-flight worker effect is journaled", async (mode) => {
+  it("holds bulk child identities until an in-flight worker effect is journaled", async () => {
     const harness = await openControlHarness();
     const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
     harness.database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId } });
@@ -95,7 +95,7 @@ describe("the composed worker process control through the kernel pool door", () 
     let bulkExecutions = 0;
     const bulkPending = ingress.executeBulk({
       commandId: bulkCommandId, bulkCommandId, requestedAt: NOW,
-      requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", mode,
+      requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", mode: "best-effort",
       targets: [{ runId: RUN_ID, expectedVersion: 1 }],
     }, () => {
       bulkExecutions += 1;

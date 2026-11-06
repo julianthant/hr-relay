@@ -6,7 +6,6 @@ import { StorageMaintenanceCustodyUnavailableError } from "../../../storage/main
 import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure } from "../../../storage/source-closure.js";
 import type { DashboardHttpListener } from "../../../transports/http/http-server.js";
 import { type DashboardHttpServer } from "../../../transports/http/http-server.js";
-import type { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import type { composeProfileRuntime } from "../storage-compose.js";
 import { RuntimeCustodyUncertainError,backupRegisteredPeopleAtCleanShutdown } from "../storage-compose.js";
 import type { DashboardComposeInput } from "./runtime-contracts.js";
@@ -29,8 +28,8 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
   return custodyUnproved;
 }
 
-export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver"> & { timelineTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; runLogsHub: RunLogsStreamHub; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
-  const { profile, selected, requireProducerClosure, notificationObserver, timelineTimer, hub, runLogsHub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
+export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver"> & { timelineTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
+  const { profile, selected, requireProducerClosure, notificationObserver, timelineTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
   let producerClosure: Promise<void> | undefined, producersClosed = false;
   const closeProducers = (): Promise<void> => {
     producerClosure ??= (async () => {
@@ -45,7 +44,6 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
       })();
       await transportClosure;
       try { hub.close(); } catch (error) { failures.push(error); }
-      try { runLogsHub.close(); } catch (error) { failures.push(error); }
       await notificationClosure;
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       producersClosed = true;

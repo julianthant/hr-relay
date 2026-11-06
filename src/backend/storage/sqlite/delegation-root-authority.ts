@@ -197,7 +197,7 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
       if (actors.some(actor => actor !== root.session.origin.actorId)) throw new Error("delegation-root-retry-binding-mismatch");
       return root;
     }
-    if (origin.operation !== "retry" && origin.operation !== "restart" && origin.operation !== "recover") throw new Error("delegation-root-origin-unavailable");
+    if (origin.operation !== "retry" && origin.operation !== "recover") throw new Error("delegation-root-origin-unavailable");
     validateNativeLifecycleRequest(origin);
     const request = (origin.operation === "recover" ? CanonicalRecoverRunRequestSchema : CanonicalRetrySourceRequestSchema).parse(origin.request);
     const previous = repositories.runs.get(request.runId);
@@ -229,7 +229,7 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
       || run.envelope.attempt <= previous.envelope.attempt || run.sessionId !== previous.sessionId
       || fields.some(field => !same(run.envelope[field], previous.envelope[field]))
       || !same(valueFreeProtectedData(run.input, retainedRunProtectedBindings(run)), valueFreeProtectedData(previous.input, retainedRunProtectedBindings(previous)))
-      || !same(run.envelope.recovery, origin.operation === "restart" ? "restart-from-start" : undefined)
+      || run.envelope.recovery !== undefined
       || run.envelope.injected !== undefined || run.envelope.freshnessOverride !== undefined
       || run.envelope.sourceBound !== undefined || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint
       || snapshot === undefined
