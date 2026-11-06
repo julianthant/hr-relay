@@ -59,8 +59,8 @@ export interface OwnedBrowserProcess {
 }
 
 const PROFILE_IN_USE_MESSAGES = ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."] as const;
-// Outside Playwright's positive id range; the reply is consumed here, never forwarded.
-const BROWSER_CLOSE_MESSAGE_ID = Number.MIN_SAFE_INTEGER;
+// CDP command ids are signed 32-bit; a negative id stays clear of Playwright's positive ids. Its reply is consumed here.
+const BROWSER_CLOSE_MESSAGE_ID = -(2 ** 31);
 
 async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["launch"]>[0]): Promise<BrowserContext> {
   const timeoutMs = z.number().positive().parse(input.timeoutMs);

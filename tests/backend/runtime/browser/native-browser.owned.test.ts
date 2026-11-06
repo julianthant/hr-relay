@@ -66,10 +66,12 @@ for (const outcome of ["exit-without-reply", "no-exit", "refused", "transport-fa
   Object.defineProperty(child, "stdio", { value: [null, null, null, write, read] });
   const kill = vi.spyOn(child, "kill").mockImplementation(() => assert.fail("ordinary shutdown must not force the child"));
   const sessionCalls: string[] = [];
+  let exitDelivered = false;
+  const deliverExit = () => { if (outcome === "exit-without-reply" && !exitDelivered) { exitDelivered = true; child.emit("exit", 0, null); } };
   const context = { browser: () => browser } as unknown as BrowserContext;
   const browser = { isConnected: () => true, contexts: () => [context], newBrowserCDPSession: async () => ({
-    // A shutdown session that never answers: closure must not wait on it.
-    async send(method: string) { sessionCalls.push(method); if (method === "Browser.close") await new Promise<never>(() => {}); }, async detach() {},
+    // A session close exits the child but never answers, so a reply-dependent stop cannot settle.
+    async send(method: string) { sessionCalls.push(method); if (method === "Browser.close") { deliverExit(); await new Promise<never>(() => {}); } }, async detach() {},
   }) } as unknown as Browser;
   let transport: ConnectOverCDPTransport | undefined;
   const connect = vi.spyOn(chromium, "connectOverCDP").mockImplementation(async value => { assert.ok(isPipeTransport(value)); transport = value; return browser; });
@@ -80,20 +82,29 @@ for (const outcome of ["exit-without-reply", "no-exit", "refused", "transport-fa
       ownedProcess: owned => { process = owned; } });
     assert.ok(process); assert.ok(transport);
     const forwarded: object[] = []; transport.onmessage = value => forwarded.push(value);
-    const sent: { id: number; method: string }[] = [];
+    // Chromium's CDP dispatcher only accepts signed 32-bit command ids.
+    const wire = z.strictObject({ id: z.number().int().min(-(2 ** 31)).max(2 ** 31 - 1).negative(), method: z.literal("Browser.close") });
+    const sent: unknown[] = [];
     write.on("data", (value: Buffer) => {
-      const message = z.strictObject({ id: z.number(), method: z.string() }).parse(JSON.parse(value.toString("utf8").replace(/\0$/u, "")));
-      sent.push(message);
-      if (outcome === "exit-without-reply") child.emit("exit", 0, null);
-      if (outcome === "refused") read.write(JSON.stringify({ id: message.id, error: { code: -32000, message: "synthetic refusal" } }) + "\0");
+      const raw: unknown = JSON.parse(value.toString("utf8").replace(/\0$/u, "")); sent.push(raw);
+      const message = wire.safeParse(raw); if (!message.success) return;
+      deliverExit();
+      if (outcome === "refused") read.write(JSON.stringify({ id: message.data.id, error: { code: -32000, message: "synthetic refusal" } }) + "\0");
     });
     if (outcome === "transport-failed") write.destroy();
     const started = Date.now();
-    if (outcome === "exit-without-reply") await process.stop(2000, true);
+    if (outcome === "exit-without-reply") {
+      const owned = process;
+      await owned.stop(2000, true).catch((error: unknown) => {
+        throw new Error(`stop refused after exitDelivered=${String(exitDelivered)} exited=${String(owned.exited())}`, { cause: error });
+      });
+      assert.equal(exitDelivered, true);
+    }
     else await assert.rejects(process.stop(outcome === "refused" ? 2000 : 50, true), /DUO_SETUP_STOP_FAILED/);
     if (outcome !== "no-exit" && outcome !== "transport-failed") assert.ok(Date.now() - started < 1000, "settles on exit or refusal, not the deadline");
     assert.deepEqual(sessionCalls, ["Browser.setDownloadBehavior"]);
-    assert.deepEqual(sent.map(message => message.method), outcome === "transport-failed" ? [] : ["Browser.close"]);
+    assert.equal(sent.length, outcome === "transport-failed" ? 0 : 1);
+    for (const message of sent) assert.equal(wire.safeParse(message).success, true, `invalid CDP close command ${JSON.stringify(message)}`);
     assert.equal(process.exited(), outcome === "exit-without-reply");
     assert.deepEqual(forwarded, [], "the shutdown reply is never forwarded to Playwright");
     const args = launches.at(-1)?.args; assert.ok(args); assert.ok(args.includes("--disable-extensions")); assert.ok(args.includes("--use-mock-keychain"));
