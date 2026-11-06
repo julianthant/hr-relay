@@ -6,12 +6,31 @@ import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixt
 import { registerChatGptAccountRoutes, type ChatGptAccountRouteDeps } from "../../../../../src/backend/transports/http/routes/chatgpt-account.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { operatorMutationIngressGuard } from "../../../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
-import { ChatGptSignInCompletionSchema, ChatGptSignInStartSchema } from "../../../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptSignInCompletionSchema, ChatGptSignInStartSchema, ChatGptAccountStateSchema, type ChatGptAccountState } from "../../../../../src/models/dashboard/chatgpt-account.js";
 import { ChatGptResourceClosureUnprovedError } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { WireErrorSchema } from "../../../../../src/models/dashboard/primitives.js";
 import type { ChatGptAuthorization } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 const path = "/api/v1/settings/chatgpt-account";
+
+it("preserves the original typed closure refusal even when the current account is connected", async () => {
+  const completion = Promise.withResolvers<ChatGptAccountState>();
+  const app: DashboardApp = new Hono();
+  let reads = 0;
+  registerChatGptAccountRoutes(app, { chatGptAccount: {
+    refreshAccount: async () => { reads++; return ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" }); },
+    signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise, cancel: async () => {} }),
+    signOut: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }),
+  } });
+  const started = ChatGptSignInStartSchema.parse(await (await app.request(`http://127.0.0.1${path}/sign-in`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"usePlan":true}' })).json());
+  completion.reject(new ChatGptResourceClosureUnprovedError(new Error("PRIVATE_CLOSURE_CANARY")));
+  for (let replay = 0; replay < 2; replay++) {
+    const result = ChatGptSignInCompletionSchema.parse(await (await app.request(`http://127.0.0.1${path}/sign-in/${started.attemptId}`)).json());
+    assert.deepEqual(result, { state: "uncertain", attemptId: started.attemptId, code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text });
+    assert.equal(reads, 0);
+  }
+});
+
 async function setup(debugEvents?: ChatGptAccountRouteDeps["debugEvents"]) {
   const fixture = await chatGptFixture();
   let authorization: ChatGptAuthorization | undefined;
@@ -56,7 +75,55 @@ it("serves token-free account lifecycle with original PKCE, state and nonce bind
     assert.equal((await f.request()).headers.get("cache-control"), "no-store");
     assert.deepEqual(await (await f.request("/sign-out", {})).json(), { state: "signed-out", remoteRevocation: "confirmed" });
     assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
+    assert.deepEqual(ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json()),
+      { state: "completed", attemptId: started.attemptId, account: { state: "signed-out" } });
   } finally { await f.cleanup(); }
+});
+
+it("renews expired Settings reads instead of publishing sign-in-again state", async () => {
+  const f = await setup();
+  try {
+    await f.connected(); f.clock.advanceWall(3_600_000);
+    assert.deepEqual(f.service.readAccount(), { state: "expired" });
+    const result = ChatGptAccountStateSchema.parse(await (await f.request()).json());
+    assert.equal(result.state, "connected");
+    if (result.state !== "connected") throw new Error("renewed Settings account required");
+    assert.equal(Date.parse(result.expiresAt), f.clock.nowMs() + 3_600_000);
+    assert.equal(f.repository.read()?.session?.refreshToken, "synthetic-refresh-2");
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+  } finally { await f.cleanup(); }
+});
+
+it("keeps a temporary renewal failure unavailable instead of asserting that reconnection is required", async () => {
+  const f = await setup();
+  try {
+    await f.connected(); f.clock.advanceWall(3_600_000); f.setTokenStatus(503);
+    const before = f.repository.read(), result = ChatGptAccountStateSchema.parse(await (await f.request()).json());
+    assert.deepEqual(result, { state: "unavailable", code: "CHATGPT_AUTH_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text });
+    assert.deepEqual(f.repository.read(), before);
+  } finally { await f.cleanup(); }
+});
+
+it("does not replay a connected account while another tab's sign-out is still draining", async () => {
+  const f = await setup(), revoking = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let signingOut: Promise<Response> | undefined;
+  try {
+    const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
+    await f.callback(f.authorization());
+    assert.equal(ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json()).state, "completed");
+    f.setRevocationHook(async () => { revoking.resolve(); await release.promise; });
+    signingOut = Promise.resolve(f.request("/sign-out", {}));
+    await revoking.promise;
+    const replay = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
+    assert.equal(replay.state, "completed");
+    if (replay.state !== "completed") throw new Error("original typed completion required");
+    assert.deepEqual(replay.account, { state: "unavailable", code: "CHATGPT_AUTH_BUSY", message: ERROR_CATALOG.CHATGPT_AUTH_BUSY.text });
+    release.resolve(); await signingOut;
+    const after = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
+    assert.equal(after.state, "completed");
+    if (after.state !== "completed") throw new Error("original typed completion required");
+    assert.deepEqual(after.account, { state: "signed-out" });
+  } finally { release.resolve(); await signingOut; await f.cleanup(); }
 });
 it("refuses bad JSON input, cross-origin writes, stale attempts and overlapping starts", async () => {
   const f = await setup(); try {

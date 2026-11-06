@@ -11,10 +11,11 @@ const attemptId = "00000000-0000-4000-8000-000000000001";
 const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId, authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2099-01-01T12:05:00.000Z" });
 function setup(overrides: Partial<ChatGptAccountQueries> = {}) {
   const calls: string[] = [];
+  let connected = false;
   const client: ChatGptAccountQueries = {
-    chatGptAccount: async () => ({ state: "signed-out" }),
+    chatGptAccount: async () => connected ? account : { state: "signed-out" },
     startChatGptSignIn: async () => started,
-    completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }),
+    completeChatGptSignIn: async () => { connected = true; return { state: "completed", attemptId, account }; },
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }),
     signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }),
     testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },

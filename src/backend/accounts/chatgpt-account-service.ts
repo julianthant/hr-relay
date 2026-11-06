@@ -7,13 +7,16 @@ import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { type RuntimeAdmission } from "../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions, type ChatGptCredentialTransaction } from "../storage/configuration/chatgpt-credential-repository.js";
 import { hasUnprovedSourceClosure } from "../storage/source-closure.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { ChatGptInferenceDiagnosticSchema, ChatGptStreamEventTypeSchema, ChatGptShapeKeySchema, type ChatGptInferenceDiagnostic, type DebugEventSchema } from "../../models/events/timeline.js";
 
 const AUTH = "https://auth.openai.com", RESOURCE = "https://api.openai.com/v1";
+const MODEL_CATALOG_MAX_BYTES = 2 * 1024 * 1024;
 const PLAN_SCOPES = ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"];
 type ChatGptAccountCode = Exclude<Extract<ErrorCatalogCode, `CHATGPT_${string}`>, `CHATGPT_CREDENTIAL_${string}`>;
 export class ChatGptAccountError extends Error {
@@ -61,16 +64,20 @@ function authUrl(value: string): string {
   if (url.origin !== AUTH || url.username !== "" || url.password !== "" || url.hash !== "") throw fault("CHATGPT_AUTH_INVALID");
   return url.href;
 }
-async function boundedJson(response: Response): Promise<unknown> {
-  if (!response.ok || response.body === null) { await response.body?.cancel(); throw fault("CHATGPT_AUTH_UNAVAILABLE"); }
+async function boundedJson(response: Response, diagnostic?: ChatGptInferenceDiagnostic, invalidCode: ChatGptAccountCode = "CHATGPT_AUTH_INVALID", maxBytes = 64_000): Promise<unknown> {
+  if (!response.ok || response.body === null) { if (diagnostic !== undefined) diagnostic.jsonFailure = "missing-body"; await response.body?.cancel(); throw fault(invalidCode === "CHATGPT_AUTH_INVALID" ? "CHATGPT_AUTH_UNAVAILABLE" : invalidCode); }
   const reader = response.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
   let outcome: { readonly kind: "value"; readonly value: unknown } | { readonly kind: "error"; readonly error: unknown };
   try {
     for (;;) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length;
-      if (size > 64_000) throw fault("CHATGPT_AUTH_INVALID"); chunks.push(chunk.value); }
-    try { outcome = { kind: "value", value: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))) as unknown }; }
-    catch { outcome = { kind: "error", error: fault("CHATGPT_AUTH_INVALID") }; }
-  } catch (error) { outcome = { kind: "error", error }; }
+      if (size > maxBytes) { if (diagnostic !== undefined) diagnostic.jsonFailure = "too-large"; throw fault(invalidCode); } chunks.push(chunk.value); }
+    if (diagnostic !== undefined) diagnostic.jsonFailure = "decode";
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
+    if (diagnostic !== undefined) diagnostic.jsonFailure = "parse";
+    try { outcome = { kind: "value", value: JSON.parse(text) as unknown }; }
+    catch { outcome = { kind: "error", error: fault(invalidCode) }; }
+    if (outcome.kind === "value" && diagnostic !== undefined) delete diagnostic.jsonFailure;
+  } catch (error) { if (diagnostic !== undefined) diagnostic.jsonFailure ??= "read"; outcome = { kind: "error", error: error instanceof ChatGptAccountError ? error : fault(invalidCode) }; }
   try { await reader.cancel(); } catch (error) { outcome = { kind: "error", error: error instanceof ChatGptResourceClosureUnprovedError ? error : fault("CHATGPT_AUTH_UNAVAILABLE") }; }
   reader.releaseLock();
   if (outcome.kind === "error") throw outcome.error;
@@ -102,10 +109,49 @@ async function interruptible<T>(operation: Promise<T>, signal: AbortSignal): Pro
   try { if (signal.aborted) abort(); return await Promise.race([operation, cancelled]); }
   finally { signal.removeEventListener("abort", abort); }
 }
+function inferenceContentType(headers: Headers): ChatGptInferenceDiagnostic["contentType"] {
+  const contentType = headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+  const parsed = ChatGptInferenceDiagnosticSchema.shape.contentType.exclude(["missing", "other"]).safeParse(contentType);
+  return contentType === undefined ? "missing" : parsed.success ? parsed.data : "other";
+}
+function inferenceShapeKey(key: PropertyKey): z.infer<typeof ChatGptShapeKeySchema> {
+  if (typeof key === "number") return "[]";
+  const parsed = ChatGptShapeKeySchema.safeParse(key);
+  return parsed.success ? parsed.data : "*";
+}
+function inferenceTerminalShape(value: unknown): NonNullable<ChatGptInferenceDiagnostic["terminalShape"]> {
+  const shape: NonNullable<ChatGptInferenceDiagnostic["terminalShape"]> = { fields: [], truncated: false };
+  const visit = (value: unknown, path: z.infer<typeof ChatGptShapeKeySchema>[]): void => {
+    if (shape.fields.length === 128 || path.length > 8) { shape.truncated = true; return; }
+    const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+    if (type !== "object" && type !== "array" && type !== "null" && type !== "string" && type !== "number" && type !== "boolean") return;
+    shape.fields.push({ path, type });
+    if (value === null || typeof value !== "object") return;
+    for (const key in value) {
+      if (!Object.hasOwn(value, key)) continue;
+      visit((value as Record<string, unknown>)[key], [...path, Array.isArray(value) ? "[]" : inferenceShapeKey(key)]);
+      if (shape.truncated) break;
+    }
+  };
+  visit(value, []);
+  return shape;
+}
 
 export function createChatGptAccountService(options: ChatGptAccountServiceOptions) {
   const credentialRepository = createChatGptCredentialRepository({ admission: options.admission, stateRoot: options.stateRoot, ...options.credentialHooks });
   const transport = options.fetch ?? fetch, clock = options.clock;
+  let debugEvents: { emit(event: Omit<z.input<typeof DebugEventSchema>, "build" | "pid">): void } | undefined;
+  function setDebugEvents(writer: NonNullable<typeof debugEvents>): void { debugEvents = writer; }
+  function recordFailure(error: unknown, diagnostic: ChatGptInferenceDiagnostic, http: { method: "GET" | "POST"; route: string } | undefined = undefined): void {
+    try {
+      debugEvents?.emit({ category: "http", phase: "failed", correlationId: randomUUID(), area: "chatgpt-inference", reason: diagnostic.path,
+        ...http, status: diagnostic.transport?.status, chatGptInference: diagnostic,
+        code: error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError ? error.code : http?.route === "/v1/responses" ? "CHATGPT_OCR_FAILED" : "CHATGPT_AUTH_UNAVAILABLE" });
+    } catch (cause) {
+      if (error instanceof ChatGptResourceClosureUnprovedError) throw new ChatGptResourceClosureUnprovedError(new AggregateError([error, cause], "ChatGPT response closure and diagnostics failed"));
+      throw fault("CHATGPT_DIAGNOSTICS_UNAVAILABLE");
+    }
+  }
   const requests = new Set<AbortController>();
   const accesses = new Set<Promise<ChatGptCredentialRecord>>();
   const inferenceLifetimes = new Set<Promise<void>>();
@@ -134,13 +180,18 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   let planFailureToken: string | undefined;
   let pending: { cancel(): Promise<void> } | undefined;
   let signOutLifetime: Promise<ChatGptSignedOut> | undefined;
+  let refreshingAccount: Promise<ChatGptAccountState> | undefined;
   function active(): void { if (closed) throw fault("CHATGPT_SERVICE_CLOSED"); options.admission.assertLive(); }
-  async function request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+  async function request(url: string, init: RequestInit, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic): Promise<Response> {
     active();
     const controller = new AbortController(); requests.add(controller);
     const combined = AbortSignal.any([controller.signal, AbortSignal.timeout(120_000), ...(signal === undefined ? [] : [signal])]);
     try {
       const response = await interruptible(transport(url, { ...init, signal: combined, redirect: "error" }), combined);
+      if (diagnostic !== undefined) diagnostic.transport = { source: options.fetch === undefined ? "native" : "injected", status: response.status,
+        contentType: inferenceContentType(response.headers), hasBody: response.body !== null, redirected: response.redirected,
+        target: response.url === "" ? "missing" : response.url === url ? "expected" : "other" };
+      if (diagnostic !== undefined) { diagnostic.contentType = inferenceContentType(response.headers); diagnostic.hasBody = response.body !== null; }
       if (response.body === null) { requests.delete(controller); return response; }
       const reader = response.body.getReader();
       let readerClosure: Promise<void> | undefined;
@@ -178,41 +229,55 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }
     catch (error) { retainCredentialClosure(error); requests.delete(controller); throw fault(signal?.aborted === true || controller.signal.aborted ? "CHATGPT_OCR_CANCELLED" : "CHATGPT_AUTH_UNAVAILABLE"); }
   }
-  async function discovery(signal?: AbortSignal) {
-    const result = DiscoverySchema.safeParse(await boundedJson(await request(`${AUTH}/.well-known/openid-configuration`, {}, signal)));
+  async function discovery(signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic) {
+    if (diagnostic !== undefined) diagnostic.path = "auth-discovery";
+    const result = DiscoverySchema.safeParse(await boundedJson(await request(`${AUTH}/.well-known/openid-configuration`, {}, signal, diagnostic), diagnostic));
     if (!result.success || !result.data.id_token_signing_alg_values_supported.includes("RS256")) throw fault("CHATGPT_AUTH_INVALID");
     return { jwks: authUrl(result.data.jwks_uri), revocation: authUrl(result.data.revocation_endpoint) };
   }
-  async function verifiedClaims(token: string, clientId: string, nonce: string | undefined, signal?: AbortSignal) {
+  async function verifiedClaims(token: string, clientId: string, nonce: string | undefined, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic) {
     try {
+      if (diagnostic !== undefined) diagnostic.path = "auth-id-token-header";
       const parts = token.split("."); if (parts.length !== 3) throw fault("CHATGPT_AUTH_INVALID");
       const [headerPart, claimsPart, signaturePart] = parts;
       if (headerPart === undefined || claimsPart === undefined || signaturePart === undefined) throw fault("CHATGPT_AUTH_INVALID");
       const header = z.object({ alg: z.literal("RS256"), kid: z.string().min(1) }).parse(JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8")));
-      const discovered = await discovery(signal);
+      const discovered = await discovery(signal, diagnostic);
+      if (diagnostic !== undefined) diagnostic.path = "auth-jwks";
       const jwks = z.object({ keys: z.array(z.object({ kty: z.literal("RSA"), kid: z.string(), n: z.string(), e: z.string(), use: z.literal("sig").optional(), alg: z.literal("RS256").optional() })).max(32) })
-        .parse(await boundedJson(await request(discovered.jwks, {}, signal)));
+        .parse(await boundedJson(await request(discovered.jwks, {}, signal, diagnostic), diagnostic));
       const keys = jwks.keys.filter(key => key.kid === header.kid);
       if (keys.length !== 1 || keys[0] === undefined) throw fault("CHATGPT_AUTH_INVALID");
       const key = createPublicKey({ key: keys[0], format: "jwk" });
+      if (diagnostic !== undefined) diagnostic.path = "auth-id-token-signature";
       if (!verify("RSA-SHA256", Buffer.from(`${headerPart}.${claimsPart}`), key, Buffer.from(signaturePart, "base64url"))) throw fault("CHATGPT_AUTH_INVALID");
+      if (diagnostic !== undefined) diagnostic.path = "auth-id-token-claims";
       const claims = ClaimsSchema.parse(JSON.parse(Buffer.from(claimsPart, "base64url").toString("utf8")));
       const audiences = typeof claims.aud === "string" ? [claims.aud] : claims.aud, seconds = clock.nowMs() / 1000;
-      if (!audiences.includes(clientId) || audiences.length > 1 && claims.azp !== clientId || claims.azp !== undefined && claims.azp !== clientId
-        || claims.exp <= seconds || claims.iat > seconds || claims.nbf !== undefined && claims.nbf > seconds
-        || nonce !== undefined && (claims.nonce === undefined || !privateEqual(claims.nonce, nonce))) throw fault("CHATGPT_AUTH_INVALID");
+      if (diagnostic !== undefined) diagnostic.path = "auth-id-token-audience";
+      if (!audiences.includes(clientId) || audiences.length > 1 && claims.azp !== clientId || claims.azp !== undefined && claims.azp !== clientId) throw fault("CHATGPT_AUTH_INVALID");
+      if (diagnostic !== undefined) diagnostic.path = "auth-id-token-time";
+      if (claims.exp <= seconds || claims.iat > seconds || claims.nbf !== undefined && claims.nbf > seconds) throw fault("CHATGPT_AUTH_INVALID");
+      if (diagnostic !== undefined) diagnostic.path = "auth-id-token-nonce";
+      if (nonce !== undefined && (claims.nonce === undefined || !privateEqual(claims.nonce, nonce))) throw fault("CHATGPT_AUTH_INVALID");
       return claims;
     } catch (error) { if (error instanceof ChatGptAccountError) throw error; throw fault("CHATGPT_AUTH_INVALID"); }
   }
-  async function token(form: URLSearchParams, clientId: string, usePlan: boolean, nonce?: string, signal?: AbortSignal) {
-    const response = await request(`${AUTH}/api/accounts/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form }, signal);
+  async function token(form: URLSearchParams, clientId: string, usePlan: boolean, nonce?: string, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic) {
+    if (diagnostic !== undefined) diagnostic.path = "auth-token-http";
+    const response = await request(`${AUTH}/api/accounts/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form }, signal, diagnostic);
     if (response.status === 400 || response.status === 401) {
-      const error = z.object({ error: z.string() }).safeParse(await boundedJson(new Response(response.body, { status: 200 })));
+      if (diagnostic !== undefined) diagnostic.path = "auth-token-body";
+      const error = z.object({ error: z.string() }).safeParse(await boundedJson(new Response(response.body, { status: 200 }), diagnostic));
+      if (diagnostic !== undefined) recordProviderCode(diagnostic, error.success ? error.data.error : undefined);
       throw fault(error.success && ["invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated"].includes(error.data.error)
         ? "CHATGPT_ACCOUNT_EXPIRED" : "CHATGPT_AUTH_UNAVAILABLE");
     }
-    const parsed = TokenSchema.safeParse(await boundedJson(response)); if (!parsed.success) throw fault("CHATGPT_AUTH_INVALID");
-    const claims = await verifiedClaims(parsed.data.id_token, clientId, nonce, signal);
+    if (diagnostic !== undefined) diagnostic.path = "auth-token-body";
+    const body = await boundedJson(response, diagnostic);
+    if (diagnostic !== undefined) diagnostic.path = "auth-token-schema";
+    const parsed = TokenSchema.safeParse(body); if (!parsed.success) throw fault("CHATGPT_AUTH_INVALID");
+    const claims = await verifiedClaims(parsed.data.id_token, clientId, nonce, signal, diagnostic);
     return { registration: { subject: claims.sub, name: claims.name, email: claims.email }, session: {
       accessToken: parsed.data.access_token, refreshToken: parsed.data.refresh_token ?? null, idToken: parsed.data.id_token,
       expiresAt: IsoInstantSchema.parse(new Date(clock.nowMs() + parsed.data.expires_in * 1000).toISOString()), earliestRefreshAt: parsed.data.earliest_refresh_at ?? null,
@@ -251,6 +316,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   }
   function readAccount(): ChatGptAccountState {
     active();
+    if (signOutLifetime !== undefined) return { state: "unavailable", code: "CHATGPT_AUTH_BUSY", message: ERROR_CATALOG.CHATGPT_AUTH_BUSY.text };
     try {
       const record = repository.read();
       if (record?.session != null && rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)) return { state: "expired" };
@@ -401,43 +467,85 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     try { return await operation; }
     finally { if (signOutLifetime === operation) signOutLifetime = undefined; }
   }
-  async function access(signal: AbortSignal | undefined, expected: ChatGptAccountAuthority, assertCurrent: () => void): Promise<ChatGptCredentialRecord> {
+  function needsRefresh(record: ChatGptCredentialRecord): boolean {
+    return record.session !== null && (rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)
+      || Date.parse(record.session.expiresAt) <= clock.nowMs() + 60_000);
+  }
+  async function renewCredentials(transaction: ChatGptCredentialTransaction, assertCurrent: () => void, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic): Promise<ChatGptCredentialRecord> {
     const epoch = generation;
+    assertCurrent();
+    let current = transaction.read();
+    if (current?.session == null || current.registration === null || current.clientId === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
+    if (needsRefresh(current)) {
+      if (diagnostic !== undefined) diagnostic.path = "auth-refresh";
+      if (current.session.refreshToken === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
+      if (current.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < current.session.earliestRefreshAt) throw fault("CHATGPT_ACCOUNT_EXPIRED");
+      let result;
+      try { result = await token(new URLSearchParams({ grant_type: "refresh_token", client_id: current.clientId, refresh_token: current.session.refreshToken, resource: RESOURCE }), current.clientId, current.session.usePlan, undefined, signal, diagnostic); }
+      catch (error) {
+        assertCurrent();
+        if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED" && epoch === generation && !closed)
+          transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
+        throw error;
+      }
+      assertCurrent();
+      if (epoch !== generation || closed) throw fault("CHATGPT_OCR_CANCELLED");
+      if (diagnostic !== undefined) diagnostic.path = "auth-refresh-rotation";
+      if (result.session.refreshToken === null) throw fault("CHATGPT_AUTH_INVALID");
+      if (diagnostic !== undefined) diagnostic.path = "auth-refresh-subject";
+      if (result.registration.subject !== current.registration.subject) throw fault("CHATGPT_AUTH_INVALID");
+      current = { ...current, ...result, session: { ...result.session, usage: current.session.usage }, revision: current.revision + 1 };
+      transaction.replace(current, current.revision - 1);
+    }
+    return current;
+  }
+  async function access(signal: AbortSignal | undefined, expected: ChatGptAccountAuthority, assertCurrent: () => void, diagnostic?: ChatGptInferenceDiagnostic): Promise<ChatGptCredentialRecord> {
     assertCurrent();
     if (!inferenceAuthorityCurrent(expected)) throw fault("CHATGPT_OCR_CANCELLED");
     const observed = repository.read();
     assertCurrent();
     if (!inferenceAuthorityCurrent(expected)) throw fault("CHATGPT_OCR_CANCELLED");
     if (observed?.session != null && observed.registration !== null && observed.clientId !== null
-      && !(rejectedSessionToken !== undefined && privateEqual(observed.session.accessToken, rejectedSessionToken))
-      && Date.parse(observed.session.expiresAt) > clock.nowMs() + 60_000) return observed;
-    const operation = repository.withLock(async transaction => {
+      && !needsRefresh(observed)) return observed;
+    const check = () => {
       assertCurrent();
       if (!inferenceAuthorityCurrent(expected)) throw fault("CHATGPT_OCR_CANCELLED");
-      let current = transaction.read();
-      if (current?.session == null || current.registration === null || current.clientId === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
-      if (rejectedSessionToken !== undefined && privateEqual(current.session.accessToken, rejectedSessionToken) || Date.parse(current.session.expiresAt) <= clock.nowMs() + 60_000) {
-        if (current.session.refreshToken === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
-        if (current.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < current.session.earliestRefreshAt) throw fault("CHATGPT_ACCOUNT_EXPIRED");
-        let result;
-        try { result = await token(new URLSearchParams({ grant_type: "refresh_token", client_id: current.clientId, refresh_token: current.session.refreshToken, resource: RESOURCE }), current.clientId, current.session.usePlan, undefined, signal); }
-        catch (error) {
-          assertCurrent();
-          if (!inferenceAuthorityCurrent(expected)) throw fault("CHATGPT_OCR_CANCELLED");
-          if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED" && epoch === generation && !closed)
-            transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
-          throw error;
-        }
-        assertCurrent();
-        if (epoch !== generation || closed || !inferenceAuthorityCurrent(expected)) throw fault("CHATGPT_OCR_CANCELLED");
-        if (result.session.refreshToken === null) throw fault("CHATGPT_AUTH_INVALID");
-        if (result.registration.subject !== current.registration.subject) throw fault("CHATGPT_AUTH_INVALID");
-        current = { ...current, ...result, revision: current.revision + 1 }; transaction.replace(current, current.revision - 1);
-      }
-      return current;
-    });
+    };
+    const operation = repository.withLock(transaction => renewCredentials(transaction, check, signal, diagnostic));
     accesses.add(operation);
     try { return await operation; } finally { accesses.delete(operation); }
+  }
+  function refreshAccount(): Promise<ChatGptAccountState> {
+    if (refreshingAccount !== undefined) return refreshingAccount;
+    const epoch = generation;
+    const diagnostic: ChatGptInferenceDiagnostic = { operation: "account", path: "auth-account", contentType: "missing", providerCode: "none" };
+    const check = () => { active(); options.admission.assertProfileRuntime(); if (epoch !== generation || pending !== undefined || signOutLifetime !== undefined) throw fault("CHATGPT_OCR_CANCELLED"); };
+    const reading = (async (): Promise<ChatGptAccountState> => {
+      try {
+        active(); assertResourceClosure();
+        if (pending !== undefined || signOutLifetime !== undefined) return readAccount();
+        const observed = repository.read();
+        if (observed?.session == null || observed.session.refreshToken === null || !needsRefresh(observed)) return readAccount();
+        if (observed.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < observed.session.earliestRefreshAt) {
+          if (Date.parse(observed.session.expiresAt) > clock.nowMs()) return readAccount();
+          throw fault("CHATGPT_AUTH_UNAVAILABLE");
+        }
+        check();
+        const operation = repository.withLock(transaction => renewCredentials(transaction, check, undefined, diagnostic));
+        accesses.add(operation);
+        try { await operation; } finally { accesses.delete(operation); }
+        check(); assertResourceClosure();
+        return readAccount();
+      } catch (error) {
+        try { assertResourceClosure(); }
+        catch (closure) { diagnostic.path = "resource-closure"; recordFailure(closure, diagnostic); throw closure; }
+        recordFailure(error, diagnostic);
+        if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED") return { state: "expired" };
+        throw error;
+      }
+    })().finally(() => { if (refreshingAccount === reading) refreshingAccount = undefined; });
+    refreshingAccount = reading;
+    return reading;
   }
   async function extractBoundText(operation: InferenceOperation, input: ChatGptOcrRequest, signal?: AbortSignal): Promise<{ readonly text: string; readonly model: string; readonly responseId: string }> {
     const cancelled = () => signal?.aborted === true;
@@ -456,12 +564,13 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     advance(record: ChatGptCredentialRecord): void;
     close(): void;
   }
-  async function beginInference(signal?: AbortSignal, assertCurrent: () => void = () => options.admission.assertProfileRuntime()): Promise<InferenceOperation> {
+  async function beginInference(signal?: AbortSignal, assertCurrent: () => void = () => options.admission.assertProfileRuntime(), kind: "ocr" | "assistant" = "ocr"): Promise<InferenceOperation> {
     const cancelled = () => signal?.aborted === true;
     active();
     const completion = Promise.withResolvers<void>();
     inferenceLifetimes.add(completion.promise);
     const finish = () => { inferenceLifetimes.delete(completion.promise); completion.resolve(); };
+    const diagnostic: ChatGptInferenceDiagnostic = { operation: kind, path: "auth-account", contentType: "missing", providerCode: "none" };
     try {
       assertCurrent();
       if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
@@ -471,7 +580,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       if (entry === undefined || entry.session === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
       if (before.revision !== entry.revision || before.availability === "pending") throw fault("CHATGPT_OCR_CANCELLED");
       if (cancelled() || epoch !== generation || !inferenceAuthorityCurrent(before)) throw fault("CHATGPT_OCR_CANCELLED");
-      const credentials = await access(signal, before, assertCurrent), session = credentials.session;
+      const credentials = await access(signal, before, assertCurrent, diagnostic), session = credentials.session;
       assertCurrent();
       if (session === null || !session.usePlan || !PLAN_SCOPES.every(scope => session.scopes.includes(scope))) throw fault("CHATGPT_PLAN_DISABLED");
       let authority = await inferenceAuthority(credentials, epoch), live = true;
@@ -491,7 +600,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       };
       operation.assertCurrent();
       return operation;
-    } catch (error) { finish(); throw error; }
+    } catch (error) { finish(); recordFailure(error, diagnostic); throw error; }
   }
   async function withOcrOperation<T>(readPage: (operation: Readonly<{
     assertCurrent(this: void): void;
@@ -544,29 +653,42 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     });
     operation.assertCurrent();
   }
-  async function rejectPlanResponse(response: Response, operation: InferenceOperation): Promise<never> {
+  async function rejectProviderCode(code: string | undefined, operation: InferenceOperation): Promise<void> {
+    if (code === "subscription_sharing_usage_limit_exceeded") { await persistPlanUsage(operation, "limit-reached"); throw fault("CHATGPT_USAGE_LIMIT"); }
+    if (code === "subscription_sharing_usage_unavailable") { await persistPlanUsage(operation, "unavailable"); throw fault("CHATGPT_USAGE_UNAVAILABLE"); }
+    if (code === "model_not_found") throw fault("CHATGPT_MODEL_UNAVAILABLE");
+    if (code === "rate_limit_exceeded") throw fault("CHATGPT_RATE_LIMITED");
+    if (code === "insufficient_quota") throw fault("CHATGPT_USAGE_LIMIT");
+    if (code !== undefined && ["subscription_sharing_unsupported_capability", "subscription_sharing_route_not_supported", "invalid_request_error",
+      "unsupported_value", "unsupported_parameter", "missing_required_parameter", "invalid_value", "invalid_type"].includes(code)) throw fault("CHATGPT_REQUEST_REJECTED");
+  }
+  function recordProviderCode(diagnostic: ChatGptInferenceDiagnostic, code: string | undefined): void {
+    const parsed = ChatGptInferenceDiagnosticSchema.shape.providerCode.exclude(["none", "unknown"]).safeParse(code);
+    diagnostic.providerCode = code === undefined ? "none" : parsed.success ? parsed.data : "unknown";
+  }
+  async function rejectPlanResponse(response: Response, operation: InferenceOperation, diagnostic?: ChatGptInferenceDiagnostic): Promise<never> {
     operation.assertCurrent();
     const invokedAccessToken = operation.credentials.session?.accessToken;
     if (invokedAccessToken === undefined) throw fault("CHATGPT_PLAN_DISABLED");
-    const persistUsage = (usage: "available" | "limit-reached" | "unavailable") => persistPlanUsage(operation, usage);
     let code: string | undefined;
+    if (diagnostic !== undefined) diagnostic.path = "http-error-body";
     try {
-      const body = z.object({ detail: z.union([z.string(), z.object({ code: z.string() })]).optional(), error: z.object({ code: z.string() }).optional() })
+      const body = z.object({ detail: z.union([z.string(), z.object({ code: z.string().nullish() })]).optional(), error: z.object({ code: z.string().nullish() }).nullish() })
         .parse(await boundedJson(new Response(response.body, { status: 200 })));
-      code = body.error?.code;
+      code = body.error?.code ?? (typeof body.detail === "object" ? body.detail.code : undefined) ?? undefined;
     } catch (error) {
       if (error instanceof ChatGptResourceClosureUnprovedError) throw error;
       operation.assertCurrent(); throw fault("CHATGPT_OCR_FAILED");
     }
     operation.assertCurrent();
-    if (code === "subscription_sharing_usage_limit_exceeded") { await persistUsage("limit-reached"); throw fault("CHATGPT_USAGE_LIMIT"); }
-    if (code === "subscription_sharing_usage_unavailable") { await persistUsage("unavailable"); throw fault("CHATGPT_USAGE_UNAVAILABLE"); }
+    if (diagnostic !== undefined) { diagnostic.path = "http-error"; recordProviderCode(diagnostic, code); }
+    await rejectProviderCode(code, operation);
     if (response.status === 401) { rejectedSessionToken = invokedAccessToken; throw fault("CHATGPT_ACCOUNT_EXPIRED"); }
     if (response.status === 403 && (code === undefined || ["subscription_sharing_user_not_eligible", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context"].includes(code))) {
       planFailureToken = invokedAccessToken; throw fault("CHATGPT_PLAN_DISABLED");
     }
     if (response.status === 503) throw fault("CHATGPT_USAGE_UNAVAILABLE");
-    if (code === "subscription_sharing_unsupported_capability") throw fault("CHATGPT_OCR_INVALID");
+    if (response.status === 400 || response.status === 422) throw fault("CHATGPT_REQUEST_REJECTED");
     throw fault("CHATGPT_OCR_FAILED");
   }
   async function inferenceAuthority(credentials: ChatGptCredentialRecord, epoch: number): Promise<ChatGptAccountAuthority> {
@@ -599,25 +721,35 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     return outcome.value;
   }
   async function readAssistantCatalog(operation: InferenceOperation, signal?: AbortSignal) {
-    operation.assertCurrent();
-    const session = operation.credentials.session;
-    if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
-    const response = await request(`${RESOURCE}/models`, { headers: { Authorization: `Bearer ${session.accessToken}` } }, signal);
-    return await consumeInferenceResponse(response, async () => {
+    const diagnostic: ChatGptInferenceDiagnostic = { operation: "assistant", path: "catalog-request", contentType: "missing", providerCode: "none" };
+    try {
       operation.assertCurrent();
-      if (!response.ok) await rejectPlanResponse(response, operation);
-      const catalog = z.object({ models: z.array(z.object({ slug: AssistantInferenceRequestSchema.shape.model,
-        display_name: z.string().min(1).max(256), visibility: z.string().min(1).max(64) })).max(256) }).parse(await boundedJson(response));
-      operation.assertCurrent();
-      return AssistantModelCatalogSchema.parse({ models: catalog.models.filter(model => model.visibility === "list")
-        .map(model => ({ slug: model.slug, displayName: model.display_name })) });
-    });
+      const session = operation.credentials.session;
+      if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
+      const response = await request(`${RESOURCE}/models`, { headers: { Authorization: `Bearer ${session.accessToken}` } }, signal, diagnostic);
+      return await consumeInferenceResponse(response, async () => {
+        operation.assertCurrent();
+        if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);
+        diagnostic.path = "catalog-body";
+        const body = await boundedJson(response, diagnostic, "CHATGPT_MODELS_UNAVAILABLE", MODEL_CATALOG_MAX_BYTES);
+        diagnostic.path = "catalog-schema";
+        const parsed = z.object({ models: z.array(z.object({ slug: AssistantInferenceRequestSchema.shape.model,
+          display_name: z.string().min(1).max(256), visibility: z.string().min(1).max(64) })).max(256) }).safeParse(body);
+        if (!parsed.success) throw fault("CHATGPT_MODELS_UNAVAILABLE");
+        const catalog = parsed.data;
+        operation.assertCurrent();
+        const visible = AssistantModelCatalogSchema.safeParse({ models: catalog.models.filter(model => model.visibility === "list")
+          .map(model => ({ slug: model.slug, displayName: model.display_name })) });
+        if (!visible.success) throw fault("CHATGPT_MODELS_UNAVAILABLE");
+        return visible.data;
+      });
+    } catch (error) { if (error instanceof ChatGptResourceClosureUnprovedError) diagnostic.path = "resource-closure"; recordFailure(error, diagnostic, { method: "GET", route: "/v1/models" }); throw error; }
   }
   async function listAssistantModels(signal?: AbortSignal) {
     const cancelled = () => signal?.aborted === true;
     active();
     if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
-    const operation = await beginInference(signal);
+    const operation = await beginInference(signal, undefined, "assistant");
     try {
       const session = operation.credentials.session;
       if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
@@ -670,7 +802,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     };
     assertSelectionCurrent();
     if (closureFailures.size !== 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], 'chatgpt-assistant-resource-closure-unproved'));
-    const operation = await beginInference(signal, assertSelectionCurrent);
+    const operation = await beginInference(signal, assertSelectionCurrent, "assistant");
     let authority: ChatGptAccountAuthority;
     try {
       const catalog = await readAssistantCatalog(operation, signal);
@@ -703,7 +835,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       assertAssistantCurrent(assertCurrent);
       if (generation !== capabilityGeneration || signal?.aborted === true) throw fault('CHATGPT_ASSISTANT_REFUSED');
     };
-    const operation = await beginInference(signal, assertVerificationCurrent);
+    const operation = await beginInference(signal, assertVerificationCurrent, "assistant");
     let authority: ChatGptAccountAuthority;
     try {
       const tools: AssistantInferenceRequest['tools'] = [{ type: 'namespace', name: 'relay_capability', description: 'Public capability verification only.',
@@ -774,64 +906,191 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     assistant?: Readonly<{ reasoning: AssistantInferenceRequest["reasoning"]; tools: AssistantInferenceRequest["tools"]; parallel_tool_calls: false; include: readonly ["reasoning.encrypted_content"] }>, capturedOperation?: InferenceOperation): Promise<T> {
     const cancelled = () => signal?.aborted === true;
     active(); if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
-    const operation = capturedOperation ?? await beginInference(signal);
+    const operation = capturedOperation ?? await beginInference(signal, undefined, assistant === undefined ? "ocr" : "assistant");
+    const diagnostic: ChatGptInferenceDiagnostic = { operation: assistant === undefined ? "ocr" : "assistant", path: "transport", contentType: "missing", providerCode: "none" };
     try {
       operation.assertCurrent();
       const { credentials, epoch } = operation, session = credentials.session;
       if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
       const persistUsage = (usage: "available" | "limit-reached" | "unavailable") => persistPlanUsage(operation, usage);
       const response = await request(`${RESOURCE}/responses`, { method: "POST", headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, store: false, stream: true, input, ...assistant }) }, signal);
+        body: JSON.stringify({ model, store: false, stream: true, input, ...assistant }) }, signal, diagnostic);
+      diagnostic.contentType = inferenceContentType(response.headers);
+      diagnostic.hasBody = response.body !== null;
       return await consumeInferenceResponse(response, async () => {
         operation.assertCurrent();
-        if (!response.ok) await rejectPlanResponse(response, operation);
-        if (response.body === null || !response.headers.get("content-type")?.startsWith("text/event-stream")) { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
+        if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);
+        diagnostic.path = "content-type";
+        // Headerless subscription replies still require validated SSE and completed output below.
+        if (response.body === null || diagnostic.contentType !== "text/event-stream" && diagnostic.contentType !== "missing") { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
         const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
-        let buffer = "", output = "", completed = false, total = 0;
+        let buffer = "", completed = false, total = 0;
+        const textDeltas = new Map<string, string>();
         let textOutputIndex: number | undefined;
         let result: T | undefined;
         const argumentDeltas = new Map<number, string>();
+        const indexSchema = z.number().int().min(0).max(31), idSchema = z.string().min(1).max(256);
+        const itemSchema = z.object({ id: idSchema, type: z.enum(["message", "reasoning", "function_call"]), status: z.literal("completed").optional() }).passthrough();
+        const addedItemSchema = itemSchema.omit({ status: true });
+        const addedItems = new Map<number, z.infer<typeof addedItemSchema>>();
+        const doneItems = new Map<number, z.infer<typeof itemSchema>>();
+        const addedParts = new Map<string, string>();
+        const doneText = new Map<string, { item_id: string; output_index: number; content_index: number; text: string }>();
+        const doneArguments = new Map<number, { item_id: string; name?: string; arguments: string }>();
+        const doneParts = new Map<string, { output_index: number; content_index: number; part: unknown }>();
+        let responseIdentity: { id: string; model: string } | undefined;
+        const assertMember = (index: number, id: string, type?: string): void => {
+          const added = addedItems.get(index);
+          if (added?.id !== id || type !== undefined && added.type !== type || doneItems.has(index)) throw fault("CHATGPT_OCR_INCOMPLETE");
+        };
         let outcome: { readonly kind: "value"; readonly value: T } | { readonly kind: "error"; readonly error: unknown };
         try {
           for (;;) {
+            diagnostic.path = "stream-read";
             const chunk = await reader.read(); if (chunk.done) break;
             operation.assertCurrent();
             if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
+            diagnostic.path = "stream-incomplete";
             total += chunk.value.length; if (total > streamLimit) throw fault("CHATGPT_OCR_INCOMPLETE");
+            diagnostic.path = "stream-decode";
             buffer = (buffer + decoder.decode(chunk.value, { stream: true })).replace(/\r\n/gu, "\n");
             let end = buffer.indexOf("\n\n");
             while (end !== -1) {
               const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
               const data = frame.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
               if (data !== "" && data !== "[DONE]") {
+                diagnostic.path = "stream-json";
+                const value: unknown = JSON.parse(data);
+                const events = diagnostic.events ??= { types: [], truncated: false };
+                const eventType = ChatGptStreamEventTypeSchema.safeParse(typeof value === "object" && value !== null && "type" in value ? value.type : undefined);
+                if (events.types.length < 256) events.types.push(eventType.success ? eventType.data : "unknown");
+                else events.truncated = true;
+                if (eventType.success && eventType.data === "response.completed") diagnostic.terminalShape = inferenceTerminalShape(value);
+                diagnostic.path = "stream-schema";
                 const event = z.object({ type: z.string(), delta: z.string().optional(), output_index: z.number().optional(), content_index: z.number().optional(),
-                  code: z.string().optional(), error: z.object({ code: z.string() }).optional(),
-                  response: z.object({ error: z.object({ code: z.string() }).nullish() }).passthrough().optional() }).parse(JSON.parse(data));
+                  code: z.string().nullish(), error: z.object({ code: z.string().nullish() }).nullish(),
+                  response: z.object({ error: z.object({ code: z.string().nullish() }).nullish() }).passthrough().optional() }).parse(value);
+                diagnostic.path = "stream-incomplete";
                 if (completed) throw fault("CHATGPT_OCR_INCOMPLETE");
-                const failureCode = event.response?.error?.code ?? event.error?.code ?? event.code;
-                if ((event.type === "error" || event.type === "response.failed" || event.type === "response.incomplete")
-                  && (failureCode === "subscription_sharing_usage_limit_exceeded" || failureCode === "subscription_sharing_usage_unavailable")) {
-                  await persistUsage(failureCode === "subscription_sharing_usage_limit_exceeded" ? "limit-reached" : "unavailable");
-                  throw fault(failureCode === "subscription_sharing_usage_limit_exceeded" ? "CHATGPT_USAGE_LIMIT" : "CHATGPT_USAGE_UNAVAILABLE");
+                const failureCode = event.response?.error?.code ?? event.error?.code ?? event.code ?? undefined;
+                if (event.type === "error" || event.type === "response.failed" || event.type === "response.incomplete") {
+                  diagnostic.path = event.type === "error" ? "stream-error" : event.type === "response.failed" ? "response-failed" : "response-incomplete";
+                  recordProviderCode(diagnostic, failureCode);
+                  await rejectProviderCode(failureCode, operation);
                 }
+                if (event.type.includes("refusal")) diagnostic.path = "stream-refusal";
                 if (event.type === "error" || event.type.includes("refusal")) throw fault(assistant !== undefined && event.type.includes("refusal") ? "CHATGPT_ASSISTANT_REFUSED" : "CHATGPT_OCR_FAILED");
+                if (event.type === "response.created" || event.type === "response.in_progress") {
+                  diagnostic.path = "stream-schema";
+                  const identity = z.object({ id: idSchema, model: ChatGptOcrRequestSchema.shape.model }).parse(event.response);
+                  if (responseIdentity !== undefined && (identity.id !== responseIdentity.id || identity.model !== responseIdentity.model)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  responseIdentity = identity;
+                }
+                if (event.type === "response.output_item.added") {
+                  diagnostic.path = "stream-done";
+                  const added = z.object({ output_index: indexSchema, item: addedItemSchema }).parse(value);
+                  if (added.output_index !== addedItems.size || [...addedItems.values()].some(item => item.id === added.item.id)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  addedItems.set(added.output_index, added.item);
+                }
+                if (event.type === "response.content_part.added") {
+                  diagnostic.path = "stream-done";
+                  const added = z.object({ output_index: indexSchema, item_id: idSchema, content_index: z.number().int().min(0).max(7), part: z.object({ type: z.string() }) }).parse(value);
+                  assertMember(added.output_index, added.item_id, "message");
+                  const key = `${added.output_index}:${added.content_index}`;
+                  if (addedParts.has(key) || added.content_index > 0 && !addedParts.has(`${added.output_index}:${added.content_index - 1}`)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  addedParts.set(key, added.part.type);
+                }
                 if (event.type === "response.output_text.delta") {
-                  if (event.delta === undefined || event.output_index !== undefined && (!Number.isInteger(event.output_index) || event.output_index < 0
-                      || textOutputIndex !== undefined && event.output_index !== textOutputIndex)
-                    || event.content_index !== undefined && event.content_index !== 0) throw fault("CHATGPT_OCR_INCOMPLETE");
-                  textOutputIndex ??= event.output_index;
-                  output += event.delta;
+                  diagnostic.path = "stream-delta";
+                  const delta = z.object({ output_index: indexSchema, item_id: idSchema, content_index: z.number().int().min(0).max(7), delta: z.string() }).parse(value);
+                  assertMember(delta.output_index, delta.item_id, "message");
+                  const key = `${delta.output_index}:${delta.content_index}`;
+                  if (addedParts.get(key) !== "output_text" || doneText.has(key) || doneParts.has(key)
+                    || textOutputIndex !== undefined && delta.output_index !== textOutputIndex) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  textOutputIndex ??= delta.output_index;
+                  textDeltas.set(key, (textDeltas.get(key) ?? "") + delta.delta);
                 }
                 if (event.type === "response.function_call_arguments.delta") {
+                  diagnostic.path = "stream-delta";
+                  const delta = z.object({ output_index: indexSchema, item_id: idSchema }).parse(value);
+                  assertMember(delta.output_index, delta.item_id, "function_call");
+                  if (doneArguments.has(delta.output_index)) throw fault("CHATGPT_OCR_INCOMPLETE");
                   if (assistant === undefined || event.delta === undefined || event.output_index === undefined || !Number.isInteger(event.output_index) || event.output_index < 0 || event.output_index >= 32) throw fault("CHATGPT_OCR_INCOMPLETE");
                   argumentDeltas.set(event.output_index, (argumentDeltas.get(event.output_index) ?? "") + event.delta);
                 }
+                if (event.type === "response.output_text.done" || event.type === "response.content_part.done") {
+                  diagnostic.path = "stream-done";
+                  const done = z.object({ output_index: indexSchema, item_id: idSchema, content_index: z.number().int().min(0).max(7) }).parse(value);
+                  assertMember(done.output_index, done.item_id, "message");
+                  const key = `${done.output_index}:${done.content_index}`;
+                  if (!addedParts.has(key)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  if (event.type === "response.output_text.done") {
+                    const text = z.object({ text: z.string().min(1) }).parse(value);
+                    if (doneText.has(key)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                    doneText.set(key, { ...done, text: text.text });
+                  } else {
+                    const part = z.object({ part: z.unknown().refine(value => value !== undefined) }).parse(value);
+                    if (doneParts.has(key)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                    doneParts.set(key, { ...done, part: part.part });
+                  }
+                }
+                if (event.type === "response.function_call_arguments.done") {
+                  diagnostic.path = "stream-done";
+                  const done = z.object({ output_index: indexSchema, item_id: idSchema, name: z.string().min(1).max(64).optional(), arguments: z.string().max(32_000) }).parse(value);
+                  assertMember(done.output_index, done.item_id, "function_call");
+                  if (doneArguments.has(done.output_index)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  doneArguments.set(done.output_index, done);
+                }
+                if (event.type === "response.output_item.done") {
+                  diagnostic.path = "stream-done";
+                  const done = z.object({ output_index: indexSchema, item: itemSchema }).parse(value);
+                  assertMember(done.output_index, done.item.id, done.item.type);
+                  const added = addedItems.get(done.output_index);
+                  for (const key of ["role", "call_id", "namespace", "name"]) if (added?.[key] !== undefined && added[key] !== done.item[key]) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  doneItems.set(done.output_index, done.item);
+                }
                 if (event.type === "response.completed") {
-                  const terminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
-                    status: z.literal("completed"), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).min(1).max(32),
-                  }).parse(event.response);
-                  if (assistant !== undefined && terminal.output.some(item => typeof item === "object" && item !== null && "content" in item
-                    && Array.isArray(item.content) && item.content.some((part: unknown) => typeof part === "object" && part !== null && "type" in part && part.type === "refusal"))) throw fault("CHATGPT_ASSISTANT_REFUSED");
+                  diagnostic.path = "terminal-schema";
+                  const parsedTerminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
+                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).max(32),
+                  }).safeParse(event.response);
+                  if (!parsedTerminal.success) {
+                    diagnostic.terminalIssues = { issues: parsedTerminal.error.issues.slice(0, 16).map(issue => ({ path: [inferenceShapeKey("response"), ...issue.path.map(inferenceShapeKey)].slice(0, 8), code: issue.code })),
+                      truncated: parsedTerminal.error.issues.length > 16 || parsedTerminal.error.issues.some(issue => issue.path.length > 7) };
+                    throw fault("CHATGPT_OCR_INCOMPLETE");
+                  }
+                  diagnostic.path = "output-schema";
+                  const items = [...doneItems.entries()].sort(([a], [b]) => a - b).map(([, item]) => item);
+                  if (items.length === 0 || doneItems.size !== addedItems.size || doneParts.size !== addedParts.size || items.some((_, index) => !doneItems.has(index))
+                    || parsedTerminal.data.model !== model || responseIdentity !== undefined && (responseIdentity.id !== parsedTerminal.data.id || responseIdentity.model !== parsedTerminal.data.model)
+                    || parsedTerminal.data.output.length > 0 && canonicalJsonStringify(parsedTerminal.data.output) !== canonicalJsonStringify(items)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  const terminal = { ...parsedTerminal.data, output: items };
+                  if (assistant !== undefined && terminal.output.some(item => "content" in item && Array.isArray(item.content)
+                    && item.content.some((part: unknown) => typeof part === "object" && part !== null && "type" in part && part.type === "refusal"))) {
+                    diagnostic.path = "stream-refusal"; throw fault("CHATGPT_ASSISTANT_REFUSED");
+                  }
+                  for (const [index, item] of doneItems) {
+                    if (item.type === "message") {
+                      const message = z.object({ content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).min(1).max(8) }).parse(item);
+                      for (const [contentIndex, part] of message.content.entries()) {
+                        const key = `${index}:${contentIndex}`, done = doneText.get(key);
+                        if (addedParts.get(key) !== part.type) throw fault("CHATGPT_OCR_INCOMPLETE");
+                        if (part.type === "output_text" && (done?.item_id !== item.id || done.text !== part.text
+                          || textDeltas.has(key) && textDeltas.get(key) !== part.text)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                      }
+                    }
+                    if (item.type === "function_call") {
+                      const done = doneArguments.get(index);
+                      if (done?.item_id !== item.id || done.name !== undefined && done.name !== item.name || done.arguments !== item.arguments) throw fault("CHATGPT_OCR_INCOMPLETE");
+                    }
+                  }
+                  for (const done of doneParts.values()) {
+                    const message = z.object({ type: z.literal("message"), content: z.array(z.unknown()) }).parse(doneItems.get(done.output_index));
+                    if (canonicalJsonStringify(message.content[done.content_index]) !== canonicalJsonStringify(done.part)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  }
+                  diagnostic.path = "output-schema";
+                  const output = textOutputIndex === undefined ? "" : [...doneText.values()]
+                    .filter(done => done.output_index === textOutputIndex).sort((a, b) => a.content_index - b.content_index).map(done => done.text).join("");
                   result = accept(terminal, output, textOutputIndex, argumentDeltas); completed = true;
                 }
                 if (event.type === "response.failed" || event.type === "response.incomplete") {
@@ -841,9 +1100,12 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
               end = buffer.indexOf("\n\n");
             }
           }
+          diagnostic.path = "stream-decode";
           decoder.decode();
+          diagnostic.path = "stream-incomplete";
           if (!completed || result === undefined || buffer.trim() !== "" || epoch !== generation) throw fault("CHATGPT_OCR_INCOMPLETE");
           operation.assertCurrent();
+          diagnostic.path = "usage-persistence";
           await persistUsage("available");
           operation.assertCurrent();
           if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
@@ -867,6 +1129,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         operation.assertCurrent();
         return outcome.value;
       });
+    } catch (error) {
+      if (error instanceof ChatGptResourceClosureUnprovedError) diagnostic.path = "resource-closure";
+      recordFailure(error, diagnostic, { method: "POST", route: "/v1/responses" });
+      throw error;
     } finally { if (capturedOperation === undefined) operation.close(); }
   }
   async function close(): Promise<void> {
@@ -885,6 +1151,6 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (signOutFailure instanceof Error) throw signOutFailure;
     if (signOutFailure !== undefined) throw new Error("ChatGPT sign-out failed", { cause: signOutFailure });
   }
-  return Object.freeze({ readAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
+  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;
