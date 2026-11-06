@@ -14,6 +14,8 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storag
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 
 const fields = (email: string, clock: TestClock) => ({ email, password: "disposable-fixture-password", at: clock.now().toISOString() });
 
@@ -52,6 +54,7 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("transport forbidden during startup repair"); });
   const restore = vi.spyOn(OfflineAuthorityRestoreService.prototype, "restoreNewest");
   try {
+    if (state === "unknown-record-field") database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const backup = await new AuthorityBackupService(f.admission, database, { directory }, clock).request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
     const manifest = backup.manifests[0]; assert.ok(manifest);
     database.close();
@@ -67,7 +70,7 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
         const version = state === "future" ? CURRENT_AUTHORITY_SCHEMA_VERSION + 1 : 7;
         native.exec(`BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=${version} WHERE id=1; PRAGMA user_version=${version}; COMMIT`);
       } else if (state === "unknown-record-field") {
-        native.exec("UPDATE settings SET payload_json=json_set(payload_json,'$.fieldFromANewerBuild',true) WHERE id='current'");
+        assert.equal(native.prepare("UPDATE settings SET payload_json=json_set(payload_json,'$.fieldFromANewerBuild',true) WHERE id='current'").run().changes, 1);
       } else if (state !== "recovery-refusal") native.exec(state === "critical-fence-missing" ? "DROP TABLE write_attempts" : "DROP TABLE run_search");
     } finally { native.close(); }
     const startBytes = readFileSync(f.path);
@@ -81,7 +84,7 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
     const after = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
     if (state === "damaged") {
       assert.equal(restore.mock.calls.length, 1);
-      assert.equal(after.activeProfileId, null); assert.equal(after.sessionGeneration, registry.sessionGeneration + 1);
+      assert.equal(after.activeProfileId, profileId); assert.equal(after.sessionGeneration, registry.sessionGeneration + 1);
       const notice = JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", `automatic-repair-${profileId}.json`), "utf8")) as { profileId: string; backupTime: string };
       assert.equal(notice.profileId, profileId); assert.equal(notice.backupTime, manifest.createdAt);
       assert.equal(readdirSync(join(f.stateRoot, "backups", "suspects")).filter(name => name.endsWith(".sqlite")).length, 1);
@@ -129,6 +132,7 @@ it("classifies a non-SQLite or malformed person file as damaged and never as ver
 
 it("holds one person's version-skewed database while the other person upgrades, recovers and signs in", async () => {
   const first = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
+  createProfileRegistry(first.machine).advanceSession(null);
   first.admission.release(); first.machine.release();
   const second = await createBoundProfileFixture({ workspace: first.workspace, lifetime: first.lifetime, email: "second@ucsd.edu" });
   try {

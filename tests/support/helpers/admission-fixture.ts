@@ -198,7 +198,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
       const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
         activity: { hasUnquiescedWork: () => false } });
       const draft = options.pending === "storage" ? undefined : session.signUp(fields);
-      if (draft !== undefined && draft.state !== "onboarding") throw new Error("fixture draft was not created");
+      if (draft !== undefined && draft.state !== "onboarding") throw new Error(`fixture draft was not created: ${draft.code}`);
       const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
         createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
         commandFingerprint: "a".repeat(64) });
