@@ -141,7 +141,19 @@ describe("secrets single source", () => {
     const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
     const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");
     assert.deepEqual(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: wrapper }]), []);
-    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js')]) {
+    const captureBeforeGraph = [
+      "  // The build id is frozen before the application graph loads, so it names the code this process runs.",
+      "  const { captureBuildId } = await import(\"../../src/backend/app/build-id.js\");",
+      "  captureBuildId();",
+      "",
+    ].join("\n");
+    const missingCapture = wrapper.replace(captureBeforeGraph, "");
+    const lateCapture = wrapper.replace(
+      'const { captureBuildId } = await import("../../src/backend/app/build-id.js");\n  captureBuildId();\n  const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);',
+      'const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);\n  const { captureBuildId } = await import("../../src/backend/app/build-id.js");\n  captureBuildId();',
+    );
+    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js'), missingCapture, lateCapture]) {
+      assert.notEqual(candidate, wrapper);
       assert.ok(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: candidate }]).length > 0);
     }
   });
