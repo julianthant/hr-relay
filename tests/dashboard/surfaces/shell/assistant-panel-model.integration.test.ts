@@ -70,7 +70,7 @@ it('blocks every setup attachment before panel registration and both local file 
   let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, requests = 0;
   const ports: AssistantPorts = { async onRegisterSpreadsheet() { registrations++; },
     async onAttachFile() { attachments++; return file; } };
-  const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected', citations: [] }; } };
+  const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } };
   const producer = createAssistantMockProducer();
   function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer, accountClient, ports, served: controller }); return null; }
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);

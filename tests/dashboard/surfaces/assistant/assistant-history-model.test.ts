@@ -43,7 +43,7 @@ it('refuses corrupt or foreign stored data and visibly reports failed persistenc
 });
 it('keeps the whole transcript when a message carries sent files, drops only the file names, and isolates chats', async () => {
   const f = fixture(), store = createAssistantHistory(f.storage, profile), first = store.chats.read()[0].id, second = store.chats.create().id;
-  const open = (id: string) => createAssistantController({ assistantRespond: async () => ({ state: 'answered', text: 'Recorded reply', citations: [] }) }, { authority: 'current' }, { read: () => store.read(id), retain: next => store.retain(id, next) });
+  const open = (id: string) => createAssistantController({ assistantRespond: async () => ({ state: 'answered', text: 'Recorded reply' }) }, { authority: 'current' }, { read: () => store.read(id), retain: next => store.retain(id, next) });
   const controller = open(first);
   controller.action({ type: 'edit', value: 'Review this file' }); controller.action({ type: 'send', attachments: [{ id: 'f1', name: 'Notes.pdf' }] });
   await vi.waitFor(() => assert.equal(controller.snapshot().messages.at(-1)?.role, 'assistant'));
@@ -53,7 +53,7 @@ it('keeps the whole transcript when a message carries sent files, drops only the
   assert.equal(reloaded?.messages.some(message => 'attachments' in message), false);
   assert.equal(createAssistantHistory(f.storage, profile).read(second), undefined);
   const pending = open(second); let release: () => void = () => {};
-  const held = createAssistantController({ assistantRespond: () => new Promise(resolve => { release = () => resolve({ state: 'answered', text: 'x', citations: [] }); }) }, { authority: 'current' }, { read: () => store.read(second), retain: next => store.retain(second, next) });
+  const held = createAssistantController({ assistantRespond: () => new Promise(resolve => { release = () => resolve({ state: 'answered', text: 'x' }); }) }, { authority: 'current' }, { read: () => store.read(second), retain: next => store.retain(second, next) });
   held.action({ type: 'edit', value: 'change something' }); held.action({ type: 'send', attachments: [{ id: 'f2', name: 'Other.csv' }] });
   assert.equal(store.notice(), '');
   assert.equal(createAssistantHistory(f.storage, profile).read(second)?.turn.state, 'unknown');

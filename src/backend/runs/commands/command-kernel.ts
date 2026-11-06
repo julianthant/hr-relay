@@ -13,7 +13,6 @@ import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/com
 import { PreflightAdmissionRefusal,type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from "../../assistant/context.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
@@ -312,6 +311,8 @@ export interface CommandKernelDependencies {
   readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
   readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
   readonly workflowSources?: Readonly<Record<string, "mock" | "served">>;
+  /** The pinned assistant workflow facts; a change stales every outstanding assistant proposal. */
+  readonly assistantFactsSha256?: () => string;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
 
@@ -2870,10 +2871,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       )).map(entry => ({ family: entry.family, action: entry.action, classification: entry.classification, subject: entry.family === "start" ? "classified" as const : "none" as const }));
       const identity = { commands: availability(), schema: deriveSchemaHash(CommandRequestSchema, "input"),
         surface: dependencies.assistantSurface?.() ?? null,
-        projection: ASSISTANT_INPUT_PROJECTION_VERSION, knowledge: assistantKnowledgeArtifact(Object.entries(dependencies.workflowSources ?? {}).flatMap(([id, source]) => {
-          const descriptor = dependencies.descriptors.resolve(id);
-          return source === "served" && descriptor !== undefined ? [{ id, label: descriptor.label }] : [];
-        })).policy.exportSha256,
+        knowledge: dependencies.assistantFactsSha256?.() ?? null,
         workflows: dependencies.workflowSources === undefined ? null : Object.entries(dependencies.workflowSources).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0) };
       const revision = Number.parseInt(sha256Hex(canonicalJsonStringify(identity)).slice(0, 12), 16) + 1;
       return AssistantActionManifestSchema.parse({ revision, entries });

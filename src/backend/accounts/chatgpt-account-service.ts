@@ -784,8 +784,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       return result;
     }, signal, 160_000, { reasoning: parsed.data.reasoning, tools: parsed.data.tools, parallel_tool_calls: false, include: ["reasoning.encrypted_content"] }, operation);
   }
-  function inferAssistant(input: AssistantInferenceRequest, signal?: AbortSignal) {
-    return inferBoundAssistant(input, signal);
+  /** `assertCurrent` fences every credential await, the provider POST and each stream chunk; this caller owns the operation's close. */
+  async function inferAssistant(input: AssistantInferenceRequest, signal?: AbortSignal, assertCurrent: () => void = () => {}) {
+    const operation = await beginInference(signal, () => { options.admission.assertProfileRuntime(); assertCurrent(); }, "assistant");
+    try { return await inferBoundAssistant(input, signal, operation); }
+    finally { operation.close(); }
   }
   function assertAssistantCurrent(check: () => true): void {
     const current: unknown = check();

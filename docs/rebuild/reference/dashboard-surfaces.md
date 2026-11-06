@@ -467,15 +467,7 @@ executable action identities are not saved. Storage failures remain visible with
 Deleting a chat retires its controller before removing history. Pending decisions become unknown;
 their late success or failure cannot write history, revive the chat or replay the action.
 
-For a currently selected served Queue run, send `start selected workflow` to propose the same
-workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
-workflow ID and execution mode; subject values remain local. Read-only graphs use Live read, and
-transaction graphs require supported dry-run traversal. Protected test subjects and stale definitions refuse;
-configured protected fields remain local to the canonical planner with exact retained input/binding checks.
-The proposal card shows the workflow, the served plan title and the mode with Cancel and Confirm; plan identity and fingerprints stay in logs. Confirm checks the selected run/version,
-person/session, current Settings, canonical plan, grant, revision and expiry, then submits through the
-same command service as Run, including worker capacity. Cancel starts nothing. Confirmed starts and cancellations collapse to a resolved line. Lost dispatch remains
-unknown and cannot be automatically retried. Changing the selection invalidates the pending card.
+The operator writes free text. When a served Queue run is selected, the assistant receives it as an opaque run reference and can read it with the read tools. Answers show real names and IDs in place of references; the model never receives them.
 
 ## Settings
 
@@ -757,69 +749,40 @@ state; the dashboard renders the admitted projection and exact command result.
 
 ### Assistant production input boundary
 
-The selected dashboard composition owns the assistant service and the same profile account and
-canonical command authorization. The local intent projection accepts named help topics, finite
-app-topic question forms (what is/are, how does/do, tell me about, how does Relay handle, and
-what can Relay do with), questions asking which workflows Relay can run or support (optionally
-requesting one short sentence), selected-run explanations, supported workflow-start proposals
-and notification actions. App-help questions bind no functions. Workflow-list questions project
-only the current served-workflow knowledge and request a one-sentence answer. Answers retain
-exact validated knowledge-line citations. The projection sends fixed application text, public
-workflow/mode metadata and request-local opaque references; operator messages, private suffixes,
-notification text, subject identifiers and source-file bodies stay local. Unknown or ambiguous
-input refuses before inference.
+The selected dashboard composition owns the assistant service, the same profile account and the
+canonical command authorization. `src/backend/assistant/service.ts` runs one tool-calling turn:
 
-Local proposal refusals use the existing debug writer with a closed stage reason: input projection,
-function binding or invocation, missing projection, required canonical completion, or action decision.
-They include no operator/provider text or local object identities. The trusted local projection also
-binds whether a request permits a help answer or requires canonical action completion. A notification action with
-only model text and no canonical call refuses; it cannot report an execution from model prose. Notification commands resolve the reference back to the
-same actor and complete sorted current inbox membership and versions, then wait for operator confirmation before using the once-consumable command door.
-Plural actions use one opaque collection reference and exact matching count. Inbox Read all uses the
-same canonical collection command. The kernel checks the whole membership in its transaction before
-any row update; pinned history warnings remain unchanged. Counts describe current native notices,
-not complete external HR history. Notification actions never resolve or retry an underlying UNKNOWN write.
-A confirmation-required action returns its server-issued chat/action identity, exact revision,
-expiry and local target display directly to the operator card, never back through the model.
-The existing Confirm/Cancel controls submit only those opaque identities and the decision through
-the authenticated assistant route. The constructor-owned issued chat is required; a client UUID
-cannot reconstruct it. Confirmation revalidates the original collection membership, versions, account/profile
-currentness, grant and manifest, then approves and consumes the same canonical command once.
-Generated commands and their canonical audits carry `source: assistant`. Lost confirmation responses
-remain unknown without automatic retry. Automatic execution retains its actual issued action identity
-before entering consumption; any authority/cancellation loss after effect entry, including the service
-continuation after its handler await, returns that action as unknown. An ambiguously lost respond
-transport has no fabricated action identity and disables retry; the operator checks current run or notification state
-before a new request. A confirmation-required proposal does not execute or imply
-operator approval.
-Confirmed workflow starts recheck their retained authority and cancellation after command dispatch
-settles. A late invalidation returns UNKNOWN even when the canonical audit proves the start applied;
-the issued action remains consumed and cannot replay.
-Configured protected fields are resolved only by the canonical start planner. Its complete input and
-protected binding identities must match the selected run. Protected test subjects still refuse before
-inference. The provider receives only workflow/mode metadata and a fresh opaque reference;
-Separations proposals always use the canonical dry-run mode.
+- The operator's message goes to ChatGPT after `references.ts` masks it: Employee IDs become `[[E<n>.g<generation>]]`
+  references; SSNs, email addresses, phone numbers and runs of 10 or more digits become fixed `[redacted …]` markers
+  that no tool resolves; typed `[[`/`]]` brackets are neutralized. Names and dates pass as typed (operator decision D1).
+- The developer prompt states the untrusted-data, reference and confirm-only rules and lists the served workflows.
+- Every model call offers every plugin tool from `src/backend/assistant/plugins/` in one strict `relay` namespace.
+  A response carries at most one call; an unknown tool or malformed arguments end the turn as a typed refusal.
+- A tool refusal (stale reference, unavailable read, oversized output) returns its catalog code and text to the model.
+  If no later call of that tool succeeds, the turn ends `refused` with that code; model prose never replaces it.
+- At most eight model calls run per turn, each tool output is at most 16 KB, and the history stays under 80,000 bytes.
+- The answer's references of the current generation are replaced by the served values before it leaves the backend.
 
-The finite run-read allowlist supports `run status` and selected-run explanation phrases. Its adapter
-in `app/composition/dashboard/assistant.ts` uses the existing canonical run-detail dependencies,
-admits the exact selected run revision and checks currentness across inference. Only an opaque
-request reference reaches the model. The final local reply quotes the canonical status, gate,
-outcome and the newest exact subset of at most ten timeline events that fits the quotation bound,
-with an explicit omitted-event count and exact run/revision/source/digest citations. Currentness
-still checks all ten recent candidates, including those omitted from the quotation.
-Forged citations, changed evidence and text-only claims refuse. `dashboard-wiring.ts` injects the
-adapter into the production assistant with the same selected-profile run-detail dependencies and
-currentness check used by the dashboard. The authenticated read requires current model verification;
-it creates no permission grant, proposal or command.
+Read tools wrap the dashboard's own query owners (`app/composition/dashboard/assistant.ts`): cross-date search
+(`find_runs`, `find_people`), run detail (`read_run`, `read_run_logs`), notifications, the workbook library catalog,
+ordinary settings and the generated workflow facts (`describe_workflow`). Each tool declares the origin of every
+free-text output leaf; the redaction audit registers each output as a `process-egress` surface, where only
+repository-authored and declared-redacted leaves pass. Names, EIDs, run titles, notification text, workbook names
+and types, and cell values reach the model only as references or not at all.
 
-`context.ts` projects the finite plain help artifact. Run
-`tsx scripts/build/generate-assistant-knowledge.ts` and its `--check` mode to generate and verify
-`src/backend/assistant/generated-knowledge.json`. Its revision identifies the projected content,
-not a Git commit. Runtime checks exact artifact bytes and line quotations. Command manifest identity
-also binds the canonical input schema, effects, summaries, argument projection, owner availability,
-static served workflow policy, selected-app registered route handoffs and knowledge digest.
-Route registration is accounting only; it does not establish tool capability. The outer profile
-authentication interface remains operator-only.
+References live in memory per conversation and profile epoch. A table created after a restart or owner change has a
+strictly later generation, so an old token returns "reference expired" instead of naming a different record.
+
+Every inference passes the service's currentness check to `inferAssistant`; the account runs it after each credential
+await, immediately before the Responses POST and on every streamed chunk, and closes the operation on every exit.
+Verification expiry, model policy, profile runtime and account authority changes therefore stop the next POST.
+This build makes no proposals; `POST /api/v1/assistant/action` refuses with `ASSISTANT_UNAVAILABLE`.
+
+`scripts/build/generate-assistant-knowledge.ts` writes, and with `--check` verifies, the hash-pinned
+`src/backend/assistant/plugins/workflows/facts.json` from the served workflow definitions. Boot compares it byte
+for byte with facts rebuilt from the running definitions and refuses with `ASSISTANT_CONTEXT_UNAVAILABLE` on a
+mismatch. The facts digest, registered route handoffs, command schema and static served workflow policy feed the
+command manifest identity.
 
 Model entitlement is separate from command permission and the OCR model. Trusted composition may
 supply the existing model policy with synchronous currentness; without it the service returns

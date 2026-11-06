@@ -1,4 +1,5 @@
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_PLUGIN_MODULES, assistantToolEgress } from "./assistant-tool-egress.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
 import { ChatGptAccountViewSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptSignOutResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
 import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookWireSchema,
@@ -125,6 +126,12 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
     "external-text": "refused",
   },
 });
+
+/** The only leaves admitted past a refused egress rule, each by a named operator decision; they still need a written exception. */
+export const EGRESS_DECISION_LEAVES: ReadonlySet<string> = new Set([
+  // D1 (11-06): the masked assistant user message goes to ChatGPT.
+  "egress/assistant-user-message|content",
+]);
 
 export function originRule(
   egress: SurfaceEgress,
@@ -356,7 +363,7 @@ export function auditSurfaceOrigins(
         );
         continue;
       }
-      const rule = originRule(surface.egress, entry.origin);
+      const rule = EGRESS_DECISION_LEAVES.has(key) ? "exception" : originRule(surface.egress, entry.origin);
       if (rule === "refused") {
         violations.push(
           `${surface.id} (${surface.egress}) leaf "${leaf.path}" is declared ${entry.origin}, which a `
@@ -667,6 +674,8 @@ export const SURFACE_MODULE_ROOTS: readonly string[] = Object.freeze([
 
 /** Surface-bearing modules outside the scanned roots, named one by one. */
 export const EXTRA_SURFACE_MODULES: readonly string[] = Object.freeze([
+  "src/backend/assistant/service.ts",
+  ...ASSISTANT_PLUGIN_MODULES,
   "src/models/intake/wire.ts",
   "src/rules/runs/ledger.ts",
   "src/rules/notifications/notification-triggers.ts",
@@ -788,6 +797,8 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
   { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRequestSchema },
   { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantResultSchema },
+  { id: "egress/assistant-user-message", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ content: z.string() }) },
+  ...assistantToolEgress().surfaces,
   { id: "wire/chatgpt-ocr-test", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptOcrTestResultSchema },
   { id: "wire/chatgpt-account", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptAccountViewSchema },
   { id: "wire/chatgpt-start", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInStartResultSchema },
@@ -1397,20 +1408,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].timeline[].operatorFields[].display.cases[].text", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].timeline[].operatorFields[].display.cases[].value", origin: "repository-authored" },
   { surface: "request/assistant", path: "message", origin: "operator-authored" },
+  { surface: "egress/assistant-user-message", path: "content", origin: "operator-authored",
+    exception: "Operator decision D1 (11-06): the operator's typed assistant message is sent to ChatGPT as typed, after maskOperatorText replaces Employee IDs with references and SSNs, emails, phone numbers and long digit runs with fixed markers." },
+  ...assistantToolEgress().origins,
   { surface: "wire/assistant", path: "text", origin: "external-text" },
   { surface: "wire/assistant", path: "message", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "citations[].path", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "citations[].quote", origin: "repository-authored" },
   { surface: "wire/assistant", path: "proposal.workflowId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.descriptorFingerprint", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.configSnapshotId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.configFingerprint", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.inputFingerprint", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.optionsFingerprint", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.stopBefore.nodeId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.stopBefore.afterPrepareTaskId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.stopBefore.commitTaskId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "proposal.subject.displayName", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "proposal.label", origin: "repository-authored" },
   { surface: "wire/assistant", path: "proposal.targetLabel", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "action.workflowId", origin: "repository-authored" },
@@ -1422,7 +1425,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/assistant", path: "proposal.startPlan.planned[].subtitle", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "action.startPlan.planned[].title", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "action.startPlan.planned[].subtitle", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "candidates[].displayName", origin: "captured-hr-value" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
   { surface: "wire/chatgpt-ocr-test", path: "message", origin: "repository-authored" },
   { surface: "wire/chatgpt-account", path: "account.message", origin: "repository-authored" },
@@ -2198,7 +2200,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
 export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = Object.freeze(
   SurfaceModuleDispositionSchema.array().parse([
-    { module: "src/models/dashboard/assistant.ts", state: "audited", reason: "Operator request and response stay on loopback: authored questions, broker-supplied subjects, external answer text, exact context-verified citations and planner-bound dry-run proposals. Inference transport is a separate account boundary." },
+    { module: "src/models/dashboard/assistant.ts", state: "audited", reason: "Operator request and response stay on loopback: authored questions, reference-substituted answer text and confirmation proposals built from served plans. Inference transport is a separate account boundary." },
+    { module: "src/backend/assistant/service.ts", state: "audited", reason: "The one operator-authored process-egress leaf: the masked user message the agent loop sends to ChatGPT (decision D1)." },
+    ...ASSISTANT_PLUGIN_MODULES.map(module => ({ module, state: "audited" as const, reason: "Assistant tool outputs sent to ChatGPT; every free-text leaf is declared by the tool's privacy list and only repository-authored or declared-redacted origins pass." })),
     { module: "src/models/dashboard/chatgpt-account.ts", state: "audited", reason: "Local account identity and registered fixed failures only; OAuth start URL contains public PKCE, state and nonce, never tokens or verifier." },
     { module: "src/models/dashboard/dashboard-frontend-owner.ts", state: "no-surface", reason: "Declares a closed launch nonce and probe pathname; no wire or durable free-text schema." },
     { module: "src/models/dashboard/failure-display.ts", state: "audited", reason: "Repository-authored failure title and observation are embedded in run detail and archived failure values." },

@@ -18,7 +18,7 @@ function harness() {
   const signals: (AbortSignal | undefined)[] = [];
   let release: (value: AssistantResult) => void = () => {};
   const client: Pick<AssistantQueries, "assistantRespond"> = { assistantRespond: (_input, signal) => { signals.push(signal); return new Promise<AssistantResult>(resolve => { release = resolve; }); } };
-  const answered: AssistantResult = { state: "answered", text: "Verified.", citations: [] };
+  const answered: AssistantResult = { state: "answered", text: "Verified." };
   return { port: createServedPreflightAssistantPort(client, account), change, signals, setRefresh: (fn: () => Promise<void>) => { refresh = fn; }, finish: () => release(answered) };
 }
 it("drops a late settlement after the account authority changes", async () => {

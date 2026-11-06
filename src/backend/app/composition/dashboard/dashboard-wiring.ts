@@ -12,11 +12,10 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
-import { assistantKnowledgeArtifact,loadProductionAssistantContext } from "../../../assistant/context.js";
 import { createAssistantService } from "../../../assistant/service.js";
-import { assistantSurfaceCoverage,createProductionAssistantTools } from "../../../assistant/tools.js";
-import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
-import { createAssistantReadAllowlist } from "./assistant.js";
+import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
+import { loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
+import { assistantSurfaceCoverage, createAssistantPluginDeps } from "./assistant.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { createCommandKernel } from "../../../runs/commands/command-kernel.js";
@@ -148,6 +147,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
+  let pinnedFacts: AssistantWorkflowFacts | undefined;
+  const assistantFacts = () => pinnedFacts ??= loadAssistantWorkflowFacts(repoRoot, DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served"));
 
   let resolveQuit: () => void = () => undefined;
   const shutdownRequested = new Promise<void>(resolve => { resolveQuit = resolve; });
@@ -164,6 +165,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
     workflowSources,
+    assistantFactsSha256: () => assistantFacts().sha256,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
     authority: { evidenceSchemaHash: database.evidenceSchemaHash.bind(database), withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
@@ -206,7 +208,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
-  const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
 
 
   const commands = createDashboardCommandService({
@@ -236,15 +237,15 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
 
-  const workflowStarts = createAssistantWorkflowStarts({ database, runs: lifecycle, plans: startPlans, commands,
-    authorization: assistantAuthorization, descriptors, served: workflowId => workflowSources[workflowId] === "served",
-    actorId: resolved.config.actor.id, clock, assertCurrent });
-  const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
-    actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts,
-    reads: createAssistantReadAllowlist({ runDetail: runDetailDeps, assertCurrent }) });
+  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
+  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
+  const assistantPluginDeps = createAssistantPluginDeps({ database, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
+    search: () => shell.search, notifications: () => notifications,
+    workbooks: () => workbookLibrary });
   const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
-    context: () => loadProductionAssistantContext(repoRoot, knowledge),
-    runtime: () => { assertCurrent(); return knowledge.policy; },
+    assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
+    owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
+    plugins: () => createAssistantPlugins(assistantPluginDeps),
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
     readModelPreference: () => captureSelectedModel().view,
     readPermission: () => assistantAuthorization.permission(),
@@ -253,7 +254,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
       captured.assertPreferenceCurrent();
     },
-    clock, ...assistantTools,
+    clock,
   });
 
 
@@ -307,7 +308,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     );
   }
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {
     const reader = createChatGptOcrPageReader({ account: chatGptAccount, artifacts: source, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
     const { submitted } = await reader.readPage({ ...input, instruction: buildExtractionInstruction(input.formType) }, signal);
@@ -325,7 +325,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
     },
-    notifications: composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget }),
+    notifications,
     ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: { identify: request => { assertCurrent(); return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request); } },
     preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),

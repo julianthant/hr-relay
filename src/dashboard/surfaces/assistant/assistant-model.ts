@@ -58,7 +58,7 @@ export type AssistantAction =
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
   | { readonly type: 'action-state'; readonly id: string; readonly disposition: 'confirming' | 'confirmed' | 'cancelled' | 'stale' | 'unknown'; readonly message?: AssistantMessage };
 
-export function assistantCanVerify(turn: AssistantTurn): boolean {
+function assistantCanVerify(turn: AssistantTurn): boolean {
   return turn.state !== 'waiting' && turn.state !== 'unknown'
     && (turn.state !== 'proposal' || turn.disposition !== 'review' && turn.disposition !== 'confirming' && turn.disposition !== 'unknown');
 }
@@ -103,12 +103,6 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
       return turn.state === 'proposal' && turn.disposition === 'review' ? { ...state, turn: { ...turn, disposition: 'confirmed' } } : state;
   }
 }
-
-export const ASSISTANT_STARTERS = [
-  'Check a person in Person Lookup (read-only)',
-  'Dry-run separations for 2 people',
-  'Explain what Emergency Contact does',
-] as const;
 
 export function assistantConfirmRefusal(state: AssistantState, revision: string, accountAvailable: boolean): string | undefined {
   const turn = state.turn;

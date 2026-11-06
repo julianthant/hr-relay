@@ -4,7 +4,6 @@ import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chat
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
-import { AssistantPanel as StandaloneAssistantPanel } from '../../../../src/dashboard/surfaces/assistant/assistant-panel.js';
 import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 
@@ -36,7 +35,7 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   await act(async () => { current.onAction({ type: 'edit', value: '  Exact Unicode Ω\nrequest  ' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'waiting');
   await render('b'); assert.equal(pending[0].signal?.aborted, true); assert.equal(current.state.draft, '');
-  await act(async () => { pending[0].settle({ state: 'answered', text: 'Late A', citations: [] }); });
+  await act(async () => { pending[0].settle({ state: 'answered', text: 'Late A' }); });
   assert.equal(current.state.messages.length, 0);
   await act(async () => { current.onAction({ type: 'edit', value: 'B request' }); current.onAction({ type: 'send' }); });
   await act(async () => { pending[1].settle({ state: 'refused', code: 'ASSISTANT_SUBJECT_REQUIRED', message: 'Synthetic refusal' }); });
@@ -45,7 +44,7 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   assert.equal(current.state.messages.some(message => message.text === 'Late A'), false);
   await act(async () => { current.onAction({ type: 'new-chat' }); current.onAction({ type: 'edit', value: 'Fresh manual request' }); current.onAction({ type: 'send' }); });
   await render('a', 2); assert.equal(pending[2].signal?.aborted, true);
-  await act(async () => { pending[2].settle({ state: 'answered', text: 'Stale authority', citations: [] }); });
+  await act(async () => { pending[2].settle({ state: 'answered', text: 'Stale authority' }); });
   assert.equal(current.state.messages.some(message => message.text === 'Stale authority'), false);
   assert.equal(current.state.turn.state, 'unknown');
   const unknownBeforeAccountChange = current.onAction, beforeAccountDispatch = pending.length, nextAccountDraft = current.state.draft;
@@ -56,49 +55,11 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   await act(async () => current.onAction({ type: 'edit', value: nextAccountDraft }));
   await act(async () => { current.onAction({ type: 'send' }); });
   await act(async () => { await account.signOut(); }); assert.equal(pending[3].signal?.aborted, true); assert.equal(current.accountAvailable, false);
-  await act(async () => { pending[3].settle({ state: 'answered', text: 'Stale account', citations: [] }); });
+  await act(async () => { pending[3].settle({ state: 'answered', text: 'Stale account' }); });
   assert.equal(current.state.messages.some(message => message.text === 'Stale account'), false);
   await act(async () => current.forgetSession('b'));
   await render('b'); assert.equal(current.state.draft, ''); assert.equal(current.state.messages.length, 0);
 });
-
-it('renders served proposal facts and citations in HUB and keeps confirmation and policy controls unavailable', async () => {
-  const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
-  const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
-  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  const account = { ...preview, mode: 'live' as const };
-  let calls = 0, current!: ReturnType<typeof useAssistantController>;
-  const client = { async assistantRespond(): Promise<AssistantResult> { if (calls++ > 0) return { state: 'answered', text: 'Verified explanation', citations: [{ path: 'docs/example.md', revision: 'a'.repeat(40), startLine: 1, endLine: 2, quote: 'Verified source quote' }] }; return { state: 'proposal', proposal: {
-    workflowId: 'person-lookup', subject: { subjectRef: 'synthetic', displayName: 'Synthetic Person' }, intent: 'dry-run', descriptorVersion: 2,
-    descriptorFingerprint: 'descriptor', configSnapshotId: 'config', configFingerprint: 'configuration', inputFingerprint: 'input', optionsFingerprint: 'options',
-    expiresAt: '2026-10-22T00:00:00Z', stopBefore: { nodeId: 'commit', phase: 'commit', afterPrepareTaskId: 'prepare', commitTaskId: 'submit' },
-    effects: { workflowExecuted: false, transactionCommitted: false }, confirmation: 'required-in-run',
-  } }; } };
-  const producer = createAssistantMockProducer();
-  const accountClient = { chatGptAccount: async () => ({ state: 'signed-out' as const }) };
-  function Harness() {
-    current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer, accountClient, served: current, title: 'New chat' });
-  }
-  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
-  assert.equal(host.querySelector('[data-source="served"]') !== null, true);
-  assert.equal(host.textContent?.includes('Alex Rivera'), false);
-  await act(async () => { current.onAction({ type: 'edit', value: 'Propose' }); current.onAction({ type: 'send' }); });
-  assert.match(host.textContent ?? '', /Synthetic Person/u);
-  assert.match(host.textContent ?? '', /Confirmation is unavailable/u);
-  const confirm = [...host.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, true);
-  await act(async () => { confirm.click(); current.onAction({ type: 'confirm' }); }); assert.equal(calls, 1);
-  for (const prefix of ['Model:', 'Thinking effort:', 'Ask before every action', 'Voice input']) {
-    const control = [...host.querySelectorAll('button')].find(button => button.getAttribute('aria-label')?.startsWith(prefix)); assert.ok(control); assert.equal(control.disabled, true);
-  }
-  await act(async () => current.onAction({ type: 'cancel' }));
-  assert.match(host.textContent ?? '', /Not started/u);
-  await act(async () => { current.onAction({ type: 'send' }); });
-  assert.match(host.textContent ?? '', /Verified explanation/u);
-  assert.doesNotMatch(host.textContent ?? '', /docs\/example.md|Source:/u);
-});
-
 
 it('clears only the submitted composer version on a valid reply and retains newer edits, files, failures and cancellation', async () => {
   const replies: { resolve: (value: AssistantResult) => void; reject: (error: Error) => void }[] = [];
@@ -116,14 +77,14 @@ it('clears only the submitted composer version on a valid reply and retains newe
   async function send(text: string) { await act(async () => composer.setText(text)); await act(async () => { await composer.send(); }); }
   const file = { id: 'file', name: 'Notes.txt', status: 'Attached' as const };
   await act(async () => composer.setFiles([file])); await send('Exact success');
-  await act(async () => replies[0].resolve({ state: 'answered', text: 'Answer', citations: [] }));
+  await act(async () => replies[0].resolve({ state: 'answered', text: 'Answer' }));
   assert.equal(composer.text, ''); assert.deepEqual(composer.files, []); assert.equal(controller.state.draft, 'Exact success');
   await send('Before edit'); await act(async () => composer.setText('Newer edit'));
-  await act(async () => replies[1].resolve({ state: 'answered', text: 'Answer', citations: [] })); assert.equal(composer.text, 'Newer edit');
+  await act(async () => replies[1].resolve({ state: 'answered', text: 'Answer' })); assert.equal(composer.text, 'Newer edit');
   await send('Before files'); await act(async () => composer.setFiles([file]));
-  await act(async () => replies[2].resolve({ state: 'answered', text: 'Answer', citations: [] })); assert.equal(composer.text, 'Before files'); assert.equal(composer.files[0], file);
+  await act(async () => replies[2].resolve({ state: 'answered', text: 'Answer' })); assert.equal(composer.text, 'Before files'); assert.equal(composer.files[0], file);
   await send('Edit then revert'); await act(async () => composer.setText('Changed')); await act(async () => composer.setText('Edit then revert'));
-  await act(async () => replies[3].resolve({ state: 'answered', text: 'Answer', citations: [] })); assert.equal(composer.text, 'Edit then revert');
+  await act(async () => replies[3].resolve({ state: 'answered', text: 'Answer' })); assert.equal(composer.text, 'Edit then revert');
   await send('Failed'); await act(async () => replies[4].reject(new Error('Synthetic transport failure'))); assert.equal(composer.text, 'Failed');
   assert.equal(controller.state.turn.state, 'unknown');
   const unknownBeforeCancel = controller.onAction, beforeCancelDispatch = replies.length, nextCancelFiles = composer.files;
@@ -133,7 +94,7 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await render('new-chat-after-transport-uncertainty');
   await act(async () => composer.setFiles(nextCancelFiles));
   await send('Cancelled'); await act(async () => controller.onAction({ type: 'cancel' }));
-  await act(async () => replies[5].resolve({ state: 'answered', text: 'Late', citations: [] })); assert.equal(composer.text, 'Cancelled');
+  await act(async () => replies[5].resolve({ state: 'answered', text: 'Late' })); assert.equal(composer.text, 'Cancelled');
   assert.equal(controller.state.turn.state, 'unknown');
   const beforeAuthorityDispatch = replies.length, authorityFiles = composer.files;
   await act(async () => controller.onAction({ type: 'send' }));
@@ -142,7 +103,7 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await render('authority-change-case');
   await act(async () => composer.setFiles(authorityFiles));
   await send('Old authority'); await render("authority-change-case", 2);
-  await act(async () => replies[6].resolve({ state: 'answered', text: 'Late authority', citations: [] })); assert.equal(composer.text, 'Old authority');
+  await act(async () => replies[6].resolve({ state: 'answered', text: 'Late authority' })); assert.equal(composer.text, 'Old authority');
   assert.equal(controller.state.turn.state, 'unknown');
   const beforeTypedDispatch = replies.length, typedFiles = composer.files;
   await act(async () => controller.onAction({ type: 'send' }));
@@ -151,7 +112,7 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await render('typed-authority-change-case');
   await act(async () => composer.setFiles(typedFiles));
   await send('Old chat'); await render("typed-authority-change-case", 2); await act(async () => composer.setText('Other chat draft'));
-  await act(async () => replies[7].resolve({ state: 'answered', text: 'Late chat', citations: [] })); assert.equal(composer.text, 'Other chat draft');
+  await act(async () => replies[7].resolve({ state: 'answered', text: 'Late chat' })); assert.equal(composer.text, 'Other chat draft');
 });
 
 it.each(['notification', 'workflow'] as const)('renders the existing served %s card with truthful local facts and confirms only its server identity', async kind => {
@@ -209,7 +170,7 @@ function setupAccount() {
 }
 it('opens only the composer for the actual unverified account resource, then refreshes once after explicit verification', async () => {
   const account = setupAccount(); let calls = 0, current!: ReturnType<typeof useAssistantController>;
-  const client = { async assistantRespond(): Promise<AssistantResult> { calls++; account.verify(); return { state: 'answered', text: 'Verified', citations: [] }; } };
+  const client = { async assistantRespond(): Promise<AssistantResult> { calls++; account.verify(); return { state: 'answered', text: 'Verified' }; } };
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   try {
@@ -233,7 +194,7 @@ it('refuses setup attachments before send callbacks, file readers and registrati
     let retained: ComposerDraft = { text, files: [file] };
     const draft = { read: () => retained, retain(value: ComposerDraft) { retained = value; } };
     const producer = createSetupAssistantProducer();
-    const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected', citations: [] }; } };
+    const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } };
     function Harness() {
       current = useAssistantController(client, 'profile', undefined, false);
       return createElement(ShellAssistantPanel, { producer, served: current, draft,
@@ -315,7 +276,7 @@ it.each([
   retain.mockRestore();
 });
 
-it.each(['shell', 'standalone'] as const)('shows run and notification reconciliation guidance after a lost response in the %s panel without replay', async surface => {
+it('shows run and notification reconciliation guidance after a lost response without replay', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
   const client = { async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } };
@@ -323,8 +284,7 @@ it.each(['shell', 'standalone'] as const)('shows run and notification reconcilia
   const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
   function Harness() {
     current = useAssistantController(client, 'current', undefined, false);
-    return surface === 'shell' ? createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return { state: 'signed-out' as const }; } } })
-      : createElement(StandaloneAssistantPanel, { ...current, defaultOpen: true });
+    return createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return { state: 'signed-out' as const }; } } });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));

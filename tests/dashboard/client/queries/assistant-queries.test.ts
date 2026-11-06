@@ -70,10 +70,10 @@ it("preserves the exact issued automatic unknown identity and refuses a mismatch
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => {
     calls++; return Response.json({ state: "unknown", actionId: mismatch ? "00000000-0000-4000-8000-000000000003" : action.actionId, action });
   } });
-  const result = await client.assistantRespond({ message: "mark notifications read" });
+  const result = await client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" });
   assert.equal(result.state, "unknown"); if (result.state !== "unknown") throw new Error("unknown identity required");
   assert.deepEqual(result.action, action); mismatch = true;
-  await assert.rejects(() => client.assistantRespond({ message: "mark notifications read" }));
+  await assert.rejects(() => client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" }));
   assert.equal(calls, 2);
 });
 

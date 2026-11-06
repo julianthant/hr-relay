@@ -6,22 +6,6 @@ import { AssistantPermissionModeSchema } from "../profiles/assistant-permission-
 import { StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
-const ReferenceSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u);
-export const AssistantSubjectSchema = z.strictObject({
-  subjectRef: ReferenceSchema, displayName: z.string().min(1).max(160), employeeId: z.string().regex(/^\d{8}$/u).optional(),
-});
-export type AssistantSubject = z.infer<typeof AssistantSubjectSchema>;
-export const AssistantKnowledgeCitationSchema = z.strictObject({
-  path: z.string().min(1).max(200), revision: z.string().regex(/^[a-f0-9]{40}$/u),
-  startLine: z.number().int().positive(), endLine: z.number().int().positive(), quote: z.string().min(1).max(4000),
-});
-export const AssistantLocalEvidenceCitationSchema = z.strictObject({
-  kind: z.literal("local-run"), runId: z.uuid(), rowRevision: z.number().int().positive(),
-  source: z.enum(["status", "gate", "outcome", "timeline"]),
-  digest: z.string().regex(/^[a-f0-9]{64}$/u), quote: z.string().min(1).max(4000),
-});
-export type AssistantLocalEvidenceCitation = z.infer<typeof AssistantLocalEvidenceCitationSchema>;
-export const AssistantCitationSchema = z.union([AssistantKnowledgeCitationSchema, AssistantLocalEvidenceCitationSchema]);
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
 export const ASSISTANT_DEFAULT_EFFORT = "medium";
 export const ASSISTANT_VERIFY_COMMAND = '/verify-assistant';
@@ -122,7 +106,8 @@ export const AssistantInferenceRequestSchema = z.strictObject({ model: Assistant
 });
 export type AssistantInferenceRequest = z.infer<typeof AssistantInferenceRequestSchema>;
 export const AssistantRequestSchema = z.strictObject({
-  message: z.string().min(1).max(4000), subjectRef: ReferenceSchema.optional(),
+  conversationId: z.uuid(), messageId: z.uuid(),
+  message: z.string().min(1).max(4000), subjectRef: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u).optional(),
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 export const ASSISTANT_FAILURES = Object.freeze({
@@ -163,14 +148,6 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
 });
 export type AssistantFailureCode = keyof typeof ASSISTANT_FAILURES;
-export const AssistantProposalSchema = z.strictObject({
-  workflowId: z.string(), subject: AssistantSubjectSchema, intent: z.literal("dry-run"),
-  descriptorVersion: z.number().int().positive(), descriptorFingerprint: z.string(), configSnapshotId: z.string(),
-  configFingerprint: z.string(), inputFingerprint: z.string(), optionsFingerprint: z.string(),
-  expiresAt: z.string().datetime(), stopBefore: z.strictObject({ nodeId: z.string().min(1), phase: z.literal("commit"),
-    afterPrepareTaskId: z.string().min(1), commitTaskId: z.string().min(1) }),
-  effects: z.strictObject({ workflowExecuted: z.literal(false), transactionCommitted: z.literal(false) }), confirmation: z.literal("required-in-run"),
-});
 export const AssistantActionIdentitySchema = z.strictObject({ chatId: z.uuid(), actionId: z.uuid(), revision: z.number().int().positive() });
 export type AssistantActionIdentity = z.infer<typeof AssistantActionIdentitySchema>;
 const AssistantActionProposalFields = {
@@ -206,10 +183,8 @@ export const AssistantActionResultSchema = z.discriminatedUnion("state", [
 export type AssistantActionResult = z.infer<typeof AssistantActionResultSchema>;
 export const AssistantResultSchema = z.discriminatedUnion("state", [
   AssistantUnknownActionResultSchema.extend({ action: AssistantActionProposalSchema }).refine(value => value.actionId === value.action.actionId, "assistant-action-response-mismatch"),
-  z.strictObject({ state: z.literal("answered"), text: z.string().max(8000), citations: z.array(AssistantCitationSchema).max(8) }),
+  z.strictObject({ state: z.literal("answered"), text: z.string().max(8000) }),
   z.strictObject({ state: z.literal("action-proposal"), proposal: AssistantActionProposalSchema }),
-  z.strictObject({ state: z.literal("proposal"), proposal: AssistantProposalSchema }),
-  z.strictObject({ state: z.literal("resolution-required"), candidates: z.array(AssistantSubjectSchema).max(20) }),
   z.strictObject({ state: z.literal("refused"), code: z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]), message: z.string() }),
 ]);
 export type AssistantResult = z.infer<typeof AssistantResultSchema>;

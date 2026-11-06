@@ -31,19 +31,19 @@ it("refuses missing or failed permission authority without serializing private d
 
 it("guards loopback/origin/media before body or inference and bounds request bytes", async () => {
   const app: DashboardApp = new Hono(); let calls = 0;
-  registerAssistantRoutes(app, { async respond() { calls++; return { state: "answered", text: "Synthetic", citations: [] }; } });
+  registerAssistantRoutes(app, { async respond() { calls++; return { state: "answered", text: "Synthetic" }; } });
   const headers = { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json" };
   for (const patch of [{ origin: "https://foreign.example" }, { host: "foreign.example" }, { "content-type": "text/plain" }]) {
     const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers: { ...headers, ...patch }, body: "{}" });
     assert.ok(response.status === 403 || response.status === 415);
   }
   assert.equal(calls, 0);
-  for (const body of ["malformed", JSON.stringify({ message: "x".repeat(20_001) })]) {
+  for (const body of ["malformed", JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "x".repeat(20_001) })]) {
     const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers, body });
     assert.equal(response.status, 400);
   }
   assert.equal(calls, 0);
-  const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers, body: JSON.stringify({ message: "Explain" }) });
+  const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers, body: JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "Explain" }) });
   assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store"); assert.equal(calls, 1);
 });
 it("never exposes a thrown service error through framework logs or response", async () => {
@@ -51,7 +51,7 @@ it("never exposes a thrown service error through framework logs or response", as
   registerAssistantRoutes(app, { async respond() { throw new Error("CANARY_PRIVATE_SERVICE_ERROR"); } });
   const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers: {
     host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json",
-  }, body: JSON.stringify({ message: "Explain" }) });
+  }, body: JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "Explain" }) });
   assert.equal(response.status, 400); assert.equal((await response.text()).includes("CANARY_PRIVATE_SERVICE_ERROR"), false);
 });
 
@@ -83,7 +83,7 @@ it("returns an issued automatic unknown action unchanged without converting it t
   registerAssistantRoutes(app, { async respond() { calls++; return result; } });
   const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers: {
     host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json",
-  }, body: JSON.stringify({ message: "mark notifications read" }) });
+  }, body: JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" }) });
   assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(await response.json(), result);
 });
 

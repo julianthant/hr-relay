@@ -5,7 +5,7 @@ import { systemClock } from '../../../rules/time/clock.js';
 import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/chatgpt-account-model.js';
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
-import type { AssistantResult, AssistantSubject } from '../../../models/dashboard/assistant.js';
+import type { AssistantResult } from '../../../models/dashboard/assistant.js';
 import { AssistantModelPreferenceSchema } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
@@ -13,7 +13,7 @@ import type { AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 
 export const ASSISTANT_CONFIRM_HOLD = 'Confirmation is unavailable until the server can verify this proposal before preparation. No run has started.';
-type Binding = Readonly<{ authority: unknown; subjectRef?: AssistantSubject['subjectRef'];
+type Binding = Readonly<{ authority: unknown; subjectRef?: string;
   commands?: Pick<DashboardCommandBinding, 'executor' | 'scope' | 'feedback'>;
   refreshAccount?: () => Promise<void>;
   preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void;
@@ -23,12 +23,8 @@ const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0
 function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
   const id = `assistant-${requestId}`;
   switch (result.state) {
-    case 'answered': return { message: { id, role: 'assistant', text: result.text, sources: result.citations.map((citation, index) => ({
-      id: `${id}-source-${index}`, title: "kind" in citation ? `Run ${citation.runId} · ${citation.source}` : `${citation.path}:${citation.startLine}-${citation.endLine}`,
-      excerpt: citation.quote, version: "kind" in citation ? `Revision ${citation.rowRevision} · ${citation.digest}` : citation.revision,
-    })) } };
+    case 'answered': return { message: { id, role: 'assistant', text: result.text } };
     case 'refused': return { message: { id, role: 'assistant', text: ASSISTANT_FAILURES[result.code], code: result.code } };
-    case 'resolution-required': return { message: { id, role: 'assistant', text: ASSISTANT_FAILURES.ASSISTANT_SUBJECT_REQUIRED } };
     case 'unknown':
     case 'action-proposal': {
       const unknown = result.state === 'unknown', p = result.state === 'unknown' ? result.action : result.proposal;
@@ -47,16 +43,6 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
         effects: [p.effect === 'workflow-start' ? 'Starts the canonical plan for this selected subject after confirmation. No HR transaction is submitted.' : 'Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: [],
       } };
     }
-    case 'proposal': {
-      const p = result.proposal;
-      return { message: { id, role: 'assistant', text: 'Review this dry-run proposal. No workflow has executed and no transaction has been committed.' }, proposal: {
-        id, revision: p.descriptorFingerprint, prompt, workflow: { id: p.workflowId, label: p.workflowId, version: String(p.descriptorVersion) },
-        subjects: [{ id: p.subject.employeeId ?? p.subject.subjectRef, name: p.subject.displayName }], mode: 'dry-run',
-        values: [{ label: 'Configuration', value: p.configFingerprint }, { label: 'Input', value: p.inputFingerprint }, { label: 'Options', value: p.optionsFingerprint }, { label: 'Expires', value: p.expiresAt }],
-        effects: ['Proposal only. No workflow executed. No transaction committed.'],
-        stopBefore: [`${p.stopBefore.nodeId}: ${p.stopBefore.commitTaskId} (after ${p.stopBefore.afterPrepareTaskId})`],
-      } };
-    }
   }
 }
 
@@ -65,6 +51,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   let outstanding: { requestId: number; prompt: string; abort: AbortController; binding: Binding } | undefined;
   let pendingDecision: { actionId: string; abort: AbortController; binding: Binding } | undefined;
   let retired = false;
+  let conversationId = crypto.randomUUID();
   const listeners = new Set<() => void>();
   function publish(next: AssistantState) { if (retired) return; state = next; history?.retain(state); for (const listener of listeners) listener(); }
   function abort() {
@@ -113,7 +100,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         else complete(outcome.feedback.text);
         return;
       }
-      const result = await client.assistantRespond({ message: assistantSetupCommand(prompt) === 'verify' ? ASSISTANT_VERIFY_COMMAND : prompt, ...(assistantSetupCommand(prompt) === 'verify' || binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
+      const result = await client.assistantRespond({ conversationId, messageId: crypto.randomUUID(), message: assistantSetupCommand(prompt) === 'verify' ? ASSISTANT_VERIFY_COMMAND : prompt, ...(assistantSetupCommand(prompt) === 'verify' || binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
       if (!current()) return;
       const presented = presentResult(result, requestId, prompt);
       const settled = assistantReducer(state, { type: "settle", requestId, ...presented });
@@ -192,6 +179,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (action.type === 'cancel' && state.turn.state === 'proposal' && state.turn.proposal.action !== undefined) { void decide('cancel'); return; }
       if (state.turn.state === 'proposal' && (state.turn.disposition === 'confirming' || state.turn.disposition === 'unknown') && action.type !== 'new-chat') return;
       if (action.type === 'action-state' || action.type === 'reply' || action.type === 'settle' || action.type === 'fail' || action.type === 'uncertain') return;
+      if (action.type === 'new-chat') conversationId = crypto.randomUUID();
       if (action.type === 'edit' || action.type === 'new-chat' || action.type === 'cancel') abort();
       const previous = state;
       publish(assistantReducer(state, action));

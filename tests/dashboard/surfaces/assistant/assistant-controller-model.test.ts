@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
@@ -13,6 +14,9 @@ function pending() {
   const promise = new Promise<AssistantResult>(resolve => { settle = resolve; });
   return { promise, settle };
 }
+/** A request without its per-send conversation and message identities. */
+const withoutIdentity = (request: unknown) => { const { conversationId: _conversation, messageId: _message, ...rest } = z.object({ conversationId: z.uuid(), messageId: z.uuid() }).passthrough().parse(request); return rest; };
+
 it('keeps monotonic identity across New Chat and ignores late replies after cancellation, edits and authority changes', async () => {
   for (const action of ['new-chat', 'cancel', 'edit', 'binding'] as const) {
     const reply = pending(); let signal: AbortSignal | undefined;
@@ -25,7 +29,7 @@ it('keeps monotonic identity across New Chat and ignores late replies after canc
       assert.equal(c.snapshot().turn.state, 'unknown');
       const sequence = c.snapshot().sequence; c.action({ type: 'retry' }); c.action({ type: 'send' }); assert.equal(c.snapshot().sequence, sequence);
     }
-    reply.settle({ state: 'answered', text: 'Late', citations: [] }); await reply.promise; await Promise.resolve();
+    reply.settle({ state: 'answered', text: 'Late' }); await reply.promise; await Promise.resolve();
     assert.equal(c.snapshot().messages.some(message => message.text === 'Late'), false);
     assert.equal(c.snapshot().sequence, 1);
     if (action === 'new-chat') assert.deepEqual(c.snapshot().messages, []);
@@ -33,13 +37,12 @@ it('keeps monotonic identity across New Chat and ignores late replies after canc
     c.abort();
   }
 });
-it('settles actual answer/refusal/citation presentation and never interprets Confirm as a request', async () => {
+it('settles actual answer presentation and never interprets Confirm as a request', async () => {
   let calls = 0;
-  const c = createAssistantController({ async assistantRespond() { calls++; return { state: 'answered', text: 'Explanation', citations: [{ path: 'docs/rebuild/example.md', revision: 'a'.repeat(40), startLine: 1, endLine: 1, quote: 'Exact source' }] }; } }, { authority: 'a' });
+  const c = createAssistantController({ async assistantRespond() { calls++; return { state: 'answered', text: 'Explanation' }; } }, { authority: 'a' });
   c.action({ type: 'edit', value: 'Explain' }); c.action({ type: 'send' });
   await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'idle'));
-  assert.equal(c.snapshot().messages.at(-1)?.sources?.[0].excerpt, 'Exact source');
-  assert.equal(c.snapshot().messages.at(-1)?.sources?.[0].url, undefined);
+  assert.equal(c.snapshot().messages.at(-1)?.text, 'Explanation');
   c.action({ type: 'confirm' }); assert.equal(calls, 1); assert.match(ASSISTANT_CONFIRM_HOLD, /before preparation/u);
 });
 it('does not retry an ambiguously lost response or let an edited draft redispatch it', async () => {
@@ -52,14 +55,6 @@ it('does not retry an ambiguously lost response or let an edited draft redispatc
   c.action({ type: 'edit', value: 'Changed' }); c.action({ type: 'retry' }); c.action({ type: 'send' }); assert.equal(calls, 1);
   assert.equal(JSON.stringify(c.snapshot()).includes('private transport'), false);
   assert.equal(JSON.stringify(c.snapshot()).includes('actionId'), false);
-});
-
-it('refuses ambiguity without presenting candidates as operator selection', async () => {
-  const c = createAssistantController({ async assistantRespond() { return { state: 'resolution-required', candidates: [{ subjectRef: 'candidate', displayName: 'Synthetic Candidate', employeeId: '10812345' }] }; } }, { authority: 'a' });
-  c.action({ type: 'edit', value: 'Propose' }); c.action({ type: 'send' });
-  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'idle'));
-  assert.equal(c.snapshot().messages.at(-1)?.text, 'Select an unambiguous subject before preparing a proposal.');
-  assert.equal(JSON.stringify(c.snapshot()).includes('Synthetic Candidate'), false);
 });
 
 const actionProposal = { state: 'action-proposal', proposal: { chatId: '00000000-0000-4000-8000-000000000001',
@@ -114,7 +109,7 @@ function preferenceControls() {
   let reads = 0, refreshes = 0, lostResponse = false, gate: Promise<void> | undefined, answer = 'Done';
   let reader: (signal?: AbortSignal) => Promise<AssistantModelPreferenceView> = async () => view;
   const client = {
-    async assistantRespond(input: AssistantRequest): Promise<AssistantResult> { replies.push(input); return { state: 'answered', text: answer, citations: [] }; },
+    async assistantRespond(input: AssistantRequest): Promise<AssistantResult> { replies.push(input); return { state: 'answered', text: answer }; },
     async assistantModelPreference(signal?: AbortSignal) { reads++; signals.push(signal); return reader(signal); },
     async executeCommand(input: unknown): Promise<CommandResult> {
       const command = AssistantModelPreferenceCommandRequestSchema.parse(input); sent.push(command);
@@ -150,7 +145,7 @@ it('verifies only on explicit send, omits subject context and refreshes the actu
   assert.equal(f.replies.length, 0);
   f.c.action({ type: "send" });
   await vi.waitFor(() => assert.equal(f.refreshes, 1));
-  assert.deepEqual(f.replies, [{ message: ASSISTANT_VERIFY_COMMAND }]);
+  assert.deepEqual(f.replies.map(withoutIdentity), [{ message: ASSISTANT_VERIFY_COMMAND }]);
   assert.equal(f.sent.length, 0); assert.equal(f.reads, 0);
   sendControl(f.c, 'ordinary request');
   await vi.waitFor(() => assert.equal(f.replies.length, 2));
@@ -225,7 +220,7 @@ it('preserves an in-flight read when only the outer command binding container ch
 
 it('does not infer or choose a local default when the preference query is not wired', async () => {
   let inferences = 0;
-  const c = createAssistantController({ async assistantRespond(): Promise<AssistantResult> { inferences++; return { state: 'answered', text: 'Unexpected', citations: [] }; } }, { authority: 'selected' });
+  const c = createAssistantController({ async assistantRespond(): Promise<AssistantResult> { inferences++; return { state: 'answered', text: 'Unexpected' }; } }, { authority: 'selected' });
   sendControl(c, ASSISTANT_MODEL_COMMAND);
   await vi.waitFor(() => assert.notEqual(c.snapshot().turn.state, "waiting"));
   assert.equal(inferences, 0); assert.equal(c.snapshot().messages.length, 2);
@@ -234,7 +229,7 @@ it('does not refresh or publish a superseded explicit verification settlement', 
   const held = Promise.withResolvers<AssistantResult>(); let refreshes = 0;
   const c = createAssistantController({ assistantRespond: () => held.promise }, { authority: 'first', refreshAccount: async () => { refreshes++; } });
   sendControl(c, ASSISTANT_VERIFY_COMMAND);
-  c.bind({ authority: 'second' }); held.resolve({ state: 'answered', text: 'Stale verification', citations: [] });
+  c.bind({ authority: 'second' }); held.resolve({ state: 'answered', text: 'Stale verification' });
   await held.promise; await Promise.resolve(); await Promise.resolve();
   assert.equal(refreshes, 0); assert.equal(c.snapshot().messages.some(message => message.text === 'Stale verification'), false);
 });
@@ -272,7 +267,7 @@ it('tests explicitly without overwriting the draft, shows the named failure and 
     return { state: 'refused', code: 'ASSISTANT_CAPABILITY_FAILED', message: 'ignored server prose' }; } }, { authority: 'current', subjectRef: 'private-selection' });
   c.action({ type: 'edit', value: 'unsent draft' }); c.action({ type: 'verify' });
   await vi.waitFor(() => assert.equal(c.snapshot().verification?.state, 'failed'));
-  assert.deepEqual(calls, [{ message: ASSISTANT_VERIFY_COMMAND }]); assert.equal(c.snapshot().draft, 'unsent draft');
+  assert.deepEqual(calls.map(withoutIdentity), [{ message: ASSISTANT_VERIFY_COMMAND }]); assert.equal(c.snapshot().draft, 'unsent draft');
   assert.equal(c.snapshot().messages.at(-1)?.code, 'ASSISTANT_CAPABILITY_FAILED');
   failTransport = true; c.action({ type: 'verify' });
   await vi.waitFor(() => assert.equal(c.snapshot().messages.at(-1)?.code, 'ASSISTANT_VERIFICATION_FAILED'));
@@ -283,16 +278,16 @@ it('normalizes pasted verification whitespace and cancels the public test withou
   const reply = pending(), calls: AssistantRequest[] = [];
   const c = createAssistantController({ async assistantRespond(request) { calls.push(request); return reply.promise; } }, { authority: 'current', subjectRef: 'private' });
   c.action({ type: 'edit', value: '  /verify-assistant\n' }); c.action({ type: 'send' });
-  assert.deepEqual(calls, [{ message: ASSISTANT_VERIFY_COMMAND }]);
+  assert.deepEqual(calls.map(withoutIdentity), [{ message: ASSISTANT_VERIFY_COMMAND }]);
   c.action({ type: 'cancel' }); assert.equal(c.snapshot().turn.state, 'cancelled');
-  reply.settle({ state: 'answered', text: 'Late test result', citations: [] }); await Promise.resolve(); await Promise.resolve();
+  reply.settle({ state: 'answered', text: 'Late test result' }); await Promise.resolve(); await Promise.resolve();
   assert.equal(c.snapshot().messages.some(message => message.text === 'Late test result'), false);
   c.action({ type: 'verify' }); assert.equal(calls.length, 2);
 });
 
 it('allows Test assistant again after the operator cancels a proposal', async () => {
   let requests = 0;
-  const c = createAssistantController({ async assistantRespond(request) { requests++; return request.message === ASSISTANT_VERIFY_COMMAND ? { state: 'answered', text: 'Verified', citations: [] } : actionProposal; },
+  const c = createAssistantController({ async assistantRespond(request) { requests++; return request.message === ASSISTANT_VERIFY_COMMAND ? { state: 'answered', text: 'Verified' } : actionProposal; },
     async assistantDecide(input) { return { state: 'cancelled', actionId: input.actionId }; } }, { authority: 'current' });
   c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' });
   await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'proposal'));
