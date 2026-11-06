@@ -14,7 +14,7 @@ npm run test:parity -- --grep "keyboard-only"
 
 Use the matching surface spec for a focused check. Shared shell, tokens, primitives, and models
 need the full suite at the assigned gate. Filters are forwarded to Playwright. Keep the configured
-JSON reporter: the wrapper refuses `--reporter` overrides and JSON-output environment overrides.
+reporters; the a11y evidence reporter is part of the gate.
 
 `npm run test:parity:update` is the deliberate reference-update command. Use it only for an
 operator-approved UI change, or a workflow's served-data switch after operator screen sign-off,
