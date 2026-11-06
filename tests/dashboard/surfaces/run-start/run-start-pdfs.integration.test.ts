@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
+import { i9CheckStartModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, expect, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
-import { i9CheckStartModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";

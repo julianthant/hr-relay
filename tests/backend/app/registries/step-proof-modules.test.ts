@@ -1,7 +1,8 @@
+import { personLookupModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { STEP_PROOF_MODULES, stepProofModuleOf } from "../../../../src/backend/app/registries/step-proof-modules.js";
-import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES, personLookupModule, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 import { canonicalInputSamples } from "../../../../src/models/workflow/canonical-input.js";
 import { classifyEvidenceLeaf, evidenceLeaves } from "../../../../src/models/trust/evidence-classification.js";

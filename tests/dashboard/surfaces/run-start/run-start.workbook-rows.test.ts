@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
@@ -13,7 +13,7 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
-const descriptor = WORKFLOW_DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
+const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds], steps: projectStartSteps(descriptor), inputRun: { state: "present", surface: descriptor.surfaces.inputRun } };

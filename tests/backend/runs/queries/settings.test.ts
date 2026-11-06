@@ -13,7 +13,7 @@ import { BrowserSystemIdSchema,FingerprintSchema } from "../../../../src/rules/i
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { FixtureCommit,FixtureStage } from "../../../support/fixtures/descriptor-fixtures.js";
 
 const CLOCK = manualClock(new Date("2026-08-26T00:00:00.000Z"));
@@ -23,7 +23,7 @@ const KUALI_TEST = "https://ucsd-sbx.kualibuild.com/build/space/5e47518b90adda94
 function facts(settings: unknown = {}) {
   return buildSettingsFacts({
     config: resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK).config,
-    descriptors: [...WORKFLOW_DESCRIPTORS],
+    descriptors: [...DESCRIPTORS],
   });
 }
 
@@ -118,7 +118,7 @@ describe("settings facts — workflow capabilities", () => {
     const rows = facts().workflowCapabilities;
     assert.deepEqual(
       rows.map(({ workflowId }) => workflowId),
-      WORKFLOW_DESCRIPTORS.map(({ id }) => id),
+      DESCRIPTORS.map(({ id }) => id),
     );
     for (const row of rows) assert.equal("label" in row, false);
   });
