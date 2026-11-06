@@ -10,7 +10,6 @@ import { separationsWorkflow } from "./workflow.js";
 
 export const registration = deepFreeze({
   definition: separationsWorkflow,
-  exposure: { kind: "public", order: 1 },
   store: separationsStore,
   proofs: [
     defineStepProof(separationsWorkflow, separationsKronosTimecardDefinition),

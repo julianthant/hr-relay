@@ -1,9 +1,9 @@
+import { crmDocDownloadModule, emergencyContactModule, i9CheckStartModule, onboardingModule, personLookupModule, separationsModule } from "../../../support/helpers/registered-workflows.js";
 import { describe,expect,it } from "vitest";
-import { CHILD_ONLY_WORKFLOW_MODULES, childWorkflowModuleOf, createWorkflowRegistry, crmDocDownloadModule, emergencyContactModule, DESCRIPTORS, i9CheckStartModule, onboardingModule, personLookupModule, separationsModule, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, childWorkflowModuleOf, createWorkflowRegistry, DESCRIPTORS, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 import { PersonLookupInput } from "../../../../src/workflows/person-lookup/workflow.js";
 import { compileFixtureWorkflow } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { createSearchWorkflowDefinitionFixtures } from "../../../support/helpers/search-workflow-definition-fixtures.js";
@@ -26,9 +26,9 @@ function syntheticModule(id: string, targets: readonly string[] = []) {
 describe("workflow descriptor registry", () => {
 
   it("mirrors the composition root exactly, by object identity and order", () => {
-    expect(WORKFLOW_DESCRIPTORS.length).toBe(DESCRIPTORS.length);
-    for (const [index, descriptor] of DESCRIPTORS.entries()) {
-      expect(WORKFLOW_DESCRIPTORS[index]).toBe(descriptor);
+    expect(DESCRIPTORS.length).toBe(WORKFLOW_MODULES.length);
+    for (const [index, module] of WORKFLOW_MODULES.entries()) {
+      expect(DESCRIPTORS[index]).toBe(module.descriptor);
     }
   });
 

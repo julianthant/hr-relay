@@ -1,7 +1,8 @@
+import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
 import type { AssistantActionIdentity, AssistantActionProposal } from "../../../models/dashboard/assistant.js";
 import type { AssistantFailureCode } from "../../../models/dashboard/assistant.js";
-export const ASSISTANT_UNKNOWN_NOTICE = 'Action outcome is unknown. Check the current run or notification state before starting a new request. Do not retry this request.';
+export const ASSISTANT_UNKNOWN_NOTICE = ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text;
 export interface AssistantSource {
   readonly id: string;
   readonly title: string;
@@ -107,7 +108,7 @@ export function assistantConfirmRefusal(state: AssistantState, revision: string,
   const turn = state.turn;
   if (turn.state !== 'proposal') return 'No proposal to confirm.';
   if (turn.disposition === 'confirming') return 'Confirming the action…';
-  if (turn.disposition === 'unknown') return 'Action outcome is unknown. Do not retry this action.';
+  if (turn.disposition === 'unknown') return ASSISTANT_UNKNOWN_NOTICE;
   if (turn.disposition === 'confirmed') return turn.proposal.action === undefined ? 'Mock confirmation recorded. No run was started.' : 'Action completed.';
   if (turn.disposition === 'cancelled') return 'Proposal cancelled. No run was started.';
   if (!accountAvailable) return 'ChatGPT account unavailable. Confirmation is disabled.';

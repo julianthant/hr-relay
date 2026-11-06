@@ -490,16 +490,26 @@ A workflow declares `plannedOutputs(input, references)` to project output facts 
 
 ## Local debug events
 
-Unknown profile-request failures retain their error names, codes and source stack locations in the
-local boot log, including nested causes. Exception messages, request values and private file paths
-are omitted. HTTP responses retain the catalogued public code.
-Unexpected inner API failures and screenshot verification exceptions retain the same value-free
-cause shape through the existing debug writer. Exception messages stay out of those diagnostic events.
+`src/models/failures/error-origins.ts` owns the closed cause vocabulary. Each trusted error class binds
+its exact constructor to one row of static name, catalog or transport code and reason; runtime
+`name`, `code` or message text never selects a row, and subclasses are not inherited. Unbound errors
+keep their constructor name and a well-formed own `code` (else `INTERNAL_FAILURE`) with reason
+`cause-unavailable`, non-errors become `UnknownCause`, chains stop at 16 rows with a fixed truncation row,
+and frames keep only build-relative `src/`, `scripts/`, `node_modules/` or `assets/` positions.
+Unexpected inner API failures emit one event per cause row with one correlation id for that failure,
+after the request's outcome event.
+Screenshot verification exceptions share `sessionId`. Worker supervisor and transfer faults emit one
+event per cause row with one correlation id, and their stderr lines carry the same name, code and
+reason. Profile-request rows go through `appendEmergencyFault` and do not carry a correlation id.
+Exception messages,
+request values and private file paths are omitted. HTTP responses retain the catalogued public code.
+A request whose client disconnected records `request-disconnected` and its cause rows without an
+HTTP status, so a cancelled transfer is never logged as a delivered 500.
 
 `logs/debug-events.ts` is the debug timeline writer. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text, per-category size caps and the existing timeline retention. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs. HTTP events also retain method, registered route template and status in that mirror. Client routes, messages, stacks and request values stay out of the mirror. Production builds do not mirror.
 
 The shared HTTP response observer records returned refusals, failures and uncertain outcomes, including HTTP 200 envelopes, and failures mapped by the thrown-error handler. It records the registered route template and approved codes, never body values. Asynchronous ChatGPT authorization, worker process/transfer faults and provider failures use the same writer at their terminal owner. A logging failure remains a named unavailable response or retained runtime failure. Asynchronous authorization retains its original completion separately from a diagnostic fault; completion readback shows the catalogued `LOGGING_UNAVAILABLE` error without an unobserved rejection or authorization retry.
 
-The product client reports handled HTTP, network, binary, stream, schema and protocol failures through `/api/v1/debug/errors`, using the current surface, a value-free route, approved code and static reason. Reports require an observed active profile session; signed-out, logout and stale-session paths send none. Reporting never retries an operation or changes its result. Report delivery failures use the existing browser error channel with the catalogued `DASHBOARD_ERROR_REPORT_UNAVAILABLE` error; the app excludes that error from recursive reporting. The terminal-failures architecture guard protects request catches and the production terminal sinks; the secret-values guard also covers debug emissions and client reports.
+The product client reports handled HTTP, network, binary, stream, schema and protocol failures through `/api/v1/debug/errors`, using the current surface, a value-free route, approved code and static reason. An unhandled `DashboardClientError` sends its first closed cause row; any other unhandled browser error sends `DASHBOARD_UNHANDLED_ERROR` with its message and stack. The server accepts a report only with `DASHBOARD_UNHANDLED_ERROR`, the fixed request-failure message and no stack, or a browser cause row whose name, code, reason and normalized frames match the closed vocabulary. The development mirror revalidates each payload before writing. Reports require an observed active profile session; signed-out, logout and stale-session paths send none. Reporting never retries an operation or changes its result. Report delivery failures use the existing browser error channel with the catalogued `DASHBOARD_ERROR_REPORT_UNAVAILABLE` error; the app excludes that error from recursive reporting. The terminal-failures architecture guard protects request catches and the production terminal sinks; the secret-values guard also covers debug emissions and client reports.
 
 `npm run backend` starts only the development BFF; `npm run web` starts only Vite. `npm run dashboard` owns both and waits for BFF readiness before starting Vite. Development launches set `RELAY_DEV_DEBUG_MIRROR=1` for backend descendants, including pool workers, so mirroring survives a fresh Node argument list. Production worker environments omit that flag; production entrypoints and Electron suppress mirroring.

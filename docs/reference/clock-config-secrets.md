@@ -646,6 +646,17 @@ to require retired durable work. Future Pause/Resume behavior must retain the la
 crash recovery fails interrupted work with rerun from that step and preserves mid-submit uncertainty.
 A changed source fails with `source-changed: re-plan upgrade`. Startup completes automatic repair and upgrade through their stopped storage owners before ordinary admission.
 
+Startup repair restores a person's database from the newest verified backup only when SQLite itself
+reports damage: the file is not a database, `PRAGMA integrity_check` is not `ok`, or reads fail with
+`SQLITE_CORRUPT`. An exactly missing `run_search` projection is recreated from the current DDL and
+rebuilt in one stopped transaction that must leave every other row and the authority generation
+unchanged; a failed rebuild is `STORAGE_PROFILE_PROJECTION_REPAIR_FAILED`. A record that fails its strict
+parse, or a layout, invariant or foreign-key mismatch over intact SQLite, is version skew
+(`STORAGE_PROFILE_FORMAT_UNSUPPORTED`, or `STORAGE_PROFILE_NEWER_VERSION` for a newer schema) and
+never restores. A refused inspection, repair, upgrade or crash recovery holds only that person:
+their sign-in is refused with the hold's code and startup continues for everyone else. Unproved
+closure and unavailable maintenance or browser custody still stop startup.
+
 ### Fixed application-data startup
 
 Bootstrap holds the lifetime listener before the supported forward conversion. The finite source

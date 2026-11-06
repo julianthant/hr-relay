@@ -9,6 +9,7 @@ import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
 import {
+  descriptorRuntimeNodes,
   workflowProjections,
   workflowTerminalResultExecution,
 } from "../../../src/workflow-kit/workflow.js";
@@ -28,8 +29,7 @@ import { RunEvidenceReceiptSchema } from "../../../src/models/trust/evidence.js"
 import { RedactedFieldSchema, retainLocalEvidenceValue } from "../../../src/rules/redaction/redaction.js";
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 
 import { separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";
@@ -55,7 +55,7 @@ import {
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { namedFileOutputDescriptor } from "../../support/fixtures/named-file-output-workflow.js";
 
-const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS, namedFileOutputDescriptor];
+const RECEIPT_DESCRIPTORS = [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS, namedFileOutputDescriptor];
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
@@ -503,7 +503,7 @@ describe("evidence receipt — declared classification coverage", () => {
   it("declares a decision and a classification for every registered gate node", () => {
     let gateNodes = 0;
     for (const descriptor of RECEIPT_DESCRIPTORS) {
-      for (const node of descriptor.nodes) {
+      for (const node of descriptorRuntimeNodes(descriptor)) {
         if (node.kind !== "gate") continue;
         gateNodes++;
         const scope: EvidenceValueScope = EvidenceValueScopeSchema.parse({
@@ -557,7 +557,7 @@ describe("evidence receipt — declared classification coverage", () => {
 
     const commitTaskIds = new Set([
       ...RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
-        descriptor.nodes.flatMap((node) =>
+        descriptorRuntimeNodes(descriptor).flatMap((node) =>
           node.kind === "transaction" ? [String(node.commit.uses.id)] : [])),
       String(WriteFixtureCommit.id),
       String(WriteFixtureSaveCommit.id),

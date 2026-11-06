@@ -58,7 +58,7 @@ import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { captureFullPage, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
-import { valueFreeErrorCauses } from "../../logs/debug-events.js";
+import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 export const BrowserProfileAdmissionSchema = z.strictObject({
   workerId: WorkerIdSchema, system: BrowserSystemIdSchema, instance: RuntimeInstanceSchema,
@@ -373,7 +373,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             assertCurrent();
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
-            if (error instanceof Error) for (const cause of valueFreeErrorCauses(error)) {
+            for (const cause of serializeErrorCauses(error)) {
               this.#options.onDebug?.(workerId, { phase: "failed", correlationId: sessionId,
                 reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack });
             }

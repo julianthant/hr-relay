@@ -195,8 +195,8 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
         : `${turn.id}-${turn.delivery === 'refused' ? 'refused' : turn.delivery === 'delivery-unknown' ? 'unknown' : 'sending'}`;
       return restoredState(conversation)?.messages.find(message => message.id === reply);
     },
-    /** Re-reads one chat; true when it holds the decision caption for `actionId`. */
-    async decided(id: string, actionId: string) { await refresh(id); return conversations.get(id)?.messages.some(row => row.kind === 'decision' && row.actionId === actionId) === true; },
+    /** Re-reads one chat; the decision caption it holds for `actionId`, if any. */
+    async decision(id: string, actionId: string) { await refresh(id); return conversations.get(id)?.messages.find(row => row.kind === 'decision' && row.actionId === actionId)?.text; },
     async local(id: string, text: string) {
       try { await write({ operation: 'local', conversationId: id, expectedRevision: requireRevision(id), messageId: crypto.randomUUID(), text }); await refresh(id); }
       catch { notice = ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED; changed(); }

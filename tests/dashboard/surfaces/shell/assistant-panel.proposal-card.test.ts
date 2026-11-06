@@ -27,16 +27,17 @@ function render(proposal: typeof pause, disposition: Disposition = 'review') {
 }
 
 describe('assistant proposal card rows', () => {
-  it('pairs each person\'s Name and EID in served order with the total', () => {
-    const { facts } = render(withRows([person('Morgan Vega', '20202020'), person('Avery Sample', '10101010'), { title: 'EID 30303030', display: { kind: 'person', employeeId: '30303030' } }], { targetLabel: '3 people' }));
-    expect(facts.slice(0, -1)).toEqual([['Name', 'Morgan Vega'], ['EID', '20202020'], ['Name', 'Avery Sample'], ['EID', '10101010'],
-      ['Name', 'Not provided'], ['EID', '30303030'], ['Total', '3']]);
+  it('shows one Last, First and EID line per person in served order with the total', () => {
+    const { facts } = render(withRows([person('Vega, Morgan', '10000002'), person('Sample, Avery', '10101010'), { title: 'EID 10000003', display: { kind: 'person', employeeId: '10000003' } },
+      { title: 'Lin, Casey', display: { kind: 'person', name: 'Lin, Casey' } }], { targetLabel: '4 people' }));
+    expect(facts.slice(0, -1).map(([term, value]) => [term, value?.trim()])).toEqual([['Person', 'Vega, Morgan 10000002'], ['Person', 'Sample, Avery 10101010'],
+      ['Person', '10000003'], ['Person', 'Lin, Casey'], ['Total', '4']]);
     expect(facts.at(-1)).toEqual(['Options', 'Read only']);
   });
   it('shows Separations document numbers as documents, never as people', () => {
     const { facts } = render(withRows([{ title: 'Doc 4501', display: { kind: 'document', documentNumber: '4501' } }, { title: 'Doc 4502', display: { kind: 'document', documentNumber: '4502' } }],
       { label: 'Start Separations', targetLabel: '2 documents' }, 'separations'));
-    expect(facts.map(([term]) => term)).not.toContain('Name');
+    expect(facts.map(([term]) => term)).not.toContain('Person');
     expect(facts.slice(0, 3)).toEqual([['Document', '4501'], ['Document', '4502'], ['Total', '2']]);
   });
   it('shows a single request by its title without a total', () => {
@@ -48,14 +49,14 @@ describe('assistant proposal card rows', () => {
     expect(facts).toEqual([['Request', 'Onboarding request'], ['Options', 'Local change · Pause']]);
     expect(confirm?.disabled).toBe(false);
   });
-  it('keeps an unknown card disabled with the unknown notice in its footer', () => {
-    const { host, confirm } = render(withRows([person('Avery Sample', '10101010')]), 'unknown');
-    expect(host.querySelector('[role="alert"]')?.textContent).toBe(ASSISTANT_UNKNOWN_NOTICE);
-    expect(confirm?.disabled).toBe(true);
+  it('renders no card for an unknown outcome; its one line is the transcript message', () => {
+    expect(render(withRows([person('Sample, Avery', '10101010')]), 'unknown').host.innerHTML).toBe('');
+    expect(presentResult({ state: 'unknown', actionId: start.actionId, action: withRows([person('Sample, Avery', '10101010')]) }, 1, 'prompt').message.text).toBe(ASSISTANT_UNKNOWN_NOTICE);
+    expect(ASSISTANT_UNKNOWN_NOTICE).toBe('Couldn\'t finish this.');
   });
   it('names the one row or the served count on the resolved line', () => {
-    expect(render(withRows([person('Avery Sample', '10101010')]), 'confirmed').host.textContent).toBe('Start Person Lookup · Avery SampleStarted');
-    expect(render(withRows([person('Morgan Vega', '20202020'), person('Avery Sample', '10101010')], { targetLabel: '2 people' }), 'cancelled').host.textContent).toBe('Start Person Lookup · 2 peopleNot started');
+    expect(render(withRows([person('Sample, Avery', '10101010')]), 'confirmed').host.textContent).toBe('Start Person Lookup · Sample, AveryStarted');
+    expect(render(withRows([person('Vega, Morgan', '10000002'), person('Sample, Avery', '10101010')], { targetLabel: '2 people' }), 'cancelled').host.textContent).toBe('Start Person Lookup · 2 peopleNot started');
     expect(render(pause, 'confirmed').host.textContent).toBe('Pause Onboarding · Onboarding requestDone');
   });
 });

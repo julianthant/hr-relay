@@ -293,13 +293,13 @@ export function createAssistantHistoryRepository(ports: Ports) {
         return withinBudget(now, { result: bump(conversationId), changes: 1 });
       });
     },
-    /** At most one caption per action; nothing when the conversation was cleared or expired; a full chat or budget refuses. */
-    appendDecision(input: Readonly<{ conversationId: string; actionId: string; messageId: string; text: string; now: string }>): void {
+    /** At most one caption per action; nothing when the conversation was cleared or expired; a full chat or budget refuses. `modelText` defaults to the display text. */
+    appendDecision(input: Readonly<{ conversationId: string; actionId: string; messageId: string; text: string; modelText?: string; now: string }>): void {
       ports.mutate("assistant_messages", () => {
         if (owned(input.conversationId, input.now) === undefined
           || database.prepare("SELECT 1 FROM assistant_messages WHERE action_id=? AND kind='decision'").get(input.actionId) !== undefined) return { result: undefined, changes: 0 };
         insertMessage({ id: input.messageId, conversationId: input.conversationId, ordinal: appendable(input.conversationId), role: "assistant", kind: "decision",
-          modelText: input.text, subjectRef: null, actionId: input.actionId, delivery: "settled", code: null, text: input.text, createdAt: input.now, updatedAt: input.now });
+          modelText: input.modelText ?? input.text, subjectRef: null, actionId: input.actionId, delivery: "settled", code: null, text: input.text, createdAt: input.now, updatedAt: input.now });
         bump(input.conversationId);
         return withinBudget(input.now, { result: undefined, changes: 1 });
       });

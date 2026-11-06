@@ -20,6 +20,7 @@ import { requireTrustRun } from "../runs/trust/run-reader.js";
 import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import type { createAssistantAuthorization } from "./authorization.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "./plugins/plugin.js";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 
 export interface AssistantProposalDeps {
   readonly database: AuthorityDatabase;
@@ -44,6 +45,8 @@ interface Pending {
   readonly record: ActionRecord;
   readonly digest: string;
   readonly start: boolean;
+  /** A local-only write (notifications): consume and its caption commit together, so its outcome is never unknown. */
+  readonly local: boolean;
   /** The conversation whose turn issued the card and the card's fixed-verb label; the decision caption uses both. */
   readonly conversationId: string;
   readonly label: string;
@@ -63,7 +66,7 @@ export function plannedRowDisplay(workflowId: string, input: unknown): Assistant
   if (workflowId === "person-lookup") {
     const parsed = PersonLookupCanonicalInput.safeParse(bound.data.value);
     if (!parsed.success) return { kind: "request" };
-    const value = parsed.data, name = value.mode === "match" ? `${value.firstName} ${value.lastName}` : value.name;
+    const value = parsed.data, name = value.mode === "match" ? `${value.lastName}, ${value.firstName}` : value.name;
     if (name === undefined && !("emplId" in value)) return { kind: "request" };
     return { kind: "person", ...(name === undefined ? {} : { name }), ...("emplId" in value && value.emplId !== undefined ? { employeeId: value.emplId } : {}) };
   }
@@ -114,7 +117,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     assertCurrent();
     const proposal = AssistantActionProposalSchema.parse(card({ chatId: chat.chatId, actionId: prepared.id, revision: prepared.revision, expiresAt }));
     prune();
-    pending.set(prepared.id, { chat, revision: prepared.revision, expiresAt, record: issuedRecord, digest: digestOf(proposal), start: command.family === "start",
+    pending.set(prepared.id, { chat, revision: prepared.revision, expiresAt, record: issuedRecord, digest: digestOf(proposal), start: command.family === "start", local: proposal.effect === "local-write",
       conversationId: context.conversationId, label: proposal.label,
       assertCurrent, assertApplied: checks.assertApplied ?? (() => {}) });
     return proposal;
@@ -257,8 +260,8 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         || Date.parse(issued.expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");
       issued.assertCurrent();
       if (canonicalJsonStringify(deps.database.authority.assistantAuthorization.action(decision.actionId)) !== canonicalJsonStringify(issued.record)) throw new Error("assistant-action-record-stale");
-      const caption = (text: string) => deps.database.authority.assistantHistory.appendDecision({ conversationId: issued.conversationId, actionId: decision.actionId,
-        messageId: randomUUID(), text, now: deps.clock.now().toISOString() });
+      const caption = (text: string, modelText?: string) => deps.database.authority.assistantHistory.appendDecision({ conversationId: issued.conversationId, actionId: decision.actionId,
+        messageId: randomUUID(), text, ...(modelText === undefined ? {} : { modelText }), now: deps.clock.now().toISOString() });
       if (decision.decision === "cancel") {
         pending.delete(decision.actionId);
         deps.authorization.cancel(issued.chat, decision.actionId, decision.revision);
@@ -269,6 +272,23 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
       if (decision.reviewedDigest !== issued.digest) throw new Error("assistant-reviewed-proposal-mismatch");
       pending.delete(decision.actionId);
       deps.authorization.approve(issued.chat, decision.actionId, decision.revision);
+      const notDone = `Not done: ${issued.label}. ${ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED}`;
+      if (issued.local) {
+        let result;
+        try {
+          result = deps.database.withAuthorityTransaction(() => {
+            const settled = deps.authorization.consume(issued.chat, decision.actionId);
+            caption(settled?.state === "applied" ? `Done: ${issued.label}.` : notDone);
+            return settled;
+          });
+        } catch {
+          // The transaction rolled back: nothing changed.
+          try { caption(notDone); } catch { /* readback shows the caption is missing */ }
+          return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
+        }
+        if (result !== null) deps.commands.publish(issued.record.command, result);
+        return result?.state === "applied" ? { state: "applied", actionId: decision.actionId } : { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
+      }
       // After the claim every failure, including this Confirm's own abort, is UNKNOWN: the action is spent and never retried.
       try {
         const current = () => { signal.throwIfAborted(); issued.assertCurrent(); };
@@ -278,14 +298,14 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         if (!issued.start && result !== null) deps.commands.publish(issued.record.command, result);
         signal.throwIfAborted();
         if (result?.state !== "applied") {
-          caption(`Not done: ${issued.label}. ${ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED}`);
+          caption(notDone);
           return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
         }
         issued.assertApplied();
         caption(`Done: ${issued.label}.`);
         return { state: "applied", actionId: decision.actionId };
       } catch {
-        try { caption(`Outcome unknown: ${issued.label}. Do not retry.`); } catch { /* the action stays UNKNOWN either way */ }
+        try { caption(ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text, `Outcome unknown: ${issued.label}. Do not retry.`); } catch { /* the action stays UNKNOWN either way */ }
         return { state: "unknown", actionId: decision.actionId };
       }
     },

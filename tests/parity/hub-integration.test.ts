@@ -1,6 +1,8 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './helpers/fixtures.js';
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../src/models/dashboard/assistant.js';
+import { serveAssistantHistory } from './helpers/assistant-history.js';
+import { ASSISTANT_EFFORT_LABELS, assistantModelLabel } from '../../src/models/config/assistant-model-preference.js';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
@@ -228,6 +230,7 @@ test('HUB served product uses typed answers and refusals without sample executio
   try {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' } }));
+    await serveAssistantHistory(page);
     let reply = 0;
     await page.route('**/api/v1/assistant/respond', route => {
       const index = reply++;
@@ -242,7 +245,7 @@ test('HUB served product uses typed answers and refusals without sample executio
     await expect(panel).toHaveAttribute('data-source', 'served'); await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(1);
     await expect(field).toBeEnabled(); await field.fill('Explain this workflow'); await field.press('Enter');
     await expect(panel).toContainText('Verified explanation'); await expect(field).toHaveValue('');
-    for (const label of ['Ask before every action', `Model: ${ASSISTANT_DEFAULT_MODEL}`, `Thinking effort: ${ASSISTANT_DEFAULT_EFFORT}`, 'Voice input']) await expect(panel.getByRole('button', { name: label, exact: true })).toBeDisabled();
+    for (const label of ['Ask before every action', `Model: ${assistantModelLabel(ASSISTANT_DEFAULT_MODEL)}`, `Thinking effort: ${ASSISTANT_EFFORT_LABELS[ASSISTANT_DEFAULT_EFFORT]}`, 'Voice input']) await expect(panel.getByRole('button', { name: label, exact: true })).toBeDisabled();
     await field.fill('Run separations'); await field.press('Enter');
     await expect(panel).toContainText('The current planner refused this proposal. Review it in Run.'); await expect(field).toHaveValue('');
     mkdirSync(evidence, { recursive: true });

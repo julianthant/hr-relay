@@ -218,6 +218,5 @@ The repository holds only the current version. No compatibility readers, old mig
 | Workflow dry run | Sign in to the dashboard, use Run, and select Dry Run for a workflow that supports previews |
 | Visual contract | `npm run test:parity` (desktop only) |
 | Affected pre-push tests on the PC | `npm run test:pc -- [files or globs]`; see [guards and tests](docs/reference/guards-and-tests.md#pre-push-tests-on-the-pc) |
-| Workflow registries | `npm run build:registries`, then `npm run build:registries:check` |
-| Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |
+| Named test files in GitHub Actions | `scripts/ci/focused-tests.sh <lane> <ubuntu\|macos\|windows\|both\|all> <test file>...`; see [guards and tests](docs/reference/guards-and-tests.md#focused-tests-in-github-actions) |
 | Roadmap | `npm run roadmap`, then `npm run roadmap:check` |

@@ -27,7 +27,7 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
    contracts. The descriptor, timeline, and graph are compiled products. Keep the authoring
    checklist open for the W6 Explorer projection.
 2. `src/backend/app/registries/workflow-registry.ts` and
-   `src/workflows/descriptor-registry.ts` — confirm how the definition is registered and compiled
+   `src/workflows/registry.ts` — confirm how the definition is registered and compiled
    for the server and dashboard. `src/backend/app/registries/task-registry.ts` is the current
    task-store registry.
 3. For every bound task, inspect its exact contract declaration, registered store, and task

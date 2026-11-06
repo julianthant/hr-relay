@@ -6,9 +6,9 @@ import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/ch
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
 import type { AssistantReceipt, AssistantResult } from '../../../models/dashboard/assistant.js';
-import { AssistantModelPreferenceSchema } from "../../../models/config/assistant-model-preference.js";
+import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
-import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
+import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
@@ -25,6 +25,10 @@ export async function assistantProposalDigest(proposal: AssistantActionProposal)
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJsonStringify(proposal)));
   return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
+/** A decision whose answer was lost: a local-only write reads as not current (it commits atomically); a run start or run action is unknown, shown as one line. */
+const lostDecision = (proposal: AssistantMockProposal): AssistantAction => proposal.issued?.effect === 'local-write'
+  ? { type: 'action-state', id: proposal.id, disposition: 'stale' }
+  : { type: 'action-state', id: proposal.id, disposition: 'unknown', message: { id: `action-${proposal.id}`, role: 'assistant', text: ASSISTANT_UNKNOWN_NOTICE } };
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
 export function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
@@ -36,7 +40,7 @@ export function presentResult(result: AssistantResult, requestId: number, prompt
     case 'action-proposal': {
       const unknown = result.state === 'unknown', p = result.state === 'unknown' ? result.action : result.proposal;
       const start = p.effect === 'workflow-start' ? p : undefined;
-      return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this proposal. No action has been applied.' }, proposal: {
+      return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? ASSISTANT_UNKNOWN_NOTICE : 'Review this proposal. No action has been applied.' }, proposal: {
         id: p.actionId, revision: String(p.revision), prompt, issued: p, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
         workflow: { id: p.effect === 'local-write' ? 'notification' : p.workflowId, label: p.label, version: String(p.revision) },
         mode: start === undefined ? 'local-change' : start.dryRun ? 'dry-run' : 'read-only',
@@ -65,7 +69,8 @@ export interface AssistantControllerHistory {
   local(text: string): Promise<void>;
   /** The stored outcome of one sent turn, read back from the server. */
   outcome(messageId: string): Promise<AssistantMessage | undefined>;
-  decided(actionId: string): Promise<boolean>;
+  /** The stored decision caption of one action, read back from the server. */
+  decision(actionId: string): Promise<string | undefined>;
   unsaved(): void;
 }
 export function createAssistantController(client: AssistantQueries, initialBinding: Binding, history?: AssistantControllerHistory) {
@@ -80,7 +85,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     if (outstanding !== undefined) publish(assistantReducer(state, assistantSetupCommand(outstanding.prompt) === 'verify' ? { type: 'cancel' } : { type: 'uncertain', requestId: outstanding.requestId }));
     outstanding?.abort.abort(); outstanding = undefined;
   }
-  const preferenceText = (view: AssistantModelPreferenceView) => 'Assistant model: ' + view.preference.slug + ' (' + view.preference.effort + ').';
+  const preferenceText = (view: AssistantModelPreferenceView) => `Assistant model: ${assistantModelLabel(view.preference.slug)} (${ASSISTANT_EFFORT_LABELS[view.preference.effort]}).`;
   async function respond(requestId: number, prompt: string) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
@@ -190,10 +195,17 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       const disposition = result.state === 'applied' ? 'confirmed' : result.state === 'cancelled' ? 'cancelled' : result.state === 'unknown' ? 'unknown' : 'stale';
       publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition,
         message: { id: `action-${proposal.id}`, role: 'assistant', text: result.state === 'applied' ? 'Confirmed action accepted.'
-          : result.state === 'cancelled' ? 'Action cancelled.' : result.state === 'unknown' ? 'Action outcome is unknown. Do not retry this action.' : ASSISTANT_FAILURES[result.code] } }));
-      if (history !== undefined && result.state !== 'refused') await history.decided(proposal.id).then(found => { if (!found) history.unsaved(); }, () => { history.unsaved(); });
+          : result.state === 'cancelled' ? 'Action cancelled.' : result.state === 'unknown' ? ASSISTANT_UNKNOWN_NOTICE : ASSISTANT_FAILURES[result.code] } }));
+      if (history !== undefined && result.state !== 'refused') await history.decision(proposal.id).then(found => { if (found === undefined) history.unsaved(); }, () => { history.unsaved(); });
     } catch {
-      if (current()) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'unknown' }));
+      if (!current()) return;
+      // A local-only write and its caption commit together, so the stored caption is its outcome; no caption means nothing changed.
+      if (proposal.issued?.effect === 'local-write' && history !== undefined) {
+        const caption = await history.decision(proposal.id).catch(() => { history.unsaved(); return undefined; });
+        const done = caption === `Done: ${proposal.issued.label}.`;
+        if (current()) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: done ? 'confirmed' : 'stale',
+          message: { id: `action-${proposal.id}`, role: 'assistant', text: caption ?? ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED } }));
+      } else publish(assistantReducer(state, lostDecision(proposal)));
     } finally {
       if (pendingDecision === request) pendingDecision = undefined;
     }
@@ -206,7 +218,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (retired) return;
       abort();
       const decision = pendingDecision;
-      if (decision !== undefined) publish(assistantReducer(state, { type: 'action-state', id: decision.actionId, disposition: 'unknown' }));
+      if (decision !== undefined && state.turn.state === 'proposal') publish(assistantReducer(state, lostDecision(state.turn.proposal)));
       pendingDecision = undefined; retired = true;
       decision?.abort.abort(); listeners.clear();
     },
@@ -215,7 +227,8 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (next.authority === binding.authority && next.subjectRef === binding.subjectRef && next.commands?.scope === binding.commands?.scope && next.commands?.executor === binding.commands?.executor
         && next.commands?.feedback === binding.commands?.feedback && next.refreshAccount === binding.refreshAccount && next.preferenceChanged === binding.preferenceChanged) return;
       binding = next; abort();
-      if (state.turn.state === 'proposal') publish({ ...state, turn: { ...state.turn, disposition: state.turn.disposition === 'confirming' || state.turn.disposition === 'unknown' ? 'unknown' : 'stale' } });
+      if (state.turn.state === 'proposal') publish(state.turn.disposition === 'confirming' ? assistantReducer(state, lostDecision(state.turn.proposal))
+        : state.turn.disposition === 'unknown' ? state : { ...state, turn: { ...state.turn, disposition: 'stale' } });
       else publish(assistantReducer(state, { type: 'cancel' }));
     },
     action(action: AssistantAction) {
@@ -263,7 +276,7 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     let current = controllers.get(chatId);
     if (!current) { current = createAssistantController(sessions.client, { authority: undefined }, history === undefined || !history.has(chatId) ? undefined : { conversationId: chatId, read: () => history.read(chatId), retain: state => { history.retain(chatId, state); },
       revision: () => history.revision(chatId), receipt: receipt => { history.receipt(receipt); }, local: text => history.local(chatId, text), outcome: messageId => history.outcome(chatId, messageId),
-      decided: actionId => history.decided(chatId, actionId), unsaved: () => { history.unsaved(); } }); controllers.set(chatId, current); }
+      decision: actionId => history.decision(chatId, actionId), unsaved: () => { history.unsaved(); } }); controllers.set(chatId, current); }
     return current;
   }, [controllers, sessions, chatId, history]);
   useLayoutEffect(() => {

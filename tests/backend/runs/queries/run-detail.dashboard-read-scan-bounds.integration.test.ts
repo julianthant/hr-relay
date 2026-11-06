@@ -7,14 +7,13 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { separationsKualiFinalizationModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import { deterministicUuid } from "../../../../src/backend/runs/lifecycle/support.js";
 import { buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps, type RunNoteScanEntry } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 
 import { AT, instantOffsetOf, makeWorld, queuedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { personLookupDescriptor, separationsKualiFinalizationModule } from "../../../support/helpers/registered-workflows.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());

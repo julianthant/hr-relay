@@ -1,3 +1,4 @@
+import { ocrModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { scaledMs } from "../../../support/time-scale.js";
@@ -24,7 +25,6 @@ import { ocrReviewCards } from "../../../../src/dashboard/surfaces/run-detail/re
 import { ocrWorkflow } from "../../../../src/workflows/ocr/workflow.js";
 import { buildOcr } from "../../../../src/workflows/ocr/steps/source-pages/step.js";
 import type { ChildVisibility } from "../../../../src/models/workflow/delegation-policy.js";
-import { ocrModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 import { sessionFactoryHarness, healthyCrmDriver, EXECUTOR_EID } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";

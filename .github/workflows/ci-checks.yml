@@ -139,10 +139,8 @@ jobs:
         working-directory: fast-duo
       - run: npm run lint
         working-directory: fast-duo
-      - run: npm run build:registries:check
       - run: npm run build:observer-policy
       - run: npm run build:observer-policy -- --check
-      - run: npm run stores:catalog:check
       - run: npm run roadmap:check
 
   privacy:

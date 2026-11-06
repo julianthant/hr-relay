@@ -12,6 +12,8 @@ import { createCommandKernel, executeSettingsCommand } from "../../../src/backen
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { ASSISTANT_MESSAGES_MAX, AssistantActionDecisionSchema, type AssistantActionProposal } from "../../../src/models/dashboard/assistant.js";
+import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint, deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import { parseInputRunText, toRawSubmission } from "../../../src/models/workflow/ingress.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
@@ -127,6 +129,33 @@ it("keeps a Confirm whose caption cannot be stored in a full chat UNKNOWN after 
   assert.equal(o.runCount(), before + 1);
 });
 
+it("settles a local-only write and its caption together, so a failed caption leaves it refused and unchanged, never unknown", async () => {
+  const o = await owners(), history = o.database.authority.assistantHistory, now = () => o.clock.now().toISOString();
+  const notificationId = randomUUID();
+  o.database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator",
+    dedupeFingerprint: "d".repeat(64), trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
+    links: [{ kind: "storage", diagnosticFingerprint: "e".repeat(64) }], count: 1, version: 1, lastSeenAt: now(), createdAt: now(), updatedAt: now() })));
+  const card = await o.tool("propose_notification_action").propose({ action: "read", target: "all" }, o.context);
+  assert.equal(card.effect, "local-write");
+  for (let index = 0; index < ASSISTANT_MESSAGES_MAX; index++) {
+    const revision = history.conversation(o.context.conversationId, now())?.revision; assert.ok(revision !== undefined);
+    assert.equal(history.apply({ operation: "local", conversationId: o.context.conversationId, expectedRevision: revision, messageId: randomUUID(), text: `Local ${String(index)}` }, now()).state, "saved");
+  }
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" });
+  assert.equal(o.database.authority.notifications.get(notificationId)?.status, "unread", "the write rolled back with its caption");
+  assert.equal(o.database.authority.commandAudits.findByCommand(o.commandOf(card)?.commandId ?? ""), undefined);
+  assert.deepEqual(o.captions(), []);
+
+  const applied = await owners();
+  applied.database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator",
+    dedupeFingerprint: "d".repeat(64), trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
+    links: [{ kind: "storage", diagnosticFingerprint: "e".repeat(64) }], count: 1, version: 1, lastSeenAt: now(), createdAt: now(), updatedAt: now() })));
+  const done = await applied.tool("propose_notification_action").propose({ action: "read", target: "all" }, applied.context);
+  assert.deepEqual(await applied.decide(done, "confirm"), { state: "applied", actionId: done.actionId });
+  assert.equal(applied.database.authority.notifications.get(notificationId)?.status, "read");
+  assert.deepEqual(applied.captions(), [`Done: ${done.label}.`]);
+});
+
 it("refuses reruns of cancelled, moved, parked and attempting sources through the proposal owner", async () => {
   const cancelledOwner = await owners(), queued = cancelledOwner.h.start(cancelledOwner.h.proposal());
   assert.equal(cancelledOwner.h.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: cancelledOwner.clock.now().toISOString(), requestedBy: "local-operator",
@@ -188,7 +217,7 @@ it("refuses every held-start invalidation after the claim with UNKNOWN, zero sta
     assert.equal(o.runCount(), before + (change === "plan" ? 1 : 0), change);
     await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
     assert.equal(o.runCount(), before + (change === "plan" ? 1 : 0));
-    assert.deepEqual(o.captions(), [`Outcome unknown: ${card.label}. Do not retry.`], change);
+    assert.deepEqual(o.captions(), [ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text], change);
   }
 });
 
@@ -207,7 +236,8 @@ it("keeps a lost response or an abort after the canonical effect UNKNOWN with ex
     assert.notEqual(o.database.authority.assistantAuthorization.action(card.actionId)?.state, "prepared");
     await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
     assert.equal(o.runCount(), before + 1, `${mode}: no retry`);
-    assert.deepEqual(o.captions(), [`Outcome unknown: ${card.label}. Do not retry.`], mode);
+    assert.deepEqual(o.captions(), [ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text], mode);
+    assert.deepEqual(o.database.authority.assistantHistory.replay(o.context.conversationId, Number.MAX_SAFE_INTEGER).map(row => row.modelText), [`Outcome unknown: ${card.label}. Do not retry.`], mode);
   }
 });
 
