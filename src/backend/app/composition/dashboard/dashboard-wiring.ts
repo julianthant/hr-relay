@@ -64,6 +64,8 @@ import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
 import { WORKER_BIRTH_POLL_MS,WORKER_BIRTH_TIMEOUT_MS,composeWorkerProcessControl,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
 
+const ASSISTANT_HISTORY_CLEANUP_MS = 60 * 60 * 1000;
+
 export async function composeDashboardRuntimeStartup(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody): Promise<DashboardRuntime> {
   const environment = prepareDashboardEnvironment(input, custody);
   const { repoRoot, frontend } = environment;
@@ -256,6 +258,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
     plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
     decideAction: (decision, signal) => assistantProposals.decideAction(decision, signal),
+    history: () => { assertCurrent(); return database.authority.assistantHistory; },
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
     readModelPreference: () => captureSelectedModel().view,
     readPermission: () => assistantAuthorization.permission(),
@@ -367,6 +370,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   const assistantSurface = assistantSurfaceCoverage(app.routes);
 
+  // Unfinished sends become delivery-unknown before any history route serves; expired chats are reclaimed now and hourly.
+  database.authority.assistantHistory.settleInterrupted(clock.now().toISOString());
+  database.authority.assistantHistory.reclaimExpired(clock.now().toISOString());
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({
     app,
@@ -385,6 +391,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
+  const historyTimer = setInterval(() => { try { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); } catch { /* the next tick or startup retries */ } }, ASSISTANT_HISTORY_CLEANUP_MS);
+  historyTimer.unref();
+  startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, historyTimer, custody });
 }

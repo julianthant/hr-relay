@@ -1,5 +1,5 @@
-import { faultAuthoritySnapshot, assertHttpFaultOnly } from "../../../../support/helpers/backend/http-route-harness.js";
-import { AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_HISTORY_TABLES, faultAuthoritySnapshot, assertHttpFaultOnly } from "../../../../support/helpers/backend/http-route-harness.js";
+import { AssistantHistoryResultSchema, AssistantModelPreferenceViewSchema, AssistantRespondEnvelopeSchema, type AssistantHistoryOperation, type AssistantRequest } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
 import { z } from "zod";
@@ -36,6 +36,21 @@ import { createTimelineEmitter } from "../../../../../src/backend/storage/events
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
+
+type Door = { history(operation: AssistantHistoryOperation): Promise<unknown>; respond(request: AssistantRequest): Promise<unknown> };
+const clientDoor = (client: ReturnType<typeof createDashboardClient>): Door => ({
+  history: operation => { if (client.assistantHistoryWrite === undefined) throw new Error('assistant history owner required'); return client.assistantHistoryWrite(operation); },
+  respond: request => client.assistantRespond(request) });
+const postDoor = (post: (path: string, value: unknown) => Promise<unknown>): Door => ({ history: operation => post('assistant/history', operation), respond: request => post('assistant/respond', request) });
+/** One message in a new served chat; verification stores nothing, so it needs no chat. Returns the settled result. */
+async function send(door: Door, input: Omit<AssistantRequest, 'conversationId' | 'expectedRevision' | 'messageId'>) {
+  const conversationId = randomUUID();
+  if (input.message !== ASSISTANT_VERIFY_COMMAND) assert.equal(AssistantHistoryResultSchema.parse(await door.history({ operation: 'create', conversationId, title: 'Chat' })).state, 'saved');
+  const envelope = AssistantRespondEnvelopeSchema.parse(await door.respond({ conversationId, expectedRevision: 1, messageId: randomUUID(), ...input }));
+  assert.equal(envelope.kind, 'result'); if (envelope.kind !== 'result') throw new Error('settled result required');
+  return envelope.result;
+}
+
 
 const AssistantTransportRequestSchema = AssistantInferenceRequestSchema.safeExtend({
   store: z.literal(false), stream: z.literal(true), parallel_tool_calls: z.literal(false),
@@ -159,7 +174,7 @@ it('serves the read tools through authenticated composition without private prov
     const client = createDashboardClient({ baseUrl: origin });
     await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
     const detail = await client.runDetail(run.envelope.runId);
-    const ask = (message: string, selected?: string) => client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selected === undefined ? {} : { subjectRef: selected }) });
+    const ask = (message: string, selected?: string) => send(clientDoor(client), { message, ...(selected === undefined ? {} : { subjectRef: selected }) });
     const unverifiedCalls = transport.calls.length;
     assert.deepEqual(await ask('Explain this run', subjectRef), { state: 'refused', code: 'ASSISTANT_MODEL_UNVERIFIED', message: ASSISTANT_FAILURES.ASSISTANT_MODEL_UNVERIFIED });
     assert.equal(transport.calls.length, unverifiedCalls);
@@ -194,7 +209,7 @@ it('serves the read tools through authenticated composition without private prov
     assert.deepEqual(z.strictObject({ total: z.number(), steps: z.array(z.unknown()) }).parse(logs),
       { total: 12, steps: detail.timeline.events.slice(-5).map(event => ({ at: event.at, label: event.label, state: event.state, skipped: event.notRun.state === 'present' ? event.notRun.reason : null })) });
     const foreign = await originalFetch(`${origin}/api/v1/assistant/respond`, { method: 'POST', headers: { Origin: 'https://foreign.invalid', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: randomUUID(), messageId: randomUUID(), message: 'run status', subjectRef }) });
+      body: JSON.stringify({ conversationId: randomUUID(), expectedRevision: 1, messageId: randomUUID(), message: 'run status', subjectRef }) });
     assert.equal(foreign.status, 403); assert.equal(turns, 3);
     assert.deepEqual(durable(), before); assert.deepEqual(context.database.authority.workerControls.list(), controls);
     assert.deepEqual(context.database.authority.runs.get(run.envelope.runId), run);
@@ -207,7 +222,7 @@ it('refuses an old selected-run revision before reading out the newer run', asyn
     const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
     await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
     publicCapabilityResponses(transport);
-    assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+    assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
     const cancelled = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'queue-row',
       family: 'run', type: 'cancel', target: { runId: run.envelope.runId, expectedVersion: run.version } });
     assert.equal(cancelled.state, 'applied');
@@ -225,7 +240,7 @@ it('refuses an old selected-run revision before reading out the newer run', asyn
         : [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'The run is cancelled.' }] }];
       return new Response(completedResponseStream(output, request.model, `resp_${String(turns)}`), { headers: { 'Content-Type': 'text/event-stream' } });
     });
-    assert.deepEqual(await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: 'Explain this run', subjectRef }),
+    assert.deepEqual(await send(clientDoor(client), { message: 'Explain this run', subjectRef }),
       { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
     assert.deepEqual(outputs, [{ error: 'ASSISTANT_READ_STALE', text: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }]);
     assert.equal(turns, 2);
@@ -243,7 +258,7 @@ it.each(["every-action"] as const)('serves preference CAS, replay and verificati
       assert.equal(preference.epoch, context.profileEpoch);
       assert.equal(preference.revision, 0);
       publicCapabilityResponses(transport);
-      const verified = AssistantResultSchema.parse(await post('assistant/respond', { conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
+      const verified = AssistantResultSchema.parse(await send(postDoor(post), { message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
       assert.equal(verified.state, 'answered');
 
     const grant = CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
@@ -263,11 +278,11 @@ it.each(["every-action"] as const)('serves preference CAS, replay and verificati
       const beforeReplay = context.database.getMeta().authorityGeneration;
       assert.equal(CommandResultSchema.parse(await post('commands', command)).state, 'already-applied');
       assert.equal(context.database.getMeta().authorityGeneration, beforeReplay);
-      const unverified = AssistantResultSchema.parse(await post('assistant/respond', { conversationId: randomUUID(), messageId: randomUUID(), message: 'Explain the current page' }));
+      const unverified = AssistantResultSchema.parse(await send(postDoor(post), { message: 'Explain the current page' }));
       assert.equal(unverified.state, 'refused');
       if (unverified.state === 'refused') assert.equal(unverified.code, 'ASSISTANT_MODEL_UNVERIFIED');
       publicCapabilityResponses(transport);
-      assert.equal(AssistantResultSchema.parse(await post('assistant/respond', { conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+      assert.equal(AssistantResultSchema.parse(await send(postDoor(post), { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
       assert.equal(context.account.captureAssistantModelPolicy()?.isCurrent(), true);
       const beforeForeign = transport.calls.length, beforeForeignFault = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
       const foreign = { ...command, commandId: randomUUID(), target: { ...command.target, profileId: randomUUID(), expectedRevision: changed.revision } };
@@ -318,7 +333,7 @@ it.each([
       assert.equal(preference.epoch, context.profileEpoch);
       assert.equal(preference.revision, 0);
       publicCapabilityResponses(transport);
-      const verified = AssistantResultSchema.parse(await post('assistant/respond', { conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
+      const verified = AssistantResultSchema.parse(await send(postDoor(post), { message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
       assert.equal(verified.state, 'answered');
     }
     if (installed) {
@@ -330,7 +345,7 @@ it.each([
       context.database.withAuthorityTransaction(({ notifications }) => { for (const [index, notificationId] of ids.entries()) notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator", dedupeFingerprint: index.toString(16).padStart(64, "0"),
         trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary", links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }],
         count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })); });
-      const noCallBaseline = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
+      const noCallBaseline = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot }, { tables: ASSISTANT_HISTORY_TABLES, writes: 0 });
       const noCallRows = context.database.authority.notifications.listByActor("local-operator");
       const durableRows = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, "state.db"), database => ({
         actions: database.prepare("SELECT * FROM assistant_actions ORDER BY id").all(),
@@ -344,11 +359,12 @@ it.each([
         return new Response(completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }], request.model, "text_without_effect"), { headers: { "content-type": "text/event-stream" } });
       });
       {
-        const prose = AssistantResultSchema.parse(await post("assistant/respond", { conversationId: randomUUID(), messageId: randomUUID(), message: "mark notifications read" }));
+        const prose = AssistantResultSchema.parse(await send(postDoor(post), { message: "mark notifications read" }));
         assert.equal(prose.state, "answered");
         assert.deepEqual(durableRows(), noCallDurable);
         assert.deepEqual(context.database.authority.notifications.listByActor("local-operator"), noCallRows);
-        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, 0);
+        // The answer is stored: the chat create, the accepted turn and its settlement are the only writes.
+        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, 0, { tables: ASSISTANT_HISTORY_TABLES, writes: 3 });
       }
       let turns = 0;
       transport.setResponse(init => {
@@ -361,7 +377,7 @@ it.each([
           : [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Notification updated." }] }];
         return new Response(completedResponseStream(output, request.model, `resp_${turns}`), { headers: { "Content-Type": "text/event-stream" } });
       });
-      const result = AssistantResultSchema.parse(await post("assistant/respond", { conversationId: randomUUID(), messageId: randomUUID(), message: "mark notifications read" }));
+      const result = AssistantResultSchema.parse(await send(postDoor(post), { message: "mark notifications read" }));
       if (mode === "every-action") {
         assert.equal(result.state, "action-proposal"); if (result.state !== "action-proposal") throw new Error("pending operator action required");
         assert.equal(turns, 1, "operator DTO never returns to model");
@@ -419,7 +435,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
           assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } });
       assert.equal(grant.state, "applied");
       publicCapabilityResponses(transport);
-      assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, "answered");
+      assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, "answered");
       const plan = await client.submitStartPlan({ workflowId: "person-lookup", dryRun: false,
         submissions: [{ emplId: "10873690" }, { emplId: "10873698" }], browserMode: "headless", captureBrowserScreenshots: true });
       assert.deepEqual(plan.refused, []); assert.equal(plan.planned.length, 2);
@@ -464,7 +480,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: "propose_workflow_start", call_id: "call_start_proposal",
           arguments: JSON.stringify({ workflow: "person-lookup", entries: [token] }), status: "completed" }], request.model, "resp_start_proposal"), { headers: { "Content-Type": "text/event-stream" } });
       });
-      const proposed = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: "Run Person Lookup again for this run", subjectRef });
+      const proposed = await send(clientDoor(client), { message: "Run Person Lookup again for this run", subjectRef });
       assert.equal(proposed.state, "action-proposal");
       if (proposed.state !== "action-proposal") throw new Error("confirmed start proposal required");
       assert.equal(proposalTurns, 1);
@@ -621,7 +637,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
         family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
         payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } })).state, "applied");
       publicCapabilityResponses(transport);
-      assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+      assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
       let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
       const outputs: unknown[] = [];
       transport.setResponse(init => {
@@ -639,12 +655,12 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
       });
       const refusedTurn = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
         next = script;
-        return client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
+        return send(clientDoor(client), { message, ...(selection === undefined ? {} : { subjectRef: selection }) });
       };
       const selected = (outbound: string) => { const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token); return token; };
       const propose = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
         next = script;
-        const result = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
+        const result = await send(clientDoor(client), { message, ...(selection === undefined ? {} : { subjectRef: selection }) });
         assert.equal(result.state, 'action-proposal'); if (result.state !== 'action-proposal') throw new Error('card required');
         return result.proposal;
       };
@@ -665,7 +681,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
       assert.equal(database.authority.commandAudits.findByCommand(database.authority.assistantAuthorization.action(cancel.actionId)?.command.commandId ?? '')?.request.source, 'assistant');
       assert.equal((await confirm(cancel)).state, 'refused');
 
-      const stale = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: 'Pause this run', subjectRef });
+      const stale = await send(clientDoor(client), { message: 'Pause this run', subjectRef });
       assert.deepEqual(stale, { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
 
       const current = `run_${run.envelope.runId}_${cancelled.version}`;

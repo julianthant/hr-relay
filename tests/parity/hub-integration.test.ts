@@ -231,7 +231,7 @@ test('HUB served product uses typed answers and refusals without sample executio
     let reply = 0;
     await page.route('**/api/v1/assistant/respond', route => {
       const index = reply++;
-      return route.fulfill({ json: index === 0 ? { state: 'answered', text: 'Verified explanation' } : { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: 'Synthetic refusal' } });
+      return route.fulfill({ json: { kind: 'result', result: index === 0 ? { state: 'answered', text: 'Verified explanation' } : { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: 'Synthetic refusal' } } });
     });
     await page.goto(`${server.baseUrl}/?fixture=hub-served`);
     const launcher = page.getByRole('button', { name: 'Assistant', exact: true });
@@ -249,7 +249,7 @@ test('HUB served product uses typed answers and refusals without sample executio
     await panel.screenshot({ path: resolve(evidence, 'hub-served-answer-refusal.png'), animations: 'disabled' });
     await expect(panel).not.toContainText('Sample run'); await expect(panel).not.toContainText('Alex Rivera');
     expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-    expect(writes).toEqual(['/api/v1/assistant/respond', '/api/v1/assistant/respond']); expect(errors).toEqual([]);
+    expect(writes.filter(path => path !== '/api/v1/assistant/history')).toEqual(['/api/v1/assistant/respond', '/api/v1/assistant/respond']); expect(errors).toEqual([]);
     await panel.screenshot({ path: resolve(evidence, 'hub-served-proposal.png'), animations: 'disabled' });
     await info.attach('hub-served.png', { body: readFileSync(resolve(evidence, 'hub-served-proposal.png')), contentType: 'image/png' });
     await attachShellA11y(page, info, 'hub-served.a11y.yml');

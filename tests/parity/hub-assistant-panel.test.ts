@@ -183,7 +183,7 @@ const SERVED_SCENES = {
 for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Object.entries(SERVED_SCENES)) {
   test(`assistant served ${scene} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-served-${scene}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
     await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: spec.account }));
-    if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => spec.respond === 'fail' ? route.fulfill({ json: { state: 'refused', code: 'ASSISTANT_VERIFICATION_FAILED', message: 'x' } }) : route.fulfill({ json: spec.respond }));
+    if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => route.fulfill({ json: { kind: 'result', result: spec.respond === 'fail' ? { state: 'refused', code: 'ASSISTANT_VERIFICATION_FAILED', message: 'x' } : spec.respond } }));
     await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: LOCAL_PROPOSAL.actionId } }));
     await page.goto(`${baseUrl}/?served=1&transport=1&theme=${theme}`);
     const panel = page.locator('#hub-panel-assistant'), input = panel.getByRole('textbox', { name: 'Message Relay' });

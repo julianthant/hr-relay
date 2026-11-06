@@ -4,11 +4,11 @@ export interface HubChat { readonly id: string; readonly title: string; readonly
 export interface HubChatsPort {
   readonly source: "mock" | "local";
   read(this: void): readonly HubChat[];
-  rename(id: string, title: string): void;
-  remove(id: string): void;
-  create(): HubChat;
+  rename(id: string, title: string): Promise<void>;
+  remove(id: string): Promise<void>;
+  create(): Promise<HubChat>;
   selectedId?(): string | undefined;
-  select?(id: string): void;
+  select?(id: string): Promise<void>;
 }
 export function createMockHubChatsPort(preview = true): HubChatsPort {
   let sequence = 0;
@@ -20,13 +20,13 @@ export function createMockHubChatsPort(preview = true): HubChatsPort {
   ] : [{ id: "initial", title: "New chat", minutes: 0, group: "Today" }];
   return {
     source: preview ? "mock" : "local", read: () => chats,
-    rename(id, title) {
+    async rename(id, title) {
       if (!chats.some(chat => chat.id === id)) throw new Error("HUB_CHAT_UNAVAILABLE");
       if (!title.trim() || title.trim().length > 200) throw new Error("HUB_CHAT_TITLE_INVALID");
       chats = chats.map(chat => chat.id === id ? { ...chat, title: title.trim() } : chat);
     },
-    remove(id) { if (!chats.some(chat => chat.id === id)) throw new Error("HUB_CHAT_UNAVAILABLE"); chats = chats.filter(chat => chat.id !== id); },
-    create() { const chat: HubChat = { id: `new-${++sequence}`, title: "New chat", minutes: 0, group: "Today" }; chats = [chat, ...chats]; return chat; },
+    async remove(id) { if (!chats.some(chat => chat.id === id)) throw new Error("HUB_CHAT_UNAVAILABLE"); chats = chats.filter(chat => chat.id !== id); },
+    async create() { const chat: HubChat = { id: `new-${++sequence}`, title: "New chat", minutes: 0, group: "Today" }; chats = [chat, ...chats]; return chat; },
   };
 }
 export function chatAge(minutes: number): string {
@@ -41,10 +41,15 @@ export function useHubChats(supplied?: HubChatsPort) {
   const [chats, setChats] = useState(port.read);
   const [currentId, setCurrentId] = useState<string | undefined>(() => port.selectedId?.() ?? chats[0]?.id);
   const [error, setError] = useState('');
-  return { chats, currentId, error, select(id: string) { port.select?.(id); setCurrentId(id); }, source: port.source,
-    rename(id: string, title: string) { port.rename(id, title); setChats(port.read()); },
-    remove(id: string) { port.remove(id); const next = port.read(); setChats(next); if (currentId === id) setCurrentId(next[0]?.id); },
-    create() { try { const chat = port.create(); setChats(port.read()); setCurrentId(chat.id); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Chat could not be created.'); } },
+  const settle = async (work: () => Promise<void>, fallback: string) => {
+    try { await work(); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : fallback); }
+    setChats(port.read());
+  };
+  return { chats, currentId, error, source: port.source,
+    select: (id: string) => settle(async () => { await port.select?.(id); setCurrentId(id); }, 'Chat could not be opened.'),
+    rename: (id: string, title: string) => settle(() => port.rename(id, title), 'Chat could not be renamed.'),
+    remove: (id: string) => settle(async () => { await port.remove(id); const next = port.read(); if (currentId === id) setCurrentId(next[0]?.id); }, 'Chat could not be deleted.'),
+    create: () => settle(async () => { const chat = await port.create(); setCurrentId(chat.id); }, 'Chat could not be created.'),
   };
 }
 

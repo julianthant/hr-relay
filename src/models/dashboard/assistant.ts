@@ -106,7 +106,7 @@ export const AssistantInferenceRequestSchema = z.strictObject({ model: Assistant
 });
 export type AssistantInferenceRequest = z.infer<typeof AssistantInferenceRequestSchema>;
 export const AssistantRequestSchema = z.strictObject({
-  conversationId: z.uuid(), messageId: z.uuid(),
+  conversationId: z.uuid(), expectedRevision: z.number().int().positive(), messageId: z.uuid(),
   message: z.string().min(1).max(4000), subjectRef: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u).optional(),
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
@@ -129,6 +129,10 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_READ_STALE: ERROR_CATALOG.ASSISTANT_READ_STALE.text,
   ASSISTANT_HISTORY_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_HISTORY_UNAVAILABLE.text,
   ASSISTANT_HISTORY_UNSAVED: ERROR_CATALOG.ASSISTANT_HISTORY_UNSAVED.text,
+  ASSISTANT_CHAT_FULL: ERROR_CATALOG.ASSISTANT_CHAT_FULL.text,
+  ASSISTANT_CHAT_LIMIT: ERROR_CATALOG.ASSISTANT_CHAT_LIMIT.text,
+  ASSISTANT_CONVERSATION_STALE: ERROR_CATALOG.ASSISTANT_CONVERSATION_STALE.text,
+  ASSISTANT_CONVERSATION_BUSY: ERROR_CATALOG.ASSISTANT_CONVERSATION_BUSY.text,
   CHATGPT_RESOURCE_CLOSURE_UNPROVED: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text,
   ASSISTANT_INVALID: ERROR_CATALOG.ASSISTANT_INVALID.text,
   ASSISTANT_CONTEXT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_CONTEXT_UNAVAILABLE.text,
@@ -202,3 +206,81 @@ export const AssistantResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("refused"), code: z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]), message: z.string() }),
 ]);
 export type AssistantResult = z.infer<typeof AssistantResultSchema>;
+
+/** Gate 50 history: 20 chats per profile, 200 messages per chat, absolute 30-day expiry. */
+export const ASSISTANT_CHATS_MAX = 20;
+export const ASSISTANT_MESSAGES_MAX = 200;
+export const ASSISTANT_CHAT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const ASSISTANT_HISTORY_BODY_MAX_BYTES = 1024 * 1024;
+const Revision = z.number().int().positive();
+const Title = z.string().trim().min(1).max(200);
+const Draft = z.string().max(4000);
+const DisplayText = z.string().max(8000);
+const FailureCode = z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]);
+export const AssistantImportNoticeSchema = z.enum(["unknown", "proposal-expired"]);
+export const AssistantDeliverySchema = z.enum(["sending", "answered", "refused", "delivery-unknown", "settled"]);
+export const AssistantMessageKindSchema = z.enum(["turn", "answer", "proposal", "decision", "inert"]);
+export const AssistantConversationRecordSchema = z.strictObject({
+  id: z.uuid(), profileId: z.uuid(), revision: Revision, selectedAt: z.iso.datetime().nullable(), title: Title, draft: Draft, composer: Draft,
+  importTotal: z.number().int().min(0).max(ASSISTANT_MESSAGES_MAX), importNotice: AssistantImportNoticeSchema.nullable(),
+  createdAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
+});
+export type AssistantConversationRecord = z.infer<typeof AssistantConversationRecordSchema>;
+export const AssistantMessageRecordSchema = z.strictObject({
+  id: z.uuid(), conversationId: z.uuid(), ordinal: z.number().int().min(1), role: z.enum(["operator", "assistant"]), kind: AssistantMessageKindSchema,
+  modelText: z.string().max(16_000).nullable(), subjectRef: AssistantRequestSchema.shape.subjectRef.unwrap().nullable(), actionId: z.uuid().nullable(),
+  delivery: AssistantDeliverySchema, code: FailureCode.nullable(), text: DisplayText, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
+}).refine(value => (value.kind === "inert") === (value.modelText === null)
+  && (value.kind === "turn") === (value.role === "operator" && value.delivery !== "settled") && (value.kind === "turn" || value.delivery === "settled")
+  && (value.code !== null) === (value.delivery === "refused") && (value.subjectRef === null || value.kind === "turn")
+  && (value.actionId !== null) === (value.kind === "proposal" || value.kind === "decision"), "assistant message fields disagree with its kind");
+export type AssistantMessageRecord = z.infer<typeof AssistantMessageRecordSchema>;
+
+/** What the browser reads: never replay text or the selected-run reference. */
+export const AssistantChatSummarySchema = z.strictObject({ id: z.uuid(), title: Title, revision: Revision, createdAt: z.iso.datetime(), expiresAt: z.iso.datetime() });
+export const AssistantHistoryViewSchema = z.strictObject({ chats: z.array(AssistantChatSummarySchema).max(ASSISTANT_CHATS_MAX), selectedId: z.uuid().nullable() });
+export type AssistantHistoryView = z.infer<typeof AssistantHistoryViewSchema>;
+export const AssistantStoredMessageSchema = z.strictObject({
+  id: z.uuid(), ordinal: z.number().int().min(1), role: z.enum(["operator", "assistant"]), kind: AssistantMessageKindSchema,
+  text: DisplayText, delivery: AssistantDeliverySchema, code: FailureCode.nullable(), actionId: z.uuid().nullable(),
+});
+export type AssistantStoredMessage = z.infer<typeof AssistantStoredMessageSchema>;
+export const AssistantConversationViewSchema = z.strictObject({
+  id: z.uuid(), title: Title, revision: Revision, draft: Draft, composer: Draft,
+  importTotal: z.number().int().min(0).max(ASSISTANT_MESSAGES_MAX), importNotice: AssistantImportNoticeSchema.nullable(),
+  messages: z.array(AssistantStoredMessageSchema).max(ASSISTANT_MESSAGES_MAX),
+});
+export type AssistantConversationView = z.infer<typeof AssistantConversationViewSchema>;
+const Target = { conversationId: z.uuid() };
+const Cas = { ...Target, expectedRevision: Revision };
+export const AssistantImportMessageSchema = z.strictObject({ messageId: z.uuid(), role: z.enum(["operator", "assistant"]), text: DisplayText });
+export const AssistantHistoryOperationSchema = z.discriminatedUnion("operation", [
+  z.strictObject({ operation: z.literal("create"), ...Target, title: Title }),
+  z.strictObject({ operation: z.literal("rename"), ...Cas, title: Title }),
+  z.strictObject({ operation: z.literal("select"), ...Cas }),
+  z.strictObject({ operation: z.literal("clear"), ...Cas }),
+  z.strictObject({ operation: z.literal("draft"), ...Target, draft: Draft, composer: Draft }),
+  z.strictObject({ operation: z.literal("local"), ...Cas, messageId: z.uuid(), text: DisplayText.min(1) }),
+  z.strictObject({ operation: z.literal("import"), ...Target, title: Title, draft: Draft, composer: Draft, notice: AssistantImportNoticeSchema.nullable(),
+    total: z.number().int().min(0).max(ASSISTANT_MESSAGES_MAX), start: z.number().int().min(1),
+    messages: z.array(AssistantImportMessageSchema).max(ASSISTANT_MESSAGES_MAX) })
+    .refine(value => value.start + value.messages.length - 1 <= value.total && (value.messages.length > 0 || (value.total === 0 && value.start === 1)), "import batch outside its transcript"),
+]);
+export type AssistantHistoryOperation = z.infer<typeof AssistantHistoryOperationSchema>;
+export const AssistantHistoryResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("saved"), conversationId: z.uuid(), revision: Revision }),
+  z.strictObject({ state: z.literal("cleared"), conversationId: z.uuid(), transmissionMayHaveStarted: z.boolean() }),
+  z.strictObject({ state: z.literal("refused"), code: FailureCode }),
+]);
+export type AssistantHistoryResult = z.infer<typeof AssistantHistoryResultSchema>;
+
+export const AssistantReceiptSchema = z.strictObject({
+  conversationId: z.uuid(), messageId: z.uuid(), ordinal: z.number().int().min(1), revision: Revision, delivery: AssistantDeliverySchema.exclude(["settled"]),
+});
+export type AssistantReceipt = z.infer<typeof AssistantReceiptSchema>;
+/** `result` settles a turn this request accepted (receipt) or refused before acceptance; `delivery` reads an existing attempt and never carries an action. */
+export const AssistantRespondEnvelopeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("result"), result: AssistantResultSchema, receipt: AssistantReceiptSchema.optional() }),
+  z.strictObject({ kind: z.literal("delivery"), receipt: AssistantReceiptSchema }),
+]);
+export type AssistantRespondEnvelope = z.infer<typeof AssistantRespondEnvelopeSchema>;

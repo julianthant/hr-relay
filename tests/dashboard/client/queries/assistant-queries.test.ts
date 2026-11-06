@@ -70,12 +70,14 @@ it("preserves the exact issued automatic unknown identity and refuses a mismatch
     expiresAt: "2099-01-01T00:00:00Z", label: "Mark 25 current notifications read", targetLabel: "25 current notifications", effect: "local-write" };
   let mismatch = false, calls = 0;
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => {
-    calls++; return Response.json({ state: "unknown", actionId: mismatch ? "00000000-0000-4000-8000-000000000003" : action.actionId, action });
+    calls++; return Response.json({ kind: "result", result: { state: "unknown", actionId: mismatch ? "00000000-0000-4000-8000-000000000003" : action.actionId, action } });
   } });
-  const result = await client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" });
+  const envelope = await client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" });
+  assert.equal(envelope.kind, "result"); if (envelope.kind !== "result") throw new Error("result required");
+  const { result } = envelope;
   assert.equal(result.state, "unknown"); if (result.state !== "unknown") throw new Error("unknown identity required");
   assert.deepEqual(result.action, action); mismatch = true;
-  await assert.rejects(() => client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" }));
+  await assert.rejects(() => client.assistantRespond({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" }));
   assert.equal(calls, 2);
 });
 

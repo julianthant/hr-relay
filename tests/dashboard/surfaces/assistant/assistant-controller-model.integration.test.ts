@@ -13,6 +13,8 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
 import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
+import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
+import { assistantHistoryServer } from '../../../support/helpers/dashboard/assistant-history-server.js';
 import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
 import { assistantProposalDigest, useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
@@ -23,7 +25,7 @@ let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); vi.unstubAllGlobals(); document.body.replaceChildren(); });
 it('isolates retained chats, cancels cross-chat replies and invalidates every chat on account or authority changes', async () => {
   const pending: { signal?: AbortSignal; settle: (value: AssistantResult) => void }[] = [];
-  const client = { assistantRespond: (_request: unknown, signal?: AbortSignal) => new Promise<AssistantResult>(settle => pending.push({ signal, settle })) };
+  const client = resultClient({ assistantRespond: (_request: unknown, signal?: AbortSignal) => new Promise<AssistantResult>(settle => pending.push({ signal, settle })) });
   const preview = createPreviewChatGptAccountPort();
   const account = { ...preview, mode: 'live' as const };
   await account.signIn({ usePlan: true });
@@ -63,7 +65,7 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
 
 it('clears only the submitted composer version on a valid reply and retains newer edits, files, failures and cancellation', async () => {
   const replies: { resolve: (value: AssistantResult) => void; reject: (error: Error) => void }[] = [];
-  const client = { assistantRespond: () => new Promise<AssistantResult>((resolve, reject) => replies.push({ resolve, reject })) };
+  const client = resultClient({ assistantRespond: () => new Promise<AssistantResult>((resolve, reject) => replies.push({ resolve, reject })) });
   let controller!: ReturnType<typeof useAssistantController>, composer!: ReturnType<typeof useComposer>;
   function Harness({ chat, authority }: { chat: string; authority: number }) {
     controller = useAssistantController(client, authority, undefined, false, chat);
@@ -124,13 +126,13 @@ it.each(['notification', 'workflow'] as const)('renders the existing served %s c
   const identity = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1 };
   const proposal = kind === 'workflow' ? ASSISTANT_START_PROPOSAL : { ...identity,
     expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', effect: 'local-write' as const };
-  const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
     async assistantDecide(input: { chatId: string; actionId: string; revision: number; decision: 'confirm' | 'cancel'; reviewedDigest?: string }) {
       const { reviewedDigest, ...decision } = input;
       assert.deepEqual(decision, { ...identity, decision: 'confirm' });
       assert.equal(reviewedDigest, await assistantProposalDigest(proposal)); confirmations++;
       return { state: 'applied' as const, actionId: input.actionId };
-    } };
+    } });
   const producer = createAssistantMockProducer();
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
@@ -173,7 +175,7 @@ function setupAccount() {
 }
 it('opens only the composer for the actual unverified account resource, then refreshes once after explicit verification', async () => {
   const account = setupAccount(); let calls = 0, current!: ReturnType<typeof useAssistantController>;
-  const client = { async assistantRespond(): Promise<AssistantResult> { calls++; account.verify(); return { state: 'answered', text: 'Verified' }; } };
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; account.verify(); return { state: 'answered', text: 'Verified' }; } });
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   try {
@@ -197,7 +199,7 @@ it('refuses setup attachments before send callbacks, file readers and registrati
     let retained: ComposerDraft = { text, files: [file] };
     const draft = { read: () => retained, retain(value: ComposerDraft) { retained = value; } };
     const producer = createSetupAssistantProducer();
-    const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } };
+    const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } });
     function Harness() {
       current = useAssistantController(client, 'profile', undefined, false);
       return createElement(ShellAssistantPanel, { producer, served: current, draft,
@@ -225,15 +227,15 @@ it.each([
   { decision: 'confirm', fail: false }, { decision: 'confirm', fail: true },
   { decision: 'cancel', fail: false }, { decision: 'cancel', fail: true },
 ] as const)('retires a deleted retained chat before deferred $decision settles (failure=$fail)', async ({ decision, fail }) => {
-  const rows = new Map<string, string>();
-  const history = createAssistantHistory({ getItem: key => rows.get(key) ?? null, setItem: (key, value) => { rows.set(key, value); } }, crypto.randomUUID());
-  const oldId = history.chats.read()[0].id, replacementId = history.chats.create().id;
+  const server = assistantHistoryServer();
+  const history = await createAssistantHistory(server.client, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);
+  const oldId = history.chats.read()[0].id, replacementId = (await history.chats.create()).id;
   const held = Promise.withResolvers<AssistantActionResult>();
   let decisions = 0, requests = 0, signal: AbortSignal | undefined;
   const action = { chatId: crypto.randomUUID(), actionId: crypto.randomUUID(), revision: 1 };
-  const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'action-proposal', proposal: { ...action,
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'action-proposal', proposal: { ...action,
     expiresAt: '2099-01-01T00:00:00Z', label: 'Mark current notifications read', targetLabel: 'Current notifications', effect: 'local-write' } }; },
-    assistantDecide(_input: unknown, abort?: AbortSignal) { decisions++; signal = abort; return held.promise; } };
+    assistantDecide(_input: unknown, abort?: AbortSignal) { decisions++; signal = abort; return held.promise; } });
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };
   let current!: ReturnType<typeof useAssistantController>;
@@ -245,7 +247,6 @@ it.each([
   const forgottenAction = current.onAction;
   await act(async () => current.onAction({ type: decision }));
   assert.equal(decisions, 1);
-  assert.equal(history.read(oldId)?.turn.state, 'unknown');
   const retain = vi.spyOn(history, 'retain');
   await act(async () => {
     current.forgetSession(oldId);
@@ -254,10 +255,10 @@ it.each([
     if (retired?.turn.state !== 'proposal') throw Error('pending decision must remain represented');
     assert.equal(retired.turn.disposition, 'unknown');
     assert.equal(signal?.aborted, true);
-    history.chats.remove(oldId);
+    await history.chats.remove(oldId);
   });
   await render(replacementId);
-  const replacement = current.state, retained = [...rows.values()];
+  const replacement = current.state, retained = server.writes.length;
   retain.mockClear();
   await act(async () => {
     if (fail) held.reject(Error('lost deferred decision response'));
@@ -268,21 +269,21 @@ it.each([
   assert.equal(signal?.aborted, true);
   assert.equal(retain.mock.calls.length, 0);
   assert.equal(current.state === replacement, true);
-  assert.deepEqual([...rows.values()], retained);
-  assert.throws(() => history.read(oldId), /HUB_CHAT_UNAVAILABLE/u);
+  assert.equal(server.writes.length, retained);
+  assert.equal(history.has(oldId), false); assert.equal(history.read(oldId), undefined);
   await act(async () => {
     for (const type of ['confirm', 'cancel', 'retry', 'new-chat', 'send'] as const) forgottenAction({ type });
     forgottenAction({ type: 'edit', value: 'do not revive the forgotten controller' });
   });
   assert.equal(decisions, 1); assert.equal(requests, 1);
   assert.equal(retain.mock.calls.length, 0); assert.equal(current.state === replacement, true);
-  retain.mockRestore();
+  retain.mockRestore(); server.close();
 });
 
 it('shows run and notification reconciliation guidance after a lost response without replay', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
-  const client = { async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } };
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } });
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
   function Harness() {
@@ -306,8 +307,8 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
   let current!: ReturnType<typeof useAssistantController>, decisions = 0;
   const proposal = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1,
     expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', effect: 'local-write' as const };
-  const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
-    async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_VERIFICATION_FAILED' as const }; } };
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
+    async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_VERIFICATION_FAILED' as const }; } });
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
     return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });

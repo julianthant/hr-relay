@@ -206,26 +206,31 @@ describe("redaction surface scan — the declaration audit", () => {
   });
 
   it("covers the actual assistant and OCR loopback boundaries and rejects each missing origin", () => {
-    const ids = ["request/assistant", "wire/assistant", "wire/chatgpt-ocr-test"];
+    const ids = ["request/assistant", "wire/assistant", "request/assistant-history", "wire/assistant-history", "wire/assistant-conversation", "wire/chatgpt-ocr-test"];
     const surfaces = REDACTION_SURFACES.filter(surface => ids.includes(surface.id));
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), ids.sort());
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => ids.includes(entry.surface));
     const expectedOrigins = [
       "request/assistant|message|operator-authored",
-      "wire/assistant|text|external-text",
-      "wire/assistant|message|repository-authored",
-      "wire/assistant|proposal.workflowId|repository-authored",
-      "wire/assistant|proposal.label|repository-authored",
-      "wire/assistant|proposal.targetLabel|captured-hr-value",
-      "wire/assistant|action.workflowId|repository-authored",
-      "wire/assistant|action.label|repository-authored",
-      "wire/assistant|action.targetLabel|captured-hr-value",
+      "wire/assistant|result.text|external-text",
+      "wire/assistant|result.message|repository-authored",
+      "wire/assistant|result.proposal.workflowId|repository-authored",
+      "wire/assistant|result.proposal.label|repository-authored",
+      "wire/assistant|result.proposal.targetLabel|captured-hr-value",
+      "wire/assistant|result.action.workflowId|repository-authored",
+      "wire/assistant|result.action.label|repository-authored",
+      "wire/assistant|result.action.targetLabel|captured-hr-value",
       ...["action", "proposal"].flatMap(root => ["row.display.documentNumber", "row.display.name", "row.subtitle", "row.title",
-        "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => `wire/assistant|${root}.${path}|captured-hr-value`)),
-      "wire/assistant|proposal.startPlan.planned[].title|captured-hr-value",
-      "wire/assistant|proposal.startPlan.planned[].subtitle|captured-hr-value",
-      "wire/assistant|action.startPlan.planned[].title|captured-hr-value",
-      "wire/assistant|action.startPlan.planned[].subtitle|captured-hr-value",
+        "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => `wire/assistant|result.${root}.${path}|captured-hr-value`)),
+      "wire/assistant|result.proposal.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|result.proposal.startPlan.planned[].subtitle|captured-hr-value",
+      "wire/assistant|result.action.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|result.action.startPlan.planned[].subtitle|captured-hr-value",
+      ...["title", "draft", "composer"].flatMap(path => [`request/assistant-history|${path}|operator-authored`, `wire/assistant-conversation|${path}|operator-authored`]),
+      "request/assistant-history|text|repository-authored",
+      "request/assistant-history|messages[].text|external-text",
+      "wire/assistant-history|chats[].title|operator-authored",
+      "wire/assistant-conversation|messages[].text|external-text",
       "wire/chatgpt-ocr-test|model|external-text",
       "wire/chatgpt-ocr-test|message|repository-authored",
     ];
@@ -244,18 +249,19 @@ describe("redaction surface scan — the declaration audit", () => {
 
   it("sends only the masked operator message and declared tool output leaves to ChatGPT", () => {
     const egress = REDACTION_SURFACES.filter(surface => surface.egress === "process-egress");
-    assert.deepEqual(egress.map(surface => surface.id).sort(), ["egress/assistant-user-message", ...assistantToolEgress().surfaces.map(surface => surface.id)].sort());
+    assert.deepEqual(egress.map(surface => surface.id).sort(), ["egress/assistant-user-message", "egress/assistant-replay", ...assistantToolEgress().surfaces.map(surface => surface.id)].sort());
     assert.ok(egress.length > 8);
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => egress.some(surface => surface.id === entry.surface));
     assert.deepEqual(origins.filter(entry => entry.origin !== "repository-authored" && entry.origin !== "declared-redacted").map(entry => `${entry.surface}|${entry.path}|${entry.origin}`),
-      ["egress/assistant-user-message|content|operator-authored"]);
+      ["egress/assistant-user-message|content|operator-authored", "egress/assistant-replay|answer|external-text"]);
     for (const origin of ["captured-hr-value", "external-text", "local-filesystem-name", "protected-value"] as const) {
       const leaked = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-tool/read_run" && entry.path === "gate.label" ? { ...entry, origin } : entry);
       assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, leaked).some(problem => problem.includes('egress/assistant-tool/read_run (process-egress) leaf "gate.label"') && problem.includes("may not carry at all")), origin);
     }
     const unexcepted = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { surface: entry.surface, path: entry.path, origin: entry.origin } : entry);
     assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, unexcepted).some(problem => problem.includes("needs a written exception")));
-    assert.deepEqual([...EGRESS_DECISION_LEAVES], [["egress/assistant-user-message|content", { egress: "process-egress", origin: "operator-authored" }]]);
+    assert.deepEqual([...EGRESS_DECISION_LEAVES], [["egress/assistant-user-message|content", { egress: "process-egress", origin: "operator-authored" }],
+      ["egress/assistant-replay|answer", { egress: "process-egress", origin: "external-text" }]]);
     for (const origin of ["captured-hr-value", "external-text", "local-filesystem-name", "protected-value"] as const) {
       const reclassified = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { ...entry, origin } : entry);
       assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, reclassified).some(problem => problem.includes('egress/assistant-user-message (process-egress) leaf "content"') && problem.includes("may not carry at all")), origin);

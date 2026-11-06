@@ -7,7 +7,16 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 
+/** Steps an empty current authority back to schema 21: the two assistant history tables did not exist yet. */
+export function removeEmptySchema22AssistantHistory(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 22);
+  for (const table of ["assistant_messages", "assistant_conversations"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+  database.exec("DROP TABLE assistant_messages; DROP TABLE assistant_conversations");
+  database.exec("UPDATE database_states SET schema_version=21; PRAGMA user_version=21");
+}
+
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 22) removeEmptySchema22AssistantHistory(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 21);
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));

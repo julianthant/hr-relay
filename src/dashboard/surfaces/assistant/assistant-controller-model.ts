@@ -5,11 +5,11 @@ import { systemClock } from '../../../rules/time/clock.js';
 import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/chatgpt-account-model.js';
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
-import type { AssistantResult } from '../../../models/dashboard/assistant.js';
+import type { AssistantReceipt, AssistantResult } from '../../../models/dashboard/assistant.js';
 import { AssistantModelPreferenceSchema } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
-import type { AssistantHistory } from './assistant-history-model.js';
+import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import { AssistantActionDecisionSchema, type AssistantActionProposal } from '../../../models/dashboard/assistant.js';
@@ -59,12 +59,23 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
   }
 }
 
-export function createAssistantController(client: AssistantQueries, initialBinding: Binding, history?: { read(): AssistantState | undefined; retain(state: AssistantState): void }) {
+/** One served chat: its id, the cached revision a send expects, and where receipts and local outcomes go. */
+export interface AssistantControllerHistory {
+  readonly conversationId: string;
+  read(): AssistantState | undefined;
+  retain(state: AssistantState): void;
+  revision(): number;
+  receipt(receipt: AssistantReceipt): void;
+  local(text: string): Promise<void>;
+  decided(actionId: string): Promise<boolean>;
+  unsaved(): void;
+}
+export function createAssistantController(client: AssistantQueries, initialBinding: Binding, history?: AssistantControllerHistory) {
   let state = history?.read() ?? emptyState(), binding = initialBinding;
   let outstanding: { requestId: number; prompt: string; abort: AbortController; binding: Binding } | undefined;
   let pendingDecision: { actionId: string; abort: AbortController; binding: Binding } | undefined;
   let retired = false;
-  let conversationId = crypto.randomUUID();
+  let conversationId = history?.conversationId ?? crypto.randomUUID();
   const listeners = new Set<() => void>();
   function publish(next: AssistantState) { if (retired) return; state = next; history?.retain(state); for (const listener of listeners) listener(); }
   function abort() {
@@ -77,8 +88,9 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     outstanding = request;
     const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
     const complete = (message: string) => {
-      if (current()) publish(assistantReducer(state, { type: "settle", requestId,
-        message: { id: 'assistant-' + requestId, role: 'assistant', text: message } }));
+      if (!current()) return;
+      publish(assistantReducer(state, { type: "settle", requestId, message: { id: 'assistant-' + requestId, role: 'assistant', text: message } }));
+      void history?.local(message);
     };
     try {
       if (assistantSetupCommand(prompt) === 'model') {
@@ -113,12 +125,20 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         else complete(outcome.feedback.text);
         return;
       }
-      const result = await client.assistantRespond({ conversationId, messageId: crypto.randomUUID(), message: assistantSetupCommand(prompt) === 'verify' ? ASSISTANT_VERIFY_COMMAND : prompt, ...(assistantSetupCommand(prompt) === 'verify' || binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
+      const verify = assistantSetupCommand(prompt) === 'verify';
+      const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId: crypto.randomUUID(),
+        message: verify ? ASSISTANT_VERIFY_COMMAND : prompt, ...(verify || binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
+      if (envelope.receipt !== undefined) history?.receipt(envelope.receipt);
       if (!current()) return;
-      const presented = presentResult(result, requestId, prompt);
+      if (envelope.kind === 'delivery') {
+        publish(assistantReducer(state, { type: 'settle', requestId, message: { id: 'assistant-' + requestId, role: 'assistant', text: ASSISTANT_UNSAVED_REPLY } }));
+        return;
+      }
+      const result = envelope.result, presented = presentResult(result, requestId, prompt);
       const settled = assistantReducer(state, { type: "settle", requestId, ...presented });
-      publish(assistantSetupCommand(prompt) === 'verify' ? { ...settled, verification: result.state === 'answered' ? { state: 'passed' }
+      publish(verify ? { ...settled, verification: result.state === 'answered' ? { state: 'passed' }
         : { state: 'failed', code: result.state === 'refused' ? result.code : 'ASSISTANT_VERIFICATION_FAILED' } } : settled);
+      if (verify) void history?.local(presented.message.text);
     } catch {
       if (current()) {
         if (assistantSetupCommand(prompt) === 'verify') publish({ ...assistantReducer(state, { type: 'settle', requestId,
@@ -164,6 +184,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition,
         message: { id: `action-${proposal.id}`, role: 'assistant', text: result.state === 'applied' ? 'Confirmed action accepted.'
           : result.state === 'cancelled' ? 'Action cancelled.' : result.state === 'unknown' ? 'Action outcome is unknown. Do not retry this action.' : ASSISTANT_FAILURES[result.code] } }));
+      if (history !== undefined && result.state !== 'refused' && !await history.decided(proposal.id).catch(() => false)) history.unsaved();
     } catch {
       if (current()) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'unknown' }));
     } finally {
@@ -233,7 +254,9 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const controllers = sessions.controllers;
   const controller = useMemo(() => {
     let current = controllers.get(chatId);
-    if (!current) { current = createAssistantController(sessions.client, { authority: undefined }, history === undefined || !history.chats.read().some(chat => chat.id === chatId) ? undefined : { read: () => history.read(chatId), retain: state => history.retain(chatId, state) }); controllers.set(chatId, current); }
+    if (!current) { current = createAssistantController(sessions.client, { authority: undefined }, history === undefined || !history.has(chatId) ? undefined : { conversationId: chatId, read: () => history.read(chatId), retain: state => { history.retain(chatId, state); },
+      revision: () => history.revision(chatId), receipt: receipt => { history.receipt(receipt); }, local: text => history.local(chatId, text),
+      decided: actionId => history.decided(chatId, actionId), unsaved: () => { history.unsaved(); } }); controllers.set(chatId, current); }
     return current;
   }, [controllers, sessions, chatId, history]);
   useLayoutEffect(() => {

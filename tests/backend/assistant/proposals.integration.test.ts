@@ -76,8 +76,12 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
       return result;
     } } });
   let modelCurrent = true;
-  const references = createAssistantReferenceTable(1);
-  const context = { signal: new AbortController().signal, references, actorId: "local-operator", assertCurrent() {},
+  const references = createAssistantReferenceTable(1), conversationId = randomUUID();
+  assert.equal(database.authority.assistantHistory.apply({ operation: "create", conversationId, title: "Chat" }, clock.now().toISOString()).state, "saved");
+  /** The decision captions stored in the card's conversation. */
+  const captions = () => (database.authority.assistantHistory.conversation(conversationId, clock.now().toISOString())?.messages ?? [])
+    .filter(row => row.kind === "decision").map(row => row.text);
+  const context = { signal: new AbortController().signal, references, actorId: "local-operator", conversationId, assertCurrent() {},
     assertRetainedCurrent() { if (!modelCurrent) throw new Error("model verification expired"); } };
   const tool = (name: string) => { const found = proposals.plugin.tools.find(candidate => candidate.name === name); assert.ok(found?.kind === "proposal"); return found; };
   const decide = async (proposal: AssistantActionProposal, decision: "confirm" | "cancel", signal = new AbortController().signal, digest?: string) =>
@@ -86,7 +90,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   const done = async (eid?: string) => { const queued = h.start(h.proposal(undefined, undefined, false, eid)); assert.equal((await h.execute(queued)).state, "done"); return h.fresh(queued); };
   const runCount = () => database.authority.runs.listByWorkflow(h.descriptor.id).length;
   const commandOf = (card: AssistantActionProposal) => database.authority.assistantAuthorization.action(card.actionId)?.command;
-  return { h, database, clock, kernel, proposals, tool, decide, done, runCount, commandOf, references, context, executeSettings,
+  return { h, database, clock, kernel, proposals, tool, decide, done, runCount, commandOf, references, context, captions, executeSettings,
     submitMode(next: SubmitMode) { mode = next; entered = false; }, entered: () => entered, release: () => { release(); },
     expireModel() { modelCurrent = false; }, changeManifest() { factsSha = "b".repeat(64); },
     markAttempting(runId: string, itemId: string, runAttempt: number) { attemptingFor = attemptingIntent(runId, itemId, runAttempt); } };
@@ -106,6 +110,7 @@ it("issues and confirms an eligible rerun once and refuses its replay", async ()
   assert.equal(o.database.authority.commandAudits.findByCommand(o.commandOf(card)?.commandId ?? "")?.result.state, "applied");
   await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
   assert.equal(o.runCount(), before + 1);
+  assert.deepEqual(o.captions(), [`Done: ${card.label}.`], "one caption; a refused replay adds none");
 });
 
 it("refuses reruns of cancelled, moved, parked and attempting sources through the proposal owner", async () => {
@@ -146,6 +151,7 @@ it("binds Confirm to the exact rendered multi-row card and lets one of a concurr
   const settled = outcomes.flatMap(outcome => outcome.status === "fulfilled" ? [outcome.value.state] : []);
   assert.equal(settled.length, 1, JSON.stringify(outcomes));
   assert.equal(o.runCount(), before + (settled[0] === "applied" ? 2 : 0));
+  assert.deepEqual(o.captions(), [settled[0] === "applied" ? `Done: ${card.label}.` : `Not done: ${card.label}.`]);
 });
 
 it("refuses every held-start invalidation after the claim with UNKNOWN, zero stale effects and no retry", async () => {
@@ -168,6 +174,7 @@ it("refuses every held-start invalidation after the claim with UNKNOWN, zero sta
     assert.equal(o.runCount(), before + (change === "plan" ? 1 : 0), change);
     await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
     assert.equal(o.runCount(), before + (change === "plan" ? 1 : 0));
+    assert.deepEqual(o.captions(), [`Outcome unknown: ${card.label}. Do not retry.`], change);
   }
 });
 
@@ -186,6 +193,7 @@ it("keeps a lost response or an abort after the canonical effect UNKNOWN with ex
     assert.notEqual(o.database.authority.assistantAuthorization.action(card.actionId)?.state, "prepared");
     await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
     assert.equal(o.runCount(), before + 1, `${mode}: no retry`);
+    assert.deepEqual(o.captions(), [`Outcome unknown: ${card.label}. Do not retry.`], mode);
   }
 });
 
