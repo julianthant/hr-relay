@@ -100,8 +100,8 @@ Harnesses derived from the step definitions in `index.ts` enter `STEP_PROOF_MODU
 They do not enter the operator tuple or picker.
 A group without a harness needs no step folder.
 
-Declare delegated-only workflows with child-only exposure in their `index.ts`. Generation places
-them in `CHILD_ONLY_WORKFLOW_MODULES`, outside the public tuples. Give them no start surface.
+List delegated-only workflows in `CHILD_ONLY_WORKFLOWS` in `src/workflows/registry.ts`, outside
+`PUBLIC_WORKFLOWS`. Give them no start surface.
 The registry resolves a child only for a parent that declares its delegation edge. A child may
 remain registered without a parent; I-9 Lookup uses this shape.
 

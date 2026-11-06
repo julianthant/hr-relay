@@ -456,8 +456,9 @@ coordinated edit to both a guard and its inventory row. Review and operator auth
 the boundary for deliberate loss of protection. The inventory still uses machine-owned retirement
 and activation fields; this prose does not alter their schema or statuses.
 
-The workflow-ID guard (`no-workflow-id-branches`) admits registered ids in generic code only at
-files listed with a reason; a new branch elsewhere, a stale entry or a missing reason fails.
+The workflow-ID guard (`no-workflow-id-branches`) admits registered ids in generic code only at the
+files, and the one directory prefix `src/dashboard/surfaces/workflows/mocks/`, listed with a reason
+for named ids; a new branch elsewhere, a stale entry or a missing reason fails.
 
 ### 5.1 Required source scanners
 

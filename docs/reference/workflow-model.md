@@ -189,8 +189,8 @@ harnesses for `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-fi
 `ucpath-transaction`. Its `job-summary` group has no harness folder.
 The `workflow-layout` guard in `tests/architecture/workflow-kit/workflow-layout.test.ts` checks
 registered and retained modules against their role, owning composition, and declared groups.
-The generated child-only inventory includes OCR and OCR Page; the generated step-proof inventory
-includes their retained harnesses. These source audits cover both inventories without exposing
+The hand-kept `CHILD_ONLY_WORKFLOWS` list in `src/workflows/registry.ts` includes OCR and OCR Page;
+`STEP_PROOF_MODULES` collects their retained harnesses from each registration's proofs. These source audits cover both inventories without exposing
 children or proofs as public starts.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
 

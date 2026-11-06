@@ -178,7 +178,7 @@ The child-only `src/workflows/ocr/` and `src/workflows/ocr-page/` folders use th
 Their indexes generate production child modules and task stores; OCR delegates page readings to
 OCR Page and form-specific identity lookups to Person Lookup or I-9 Lookup. Only declared parent edges admit these children;
 neither has a public start surface. Their retained proofs live at `ocr/steps/source-pages/step.ts`
-and `ocr-page/steps/read-page/step.ts` and enter the generated step-proof inventory.
+and `ocr-page/steps/read-page/step.ts` and enter `STEP_PROOF_MODULES` through their registrations.
 
 `src/workflows/ocr/steps/source-pages/step.ts` also owns the generic approved-record graph builder: one awaited
 OCR child, authenticated snapshot retrieval, then ordered member delegation. Target, selection
@@ -200,8 +200,8 @@ the I-9 system store, then retains its typed result through `tasks/read-result.t
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
 `steps/lookup/step.ts` reuses that exact group. Results contain `signerName`, `i9Status`, and record
 IDs when a summary was read.
-Its `index.ts` declares child-only exposure, the store and the retained proof. The generated
-`CHILD_ONLY_WORKFLOW_MODULES` admits it separately from the public workflow tuple. A caller must
+Its `index.ts` declares the store and the retained proof. `src/workflows/registry.ts` lists it in
+`CHILD_ONLY_WORKFLOWS`, separately from `PUBLIC_WORKFLOWS`. A caller must
 declare its delegation edge to resolve a child.
 
 
