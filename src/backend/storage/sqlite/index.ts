@@ -1,6 +1,7 @@
 export {
   AuthorityDatabase,
   AuthorityDatabaseOptionsSchema,
+  AuthorityFormatUnsupportedError,
   AuthorityMetaSchema,
   AuthoritySchemaInspectionSchema,
   ImmutableInsertDispositionSchema,

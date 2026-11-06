@@ -8,7 +8,6 @@ import { defineCanonicalInput } from "../../../src/models/workflow/canonical-inp
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { runDeclaredAction, recordDeclaredActionNotRun } from "../../../src/backend/systems/browser-shared/action-notes.js";
-import { childExecutionBuildManifest as manifest } from "./child-execution-build-manifest.js";
 
 export const Plan1Input = z.strictObject({ emplId: EidSchema, text: z.string(), mode: z.enum(["ok", "fail", "repeat", "confirmed"]) });
 export const Plan1Output = z.strictObject({ eid: EidSchema, disposition: z.string(), providerState: z.string() });
@@ -89,7 +88,7 @@ function plan1ReadLeaf(id: string, contract: Plan1ReadContract) { return compile
     { path: "providerState", source: { kind: "task-output", entryId: "second", path: "providerState" } },
     { path: "disposition", source: { kind: "derived", inputs: [{ id: "first", source: { kind: "task-output", entryId: "first", path: "disposition" } }, { id: "second", source: { kind: "task-output", entryId: "second", path: "providerState" } }] } },
   ]) };
-} }), { manifest }); }
+} })); }
 export const plan1Leaf = plan1ReadLeaf(ids[0],plan1Contract);
 export const plan1ExpiringLeaf = plan1ReadLeaf("fixture-plan1-expiring-leaf",plan1ExpiringContract);
 
@@ -101,7 +100,7 @@ export const plan1Child = compileWorkflow(defineWorkflow({ ...common, id: ids[1]
     { path: "providerState", source: { kind: "child-output", entryId: "nested", path: "providerState" } },
     { path: "disposition", source: { kind: "derived", inputs: [{ id: "nested", source: { kind: "child-output", entryId: "nested", path: "disposition" } }] } },
   ]) };
-} }), { manifest });
+} }));
 export function plan1Summary(input: unknown) {
   const value = z.strictObject({ left: z.string(), right: z.string(), label: z.string() }).parse(input);
   return { text: `${value.left}/${value.right}/${value.label}` };
@@ -119,5 +118,5 @@ export const plan1Parent = compileWorkflow(defineWorkflow({ ...common, id: ids[2
     return { ...input, text: plan1Summary({ left: outputs.left.output.disposition, right: outputs.right.output.providerState, label: configuration?.["actor.label"] }).text };
   });
   return { steps: [[{ key: "left", label: "Left child" }, [left]], [{ key: "right", label: "Right child" }, [right]], [{ key: "observe", label: "Observe" }, [observe]]], result: result(Plan1Output, [left, right, observe], ({ outputs }) => outputs.observe, [{ path: "disposition", source: { kind: "task-output", entryId: "observe", path: "disposition" } }]) };
-} }), { manifest });
+} }));
 export const plan1Workflows = [plan1Leaf, plan1Child, plan1Parent];

@@ -103,7 +103,7 @@ export function createRunResourcesFactory(input:Readonly<{
      },
       references:{runId:run.envelope.runId,read:command=>runWorkbooks.read(run,command),write:command=>runWorkbooks.write(run,command)}}),
     "ocr.approved-snapshot":createOcrApprovedSnapshotAdapter({clock:input.clock,...(approvedOcr===undefined?{}:{reader:approvedOcr})}),
-   })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
+   })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run,resolveDescriptor)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
    runCache.set(key,resources);
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});

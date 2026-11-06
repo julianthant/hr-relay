@@ -13,7 +13,7 @@ import { manualClock } from "../../src/rules/time/clock.js";
 import { composeWorkflowModule,workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
 import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
 import { healthyDashboardPreflightReport } from "../support/fixtures/preflight-seams.js";
-import { compileFixtureWorkflow,everyEntryKindWorkflow,fixtureBuildManifest } from "../support/fixtures/workflow-definition-fixtures.js";
+import { compileFixtureWorkflow,everyEntryKindWorkflow } from "../support/fixtures/workflow-definition-fixtures.js";
 import { AT,makeWorld,queuedEventOf,taskEventsOf,uuidOf } from "../support/helpers/backend/dashboard-harness.js";
 
 const EXPLORER_HASH = FingerprintSchema.parse("c".repeat(64));
@@ -66,7 +66,6 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
       const explorer = buildWorkflowExplorer({
         ...explorerQueryDeps(manualClock(AT), EXPLORER_HASH),
         modules,
-        buildManifest: fixtureBuildManifest([id]),
       });
       const explorerWorkflow = explorer.workflows.find((workflow) => String(workflow.id) === id);
       assert.ok(explorerWorkflow !== undefined, `${id} is absent from Explorer`);

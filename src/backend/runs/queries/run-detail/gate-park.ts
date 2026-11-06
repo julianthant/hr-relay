@@ -34,7 +34,7 @@ import type { RunDetailQueryDeps } from "../run-detail-types.js";
 import { requireTrustRun } from "../../trust/run-reader.js";
 import { availableSections } from "./availability.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../../workflow-kit/workflow.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../workflow-kit/fingerprints.js";
 import { checkpointLookupKey } from "../../../../models/workflow/checkpoint.js";
 import { deriveSchemaHash } from "../../../../models/validation/schema-bound-value.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../../rules/identity/identifiers.js";
@@ -308,7 +308,7 @@ function buildIdentityGatePayload(
         .find((candidate) => candidate.kind === "task" && String(candidate.id) === String(stored.nodeId));
       if (runtimeNode === undefined || runtimeNode.kind !== "task"
         || deriveSchemaHash(runtimeNode.uses.output, "output") !== expectedOutputHash
-        || stored.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, runtimeNode.uses.id)) return [];
+        || stored.implFingerprint !== taskImplFingerprint(runtimeNode.uses)) return [];
       const currentExecution = stored.runId === runId && stored.attempt === authority.envelope.attempt
         && Number(stored.claimGeneration) === Number(authority.claimGeneration);
       const eventId = currentExecution

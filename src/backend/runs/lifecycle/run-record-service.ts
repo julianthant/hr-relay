@@ -30,6 +30,7 @@ FingerprintSchema,
 IsoInstantSchema,
 NodeIdSchema,
 RunIdSchema,
+type Fingerprint,
 } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
@@ -78,6 +79,7 @@ import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import { admitDelegation } from "./delegation-admission.js";
 import { assertOcrChildRetryCurrent,assertOcrRecoverySnapshotCurrent } from "./ocr-review-authority.js";
 import { delegatedCandidateEligible,runRuntimeMatches } from "./run-claim-admission.js";
+import { currentBuildId } from "../../runtime/build-id.js";
 
 const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome is settled";
 
@@ -169,7 +171,6 @@ export type RunRecordServiceDependencies = Readonly<{
   /** Synchronous readiness assertion; runs after replay, before enqueue. */
   admitQueuedRun?: (run: RunRecord) => void;
   resolveDescriptor?: (workflowId: string) => AnyWorkflowDescriptor | undefined;
-  buildManifest?: import("../../../models/workflow/build-manifest.js").BuildManifest;
 }>;
 
 
@@ -349,6 +350,7 @@ export class RunRecordService {
       const run = RunRecordSchema.parse({
         envelope: {
           ...selectNewRunIdentity(repositories, envelope), runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
+          buildId: approvalBuildId(repositories, envelope.parent),
           attempt: repositories.runs.nextItemAttempt({ workflow: request.workflow, itemId }),
           enqueuedAt: now,
         },
@@ -1148,7 +1150,7 @@ export class RunRecordService {
       delete envelope.continuation;
       const next = RunRecordSchema.parse({
         envelope: { ...(delegation === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
-          retryOf: run.envelope.runId, enqueuedAt: now,
+          retryOf: run.envelope.runId, enqueuedAt: now, buildId: approvalBuildId(repositories, envelope.parent),
           ...(continuation === undefined ? {} : { continuation }),
         },
         input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,
@@ -1208,7 +1210,7 @@ export class RunRecordService {
       if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
       const plan = request.continuationOwner === undefined ? planRunRecovery(repositories, descriptor, run, request.sourceCommandId, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database))
         : planDelegatedRetry(repositories, descriptor, run, request.sourceCommandId, request.continuationOwner, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database));
-      assertOcrRecoverySnapshotCurrent(repositories, this, run);
+      assertOcrRecoverySnapshotCurrent(repositories, this, run, workflowId => this.dependencies.resolveDescriptor?.(workflowId));
       const continuation = plan.continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
@@ -1702,4 +1704,12 @@ function terminalDependencyRefusal(repositories: AuthorityRepositories, rootRunI
   if (readiness.state === "ready") return undefined;
   return readiness.state === "blocked" ? { reason: "policy-refused" }
     : { reason: "tree-non-terminal", runId: RunIdSchema.parse(readiness.childRunId) };
+}
+
+/** A root run is approved under the current build; a delegated child carries its parent's approval. */
+function approvalBuildId(repositories: AuthorityRepositories, parent: RunRecord["envelope"]["parent"]): Fingerprint {
+  if (parent === undefined) return currentBuildId();
+  const owner = repositories.runs.get(parent.runId);
+  if (owner === undefined) throw new Error(`parent run ${parent.runId} is unavailable; a child cannot inherit its approval build`);
+  return owner.envelope.buildId;
 }

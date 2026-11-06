@@ -27,11 +27,9 @@ This map names the current source, test, and documentation owners. Relay runs lo
 
 `npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
 and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
-`npm run build:manifest` runs that generator, then prepares the ignored
-`src/workflow-kit/validation/generated-build-manifest.ts`. `build:manifest:prepare` prepares only
-the manifest and the ignored Windows observer policy artifact under `node_modules/.cache/relay/`; source-tool configs and package prehooks call it before graph loading. Read-only
-`build:manifest:check` checks registry freshness before manifest bytes. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
-owns preparation boundaries, watcher restart requirements and the future packaging contract.
+`npm run build:observer-policy` prepares the ignored Windows observer policy artifact under
+`node_modules/.cache/relay/`; runtime package prehooks and the Vitest/Vite configs call it. [Guards and tests](guards-and-tests.md#contract-fingerprints-and-build-id)
+owns the contract fingerprint and build id.
 `npm run stores:catalog` generates the catalog section in `docs/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
@@ -127,7 +125,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/dashboard/state/` and `src/dashboard/lib/` | Renderer state and utilities. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |
 | `src/dashboard/surfaces/` | Product screens and their view models. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
-| `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
+| `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. `failures/error-origins.ts` owns the closed constructor-bound cause vocabulary and its value-free serializer shared by backend events and browser reports. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
 | `src/models/storage/file-identity.ts` | Exact JSON file-identity values shared by credential, installation and logout witnesses: safe numbers or canonical decimal strings. |
 | `src/models/people/hire-employee.ts` | Validated hire employee facts shared by Onboarding planning and system write targets. |
 | `src/models/ui/ucpath-hire.ts` | Hire targets, complete findings, staged wizard states, permanent keys and independently verified filing proofs. Each hire task contract lives in its canonical `models/systems/ucpath/<task>.ts` file; `hire-contract.ts` shares read/subject metadata. `backend/systems/ucpath/driver/hire-operation.ts` and `hire-ui-registry.ts` own the hire browser family; `rules/ucpath/hire-verdict.ts` refuses incomplete or uncertain discovery. |
@@ -138,7 +136,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer parts, authored walkthrough schema and finite local choice projection. Registered workflow definitions own the content; the Explorer query serves it after definition identity checks. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
-| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated prepared static manifest and fingerprint resolvers. |
+| `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/runtime/build-id.ts` owns the worker-scoped app build id. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |

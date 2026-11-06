@@ -155,7 +155,8 @@ describe("loopback debug reporting", () => {
     try {
       const app = resolutionApp(f);
       const send = (body: unknown, origin = "http://localhost") => app.request("http://localhost/api/v1/debug/errors", { method: "POST", headers: { origin, host: "localhost", "content-type": "application/json" }, body: JSON.stringify(body) });
-      const report = { reportId: randomUUID_m0(), clientId: "browser-1", release: "test", route: "/", surface: "app", code: "CLIENT_FAILED", message: "token=CANARY" };
+      const report = { reportId: randomUUID_m0(), clientId: "browser-1", release: "test", route: "/", surface: "app",
+        code: "INTERNAL_FAILURE", reason: "cause-unavailable", message: "UnknownError", stack: "UnknownError\n    at assets/index-abc.js:1:2" };
       const firstResponse = await send(report); assert.equal(firstResponse.status, 201, await firstResponse.text());
       const rows = f.db.authority.timelineEvents.page({});
       assert.equal(rows.filter(row => row.payload.kind === "debug" && row.payload.event.category === "client").length, 1);
@@ -165,6 +166,18 @@ describe("loopback debug reporting", () => {
       assert.equal((await send({ ...report, message: "a".repeat(65537) })).status, 413);
       for (let i = 0; i < 27; i++) assert.equal((await send({ ...report, reportId: randomUUID_m0() })).status, 201);
       assert.equal((await send(report)).status, 429);
+      assert.equal(JSON.stringify(f.db.authority.timelineEvents.page({})).includes("CANARY"), false);
+    } finally { await f.dispose(); }
+  });
+  it("refuses a closed cause row that carries message text or a private frame", async () => {
+    const f = await resolutionFixture();
+    try {
+      const app = resolutionApp(f);
+      const send = (body: unknown) => app.request("http://localhost/api/v1/debug/errors", { method: "POST", headers: { origin: "http://localhost", host: "localhost", "content-type": "application/json" }, body: JSON.stringify(body) });
+      const report = { reportId: randomUUID_m0(), clientId: "browser-1", release: "test", route: "/", surface: "app",
+        code: "INTERNAL_FAILURE", reason: "cause-unavailable", message: "UnknownError", stack: "UnknownError\n    at assets/index-abc.js:1:2" };
+      assert.equal((await send({ ...report, message: "token=CANARY" })).status, 400);
+      assert.equal((await send({ ...report, stack: "UnknownError\n    at /Users/CANARY/record.js:1:2" })).status, 400);
       assert.equal(JSON.stringify(f.db.authority.timelineEvents.page({})).includes("CANARY"), false);
     } finally { await f.dispose(); }
   });

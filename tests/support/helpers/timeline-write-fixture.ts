@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import assert from "node:assert/strict";
 
 
@@ -43,7 +44,7 @@ export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown
   assert.equal(active.configFingerprint, ledger.configFingerprint);
   if (existing === undefined) database.authority.runs.enqueue(RunRecordSchema.parse({
     envelope: { runId: ledger.runId, workflow: ledger.workflowId, itemId: ledger.itemId,
-      traceId: ledger.traceId, descriptorVersion: 1, contractFingerprint: HASH_A,
+      traceId: ledger.traceId, descriptorVersion: 1, contractFingerprint: HASH_A, buildId: currentBuildId(),
       resolvedInstance: { [ledger.system]: ledger.instance }, configFingerprint: ledger.configFingerprint,
       configSnapshotId: snapshot.configSnapshotId, shape: "single", priority: "interactive", dryRun: false,
       attempt: ledger.attempt, enqueuedAt: ledger.fencedAt },

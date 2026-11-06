@@ -565,7 +565,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 and 20. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 21` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 22` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -641,6 +641,17 @@ work; parked UNKNOWN writes stay parked. The stricter manual and credential-copy
 to require retired durable work. Future Pause/Resume behavior must retain the last completed step;
 crash recovery fails interrupted work with rerun from that step and preserves mid-submit uncertainty.
 A changed source fails with `source-changed: re-plan upgrade`. Startup completes automatic repair and upgrade through their stopped storage owners before ordinary admission.
+
+Startup repair restores a person's database from the newest verified backup only when SQLite itself
+reports damage: the file is not a database, `PRAGMA integrity_check` is not `ok`, or reads fail with
+`SQLITE_CORRUPT`. An exactly missing `run_search` projection is recreated from the current DDL and
+rebuilt in one stopped transaction that must leave every other row and the authority generation
+unchanged; a failed rebuild is `STORAGE_PROFILE_PROJECTION_REPAIR_FAILED`. A record that fails its strict
+parse, or a layout, invariant or foreign-key mismatch over intact SQLite, is version skew
+(`STORAGE_PROFILE_FORMAT_UNSUPPORTED`, or `STORAGE_PROFILE_NEWER_VERSION` for a newer schema) and
+never restores. A refused inspection, repair, upgrade or crash recovery holds only that person:
+their sign-in is refused with the hold's code and startup continues for everyone else. Unproved
+closure and unavailable maintenance or browser custody still stop startup.
 
 ### Fixed application-data startup
 
