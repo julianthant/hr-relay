@@ -1117,7 +1117,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         {/* Show unreachable authority on every view; backup warnings do not stop work. */}
         {}
         <StorageNotice
-          key={JSON.stringify(route)}
+          key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
           onOpenSettings={openSettings}
         />

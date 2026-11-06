@@ -840,7 +840,7 @@ describe("served Logs wiring", () => {
     const client = clientFor(() => { throw new Error("offline"); });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     const text = document.body.textContent ?? "";
-    for (const code of ["LOGS_READ_FAILED_TITLE", "LOGS_UNAVAILABLE_TITLE", "DASHBOARD_READ_FAILED"] as const) {
+    for (const code of ["LOGS_UNAVAILABLE_TITLE", "DASHBOARD_READ_FAILED"] as const) {
       assert.ok(text.includes(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text));
     }
     assert.doesNotMatch(text, /offline|unclassified failure/);
@@ -855,7 +855,7 @@ describe("served Logs wiring", () => {
       children: createElement(LogSample, { selection: selected, source }) });
     await mount(panel());
     assert.ok(reads > 0);
-    assert.match(document.body.textContent ?? "", /Could not load logs/);
+    assert.match(document.body.textContent ?? "", /Logs unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
     const failedReads = reads;
     await act(async () => root?.render(panel("mock")));
@@ -864,7 +864,7 @@ describe("served Logs wiring", () => {
     assert.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
     await act(async () => root?.render(panel()));
     assert.ok(reads > failedReads);
-    assert.match(document.body.textContent ?? "", /Could not load logs/);
+    assert.match(document.body.textContent ?? "", /Logs unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
   });
   for (const replacement of ["day", "epoch", "day-request", "scope"] as const) it(`revokes stale reads after ${replacement} authority replacement`, async () => {

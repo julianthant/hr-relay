@@ -135,7 +135,7 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
       </Button>
     } />
     {storage.authority === "healthy" && authority !== "healthy" && <Notice sticky tone="danger" title="Data store unavailable" description="Review the storage checks." />}
-    {(authority === "healthy" || report !== undefined || doctor.state === "reading") && <BodySection title="Status">
+    {(authority === "healthy" || report !== undefined) && <BodySection title="Status">
       {doctor.state === "reading" && <span role="status" aria-label="Loading storage checks" className="sr-only">Loading storage checks</span>}
       {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}
       {authority === "healthy"

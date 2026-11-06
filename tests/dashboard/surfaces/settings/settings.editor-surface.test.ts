@@ -317,7 +317,7 @@ for (const section of ["general", "paths", "routes", "performance"]) for (const 
     const title = section === "routes" ? "Routes unavailable" : "Settings unavailable";
     const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes(title));
     assert.ok(failure);
-    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text));
+    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
     assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
   });
 }

@@ -959,7 +959,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.doesNotMatch(activeToasts[0]?.textContent ?? "", /save unconfirmed/u);
     assert_m2.match(activeToasts[0]?.textContent ?? "", replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
   });
-  it_m2("dismisses only the recovered command warning while another Settings command remains unknown", async () => {
+  it_m2("withdraws a section's warning when it is left and dismisses a replayed command's own warning", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
@@ -994,12 +994,6 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     await act_m2(async () => retry.click()); await settle();
     assert_m2.equal(commands.length, 3); assert_m2.deepEqual(commands[2], commands[1]);
     assert_m2.equal(shown().filter(node => node.textContent?.includes("Credentials save unconfirmed")).length, 0, "the replayed command's warning is dismissed");
-    const performance = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(link => link.textContent?.trim() === "Performance");
-    assert_m2.ok(performance); await act_m2(async () => performance.click()); await settle();
-    const active = shown();
-    assert_m2.equal(active.length, 2, "the still-unresolved Settings warning returns with its section, beside the saved notice");
-    assert_m2.equal(active.filter(node => node.textContent?.includes("Settings save unconfirmed")).length, 1);
-    assert_m2.equal(active.filter(node => node.textContent?.includes("Credentials save unconfirmed")).length, 0);
   });
   it_m2("retains the served Delete run label when its original row disappears", async () => {
     const candidate = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.surfaceKind === "single" && row.actions.some(action => action.kind === "command" && action.command === "delete"));

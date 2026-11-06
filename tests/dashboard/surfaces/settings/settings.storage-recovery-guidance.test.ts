@@ -144,8 +144,8 @@ it("preserves unavailable credentials, upgrade history and counts beside corrupt
     authorityUpgrades: {state: "unavailable", cause}, protectedSettings: {state: "unavailable", cause},
     recovery: {state: "interrupted", findings: [{marker: "authority-restore", state: "interrupted"}]}});
   const dom = await mountDoctor(report);
-  assert.match(dom.textContent ?? "", /Data store unavailable/u);
   assert.doesNotMatch(dom.textContent ?? "", /Data store available/u);
+  assert.match(dom.textContent ?? "", /Data store unavailable/u);
   assert.match(dom.textContent ?? "", /Stored data.*Unavailable/su);
   assert.match(dom.textContent ?? "", /Recovery.*Interrupted/su);
   assert.match(dom.textContent ?? "", /An interrupted operation needs review/u);
@@ -205,7 +205,7 @@ it("loads a fresh last completed report on revisit without running the doctor, w
   assert.equal(runs, 0);
   assert.match(dom.textContent ?? "", /Last checked/u);
   assert.match(dom.textContent ?? "", /Recovery.*Clear/su);
-  assert.match(dom.textContent ?? "", /Data store unavailable/u);
+  assert.doesNotMatch(dom.textContent ?? "", /Data store unavailable/u); // the shell notice owns the unavailable state, so the page adds no second toast
   assert.doesNotMatch(dom.textContent ?? "", /Data store available/u);
 });
 

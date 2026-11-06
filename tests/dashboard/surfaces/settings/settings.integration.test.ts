@@ -204,7 +204,7 @@ it.each([
   [{ state: "applied", replayed: true }, "Already saved", ""],
 ] satisfies [SettingsSaveState, string, string][])("preserves the feedback title and retry affordance for %j", (save, title, retry) => {
   const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retry: () => {}, retryConflict: () => {} }));
-  assert.ok(html.includes(title));
+  assert.ok(html.includes(title.replace("'", "&#x27;")));
   assert.equal(html.includes(retry || "Retry"), retry !== "");
 });
 
