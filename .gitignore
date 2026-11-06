@@ -63,6 +63,3 @@ OnboardingRoster-*.xlsx
 
 # Private rosters, PDFs and local evidence; never publish.
 .local-private/
-
-# Prepared before source tools load their graphs.
-/src/workflow-kit/validation/generated-build-manifest.ts

@@ -27,7 +27,6 @@ import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/modu
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
-import { fixtureBuildManifest } from "../../fixtures/workflow-definition-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, ManualScheduler, openAuthorityHarness, recordingEmitter, recordingLogger, sessionFactoryHarness, sessionManagerFor, type AuthorityHarness, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
@@ -194,9 +193,7 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
     },
   });
 
-  const actionBindingCompiled = compileWorkflow(actionBindingWorkflow, {
-    manifest: fixtureBuildManifest([ACTION_BINDING_WORKFLOW_ID]),
-  });
+  const actionBindingCompiled = compileWorkflow(actionBindingWorkflow);
 
   const actionBindingRegistry = registryWithUcpathSearch(directUcpathSearchFixtureTask);
 

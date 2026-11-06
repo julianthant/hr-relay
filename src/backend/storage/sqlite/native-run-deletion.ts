@@ -10,9 +10,10 @@ import { artifactReferencesIn, containsDeletionArtifactReference } from "./artif
 import { DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
-import type { RunRecord } from "../../../models/run/record.js";
+import { type PredecessorRunRecord } from "../../../models/run/record.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
-import { runRecordFromRow } from "./run-record-row.js";
+import { predecessorRunRecordFromRow, runRecordFromRow } from "./run-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
 import { commandFromRow } from "./command-record-row.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -52,8 +53,10 @@ function isSettledCascadeTerminalization(database:DatabaseSync,command:ReturnTyp
   return true;
 }
 
-export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord, request: RunDeleteInput,
-  captureFile: (ref: ArtifactRef) => Omit<FileEvidence,"disposition">, phase: "execution" | "preflight" = "execution") {
+export function prepareNativeRunDeletion(database: DatabaseSync, run: PredecessorRunRecord, request: RunDeleteInput,
+  captureFile: (ref: ArtifactRef) => Omit<FileEvidence,"disposition">, phase: "execution" | "preflight" = "execution",
+  schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version) {
+  const readRun = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? predecessorRunRecordFromRow : runRecordFromRow;
   const runId = run.envelope.runId;
   const cascade = new Set<string>(request.cascadeRunIds);
   if (!cascade.has(runId)) throw new Error("run-deletion-cascade-owner-missing");
@@ -63,9 +66,9 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
     if (phase === "execution" || !cascade.has(id)) throw new Error("run-deletion-children-remain");
   }
   const retained: unknown[] = [];
-  const currentCascade = new Map<string,RunRecord>();
+  const currentCascade = new Map<string, PredecessorRunRecord>();
   for (const raw of database.prepare("SELECT * FROM runs").all()) {
-    const peer = runRecordFromRow(raw);
+    const peer = readRun(raw);
     if (!cascade.has(peer.envelope.runId)) retained.push(peer);
     else {
       if (peer.lifecycle.state !== "terminal") throw new Error("run-deletion-cascade-nonterminal");
@@ -109,7 +112,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
         const owner=database.prepare("SELECT * FROM commands WHERE id=?").get(command_id);
         if(owner===undefined)throw new Error("run-deletion-audit-command-missing");
         const command=commandFromRow(owner);
-        const audit=nativeOrdinaryRecordFromRow(table,raw);
+        const audit=nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
         if(canonicalJsonStringify(z.object({request:z.unknown()}).parse(audit).request)!==canonicalJsonStringify(command))throw new Error("run-deletion-audit-command-mismatch");
         if(!isSettledCascadeTerminalization(database,command,owner,cascade))retained.push(audit);
         continue;
@@ -119,7 +122,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
         retained.push(kind === "imported" ? importedArtifactFromRow(raw) : kind === "generated" ? generatedArtifactFromRow(raw) : extractedArtifactFromRow(raw));
         continue;
       }
-      const record = nativeOrdinaryRecordFromRow(table,raw);
+      const record = nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
       const identity = z.object({runId:z.string().optional()}).parse(record);
       if (table === "write_intents" || table === "write_attempts" || identity.runId === undefined || !cascade.has(identity.runId)) retained.push(record);
       if (table === "write_intents" && identity.runId === runId) {
@@ -148,10 +151,10 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
   ] as const;
   const candidates = new Map<string, ArtifactRef>();
   const plan = steps.map(step => ({...step,keys:database.prepare(`SELECT * FROM ${step.table} WHERE ${step.where}`).all(runId).map(raw => {
-    if (step.table === "runs") runRecordFromRow(raw);
+    if (step.table === "runs") readRun(raw);
     else if (step.table === "timeline_events") timelineEventFromRow(raw);
-    else if (step.table === "run_search") runSearchIndexFromRow(raw,run,false);
-    else nativeOrdinaryRecordFromRow(step.table,raw);
+    else if (step.table === "run_search") runSearchIndexFromRow(raw, run, false);
+    else nativeOrdinaryRecordFromRow(step.table, raw, schemaVersion);
     for (const value of deletionArtifactValues(database, step.table, raw)) {
       for (const ref of artifactReferencesIn(value)) {
         const prior = candidates.get(ref.sha256);

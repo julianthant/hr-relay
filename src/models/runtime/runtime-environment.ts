@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV } from "../config/secrets.js";
+import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV, PARENT_BUILD_ID_ENV } from "../config/secrets.js";
 
 const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.enum(["SystemRoot", "ProgramFiles", "ProgramFiles(x86)"])]);
 const PROCESS_MECHANICS_ENVIRONMENT_OWNER = "src/models/config/secrets.ts";
@@ -212,6 +212,14 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     documented: true,
   },
   {
+    key: PARENT_BUILD_ID_ENV,
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "process-mechanics",
+    owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER,
+    documented: false,
+  },
+  {
     key: "HRAUTO_DASHBOARD_LAUNCH_NONCE",
     classification: "direct-identifier",
     disposition: "active",
@@ -266,6 +274,7 @@ export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReader
   { key: "LOCALAPPDATA", paths: ["src/models/config/secrets.ts"] },
   { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
   { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
+  { key: PARENT_BUILD_ID_ENV, paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
   { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
 ]));
@@ -366,9 +375,18 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   if (systemRootReader?.paths.length !== 1 || systemRootReader.paths[0] !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
     violations.push("SystemRoot exact reader must be solely the canonical environment accessor");
   }
+  const parentBuild = exact.get(PARENT_BUILD_ID_ENV);
+  if (parentBuild?.disposition !== "active" || parentBuild.classification !== "non-secret-config"
+    || parentBuild.channel !== "process-mechanics" || parentBuild.owner !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("RELAY_PARENT_BUILD_ID must retain the canonical accessor's non-secret process-mechanics ownership");
+  }
+  const parentBuildReader = registry.exactReaderOwners.find(reader => reader.key === PARENT_BUILD_ID_ENV);
+  if (parentBuildReader?.paths.length !== 1 || parentBuildReader.paths[0] !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("RELAY_PARENT_BUILD_ID exact reader must be solely the canonical environment accessor");
+  }
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
-    if (spec.channel === "process-mechanics" && spec.key === "SystemRoot") continue;
+    if (spec.channel === "process-mechanics" && (spec.key === "SystemRoot" || spec.key === PARENT_BUILD_ID_ENV)) continue;
     const expectedOwner = spec.channel === "host-programs" && ["ProgramFiles", "ProgramFiles(x86)"].includes(spec.key) && spec.classification === "non-secret-config"
       ? PROCESS_MECHANICS_ENVIRONMENT_OWNER
       : spec.channel === "host-storage" && spec.key === "LOCALAPPDATA" && spec.classification === "direct-identifier"

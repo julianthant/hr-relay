@@ -27,11 +27,9 @@ This map names the current source, test, and documentation owners. Relay runs lo
 
 `npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
 and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
-`npm run build:manifest` runs that generator, then prepares the ignored
-`src/workflow-kit/validation/generated-build-manifest.ts`. `build:manifest:prepare` prepares only
-the manifest and the ignored Windows observer policy artifact under `node_modules/.cache/relay/`; source-tool configs and package prehooks call it before graph loading. Read-only
-`build:manifest:check` checks registry freshness before manifest bytes. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
-owns preparation boundaries, watcher restart requirements and the future packaging contract.
+`npm run build:observer-policy` prepares the ignored Windows observer policy artifact under
+`node_modules/.cache/relay/`; runtime package prehooks and the Vitest/Vite configs call it. [Guards and tests](guards-and-tests.md#contract-fingerprints-and-build-id)
+owns the contract fingerprint and build id.
 `npm run stores:catalog` generates the catalog section in `docs/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
@@ -82,7 +80,7 @@ Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |
 | --- | --- |
-| `assistant/` | The tool-calling agent turn (`service.ts`), opaque references and operator-text masking (`references.ts`), tool plugins per domain with the registry and hash-pinned workflow facts (`plugins/`), private profile-token authorization and once-consumable canonical actions. Profile SQLite owns grants, chats and actions. |
+| `assistant/` | The tool-calling agent turn (`service.ts`), opaque references and operator-text masking (`references.ts`), tool plugins per domain with the registry and hash-pinned workflow facts (`plugins/`), private profile-token authorization and once-consumable canonical actions. Profile SQLite owns grants, chats and actions, and the conversation history the service accepts, replays and settles. |
 | `accounts/` | ChatGPT OAuth, verified account and usage state, and the shared Responses OCR/assistant transport. Account-specific model catalogs and bounded strict namespaced function turns use the same selected-account owner; production functions require their current canonical availability and authorization gates; absent verified model policy refuses inference. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
 | `app/` | Bootstrap, configuration, host admission, preflight, rehearsal manifest validation, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` composes credential maintenance assessment, including stopped machine-control inventory; `storage/maintenance/profile-inventory.ts` owns canonical copy/resource membership and retained browser-root validation shared with stopped READY-profile upgrade. Its required `ProfileBrowserClosure` port binds browser work to the actual runtime admission or the finite flat-store lease. `storage/maintenance/upgrade.ts` runs profile SQLite upgrade and the separate stopped machine-control upgrade. `storage-compose.ts` coordinates registered READY-person health and backed-up forward migration before dashboard runtime admission; ordinary sign-in remains current-only. `storage/maintenance/existing-data-backup.ts` owns the raw-byte flat native6 archive writer for startup migration and stopped CLI backup; registered-person SQLite backups remain in `upgrade.ts`. `storage/maintenance/existing-data-backup-files.ts` owns strict schema2 flat archive source/receipt membership, private copy and independent verification without opening authority databases. `storage/maintenance/cancel-queued-runs.ts` owns digest-bound offline cancellation of never-claimed flat native6 queues, using the finite `AuthorityDatabase.cancelQueuedRunsNative6` transaction and shared run transition/row-update primitives; `storage/maintenance/process-closure.ts` supplies the current startup and offline process/open-file/cwd absence checks. `storage/admission/bootstrap-admission.ts` runs the verified flat-store start-clean migration before profile composition; `installation.ts` owns its durable deletion intent and empty-registry publication. |
@@ -138,7 +136,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer parts, authored walkthrough schema and finite local choice projection. Registered workflow definitions own the content; the Explorer query serves it after definition identity checks. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
-| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated prepared static manifest and fingerprint resolvers. |
+| `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/runtime/build-id.ts` owns the worker-scoped app build id. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
@@ -321,6 +319,6 @@ Task contract modules follow each task ID suffix: Emergency Contact uses `models
 
 `src/backend/storage/sqlite/delegation-authority.ts` owns current and retained membership selection, revision/reuse custody and scoped authentication proofs. `src/rules/commands/lifecycle-command-id.ts` owns deterministic initial and revised invocation identities shared by factories and native admission.
 
-`app/composition/dashboard/assistant.ts` adapts the dashboard's query owners into the assistant plugin dependencies. `dashboard-wiring.ts` composes them with the selected profile's currentness check. `dashboard/surfaces/assistant/assistant-history-model.ts` owns person-scoped tab history, draft retention and restoration without action or verification authority.
+`app/composition/dashboard/assistant.ts` adapts the dashboard's query owners into the assistant plugin dependencies. `dashboard-wiring.ts` composes them with the selected profile's currentness check. `src/backend/storage/sqlite/assistant-history.ts` owns the conversation and message tables, their migration, acceptance and settlement, decision captions, imports, startup settlement and expiry. `dashboard/surfaces/assistant/assistant-history-model.ts` is the browser's async client and cache of the served history: chat list, drafts, restored transcripts without action or verification authority, and the one-time import of the old tab history.
 
 `src/backend/runs/queries/run-retry.ts` owns read-only Lookup batch-root Retry eligibility. The Queue composition supplies it through the projection authority port. Native commands retain mutation authority.

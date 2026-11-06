@@ -73,7 +73,7 @@ export function createApprovedOcrRecordReader(deps: Readonly<{
     if (child.state !== "done" || child.runId !== query.approval.sourceRunId || !same(child.output.approvedSnapshot, query.approval)) {
       throw new OcrReviewRefusedError();
     }
-    const snapshot = requireCurrentOcrSnapshot(deps.database.authority, reader, query.approval);
+    const snapshot = requireCurrentOcrSnapshot(deps.database.authority, reader, query.approval, deps.resolveDescriptor);
     if (query.kind === "snapshot") return snapshot;
     const parsedInput = descriptor.canonicalInput.safeParse(current.input.parsed.value);
     if (!parsedInput.success) throw new OcrReviewRefusedError();
@@ -111,7 +111,7 @@ export function createApprovedOcrRecordReader(deps: Readonly<{
       const sources = input.outcomes.map(outcome => {
         if (outcome.state !== "done" || outcome.output.approvedSnapshot === null
           || outcome.output.approvedSnapshot.sourceRunId !== outcome.runId) throw new OcrReviewRefusedError();
-        const snapshot = requireCurrentOcrSnapshot(repositories, reader, outcome.output.approvedSnapshot);
+        const snapshot = requireCurrentOcrSnapshot(repositories, reader, outcome.output.approvedSnapshot, deps.resolveDescriptor);
         return { snapshot, review: outcome.output.review };
       });
       return ReadApprovedOcrRecords.output.parse({ state: "ready", sources });

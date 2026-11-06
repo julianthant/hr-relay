@@ -36,6 +36,7 @@ writeFixtureDescriptorAfterUnrelatedEdit,
 writeFixtureDescriptorAtVersion2,
 writeFixtureDescriptorWithDependencyAfterUnrelatedEdit,
 writeFixtureDescriptorWithMovedKey,
+writeFixtureDescriptorWithMovedKeySameContract,
 writeFixtureQueuedRun,
 writeFixtureSaveDescriptorAfterUnrelatedEdit,
 } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -58,8 +59,9 @@ async function repositories(): Promise<WriteBindingRepositories> {
   return opened.database.authority;
 }
 
-function parkedRun(overrides: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown }> = {}): RunRecord {
+function parkedRun(overrides: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown; buildId?: string }> = {}): RunRecord {
   const raw = writeFixtureQueuedRun();
+  if (overrides.buildId !== undefined) (raw.envelope as { buildId: string }).buildId = overrides.buildId;
   if (overrides.parsedSchemaHash !== undefined) {
     const input = raw.input as { parsed: { schemaHash: string } };
     input.parsed.schemaHash = overrides.parsedSchemaHash;
@@ -115,7 +117,7 @@ function parkedIntent(overrides: Readonly<{ proofTaskId?: string }> = {}): Write
 
 async function evaluate(
   descriptor: Parameters<typeof evaluateWriteResolutionBinding>[0]["descriptor"],
-  options: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown; proofTaskId?: string }> = {},
+  options: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown; proofTaskId?: string; buildId?: string }> = {},
 ): Promise<WriteResolutionBinding> {
   return evaluateWriteResolutionBinding({
     arm: "operator-confirmed-absent",
@@ -123,6 +125,7 @@ async function evaluate(
     run: parkedRun({
       ...(options.parsedSchemaHash === undefined ? {} : { parsedSchemaHash: options.parsedSchemaHash }),
       ...(options.parsedValue === undefined ? {} : { parsedValue: options.parsedValue }),
+      ...(options.buildId === undefined ? {} : { buildId: options.buildId }),
     }),
     intent: parkedIntent({ ...(options.proofTaskId === undefined ? {} : { proofTaskId: options.proofTaskId }) }),
     repositories: await repositories(),
@@ -136,7 +139,7 @@ function stateOf(binding: WriteResolutionBinding, check: WriteBindingCheck): str
 }
 
 describe("write-resolution binding — what a parked write may survive", () => {
-  it("reports identical when the contract closure is byte-identical", async () => {
+  it("reports identical for the same contract under the same build", async () => {
     const binding = await evaluate(writeFixtureDescriptor);
     assert.equal(binding.state, "identical");
     assert.ok(binding.state === "identical");
@@ -145,8 +148,21 @@ describe("write-resolution binding — what a parked write may survive", () => {
     assert.deepEqual(
       binding.checks.filter((check) => check.state !== "held"),
       [],
-      "byte identity of the closure proves every check at once",
+      "same contract and same build prove every check at once",
     );
+  });
+
+  it("runs every identity check when the contract is equal but the approving build differs", async () => {
+    const otherBuild = "0".repeat(64);
+    const compatible = await evaluate(writeFixtureDescriptor, { buildId: otherBuild });
+    assert.ok(compatible.state === "compatible", "equal contracts under another build are not proof of identical code");
+    assert.deepEqual(compatible.checks.filter((check) => check.state !== "held"), []);
+    assert.equal(compatible.checks.some((check) => check.detail.includes("same contract and same build")), false);
+
+    const moved = await evaluate(writeFixtureDescriptorWithMovedKeySameContract, { buildId: otherBuild });
+    assert.equal(writeFixtureDescriptorWithMovedKeySameContract.contractFingerprint, writeFixtureDescriptor.contractFingerprint);
+    assert.ok(moved.state === "incompatible", "a changed key under an equal contract must refuse, not shortcut");
+    assert.equal(moved.moved, "permanent-key-identity");
   });
 
   it("stays resolvable after an unrelated edit anywhere in the contract closure", async () => {

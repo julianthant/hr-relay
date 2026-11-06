@@ -39,5 +39,20 @@ export function auditWindowsObserverPolicy(root: string): readonly string[] {
   return [...outputs(root)].filter(([path, bytes]) => {
     const target = resolve(root, path);
     return !existsSync(target) || !readFileSync(target).equals(bytes);
-  }).map(([path]) => `${path} is missing or stale — run npm run build:manifest:prepare`);
+  }).map(([path]) => `${path} is missing or stale — run npm run build:observer-policy`);
+}
+
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(import.meta.filename)) {
+  const root = resolve(import.meta.dirname, "../..");
+  if (process.argv.includes("--check")) {
+    const violations = auditWindowsObserverPolicy(root);
+    if (violations.length > 0) {
+      process.stderr.write(`${violations.join("\n")}\n`);
+      process.exit(1);
+    }
+    process.stdout.write("Windows observer policy is current.\n");
+  } else {
+    prepareWindowsObserverPolicy(root);
+    process.stdout.write("Prepared the Windows observer policy.\n");
+  }
 }

@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 
@@ -17,6 +18,7 @@ import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../../src/w
 import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import type { TestClock } from "../../../src/rules/time/clock.js";
 import { defineTaskContract } from "../../../src/models/task/task-contract.js";
+import { taskImplFingerprint } from "../../../src/workflow-kit/fingerprints.js";
 import { ContractFieldPathSchema } from "../../../src/models/task/task-contract.js";
 import {
   EidSchema,
@@ -60,7 +62,6 @@ export const WRITE_FIXTURE_RUN_ID = UUID_2;
 export const WRITE_FIXTURE_ITEM_ID = UUID_3;
 export const WRITE_FIXTURE_WORKER_ID = "write-fixture-worker-1";
 export const WRITE_FIXTURE_FINGERPRINT = FingerprintSchema.parse("e".repeat(64));
-export const WRITE_FIXTURE_IMPL_FINGERPRINT = FingerprintSchema.parse("d".repeat(64));
 export const WRITE_FIXTURE_SECRET_CANARY = "RAW_TRANSACTION_SECRET_CANARY";
 
 const SubjectInput = z.strictObject({ eid: EidSchema });
@@ -195,6 +196,8 @@ export const WriteFixtureCommit = defineTaskContract({
 });
 
 /** Save-verify sibling: proof comes from a post-click read-back, and its recovery absence is operator-only. */
+export const WRITE_FIXTURE_IMPL_FINGERPRINT = taskImplFingerprint(WriteFixtureCommit);
+
 export const WriteFixtureVerify = defineTaskContract({
   id: taskId("ucpath/read-write-fixture-verify"),
   title: "Read Write Fixture Verify",
@@ -628,6 +631,9 @@ export const writeFixtureDescriptorWithMovedKey = buildDescriptor("receipt", {
   commitEid: WRITE_FIXTURE_MOVED_EID,
 });
 
+/** Same contract fingerprint as the base fixture, but the commit bind derives another permanent key. */
+export const writeFixtureDescriptorWithMovedKeySameContract = buildDescriptor("receipt", { commitEid: WRITE_FIXTURE_MOVED_EID });
+
 /** Moved closure plus a durable task dependency whose checkpoint recovery must require. */
 export const writeFixtureDescriptorWithDependencyAfterUnrelatedEdit = defineWorkflowDescriptor({
   id: WRITE_FIXTURE_WORKFLOW_ID,
@@ -705,7 +711,7 @@ export function writeFixtureQueuedRun(options: Readonly<{
       itemId: options.itemId ?? WRITE_FIXTURE_ITEM_ID,
       traceId: "wf-090000-2222",
       descriptorVersion: 1,
-      contractFingerprint: WRITE_FIXTURE_FINGERPRINT,
+      contractFingerprint: WRITE_FIXTURE_FINGERPRINT, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod" },
       configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,

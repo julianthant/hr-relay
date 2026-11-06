@@ -31,7 +31,7 @@ import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../../helpers/phase1f-executor-harness.js";
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../operator-command-fixtures.js";
 import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegistry, writeFixtureSessions,
-  writeFixtureSessionManager, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_EID } from "../write-sequencer-fixtures.js";
+  writeFixtureSessionManager, WRITE_FIXTURE_EID } from "../write-sequencer-fixtures.js";
 
 const retainedSourceBoundFixtureOwners = new Set<object>();
 
@@ -73,7 +73,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     timeline.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
   } });
   const resolution = createWriteResolutionExecutor({ continuation: runContinuationPort(lifecycle), descriptors,
-    authority: database, ids, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
+    authority: database, ids  });
   const unused = () => { throw new Error("unrequested runtime operation"); };
   const kernel = createCommandKernel({ lifecycle, appVersion: "0.1.0", authority: database, clock, ids, descriptors,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
@@ -104,9 +104,8 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
       resolveTarget: id => { const target = descriptors.resolve(id); if (target === undefined) throw new Error("fixture-child-descriptor-missing"); return target; } }),
     ...(publisher === undefined ? {} : { confirmedActionPublisher: publisher }),
     clock, ids, scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000, log: recordingLogger().log };
-  const sequencer = createWriteSequencer({ ...common, operator: "local-operator", resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
-  const recovery = createWriteRecoveryService({ ...common, continuation: runContinuationPort(lifecycle), operator: "local-operator",
-    resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
+  const sequencer = createWriteSequencer({ ...common, operator: "local-operator"  });
+  const recovery = createWriteRecoveryService({ ...common, continuation: runContinuationPort(lifecycle), operator: "local-operator"  });
   function proposal(source?: RunRecord, acknowledgment?: string, dryRun = false, eid = WRITE_FIXTURE_EID, memo?: string) {
     const selectedStepKeys = descriptor.timeline.map((step) => step.key);
     return planner.plan({ workflowId: descriptor.id, submissions: [{ eid, ...(memo === undefined ? {} : { memo }) }], dryRun, selectedStepKeys,

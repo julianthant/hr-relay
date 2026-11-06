@@ -19,7 +19,7 @@ export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
   const history = useAssistantHistory(client, props.source === 'served', props.authority);
   return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
-    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
+    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || history.blocked || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
 }
 function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const panelPosition = useHubPanelPosition(4);
@@ -31,6 +31,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const [editing, setEditing] = useState<{ kind: "rename" | "delete"; id: string }>();
   const [title, setTitle] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [saving, setSaving] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const anchor = useRef<HTMLSpanElement>(null);
@@ -38,7 +39,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   useLayoutEffect(() => { setFooter(anchor.current?.closest(".dashboard-shell")?.querySelector<HTMLElement>('[aria-label="Session actions"] > span:last-child') ?? null); }, []);
   const localChats = useMemo(() => history?.chats ?? createMockHubChatsPort(source === "mock"), [source, history]);
   const model = useHubChats(chatsPort ?? localChats);
-  const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) model.rename(id, title); }, history);
+  const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
   const assistantTest = useContext(PreflightAssistantContext);
   const seenRevision = useRef<string | undefined>(undefined);
   const modelChanged = useCallback((view: AssistantModelPreferenceView, saved: boolean) => {
@@ -64,7 +65,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
         if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { setOpened(false); panelPosition.reset(); launcher.current?.focus(); } }
       }}>
         {list && <header className="hub-slot-header" tabIndex={0} aria-label="Move panel with arrow keys" onPointerDown={panelPosition.onPointerDown} onPointerMove={panelPosition.onPointerMove} onPointerUp={panelPosition.onPointerUp} onPointerCancel={panelPosition.onPointerCancel} onLostPointerCapture={panelPosition.onPointerCancel} onKeyDown={panelPosition.onKeyDown}><div className="hub-slot-title"><span>Chats</span></div><div className="hub-header-actions">
-          {icon("Chats", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, () => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); })}
+          {icon("Chats", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { void model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, () => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); })}
         </div></header>}
         {list ? <div className="hub-transcript hub-chat-list" onKeyDown={event => {
           if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;
@@ -79,12 +80,12 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
             const rows = model.chats.filter(chat => chat.group === group && chat.title.toLowerCase().includes(query.toLowerCase()));
             return rows.length > 0 && <section className="hub-chat-group" key={group}><h3>{group}</h3>{rows.map(chat => <div className="hub-chat-row" key={chat.id} data-current={chat.id === model.currentId} onKeyDown={event => {
               if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); edit("delete", chat.id); }
-            }}><button tabIndex={0} className="hub-chat-open" type="button" aria-current={chat.id === model.currentId ? "true" : undefined} onClick={() => { model.select(chat.id); setList(false); }}><strong>{chat.title}</strong><small>{chatAge(chat.minutes)}{chat.id === model.currentId && " · Current"}</small></button>{icon(`Rename chat ${chat.title}`, <Pencil aria-hidden />, () => edit("rename", chat.id))}{icon(`Delete chat ${chat.title}`, <Trash2 aria-hidden />, () => edit("delete", chat.id))}</div>)}</section>;
+            }}><button tabIndex={0} className="hub-chat-open" type="button" aria-current={chat.id === model.currentId ? "true" : undefined} onClick={() => { void model.select(chat.id); setList(false); }}><strong>{chat.title}</strong><small>{chatAge(chat.minutes)}{chat.id === model.currentId && " · Current"}</small></button>{icon(`Rename chat ${chat.title}`, <Pencil aria-hidden />, () => edit("rename", chat.id))}{icon(`Delete chat ${chat.title}`, <Trash2 aria-hidden />, () => edit("delete", chat.id))}</div>)}</section>;
           })}
         </div> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
           {current && currentSession && <AssistantPanel key={current.id} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
-            onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { setList(true); }} onNewChat={() => { model.create(); setList(false); }} onRename={() => edit("rename", current.id)}
+            onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)}
             headerProps={{ tabIndex: 0, "aria-label": "Move panel with arrow keys", onPointerDown: panelPosition.onPointerDown, onPointerMove: panelPosition.onPointerMove, onPointerUp: panelPosition.onPointerUp, onPointerCancel: panelPosition.onPointerCancel, onLostPointerCapture: panelPosition.onPointerCancel, onKeyDown: panelPosition.onKeyDown }} ></AssistantPanel>}
         </div>
       </section>
@@ -94,13 +95,18 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
     <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose className="hub-modal" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
       onCloseAutoFocus={event => { event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : document.querySelector<HTMLElement>(".hub-chat-open") ?? launcher.current)?.focus({ preventScroll: true }); }}>
       <form onSubmit={event => {
-        event.preventDefault(); if (!editing) return;
-        if (editing.kind === "rename") { model.rename(editing.id, title); assistant.session(editing.id).rename(title); setAnnouncement("Chat renamed."); }
-        else { served.forgetSession(editing.id); assistant.forgetSession(editing.id); model.remove(editing.id); setAnnouncement("Chat deleted."); }
-        setEditing(undefined);
+        event.preventDefault(); if (!editing || saving) return;
+        const { id, kind } = editing;
+        setSaving(true);
+        void (kind === "rename" ? model.rename(id, title) : model.remove(id)).then(saved => {
+          setSaving(false); setEditing(undefined);
+          if (!saved) return;
+          if (kind === "rename") { assistant.session(id).rename(title); setAnnouncement("Chat renamed."); }
+          else { served.forgetSession(id); assistant.forgetSession(id); setAnnouncement("Chat deleted."); }
+        });
       }}>
         {editing?.kind === "rename" && <input className="hub-field" aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} />}
-        <DialogFooter><button tabIndex={0} className="hub-btn" type="button" onClick={() => setEditing(undefined)}>Cancel</button><button tabIndex={0} className={`hub-btn ${editing?.kind === "delete" ? "danger" : "primary"}`} type="submit" disabled={editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</button></DialogFooter>
+        <DialogFooter><button tabIndex={0} className="hub-btn" type="button" onClick={() => setEditing(undefined)}>Cancel</button><button tabIndex={0} className={`hub-btn ${editing?.kind === "delete" ? "danger" : "primary"}`} type="submit" aria-busy={saving || undefined} disabled={saving || editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</button></DialogFooter>
       </form></DialogContent></Dialog>
   </>;
 }

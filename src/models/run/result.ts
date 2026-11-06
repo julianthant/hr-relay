@@ -25,7 +25,7 @@ import {
 } from "../../rules/identity/ids.js";
 import type { Fingerprint } from "../../rules/identity/ids.js";
 import { FailureTerminalAuthorizationRecordSchema } from "./terminal-authorization.js";
-import { RunRecordSchema, type RunRecord } from "./record.js";
+import { RunRecordSchema, type PredecessorRunRecord, type RunRecord } from "./record.js";
 import { DelegationManifestSchema, RefreshedRunSettlementSchema, delegationJoinDisposition } from "../../rules/workflow/dependencies.js";
 import { childRunOutcomeSchema, DelegationManifestRefSchema } from "../workflow/graph.js";
 import { FailureRecordSchema, type FailureRecord } from "../trust/failure.js";
@@ -261,7 +261,7 @@ export function terminalEvidenceResult(record: RunResultRecord): RunTerminalEvid
     ? RunTerminalEvidenceResultSchema.parse(record.result.value) : undefined;
 }
 
-export function createRunTerminalEvidenceResult(run: RunRecord, evidence: RunTerminalEvidenceResult): RunResultRecord {
+export function createRunTerminalEvidenceResult(run: PredecessorRunRecord, evidence: RunTerminalEvidenceResult): RunResultRecord {
   if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome === "done" || run.lifecycle.outcome === "interrupted") {
     throw new Error("terminal-evidence-run-state-invalid");
   }

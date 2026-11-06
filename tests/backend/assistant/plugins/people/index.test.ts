@@ -14,7 +14,7 @@ function tool() {
       totalMatches: 0, coverage: { matched: 0, subjectUnavailable: 0, actorUnavailable: 0, candidateLimit: 10000 }, results: [], nextCursor: { state: "absent", reason: "end" } } as unknown as CrossDateSearchPage; } };
   const [findPeople] = peoplePlugin(deps, id => id).tools; assert.ok(findPeople?.kind === "read");
   const references = createAssistantReferenceTable(3);
-  const context = { signal: new AbortController().signal, references, actorId: "local-operator", assertCurrent() {}, assertRetainedCurrent() {} };
+  const context = { signal: new AbortController().signal, references, actorId: "local-operator", conversationId: "22222222-2222-4222-8222-222222222222", assertCurrent() {}, assertRetainedCurrent() {} };
   return { queries, references, run: (query: string) => findPeople.invoke({ query }, context) };
 }
 

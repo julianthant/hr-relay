@@ -53,10 +53,8 @@ import {
 } from "../../../rules/workflow/task-provenance.js";
 import type { DataPoint, RecordedDataPoint } from "../../../rules/workflow/task-provenance.js";
 import { assertMintedMutationCapability, mintMutationCapability } from "../../../workflow-kit/mutation-capability.js";
-import {
-  BUILD_MANIFEST,
-  resolveTaskImplFingerprint,
-} from "../../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
+import { currentBuildId } from "../build-id.js";
 import {
   RunCheckpointRecordSchema,
   type RunCheckpointRecord,
@@ -258,8 +256,6 @@ export interface WriteSequencerDependencies {
   /** The acting operator identity from the config domain (ref clock-config-secrets); never fabricated. */
   readonly operator: unknown;
   readonly log: TaskLogger;
-
-  readonly resolveImplFingerprint?: (taskId: TaskId) => Fingerprint;
   readonly hooks?: WriteSequencerHooks;
 }
 
@@ -834,8 +830,6 @@ function buildTransactionCheckpoint(
 
 export function createWriteSequencer(deps: WriteSequencerDependencies): ProductionWriteSequencer {
   const operator = ActorIdSchema.parse(deps.operator);
-  const resolveImplFingerprint = deps.resolveImplFingerprint
-    ?? ((taskId: TaskId) => resolveTaskImplFingerprint(BUILD_MANIFEST, taskId));
   z.number().int().positive().parse(deps.taskDeadlineMs);
   const taskIndex = taskIndexOf(deps.stores);
   const instant = () => IsoInstantSchema.parse(deps.clock.now().toISOString());
@@ -1182,7 +1176,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         ...(retainedRunProtectedBindings(context.run).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(context.run) }) },
       descriptorVersion: context.descriptor.version,
       contractFingerprint: context.descriptor.contractFingerprint,
-      implFingerprint: resolveImplFingerprint(commitContract.id),
+      implFingerprint: taskImplFingerprint(commitContract),
       provenance: transactionCheckpointProvenance(outcome, now),
       writtenAt: now,
     });
@@ -1316,7 +1310,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   ): void {
     if (stored.descriptorVersion !== context.descriptor.version
       || stored.contractFingerprint !== context.descriptor.contractFingerprint
-      || stored.implFingerprint !== resolveImplFingerprint(commitContract.id)
+      || stored.implFingerprint !== taskImplFingerprint(commitContract)
       || stored.output.schemaHash !== TRANSACTION_OUTCOME_SCHEMA_HASH) {
       throw new Error(
         `transaction node "${context.node.id}" has a stored outcome from a drifted descriptor/impl; `
@@ -1633,7 +1627,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         intent,
         commitContract,
         operator,
-        implFingerprint: resolveImplFingerprint(commitContract.id),
+        implFingerprint: taskImplFingerprint(commitContract),
         proofSource: "recovery-probe",
         proofValue,
         outputValue,
@@ -1770,13 +1764,19 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (containsDryRunSample(commitInput) || containsDryRunSample(prepareInput)) {
       throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Dry-run samples cannot authorize a real submission.");
     }
+    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
+    const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
+      ? undefined : envelope.sourceBound;
+    const replaysCommittedOutcome = storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId);
+    // A write approved under another build never derives its key, fences or clicks here; only its committed outcome replays.
+    if (!replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
+      throw new TaskError(commitContract.id, "WRITE_BUILD_CHANGED",
+        "Relay was updated after this run was approved. Retry the run to approve its write under this version.");
+    }
     const system = systemOf(commitContract.id);
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const naturalKey = IdempotencyKeySchema.parse(keyRaw);
     const businessKeyDigest = deriveIdempotencyKeyDigest(system, naturalKey);
-    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
-    const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
-      ? undefined : envelope.sourceBound;
     const repeatBindings = sourceBound?.protectedBindings ?? retainedRunProtectedBindings(run);
     const consent = sourceBound?.warnings.filter((warning) => warning.nodeId === node.id
       && warning.taskId === commitContract.id && warning.system === system && warning.businessKeyDigest === businessKeyDigest);
@@ -1808,7 +1808,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
 
-    if (storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId)) {
+    if (replaysCommittedOutcome) {
 
       assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
@@ -2317,7 +2317,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           intent: proof.intent,
           commitContract,
           operator,
-          implFingerprint: resolveImplFingerprint(commitContract.id),
+          implFingerprint: taskImplFingerprint(commitContract),
           proofSource: "normal-output",
           proofValue: proof.proofValue,
           outputValue: proof.outputValue,

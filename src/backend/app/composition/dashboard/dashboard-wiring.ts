@@ -16,7 +16,8 @@ import { createAssistantService } from "../../../assistant/service.js";
 import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
 import { createAssistantProposals } from "../../../assistant/proposals.js";
 import { assistantWorkflowFacts, loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
-import { assistantSurfaceCoverage, createAssistantPluginDeps } from "./assistant.js";
+import { assistantSurfaceCoverage, createAssistantPluginDeps, startAssistantHistoryCleanup } from "./assistant.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { createCommandKernel } from "../../../runs/commands/command-kernel.js";
@@ -63,6 +64,7 @@ import { composeStorage } from "./storage.js";
 import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
 import { WORKER_BIRTH_POLL_MS,WORKER_BIRTH_TIMEOUT_MS,composeWorkerProcessControl,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
+
 
 export async function composeDashboardRuntimeStartup(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody): Promise<DashboardRuntime> {
   const environment = prepareDashboardEnvironment(input, custody);
@@ -256,6 +258,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
     plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
     decideAction: (decision, signal) => assistantProposals.decideAction(decision, signal),
+    history: () => { assertCurrent(); return database.authority.assistantHistory; },
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
     readModelPreference: () => captureSelectedModel().view,
     readPermission: () => assistantAuthorization.permission(),
@@ -367,6 +370,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   const assistantSurface = assistantSurfaceCoverage(app.routes);
 
+  // Unfinished sends become delivery-unknown before any history route serves; expired chats are reclaimed now and hourly.
+  database.authority.assistantHistory.settleInterrupted(clock.now().toISOString());
+  database.authority.assistantHistory.reclaimExpired(clock.now().toISOString());
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({
     app,
@@ -385,6 +391,13 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
+  const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
+    const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",
+      reason: error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError ? "custody-unproved" : "cleanup-failed" };
+    debugEvents.emit(event);
+    input.workerProcess?.faultSink?.(JSON.stringify(event));
+  });
+  startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, historyTimer, custody });
 }

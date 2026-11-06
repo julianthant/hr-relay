@@ -9,6 +9,8 @@ export interface AssistantToolContext {
   readonly signal: AbortSignal;
   readonly references: AssistantReferenceTable;
   readonly actorId: string;
+  /** The conversation whose accepted turn issued this call; a decision caption is bound to it. */
+  readonly conversationId: string;
   assertCurrent(): void;
   /** The turn's captured authority (composition, model policy, account) without its request signal; a proposal keeps it for Confirm. */
   assertRetainedCurrent(): void;

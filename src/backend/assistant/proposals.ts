@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { AssistantActionProposalSchema, ASSISTANT_START_ROWS_MAX, type AssistantActionDecision, type AssistantActionProposal, type AssistantActionResult,
+import { ASSISTANT_FAILURES, AssistantActionProposalSchema, ASSISTANT_START_ROWS_MAX, type AssistantActionDecision, type AssistantActionProposal, type AssistantActionResult,
   type AssistantProposalRow } from "../../models/dashboard/assistant.js";
 import type { RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
 import { NotificationCollectionOperationSchema, type NotificationCollectionOperation } from "../../models/notifications/notifications.js";
@@ -44,6 +44,9 @@ interface Pending {
   readonly record: ActionRecord;
   readonly digest: string;
   readonly start: boolean;
+  /** The conversation whose turn issued the card and the card's fixed-verb label; the decision caption uses both. */
+  readonly conversationId: string;
+  readonly label: string;
   assertCurrent(): void;
   assertApplied(): void;
 }
@@ -112,6 +115,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     const proposal = AssistantActionProposalSchema.parse(card({ chatId: chat.chatId, actionId: prepared.id, revision: prepared.revision, expiresAt }));
     prune();
     pending.set(prepared.id, { chat, revision: prepared.revision, expiresAt, record: issuedRecord, digest: digestOf(proposal), start: command.family === "start",
+      conversationId: context.conversationId, label: proposal.label,
       assertCurrent, assertApplied: checks.assertApplied ?? (() => {}) });
     return proposal;
   }
@@ -253,9 +257,13 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         || Date.parse(issued.expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");
       issued.assertCurrent();
       if (canonicalJsonStringify(deps.database.authority.assistantAuthorization.action(decision.actionId)) !== canonicalJsonStringify(issued.record)) throw new Error("assistant-action-record-stale");
+      const caption = (text: string) => deps.database.authority.assistantHistory.appendDecision({ conversationId: issued.conversationId, actionId: decision.actionId,
+        messageId: randomUUID(), text, now: deps.clock.now().toISOString() });
       if (decision.decision === "cancel") {
         pending.delete(decision.actionId);
         deps.authorization.cancel(issued.chat, decision.actionId, decision.revision);
+        // Before a claim a lost caption leaves the result as is; the panel sees the missing caption on readback.
+        try { caption(`Not done: ${issued.label}.`); } catch { /* readback shows the caption is missing */ }
         return { state: "cancelled", actionId: decision.actionId };
       }
       if (decision.reviewedDigest !== issued.digest) throw new Error("assistant-reviewed-proposal-mismatch");
@@ -269,10 +277,17 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
           : deps.authorization.consume(issued.chat, decision.actionId);
         if (!issued.start && result !== null) deps.commands.publish(issued.record.command, result);
         signal.throwIfAborted();
-        if (result?.state !== "applied") return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
+        if (result?.state !== "applied") {
+          caption(`Not done: ${issued.label}. ${ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED}`);
+          return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
+        }
         issued.assertApplied();
+        caption(`Done: ${issued.label}.`);
         return { state: "applied", actionId: decision.actionId };
-      } catch { return { state: "unknown", actionId: decision.actionId }; }
+      } catch {
+        try { caption(`Outcome unknown: ${issued.label}. Do not retry.`); } catch { /* the action stays UNKNOWN either way */ }
+        return { state: "unknown", actionId: decision.actionId };
+      }
     },
   });
 }

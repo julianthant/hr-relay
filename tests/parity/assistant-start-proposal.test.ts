@@ -36,7 +36,7 @@ for (const theme of ["light", "dark"]) for (const outcome of ["applied", "cancel
     } }));
     await page.route("**/api/v1/assistant/respond", route => {
       requests.push(AssistantRequestSchema.parse(route.request().postDataJSON()));
-      return route.fulfill({ json: { state: "action-proposal", proposal: ASSISTANT_START_PROPOSAL } });
+      return route.fulfill({ json: { kind: "result", result: { state: "action-proposal", proposal: ASSISTANT_START_PROPOSAL } } });
     });
     await page.route("**/api/v1/assistant/action", route => {
       decisions.push(AssistantActionDecisionSchema.parse(route.request().postDataJSON()));

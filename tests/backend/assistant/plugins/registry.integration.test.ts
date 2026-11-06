@@ -126,8 +126,12 @@ it("keeps every seeded personal value out of the provider requests across all pr
     const debug: unknown[] = [];
     const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => owners.facts, plugins: owners.plugins,
       owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), debugEvents: { emit: event => { debug.push(event); } },
-      modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2026-10-13T00:00:00Z" }, isCurrent: () => true }) });
-    const result = await service.respond({ conversationId: randomUUID(), messageId: randomUUID(), message: "Who ran recently, and what needs my attention?" }, new AbortController().signal);
+      modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2026-10-13T00:00:00Z" }, isCurrent: () => true }), history: () => owners.w.database.authority.assistantHistory });
+    const conversationId = randomUUID();
+    assert.equal(service.history({ operation: "create", conversationId, title: "Chat" }).state, "saved");
+    const envelope = await service.respond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: "Who ran recently, and what needs my attention?" }, new AbortController().signal);
+    assert.equal(envelope.kind, "result"); if (envelope.kind !== "result") throw new Error("result required");
+    const { result } = envelope;
     assert.equal(result.state, "answered"); if (result.state !== "answered") throw new Error("answer required");
     assert.match(result.text, new RegExp(`^Found ${CANARIES.subject} in Person Lookup run, \\d{4}-\\d{2}-\\d{2}\\.$`, "u"));
     assert.equal(bodies.length, 8);

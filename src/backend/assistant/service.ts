@@ -3,9 +3,9 @@ import type { DebugEventSchema } from "../../models/events/timeline.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
-import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
+import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantPermissionViewSchema, type AssistantPermissionView } from "../../models/dashboard/assistant.js";
-import { ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
 import { AssistantReferenceError, createAssistantReferences, maskOperatorText } from "./references.js";
@@ -13,6 +13,7 @@ import { AssistantAuthorizationError } from "./authorization.js";
 import { AssistantToolRefusal, type AssistantPlugin } from "./plugins/plugin.js";
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/registry.js";
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
+import { AssistantHistoryRefusal, type AssistantHistoryRepository, type AssistantSettlement } from "../storage/sqlite/assistant-history.js";
 
 export interface AssistantModelPolicy {
   readonly model?: string;
@@ -42,6 +43,8 @@ export interface AssistantServiceOptions {
   readonly modelPolicy: () => AssistantModelPolicySnapshot | undefined;
   readonly clock: Clock;
   readonly decideAction?: (input: AssistantActionDecision, signal: AbortSignal) => AssistantActionResult | Promise<AssistantActionResult>;
+  /** The profile's history repository; every turn is accepted, replayed and settled through it. */
+  readonly history: () => AssistantHistoryRepository;
 }
 class AssistantModelPolicyError extends Error {}
 class AssistantProtocolError extends Error {}
@@ -65,7 +68,9 @@ function developerPrompt(facts: AssistantWorkflowFacts, selectedRun: string | un
 
 export function createAssistantService(options: AssistantServiceOptions) {
   const references = createAssistantReferences();
-  let generations = 0;
+  /** Live inference per conversation, so Clear aborts it. */
+  const live = new Map<string, AbortController>();
+  const now = () => options.clock.now().toISOString();
   // Policy is installed by trusted composition, never by a request or model.
   function captureModelPolicy() {
     let snapshot: AssistantModelPolicySnapshot | undefined;
@@ -114,74 +119,133 @@ export function createAssistantService(options: AssistantServiceOptions) {
         return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
       }
     },
-    async respond(input: unknown, signal: AbortSignal): Promise<AssistantResult> {
-      let verifying = false;
+    historyView() { return options.history().list(now()); },
+    conversation(id: string) { return options.history().conversation(z.uuid().parse(id), now()); },
+    history(input: unknown): AssistantHistoryResult {
+      const operation = AssistantHistoryOperationSchema.safeParse(input);
+      if (!operation.success) return { state: "refused", code: "ASSISTANT_INVALID" };
       try {
-        const request = AssistantRequestSchema.safeParse(input);
-        if (!request.success) return refused("ASSISTANT_INVALID");
-        if (request.data.message.trim() === ASSISTANT_VERIFY_COMMAND) {
+        const result = options.history().apply(operation.data, now());
+        if (result.state === "cleared") { live.get(result.conversationId)?.abort(); references.clear(result.conversationId); }
+        return result;
+      } catch (error) {
+        if (error instanceof AssistantHistoryRefusal) return { state: "refused", code: error.code };
+        throw error;
+      }
+    },
+    async respond(input: unknown, requestSignal: AbortSignal): Promise<AssistantRespondEnvelope> {
+      const request = AssistantRequestSchema.safeParse(input);
+      if (!request.success) return { kind: "result", result: refused("ASSISTANT_INVALID") };
+      const { conversationId, messageId } = request.data, history = options.history();
+      const controller = new AbortController(), signal = AbortSignal.any([requestSignal, controller.signal]);
+      let accepted: Accepted | undefined;
+      const turn = await runTurn(request.data, signal, history, (value) => { accepted = value; live.set(conversationId, controller); });
+      if (live.get(conversationId) === controller) live.delete(conversationId);
+      if ("repeat" in turn) return { kind: "delivery", receipt: turn.repeat };
+      if (accepted === undefined) return { kind: "result", result: "uncertain" in turn ? refused("ASSISTANT_UNAVAILABLE") : turn.result };
+      const { ordinal, revision: acceptedRevision } = accepted;
+      const receipt = (revision: number, delivery: AssistantReceipt["delivery"]): AssistantReceipt => ({ conversationId, messageId, ordinal, revision, delivery });
+      const settle = (settlement: AssistantSettlement, result: AssistantResult): AssistantRespondEnvelope => {
+        const revision = history.settle(conversationId, messageId, settlement, now());
+        return revision === undefined ? { kind: "result", result: refused("ASSISTANT_CONVERSATION_STALE") } : { kind: "result", result, receipt: receipt(revision, settlement.delivery) };
+      };
+      if (!("uncertain" in turn)) {
+        try {
+          try { return settle(settlementOf(turn), turn.result); }
+          // A full chat or history budget refuses the reply: it is definitely not delivered.
+          catch (error) { if (!(error instanceof AssistantHistoryRefusal)) throw error; return settle({ delivery: "refused", code: error.code }, refused(error.code)); }
+        } catch (error) { if (closure(error)) return { kind: "result", result: refused("CHATGPT_RESOURCE_CLOSURE_UNPROVED") }; }
+      }
+      let revision = acceptedRevision;
+      try { revision = history.settle(conversationId, messageId, { delivery: "delivery-unknown" }, now()) ?? revision; }
+      catch { /* Startup settles the turn when even this write fails. */ }
+      return { kind: "delivery", receipt: receipt(revision, "delivery-unknown") };
+    },
+  });
+
+  type Accepted = Readonly<{ ordinal: number; revision: number; createdAt: string }>;
+  /** `uncertain`: the request may have reached the provider without a definite answer or refusal. */
+  type Turn = Readonly<{ repeat: AssistantReceipt }> | Readonly<{ uncertain: true }> | Readonly<{ result: AssistantResult; modelText?: string }>;
+  async function runTurn(request: AssistantRequest, signal: AbortSignal, history: AssistantHistoryRepository,
+    onAccepted: (value: Accepted) => void): Promise<Turn> {
+      let verifying = false;
+      let current: Accepted | undefined;
+      try {
+        if (request.message.trim() === ASSISTANT_VERIFY_COMMAND) {
           verifying = true;
-          if (options.verifySelectedModel === undefined) return refused('ASSISTANT_UNAVAILABLE');
+          if (options.verifySelectedModel === undefined) return stop('ASSISTANT_UNAVAILABLE');
           signal.throwIfAborted();
           await options.verifySelectedModel(signal);
           signal.throwIfAborted();
-          return AssistantResultSchema.parse({ state: 'answered', text: 'Assistant verification completed. You can now send an assistant request.' });
+          return { result: AssistantResultSchema.parse({ state: 'answered', text: 'Assistant verification completed. You can now send an assistant request.' }) };
         }
         const { policy, modelPolicyCurrent } = captureModelPolicy();
-        if (!policy.success || !modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
+        if (!policy.success || !modelPolicyCurrent()) return stop("ASSISTANT_MODEL_UNVERIFIED");
         const assertCurrent = () => {
           if (signal.aborted) throw new ChatGptAccountError("CHATGPT_OCR_CANCELLED");
           options.assertComposition?.();
           if (!modelPolicyCurrent()) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
+          if (current !== undefined && !history.sending(request.conversationId, current.createdAt, request.messageId, now())) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
         };
         assertCurrent();
-        if (options.plugins === undefined) return refused("ASSISTANT_UNAVAILABLE");
+        // The table's generation is the turn's ordinal: above every ordinal an earlier process issued tokens for.
+        const table = references.table(request.conversationId, options.owner(), history.nextOrdinal(request.conversationId));
+        const masked = maskOperatorText(request.message, table);
+        const acceptance = history.accept({ conversationId: request.conversationId, expectedRevision: request.expectedRevision, messageId: request.messageId,
+          text: request.message, modelText: masked, subjectRef: request.subjectRef ?? null, now: options.clock.now().toISOString() });
+        if (acceptance.state === "repeat") return { repeat: { conversationId: request.conversationId, messageId: request.messageId, ordinal: acceptance.ordinal,
+          revision: acceptance.revision, delivery: acceptance.delivery } };
+        current = { ordinal: acceptance.ordinal, revision: acceptance.revision, createdAt: acceptance.createdAt };
+        onAccepted(current);
+        if (options.plugins === undefined) return stop("ASSISTANT_UNAVAILABLE");
         let facts: AssistantWorkflowFacts;
-        try { facts = options.facts(); } catch (error) { if (closure(error)) throw error; return refused("ASSISTANT_CONTEXT_UNAVAILABLE"); }
+        try { facts = options.facts(); } catch (error) { if (closure(error)) throw error; return stop("ASSISTANT_CONTEXT_UNAVAILABLE"); }
         const registry = assistantToolRegistry(options.plugins());
         const { catalog, authority } = await options.account.listAssistantModels(signal);
         assertCurrent();
         if (!options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
-        if (!catalog.models.some(model => model.slug === policy.data.model)) return refused("ASSISTANT_MODEL_UNAVAILABLE");
+        if (!catalog.models.some(model => model.slug === policy.data.model)) return stop("ASSISTANT_MODEL_UNAVAILABLE");
         const assertAuthority = () => {
           assertCurrent();
           if (!options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
         };
-        const table = references.table(request.data.conversationId, options.owner(), ++generations);
-        const selectedRun = request.data.subjectRef === undefined ? undefined : selectedRunReference(request.data.subjectRef);
-        const history: AssistantInputItem[] = [
+        const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
+        const input: AssistantInputItem[] = [
           { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined
             : table.issue("R", selectedRun.runId, "the selected run", selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
-          { role: "user", content: maskOperatorText(request.data.message, table) },
+          ...history.replay(request.conversationId, current.ordinal).map(replayed),
+          { role: "user", content: masked },
         ];
+        if (Buffer.byteLength(JSON.stringify(input)) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_CHAT_FULL") };
         const unrecovered = new Map<string, AssistantFailureCode>(), outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>();
         const assertRetainedCurrent = () => {
           options.assertComposition?.();
           if (!modelPolicyCurrent() || !options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
         };
-        const context = { signal, references: table, actorId: options.actorId, assertCurrent: assertAuthority, assertRetainedCurrent };
+        const context = { signal, references: table, actorId: options.actorId, conversationId: request.conversationId, assertCurrent: assertAuthority, assertRetainedCurrent };
         for (let step = 0; step < MAX_MODEL_CALLS; step++) {
           assertAuthority();
-          if (Buffer.byteLength(JSON.stringify(history)) > MAX_HISTORY_BYTES) return refused("ASSISTANT_LIMIT");
+          if (Buffer.byteLength(JSON.stringify(input)) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_LIMIT") };
           const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model: policy.data.model,
-            reasoning: { effort: policy.data.effort }, input: history, tools: [registry.namespace] }, signal, assertAuthority));
+            reasoning: { effort: policy.data.effort }, input, tools: [registry.namespace] }, signal, assertAuthority));
           assertAuthority();
-          if (turn.model !== policy.data.model) return refused("ASSISTANT_INVALID");
-          history.push(...turn.output);
+          if (turn.model !== policy.data.model) return stop("ASSISTANT_INVALID");
+          input.push(...turn.output);
           const calls = turn.output.filter(item => item.type === "function_call"), messages = turn.output.filter(item => item.type === "message");
           if (calls.length === 0) {
-            if (messages.length !== 1) return refused("ASSISTANT_INVALID");
+            if (messages.length !== 1) return stop("ASSISTANT_INVALID");
             const code = unrecovered.values().next().value;
-            if (code !== undefined) return refused(code);
-            return AssistantResultSchema.parse({ state: "answered", text: table.display(messages[0].content.map(part => part.text).join("")) });
+            if (code !== undefined) return stop(code);
+            const modelText = messages[0].content.map(part => part.text).join("");
+            return { result: AssistantResultSchema.parse({ state: "answered", text: table.display(modelText) }), modelText };
           }
-          if (calls.length !== 1 || messages.length !== 0) return refused("ASSISTANT_INVALID");
+          if (calls.length !== 1 || messages.length !== 0) return stop("ASSISTANT_INVALID");
           const call = calls[0], tool = call.namespace === ASSISTANT_TOOL_NAMESPACE ? registry.tools.find(entry => entry.name === call.name) : undefined;
-          if (tool === undefined || callIds.has(call.call_id)) return refused("ASSISTANT_INVALID");
+          if (tool === undefined || callIds.has(call.call_id)) return stop("ASSISTANT_INVALID");
           callIds.add(call.call_id);
           const argumentsValue = JsonValueSchema.parse(JSON.parse(call.arguments));
           const parsed = JsonValueSchema.parse(tool.parameters.parse(argumentsValue));
-          if (canonicalJsonStringify(parsed) !== canonicalJsonStringify(argumentsValue)) return refused("ASSISTANT_INVALID");
+          if (canonicalJsonStringify(parsed) !== canonicalJsonStringify(argumentsValue)) return stop("ASSISTANT_INVALID");
           const key = canonicalJsonStringify({ name: tool.name, arguments: parsed });
           let outcome = outcomes.get(key);
           if (outcome === undefined) {
@@ -189,7 +253,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
               if (tool.kind === "proposal") {
                 const proposal = await tool.propose(parsed, context);
                 assertAuthority();
-                return AssistantResultSchema.parse({ state: "action-proposal", proposal });
+                return { result: AssistantResultSchema.parse({ state: "action-proposal", proposal }) };
               }
               const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(await tool.invoke(parsed, context))));
               assertAuthority();
@@ -205,31 +269,57 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (outcome.code === undefined) unrecovered.delete(tool.name);
           else if (!unrecovered.has(tool.name)) unrecovered.set(tool.name, outcome.code);
           const output = outcome.output;
-          history.push({ type: "function_call_output", call_id: call.call_id, namespace: call.namespace, name: call.name,
+          input.push({ type: "function_call_output", call_id: call.call_id, namespace: call.namespace, name: call.name,
             ...(call.caller === undefined ? {} : { caller: call.caller }), output });
         }
-        return refused("ASSISTANT_LIMIT");
+        return stop("ASSISTANT_LIMIT");
       } catch (error) {
-        if (closure(error)) return refused("CHATGPT_RESOURCE_CLOSURE_UNPROVED");
-        if (signal.aborted) return refused("ASSISTANT_CANCELLED");
-        if (error instanceof AssistantModelPolicyError) return refused("ASSISTANT_MODEL_UNVERIFIED");
+        if (closure(error)) return stop("CHATGPT_RESOURCE_CLOSURE_UNPROVED");
+        if (current !== undefined && error instanceof ChatGptDeliveryUncertainError) return { uncertain: true };
+        if (signal.aborted) return stop("ASSISTANT_CANCELLED");
+        if (error instanceof AssistantHistoryRefusal) return stop(error.code);
+        if (error instanceof AssistantModelPolicyError) return stop("ASSISTANT_MODEL_UNVERIFIED");
         if (error instanceof ChatGptAccountError) {
-          if (error.code === "CHATGPT_USAGE_LIMIT") return refused("ASSISTANT_USAGE_LIMIT");
-          if (error.code === "CHATGPT_PLAN_DISABLED") return refused("ASSISTANT_PLAN_DISABLED");
-          if (error.code === "CHATGPT_ACCOUNT_EXPIRED") return refused("ASSISTANT_ACCOUNT_EXPIRED");
-          if (error.code === "CHATGPT_ASSISTANT_REFUSED") return refused(verifying ? "ASSISTANT_CAPABILITY_FAILED" : "ASSISTANT_RESPONSE_REFUSED");
-          if (error.code === "CHATGPT_OCR_CANCELLED") return refused("ASSISTANT_CANCELLED");
-          if (error.code === "CHATGPT_OCR_INCOMPLETE") return refused("ASSISTANT_RESPONSE_INCOMPLETE");
-          if (error.code === "CHATGPT_OCR_FAILED") return refused("ASSISTANT_RESPONSE_FAILED");
-          if (error.code === "CHATGPT_OCR_INVALID") return refused("ASSISTANT_INVALID");
+          if (error.code === "CHATGPT_USAGE_LIMIT") return stop("ASSISTANT_USAGE_LIMIT");
+          if (error.code === "CHATGPT_PLAN_DISABLED") return stop("ASSISTANT_PLAN_DISABLED");
+          if (error.code === "CHATGPT_ACCOUNT_EXPIRED") return stop("ASSISTANT_ACCOUNT_EXPIRED");
+          if (error.code === "CHATGPT_ASSISTANT_REFUSED") return stop(verifying ? "ASSISTANT_CAPABILITY_FAILED" : "ASSISTANT_RESPONSE_REFUSED");
+          if (error.code === "CHATGPT_OCR_CANCELLED") return stop("ASSISTANT_CANCELLED");
+          if (error.code === "CHATGPT_OCR_INCOMPLETE") return stop("ASSISTANT_RESPONSE_INCOMPLETE");
+          if (error.code === "CHATGPT_OCR_FAILED") return stop("ASSISTANT_RESPONSE_FAILED");
+          if (error.code === "CHATGPT_OCR_INVALID") return stop("ASSISTANT_INVALID");
           const code = z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]).safeParse(error.code);
-          if (code.success) return refused(code.data);
+          if (code.success) return stop(code.data);
         }
-        if (error instanceof AssistantProtocolError || error instanceof z.ZodError || error instanceof SyntaxError) return refused("ASSISTANT_INVALID");
-        return refused(verifying ? "ASSISTANT_VERIFICATION_FAILED" : "ASSISTANT_UNAVAILABLE");
+        if (error instanceof AssistantProtocolError || error instanceof z.ZodError || error instanceof SyntaxError) return stop("ASSISTANT_INVALID");
+        return stop(verifying ? "ASSISTANT_VERIFICATION_FAILED" : "ASSISTANT_UNAVAILABLE");
       }
-    },
-  });
+  }
+}
+
+const stop = (code: AssistantFailureCode) => ({ result: refused(code) });
+/** Replay text as plain messages; tool items and reasoning are never replayed. */
+function replayed(row: Readonly<{ role: "operator" | "assistant"; modelText: string }>): AssistantInputItem {
+  if (row.role === "operator") return { role: "user", content: row.modelText };
+  const parts = row.modelText.match(/[\s\S]{1,8000}/gu) ?? [];
+  return { type: "message", role: "assistant", status: "completed", content: parts.map(text => ({ type: "output_text", text })) };
+}
+/** Every result arm settles to exactly one stored outcome; proposal and unknown rows carry only the fixed-verb label. */
+function settlementOf(turn: Readonly<{ result: AssistantResult; modelText?: string }>): AssistantSettlement {
+  const { result } = turn;
+  switch (result.state) {
+    case "answered": {
+      if (turn.modelText === undefined) throw new AssistantProtocolError("assistant-answer-model-text-missing");
+      return { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: result.text, modelText: turn.modelText } };
+    }
+    case "action-proposal": return { delivery: "answered", reply: { id: randomUUID(), kind: "proposal", actionId: result.proposal.actionId,
+      text: "Review this proposal. No action has been applied.", modelText: `I prepared a confirmation card: ${result.proposal.label}. The operator has not decided yet.` } };
+    case "unknown": {
+      const text = `Outcome unknown: ${result.action.label}. Do not retry.`;
+      return { delivery: "answered", reply: { id: randomUUID(), kind: "proposal", actionId: result.actionId, text, modelText: text } };
+    }
+    case "refused": return { delivery: "refused", code: result.code };
+  }
 }
 
 /** A tool failure the model may recover from; anything else stays a terminal failure. */
@@ -246,4 +336,4 @@ function selectedRunReference(subjectRef: string): { runId: string; revision: nu
   if (match === null || !z.uuid().safeParse(match[1]).success || !Number.isSafeInteger(revision)) throw new AssistantProtocolError("assistant-selected-run-invalid");
   return { runId: match[1], revision };
 }
-export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'modelPreference' | 'permission'>>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'modelPreference' | 'permission' | 'historyView' | 'conversation' | 'history'>>;

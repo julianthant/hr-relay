@@ -165,6 +165,19 @@ describe("runtime environment inventory coverage", () => {
     assert.match(auditRuntimeEnvironmentInventory(wrongClassification).join("\n"), /LOCALAPPDATA retains forbidden active host-storage environment ownership/u);
   });
 
+  it("allows the parent build id beside SystemRoot and no other process-mechanics key", () => {
+    const spec = RUNTIME_ENVIRONMENT_EXACT.find(candidate => candidate.key === "RELAY_PARENT_BUILD_ID");
+    assert.ok(spec?.disposition === "active");
+    assert.equal(spec.channel, "process-mechanics");
+    assert.equal(spec.owner, "src/models/config/secrets.ts");
+    assert.deepEqual(EXACT_ENVIRONMENT_READER_OWNERS.find(reader => reader.key === "RELAY_PARENT_BUILD_ID")?.paths, ["src/models/config/secrets.ts"]);
+    const extra = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: [...RUNTIME_ENVIRONMENT_REGISTRY.exact, {
+      key: "RELAY_OTHER_PROCESS_MECHANIC", classification: "non-secret-config" as const, disposition: "active" as const,
+      channel: "process-mechanics" as const, owner: "src/models/config/secrets.ts", documented: false,
+    }] };
+    assert.match(auditRuntimeEnvironmentInventory(extra).join("\n"), /RELAY_OTHER_PROCESS_MECHANIC retains forbidden active process-mechanics/u);
+  });
+
   it("pins development diagnostics to its exact flag and environment owner", () => {
     for (const change of [{ key: "RELAY_UNKNOWN_DEBUG_FLAG" }, { owner: "src/backend/logs/debug-events.ts" }]) {
       const altered = { ...RUNTIME_ENVIRONMENT_REGISTRY,

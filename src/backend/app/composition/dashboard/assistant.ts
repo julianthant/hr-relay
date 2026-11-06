@@ -39,3 +39,10 @@ export function assistantSurfaceCoverage(routes: readonly Readonly<{ method: str
     return left < right ? -1 : left > right ? 1 : 0;
   });
 }
+
+/** Reclaims expired chats every interval; each failed tick is reported and the next tick retries. */
+export function startAssistantHistoryCleanup(reclaim: () => void, report: (error: unknown) => void, intervalMs = 60 * 60 * 1000): NodeJS.Timeout {
+  const timer = setInterval(() => { try { reclaim(); } catch (error) { report(error); } }, intervalMs);
+  timer.unref();
+  return timer;
+}

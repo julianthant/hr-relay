@@ -3,8 +3,8 @@ import { RunContinuationRefusedError } from "./run-continuation.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { DelegationRefreshRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
-import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
-import { terminalEvidenceResult } from "../../../models/run/result.js";
+import { PredecessorRunRecordSchema, RunRecordSchema, type PredecessorRunRecord, type RunRecord } from "../../../models/run/record.js";
+import { terminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";
 import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -14,7 +14,7 @@ import { assertWorkflowDelegationRefreshAuthorization, workflowDelegationAccount
 type RefreshEvidenceRepositories = Readonly<{
   lifecycleJournal: Pick<AuthorityRepositories["lifecycleJournal"], "getCommand" | "findAuditByCommand" | "listDelegationRefreshes">;
   delegationManifests: Pick<AuthorityRepositories["delegationManifests"], "get">;
-  runResults: Pick<AuthorityRepositories["runResults"], "getSettlement">;
+  runResults: { getSettlement: (runId: string, appliedVersion: number) => { run: PredecessorRunRecord; result: RunResultRecord } | undefined };
 }>;
 
 type RefreshRequest = z.infer<typeof DelegationRefreshRequestSchema>;
@@ -32,7 +32,7 @@ function refreshCommand(repositories: RefreshEvidenceRepositories, commandId: st
   return { request, version: audit.result.appliedVersion };
 }
 
-function retryCommand(repositories: RefreshEvidenceRepositories, commandId: string, parent: RunRecord) {
+function retryCommand(repositories: RefreshEvidenceRepositories, commandId: string, parent: PredecessorRunRecord) {
   const command = repositories.lifecycleJournal.getCommand(commandId);
   const audit = repositories.lifecycleJournal.findAuditByCommand(commandId);
   if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "delegation-retry"
@@ -45,7 +45,7 @@ function retryCommand(repositories: RefreshEvidenceRepositories, commandId: stri
   return retry;
 }
 
-export function authenticateDelegationRefresh(repositories: RefreshEvidenceRepositories, run: RunRecord) {
+export function authenticateDelegationRefresh(repositories: RefreshEvidenceRepositories, run: PredecessorRunRecord) {
   const refresh = run.delegationRefresh;
   if (refresh === undefined) return;
   const root = refreshCommand(repositories, refresh.commandId);
@@ -106,14 +106,14 @@ export function authenticateDelegationRefresh(repositories: RefreshEvidenceRepos
   }
 }
 
-export function authenticateDelegationRevisionRefresh(repositories: RefreshEvidenceRepositories, parent: RunRecord,
+export function authenticateDelegationRevisionRefresh(repositories: RefreshEvidenceRepositories, parent: PredecessorRunRecord,
   revision: Readonly<{ refreshCommandId: string; settlementCommandId: string }>, appliedVersion: number) {
   const settled = refreshCommand(repositories,revision.settlementCommandId);
   if (settled.request.phase !== "settle" || settled.request.rootCommandId !== revision.refreshCommandId
     || settled.request.runId !== parent.envelope.runId || settled.version > appliedVersion) throw new Error("delegation-revision-refresh-unavailable");
   const root = refreshCommand(repositories,revision.refreshCommandId);
   if (root.request.phase !== "admit") throw new Error("delegation-revision-refresh-unavailable");
-  authenticateDelegationRefresh(repositories,RunRecordSchema.parse({ ...parent,
+  authenticateDelegationRefresh(repositories,PredecessorRunRecordSchema.parse({ ...parent,
     delegationRefresh: { commandId: revision.refreshCommandId, nodeId: root.request.nodeId,
       phase: "settled", retryCommandIds: settled.request.retryCommandIds } }));
 }

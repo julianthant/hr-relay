@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterAll, it } from "vitest";
 import { z } from "zod";
-import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
+import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
 import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
 import { assistantMessageStream, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { createAssistantService, type AssistantServiceOptions } from "../../../src/backend/assistant/service.js";
@@ -21,7 +22,9 @@ const WireSchema = AssistantInferenceRequestSchema.safeExtend({ store: z.literal
 
 type Step = string | ((body: z.infer<typeof AssistantInferenceRequestSchema>) => string);
 async function world(input: { tools?: readonly AssistantTool[]; options?: Partial<AssistantServiceOptions> } = {}) {
-  const f = await chatGptFixture(undefined, profiles.create);
+  const db = await openBoundDatabaseFixture("assistant-service-test", systemClock, 250, undefined, undefined, undefined, profiles.create);
+  const owned = await chatGptFixture(db.profile.admission);
+  const f = { ...owned, async cleanup() { await owned.cleanup(); await db.close(); } };
   await f.connected();
   const bodies: z.infer<typeof AssistantInferenceRequestSchema>[] = [], script: Step[] = [];
   let policyCurrent = true, onPost: (() => void) | undefined;
@@ -42,11 +45,19 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
   const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => FACTS,
     owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), plugins: () => [plugin],
     modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2026-10-13T00:00:00Z" }, isCurrent: () => policyCurrent }),
-    ...input.options });
-  const ask = (message: string, signal = new AbortController().signal, conversationId = randomUUID()) =>
-    service.respond({ conversationId, messageId: randomUUID(), message }, signal);
+    history: () => db.database.authority.assistantHistory, ...input.options });
+  const revision = (conversationId: string) => {
+    if (service.conversation(conversationId) === undefined) assert.equal(service.history({ operation: "create", conversationId, title: "Chat" }).state, "saved");
+    return service.conversation(conversationId)?.revision ?? 0;
+  };
+  const send = (message: string, signal = new AbortController().signal, conversationId = randomUUID(), extra: { subjectRef?: string; messageId?: string } = {}) =>
+    service.respond({ conversationId, expectedRevision: revision(conversationId), messageId: randomUUID(), message, ...extra }, signal);
+  const ask = async (...args: Parameters<typeof send>) => {
+    const envelope = await send(...args); assert.equal(envelope.kind, "result");
+    return envelope.result;
+  };
   const posts = () => f.calls.filter(call => call.url.endsWith("/responses")).length;
-  return { f, service, bodies, script, invoked, ask, posts, invalidatePolicy() { policyCurrent = false; }, onPost(hook: () => void) { onPost = hook; } };
+  return { f, db, service, bodies, script, invoked, ask, send, revision, posts, invalidatePolicy() { policyCurrent = false; }, onPost(hook: () => void) { onPost = hook; } };
 }
 const call = (name: string, args: unknown) => completedAssistantStream({ action: name, ...z.record(z.string(), z.unknown()).parse(args) }, "gpt-6.1-sol", "relay");
 const lastOutput = (body: z.infer<typeof AssistantInferenceRequestSchema>) => {
@@ -195,7 +206,9 @@ it("fences the provider POST: invalidated policy or abort during the turn sends 
     const controller = new AbortController();
     a.script.push(call("echo", { value: "a" }));
     a.onPost(() => controller.abort());
-    assert.deepEqual(await a.ask("Go", controller.signal), { state: "refused", code: "ASSISTANT_CANCELLED", message: ASSISTANT_FAILURES.ASSISTANT_CANCELLED });
+    const envelope = await a.send("Go", controller.signal);
+    assert.equal(envelope.kind, "delivery", "an abort after the POST leaves delivery unknown");
+    assert.equal(envelope.receipt?.delivery, "delivery-unknown");
     assert.equal(a.posts(), 1);
   } finally { await a.f.cleanup(); }
 });
@@ -219,8 +232,159 @@ it("keeps explicit verification separate from the tool loop and refuses an inval
   try {
     assert.equal((await w.ask(`  ${ASSISTANT_VERIFY_COMMAND} `)).state, "answered");
     assert.equal(verified, 1); assert.equal(w.posts(), 0);
-    for (const subjectRef of ["not-a-run", `run_${randomUUID()}_99999999999999999999`]) assert.deepEqual(await w.service.respond({ conversationId: randomUUID(), messageId: randomUUID(), message: "Explain", subjectRef }, new AbortController().signal),
+    for (const subjectRef of ["not-a-run", `run_${randomUUID()}_99999999999999999999`]) assert.deepEqual(await w.ask("Explain", undefined, undefined, { subjectRef }),
       { state: "refused", code: "ASSISTANT_INVALID", message: ASSISTANT_FAILURES.ASSISTANT_INVALID });
     assert.equal(w.posts(), 0);
   } finally { await w.f.cleanup(); }
+});
+
+const userTexts = (body: z.infer<typeof AssistantInferenceRequestSchema>) => body.input.flatMap(item => "role" in item && item.role === "user" && "content" in item ? [String(item.content)] : []);
+const assistantTexts = (body: z.infer<typeof AssistantInferenceRequestSchema>) => body.input.flatMap(item => "type" in item && item.type === "message" && "content" in item
+  ? [item.content.map(part => part.text).join("")] : []);
+
+it("replays only stored model text in order and never display, imported or local rows", async () => {
+  const w = await world();
+  try {
+    const id = randomUUID();
+    assert.equal(w.service.history({ operation: "import", conversationId: id, title: "Imported", draft: "", composer: "", notice: null, total: 1, start: 1,
+      messages: [{ messageId: randomUUID(), role: "assistant", text: "IMPORT_SENTINEL 10899999" }] }).state, "saved");
+    assert.equal(w.service.history({ operation: "local", conversationId: id, expectedRevision: w.revision(id), messageId: randomUUID(), text: "LOCAL_SENTINEL" }).state, "saved");
+    w.script.push(body => assistantMessageStream(`Found ${/\[\[E1\.g\d+\]\]/u.exec(JSON.stringify(body.input))?.[0] ?? "none"}.`));
+    assert.deepEqual(await w.ask("Look up 10812345", undefined, id), { state: "answered", text: "Found 10812345." });
+    w.script.push(() => assistantMessageStream("Second."));
+    assert.deepEqual(await w.ask("And again", undefined, id), { state: "answered", text: "Second." });
+    const second = w.bodies[1]; assert.ok(second);
+    const serialized = JSON.stringify(second.input);
+    for (const sentinel of ["10812345", "IMPORT_SENTINEL", "10899999", "LOCAL_SENTINEL", "Found 10812345"]) assert.equal(serialized.includes(sentinel), false, sentinel);
+    assert.deepEqual(userTexts(second).map(text => text.replace(/\[\[E1\.g\d+\]\]/u, "[[E]]")), ["Look up [[E]]", "And again"]);
+    assert.deepEqual(assistantTexts(second).map(text => text.replace(/\[\[E1\.g\d+\]\]/u, "[[E]]")), ["Found [[E]]."]);
+    assert.deepEqual(w.service.conversation(id)?.messages.map(row => [row.kind, row.text]), [["inert", "IMPORT_SENTINEL 10899999"], ["inert", "LOCAL_SENTINEL"],
+      ["turn", "Look up 10812345"], ["answer", "Found 10812345."], ["turn", "And again"], ["answer", "Second."]]);
+  } finally { await w.f.cleanup(); }
+});
+
+it("reads an exact repeat after the revision advanced without a provider call and refuses changed reuse", async () => {
+  const w = await world();
+  try {
+    const id = randomUUID(), messageId = randomUUID();
+    w.script.push(() => assistantMessageStream("Done."));
+    const first = await w.send("Explain", undefined, id, { messageId });
+    assert.equal(first.kind, "result"); assert.deepEqual(first.receipt, { conversationId: id, messageId, ordinal: 1, revision: 3, delivery: "answered" });
+    assert.equal(w.service.history({ operation: "rename", conversationId: id, expectedRevision: 3, title: "Renamed" }).state, "saved");
+    const posts = w.posts();
+    assert.deepEqual(await w.service.respond({ conversationId: id, expectedRevision: 1, messageId, message: "Explain" }, new AbortController().signal),
+      { kind: "delivery", receipt: { conversationId: id, messageId, ordinal: 1, revision: 4, delivery: "answered" } });
+    for (const changed of [{ message: "Explain" , subjectRef: `run_${randomUUID()}_1` }, { message: "Explain differently" }]) {
+      assert.deepEqual(await w.service.respond({ conversationId: id, expectedRevision: 4, messageId, ...changed }, new AbortController().signal),
+        { kind: "result", result: { state: "refused", code: "ASSISTANT_CONVERSATION_STALE", message: ASSISTANT_FAILURES.ASSISTANT_CONVERSATION_STALE } });
+    }
+    assert.equal(w.posts(), posts);
+  } finally { await w.f.cleanup(); }
+});
+
+it("accepts one of two concurrent sends and keeps a send current across rename and select", async () => {
+  const w = await world();
+  try {
+    const id = randomUUID();
+    w.onPost(() => {
+      for (const operation of ["rename", "select"] as const) assert.equal(w.service.history({ operation, conversationId: id, expectedRevision: w.revision(id),
+        ...(operation === "rename" ? { title: "Renamed mid-send" } : {}) }).state, "saved");
+    });
+    w.script.push(() => assistantMessageStream("One."));
+    const first = w.send("First", undefined, id);
+    assert.deepEqual(await w.send("Second", undefined, id),
+      { kind: "result", result: { state: "refused", code: "ASSISTANT_CONVERSATION_BUSY", message: ASSISTANT_FAILURES.ASSISTANT_CONVERSATION_BUSY } });
+    const settled = await first;
+    assert.equal(settled.kind, "result"); assert.deepEqual(settled.kind === "result" ? settled.result : undefined, { state: "answered", text: "One." });
+    assert.equal(settled.receipt?.revision, w.revision(id)); assert.equal(w.posts(), 1);
+    assert.deepEqual(w.service.conversation(id)?.messages.map(row => [row.kind, row.delivery]), [["turn", "answered"], ["answer", "settled"]]);
+  } finally { await w.f.cleanup(); }
+});
+
+it("makes no stale POST or late row after Clear before the POST or startup settlement during it", async () => {
+  let beforeInference: (() => void) | undefined;
+  const w = await world({ options: { facts: () => { beforeInference?.(); return FACTS; } } });
+  try {
+    const cleared = randomUUID();
+    beforeInference = () => { assert.equal(w.service.history({ operation: "clear", conversationId: cleared, expectedRevision: w.revision(cleared) }).state, "cleared"); };
+    const envelope = await w.send("Explain", undefined, cleared);
+    assert.equal(envelope.kind, "result"); assert.equal(envelope.kind === "result" && envelope.result.state, "refused"); assert.equal(envelope.receipt, undefined);
+    assert.equal(w.posts(), 0); assert.equal(w.service.conversation(cleared), undefined);
+    beforeInference = undefined;
+    const restarted = randomUUID();
+    w.onPost(() => { w.db.database.authority.assistantHistory.settleInterrupted(w.f.clock.now().toISOString()); });
+    w.script.push(() => assistantMessageStream("Late answer."));
+    const late = await w.send("Explain", undefined, restarted);
+    assert.equal(late.kind, "result"); assert.equal(late.receipt, undefined); assert.equal(w.posts(), 1);
+    assert.deepEqual(w.service.conversation(restarted)?.messages.map(row => [row.kind, row.delivery]), [["turn", "delivery-unknown"]]);
+  } finally { await w.f.cleanup(); }
+});
+
+const deliveryUnknown = async (w: Awaited<ReturnType<typeof world>>, prepare: (signal: AbortController) => void) => {
+  const id = randomUUID(), messageId = randomUUID(), controller = new AbortController();
+  prepare(controller);
+  const envelope = await w.send("Explain", controller.signal, id, { messageId });
+  assert.deepEqual(envelope, { kind: "delivery", receipt: { conversationId: id, messageId, ordinal: 1, revision: 3, delivery: "delivery-unknown" } });
+  assert.deepEqual(w.service.conversation(id)?.messages.map(row => [row.kind, row.delivery]), [["turn", "delivery-unknown"]]);
+  const posts = w.posts();
+  assert.deepEqual(await w.service.respond({ conversationId: id, expectedRevision: 1, messageId, message: "Explain" }, new AbortController().signal),
+    { kind: "delivery", receipt: { conversationId: id, messageId, ordinal: 1, revision: 3, delivery: "delivery-unknown" } });
+  assert.equal(w.posts(), posts, "an exact repeat never sends again");
+};
+
+it("stores a lost stream or an abort after the POST as delivery-unknown and reads it back without another POST", async () => {
+  const w = await world();
+  try {
+    const partial = assistantMessageStream("Half an answer").split("\n\n").slice(0, 3).join("\n\n") + "\n\n";
+    await deliveryUnknown(w, () => { w.script.push(partial); });
+    await deliveryUnknown(w, controller => { w.script.push(call("echo", { value: "a" })); w.onPost(() => { controller.abort(); }); });
+    w.onPost(() => {});
+    assert.equal(w.posts(), 2);
+  } finally { await w.f.cleanup(); }
+});
+
+it("keeps a complete but invalid provider response a definite refusal", async () => {
+  const w = await world();
+  try {
+    const id = randomUUID();
+    w.script.push(completedAssistantStream({ action: "unoffered", value: "a" }, "gpt-6.1-sol", "relay"));
+    const envelope = await w.send("Go", undefined, id);
+    assert.equal(envelope.kind, "result"); assert.equal(envelope.kind === "result" && envelope.result.state, "refused");
+    assert.deepEqual(w.service.conversation(id)?.messages.map(row => [row.kind, row.delivery]), [["turn", "refused"]]);
+  } finally { await w.f.cleanup(); }
+});
+
+it("sends nothing and stores nothing new once the chat expires while the credentials are awaited or the stream is held", async () => {
+  for (const moment of ["credentials", "stream"] as const) {
+    const historyClock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
+    const w = await world({ options: { clock: historyClock,
+      modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2099-01-01T00:00:00Z" }, isCurrent: () => true }) } });
+    try {
+      const id = randomUUID(), messageId = randomUUID();
+      let refreshed = 0;
+      w.revision(id);
+      const expiry = w.service.historyView().chats.find(chat => chat.id === id)?.expiresAt; assert.ok(expiry);
+      const expire = () => { historyClock.setWall(new Date(expiry)); };
+      if (moment === "credentials") {
+        // The catalog is read while current and brings the access token into its refresh window, so inferAssistant's own credential read refreshes; the chat expires during that refresh.
+        let armed = false, lapsed = false;
+        w.f.setModelsHook(async () => { if (!lapsed) { lapsed = true; armed = true; w.f.clock.advanceWall(3_570_000); } return Response.json({ models: [{ slug: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", visibility: "list" }] }); });
+        w.f.setTokenHook(async () => { if (armed) { armed = false; refreshed++; expire(); } });
+      } else w.onPost(expire);
+      w.script.push(() => assistantMessageStream("Late."));
+      const envelope = await w.send("Explain", undefined, id, { messageId });
+      assert.equal(envelope.kind, "result"); assert.equal(envelope.kind === "result" && envelope.result.state, "refused"); assert.equal(envelope.receipt, undefined);
+      assert.equal(w.posts(), moment === "credentials" ? 0 : 1);
+      if (moment === "credentials") {
+        assert.equal(refreshed, 1, "the held await was inferAssistant's credential refresh");
+        const next = randomUUID();
+        w.script.splice(0, w.script.length, () => assistantMessageStream("Next."));
+        historyClock.setWall(new Date("2026-10-12T13:00:00.000Z"));
+        assert.deepEqual(await w.ask("Again", undefined, next), { state: "answered", text: "Next." }, "the refused inference closed its operation");
+        assert.equal(w.posts(), 1);
+      }
+      const raw = w.db.database.authority.assistantHistory.conversation(id, new Date(Date.parse(expiry) - 1).toISOString());
+      assert.deepEqual(raw?.messages.map(row => [row.kind, row.delivery]), [["turn", "sending"]], "no reply or settlement after expiry; cleanup never ran");
+    } finally { await w.f.cleanup(); }
+  }
 });

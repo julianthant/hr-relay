@@ -1,4 +1,4 @@
-import { assertUpgradedRunSettlementRows, restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { assertUpgradedRunSettlementRows, removeEmptySchema23AssistantHistory, restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -47,10 +47,11 @@ import { boundProfileCredentials,createBoundProfileFixture } from "../../../supp
 import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 
 const hostFacts = { primaryDisplay: null };
+// Tables the schema-22 hook changes while it settles and tombstones pre-build runs.
+const PRE_BUILD_RUN_TABLES = new Set(["runs", "deleted_runs", "commands", "command_audits", "timeline_events", "run_search"]);
 const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
   request: { typeId: "upgrade-roster", libraryId: "upgrade-workbook", keys: ["retained-key"], fields: ["eid"] },
   snapshot: { libraryId: "upgrade-workbook", version: 1, worksheets: [{ sheetId: "people", name: "People" }],
@@ -59,7 +60,7 @@ const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 });
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 = 8, extractionEvidence = false,
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 22 = 8, extractionEvidence = false,
   workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
@@ -131,7 +132,8 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
+    if (sourceVersion === 22) removeEmptySchema23AssistantHistory(raw);
+    else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
     else if (sourceVersion === 19) restoreSchema19RunSettlementFixture(raw);
     else restoreSchema18WorkbookReferenceFixture(raw);
     if (sourceVersion < 18) removeEmptySchema18WorkbookCatalog(raw);
@@ -297,31 +299,50 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
   } finally { await f.close(); }
 });
 
-it.each([8, 11, 12, 13, 14, 15, 16, 19, 20] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
+it("automatically upgrades schema 22 with queued work intact", async () => {
+  const f = await readyBoundEight("queued", 22);
+  const tables = () => { const raw = new DatabaseSync(f.path, { readOnly: true });
+    try { return raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name)); } finally { raw.close(); } };
+  try {
+    assert.deepEqual(tables(), [...migrationTableNames(22)].sort());
+    assert.equal(tables().includes("assistant_conversations"), false);
+    const before = rawEight(f.path, 22);
+    assert.ok(before.runs.length > 0); assert.ok(before.artifacts.length > 0);
+    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
+    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_conversations", "assistant_messages"].sort());
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
+      else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
+    }
+    assert.deepEqual([after.assistant_conversations, after.assistant_messages], [[], []]);
+  } finally { await f.close(); }
+});
+
+it.each([8, 11, 12, 13, 14, 15, 16, 19, 20] as const)("automatically upgrades schema %s by settling and tombstoning its queued work", async sourceVersion => {
   const f = await readyBoundEight("queued", sourceVersion);
   try {
     const before = rawEight(f.path);
     assert.ok((before.runs?.length ?? 0) > 0); assert.ok((before.artifacts?.length ?? 0) > 0);
-    if (sourceVersion < 15) assert.throws(() => runRecordFromRow(before.runs?.[0]), /native schema/u);
-    else assert.doesNotThrow(() => runRecordFromRow(before.runs?.[0]));
-    const artifactDirectory = join(f.stateRoot, "artifacts"), artifactNames = readdirSync(artifactDirectory);
-    assert.equal(artifactNames.length, 1); const artifactName = artifactNames[0]; assert.ok(artifactName);
-    const artifactBytes = readFileSync(join(artifactDirectory, artifactName)), outputBytes = readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt"));
+    const outputBytes = readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt"));
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     const backupDirectory = join(f.stateRoot, "backups", "authority");
     const manifests = readdirSync(backupDirectory).filter(name => name.endsWith(".manifest.json"))
       .map(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backupDirectory, name), "utf8"))));
     assert.ok(manifests.some(manifest => manifest.schemaVersion === sourceVersion && manifest.verification.schemaVersion === sourceVersion));
     const after = rawEight(f.path);
+    assert.deepEqual(after.runs ?? [], []);
+    assert.deepEqual((after.deleted_runs ?? []).map(row => [row.run_id, row.cleanup_state]).sort(),
+      (before.runs ?? []).map(row => [row.id, "pending"]).sort());
     for (const [table, rows] of Object.entries(before)) {
+      if (PRE_BUILD_RUN_TABLES.has(table)) continue;
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
-      else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
-      else if ((table === "run_results" || table === "run_receipts") && sourceVersion < 20) assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
-      else assert.deepEqual(after[table]?.map(row => sourceVersion < 16 ? prePreferencesSettingsRow(table, row) : { ...row }), rows.map(row => ({ ...row })));
+      else assert.deepEqual(after[table]?.map(row => sourceVersion < 16 ? prePreferencesSettingsRow(table, row) : { ...row }), rows.map(row => ({ ...row })), table);
     }
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
-    assert.deepEqual(readFileSync(join(artifactDirectory, artifactName)), artifactBytes);
     assert.deepEqual(readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt")), outputBytes);
   } finally { await f.close(); }
 });
@@ -648,7 +669,7 @@ const workbookFormats = [
   { format: "selected-row", schema: RunWorkbookSelectedRowReferenceSchema, value: { request: { ...workbookReferenceValue.request, versionId: "selected", selectedRow: { sheetId: "people", rowId: "person" } }, snapshot: namedWorkbookSnapshot } },
 ];
 it.each(workbookFormats.flatMap(format => (["run", "terminal-run", "plan", "consumed-plan"] as const).map(owner => ({ ...format, owner }))))(
-  "upgrades schema 18 with compatible $format $owner references without rewriting evidence", async ({ owner, schema, value }) => {
+  "upgrades schema 18 with compatible $format $owner references, tombstoning pre-build runs", async ({ owner, schema, value }) => {
   const f = await readyBoundEight(owner.includes("run") ? "queued" : "idle", 18, false,
     { owner, schemaHash: deriveSchemaHash(schema, "output"), value: JsonValueSchema.parse(schema.parse(value)) });
   try {
@@ -665,12 +686,17 @@ it.each(workbookFormats.flatMap(format => (["run", "terminal-run", "plan", "cons
     assert.equal(manifest.schemaVersion, 18);
     assert.equal(manifest.sha256, digest(join(f.stateRoot, "backups", "authority", manifest.backupFileName)));
     assert.deepEqual(rawEight(join(f.stateRoot, "backups", "authority", manifest.backupFileName), 18), before);
-    const after = rawEight(f.path, 18);
+    const after = rawEight(f.path, 18), runOwned = owner.includes("run");
+    if (runOwned) {
+      assert.deepEqual([after.runs ?? [], after.run_results ?? [], after.run_receipts ?? []], [[], [], []]);
+      assert.deepEqual((after.deleted_runs ?? []).map(row => [row.run_id, row.cleanup_state]).sort(), (before.runs ?? []).map(row => [row.id, "pending"]).sort());
+    }
     for (const [table, rows] of Object.entries(before)) {
+      if (runOwned && (PRE_BUILD_RUN_TABLES.has(table) || table === "run_results" || table === "run_receipts")) continue;
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
-      else assert.deepEqual(after[table], rows);
+      else assert.deepEqual(after[table], rows, table);
     }
   } finally { await f.close(); }
 });

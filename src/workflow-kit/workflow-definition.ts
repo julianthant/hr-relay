@@ -13,7 +13,6 @@ import type {
   AnyReadTaskContract,
 } from "../models/task/task-contract.js";
 import { assertFactorySealedTaskContract } from "../models/task/task-contract.js";
-import type { BuildManifest } from "../models/workflow/build-manifest.js";
 import type { CompletionProgram } from "../models/workflow/completion.js";
 import type { ChildVisibility, DelegationPolicy } from "../models/workflow/delegation-policy.js";
 import { DelegationPolicySchema } from "../models/workflow/delegation-policy.js";
@@ -44,7 +43,7 @@ import { BrowserSystemIdSchema, DelegationEdgeIdSchema, WorkflowIdSchema } from 
 import type { AnyNodeEntry, BuiltFlow } from "./flow.js";
 import { flow } from "./flow.js";
 import type { RegisteredTaskStore } from "./task-registry.js";
-import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "./validation/build-manifest.js";
+import { workflowContractFingerprint } from "./fingerprints.js";
 import type { WorkflowModuleRole } from "./validation/module-role.js";
 import { WorkflowModuleRoleSchema } from "./validation/module-role.js";
 import type {
@@ -1148,7 +1147,7 @@ export interface CompiledWorkflow<
 
 export type AnyCompiledWorkflow = CompiledWorkflow<z.ZodType, z.ZodType, CompletionProgram | undefined>;
 
-const COMPILED = new WeakMap<object, Readonly<{ compiled: AnyCompiledWorkflow; manifest: BuildManifest }>>();
+const COMPILED = new WeakMap<object, AnyCompiledWorkflow>();
 const DESCRIPTOR_DEFINITIONS = new WeakMap<object, AnyWorkflowDefinition>();
 
 function storeNamespace(contract: AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract): string {
@@ -1243,31 +1242,15 @@ function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly Wo
 }
 
 /** Compile a definition through the descriptor factory and runtime; memoized per definition object, so the composition root, the descriptor tuple and every test read the same object. */
-export interface CompileWorkflowOptions {
-    /** The build manifest owning this workflow's contract fingerprint; defaults to the
-     *  checked-in one. Never an authoring input. */
-  readonly manifest?: BuildManifest;
-}
-
 export function compileWorkflow<
   InputSchema extends z.ZodType,
   ResultSchema extends z.ZodType,
   Completion extends CompletionProgram | undefined,
 >(
   definition: WorkflowDefinition<InputSchema, ResultSchema, Completion>,
-  options: CompileWorkflowOptions = {},
 ): CompiledWorkflow<InputSchema, ResultSchema, Completion> {
-  const manifest = options.manifest ?? BUILD_MANIFEST;
   const existing = COMPILED.get(definition);
-  if (existing !== undefined) {
-    if (existing.manifest !== manifest) {
-      throw new Error(
-        `workflow ${String(definition.id)} was already compiled under a different build manifest; one definition `
-        + "compiles under exactly one manifest",
-      );
-    }
-    return existing.compiled as CompiledWorkflow<InputSchema, ResultSchema, Completion>;
-  }
+  if (existing !== undefined) return existing as CompiledWorkflow<InputSchema, ResultSchema, Completion>;
   if (definition.kind !== "workflow-definition") {
     throw new Error("compileWorkflow requires a value produced by defineWorkflow");
   }
@@ -1283,10 +1266,11 @@ export function compileWorkflow<
       throw new Error(`operation display read references unavailable transaction ${read.entryId}`);
     }
   }
+  const entries = operationDisplayEntries(definition);
   const operationDisplay = compileWorkflowOperationDisplay({
     workflowId: String(definition.id),
     input: definition.input,
-    entries: operationDisplayEntries(definition),
+    entries,
     result: { schema: definition.result.schema, dependsOn: definition.result.references.map((entry) => entry.id), ...(definition.result.sources === undefined ? {} : { sources: definition.result.sources }) },
     ...(definition.operationDisplay === undefined ? {} : { declaration: definition.operationDisplay }),
   });
@@ -1306,14 +1290,22 @@ export function compileWorkflow<
     const label = defaultEntryLabel(entry);
     return label !== undefined && group.key === entry.id && group.label === label;
   });
+  const contracts = Object.freeze(flattenEntries(steps).flatMap(({ contracts: owned }) => owned));
   const descriptor = defineWorkflowDescriptor({
     ...presentation,
-    contractFingerprint: resolveWorkflowFingerprint(manifest, WorkflowIdSchema.parse(definition.id)),
+    contractFingerprint: workflowContractFingerprint({
+      id: String(definition.id),
+      version: definition.version,
+      input: definition.input,
+      canonicalInput: definition.canonicalInput,
+      result: definition.result.schema,
+      graph: entries,
+      contracts,
+    }),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),
     ...(operationDisplay.capability === "complete" ? { operationDisplay } : {}),
   });
-  const contracts = Object.freeze(flattenEntries(steps).flatMap(({ contracts: owned }) => owned));
   const compiled: CompiledWorkflow<InputSchema, ResultSchema, Completion> = Object.freeze({
     kind: "compiled-workflow",
     definition,
@@ -1322,7 +1314,7 @@ export function compileWorkflow<
     operationDisplay,
     storeNamespaces: Object.freeze([...new Set(contracts.map(storeNamespace))]),
   });
-  COMPILED.set(definition, Object.freeze({ compiled, manifest }));
+  COMPILED.set(definition, compiled);
   DESCRIPTOR_DEFINITIONS.set(descriptor, definition);
   return compiled;
 }
@@ -1349,7 +1341,7 @@ export function composeWorkflowModule<
   availableStores: readonly RegisteredTaskStore[],
 ): WorkflowModule<CompiledWorkflowDescriptor<InputSchema, ResultSchema, Completion>> {
   const workflowId = String(compiled.descriptor.id);
-  if (COMPILED.get(compiled.definition)?.compiled !== compiled) {
+  if (COMPILED.get(compiled.definition) !== compiled) {
     throw new Error(`workflow ${workflowId} module does not use the compiled workflow of its own definition`);
   }
   const stores = compiled.storeNamespaces.map((namespace) => {
@@ -1472,7 +1464,7 @@ export function workflowEntryKinds(definition: AnyWorkflowDefinition): readonly 
 
 /** Browser-safe presentation order from the same validated tuples the compiler executes. */
 export function workflowExplorerDeclaration(definition: AnyWorkflowDefinition) {
-  const compiled = COMPILED.get(definition)?.compiled;
+  const compiled = COMPILED.get(definition);
   if (compiled === undefined) throw new Error(`workflow ${definition.id} has no compiled definition`);
   return Object.freeze(definition.steps.map(([group, entries]) => Object.freeze({
     key: group.key,
