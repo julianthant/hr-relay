@@ -86,8 +86,9 @@ test('assistant menu selection, popup and motion contracts', { annotation: [{ ty
   const effort = page.getByRole('button', { name: 'Thinking effort: Medium', exact: true });
   await effort.focus(); await effort.press('Space'); await expect(page.getByRole('menu')).toBeVisible();
   await page.keyboard.press('Home'); await expect(page.getByRole('menuitemradio', { name: 'Light', exact: true })).toBeFocused();
-  await page.keyboard.press('ArrowDown'); await expect(page.getByRole('menuitemradio', { name: 'Low', exact: true })).toBeFocused(); await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: 'Thinking effort: Low', exact: true })).toBeFocused();
+  await expect(page.getByRole('menuitemradio')).toHaveText(['Light', 'Medium', 'High', 'xHigh', 'Max']);
+  await page.keyboard.press('End'); await expect(page.getByRole('menuitemradio', { name: 'Max', exact: true })).toBeFocused(); await page.keyboard.press('Space');
+  await expect(page.getByRole('button', { name: 'Thinking effort: Max', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Voice input', exact: true }).click();
   const menu = page.getByRole('menu'), anchor = await page.getByRole('button', { name: 'Voice input', exact: true }).boundingBox();
   expect(await menu.evaluate(element => getComputedStyle(element).transform)).toBe('none');
@@ -175,8 +176,8 @@ const SERVED_SCENES = {
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
   proposal: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL } },
   'start-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } },
-  'rerun-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Person', 'Sample, Avery 10101010'], ['Options', 'Read only']] },
-  'pause-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Person', 'Sample, Avery 10101010'], ['Options', 'Local change · Pause']] },
+  'rerun-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Person', 'Sample, Avery EID 10101010'], ['Options', 'Read only']] },
+  'pause-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Person', 'Sample, Avery EID 10101010'], ['Options', 'Local change · Pause']] },
   'separations-multi-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_SEPARATIONS_MULTI_PROPOSAL }, facts: [['Document', '4501'], ['Document', '4502'], ['Total', '2'], ['Options', 'Read only']] },
   confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'applied' },
   unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL }, confirm: 'lost' },

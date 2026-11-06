@@ -27,17 +27,17 @@ function render(proposal: typeof pause, disposition: Disposition = 'review') {
 }
 
 describe('assistant proposal card rows', () => {
-  it('shows one Last, First and EID line per person in served order with the total', () => {
+  it('shows one line per person in served order: Person with name and EID, EID alone, or Name alone, then the total', () => {
     const { facts } = render(withRows([person('Vega, Morgan', '10000002'), person('Sample, Avery', '10101010'), { title: 'EID 10000003', display: { kind: 'person', employeeId: '10000003' } },
       { title: 'Lin, Casey', display: { kind: 'person', name: 'Lin, Casey' } }], { targetLabel: '4 people' }));
-    expect(facts.slice(0, -1).map(([term, value]) => [term, value?.trim()])).toEqual([['Person', 'Vega, Morgan 10000002'], ['Person', 'Sample, Avery 10101010'],
-      ['Person', '10000003'], ['Person', 'Lin, Casey'], ['Total', '4']]);
+    expect(facts.slice(0, -1)).toEqual([['Person', 'Vega, Morgan EID 10000002'], ['Person', 'Sample, Avery EID 10101010'],
+      ['EID', '10000003'], ['Name', 'Lin, Casey'], ['Total', '4']]);
     expect(facts.at(-1)).toEqual(['Options', 'Read only']);
   });
   it('shows Separations document numbers as documents, never as people', () => {
     const { facts } = render(withRows([{ title: 'Doc 4501', display: { kind: 'document', documentNumber: '4501' } }, { title: 'Doc 4502', display: { kind: 'document', documentNumber: '4502' } }],
       { label: 'Start Separations', targetLabel: '2 documents' }, 'separations'));
-    expect(facts.map(([term]) => term)).not.toContain('Person');
+    for (const term of ['Person', 'EID', 'Name']) expect(facts.map(([label]) => label)).not.toContain(term);
     expect(facts.slice(0, 3)).toEqual([['Document', '4501'], ['Document', '4502'], ['Total', '2']]);
   });
   it('shows a single request by its title without a total', () => {

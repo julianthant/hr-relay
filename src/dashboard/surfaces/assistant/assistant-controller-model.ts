@@ -201,10 +201,13 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (!current()) return;
       // A local-only write and its caption commit together, so the stored caption is its outcome; no caption means nothing changed.
       if (proposal.issued?.effect === 'local-write' && history !== undefined) {
-        const caption = await history.decision(proposal.id).catch(() => { history.unsaved(); return undefined; });
-        const done = caption === `Done: ${proposal.issued.label}.`;
-        if (current()) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: done ? 'confirmed' : 'stale',
-          message: { id: `action-${proposal.id}`, role: 'assistant', text: caption ?? ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED } }));
+        // An unreadable history proves nothing either way: the card goes stale with the history notice, never a refusal.
+        const readback = await history.decision(proposal.id).then(caption => ({ caption }), () => undefined);
+        if (readback === undefined) history.unsaved();
+        if (!current()) return;
+        const done = readback?.caption === `Done: ${proposal.issued.label}.`;
+        publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: done ? 'confirmed' : 'stale',
+          ...(readback === undefined ? {} : { message: { id: `action-${proposal.id}`, role: 'assistant' as const, text: readback.caption ?? ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED } }) }));
       } else publish(assistantReducer(state, lostDecision(proposal)));
     } finally {
       if (pendingDecision === request) pendingDecision = undefined;

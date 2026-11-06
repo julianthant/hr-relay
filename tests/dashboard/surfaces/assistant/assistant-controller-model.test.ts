@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
@@ -66,11 +66,12 @@ const actionProposal = { state: 'action-proposal', proposal: { chatId: '00000000
 it('confirms the actual issued action identity once; a lost start is unknown, a lost local write reads back, and nothing retries', async () => {
   const start = { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } satisfies AssistantResult;
   const caption = `Done: ${actionProposal.proposal.label}.`;
+  // stored: no history (undefined), a verified missing caption (null), the committed Done caption, or a failed readback ('unreadable').
   for (const [result, lost, stored, settled] of [[actionProposal, false, undefined, 'confirmed'], [actionProposal, true, undefined, 'stale'], [actionProposal, true, caption, 'confirmed'],
-    [start, true, undefined, 'unknown']] as const) {
-    let calls = 0;
+    [actionProposal, true, null, 'stale'], [actionProposal, true, 'unreadable', 'stale'], [start, true, undefined, 'unknown']] as const) {
+    let calls = 0, unsaved = 0;
     const history = stored === undefined ? undefined : { conversationId: crypto.randomUUID(), read: () => undefined, retain() {}, revision: () => 1, receipt() {}, async local() {},
-      async outcome() { return undefined; }, async decision() { return stored; }, unsaved() {} };
+      async outcome() { return undefined; }, async decision() { if (stored === 'unreadable') throw new Error('synthetic lost readback'); return stored ?? undefined; }, unsaved() { unsaved++; } };
     const c = createAssistantController(resultClient({ assistantRespond: async () => result,
       assistantDecide: async identity => { calls++; assert.deepEqual(identity, { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: 'confirm',
         reviewedDigest: await assistantProposalDigest(result.proposal) });
@@ -81,8 +82,10 @@ it('confirms the actual issued action identity once; a lost start is unknown, a 
     c.action({ type: 'confirm' }); c.action({ type: 'confirm' });
     await vi.waitFor(() => { const turn = c.snapshot().turn; assert.ok(turn.state === 'proposal' && turn.disposition === settled, `${String(lost)} ${String(stored)}`); });
     const last = c.snapshot().messages.at(-1)?.text;
-    // Without a history there is nothing to read back: the card goes stale with no line.
-    if (lost) assert.equal(last, settled === 'unknown' ? ASSISTANT_UNKNOWN_NOTICE : stored ?? 'Review this proposal. No action has been applied.');
+    // Without a history, or when its readback fails, nothing is proven: the card goes stale with no line and never claims a refusal.
+    const silent = stored === undefined || stored === 'unreadable';
+    if (lost) assert.equal(last, settled === 'unknown' ? ASSISTANT_UNKNOWN_NOTICE : silent ? 'Review this proposal. No action has been applied.' : stored ?? ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED);
+    assert.equal(unsaved, stored === 'unreadable' ? 1 : 0);
     c.action({ type: 'confirm' }); c.action({ type: 'retry' }); assert.equal(calls, 1);
   }
 });
