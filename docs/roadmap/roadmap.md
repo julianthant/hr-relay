@@ -35,10 +35,11 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 Complete these in order. A workflow is ready after its live dry run and operator sign-off.
 
 - [done] Emergency Contact member Retry — retry one failed member with an atomic failure hold and superseding accounting.
-- [now] Finish in-flight work — merge the Duo setup window (#142) and the macOS-native test baseline.
-- [now] Worker custody by construction — the parent owns workers in memory, stops them over IPC, learns of exits from the OS and fences claims by generation; delete leases, stored heartbeats, stop journals and the polled browser control channel. Live sign-offs start after this merges.
+- [now] Finish in-flight work — merge the macOS-native test baseline.
+- [now] Worker custody by construction — the parent owns workers in memory, stops them over IPC, learns of exits from the OS and fences claims by generation; delete leases, stored heartbeats, stop journals and the polled browser control channel. Keep automatic backup and restore; after a restore show one dismiss-only toast with the backup time. Live sign-offs start after this merges.
 - [done] Docs and dev tooling — dissolve `docs/rebuild/`, add the AGENTS.md glossary, refresh the repo skills, link `.claude/skills` and add the `verify` skill for live dry runs.
 - [now] Assistant agent — replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.
+- [now] Warnings as toasts — show warnings and failures as short toasts, sticky with one action when they need acting on; only dialog content, field validation, empty states and the run-log failure card stay inline.
 - [now] Sign-up and accounts — require Touch ID and a Duo security key added at duo.ucsd.edu; use a Chromium virtual platform authenticator where the machine has no Touch ID. Keep credentials on logout, put Delete account in Settings > General, resume a signed-in profile after a restart, and let Log out finish while workflows run.
 - [next] Person Lookup sign-off — pass a read-only exact-ID live run, fix what it finds in one PR, sign off.
 - [next] Separations sign-off — pass a live dry run, fix what it finds in one PR, sign off.
@@ -54,8 +55,8 @@ Complete these in order. A workflow is ready after its live dry run and operator
 
 Each item deletes its own tests and guards. Worker custody (above) comes first.
 
-- [now] Contract fingerprints — fingerprint each workflow from its own folder, schemas and kit version, bind writes to one app build id and delete the generated manifest; merge before the assistant agent.
-- [now] Dead code — remove the restart command, duplicate retry and recover blocks, empty arms, bulk mode, unused stream topics, the parity verifier and browser-roots v1, move step-proof workflows and the scenario registry into tests, and serve HTTP through @hono/node-server.
+- [done] Contract fingerprints — fingerprint each workflow from its own folder, schemas and kit version, bind writes to one app build id and delete the generated manifest; merge before the assistant agent.
+- [done] Dead code — remove the restart command, duplicate retry and recover blocks, empty arms, bulk mode, unused stream topics, the parity verifier and browser-roots v1, move step-proof workflows and the scenario registry into tests, and serve HTTP through @hono/node-server.
 - [next] Lean run journal — journal only operator commands, write heartbeats as a plain update and derive receipts once.
 - [next] Login mutex — hold Duo and OnBase logins with an in-memory parent mutex.
 - [next] One schema baseline — squash migrations into one baseline, delete old-format conversions and relocation, and store artifacts as raw bytes.
