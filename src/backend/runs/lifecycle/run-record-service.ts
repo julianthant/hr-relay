@@ -1,3 +1,6 @@
+import { ReadApprovedOcrRecord } from "../../../models/processing/ocr/read-approved-record.js";
+import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import type { RunClaimToken } from "../../../models/run/worker.js";
 import { z } from "zod";
 import { RunHistoryCommandSchema, type ClearRunHistoryResult, type RunHistoryStatus } from "../../../models/dashboard/run-history.js";
 import {
@@ -42,11 +45,11 @@ import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import type { AuthorityDatabase,AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { assertResetCancellationAdmission,authenticateCancellationSource,authenticateDelegationResume,captureDelegationResume,prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
+import { assertResetCancellationAdmission,authenticateCancellationSource,authenticateDelegationResume,captureDelegationResume,prepareDelegationRetry,assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
 import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
-import { captureRunContinuation,RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { captureRunContinuation,RunContinuationRefusedError,validateRunContinuation,continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import {
 CanonicalAcknowledgePauseRequestSchema,
 CanonicalCancellationTerminalizeRequestSchema,
@@ -101,7 +104,7 @@ export type RunPurgeOutcome =
 
 /** Worker capability never includes command-family transition. */
 export type WorkerRunLifecyclePort = Pick<RunRecordService,
-  "claimNext" | "renewClaim" | "workerTransition" | "acknowledgePause" | "terminalize" | "requeue" | "admitDelegation" | "assertCurrentExecution">;
+  "claimNext" | "renewClaim" | "workerTransition" | "acknowledgePause" | "terminalize" | "requeue" | "admitDelegation" | "assertCurrentExecution" | "delegationRetryExecution">;
 
 export interface RunContinuationPort {
   transition(input: z.input<typeof CanonicalWriteResolutionTransitionRequestSchema>): RunMutationOutcome | RunExistence;
@@ -115,6 +118,7 @@ export function workerRunLifecyclePort(service: RunRecordService): WorkerRunLife
     requeue: service.requeue.bind(service),
     admitDelegation: service.admitDelegation.bind(service),
     assertCurrentExecution: service.assertCurrentExecution.bind(service),
+    delegationRetryExecution: service.delegationRetryExecution.bind(service),
   });
 }
 
@@ -251,6 +255,55 @@ export class RunRecordService {
       if (error instanceof WorkerControlRefusal && error.message === "worker-execution-lost") throw new RunLifecycleRefusedError(refused({ reason: "lost" }));
       throw error;
     }
+  }
+
+  delegationRetryExecution(input: Readonly<{ runId: string; claim: RunClaimToken }>) {
+    return this.dependencies.database.withAuthorityTransaction(repositories => {
+      this.assertCurrentExecution(input);
+      const run = repositories.runs.get(input.runId);
+      if (run === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
+      if (run.envelope.parent === undefined || run.envelope.retryOf === undefined || run.envelope.continuation === undefined) return;
+      validateRunContinuation(repositories, run.envelope);
+      const parent = repositories.runs.get(run.envelope.parent.runId);
+      if (parent === undefined) throw new RunContinuationRefusedError("run-continuation-delegation-owner-mismatch");
+      const authorization = this.parentRefreshAuthorization(repositories, run);
+      const plan = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, parent);
+      if (plan === undefined) return;
+      const approved = descriptorRuntimeNodes(plan.target).filter(node => node.kind === "task" && node.uses.id === ReadApprovedOcrRecord.id);
+      if (approved.length === 0) return;
+      const node = approved[0];
+      if (approved.length !== 1 || node?.kind !== "task") throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
+      const selected = repositories.dependencies.groups(parent.envelope.runId).flatMap(({ group }) =>
+        group.children.filter(member => member.child.envelope.runId === run.envelope.runId).map(member => ({ group, member })));
+      const bound = selected[0];
+      if (selected.length !== 1 || bound === undefined || bound.member.attempt !== "retry"
+        || bound.member.history.at(-2) !== run.envelope.retryOf || bound.group.invocation.nodeId !== plan.joinNodeId
+        || plan.target.id !== run.envelope.workflow || plan.target.version !== run.envelope.descriptorVersion
+        || plan.target.contractFingerprint !== run.envelope.contractFingerprint)
+        throw new RunContinuationRefusedError("run-continuation-delegation-owner-mismatch");
+      const command = repositories.lifecycleJournal.getCommand(lifecycleCommandId("delegation-retry", {
+        dependencyId: bound.member.dependency.dependencyId, previousRunId: run.envelope.retryOf }));
+      if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "delegation-retry")
+        throw new RunContinuationRefusedError("run-continuation-delegation-owner-mismatch");
+      const retry = DelegationRetryRequestSchema.parse(command.request), source = repositories.commands.get(retry.sourceCommandId);
+      if (retry.continuationOwner !== undefined || source?.family !== "run" || source.type !== "retry") return;
+      const reference = run.envelope.continuation.checkpoints.find(row => row.nodeId === node.id);
+      if (reference === undefined) return;
+      const retained = repositories.runCheckpoints.get(run.envelope.workflow, run.envelope.itemId,
+        node.id, reference.attempt, reference.claimGeneration);
+      if (retained === undefined || retained.runId !== reference.runId || continuationEvidenceDigest(retained) !== reference.digest)
+        throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-unavailable");
+      if (repositories.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId, node.id, run.envelope.attempt)
+        .some(record => record.runId === run.envelope.runId)) return;
+      const previous = repositories.runs.get(run.envelope.retryOf);
+      if (previous === undefined) throw new RunContinuationRefusedError("run-continuation-delegation-owner-mismatch");
+      assertDelegationRetryUnwritten(repositories, previous, plan.target);
+      return Object.freeze({ nodeId: node.id, assertRetained: (output: RunCheckpointRecord["output"]) => {
+        this.assertCurrentExecution(input);
+        if (canonicalJsonStringify(output) !== canonicalJsonStringify(retained.output))
+          throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-changed");
+      } });
+    });
   }
 
   admitDelegation(context: ChildRunBatchContext, plans: readonly DelegationPlan<AnyWorkflowRef>[]) {

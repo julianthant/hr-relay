@@ -1,3 +1,7 @@
+import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
+import { OcrReviewRecordSchema } from "../../../../src/models/ocr/review-record.js";
+import { OcrApprovedSnapshotSchema } from "../../../../src/models/ocr/review.js";
+import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import type { SpanEmitter } from "../../../../src/backend/logs/span-emitter.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -22,8 +26,8 @@ export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow)
 
 export function createEmergencyContactRetryWorld() {
   const world = createOcrReviewWorld();
-  return { cleanup: world.cleanup, async fixture(options: Readonly<{ failures?: number; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }> = {}) {
-    const control = { failuresRemaining: options.failures ?? 1, unknownAfterSave: false, failAfterSave: options.secondMemberAlreadyPresent === true, failAccounting: false };
+  return { cleanup: world.cleanup, async fixture(options: Readonly<{ failures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }> = {}) {
+    const control = { failuresRemaining: options.failures ?? 1, unknownAfterSave: false, failAfterSave: options.secondMemberAlreadyPresent === true, failAccounting: false, changeApprovedSnapshot: false, snapshotReads: 0, changeApprovedRecord: false, recordReads: 0 };
     const hooks: { onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void; onTransactionSettled?: () => void } = {};
     const accountingStore = defineWorkflowStore("emergency-contact", { readResult: defineTask(readEmergencyContactResultTask.contract, {
       sessions: [], async run(args) {
@@ -76,7 +80,26 @@ export function createEmergencyContactRetryWorld() {
       };
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const member = composeWorkflowModule(contactSaveMember, taskStoreRegistry.stores);
-    const f = await world.fixture({ coordinator: true, member, approvedStore: accountingStore, onSpan: event => hooks.onSpan?.(event),
+    let approvedReadFailed = false;
+    const approvedReader = (context: Parameters<typeof createApprovedOcrRecordReader>[0]): ReturnType<typeof createApprovedOcrRecordReader> => {
+      const reader = createApprovedOcrRecordReader(context);
+      return { ...reader, readRecord: query => {
+        const record = reader.readRecord(query);
+        control.recordReads += 1;
+        if (options.failApprovedRecordOnce === true && !approvedReadFailed && record.assertedEid === "10800001") {
+          approvedReadFailed = true;
+          throw new OcrReviewRefusedError();
+        }
+        return control.changeApprovedRecord ? OcrReviewRecordSchema.parse({ ...record, assertedEid: "10800002" }) : record;
+      }, readSnapshot: approval => {
+        const snapshot = reader.readSnapshot(approval);
+        control.snapshotReads += 1;
+        return control.changeApprovedSnapshot ? OcrApprovedSnapshotSchema.parse({ ...snapshot,
+          selectedRecordIds: snapshot.selectedRecordIds.slice(0, 1), records: snapshot.records.slice(0, 1) }) : snapshot;
+      } };
+    };
+    const f = await world.fixture({ coordinator: true, member, approvedStore: accountingStore,
+      approvedReader, onSpan: event => hooks.onSpan?.(event),
       onTransactionSettled: run => {
         hooks.onTransactionSettled?.();
         if (control.failAfterSave && (options.secondMemberAlreadyPresent !== true
@@ -108,6 +131,6 @@ export function createEmergencyContactRetryWorld() {
       type, source: "run-detail" as const, requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const children = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member");
-    return { ...f, facts, persistence, control, hooks, current, runCommand: command, children };
+    return { ...f, facts, persistence, control, hooks, approvedReader, current, runCommand: command, children };
   } };
 }

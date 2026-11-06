@@ -5,6 +5,7 @@ import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules
 import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
 import { authenticateRootRun, authenticateRunPriority } from "./delegation-root-authority.js";
 import { z } from "zod";
+import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { DependencyRecord } from "../../../rules/workflow/dependencies.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
@@ -570,11 +571,14 @@ export function delegationAccountingExecution(repositories: AuthorityRepositorie
   if (!groups.some(({ group }) => group.children.some(member => member.attempt === "retry"))) return;
   if (groups.length !== 1 || parent.envelope.startAt !== undefined || parent.envelope.injected !== undefined
     || (parent.envelope.stepOmissions?.length ?? 0) > 0) throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
+  const retainedScope = groups.flatMap(({ group }) => readDelegationScopeEvidence(repositories, parent, group.invocation.scopeEvidence));
   const snapshot = () => {
     const current = repositories.runs.get(parent.envelope.runId);
-    if (current === undefined || canonicalJsonStringify(current.envelope) !== canonicalJsonStringify(parent.envelope)
-      || canonicalJsonStringify(current.input) !== canonicalJsonStringify(parent.input)
-      || canonicalJsonStringify(runClaim(current)) !== canonicalJsonStringify(runClaim(parent)))
+    const captured = runClaim(parent), held = current === undefined ? undefined : runClaim(current);
+    if (current === undefined || captured === undefined || held === undefined
+      || held.workerId !== captured.workerId || held.claimGeneration !== captured.claimGeneration
+      || canonicalJsonStringify(current.envelope) !== canonicalJsonStringify(parent.envelope)
+      || canonicalJsonStringify(current.input) !== canonicalJsonStringify(parent.input))
       throw new RunContinuationRefusedError("delegation-accounting-owner-changed");
     const resumed = readManualDelegationResume(repositories, current);
     if (resumed === undefined) throw new RunContinuationRefusedError("delegation-accounting-resume-unavailable");
@@ -585,6 +589,12 @@ export function delegationAccountingExecution(repositories: AuthorityRepositorie
   const original = snapshot();
   return { plan, assertCurrent() {
     if (snapshot() !== original) throw new RunContinuationRefusedError("delegation-accounting-members-changed");
+  }, assertRetained(record: RunCheckpointRecord) {
+    const retained = retainedScope.find(entry => entry.nodeId === record.nodeId);
+    if (retained === undefined || !("checkpoint" in retained) || retained.checkpoint === undefined)
+      throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-unavailable");
+    if (canonicalJsonStringify(record.output) !== canonicalJsonStringify(retained.checkpoint.output))
+      throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-changed");
   } };
 }
 

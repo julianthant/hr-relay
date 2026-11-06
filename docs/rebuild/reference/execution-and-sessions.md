@@ -109,11 +109,20 @@ Resume binds its native command identity to the exact completed retry receipts b
 For a factory-proved aggregate whose own graph is read-only, member Retry preserves the parent envelope
 through manual Resume, including an existing continuation or its absence. Readiness authenticates
 the latest applied native Resume independently of continuation issuance. The aggregate plan reuses
-the approved upstream evidence and unchanged children, joins current replacement outcomes, and
-executes only its derived read-accounting consumers at the current claim generation. Old accounting
-checkpoints remain historical evidence; they cannot satisfy a later superseding outcome. Checkpoint
+the unchanged children and joins current replacement outcomes at the current claim generation.
+Always-rerun upstream prerequisites are read fresh; their exact output schema and payload must match
+this parent's retained delegation scope before checkpoint publication or member admission. A changed
+prerequisite produces a typed continuation refusal. Freshness policy remains unchanged. Derived
+read-accounting consumers execute fresh. Before a member Retry owns an approved-record checkpoint,
+a retained approved record is reobserved only after native factory, replacement-lineage and unwritten
+proof; its schema and payload must match the retained continuation before publication. An unreferenced
+missing step executes fresh, while same-run Resume with its own checkpoint keeps ordinary continuation
+and write-proof validation. Old accounting checkpoints remain historical evidence;
+they cannot satisfy a later superseding outcome. Checkpoint
 and terminal publication recheck the same claim, Resume and member digests in their authority transaction.
-Delegated Retry uses
+Accounting capture checks a requested pause under the same native authority transaction. A Retry
+at native success or failure admission acknowledges only its authenticated manual hold after refused
+settlement unwinds, including failure settlement reached from a continuation refusal. Delegated Retry uses
 the same checkpoint, transaction and uncertain-write validation as checkpoint recovery.
 
 Fan-out revisions retain an unbroken native predecessor chain. A consumed result cites an exact
