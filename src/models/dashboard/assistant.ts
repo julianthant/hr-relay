@@ -134,6 +134,13 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_HISTORY_FULL: ERROR_CATALOG.ASSISTANT_HISTORY_FULL.text,
   ASSISTANT_CONVERSATION_STALE: ERROR_CATALOG.ASSISTANT_CONVERSATION_STALE.text,
   ASSISTANT_CONVERSATION_BUSY: ERROR_CATALOG.ASSISTANT_CONVERSATION_BUSY.text,
+  ASSISTANT_ATTACHMENT_UNSUPPORTED: ERROR_CATALOG.ASSISTANT_ATTACHMENT_UNSUPPORTED.text,
+  ASSISTANT_ATTACHMENT_INVALID: ERROR_CATALOG.ASSISTANT_ATTACHMENT_INVALID.text,
+  ASSISTANT_ATTACHMENT_TOO_LARGE: ERROR_CATALOG.ASSISTANT_ATTACHMENT_TOO_LARGE.text,
+  ASSISTANT_ATTACHMENT_BUSY: ERROR_CATALOG.ASSISTANT_ATTACHMENT_BUSY.text,
+  ASSISTANT_ATTACHMENT_TIMEOUT: ERROR_CATALOG.ASSISTANT_ATTACHMENT_TIMEOUT.text,
+  ASSISTANT_ATTACHMENT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_ATTACHMENT_UNAVAILABLE.text,
+  ASSISTANT_ATTACHMENT_STORAGE_LIMIT: ERROR_CATALOG.ASSISTANT_ATTACHMENT_STORAGE_LIMIT.text,
   CHATGPT_RESOURCE_CLOSURE_UNPROVED: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text,
   ASSISTANT_INVALID: ERROR_CATALOG.ASSISTANT_INVALID.text,
   ASSISTANT_CONTEXT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_CONTEXT_UNAVAILABLE.text,
@@ -223,6 +230,32 @@ const FailureCode = z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureC
 export const AssistantImportNoticeSchema = z.enum(["unknown", "proposal-expired"]);
 export const AssistantDeliverySchema = z.enum(["sending", "answered", "refused", "delivery-unknown", "settled"]);
 export const AssistantMessageKindSchema = z.enum(["turn", "answer", "proposal", "decision", "inert"]);
+/** Gate 50 attachments: images and PDFs reach the model as originals, text as text; spreadsheets stay local. */
+export const ASSISTANT_ATTACHMENT_TYPES = Object.freeze({
+  "image/png": { extensions: ["png"], maxBytes: 5 * 1024 * 1024, content: "image" },
+  "image/jpeg": { extensions: ["jpg", "jpeg"], maxBytes: 5 * 1024 * 1024, content: "image" },
+  "image/webp": { extensions: ["webp"], maxBytes: 5 * 1024 * 1024, content: "image" },
+  "application/pdf": { extensions: ["pdf"], maxBytes: 10 * 1024 * 1024, content: "file" },
+  "text/plain": { extensions: ["txt"], maxBytes: 32 * 1024, content: "text" },
+  "text/markdown": { extensions: ["md"], maxBytes: 32 * 1024, content: "text" },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { extensions: ["xlsx"], maxBytes: 10 * 1024 * 1024, content: "none" },
+  "text/csv": { extensions: ["csv"], maxBytes: 2 * 1024 * 1024, content: "none" },
+} as const);
+export type AssistantAttachmentMediaType = keyof typeof ASSISTANT_ATTACHMENT_TYPES;
+export const AssistantAttachmentMediaTypeSchema = z.enum(Object.keys(ASSISTANT_ATTACHMENT_TYPES) as [AssistantAttachmentMediaType, ...AssistantAttachmentMediaType[]]);
+export const ASSISTANT_ATTACHMENTS_PER_SEND = 4;
+export const ASSISTANT_ATTACHMENT_STAGE_TTL_MS = 15 * 60 * 1000;
+export const ASSISTANT_ATTACHMENT_PROFILE_MAX_BYTES = 256 * 1024 * 1024;
+/** A display-only basename: no separators or controls, at most 160 UTF-16 units and 640 UTF-8 bytes. */
+export const AssistantAttachmentNameSchema = z.string().min(1).max(160).refine(name => !/[\\/\p{Cc}]/u.test(name) && name.isWellFormed()
+  && new TextEncoder().encode(name).byteLength <= 640 && name.trim() === name && name !== "." && name !== "..", "assistant-attachment-name-invalid");
+export const AssistantAttachmentRecordSchema = z.strictObject({
+  id: z.uuid(), conversationId: z.uuid(), messageId: z.uuid().nullable(), ordinal: z.number().int().min(1).max(ASSISTANT_ATTACHMENTS_PER_SEND).nullable(),
+  mediaType: AssistantAttachmentMediaTypeSchema, name: AssistantAttachmentNameSchema, byteLength: z.number().int().positive(), sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  createdAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
+}).refine(record => (record.messageId === null) === (record.ordinal === null), "assistant-attachment-membership-invalid")
+  .refine(record => record.byteLength <= ASSISTANT_ATTACHMENT_TYPES[record.mediaType].maxBytes, "assistant-attachment-too-large");
+export type AssistantAttachmentRecord = z.infer<typeof AssistantAttachmentRecordSchema>;
 export const AssistantConversationRecordSchema = z.strictObject({
   id: z.uuid(), profileId: z.uuid(), revision: Revision, selectedAt: z.iso.datetime().nullable(), title: Title, draft: Draft, composer: Draft,
   importTotal: z.number().int().min(0).max(ASSISTANT_MESSAGES_MAX), importNotice: AssistantImportNoticeSchema.nullable(),
@@ -246,6 +279,7 @@ export type AssistantHistoryView = z.infer<typeof AssistantHistoryViewSchema>;
 export const AssistantStoredMessageSchema = z.strictObject({
   id: z.uuid(), ordinal: z.number().int().min(1), role: z.enum(["operator", "assistant"]), kind: AssistantMessageKindSchema,
   text: DisplayText, delivery: AssistantDeliverySchema, code: FailureCode.nullable(), actionId: z.uuid().nullable(),
+  attachments: z.array(z.strictObject({ id: z.uuid(), name: AssistantAttachmentNameSchema })).max(ASSISTANT_ATTACHMENTS_PER_SEND),
 });
 export type AssistantStoredMessage = z.infer<typeof AssistantStoredMessageSchema>;
 export const AssistantConversationViewSchema = z.strictObject({

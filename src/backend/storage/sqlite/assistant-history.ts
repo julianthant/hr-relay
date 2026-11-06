@@ -1,11 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import {
-  ASSISTANT_CHATS_MAX, ASSISTANT_CHAT_TTL_MS, ASSISTANT_HISTORY_METADATA_MAX_UNITS, ASSISTANT_MESSAGES_MAX, AssistantConversationRecordSchema, AssistantMessageRecordSchema,
+  ASSISTANT_CHATS_MAX, ASSISTANT_CHAT_TTL_MS, type AssistantAttachmentMediaType, type AssistantAttachmentRecord, ASSISTANT_HISTORY_METADATA_MAX_UNITS, ASSISTANT_MESSAGES_MAX, AssistantConversationRecordSchema, AssistantMessageRecordSchema,
   type AssistantConversationRecord, type AssistantConversationView, type AssistantDeliverySchema, type AssistantFailureCode, type AssistantHistoryOperation,
   type AssistantHistoryResult, type AssistantHistoryView, type AssistantMessageRecord,
 } from "../../../models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { createAssistantAttachmentStore } from "./assistant-attachments.js";
 
 export const ASSISTANT_HISTORY_MIGRATION = Object.freeze({ version: 23, statements: Object.freeze([
   `CREATE TABLE assistant_conversations (
@@ -70,7 +71,7 @@ export class AssistantHistoryRefusal extends Error {
 const refuse = (code: AssistantFailureCode): never => { throw new AssistantHistoryRefusal(code); };
 
 type Delivery = z.infer<typeof AssistantDeliverySchema>;
-type Table = "assistant_conversations" | "assistant_messages";
+type Table = "assistant_conversations" | "assistant_messages" | "assistant_attachments";
 interface Ports {
   database: DatabaseSync;
   profileId(): string;
@@ -85,6 +86,9 @@ export type AssistantSettlement = Readonly<{ delivery: "answered" | "refused" | 
 
 export function createAssistantHistoryRepository(ports: Ports) {
   const { database } = ports;
+  const files = createAssistantAttachmentStore(database, ports.profileId, refuse);
+  const fileNames = (messageId: string) => database.prepare("SELECT id,json_extract(payload_json,'$.name') AS name FROM assistant_attachments WHERE message_id=? ORDER BY ordinal")
+    .all(messageId).map(row => z.object({ id: z.uuid(), name: z.string() }).parse(row));
   const conversationRow = (id: string) => {
     const row = database.prepare("SELECT * FROM assistant_conversations WHERE id=?").get(id);
     return row === undefined ? undefined : assistantConversationFromRow(row);
@@ -231,16 +235,25 @@ export function createAssistantHistoryRepository(ports: Ports) {
         const record = owned(id, now);
         return record === undefined ? undefined : { id: record.id, title: record.title, revision: record.revision, draft: record.draft, composer: record.composer,
           importTotal: record.importTotal, importNotice: record.importNotice,
-          messages: messages(id).map(row => ({ id: row.id, ordinal: row.ordinal, role: row.role, kind: row.kind, text: row.text, delivery: row.delivery, code: row.code, actionId: row.actionId })) };
+          messages: messages(id).map(row => ({ id: row.id, ordinal: row.ordinal, role: row.role, kind: row.kind, text: row.text, delivery: row.delivery, code: row.code, actionId: row.actionId,
+            attachments: row.kind === "turn" ? fileNames(row.id) : [] })) };
       });
     },
     /** Repeat first, then the new-message CAS; only an `accepted` result carries the inference right. */
-    accept(input: Readonly<{ conversationId: string; expectedRevision: number; messageId: string; text: string; modelText: string; subjectRef: string | null; now: string }>): AssistantAcceptance {
+    /** Stages one validated upload under an owned, unexpired chat; nothing reaches the model until a send claims it. */
+    stage(input: Readonly<{ id: string; conversationId: string; mediaType: AssistantAttachmentMediaType; name: string; bytes: Uint8Array; now: string }>): AssistantAttachmentRecord {
+      return ports.mutate("assistant_attachments", () => {
+        const chat = requireOwned(input.conversationId, input.now);
+        return { result: files.stage({ ...input, chatExpiresAt: chat.expiresAt }), changes: 1 };
+      });
+    },
+    accept(input: Readonly<{ conversationId: string; expectedRevision: number; messageId: string; text: string; modelText: string; subjectRef: string | null;
+      attachments: readonly string[]; now: string }>): AssistantAcceptance {
       return ports.mutate("assistant_messages", (): { result: AssistantAcceptance; changes: number } => {
         const record = requireOwned(input.conversationId, input.now), prior = messageRow(input.messageId);
         if (prior !== undefined) {
           if (prior.kind !== "turn" || prior.conversationId !== input.conversationId || prior.text !== input.text || prior.subjectRef !== input.subjectRef
-            || prior.delivery === "settled") refuse("ASSISTANT_CONVERSATION_STALE");
+            || prior.delivery === "settled" || canonicalJsonStringify(fileNames(prior.id).map(file => file.id)) !== canonicalJsonStringify(input.attachments)) refuse("ASSISTANT_CONVERSATION_STALE");
           return { result: { state: "repeat", ordinal: prior.ordinal, revision: record.revision, delivery: prior.delivery as Exclude<Delivery, "settled"> }, changes: 0 };
         }
         if (record.revision !== input.expectedRevision) refuse("ASSISTANT_CONVERSATION_STALE");
@@ -248,6 +261,7 @@ export function createAssistantHistoryRepository(ports: Ports) {
         const ordinal = appendable(input.conversationId, 2);
         insertMessage({ id: input.messageId, conversationId: input.conversationId, ordinal, role: "operator", kind: "turn", modelText: input.modelText,
           subjectRef: input.subjectRef, actionId: null, delivery: "sending", code: null, text: input.text, createdAt: input.now, updatedAt: input.now });
+        files.accept(input.conversationId, input.messageId, input.attachments, record.expiresAt, input.now);
         return withinBudget(input.now, { result: { state: "accepted", ordinal, revision: bump(input.conversationId), createdAt: record.createdAt }, changes: 1 });
       });
     },
@@ -259,10 +273,12 @@ export function createAssistantHistoryRepository(ports: Ports) {
         .get(messageId, conversationId, createdAt, ports.profileId(), now);
       return row !== undefined;
     },
-    /** Earlier rows with replay text, in order; never `inert` rows or the current turn. */
-    replay(conversationId: string, beforeOrdinal: number): readonly Readonly<{ role: "operator" | "assistant"; modelText: string }>[] {
+    /** One turn's accepted attachments in send order, with authenticated bytes. */
+    turnAttachments: (messageId: string) => ports.read(() => files.ofMessage(messageId)),
+    /** Earlier rows with replay text, in order; never `inert` rows or the current turn. Operator turns carry their id for their attachments. */
+    replay(conversationId: string, beforeOrdinal: number): readonly Readonly<{ role: "operator" | "assistant"; modelText: string; messageId?: string }>[] {
       return ports.read(() => messages(conversationId).flatMap(row => row.ordinal < beforeOrdinal && row.modelText !== null && row.delivery !== "sending"
-        ? [{ role: row.role, modelText: row.modelText }] : []));
+        ? [{ role: row.role, modelText: row.modelText, ...(row.kind === "turn" ? { messageId: row.id } : {}) }] : []));
     },
     /** One guarded settlement; returns the new revision, or undefined when the turn is gone, expired or already settled. */
     settle(conversationId: string, messageId: string, settlement: AssistantSettlement, now: string): number | undefined {
@@ -295,13 +311,13 @@ export function createAssistantHistoryRepository(ports: Ports) {
           .map(row => z.object({ conversation_id: z.uuid() }).parse(row).conversation_id);
         const changes = Number(database.prepare("UPDATE assistant_messages SET delivery='delivery-unknown',updated_at=? WHERE delivery='sending'").run(now).changes);
         for (const id of ids) bump(id);
-        return { result: changes, changes };
+        return { result: changes, changes: changes + files.reclaim(now, true) };
       });
     },
     reclaimExpired(now: string): number {
       return ports.mutate("assistant_conversations", () => {
         const changes = Number(database.prepare("DELETE FROM assistant_conversations WHERE expires_at<=?").run(now).changes);
-        return { result: changes, changes };
+        return { result: changes, changes: changes + files.reclaim(now, false) };
       });
     },
   });
