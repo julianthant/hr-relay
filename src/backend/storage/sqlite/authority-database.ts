@@ -1596,7 +1596,8 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     profileId: meta.profile_id,
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
     authorityGeneration: meta.authority_generation,
-    authorityContentFingerprint: authorityContentFingerprint(database),
+    // Without run_search the full fingerprint cannot be read; only startup classification asks for this shape.
+    authorityContentFingerprint: missingRunSearch ? nonProjectionFingerprint(database) : authorityContentFingerprint(database),
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
