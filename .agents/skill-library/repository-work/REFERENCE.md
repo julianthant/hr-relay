@@ -13,9 +13,8 @@ The current source and dependency map is `docs/reference/codebase-structure.md`.
 inventory and pending implementation bindings live under `src/models/fields/` and
 `src/backend/app/registries/`.
 
-`tests/parity/` is the active desktop visual contract; run `npm run test:parity` for visual changes.
-There is no current `tests/scenario/` rehearsal corpus. An absent `dry-run.scenario.ts` manifest
-reports unavailable before execution. Workflow scenario IDs are declarations, not test evidence.
+`tests/parity/` is the desktop visual contract; run `npm run test:parity` for visual changes.
+Workflow scenario IDs are declarations, not test evidence.
 See [guards and tests](../../../docs/reference/guards-and-tests.md) for the current suite map.
 
 ## Before you start
@@ -53,8 +52,7 @@ npm run test:coverage      # 60/80 lines/statements/functions floors + the suite
 npm run test:watch
 
 # Workflow execution uses the signed-in dashboard Run surface.
-npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
-npm run cli -- storage backup  # explicit SQLite backup for a person, raw-byte archive for stopped flat native6
+npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr | test-data)
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
@@ -91,10 +89,8 @@ unchanged-input evidence reuse and concurrent gate scheduling. Its 2026-09-09 am
 focused tests/scoped lint/quick checks to Phase 3 and future parallel workers, and full gates plus
 fixes to the named finalizer. Other in-flight assignments keep their explicit cadence until revised.
 
-The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
-a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
-`*:rebuild` names retired with D93 and the `rebuild:` runtime prefix with D247 (2026-08-20) — this is
-its own repository, so its commands are plain `cli` / `dashboard` / `web`. See "Operational
+The gate family is `typecheck` / `lint` / `test:coverage` (D191); `test:coverage` is a strict superset
+of `test` + `test:architecture`. Commands are plain `cli` / `dashboard` / `web`. See "Operational
 isolation" below for what still MUST differ from the legacy checkout.
 
 ## Cross-repo rules (D93/D94)
@@ -137,12 +133,11 @@ control under `.tracker/control`.
 
 SQLite owns ordinary settings and immutable snapshots; keep them with their native database
 authority. A missing or incompatible existing database refuses startup; never discard one half to
-hide a mismatch. The independent local credential store owns protected values. Explicit
-`npm run cli -- storage backup` writes a verified SQLite backup for the selected person, or an
-immutable raw-byte archive for a stopped pre-profile native6 store. Flat archive admission never
-claims, registers or adopts historical rows. Startup's flat start-clean reader verifies that archive
-before removing data. Ordinary shutdown does not write a backup. The clock/config contract owns
-exact source and recovery restrictions.
+hide a mismatch. The independent local credential store owns protected values. A verified
+SQLite backup is written at clean shutdown and before an upgrade; there is no backup command. Flat
+archive admission never claims, registers or adopts historical rows, and startup's flat start-clean
+reader verifies that archive before removing data. The clock/config contract owns exact source and
+recovery restrictions.
 Run deletion requires terminal records and their `deleted_runs` tombstones. Read [clock,
 configuration, and secrets](../../../docs/reference/clock-config-secrets.md), [workflow
 model](../../../docs/reference/workflow-model.md), and [guards and
@@ -212,12 +207,8 @@ fallbacks. Do not expose a canary, substitute another target, or infer current a
   they are not operator-startable or picker entries. The composition owns step identities and each
   harness imports them. An operator workflow folder may also contain its backend-loaded
   `task-registry.ts` and `tasks/`, but no arbitrary descriptor/module/node files beside the entry.
-  A step folder exists only when it carries a harness (`job-summary` has none). There is no
-  `src/workflows/proving/`.
-- Workflow scenario suites and their T1 proof convention were retired on 2026-10-02; there is no
-  current scenario corpus. `tests/parity/` remains the active desktop visual contract. Old
-  structural-scenario files are not current rehearsal evidence. Future scenario tests must be designed
-  with the operator; a declared workflow scenario ID alone proves no execution.
+  A step folder exists only when it carries a harness (`job-summary` has none).
+- `tests/parity/` is the desktop visual contract. A declared workflow scenario ID alone proves no execution.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
