@@ -22,6 +22,7 @@ import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../.
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { chatGptFixture , publicCapabilityResponses } from "../../../../support/helpers/chatgpt-account-fixtures.js";
+import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
@@ -49,6 +50,29 @@ type ServedAssistantFixture = {
   origin: string;
   post: (path: string, value: unknown) => Promise<unknown>;
 };
+function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySnapshot>[0], before: ReturnType<typeof faultAuthoritySnapshot>,
+  reason: "canonical-completion-required" | "action-decision") {
+  assertHttpFaultOnly(owner, before, 2);
+  const added = owner.database.authority.timelineEvents.page({ limit: 500 }).slice(before.timeline.length);
+  const [proposal, http] = added; assert.ok(proposal && http);
+  assert.ok(proposal.cursor < http.cursor);
+  assert.notEqual(proposal.eventId, http.eventId);
+  const events = added.map(record => {
+    assert.deepEqual(record.scope, { kind: "transport", connectionId: "local" });
+    assert.equal(record.payload.kind, "debug");
+    if (record.payload.kind !== "debug") throw new Error("assistant refusal diagnostic required");
+    const { build, pid, pinned, ...event } = record.payload.event;
+    assert.ok(build.length > 0); assert.equal(pid, process.pid); assert.equal(pinned, false);
+    z.uuid().parse(event.correlationId);
+    return event;
+  });
+  assert.notEqual(events[0].correlationId, events[1].correlationId);
+  assert.deepEqual(events.map(event => ({ ...event, correlationId: "generated" })), [
+    { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason, code: "ASSISTANT_PROPOSAL_REFUSED" },
+    { category: "http", phase: "failed", correlationId: "generated", area: "request", reason: "operation-refused", code: "ASSISTANT_PROPOSAL_REFUSED",
+      method: "POST", route: reason === "canonical-completion-required" ? "/api/v1/assistant/respond" : "/api/v1/assistant/action", status: 200 },
+  ]);
+}
 type ServedAssistantOwner = {
   profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   transport?: Awaited<ReturnType<typeof chatGptFixture>>;
@@ -174,7 +198,7 @@ it('serves canonical selected-run reads through authenticated composition withou
       const user = request.input.find(item => 'role' in item && item.role === 'user'); assert.ok(user && 'content' in user && typeof user.content === 'string');
       const projected = z.strictObject({ intent: z.literal('selected-run-explanation'), reference: z.string().regex(/^ref_[a-f0-9]{32}$/u) }).parse(JSON.parse(user.content));
       turns++;
-      return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_run_read', model: request.model, status: 'completed', output: [{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: forged ? 'ref_' + 'f'.repeat(32) : projected.reference }), status: 'completed' }] } })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+      return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: forged ? 'ref_' + 'f'.repeat(32) : projected.reference }), status: 'completed' }], request.model, 'resp_run_read'), { headers: { 'Content-Type': 'text/event-stream' } });
     });
     const durable = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database => ({
       chats: database.prepare('SELECT * FROM assistant_chats ORDER BY id').all(), actions: database.prepare('SELECT * FROM assistant_actions ORDER BY id').all(),
@@ -233,7 +257,7 @@ it('refuses a selected-run revision changed during authenticated composed infere
       turns++; entered.resolve();
       return new Response(new ReadableStream({ async start(controller) {
         await release.promise;
-        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_held_read', model: request.model, status: 'completed', output: [{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: projected.reference }), status: 'completed' }] } })}\n\n`)); controller.close();
+        controller.enqueue(new TextEncoder().encode(completedResponseStream([{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: projected.reference }), status: 'completed' }], request.model, 'resp_held_read'))); controller.close();
       } }), { headers: { 'Content-Type': 'text/event-stream' } });
     });
     const reading = client.assistantRespond({ message: 'run status', subjectRef });
@@ -291,15 +315,14 @@ it.each([
       transport.setResponse(init => {
         if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
         const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
-        return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: "text_without_effect", model: request.model, status: "completed",
-          output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }] } })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        return new Response(completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }], request.model, "text_without_effect"), { headers: { "content-type": "text/event-stream" } });
       });
       {
         const refused = AssistantResultSchema.parse(await post("assistant/respond", { message: "mark notifications read" }));
         assert.equal(refused.state, "refused"); if (refused.state === "refused") assert.equal(refused.code, "ASSISTANT_PROPOSAL_REFUSED");
         assert.deepEqual(durableRows(), noCallDurable);
         assert.deepEqual(context.database.authority.notifications.listByActor("local-operator"), noCallRows);
-        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, 1);
+        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, "canonical-completion-required");
         const help = AssistantResultSchema.parse(await post("assistant/respond", { message: "help permissions" }));
         assert.equal(help.state, "answered");
       }
@@ -317,7 +340,7 @@ it.each([
         const reference = z.object({ references: z.array(z.string()) }).parse(projection).references; assert.equal(reference.length, 1);
         const output = turns === 1 ? [{ type: "function_call", namespace: "relay", name: "notification_read_all", call_id: "call_local", arguments: JSON.stringify({ reference: reference[0] }), status: "completed" }]
           : [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Notification updated." }] }];
-        return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: `resp_${turns}`, model: request.model, status: "completed", output } })}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+        return new Response(completedResponseStream(output, request.model, `resp_${turns}`), { headers: { "Content-Type": "text/event-stream" } });
       });
       const result = AssistantResultSchema.parse(await post("assistant/respond", { message: "mark notifications read" }));
       if (mode === "every-action") {
@@ -329,7 +352,7 @@ it.each([
         assert.equal(record.command.source, "assistant");
         const before = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
         const foreign = AssistantActionResultSchema.parse(await post("assistant/action", { chatId: randomUUID(), actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" }));
-        assert.equal(foreign.state, "refused"); assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, before, 1);
+        assert.equal(foreign.state, "refused"); assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, before, "action-decision");
         const decision = { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" };
         if (staleAccount) {
           await context.account.signOut();
@@ -346,7 +369,7 @@ it.each([
         assert.equal(audit?.request.source, "assistant"); assert.equal(audit?.versionChanges.length, 25);
         const after = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
         assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
-        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, after, 1);
+        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, after, "action-decision");
         }
       } else { assert.equal(result.state, "answered"); assert.equal(turns, 1); }
       for (const notificationId of ids) assert.equal(context.database.authority.notifications.get(notificationId)?.status, staleAccount ? "unread" : "read");
@@ -463,9 +486,8 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         const projection = z.strictObject({ intent: z.literal("workflow-start-proposal"), workflow: z.literal("person-lookup"),
           mode: z.literal("live-read"), reference: z.string() }).parse(JSON.parse(user.content));
         proposalTurns++;
-        return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_start_proposal", model: request.model, status: "completed",
-          output: [{ type: "function_call", namespace: "relay", name: "propose_workflow_start", call_id: "call_start_proposal",
-            arguments: JSON.stringify({ reference: projection.reference }), status: "completed" }] } })}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: "propose_workflow_start", call_id: "call_start_proposal",
+          arguments: JSON.stringify({ reference: projection.reference }), status: "completed" }], request.model, "resp_start_proposal"), { headers: { "Content-Type": "text/event-stream" } });
       });
       const proposed = await client.assistantRespond({ message: "start selected workflow", subjectRef });
       assert.equal(proposed.state, "action-proposal");
@@ -562,7 +584,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       const finishedRuns = database.authority.runs.listByWorkflow("person-lookup"), finishedControls = database.authority.workerControls.list();
       const beforeRefusal = faultAuthoritySnapshot({ database, stateRoot: context.admission.stateRoot });
       assert.equal((await client.assistantDecide(decision)).state, "refused");
-      assertHttpFaultOnly({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, 1);
+      assertAssistantProposalFaults({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, "action-decision");
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
       assert.deepEqual(database.authority.workerControls.list(), finishedControls);
       assert.equal(children.length, 1);

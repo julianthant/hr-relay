@@ -8,12 +8,13 @@ import { ChatGptAccountError } from '../../../src/backend/accounts/chatgpt-accou
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, type AssistantInferenceRequest } from "../../../src/models/dashboard/assistant.js";
 import { syntheticAssistantTools, syntheticAssistantResponse, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { chatGptFixture, completedOcrStream , publicCapabilityResponses } from "../../support/helpers/chatgpt-account-fixtures.js";
+import { completedResponseStream, partialTextStream } from "../../support/helpers/chatgpt-response-stream.js";
 const turn = { action: "answer", text: "Synthetic explanation", citations: [] };
 const request: AssistantInferenceRequest = { model: "gpt-6.1-sol", reasoning: { effort: "medium" },
   input: [{ role: "developer", content: "Synthetic fixed instructions" }, { role: "user", content: "Explain dry run" }],
   tools: syntheticAssistantTools };
-function terminal(output: unknown, model = request.model) {
-  return `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output } })}\n\n`;
+function terminal(output: readonly unknown[], model = request.model) {
+  return completedResponseStream(output, model);
 }
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
@@ -99,8 +100,9 @@ it("accepts fragmented strict call arguments only after terminal completion and 
   const f = await chatGptFixture(undefined, profiles.create); try {
     await f.connected(); const response = syntheticAssistantResponse(turn), call = response.output[0]; assert.ok(call?.type === "function_call");
     const reasoning = { type: "reasoning", id: "rs_synthetic", summary: [], encrypted_content: "synthetic-opaque-reasoning" };
-    const sse = `data: ${JSON.stringify({ type: "response.function_call_arguments.delta", output_index: 1, delta: call.arguments.slice(0, 7) })}\n\n`
-      + `data: ${JSON.stringify({ type: "response.function_call_arguments.delta", output_index: 1, delta: call.arguments.slice(7) })}\n\n` + terminal([reasoning, call]);
+    const sse = terminal([reasoning, call]).replace(`data: ${JSON.stringify({ type: "response.function_call_arguments.delta", output_index: 1, item_id: call.id, delta: call.arguments })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.function_call_arguments.delta", output_index: 1, item_id: call.id, delta: call.arguments.slice(0, 7) })}\n\n`
+      + `data: ${JSON.stringify({ type: "response.function_call_arguments.delta", output_index: 1, item_id: call.id, delta: call.arguments.slice(7) })}\n\n`);
     f.setResponse(() => new Response(new ReadableStream<Uint8Array>({ start(controller) {
       const bytes = new TextEncoder().encode(sse); for (let i = 0; i < bytes.length; i += 13) controller.enqueue(bytes.slice(i, i + 13)); controller.close();
     } }), { headers: { "content-type": "text/event-stream" } }));
@@ -127,7 +129,7 @@ it("requires exact call-ID and namespace/name outputs in continuation and reject
 });
 for (const event of ["response.incomplete", "response.failed", "response.refusal.delta", "error"] as const) it(`keeps ${event} visible after partial assistant data`, async () => {
   const f = await chatGptFixture(undefined, profiles.create); try {
-    await f.connected(); f.setSse(`data: {"type":"response.output_text.delta","delta":"partial"}\n\ndata: ${JSON.stringify({ type: event, response: { error: null } })}\n\n`);
+    await f.connected(); f.setSse(`${partialTextStream("partial")}data: ${JSON.stringify({ type: event, response: { error: null } })}\n\n`);
     await assert.rejects(f.service.inferAssistant(request));
   } finally { await f.cleanup(); }
 });
@@ -136,7 +138,7 @@ it("keeps usage-limit events visible midstream and binds catalog order/visibilit
     await f.connected(); f.setModels({ models: [{ slug: "hidden", display_name: "Hidden", visibility: "hide" },
       { slug: "gpt-6.1-sol", display_name: "Current Sol", visibility: "list" }, { slug: "other", display_name: "Other", visibility: "list" }] });
     assert.deepEqual((await f.service.listAssistantModels()).catalog, { models: [{ slug: "gpt-6.1-sol", displayName: "Current Sol" }, { slug: "other", displayName: "Other" }] });
-    f.setSse('data: {"type":"response.output_text.delta","delta":"partial"}\n\ndata: {"type":"error","code":"subscription_sharing_usage_limit_exceeded"}\n\n');
+    f.setSse(partialTextStream("partial") + 'data: {"type":"error","code":"subscription_sharing_usage_limit_exceeded"}\n\n');
     await assert.rejects(f.service.inferAssistant(request), { code: "CHATGPT_USAGE_LIMIT" });
     const state = f.service.readAccount(); assert.equal(state.state, "connected"); if (state.state === "connected") assert.equal(state.planUsage, "limit-reached");
   } finally { await f.cleanup(); }
@@ -152,7 +154,7 @@ it("refuses a catalog that settles after signout and cancels held inference on a
     await f.connected();
     let responseEntered!: () => void;
     const responseStarted = new Promise<void>(resolve => { responseEntered = resolve; });
-    f.setResponse(() => { responseEntered(); return new Response(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"partial"}\n\n')); } }), { headers: { "content-type": "text/event-stream" } }); });
+    f.setResponse(() => { responseEntered(); return new Response(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode(partialTextStream("partial"))); } }), { headers: { "content-type": "text/event-stream" } }); });
     const inference = f.service.inferAssistant(request).catch((error: unknown) => error);
     await responseStarted; await f.service.close(); assert.ok(await inference instanceof Error);
   } finally { release(); await f.cleanup(); }
