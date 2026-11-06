@@ -26,6 +26,7 @@ import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { AutomaticShutdownBackupError,RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { OldBuildRuntimeArtifactsError } from "../../../../../src/backend/storage/admission/process-root.js";
+import { plantOldBuildArtifact } from "../../../../support/helpers/storage/old-build-artifact.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { type WorkerRuntimeContext } from "../../../../../src/backend/runs/commands/command-kernel.js";
@@ -660,6 +661,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       await signInPoolApplication(runtime);
       assert.equal(recovery.mock.calls.length, 0, "dashboard boot must not request a worker launch reservation");
       assert.equal(children.length, 0);
+      plantOldBuildArtifact(processLockRoot);
     } finally {
       recovery.mockRestore();
       if (runtime !== undefined) {
