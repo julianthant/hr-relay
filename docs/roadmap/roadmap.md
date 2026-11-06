@@ -12,7 +12,7 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 - [done] Person Lookup and Separations rerun readiness — use current inputs and readiness checks for reruns.
 - [done] Settings Test OCR — run the OCR test from Preflight.
 - [done] PR flow — run staging pull request CI on Ubuntu with the macOS-only files, reserve native platform proofs and parity for operator-started full releases, and auto-merge into staging.
-- [done] Review loop — the reviewer clears each local commit before push and loops with the coder; a fresh reviewer reads the whole diff before merge. A workflow PR also passes a live dry run with the operator before it merges.
+- [done] Review loop — one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push; a fresh reviewer replaces it for the final whole-diff read. A workflow PR also passes a live dry run with the operator before it merges.
 - [next] Functional spec — keep product behaviour in the charter and mechanisms in reference docs.
 
 ## Built and wired
@@ -34,14 +34,16 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 
 Complete these in order. A workflow is ready after its live dry run and operator sign-off.
 
-- [now] Finish in-flight work — merge Emergency Contact member Retry (#153), the Duo setup window (#142), restored worker custody (Secure Enclave key across a reboot; blocks live runs) and the macOS-native test baseline.
-- [now] Assistant follow-ups — start one workflow for several people with one confirmation, then send attached files to the model and keep them in chat history.
+- [done] Emergency Contact member Retry — retry one failed member with an atomic failure hold and superseding accounting.
+- [now] Finish in-flight work — merge the Duo setup window (#142), restored worker custody (Secure Enclave key across a reboot; blocks live runs) and the macOS-native test baseline.
+- [now] Docs and dev tooling — dissolve `docs/rebuild/`, add the AGENTS.md glossary, refresh the repo skills, link `.claude/skills` and add the `verify` skill for live dry runs.
+- [now] Assistant agent — replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.
 - [now] Sign-up and accounts — require Touch ID and a Duo security key added at duo.ucsd.edu; use a Chromium virtual platform authenticator where the machine has no Touch ID. Keep credentials on logout, put Delete account in Settings > General, resume a signed-in profile after a restart, and let Log out finish while workflows run.
 - [next] Person Lookup sign-off — pass a read-only exact-ID live run, fix what it finds in one PR, sign off.
 - [next] Separations sign-off — pass a live dry run, fix what it finds in one PR, sign off.
 - [next] OCR and Emergency Contact sign-off — serve per-person rows, prove the first live Save with the operator present, sign off.
 - [next] Catalog cleanup — remove Work-Study, Kronos Pay Rule, Oath Signature, Oath Upload, Old Kronos Reports and SharePoint Download from the catalog, preflight and docs, and regenerate parity screenshots once with the parity refresh.
-- [next] OnBase activation — switch to served data, pass a live dry run, update its screenshots, sign off.
+- [next] OnBase activation — switch to served data, pass a live dry run, update its screenshots, sign off, then refresh the `verify` skill.
 - [next] Onboarding activation — switch to served data, pass a live dry run, update its screenshots, sign off.
 - [next] I-9 Lookup and Check activation — switch to served data, pass a live dry run, update their screenshots, sign off.
 - [next] CRM Document Download activation — switch to served data, pass a live dry run, update its screenshots, sign off.
