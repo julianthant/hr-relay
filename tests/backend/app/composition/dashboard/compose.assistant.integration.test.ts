@@ -25,6 +25,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { chatGptFixture , publicCapabilityResponses } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
@@ -613,6 +614,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock, post } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
     const database = context.database;
+    let cleanupSubscription = () => {};
     if (client.assistantDecide === undefined) throw new Error('assistant decide owner required');
     const decide = (decision: Parameters<NonNullable<typeof client.assistantDecide>>[0]) => { if (client.assistantDecide === undefined) throw new Error('assistant decide owner required'); return client.assistantDecide(decision); };
     assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
@@ -677,23 +679,44 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
     assert.deepEqual(durableCounts(), countsBefore);
 
     const second = seedAssistantReadRun(fixture);
-    const rowOf = async (runId: string) => {
-      const day = (await client.searchRuns({ q: runId, scope: 'run', limit: 1 })).results[0]?.partitionDay; assert.ok(day);
-      const row = (await client.dashboardDay(day)).queueSurfaces.find(surface => surface.runId === runId); assert.ok(row); return row;
+    const dayOf = async (runId: string) => {
+      const day = (await client.searchRuns({ q: runId, scope: 'run', limit: 1 })).results[0]?.partitionDay; assert.ok(day); return day;
     };
-    await vi.waitFor(async () => assert.ok(await rowOf(second.run.envelope.runId)));
+    const day = await dayOf(second.run.envelope.runId);
+    // Only a published snapshot or patch reaches this subscriber; a fresh read would pass even without publication.
+    const published: { revision: number; pause: string | undefined }[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const subscription = client.subscribeDay({ day, onDay: received => {
+        const row = received.queueSurfaces.find(surface => surface.runId === second.run.envelope.runId);
+        if (row !== undefined) published.push({ revision: row.rowRevision, pause: row.pauseControl?.state });
+      }, onState: state => { if (state.state === 'live') resolve(); else if (state.state === 'stopped') reject(new Error('day subscription stopped')); } });
+      cleanupSubscription = () => subscription.close();
+    });
+    await vi.waitFor(() => assert.ok(published.length > 0), { timeout: 5_000, interval: 25 });
     const pause = await propose('Pause this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'pause' }], second.subjectRef);
+    const beforePause = published.length;
     assert.equal((await confirm(pause)).state, 'applied');
     const paused = database.authority.runs.get(second.run.envelope.runId); assert.ok(paused?.pause !== undefined);
-    const pausedRow = await rowOf(second.run.envelope.runId);
-    assert.equal(pausedRow.rowRevision, paused.version, 'the queue row publishes the paused revision without another command');
-    assert.equal(pausedRow.pauseControl?.state, 'paused');
+    await vi.waitFor(() => assert.ok(published.slice(beforePause).some(row => row.revision === paused.version && row.pause === 'paused')), { timeout: 5_000, interval: 25 });
     const resume = await propose('Resume this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'resume' }], `run_${paused.envelope.runId}_${paused.version}`);
+    const beforeResume = published.length;
     assert.equal((await confirm(resume)).state, 'applied');
     const resumed = database.authority.runs.get(second.run.envelope.runId); assert.ok(resumed && resumed.pause === undefined);
-    const resumedRow = await rowOf(second.run.envelope.runId);
-    assert.equal(resumedRow.rowRevision, resumed.version);
-    assert.notEqual(resumedRow.pauseControl?.state, 'paused');
+    await vi.waitFor(() => assert.ok(published.slice(beforeResume).some(row => row.revision === resumed.version && row.pause !== 'paused')), { timeout: 5_000, interval: 25 });
+    cleanupSubscription();
+    for (const commandId of [pause, resume].map(card => database.authority.assistantAuthorization.action(card.actionId)?.command.commandId ?? '')) {
+      assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, 'applied', 'one canonical execution per confirmed card');
+    }
+
+    const timekeeper = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'settings-surface',
+      family: 'settings', type: 'apply-protected-settings', target: { expectedRevision: context.settings.read().record.revision },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { timekeeperName: { set: 'Synthetic Timekeeper' } } } });
+    assert.equal(timekeeper.state, 'applied');
+    const documents = await propose('Separate documents 4502 and 4510', () => ['propose_workflow_start', { workflow: 'separations', entries: ['4502', '4510'] }]);
+    assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
+    assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);
+    assert.equal(documents.targetLabel, '2 documents');
+    assert.equal((await decide({ chatId: documents.chatId, actionId: documents.actionId, revision: documents.revision, decision: 'cancel' })).state, 'cancelled');
 
     const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
       const eid = /\[\[E1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(eid);
