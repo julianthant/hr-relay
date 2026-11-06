@@ -35,7 +35,7 @@ it('keeps monotonic identity across New Chat and ignores late replies after canc
 });
 it('settles actual answer/refusal/citation presentation and never interprets Confirm as a request', async () => {
   let calls = 0;
-  const c = createAssistantController({ async assistantRespond() { calls++; return { state: 'answered', text: 'Explanation', citations: [{ path: 'docs/rebuild/example.md', revision: 'a'.repeat(40), startLine: 1, endLine: 1, quote: 'Exact source' }] }; } }, { authority: 'a' });
+  const c = createAssistantController({ async assistantRespond() { calls++; return { state: 'answered', text: 'Explanation', citations: [{ path: 'docs/reference/example.md', revision: 'a'.repeat(40), startLine: 1, endLine: 1, quote: 'Exact source' }] }; } }, { authority: 'a' });
   c.action({ type: 'edit', value: 'Explain' }); c.action({ type: 'send' });
   await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'idle'));
   assert.equal(c.snapshot().messages.at(-1)?.sources?.[0].excerpt, 'Exact source');

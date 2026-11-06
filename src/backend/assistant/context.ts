@@ -71,7 +71,7 @@ export function assistantKnowledgeArtifact(workflows: readonly Readonly<{ id: st
   const text = Object.entries(knowledge).map(([topic, body]) => `${topic}: ${body}`).join("\n");
   const revision = createHash("sha256").update(text).digest("hex").slice(0, 40);
   const reference = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision,
-    files: [{ path: "docs/rebuild/reference/assistant-knowledge.md", mode: "100644", text }] };
+    files: [{ path: "docs/reference/assistant-knowledge.md", mode: "100644", text }] };
   const bytes = canonicalJsonStringify(reference);
   const policy = { repositoryId: reference.repositoryId, revision, exportSha256: createHash("sha256").update(bytes).digest("hex") };
   return { policy, reference, bytes, topics: knowledge };

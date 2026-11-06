@@ -34,7 +34,7 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
    implementation. Read `src/backend/AGENTS.md` and any nearer store `AGENTS.md`; browser stores
    are under `src/backend/systems/<system>/`, processing stores under
    `src/backend/processing/<service>/`, and workflow mini-stores under `src/workflows/<id>/`.
-   `docs/rebuild/reference/stores.md` §2 is derived from the task-store registry; code wins.
+   `docs/reference/stores.md` §2 is derived from the task-store registry; code wins.
 4. The active brief's assigned evidence folder in the main checkout's `.work/` contains verified
    task records; confirm current workflow state in code and authority.
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume),

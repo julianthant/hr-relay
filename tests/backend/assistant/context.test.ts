@@ -4,7 +4,7 @@ import { it } from "vitest";
 import { assistantKnowledgeArtifact, createAssistantContext, PUBLIC_ASSISTANT_REPOSITORY_ID } from "../../../src/backend/assistant/context.js";
 
 const PUBLIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: "9af76694409eeff5e0ac954fc9501bc69991643a" };
-const file = { path: "docs/rebuild/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
+const file = { path: "docs/reference/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
 const bytes = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, files: [file] }));
 const policy = { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "13b64308f627d12991b2c68f1ee59211763f37393b93fc01f4d5b59a561bab26" };
 it("binds exact bytes to separate policy and verifies actual line quotations", () => {
@@ -16,7 +16,7 @@ it("binds exact bytes to separate policy and verifies actual line quotations", (
   assert.throws(() => createAssistantContext(Buffer.from(bytes.toString().replace("Synthetic", "Substitute")), policy));
   assert.equal(Object.isFrozen(context.reference.files[0]), true);
 });
-for (const path of ["../.env", "docs/rebuild/../private.md", "/etc/passwd", "src/models/secrets.ts", ".git/config", "docs/rebuild/credentials.md", "docs/rebuild/a\\b.md"])
+for (const path of ["../.env", "docs/reference/../private.md", "/etc/passwd", "src/models/secrets.ts", ".git/config", "docs/reference/credentials.md", "docs/reference/a\\b.md"])
   it(`refuses non-public path ${path}`, () => {
     const changed = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, files: [{ ...file, path }] }));
     assert.throws(() => createAssistantContext(changed, { ...policy, exportSha256: createHash("sha256").update(changed).digest("hex") }));

@@ -26,7 +26,7 @@ Current authoring uses a `workflow.ts` definition compiled into descriptor/modul
 [the workflow registry](../../../src/backend/app/registries/workflow-registry.ts), rather than requiring separately
 authored descriptor/module files. Follow the existing
 [Person Lookup definition](../../../src/workflows/person-lookup/workflow.ts) and
-[workflow-authoring guide](../../../docs/rebuild/guides/workflow-authoring.md) when implementation is admitted.
+[workflow-authoring guide](../../../docs/guides/workflow-authoring.md) when implementation is admitted.
 
 The [ServiceNow store](../../../src/backend/systems/servicenow/task-registry.ts) and
 [SharePoint store](../../../src/backend/systems/sharepoint/task-registry.ts) both have empty task maps and unwired
@@ -108,7 +108,7 @@ opening/editing an online workbook does not update a separately uploaded attachm
 - `run_checkpoints`: **UNKNOWN — derive expected read/derive/gate rows and transaction exclusions
   from the admitted graph.** Do not fabricate node names or treat a transaction-preview checkpoint
   as proof of a commit. Resume must enforce the producing contract/fingerprint requirements in
-  [workflow-model §5.4](../../../docs/rebuild/reference/workflow-model.md).
+  [workflow-model §5.4](../../../docs/reference/workflow-model.md).
 - `gate_results`: **UNKNOWN — declare the review-gate behavior and expected row in the scenario.**
 - `write_intents` / `write_attempts` / `durable_outbox` deltas: **0**, attributed to the tested
   run's intent set. A count across unrelated concurrent runs is not a valid delta.
@@ -121,7 +121,7 @@ opening/editing an online workbook does not update a separately uploaded attachm
 ## Tests it owes
 
 No Background Check scenarios exist in the absent `tests/scenario/` tree.
-Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.md).
+Follow [guards-and-tests §10](../../../docs/reference/guards-and-tests.md).
 
 - T1a structural: **OWED** — compiled definition, declared task-store bindings, gates and transactions.
 - T1b dry-run manifest: **OWED** — reached/excluded nodes, authority checkpoints, zero write deltas,
@@ -133,10 +133,10 @@ Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.
   request identity and stale-artifact refusal. Use synthetic applicant fixtures.
 - Controlled write: **OWED** — mismatch refusal before fencing, one source-verified request, permanent
   already-present replay, failure around upload/submit, reconciliation and approved target disposition,
-  under [write safety](../../../docs/rebuild/reference/write-safety.md).
+  under [write safety](../../../docs/reference/write-safety.md).
 - Implementation gates: `npm run typecheck`, `npm run lint`, `npm run test:coverage`; refresh/check
   the build manifest when the descriptor import closure changes. Platform run/session behavior remains
-  owned by [execution-and-sessions](../../../docs/rebuild/reference/execution-and-sessions.md).
+  owned by [execution-and-sessions](../../../docs/reference/execution-and-sessions.md).
 
 ## Known failure modes
 
@@ -148,7 +148,7 @@ Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.
   Reconcile and bind approval/submission to the exact artifact version.
 - 2026-09-08 discovery: an open Excel web review can hold a shared-use lock during replacement.
   Resolve the owned review session and verify upload completion; never overwrite a shared original.
-- Bind selection to stable record identity, distinguish located controls from expected values, and derive replay identities from retained authority; [write safety](../../../docs/rebuild/reference/write-safety.md) owns run-scoped dry-run evidence.
+- Bind selection to stable record identity, distinguish located controls from expected values, and derive replay identities from retained authority; [write safety](../../../docs/reference/write-safety.md) owns run-scoped dry-run evidence.
 - Debug new failures through [hr-debug](../hr-debug/REFERENCE.md); use its selector-repair loop and
   content-level authentication checks. Do not add a longer wait as the first fix.
 

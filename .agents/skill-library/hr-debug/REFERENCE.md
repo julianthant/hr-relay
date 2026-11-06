@@ -31,7 +31,7 @@ before forming a theory.
 
 ## 2 · Selector / page-state repair (the loop — no shortcuts)
 1. Read the run's failure record (`npm run cli -- explain run <id>`) and the store's screenshots under `.tracker/artifacts/…`; quote the exact error and the step.
-2. `playwright-cli -s=dbg open "<url>"` headless through the Fast Duo workflow session (`channel: chromium`); use the registered protected credential source and follow the [environment and credential contract](../../../docs/rebuild/reference/clock-config-secrets.md) and the [operating reference](../repository-work/REFERENCE.md#environment); `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
+2. `playwright-cli -s=dbg open "<url>"` headless through the Fast Duo workflow session (`channel: chromium`); use the registered protected credential source and follow the [environment and credential contract](../../../docs/reference/clock-config-secrets.md) and the [operating reference](../repository-work/REFERENCE.md#environment); `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
 5. Re-run the failing step live; then the focused unit or architecture check that covers it. If scenario-test evidence is needed, record the gap for operator-led design; run `npm run build:manifest` if a descriptor closure moved.
@@ -60,12 +60,12 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 
 ## 7 · Guards / build
 - `build:manifest` after ANY edit under a descriptor's import closure; `descriptor-coverage` diff = stale manifest.
-- New guard = file + `docs/rebuild/guard-inventory.json` entry, same commit; retire only with a `retired` entry.
+- New guard = file + `docs/guard-inventory.json` entry, same commit; retire only with a `retired` entry.
 - A browser-reachable module importing `node:*` crashes dev and only warns in prod — never alias/stub; move the Node half to a server module (`dashboard-wire-boundary` prints the chain).
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
 
 ## 8 · Visual and scenario-test evidence
-`npm run test:parity` is the active desktop visual contract. Read [guards and tests](../../../docs/rebuild/reference/guards-and-tests.md)
+`npm run test:parity` is the active desktop visual contract. Read [guards and tests](../../../docs/reference/guards-and-tests.md)
 for its runner and evidence requirements, and [dashboard parity](../../../src/dashboard/PARITY.md)
 for scene rules. Old visual receipts are historical; a green accessibility tree does not establish
 current visual acceptance (D187).

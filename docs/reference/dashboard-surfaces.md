@@ -741,7 +741,7 @@ The mounted component set and current parity references define presentation. Wir
 view-model inputs, ports, hooks, and callbacks while keeping the rendered mock case identical.
 [The wiring contract](frontend-backend-integration.md#current-frontend-mock-wiring-checklist) names each
 surface's required identity, persistence, transitions, and acceptance checks. Shared
-[design rules](../../../src/dashboard/DESIGN.md) and [parity guidance](../../../src/dashboard/PARITY.md)
+[design rules](../../src/dashboard/DESIGN.md) and [parity guidance](../../src/dashboard/PARITY.md)
 own composition and visual checks.
 
 Command results remain `applied`, `already-applied`, `confirmation-required`, `conflict`, or `rejected`
