@@ -252,10 +252,11 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
     const profiles = await withStoppedMachineStorage(workspace, lifetime, async machine => {
       if (machine.requiresFlatStoreMigration()) return [];
       return machine.readStartupProfileIds().flatMap(profileId => {
-        try {
-          const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
-          return inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !inspection.requiresContinuation ? [] : [profileId];
-        } catch (error) { hold(profileId, error); return []; }
+        let inspection: ReturnType<typeof AuthorityDatabase.inspectRegisteredPersonAtStartup> | undefined;
+        try { inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId); }
+        catch (error) { hold(profileId, error); }
+        if (inspection === undefined) return [];
+        return inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !inspection.requiresContinuation ? [] : [profileId];
       });
     });
     for (const profileId of profiles) {

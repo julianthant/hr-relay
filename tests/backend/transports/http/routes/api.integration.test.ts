@@ -23,8 +23,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const records = readTimelineRecords(h.database.authority.timelineEvents).records;
     const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
     assert.equal(diagnostics.length, 1);
-    assert.equal(diagnostics[0]?.message, "UnknownError");
-    assert.equal(diagnostics[0]?.stack, "UnknownError\n    at src/backend/runs/queries/run-detail.ts:42:7");
+    assert.equal(diagnostics[0]?.message, "TypeError");
+    assert.equal(diagnostics[0]?.stack, "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7");
     assert.equal(diagnostics[0]?.status, 500);
     assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
   });
@@ -42,7 +42,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const events = readTimelineRecords(h.database.authority.timelineEvents).records
       .flatMap(record => record.payload.kind === "debug" && record.payload.event.category === "http" ? [record.payload.event] : []);
     assert.deepEqual(events.filter(event => event.reason === "request-cause").map(event => [event.message, event.status]),
-      [["UnknownError", undefined], ["DashboardClientDisconnectedError", undefined]]);
+      [["Error", undefined], ["DashboardClientDisconnectedError", undefined]]);
     assert.deepEqual(events.filter(event => event.reason === "request-disconnected").map(event => [event.code, event.status]), [["INTERNAL_FAILURE", undefined]]);
     assert.equal(events.some(event => event.status !== undefined && event.status >= 500), false);
   });

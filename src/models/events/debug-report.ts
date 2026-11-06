@@ -11,9 +11,13 @@ export const DashboardErrorReportSchema = z.strictObject({
 });
 export type DashboardErrorReport = z.infer<typeof DashboardErrorReportSchema>;
 
-/** The fixed message of a failed-request report; any other report carries one closed cause row. */
+/** The fixed message of a failed-request report; a report that is neither this nor an unhandled error carries one closed cause row. */
 export const DASHBOARD_REQUEST_REPORT_MESSAGE = "Dashboard request did not complete successfully";
+/** An unhandled browser error that no closed cause row names. */
+export const DASHBOARD_UNHANDLED_ERROR = "DASHBOARD_UNHANDLED_ERROR";
+
 export function dashboardReportAccepted(report: DashboardErrorReport): boolean {
+  if (report.code === DASHBOARD_UNHANDLED_ERROR) return true;
   return report.message === DASHBOARD_REQUEST_REPORT_MESSAGE ? report.stack === undefined : clientCauseRowAccepted(report);
 }
 

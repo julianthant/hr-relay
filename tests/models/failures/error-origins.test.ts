@@ -18,7 +18,7 @@ describe("closed error origins", () => {
     const causes = serializeErrorCauses(error);
     assert.deepEqual(causes, [
       { name: "AggregateError", code: "INTERNAL_FAILURE", reason: "aggregate-cause", stack: "AggregateError\n    at src/backend/transports/http/routes/api.ts:40:1" },
-      { name: "UnknownError", code: "INTERNAL_FAILURE", reason: "cause-unavailable", stack: "UnknownError\n    at src/backend/runs/queries/run-detail.ts:42:7" },
+      { name: "TypeError", code: "INTERNAL_FAILURE", reason: "cause-unavailable", stack: "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7" },
     ]);
     assert.equal(PRIVATE.test(JSON.stringify(causes)), false);
   });
@@ -28,24 +28,28 @@ describe("closed error origins", () => {
     const refusal = new WorkerControlRefusal("observation-changed CANARY", { cause: preflight });
     assert.deepEqual(serializeErrorCauses(new AggregateError([refusal, new DashboardReadFailedError(undefined)])).map(({ name, code, reason }) => ({ name, code, reason })), [
       { name: "AggregateError", code: "INTERNAL_FAILURE", reason: "aggregate-cause" },
-      { name: "UnknownError", code: "INTERNAL_FAILURE", reason: "cause-unavailable" },
+      { name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "cause-unavailable" },
       { name: "DashboardReadFailedError", code: "DASHBOARD_READ_FAILED", reason: "read-failed" },
       { name: "PreflightObservationChangedError", code: "PREFLIGHT_OBSERVATION_CHANGED", reason: "observation-changed" },
     ]);
   });
 
-  it("grants no lookup from runtime names, codes or subclasses", () => {
+  it("grants no row from runtime names, codes or subclasses, and names an unbound error by its constructor", () => {
     const spoofed = Object.assign(new Error("PRIVATE_CANARY"), { name: "RuntimeCustodyUncertainError", code: "RUNTIME_CUSTODY_UNCERTAIN", reason: "custody-unproved" });
     class Derived extends PreflightObservationChangedError {}
-    for (const error of [spoofed, new Derived(), new WorkerControlRefusal("worker-retirement-child-close-unproved")]) {
-      const [cause] = serializeErrorCauses(error);
-      assert.deepEqual({ name: cause?.name, code: cause?.code, reason: cause?.reason }, { name: "UnknownError", code: "INTERNAL_FAILURE", reason: "cause-unavailable" });
-    }
+    const rows = [spoofed, new Derived(), new WorkerControlRefusal("worker-retirement-child-close-unproved")]
+      .map(error => { const [cause] = serializeErrorCauses(error); return { name: cause?.name, code: cause?.code, reason: cause?.reason }; });
+    assert.deepEqual(rows, [
+      { name: "Error", code: "RUNTIME_CUSTODY_UNCERTAIN", reason: "cause-unavailable" },
+      { name: "Derived", code: "INTERNAL_FAILURE", reason: "cause-unavailable" },
+      { name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "cause-unavailable" },
+    ]);
+    assert.equal(serializeErrorCauses(Object.assign(new Error("x"), { code: "private value" }))[0]?.code, "INTERNAL_FAILURE");
   });
 
   it("uses fixed rows for non-errors and bounds long chains", () => {
     assert.deepEqual(serializeErrorCauses(undefined), [{ name: "UnknownCause", code: "INTERNAL_FAILURE", reason: "cause-unavailable", stack: "UnknownCause" }]);
-    assert.deepEqual(serializeErrorCauses(new Error("x", { cause: "PRIVATE_CANARY" })).map(cause => cause.name), ["UnknownError", "UnknownCause"]);
+    assert.deepEqual(serializeErrorCauses(new Error("x", { cause: "PRIVATE_CANARY" })).map(cause => cause.name), ["Error", "UnknownCause"]);
     let chain: Error = new Error("root");
     for (let index = 0; index < 30; index += 1) chain = new Error(`level ${String(index)}`, { cause: chain });
     const causes = serializeErrorCauses(chain);

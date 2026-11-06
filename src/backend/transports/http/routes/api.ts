@@ -1,5 +1,5 @@
 import { registerAssistantRoutes } from "./assistant.js";
-import { registerDebugResponses } from "./debug-responses.js";
+import { afterRequestOutcome, registerDebugResponses } from "./debug-responses.js";
 import { registerChatGptAccountRoutes } from "./chatgpt-account.js";
 import { registerWorkbookRoutes } from "./workbooks.js";
 import { registerNotificationRoutes } from "./notifications.js";
@@ -45,9 +45,11 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
         const causes = serializeErrorCauses(error);
         const disconnected = causes.some(cause => cause.reason === "request-disconnected");
         const correlationId = randomUUID();
-        for (const cause of causes) debugEvents.emit({ category: "http", phase: "failed",
-          correlationId, area: "request", reason: "request-cause", ...(disconnected ? {} : { status }),
-          code: cause.code, message: cause.name, stack: cause.stack });
+        afterRequestOutcome(c.req.raw, () => {
+          for (const cause of causes) debugEvents.emit({ category: "http", phase: "failed",
+            correlationId, area: "request", reason: "request-cause", ...(disconnected ? {} : { status }),
+            code: cause.code, message: cause.name, stack: cause.stack });
+        });
       } catch {
         return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
       }
