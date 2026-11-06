@@ -1,4 +1,4 @@
-import { delegationAccountingExecution } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateDelegationRetryPause, delegationAccountingExecution } from "../../storage/sqlite/delegation-authority.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { readRunCheckpoint, RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
@@ -68,7 +68,7 @@ import { createTaskProvenanceCollector } from "../../runs/provenance/task-proven
 import { RunResultRecordSchema, RunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, singleDelegationResult, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { createDeclaredActionBinder } from "../writes/operation-action-binding.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
-import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
+import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunMutationOutcome, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
 import { WorkerSessionClosureUnprovedError, type WorkerSessionManager } from "../workers/worker-sessions.js";
 import { DelegationPendingSchema } from "./durable-child-executor.js";
 
@@ -267,6 +267,10 @@ class RunAbandonedError extends Error {
 }
 
 class RunPauseRequestedError extends RunAbandonedError {}
+
+class RunSuccessAdmissionLostError extends RunLifecycleRefusedError {
+  constructor(outcome: RunMutationOutcome, readonly admissionVersion: number) { super(outcome); }
+}
 
 /* ── small helpers ───────────────────────────────────────────────────────── */
 
@@ -674,11 +678,14 @@ export async function executeClaimedRun(
       });
       const settle = () => {
         assertAccounting();
-        requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "success",
+        const outcome = deps.lifecycle.terminalize({ kind: "success",
           commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest,
             ...(current.delegationRefresh === undefined ? {} : { refreshCommandId: current.delegationRefresh.commandId, claimGeneration: current.claimGeneration }) }),
           terminal: { result: built.record, authorization },
-        }, descriptor, built.authorization));
+        }, descriptor, built.authorization);
+        if (accounting === undefined && outcome.state === "refused" && outcome.refusal.reason === "lost")
+          throw new RunSuccessAdmissionLostError(outcome, authorization.expectedVersion);
+        requireLifecycleApplied(outcome);
       };
       if (accounting === undefined) settle();
       else if (deps.authority.withAuthorityTransaction !== undefined) deps.authority.withAuthorityTransaction(settle);
@@ -2339,6 +2346,23 @@ export async function executeClaimedRun(
     return await interpret();
   } catch (error) {
     let failure = error;
+    if (failure instanceof RunSuccessAdmissionLostError) {
+      const admissionVersion = failure.admissionVersion;
+      try {
+        checkCancellation();
+        const acknowledged = deps.authority.withAuthorityTransaction?.(repositories => {
+          const current = getRun();
+          requireOriginalClaim(current);
+          if (current.cancelRequested === true || !authenticateDelegationRetryPause(repositories, descriptor, current, admissionVersion)) return false;
+          requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+            commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
+            runId, claim,
+          }));
+          return true;
+        });
+        if (acknowledged) return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
+      } catch (admissionFailure) { failure = admissionFailure; }
+    }
     if (failure instanceof RunPauseRequestedError) {
       try {
         checkCancellation();

@@ -519,6 +519,31 @@ export function readManualDelegationResume(repositories: AuthorityRepositories, 
   return readAppliedDelegationResume(repositories, parent, evidence);
 }
 
+export function authenticateDelegationRetryPause(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
+  parent: RunRecord, admissionVersion: number): boolean {
+  const pause = parent.pause;
+  if (parent.lifecycle.state !== "running" || pause?.state !== "requested" || parent.version <= admissionVersion) return false;
+  const authorization = authorizeWorkflowDelegationRefresh(descriptor, parent);
+  const plan = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, parent);
+  if (plan === undefined) return false;
+  const command = repositories.lifecycleJournal.getCommand(pause.commandId);
+  const audit = repositories.lifecycleJournal.findAuditByCommand(pause.commandId);
+  if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "pause"
+    || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command))
+    throw new RunContinuationRefusedError("delegation-retry-pause-authority-unavailable");
+  const request = CanonicalPauseRequestSchema.parse(command.request);
+  if (request.runId !== parent.envelope.runId || request.expectedVersion < admissionVersion
+    || audit.result.kind !== "run" || audit.result.runId !== parent.envelope.runId
+    || audit.result.appliedVersion !== request.expectedVersion + 1 || audit.result.appliedVersion > parent.version)
+    throw new RunContinuationRefusedError("delegation-retry-pause-binding-mismatch");
+  return repositories.dependencies.groups(parent.envelope.runId).some(({ group }) => group.invocation.nodeId === plan.joinNodeId
+    && group.children.some(member => member.attempt === "retry" && member.history.slice(0, -1).some(previousRunId =>
+      pause.commandId === lifecycleCommandId("delegation-manual-pause", lifecycleCommandId("delegation-retry", {
+        dependencyId: member.dependency.dependencyId, previousRunId,
+      })))));
+}
+
 function readAppliedDelegationResume(repositories: AuthorityRepositories, parent: RunRecord,
   evidence: NonNullable<ReturnType<typeof captureDelegationResume>>) {
   const issue = repositories.lifecycleJournal.findRunResume(parent.envelope.runId, parent.version);

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { aggregateMemberRetryAvailable } from "../../../src/backend/runs/queries/run-retry.js";
 import { assertDelegationRetryUnwritten } from "../../../src/backend/storage/sqlite/delegation-authority.js";
+import { runClaim } from "../../../src/models/run/record.js";
+import { CanonicalTerminalizeRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { readQueueRecordMembers } from "../../../src/backend/runs/queries/ocr-record-members.js";
 import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
 import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
@@ -161,8 +163,10 @@ for (const parentFailure of [false, true]) it(`retries a settled ${parentFailure
   assert.deepEqual(finalRows.receipts.find(row => row.id === nextReceiptRow.id), nextReceiptRow);
 });
 
-for (const paused of [false, true]) it(`retries a member while its parent is ${paused ? "already paused" : "active in its child join"}`, async () => {
+for (const boundary of ["active in its child join", "already paused", "at first native success admission"] as const)
+it(`retries a member while its parent is ${boundary}`, async () => {
   const f = fixture;
+  const paused = boundary === "already paused";
   if (paused) assert.equal(f.canonical.kernel.execute(f.runCommand("pause", f.current())).state, "applied");
   const held = f.current().pause;
   if (paused) {
@@ -174,20 +178,45 @@ for (const paused of [false, true]) it(`retries a member while its parent is ${p
     return;
   }
   const previous = failed(f), execute = f.canonical.childRuns.executeChildRuns.bind(f.canonical.childRuns);
+  const retry = f.runCommand("retry", previous);
   let reached = false;
-  f.canonical.childRuns.executeChildRuns = async context => {
+  if (boundary === "active in its child join") f.canonical.childRuns.executeChildRuns = async context => {
     const joined = await execute(context);
     if (context.leaves.some(leaf => leaf.node.id === "members")) {
       reached = true;
       assert.equal(f.current().lifecycle.state, "running");
-      assert.equal(f.canonical.kernel.execute(f.runCommand("retry", previous)).state, "applied");
+      assert.equal(f.canonical.kernel.execute(retry).state, "applied");
     }
     return joined;
   };
   await f.harness.manager.closeAll("parked");
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
   const owner = testWorkerLifetime(f.database, f.root.descriptor.id, 1);
-  const lifecycle = workerRunLifecyclePort(f.canonical.lifecycle);
+  const nativeLifecycle = workerRunLifecyclePort(f.canonical.lifecycle);
+  const lifecycle: typeof nativeLifecycle = { ...nativeLifecycle, terminalize: (...args) => {
+    const request = CanonicalTerminalizeRequestSchema.parse(args[0]);
+    if (boundary !== "at first native success admission" || reached || request.kind !== "success"
+      || request.terminal.authorization.runId !== f.parentRun.envelope.runId) return nativeLifecycle.terminalize(...args);
+    reached = true;
+    const original = f.current(), claim = runClaim(original); assert.ok(claim);
+    assert.equal(original.lifecycle.state, "running");
+    assert.equal(original.envelope.continuation, undefined);
+    assert.equal(original.delegationRefresh, undefined);
+    assert.equal(f.children().some(child => child.envelope.retryOf !== undefined), false);
+    const accounting = f.database.authority.runCheckpoints.listByAttempt(original.envelope.workflow, original.envelope.itemId,
+      "read-result", original.envelope.attempt).at(-1); assert.ok(accounting);
+    assert.equal(accounting.claimGeneration, original.claimGeneration);
+    const writes = [...f.persistence.values()].map(value => value.submissions.length);
+    assert.equal(f.canonical.kernel.execute(retry).state, "applied");
+    assert.deepEqual(runClaim(f.current()), claim);
+    assert.equal(f.current().pause?.state, "requested");
+    assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), writes);
+    const refused = nativeLifecycle.terminalize(...args);
+    assert.ok(refused.state === "refused" && refused.refusal.reason === "lost");
+    assert.equal(f.database.authority.runResults.get(original.envelope.runId), undefined);
+    return refused;
+  } };
+  const claimed: string[] = [];
   const report = await runWorkerLoop({ ...f.harness.deps, workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
     sessionFactory: f.harness.sessions.factory, sessionAcquireMs: 20_000,
     browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
@@ -202,10 +231,20 @@ for (const paused of [false, true]) it(`retries a member while its parent is ${p
       "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({ clock: f.clock,
         reader: createApprovedOcrRecordReader({ database: f.database, run, reader: f.canonical.lifecycle,
           resolveDescriptor: f.resolve, assertCurrent: () => f.admission.assertProfileRuntime() }) }) } } }),
-    claimNext: request => f.canonical.lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: request.workerId,
+    claimNext: request => {
+      if (reached) {
+        assert.equal(f.current().lifecycle.state, "queued");
+        assert.equal(f.current().pause?.state, "paused");
+        assert.equal(runClaim(f.current()), undefined);
+        assert.equal(f.database.authority.runResults.get(f.parentRun.envelope.runId), undefined);
+      }
+      const result = f.canonical.lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: request.workerId,
       workerLifetime: owner.workerLifetime, runtimeConfig: {
       generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint,
-      configFingerprint: runtime.configFingerprint } }),
+      configFingerprint: runtime.configFingerprint } });
+      if ((result.state === "applied" || result.state === "applied-already") && "run" in result) claimed.push(result.run.envelope.runId);
+      return result;
+    },
     writeSequencerFor: sessions => createWriteSequencer({ lifecycle, stores: f.stores, authority: f.database, sessions,
       emitter: f.harness.deps.emitter, clock: f.clock, ids: { uuid: randomUUID }, scheduler: f.harness.scheduler,
       taskDeadlineMs: 60_000, operator: "local-operator", log: f.harness.deps.log }),
@@ -215,8 +254,15 @@ for (const paused of [false, true]) it(`retries a member while its parent is ${p
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
   assert.equal(f.current().lifecycle.state, "queued");
   assert.equal(f.current().pause?.state, "paused");
+  assert.equal(runClaim(f.current()), undefined);
+  assert.equal(f.database.authority.runResults.get(f.parentRun.envelope.runId), undefined);
   const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
+  assert.deepEqual(claimed, [f.parentRun.envelope.runId, replacement.envelope.runId]);
   assert.equal(report.outcomes[1]?.runId, replacement.envelope.runId);
+  assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
+  assert.equal(f.database.authority.commandAudits.findByCommand(retry.commandId)?.result.state, "applied");
+  assert.equal(f.canonical.kernel.execute(retry).state, "already-applied");
+  assert.equal(f.children().filter(child => child.envelope.retryOf === previous.envelope.runId).length, 1);
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
 });
 
