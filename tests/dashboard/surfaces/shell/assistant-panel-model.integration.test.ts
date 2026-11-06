@@ -50,6 +50,20 @@ describe('assistant port settlements', () => {
     expect(model.conversation.files.map(file => file.status)).toEqual(['Attached', 'Updated']);
     expect(model.error).toBe('Library registration failed');
   });
+  it('binds a file to this send\'s operator message even when a reply follows', async () => {
+    await mount({});
+    await act(async () => { await model.send({ text: 'Review this file', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); });
+    const sent = model.conversation.messages.find(message => message.text === 'Review this file');
+    expect(sent?.attachments).toEqual([{ id: 'people', name: 'People.csv' }]);
+    expect(model.conversation.messages.filter(message => message.attachments !== undefined)).toHaveLength(1);
+  });
+  it('commits nothing when registration fails, so the composer keeps its draft', async () => {
+    await mount({ async onRegisterSpreadsheet() { throw Error('library unavailable'); } });
+    let sent = true;
+    await act(async () => { sent = await model.send({ text: 'Review this file', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); });
+    expect(sent).toBe(false); expect(model.error).toContain('library unavailable');
+    expect(model.conversation.messages.some(message => message.attachments !== undefined)).toBe(false);
+  });
 });
 
 it('blocks every setup attachment before panel registration and both local file ports', async () => {

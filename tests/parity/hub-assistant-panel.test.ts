@@ -171,6 +171,7 @@ const CONNECTED = { state: 'connected', name: 'Fixture Operator', email: 'operat
 const SERVED_SCENES = {
   'signed-out': { account: { state: 'signed-out' }, strip: 'Reconnect the ChatGPT account' },
   unverified: { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/ },
+  'unverified-narrow': { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/, width: 300 },
   disabled: { account: { ...CONNECTED, planUsage: 'disabled' }, strip: /Open Settings/ },
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
   proposal: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL } },
@@ -186,6 +187,7 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
     await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: LOCAL_PROPOSAL.actionId } }));
     await page.goto(`${baseUrl}/?served=1&transport=1&theme=${theme}`);
     const panel = page.locator('#hub-panel-assistant'), input = panel.getByRole('textbox', { name: 'Message Relay' });
+    if ('width' in spec) await panel.evaluate((element, width) => { element.style.width = `${width}px`; }, spec.width);
     if ('strip' in spec) {
       const strip = panel.locator('.hub-assistant-strip'); await expect(strip).toBeVisible();
       if (typeof spec.strip === 'string') await expect(strip).toContainText(spec.strip); else await expect(strip).toHaveText(spec.strip);
@@ -196,6 +198,8 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
       else if (spec.respond === 'fail') await expect(panel.getByText(/Assistant verification failed/)).toBeVisible();
       else await expect(panel.getByRole('article')).toBeVisible();
     }
+    const boxes = await panel.locator('.hub-toolbar').first().locator('> *').evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return [box.left, box.right]; }));
+    boxes.forEach((box, index) => { if (index > 0) expect(box[0]).toBeGreaterThanOrEqual(boxes[index - 1][1] - 0.5); });
     await attachShellA11y(page, info, `hub-assistant-served-${scene}-${theme}.a11y.yml`);
     await captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-served-${scene}`, theme, viewport: '1280x720', adapter: 'component-fixture', fixtureId: `hub-assistant-served-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
   });

@@ -93,12 +93,10 @@ it('renders served proposal facts and citations in HUB and keeps confirmation an
     const control = [...host.querySelectorAll('button')].find(button => button.getAttribute('aria-label')?.startsWith(prefix)); assert.ok(control); assert.equal(control.disabled, true);
   }
   await act(async () => current.onAction({ type: 'cancel' }));
-  assert.match(host.textContent ?? '', /Proposal cancelled/u);
+  assert.match(host.textContent ?? '', /Not started/u);
   await act(async () => { current.onAction({ type: 'send' }); });
   assert.match(host.textContent ?? '', /Verified explanation/u);
-  assert.match(host.textContent ?? '', /docs\/example.md:1-2/u);
-  const source = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Source:')); assert.ok(source);
-  await act(async () => source.click()); assert.match(host.textContent ?? '', /Verified source quote/u);
+  assert.doesNotMatch(host.textContent ?? '', /docs\/example.md|Source:/u);
 });
 
 
@@ -178,25 +176,23 @@ it.each(['notification', 'workflow'] as const)('renders the existing served %s c
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
-  const card = host.querySelector(kind === 'workflow' ? '[aria-label="Start Person Lookup"]' : '[aria-label="Proposed action details"]'); assert.ok(card);
-  const cardLabel = card.getAttribute('aria-label'); assert.ok(cardLabel !== null);
-  assert.equal(cardLabel, kind === 'workflow' ? 'Start Person Lookup' : 'Proposed action details');
+  const card = host.querySelector('article[aria-label^="Proposed "]'); assert.ok(card);
   assert.ok(card.textContent?.includes(proposal.label));
-  assert.ok([...host.querySelectorAll('button')].some(button => button.textContent === 'Test assistant'));
+  assert.equal([...host.querySelectorAll('button')].some(button => button.textContent === 'Test assistant'), false);
   assert.match(host.textContent ?? '', /Review this proposal. No action has been applied/u);
   assert.doesNotMatch(host.textContent ?? '', /start selected workflow|Model, effort and voice controls are unavailable/u);
   assert.doesNotMatch(current.footnote, /Workflow execution requires dashboard Run/u);
   if (kind === 'workflow') {
-    for (const fact of ['EID 10101010', 'Person Lookup', 'Runs1', 'Live read', 'Headed', 'CapturesOn', 'Run results in Logs']) assert.ok(card.textContent?.includes(fact));
+    for (const fact of ['EID 10101010', 'Read only']) assert.ok(card.textContent?.includes(fact));
+    for (const hidden of ['Headed', 'Captures', 'Effects and stop points']) assert.equal(card.textContent?.includes(hidden), false);
     assert.match(current.footnote, /Workflow starts require a confirmed plan/u);
-  } else { assert.match(card.textContent ?? '', /SubjectNone/u); assert.match(card.textContent ?? '', /Local notification/u); }
+  } else { assert.match(card.textContent ?? '', /Local change/u); assert.match(card.textContent ?? '', /Local notification/u); }
   assert.equal(card.textContent?.includes('Dry run'), false); assert.equal(card.textContent?.includes('Alex Rivera'), false);
-  const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === (kind === 'workflow' ? 'Start run' : 'Confirm')); assert.ok(confirm); assert.equal(confirm.disabled, false);
+  const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, false);
   assert.equal(confirmations, 0);
   await act(async () => { confirm.click(); confirm.click(); });
-  assert.equal(confirmations, 1); assert.match(host.textContent ?? '', kind === 'workflow' ? /Started · 1 run/u : /Action completed/u);
-  if (kind === 'workflow') assert.equal(host.querySelector('[aria-label="Start Person Lookup"]'), null);
-  else assert.equal(confirm.disabled, true);
+  assert.equal(confirmations, 1); assert.match(host.textContent ?? '', kind === 'workflow' ? /Started/u : /Done/u);
+  assert.equal(host.querySelector('article[aria-label^="Proposed "]'), null);
 });
 
 function setupAccount() {
