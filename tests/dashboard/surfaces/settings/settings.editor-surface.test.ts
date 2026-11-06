@@ -12,7 +12,6 @@ import { settingInput } from "../../../../src/dashboard/surfaces/settings/editor
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -122,8 +121,7 @@ describe("editable Settings surface", () => {
     await act(async () => overlayButton("Keep editing").click());
     assert.equal(input.value, "synthetic-local");
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1250)); });
-    assert.match(host.textContent ?? "", /Credentials write unconfirmed/u);
-    assert.ok(host.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text));
+    assert.match(host.textContent ?? "", /Credentials save unconfirmed.*Your draft is retained\./u);
     assert.equal(button("Retry exact attempt").disabled, false);
     assert.equal(transport.authority.credentials.read().revision, 2, "the lost response retains an actually stored protected write");
     await act(async () => guard?.(() => { exited += 1; }));
@@ -316,10 +314,10 @@ for (const section of ["general", "paths", "routes", "performance"]) for (const 
       assert.doesNotMatch(dom.textContent ?? "", /private fixture error/u);
       return;
     }
-    const title = section === "routes" ? "Routes could not be read" : "Editable settings could not be read";
+    const title = section === "routes" ? "Routes unavailable" : "Settings unavailable";
     const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes(title));
     assert.ok(failure);
-    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text));
+    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
     assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
   });
 }

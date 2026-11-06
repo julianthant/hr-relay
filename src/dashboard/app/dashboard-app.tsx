@@ -15,7 +15,6 @@ import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js"
 import { HubShell } from "../surfaces/shell/hub-shell.js";
 import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
-import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/editor/settings-attempt-model.js";
 import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
@@ -45,7 +44,7 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Banner,Button,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Banner,Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
@@ -97,7 +96,7 @@ import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
 import "../surfaces/shell/permanent-shell.css";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
-import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
+import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
@@ -488,9 +487,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     if (outcome.kind === "confirmed") return;
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
-    const notice = original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")
-      ? settingsSaveProblem(commandSaveState(outcome), original.type === "apply-protected-settings") : undefined;
-    const toastId = toast(notice ?? { tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+    if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
+    const toastId = toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
     if (outcome.kind === "uncertain") unknownWarnings.current.set(outcome.commandId, toastId);
   }, [executor, toast, dismiss]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
@@ -1118,12 +1116,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         <DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}>
         {/* Show unreachable authority on every view; backup warnings do not stop work. */}
         {}
-        <StorageBanner
+        <StorageNotice
+          key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
           onOpenSettings={openSettings}
         />
         {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">Each run finishes its current step first. A submit in progress is never interrupted.</Banner>}
-        {lifecycle.resource.state === "failed" && <Banner tone="danger" shape="band" title="Run controls unavailable">{operatorFailureSentence("APPLICATION_ADMISSION_REFUSED")}<Button size="sm" variant="secondary" onClick={lifecycle.refresh}>Check connection</Button></Banner>}
+        {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held." action={{ label: "Check connection", onAction: lifecycle.refresh }} />}
 
         <div className="flex min-h-0 flex-1">
 
