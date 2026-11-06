@@ -15,7 +15,7 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { AuthorityDatabase, createCredentialStore, inspectAuthorityBackupReadOnly } from "../../support/helpers/synthetic-storage-admission.js";
-import { PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS } from "../../../src/backend/runs/commands/command-kernel.js";
+import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../src/backend/runs/commands/command-kernel.js";
 
 
 
@@ -157,16 +157,14 @@ afterEach(async () => { for (const db of opened.splice(0)) db.close(); for (cons
 }
 
 {
-describe("deferred arms", () => {
+describe("active arms", () => {
 
-  it("partitions every family/action exactly once between active and deferred", () => {
+  it("covers every family/action exactly once", () => {
     const partitioned = new Map<string, number>();
-    for (const partition of [PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS]) {
-      for (const [family, actions] of Object.entries(partition)) {
-        for (const action of actions) {
-          const key = `${family}/${action}`;
-          partitioned.set(key, (partitioned.get(key) ?? 0) + 1);
-        }
+    for (const [family, actions] of Object.entries(PHASE1_ACTIVE_COMMAND_ARMS)) {
+      for (const action of actions) {
+        const key = `${family}/${action}`;
+        partitioned.set(key, (partitioned.get(key) ?? 0) + 1);
       }
     }
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>

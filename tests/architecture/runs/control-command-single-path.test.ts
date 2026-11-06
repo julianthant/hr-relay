@@ -12,7 +12,7 @@ import { join,relative } from "node:path";
 import ts from "typescript";
 import { afterEach,describe,it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { createCommandKernel,PHASE1_ACTIVE_COMMAND_ARMS,PHASE1_DEFERRED_COMMAND_ARMS,type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel,PHASE1_ACTIVE_COMMAND_ARMS,type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { AuthorityDatabase,type AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
@@ -726,8 +726,6 @@ const EXPECTED_ACTIVE = {
   run: [
     "recover-run", "pause", "resume",
     "retry",
-
-    "restart",
     "cancel", "bump", "rename",
 
     "delete",
@@ -745,18 +743,6 @@ const EXPECTED_ACTIVE = {
   settings: ["apply-settings", "apply-protected-settings"],
 
 } as const;
-
-const EXPECTED_DEFERRED = {
-  intake: [],
-  settings: [],
-  run: [],
-  notification: [],
-} as const;
-
-const DEFERRED_KEYS = new Set(
-  Object.entries(EXPECTED_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
-    actions.map((action) => `${family}/${action}`)),
-);
 
 /* ── harness ─────────────────────────────────────────────────────────────── */
 
@@ -895,13 +881,9 @@ function startCommandFor(plan: ReturnType<typeof createFixturePlan>) {
 }
 
 describe("control-command-single-path", () => {
-  it("pins the exact ratified Phase-1f active/deferred arm partition", () => {
+  it("pins the exact active arm set", () => {
     assert.deepEqual(PHASE1_ACTIVE_COMMAND_ARMS, EXPECTED_ACTIVE);
-    assert.deepEqual(PHASE1_DEFERRED_COMMAND_ARMS, EXPECTED_DEFERRED);
-    const partitioned = [
-      ...Object.entries(EXPECTED_ACTIVE),
-      ...Object.entries(EXPECTED_DEFERRED),
-    ].flatMap(([family, actions]) => actions.map((action) => `${family}/${action}`));
+    const partitioned = Object.entries(EXPECTED_ACTIVE).flatMap(([family, actions]) => actions.map((action) => `${family}/${action}`));
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
       actions.map((action) => `${family}/${action}`));
     assert.deepEqual([...partitioned].sort(), [...registry].sort());
@@ -1064,7 +1046,7 @@ describe("control-command-single-path", () => {
     assert.deepEqual(versionless, []);
   });
 
-  it("dispatches every command family/action: active arms execute and unavailable arms have zero effects", async () => {
+  it("dispatches every command family/action: every arm executes", async () => {
     const harness = await createHarness();
     const seen: string[] = [];
     for (const fixture of CURRENT_COMMAND_FIXTURES) {
@@ -1073,25 +1055,15 @@ describe("control-command-single-path", () => {
         ? { ...parsed, target: { ...parsed.target, workflowId: "fixture-graph" } } : parsed;
       const key = `${request.family}/${request.type}`;
       seen.push(key);
-      const generationBefore = harness.database.getMeta().authorityGeneration;
       const result = CommandResultSchema.parse(request.family === "worker-browser"
         ? await harness.kernel.executeWorkerPool(structuredClone(request))
         : request.family === "assistant-model-preference"
           ? await harness.kernel.executeAssistantModelPreference(structuredClone(request))
           : harness.kernel.execute(structuredClone(request)));
-      if (DEFERRED_KEYS.has(key)) {
-        assert.equal(result.state, "rejected", key);
-        if (result.state !== "rejected") continue;
-        assert.equal(result.code, "capability-unavailable", key);
-        assert.equal(harness.database.getMeta().authorityGeneration, generationBefore, key);
-        assert.equal(harness.database.authority.commands.get(request.commandId), undefined, key);
-      } else {
-        // Active arms EXECUTE: against an empty store they refuse on exact
-        // authority lookups with a typed code that is never the deferred one.
-        assert.notEqual(result.state, "applied", key);
-        if (result.state === "rejected") {
-          assert.notEqual(result.code, "capability-unavailable", `${key} must execute in Phase 1f`);
-        }
+      // Arms execute: against an empty store they refuse on exact authority lookups with a typed code.
+      assert.notEqual(result.state, "applied", key);
+      if (result.state === "rejected") {
+        assert.notEqual(result.code, "capability-unavailable", `${key} must execute`);
       }
     }
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
