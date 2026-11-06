@@ -180,7 +180,7 @@ export function signInBoundProfileFixture(machine: RuntimeAdmission): void {
   } finally { session.close(); }
 }
 
-export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string; lifetime?: RuntimeLifetimeLock } = {}) {
+export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string; lifetime?: RuntimeLifetimeLock; email?: string } = {}) {
   if (options.pending !== undefined && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
   const workspace = options.workspace === undefined
     ? realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")))
@@ -193,12 +193,12 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
       let machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
       ownedAdmissions.push(machine);
       mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
-      const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
+      const fields = { firstName: "Fixture", lastName: "Example", email: options.email ?? "fixture@ucsd.edu",
         password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
       const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
         activity: { hasUnquiescedWork: () => false } });
       const draft = options.pending === "storage" ? undefined : session.signUp(fields);
-      if (draft !== undefined && draft.state !== "onboarding") throw new Error("fixture draft was not created");
+      if (draft !== undefined && draft.state !== "onboarding") throw new Error(`fixture draft was not created: ${draft.code}`);
       const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
         createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
         commandFingerprint: "a".repeat(64) });
