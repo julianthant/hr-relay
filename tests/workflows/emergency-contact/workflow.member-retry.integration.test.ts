@@ -421,7 +421,7 @@ it(`refuses accounting with a ${ownership} after manual Resume`, async () => {
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
 });
 
-for (const boundary of ["active in its child join", "already paused", "at first native success admission", "at first native failure admission", "at failure diagnostic capture", "at failure diagnostic capture after Pause", "at accounting capture", "at typed refusal failure admission"] as const)
+for (const boundary of ["active in its child join", "already paused", "at first native success admission", "at first native failure admission", "at failure diagnostic capture", "at failure diagnostic capture after Pause", "at failure settlement after Pause", "at accounting capture", "at typed refusal failure admission"] as const)
 it(`retries a member while its parent is ${boundary}`, async () => {
   const f = fixture;
   const paused = boundary === "already paused";
@@ -444,7 +444,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   const originalChildren = f.children().map(child => ({ runId: child.envelope.runId, bytes: canonicalJsonStringify(child) }));
   const originalEnvelope = canonicalJsonStringify(f.current().envelope), originalRows = originalBytes(f);
   const firstFailureAdmission = boundary === "at first native failure admission", failureAdmission = firstFailureAdmission || typedRefusal;
-  const pauseFirst = boundary === "at failure diagnostic capture after Pause";
+  const pauseFirst = boundary.endsWith("after Pause"), settlementRetry = boundary === "at failure settlement after Pause";
   const diagnosticCapture = pauseFirst || boundary === "at failure diagnostic capture";
   if (firstFailureAdmission || diagnosticCapture) f.control.failAccounting = true;
   const previous = failed(f), execute = f.canonical.childRuns.executeChildRuns.bind(f.canonical.childRuns);
@@ -459,25 +459,30 @@ it(`retries a member while its parent is ${boundary}`, async () => {
     }
     return joined;
   };
-  let discarded = 0;
+  let discarded = 0, captured = false;
+  const retryHeldParent = () => {
+    reached = true;
+    const claim = runClaim(f.current()); assert.ok(claim);
+    const writes = [...f.persistence.values()].map(value => value.submissions.length);
+    const operatorPause = f.current().pause;
+    assert.equal(f.canonical.kernel.execute(retry).state, "applied");
+    assert.deepEqual(runClaim(f.current()), claim);
+    assert.equal(f.current().pause?.state, "requested");
+    if (pauseFirst) assert.deepEqual(f.current().pause, operatorPause);
+    assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), writes);
+  };
   const diagnostics = !diagnosticCapture ? undefined : {
     captureForFailure: async (context: { failure: { failureId: string }; configFingerprint: string; descriptorFingerprint: string }) => {
-      assert.equal(reached, false);
-      reached = true;
-      const original = f.current(), claim = runClaim(original); assert.ok(claim);
+      assert.equal(captured, false);
+      captured = true;
+      const original = f.current(); assert.ok(runClaim(original));
       assert.equal(original.lifecycle.state, "running");
       assert.equal(original.pause, undefined);
-      const writes = [...f.persistence.values()].map(value => value.submissions.length);
       if (pauseFirst) {
         assert.equal(f.canonical.kernel.execute(f.runCommand("pause", original)).state, "applied");
         assert.equal(f.current().pause?.state, "requested");
       }
-      const operatorPause = f.current().pause;
-      assert.equal(f.canonical.kernel.execute(retry).state, "applied");
-      assert.deepEqual(runClaim(f.current()), claim);
-      assert.equal(f.current().pause?.state, "requested");
-      if (pauseFirst) assert.deepEqual(f.current().pause, operatorPause);
-      assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), writes);
+      if (!settlementRetry) retryHeldParent();
       return DiagnosticBundleSchema.parse({ bundleId: randomUUID(), runId: original.envelope.runId,
         origin: { kind: "failure", failureId: context.failure.failureId }, createdAt: f.clock.now().toISOString(),
         contentDigest: "a".repeat(64), configFingerprint: context.configFingerprint, descriptorFingerprint: context.descriptorFingerprint,
@@ -530,8 +535,9 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   } };
   const transaction = f.database.withAuthorityTransaction.bind(f.database);
   let transactionDepth = 0;
-  if (boundary === "at accounting capture") f.database.withAuthorityTransaction = work => {
-    if (!reached && transactionDepth === 0 && f.current().lifecycle.state === "validating") {
+  if (boundary === "at accounting capture" || settlementRetry) f.database.withAuthorityTransaction = work => {
+    if (settlementRetry && captured && !reached && transactionDepth === 0) retryHeldParent();
+    if (!settlementRetry && !reached && transactionDepth === 0 && f.current().lifecycle.state === "validating") {
       reached = true;
       const claim = runClaim(f.current()); assert.ok(claim);
       assert.equal(f.current().pause, undefined);
