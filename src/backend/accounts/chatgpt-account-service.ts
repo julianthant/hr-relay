@@ -924,7 +924,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         // Headerless subscription replies still require validated SSE and completed output below.
         if (response.body === null || diagnostic.contentType !== "text/event-stream" && diagnostic.contentType !== "missing") { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
         const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
-        let buffer = "", output = "", completed = false, total = 0;
+        let buffer = "", completed = false, total = 0;
+        const textDeltas = new Map<string, string>();
         let textOutputIndex: number | undefined;
         let result: T | undefined;
         const argumentDeltas = new Map<number, string>();
@@ -1001,14 +1002,13 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                 }
                 if (event.type === "response.output_text.delta") {
                   diagnostic.path = "stream-delta";
-                  const delta = z.object({ output_index: indexSchema, item_id: idSchema }).parse(value);
+                  const delta = z.object({ output_index: indexSchema, item_id: idSchema, content_index: z.number().int().min(0).max(7), delta: z.string() }).parse(value);
                   assertMember(delta.output_index, delta.item_id, "message");
-                  if (addedParts.get(`${delta.output_index}:0`) !== "output_text" || doneText.has(`${delta.output_index}:0`)) throw fault("CHATGPT_OCR_INCOMPLETE");
-                  if (event.delta === undefined || event.output_index !== undefined && (!Number.isInteger(event.output_index) || event.output_index < 0
-                      || textOutputIndex !== undefined && event.output_index !== textOutputIndex)
-                    || event.content_index !== undefined && event.content_index !== 0) throw fault("CHATGPT_OCR_INCOMPLETE");
-                  textOutputIndex ??= event.output_index;
-                  output += event.delta;
+                  const key = `${delta.output_index}:${delta.content_index}`;
+                  if (addedParts.get(key) !== "output_text" || doneText.has(key) || doneParts.has(key)
+                    || textOutputIndex !== undefined && delta.output_index !== textOutputIndex) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  textOutputIndex ??= delta.output_index;
+                  textDeltas.set(key, (textDeltas.get(key) ?? "") + delta.delta);
                 }
                 if (event.type === "response.function_call_arguments.delta") {
                   diagnostic.path = "stream-delta";
@@ -1075,7 +1075,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                       for (const [contentIndex, part] of message.content.entries()) {
                         const key = `${index}:${contentIndex}`, done = doneText.get(key);
                         if (addedParts.get(key) !== part.type) throw fault("CHATGPT_OCR_INCOMPLETE");
-                        if (part.type === "output_text" && (done?.item_id !== item.id || done.text !== part.text)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                        if (part.type === "output_text" && (done?.item_id !== item.id || done.text !== part.text
+                          || textDeltas.has(key) && textDeltas.get(key) !== part.text)) throw fault("CHATGPT_OCR_INCOMPLETE");
                       }
                     }
                     if (item.type === "function_call") {
@@ -1088,6 +1089,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                     if (canonicalJsonStringify(message.content[done.content_index]) !== canonicalJsonStringify(done.part)) throw fault("CHATGPT_OCR_INCOMPLETE");
                   }
                   diagnostic.path = "output-schema";
+                  const output = textOutputIndex === undefined ? "" : [...doneText.values()]
+                    .filter(done => done.output_index === textOutputIndex).sort((a, b) => a.content_index - b.content_index).map(done => done.text).join("");
                   result = accept(terminal, output, textOutputIndex, argumentDeltas); completed = true;
                 }
                 if (event.type === "response.failed" || event.type === "response.incomplete") {

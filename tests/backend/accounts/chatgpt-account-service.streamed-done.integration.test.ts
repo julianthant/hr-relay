@@ -139,3 +139,25 @@ it.each(["missing", "identity", "name", "arguments", "duplicate"] as const)("ref
     await assert.rejects(f.service.inferAssistant(assistant), { code: "CHATGPT_OCR_INCOMPLETE" });
   } finally { await f.cleanup(); }
 });
+
+it.each(["valid", "eight", "nine", "mismatch", "orphan", "after-done", "ocr"] as const)("checks bounded per-part assistant text deltas: %s", async mode => {
+  const f = await chatGptFixture();
+  try {
+    await f.connected();
+    const content = mode === "eight" || mode === "nine" ? Array.from({ length: mode === "eight" ? 8 : 9 }, (_, index) => ({ type: "output_text", text: `Part ${String(index)}.` }))
+      : [{ type: "output_text", text: "First " }, { type: "output_text", text: "second." }];
+    const multipart = { ...item, content };
+    const input = completedResponseStream([multipart]).trim().split("\n\n").map(frame => JSON.parse(frame.slice(6)) as StreamEvent);
+    const secondDelta = input.find(value => value.type === "response.output_text.delta" && value.content_index === 1); assert.ok(secondDelta);
+    if (mode === "mismatch") {
+      const firstDelta = event(input, "response.output_text.delta");
+      firstDelta.delta = "Fir"; secondDelta.delta = "st second.";
+    }
+    if (mode === "orphan") secondDelta.content_index = 2;
+    if (mode === "after-done") input.splice(-2, 0, secondDelta);
+    f.setSse(wire(input));
+    if (mode === "valid" || mode === "eight") assert.deepEqual((await f.service.inferAssistant(assistant)).output, [multipart]);
+    else await assert.rejects(mode === "ocr" ? f.service.extractText(image) : f.service.inferAssistant(assistant), { code: "CHATGPT_OCR_INCOMPLETE" });
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 1);
+  } finally { await f.cleanup(); }
+});
