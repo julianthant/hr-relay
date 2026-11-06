@@ -62,4 +62,3 @@ OnboardingRoster-*.xlsx
 
 # Private rosters, PDFs and local evidence; never publish.
 .local-private/
-

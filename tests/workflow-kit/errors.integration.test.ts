@@ -139,7 +139,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       scheduler: new ManualScheduler(clock),
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log 
+      log: recordingLogger().log
     });
     const now = clock.now().toISOString();
     const enqueued = database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun: true }));

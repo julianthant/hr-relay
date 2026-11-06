@@ -91,7 +91,7 @@ export function createParkedWriteRoundTripTestWorld() {
           resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
         },
         authority: database,
-        ids 
+        ids
       }),
       workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
     });
@@ -140,7 +140,7 @@ export function createParkedWriteRoundTripTestWorld() {
           scheduler,
           taskDeadlineMs: 60_000,
           operator: "local-operator",
-          log 
+          log
         }),
       });
 

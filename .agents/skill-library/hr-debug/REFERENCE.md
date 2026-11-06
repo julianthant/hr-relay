@@ -45,7 +45,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - `sessionAcquireMs` (60 s) bounds the whole login chain; do not raise it to hide a dead session.
 
 ## 4 · Runtime / singleton
-- BFF is ONE process (lock + pinned 3938). It freezes its build id at start; after a worker-code edit, new workers refuse with `relay-build-changed-under-running-app` → restart the BFF. Runs approved before the restart refuse new writes (`WRITE_BUILD_CHANGED`); Retry approves them under the new build.
+- BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE build: `curl -s localhost:3938/api/v1/explorer | jq -r .buildId` vs `npx tsx -e 'import("./src/backend/app/build-id.ts").then(m => console.log(m.computeBuildId(process.cwd())))'`. Mismatch → restart the BFF (new workers refuse with `relay-build-changed-under-running-app`). Runs approved before the restart refuse new writes (`WRITE_BUILD_CHANGED`); Retry approves them under the new build.
 - `ls .tracker/locks/` + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
 - Worker wedged at boot with its own old claim → D200 (lease is the evidence; sweep by workerId). A `claimed` row with an `attempting` intent is refused at startup by design — that is a §4.1 recovery, not a restart.
 

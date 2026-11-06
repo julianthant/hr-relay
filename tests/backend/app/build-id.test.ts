@@ -3,7 +3,8 @@ import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { BuildIdError, captureBuildId, computeBuildId, packageOfSpecifier, PARENT_BUILD_ID_ENV, runtimeLockEntries } from "../../../src/backend/app/build-id.js";
+import { productionWorkerLaunch } from "../../../src/backend/app/composition/dashboard/worker-process.js";
+import { BuildIdError, captureBuildId, computeBuildId, currentBuildId, packageOfSpecifier, PARENT_BUILD_ID_ENV, runtimeLockEntries } from "../../../src/backend/app/build-id.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -93,6 +94,12 @@ describe("app build id", () => {
     const root = fixtureTree();
     rmSync(join(root, "src/workflows"), { recursive: true });
     assert.throws(() => computeBuildId(root), (error: unknown) => error instanceof BuildIdError && error.code === "relay-build-id-unavailable");
+  });
+
+  it("hands workers the parent's build id outside the environment allowlist", () => {
+    const launch = productionWorkerLaunch("/repo", { PATH: "/usr/bin", RELAY_UNLISTED: "dropped", [PARENT_BUILD_ID_ENV]: "0".repeat(64) });
+    assert.equal(launch.environment[PARENT_BUILD_ID_ENV], currentBuildId());
+    assert.equal(launch.environment.RELAY_UNLISTED, undefined);
   });
 
   it("refuses a worker whose build differs from its parent", () => {

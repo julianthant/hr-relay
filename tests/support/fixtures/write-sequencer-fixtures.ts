@@ -631,6 +631,9 @@ export const writeFixtureDescriptorWithMovedKey = buildDescriptor("receipt", {
   commitEid: WRITE_FIXTURE_MOVED_EID,
 });
 
+/** Same contract fingerprint as the base fixture, but the commit bind derives another permanent key. */
+export const writeFixtureDescriptorWithMovedKeySameContract = buildDescriptor("receipt", { commitEid: WRITE_FIXTURE_MOVED_EID });
+
 /** Moved closure plus a durable task dependency whose checkpoint recovery must require. */
 export const writeFixtureDescriptorWithDependencyAfterUnrelatedEdit = defineWorkflowDescriptor({
   id: WRITE_FIXTURE_WORKFLOW_ID,

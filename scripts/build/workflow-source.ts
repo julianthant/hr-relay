@@ -109,4 +109,3 @@ export function declaredWorkflowId(entry: string): string {
   }
   return only;
 }
-

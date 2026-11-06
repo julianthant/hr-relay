@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { it } from "vitest";
-import { computeBuildId } from "../../../src/backend/app/build-id.js";
+import { computeBuildId, unscannedLoadForms } from "../../../src/backend/app/build-id.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const HASHED_ROOTS = ["src/backend", "src/workflow-kit", "src/workflows", "src/models", "src/rules"];
@@ -22,4 +22,17 @@ it("keeps worker code from importing the dashboard tree the build id excludes", 
 
 it("computes the checkout's build id without an unresolved dependency or specifier", () => {
   assert.match(computeBuildId(REPO_ROOT), /^[0-9a-f]{64}$/u);
+});
+
+it("rejects dynamic imports and requires the build id's specifier scan cannot see", () => {
+  const violations = HASHED_ROOTS.flatMap(root => walkFiles(join(REPO_ROOT, root))
+    .flatMap(file => unscannedLoadForms(readFileSync(file, "utf8")).map(form => `${relative(REPO_ROOT, file)}: ${form}`)));
+  assert.deepEqual(violations, []);
+  assert.deepEqual(unscannedLoadForms([
+    'const a = await import("hono");', "const b = require('zod');", 'import type { X } from "react";',
+    "ObjC.import('AppKit');", "module.require('x');",
+  ].join("\n")), []);
+  assert.equal(unscannedLoadForms("const name = 'pdf-lib';\nconst c = await import(name);").length, 1);
+  assert.equal(unscannedLoadForms("const d = require(`${base}/x`);").length, 1);
+  assert.equal(unscannedLoadForms('const e = await import("./" + name);').length, 1);
 });

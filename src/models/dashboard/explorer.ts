@@ -449,6 +449,8 @@ export const WorkflowExplorerWireSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
   generatedAt: IsoInstantSchema,
   descriptorHash: FingerprintSchema,
+  /** The serving backend's app build id, for comparing a running backend with a fresh tree hash. */
+  buildId: FingerprintSchema,
   workflows: z.array(ExplorerWorkflowWireSchema),
 }).superRefine((wire, context) => {
   const ids = wire.workflows.map(({ id }) => String(id));

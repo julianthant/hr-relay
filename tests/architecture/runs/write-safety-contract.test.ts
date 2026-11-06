@@ -145,7 +145,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       scheduler,
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log 
+      log: recordingLogger().log
     });
     return {
       clock, database, world, recovery,

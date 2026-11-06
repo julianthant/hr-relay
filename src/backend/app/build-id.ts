@@ -13,8 +13,11 @@ const WORKER_SOURCE_FILES = ["src/cli.ts"] as const;
 const RUNTIME_LOADER_PACKAGES = ["tsx"] as const;
 const BUILTINS = new Set(builtinModules);
 const PACKAGE_NAME = /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/u;
-// Static import/export statements start a line; dynamic import() and require() may appear anywhere.
+// Static import/export statements start a line; dynamic imports and requires may appear anywhere.
 const SPECIFIERS = /^[ \t]*(?:import|export)\b[^;"'`]*?\bfrom[ \t]*["']([^"']+)["']|^[ \t]*import[ \t]*["']([^"']+)["']|(?<![.\w$])import\(\s*["']([^"']+)["']\s*\)|(?<![.\w$])require\(\s*["']([^"']+)["']\s*\)/gmu;
+
+// A dynamic import or require whose argument is not one string literal names no package this scan can see.
+const UNSCANNED_LOADS = /(?<![.\w$])(?:import|require)\((?!\s*["'][^"'\n]+["']\s*\))/gu;
 
 const LockEntrySchema = z.object({
   version: z.string().optional(),
@@ -45,6 +48,11 @@ export function packageOfSpecifier(specifier: string): string | undefined {
   return name;
 }
 
+/** Dynamic import/require calls whose package the specifier scan cannot see. */
+export function unscannedLoadForms(text: string): readonly string[] {
+  return [...text.matchAll(UNSCANNED_LOADS)].map(match => text.slice(match.index, match.index + 40).split("\n")[0] ?? "");
+}
+
 /** Node's nested lookup: the importer's own node_modules first, then each enclosing level up to the root. */
 function resolveLockPath(lock: Lock, from: string, name: string): string | undefined {
   let base = from;
@@ -61,7 +69,7 @@ function resolveLockPath(lock: Lock, from: string, name: string): string | undef
 export function runtimeLockEntries(lock: Lock, roots: readonly string[]): ReadonlyMap<string, z.infer<typeof LockEntrySchema>> {
   const selected = new Map<string, z.infer<typeof LockEntrySchema>>();
   const pending: string[] = [];
-  const require = (from: string, name: string, optional: boolean) => {
+  const select = (from: string, name: string, optional: boolean) => {
     const path = resolveLockPath(lock, from, name);
     if (path === undefined) {
       if (optional) return;
@@ -69,12 +77,12 @@ export function runtimeLockEntries(lock: Lock, roots: readonly string[]): Readon
     }
     if (!selected.has(path)) { selected.set(path, lock.packages[path] ?? {}); pending.push(path); }
   };
-  for (const root of roots) require("", root, false);
+  for (const root of roots) select("", root, false);
   for (let path = pending.pop(); path !== undefined; path = pending.pop()) {
     const entry = lock.packages[path] ?? {};
-    for (const name of Object.keys(entry.dependencies ?? {})) require(path, name, false);
-    for (const name of Object.keys(entry.optionalDependencies ?? {})) require(path, name, true);
-    for (const name of Object.keys(entry.peerDependencies ?? {})) require(path, name, entry.peerDependenciesMeta?.[name]?.optional === true);
+    for (const name of Object.keys(entry.dependencies ?? {})) select(path, name, false);
+    for (const name of Object.keys(entry.optionalDependencies ?? {})) select(path, name, true);
+    for (const name of Object.keys(entry.peerDependencies ?? {})) select(path, name, entry.peerDependenciesMeta?.[name]?.optional === true);
   }
   return selected;
 }
@@ -95,7 +103,10 @@ export function computeBuildId(repoRoot: string, nodeVersion: string = process.v
   const packages = new Set<string>(RUNTIME_LOADER_PACKAGES);
   for (const file of files) {
     if (!/\.[cm]?tsx?$/u.test(file)) continue;
-    for (const match of readFileSync(file, "utf8").matchAll(SPECIFIERS)) {
+    const text = readFileSync(file, "utf8");
+    const unscanned = unscannedLoadForms(text);
+    if (unscanned.length > 0) throw new BuildIdError("relay-build-id-dependency-unresolved", `${file} loads a module by a computed specifier: ${unscanned.join(", ")}`);
+    for (const match of text.matchAll(SPECIFIERS)) {
       const name = packageOfSpecifier(match[1] ?? match[2] ?? match[3] ?? match[4] ?? "");
       if (name !== undefined) packages.add(name);
     }

@@ -391,7 +391,7 @@ export async function compositionHarness(options: Readonly<{
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log 
+    log: recordingLogger().log
   });
   let closed = false;
   const closeController = async () => {

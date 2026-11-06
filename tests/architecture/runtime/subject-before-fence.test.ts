@@ -172,7 +172,7 @@ async function orderingHarness(): Promise<OrderingHarness> {
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log 
+    log: recordingLogger().log
   });
   const execute = (context: WriteSequencerContext): Promise<unknown> =>
     withBoundRunConfigFingerprint(

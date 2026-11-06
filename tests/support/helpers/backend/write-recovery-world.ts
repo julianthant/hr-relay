@@ -108,7 +108,7 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
       scheduler: new ManualScheduler(clock),
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log 
+      log: recordingLogger().log
     }); held.recovery = recovery;
     retainedWriteRecoveryOwners.delete(held);
     return {
@@ -225,7 +225,7 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
           String(descriptor.id) === workflowId ? descriptor : undefined,
       },
       authority: h.database,
-      ids: h.ids 
+      ids: h.ids
     });
     const makeKernel=()=>{
     const lifecycle = new RunRecordService({database:h.database,clock:h.clock,ids:h.ids,publishQueued:()=>{}});

@@ -90,7 +90,7 @@ export function createDryRunPreviewResultTestWorld() {
           scheduler,
           taskDeadlineMs: 60_000,
           operator: "local-operator",
-          log 
+          log
         }),
       });
     };

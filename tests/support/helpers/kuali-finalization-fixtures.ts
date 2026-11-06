@@ -478,7 +478,7 @@ export async function finalizationHarness(
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log 
+    log: recordingLogger().log
   });
   let closeAttempted = false, databaseClosed = false;
   const closeDatabase = () => {
