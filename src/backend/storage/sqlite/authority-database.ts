@@ -129,6 +129,7 @@ import { currentDelegationManifests,assertDelegationReplacement,authenticateCanc
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
+import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
@@ -1280,7 +1281,8 @@ function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => P
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
   const readRun = inspectionRunReader(expectedSchemaVersion);
   const convertPreferences = (table: string, row: unknown) => {
-    return expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
   };
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
@@ -1370,7 +1372,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
     && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
-  if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
+  // Below schema 24 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
+  if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
@@ -1688,6 +1691,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
         }
         database.exec(statement);
         if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+        if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       }
     }
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);

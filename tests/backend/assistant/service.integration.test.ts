@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ASSISTANT_PAUSE_PROPOSAL } from "../../support/fixtures/dashboard/assistant-start.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, it } from "vitest";
 import { z } from "zod";
@@ -127,8 +128,7 @@ it("applies refusal bookkeeping to cached outcomes in call order", async () => {
 });
 
 it("ends the turn with a proposal card and keeps a refused proposal recoverable", async () => {
-  const card = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, expiresAt: "2099-01-01T00:00:00.000Z",
-    label: "Mark 2 current notifications read", targetLabel: "2 current notifications", effect: "local-write" } as const;
+  const card = ASSISTANT_PAUSE_PROPOSAL;
   let refuse = true;
   const proposal: AssistantTool = { kind: "proposal", name: "propose", description: "Prepare a card.", parameters: Echo,
     async propose() { if (refuse) { refuse = false; throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED"); } return card; } };
@@ -138,7 +138,7 @@ it("ends the turn with a proposal card and keeps a refused proposal recoverable"
       assert.deepEqual(lastOutput(body), { error: "ASSISTANT_PROPOSAL_REFUSED", text: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED });
       return call("propose", { value: "b" });
     });
-    assert.deepEqual(await w.ask("Mark them read"), { state: "action-proposal", proposal: card });
+    assert.deepEqual(await w.ask("Pause it"), { state: "action-proposal", proposal: card });
     assert.equal(w.posts(), 2);
   } finally { await w.f.cleanup(); }
 });

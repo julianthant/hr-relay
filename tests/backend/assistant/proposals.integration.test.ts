@@ -129,31 +129,17 @@ it("keeps a Confirm whose caption cannot be stored in a full chat UNKNOWN after 
   assert.equal(o.runCount(), before + 1);
 });
 
-it("settles a local-only write and its caption together, so a failed caption leaves it refused and unchanged, never unknown", async () => {
-  const o = await owners(), history = o.database.authority.assistantHistory, now = () => o.clock.now().toISOString();
-  const notificationId = randomUUID();
+it("applies a notification change at once without a card, and refuses with nothing changed when there is nothing to change", async () => {
+  const o = await owners(), now = () => o.clock.now().toISOString(), notificationId = randomUUID();
+  const change = o.proposals.plugin.tools.find(tool => tool.name === "change_notifications"); assert.ok(change?.kind === "change");
+  await assert.rejects(change.invoke({ action: "read", target: "all" }, o.context), refusedWith("ASSISTANT_PROPOSAL_REFUSED"));
   o.database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator",
     dedupeFingerprint: "d".repeat(64), trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
     links: [{ kind: "storage", diagnosticFingerprint: "e".repeat(64) }], count: 1, version: 1, lastSeenAt: now(), createdAt: now(), updatedAt: now() })));
-  const card = await o.tool("propose_notification_action").propose({ action: "read", target: "all" }, o.context);
-  assert.equal(card.effect, "local-write");
-  for (let index = 0; index < ASSISTANT_MESSAGES_MAX; index++) {
-    const revision = history.conversation(o.context.conversationId, now())?.revision; assert.ok(revision !== undefined);
-    assert.equal(history.apply({ operation: "local", conversationId: o.context.conversationId, expectedRevision: revision, messageId: randomUUID(), text: `Local ${String(index)}` }, now()).state, "saved");
-  }
-  assert.deepEqual(await o.decide(card, "confirm"), { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" });
-  assert.equal(o.database.authority.notifications.get(notificationId)?.status, "unread", "the write rolled back with its caption");
-  assert.equal(o.database.authority.commandAudits.findByCommand(o.commandOf(card)?.commandId ?? ""), undefined);
-  assert.deepEqual(o.captions(), []);
-
-  const applied = await owners();
-  applied.database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator",
-    dedupeFingerprint: "d".repeat(64), trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
-    links: [{ kind: "storage", diagnosticFingerprint: "e".repeat(64) }], count: 1, version: 1, lastSeenAt: now(), createdAt: now(), updatedAt: now() })));
-  const done = await applied.tool("propose_notification_action").propose({ action: "read", target: "all" }, applied.context);
-  assert.deepEqual(await applied.decide(done, "confirm"), { state: "applied", actionId: done.actionId });
-  assert.equal(applied.database.authority.notifications.get(notificationId)?.status, "read");
-  assert.deepEqual(applied.captions(), [`Done: ${done.label}.`]);
+  assert.deepEqual(await change.invoke({ action: "read", target: "all" }, o.context), { state: "applied", count: 1 });
+  assert.equal(o.database.authority.notifications.get(notificationId)?.status, "read");
+  assert.deepEqual(o.captions(), [], "no card, so no decision caption");
+  await assert.rejects(change.invoke({ action: "read", target: "all" }, o.context), refusedWith("ASSISTANT_PROPOSAL_REFUSED"), "already read: nothing to change");
 });
 
 it("refuses reruns of cancelled, moved, parked and attempting sources through the proposal owner", async () => {

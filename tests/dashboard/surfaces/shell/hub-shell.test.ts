@@ -54,7 +54,7 @@ it("invalidates a shown Preflight result on a confirmed model save, even for the
     },
   };
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  const effort = current.preference.effort === "low" ? "medium" : "low";
+  const effort = current.preference.effort === "light" ? "medium" : "light";
   let invalidations = 0;
   const preflight = { ...createPreviewPreflightAssistantPort(), invalidate: () => { invalidations++; } };
   const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} };

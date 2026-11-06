@@ -7,8 +7,15 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
+/** Steps a current authority back to schema 23: schema 24 converts stored efforts in place and keeps the same layout. */
+export function regressSchema24EffortScale(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 24);
+  database.exec("UPDATE database_states SET schema_version=23; PRAGMA user_version=23");
+}
+
 /** Steps an empty current authority back to schema 22: the two assistant history tables did not exist yet. */
 export function removeEmptySchema23AssistantHistory(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 24) regressSchema24EffortScale(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 23);
   for (const table of ["assistant_messages", "assistant_conversations"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
   database.exec("DROP TABLE assistant_messages; DROP TABLE assistant_conversations");

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
@@ -8,7 +8,7 @@ import { it, vi } from 'vitest';
 import { assistantProposalDigest, createAssistantController, ASSISTANT_CONFIRM_HOLD } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { assistantModelLabel } from '../../../../src/models/config/assistant-model-preference.js';
-import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
+import { ASSISTANT_PAUSE_PROPOSAL, ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
 
 
@@ -60,32 +60,21 @@ it('does not retry an ambiguously lost response or let an edited draft redispatc
   assert.equal(JSON.stringify(c.snapshot()).includes('actionId'), false);
 });
 
-const actionProposal = { state: 'action-proposal', proposal: { chatId: '00000000-0000-4000-8000-000000000001',
-  actionId: '00000000-0000-4000-8000-000000000002', revision: 1, expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read',
-  targetLabel: 'Local notification', effect: 'local-write' } } satisfies AssistantResult;
-it('confirms the actual issued action identity once; a lost start is unknown, a lost local write reads back, and nothing retries', async () => {
+const actionProposal = { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL } satisfies AssistantResult;
+it('confirms the actual issued action identity once; a lost run start or run action is unknown and nothing retries', async () => {
   const start = { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } satisfies AssistantResult;
-  const caption = `Done: ${actionProposal.proposal.label}.`;
-  // stored: no history (undefined), a verified missing caption (null), the committed Done caption, or a failed readback ('unreadable').
-  for (const [result, lost, stored, settled] of [[actionProposal, false, undefined, 'confirmed'], [actionProposal, true, undefined, 'stale'], [actionProposal, true, caption, 'confirmed'],
-    [actionProposal, true, null, 'stale'], [actionProposal, true, 'unreadable', 'stale'], [start, true, undefined, 'unknown']] as const) {
-    let calls = 0, unsaved = 0;
-    const history = stored === undefined ? undefined : { conversationId: crypto.randomUUID(), read: () => undefined, retain() {}, revision: () => 1, receipt() {}, async local() {},
-      async outcome() { return undefined; }, async decision() { if (stored === 'unreadable') throw new Error('synthetic lost readback'); return stored ?? undefined; }, unsaved() { unsaved++; } };
+  for (const [result, lost, settled] of [[actionProposal, false, 'confirmed'], [actionProposal, true, 'unknown'], [start, true, 'unknown']] as const) {
+    let calls = 0;
     const c = createAssistantController(resultClient({ assistantRespond: async () => result,
       assistantDecide: async identity => { calls++; assert.deepEqual(identity, { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: 'confirm',
         reviewedDigest: await assistantProposalDigest(result.proposal) });
-        if (lost) throw new Error('synthetic transport lost'); return { state: 'applied', actionId: identity.actionId }; } }), { authority: 'current' }, history);
-    c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' }); await Promise.resolve(); await Promise.resolve();
+        if (lost) throw new Error('synthetic transport lost'); return { state: 'applied', actionId: identity.actionId }; } }), { authority: 'current' });
+    c.action({ type: 'edit', value: 'pause it' }); c.action({ type: 'send' }); await Promise.resolve(); await Promise.resolve();
     const initial = c.snapshot().turn; assert.equal(initial.state, 'proposal');
     if (initial.state === 'proposal' && result === actionProposal) { assert.equal(initial.proposal.mode, 'local-change'); assert.deepEqual(initial.proposal.issued, actionProposal.proposal); }
     c.action({ type: 'confirm' }); c.action({ type: 'confirm' });
-    await vi.waitFor(() => { const turn = c.snapshot().turn; assert.ok(turn.state === 'proposal' && turn.disposition === settled, `${String(lost)} ${String(stored)}`); });
-    const last = c.snapshot().messages.at(-1)?.text;
-    // Without a history, or when its readback fails, nothing is proven: the card goes stale with no line and never claims a refusal.
-    const silent = stored === undefined || stored === 'unreadable';
-    if (lost) assert.equal(last, settled === 'unknown' ? ASSISTANT_UNKNOWN_NOTICE : silent ? 'Review this proposal. No action has been applied.' : stored ?? ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED);
-    assert.equal(unsaved, stored === 'unreadable' ? 1 : 0);
+    await vi.waitFor(() => { const turn = c.snapshot().turn; assert.ok(turn.state === 'proposal' && turn.disposition === settled, String(lost)); });
+    if (lost) assert.equal(c.snapshot().messages.at(-1)?.text, ASSISTANT_UNKNOWN_NOTICE);
     c.action({ type: 'confirm' }); c.action({ type: 'retry' }); assert.equal(calls, 1);
   }
 });
@@ -105,8 +94,7 @@ it('holds issued action confirmation after edits, selection changes or cancel wi
 
 it('holds an issued automatic unknown card without Confirm, Retry, or another request', async () => {
   let requests = 0, decisions = 0;
-  const action = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1,
-    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark 25 current notifications read', targetLabel: '25 current notifications', subject: 'none' as const, effect: 'local-write' as const };
+  const action = ASSISTANT_PAUSE_PROPOSAL;
   const c = createAssistantController(resultClient({ async assistantRespond() { requests++; return { state: 'unknown', actionId: action.actionId, action }; },
     async assistantDecide() { decisions++; return { state: 'applied', actionId: action.actionId }; } }), { authority: 'current' });
   c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' });

@@ -15,10 +15,11 @@ import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/regis
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
 import { AssistantHistoryRefusal, type AssistantHistoryRepository, type AssistantSettlement } from "../storage/sqlite/assistant-history.js";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
+import { ASSISTANT_PROVIDER_EFFORTS, AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
 
 export interface AssistantModelPolicy {
   readonly model?: string;
-  readonly effort?: "low" | "medium" | "high";
+  readonly effort?: AssistantModelPreference["effort"];
   readonly eligible: true;
   readonly consented: true;
   readonly billing: "chatgpt-plan";
@@ -50,7 +51,7 @@ export interface AssistantServiceOptions {
 class AssistantModelPolicyError extends Error {}
 class AssistantProtocolError extends Error {}
 const PolicySchema = z.strictObject({ model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u).default(ASSISTANT_DEFAULT_MODEL),
-  effort: z.enum(["low", "medium", "high"]).default(ASSISTANT_DEFAULT_EFFORT), eligible: z.literal(true), consented: z.literal(true),
+  effort: AssistantModelPreferenceSchema.shape.effort.default(ASSISTANT_DEFAULT_EFFORT), eligible: z.literal(true), consented: z.literal(true),
   billing: z.literal("chatgpt-plan"), verifiedUntil: z.string().datetime() });
 const refused = (code: AssistantFailureCode): AssistantResult => ({ state: "refused", code, message: ASSISTANT_FAILURES[code] });
 const MAX_MODEL_CALLS = 8, MAX_HISTORY_BYTES = 80_000, MAX_TOOL_OUTPUT_BYTES = 16_000;
@@ -228,7 +229,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           assertAuthority();
           if (Buffer.byteLength(JSON.stringify(input)) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_LIMIT") };
           const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model: policy.data.model,
-            reasoning: { effort: policy.data.effort }, input, tools: [registry.namespace] }, signal, assertAuthority));
+            reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[policy.data.effort] }, input, tools: [registry.namespace] }, signal, assertAuthority));
           assertAuthority();
           if (turn.model !== policy.data.model) return stop("ASSISTANT_INVALID");
           input.push(...turn.output);

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
 import { ASSISTANT_HISTORY_MIGRATION } from "./assistant-history.js";
+import { ASSISTANT_EFFORT_SCALE_MIGRATION } from "./assistant-effort-migration.js";
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
 import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "./workbook-library-repository.js";
@@ -948,6 +949,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `SELECT '${PRE_BUILD_RUN_DELETION_ID}'`,
   ] },
   ASSISTANT_HISTORY_MIGRATION,
+  ASSISTANT_EFFORT_SCALE_MIGRATION,
   ASSISTANT_ATTACHMENTS_MIGRATION,
 ]);
 

@@ -11,7 +11,7 @@
   - button "Chats" [disabled]
   - button "New chat"
   - button "Close assistant" [disabled]
-  - log "Assistant conversation": do it Assistant verification failed. Review the selected person, model and ChatGPT connection, then test again.
+  - log "Assistant conversation": do it Assistant verification failed. Test again.
   - group "Message composer":
     - text: Message Relay
     - textbox "Message Relay":
@@ -20,6 +20,5 @@
       - button "Add files"
       - button "Ask before every action" [disabled]
       - 'button "Model: Model unavailable" [disabled]': Model unavailable
-      - 'button "Thinking effort: Effort unavailable" [disabled]': Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]

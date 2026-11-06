@@ -81,7 +81,7 @@ export const AssistantFunctionNamespaceSchema = z.strictObject({ type: z.literal
 });
 export type AssistantFunctionNamespace = z.infer<typeof AssistantFunctionNamespaceSchema>;
 export const AssistantInferenceRequestSchema = z.strictObject({ model: AssistantModelSlugSchema,
-  reasoning: z.strictObject({ effort: AssistantModelPreferenceSchema.shape.effort }),
+  reasoning: z.strictObject({ effort: z.enum(["low", "medium", "high", "xhigh", "max"]) }),
   input: z.array(AssistantInputItemSchema).min(1).max(128), tools: z.array(AssistantFunctionNamespaceSchema).max(8),
 }).superRefine((value, context) => {
   const namespaces = new Set<string>(), calls = new Map<string, { namespace: string; name: string; settled: boolean }>();
@@ -178,7 +178,6 @@ export const AssistantProposalRowSchema = z.strictObject({ title: z.string().min
   .refine(row => row.display.kind !== "person" || row.display.name !== undefined || row.display.employeeId !== undefined, "a person row shows a name or an EID");
 export type AssistantProposalRow = z.infer<typeof AssistantProposalRowSchema>;
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
-  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("local-write") }),
   z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("workflow-start"), source: z.enum(["entries", "run", "rerun"]),
     workflowId: z.string().min(1), dryRun: z.boolean(),
     startPlan: StartPlanWireSchema.pick({

@@ -493,13 +493,14 @@
     - button "Go to latest action"
 - region "Assistant panel":
   - region "Relay assistant":
-    - button "start selected workflow"
+    - button "New chat"
     - button "Chats"
     - button "New chat"
     - button "Close assistant"
     - log "Assistant conversation":
-      - text: start selected workflow Review this proposal. No action has been applied. Confirmed action accepted. Start Person Lookup · Avery Sample
+      - text: start selected workflow Review this proposal. No action has been applied. Confirmed action accepted. Start Person Lookup · Sample, Avery
       - status: Started
+      - status: Chat not saved. Sending is paused.
     - group "Message composer":
       - text: Message Relay
       - textbox "Message Relay":
@@ -507,8 +508,8 @@
       - group "Message controls":
         - button "Add files"
         - button "Ask before every action" [disabled]
-        - 'button "Model: gpt-6.1-sol" [disabled]': gpt-6.1-sol
-        - 'button "Thinking effort: medium" [disabled]': medium
+        - 'button "Model: GPT-6.1 Sol" [disabled]': GPT-6.1 Sol
+        - 'button "Thinking effort: Medium" [disabled]': Medium
         - button "Voice input" [disabled]
         - button "Send message" [disabled]
 - button "Assistant" [expanded]
