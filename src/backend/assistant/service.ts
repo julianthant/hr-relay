@@ -9,6 +9,7 @@ import { ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptA
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
 import { AssistantReferenceError, createAssistantReferences, maskOperatorText } from "./references.js";
+import { AssistantAuthorizationError } from "./authorization.js";
 import { AssistantToolRefusal, type AssistantPlugin } from "./plugins/plugin.js";
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/registry.js";
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
@@ -154,7 +155,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
           { role: "user", content: maskOperatorText(request.data.message, table) },
         ];
         const unrecovered = new Map<string, AssistantFailureCode>(), outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>();
-        const context = { signal, references: table, actorId: options.actorId, assertCurrent: assertAuthority };
+        const assertRetainedCurrent = () => {
+          options.assertComposition?.();
+          if (!modelPolicyCurrent() || !options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
+        };
+        const context = { signal, references: table, actorId: options.actorId, assertCurrent: assertAuthority, assertRetainedCurrent };
         for (let step = 0; step < MAX_MODEL_CALLS; step++) {
           assertAuthority();
           if (Buffer.byteLength(JSON.stringify(history)) > MAX_HISTORY_BYTES) return refused("ASSISTANT_LIMIT");
@@ -181,6 +186,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
           let outcome = outcomes.get(key);
           if (outcome === undefined) {
             try {
+              if (tool.kind === "proposal") {
+                const proposal = await tool.propose(parsed, context);
+                assertAuthority();
+                return AssistantResultSchema.parse({ state: "action-proposal", proposal });
+              }
               const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(await tool.invoke(parsed, context))));
               assertAuthority();
               if (Buffer.byteLength(output) > MAX_TOOL_OUTPUT_BYTES) throw new AssistantToolRefusal("ASSISTANT_LIMIT");
@@ -227,6 +237,7 @@ function toolRefusalCode(error: unknown): AssistantFailureCode | undefined {
   if (error instanceof AssistantToolRefusal) return error.code;
   if (error instanceof AssistantReferenceError) return error.reason === "reference-limit" ? "ASSISTANT_LIMIT" : "ASSISTANT_READ_STALE";
   if (error instanceof TargetNotFoundError || error instanceof SectionUnavailableError) return "ASSISTANT_READ_UNAVAILABLE";
+  if (error instanceof AssistantAuthorizationError) return "ASSISTANT_PROPOSAL_REFUSED";
   return undefined;
 }
 const SELECTED_RUN = /^run_([a-f0-9-]{36})_([1-9][0-9]*)$/u;

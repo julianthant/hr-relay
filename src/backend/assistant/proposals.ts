@@ -1,0 +1,278 @@
+import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
+import { AssistantActionProposalSchema, ASSISTANT_START_ROWS_MAX, type AssistantActionDecision, type AssistantActionProposal, type AssistantActionResult,
+  type AssistantProposalRow } from "../../models/dashboard/assistant.js";
+import type { RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
+import { NotificationCollectionOperationSchema, type NotificationCollectionOperation } from "../../models/notifications/notifications.js";
+import { PersonLookupCanonicalInput } from "../../models/workflows/person-lookup/input.js";
+import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
+import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingress.js";
+import { CommandRequestSchema, StartCommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
+import type { Clock } from "../../rules/time/clock.js";
+import { workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
+import type { DashboardCommandService } from "../runs/commands/command-service.js";
+import type { StartPlanService } from "../runs/commands/start-plan-service.js";
+import type { RunRecordService } from "../runs/lifecycle/run-record-service.js";
+import { selectActiveRunSettings } from "../runs/settings/run-settings.js";
+import { hasProtectedSubject } from "../runs/start/protected-input.js";
+import { requireTrustRun } from "../runs/trust/run-reader.js";
+import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
+import type { createAssistantAuthorization } from "./authorization.js";
+import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "./plugins/plugin.js";
+
+export interface AssistantProposalDeps {
+  readonly database: AuthorityDatabase;
+  readonly authorization: ReturnType<typeof createAssistantAuthorization>;
+  readonly plans: StartPlanService;
+  readonly commands: Pick<DashboardCommandService, "submit" | "publish">;
+  readonly runs: Pick<RunRecordService, "read">;
+  readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
+  readonly rerunValues: (request: unknown) => RerunValuesResponse;
+  served(workflowId: string): boolean;
+  readonly actorId: string;
+  readonly clock: Clock;
+  assertCurrent(): void;
+}
+
+type StoredPlan = NonNullable<ReturnType<AuthorityDatabase["authority"]["startPlans"]["get"]>>;
+type ActionRecord = NonNullable<ReturnType<AuthorityDatabase["authority"]["assistantAuthorization"]["action"]>>;
+interface Pending {
+  readonly chat: ReturnType<ReturnType<typeof createAssistantAuthorization>["createChat"]>;
+  readonly revision: number;
+  readonly expiresAt: string;
+  readonly record: ActionRecord;
+  readonly digest: string;
+  readonly start: boolean;
+  assertCurrent(): void;
+  assertApplied(): void;
+}
+
+const PLAN_LIFECYCLE_FIELDS = new Set(["version", "consumedBy", "updatedAt"]);
+const planImmutables = (plan: StoredPlan) => canonicalJsonStringify(Object.fromEntries(Object.entries(plan).filter(([key]) => !PLAN_LIFECYCLE_FIELDS.has(key))));
+const digestOf = (proposal: AssistantActionProposal) => createHash("sha256").update(canonicalJsonStringify(proposal)).digest("hex");
+function refuse(): never { throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED"); }
+
+/** What one planned row shows: the typed identity of its canonical input, never model text. */
+export function plannedRowDisplay(workflowId: string, input: unknown): AssistantProposalRow["display"] {
+  const bound = SchemaBoundCanonicalValueSchema.safeParse(input);
+  if (!bound.success) return { kind: "request" };
+  if (workflowId === "person-lookup") {
+    const parsed = PersonLookupCanonicalInput.safeParse(bound.data.value);
+    if (!parsed.success) return { kind: "request" };
+    const value = parsed.data, name = value.mode === "match" ? `${value.firstName} ${value.lastName}` : value.name;
+    if (name === undefined && !("emplId" in value)) return { kind: "request" };
+    return { kind: "person", ...(name === undefined ? {} : { name }), ...("emplId" in value && value.emplId !== undefined ? { employeeId: value.emplId } : {}) };
+  }
+  const document = z.object({ documentNumber: z.string().min(1).max(40) }).safeParse(bound.data.value);
+  return document.success ? { kind: "document", documentNumber: document.data.documentNumber } : { kind: "request" };
+}
+const countLabel = (rows: readonly AssistantProposalRow[]) => {
+  const kind = rows[0]?.display.kind, n = rows.length;
+  if (rows.some(row => row.display.kind !== kind)) return n === 1 ? "1 request" : `${String(n)} requests`;
+  const noun = kind === "person" ? ["person", "people"] : kind === "document" ? ["document", "documents"] : ["request", "requests"];
+  return n === 1 ? `1 ${noun[0]}` : `${String(n)} ${noun[1]}`;
+};
+const NOTIFICATION_ACTIONS = { read: "notification-read", unread: "notification-unread", snooze: "notification-snooze", unsnooze: "notification-unsnooze" } as const;
+
+/** The proposal tools and the one Confirm owner; nothing here dispatches before the operator confirms an issued card. */
+export function createAssistantProposals(deps: AssistantProposalDeps) {
+  const pending = new Map<string, Pending>();
+  const prune = () => { for (const [id, entry] of pending) if (Date.parse(entry.expiresAt) <= deps.clock.nowMs()) pending.delete(id); };
+  const settings = () => deps.database.withAuthorityReadSnapshot(() => selectActiveRunSettings(deps.database.authority));
+
+  /** A served workflow the assistant may start: dry run when supported, a live read when it has no transaction node. */
+  function startable(workflowId: string) {
+    const descriptor = deps.descriptors.resolve(workflowId);
+    if (descriptor === undefined || !deps.served(workflowId)) refuse();
+    const support = workflowDryRunSupport(descriptor);
+    if (support.state !== "supported" && !("reason" in support && support.reason === "no-transaction-node")) refuse();
+    return { descriptor, dryRun: support.state === "supported" };
+  }
+  /** A run whose retained input may be reused: same workflow, served, no protected subject, current definition. */
+  function reusableRun(runId: string, workflowId: string) {
+    const run = requireTrustRun(deps.runs, runId);
+    const descriptor = deps.descriptors.resolve(run.envelope.workflow);
+    if (run.envelope.workflow !== workflowId || !deps.served(workflowId) || hasProtectedSubject(run.input.parsed.protectedBindings) || descriptor === undefined
+      || descriptor.version !== run.envelope.descriptorVersion || descriptor.contractFingerprint !== run.envelope.contractFingerprint) refuse();
+    return run;
+  }
+
+  /** Issues the authorization record and the card; `assertCurrent` is what Confirm and the command effect recheck. */
+  function issue(command: CommandRequest, context: AssistantToolContext, card: (identity: { chatId: string; actionId: string; revision: number; expiresAt: string }) => AssistantActionProposal,
+    checks: Readonly<{ assertCurrent(): void; assertApplied?(): void; planExpiresAt?: string }>) {
+    const chat = deps.authorization.createChat(), prepared = deps.authorization.prepare(chat, command);
+    const record = deps.database.authority.assistantAuthorization.action(prepared.id);
+    if (record === undefined || record.chatId !== chat.chatId) refuse();
+    const issuedRecord = record;
+    const expiresAt = new Date(Math.min(Date.parse(issuedRecord.expiresAt), Date.parse(checks.planExpiresAt ?? issuedRecord.expiresAt))).toISOString();
+    const retained = () => context.assertRetainedCurrent();
+    const assertCurrent = () => { deps.assertCurrent(); retained(); checks.assertCurrent(); };
+    assertCurrent();
+    const proposal = AssistantActionProposalSchema.parse(card({ chatId: chat.chatId, actionId: prepared.id, revision: prepared.revision, expiresAt }));
+    prune();
+    pending.set(prepared.id, { chat, revision: prepared.revision, expiresAt, record: issuedRecord, digest: digestOf(proposal), start: command.family === "start",
+      assertCurrent, assertApplied: checks.assertApplied ?? (() => {}) });
+    return proposal;
+  }
+
+  async function planStart(context: AssistantToolContext, input: Readonly<{ workflowId: string; submissions: readonly JsonValue[]; rerunSource?: JsonValue;
+    selectedStepKeys?: readonly string[]; source: "entries" | "run" | "rerun"; accepts(planned: StoredPlan["planned"]): boolean; assertSource(): void }>) {
+    const { descriptor, dryRun } = startable(input.workflowId), active = settings();
+    const request = { workflowId: descriptor.id, submissions: [...input.submissions], dryRun, browserMode: active.config.browser.headless ? "headless" as const : "headed" as const,
+      captureBrowserScreenshots: true, ...(input.rerunSource === undefined ? {} : { rerunSource: input.rerunSource }),
+      ...(input.selectedStepKeys === undefined ? {} : { selectedStepKeys: [...input.selectedStepKeys] }) };
+    await deps.plans.prepare?.(request, context.signal);
+    context.assertCurrent(); input.assertSource();
+    const planned = deps.plans.plan(request), stored = deps.database.authority.startPlans.get(planned.startPlanId);
+    if (stored === undefined || stored.refused.length > 0 || !input.accepts(stored.planned) || stored.stepOmissions !== undefined || (input.source !== "rerun" && stored.rerun !== undefined)) refuse();
+    const plan = stored, issuedPlan = planImmutables(plan);
+    const command = StartCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
+      family: "start", type: "start-run", target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.version }, payload: planned.fingerprints });
+    // Currentness may run after a successful submit, so the plan this exact command consumed stays current.
+    const assertPlan = (consumed: boolean) => {
+      const current = deps.database.authority.startPlans.get(plan.startPlanId);
+      if (current === undefined || planImmutables(current) !== issuedPlan) refuse();
+      if (current.consumedBy === undefined ? consumed || current.version !== plan.version
+        : current.consumedBy.commandId !== command.commandId || current.version !== plan.version + 1) refuse();
+    };
+    const rows = plan.planned.map(run => ({ title: run.title, ...(run.subtitle === undefined ? {} : { subtitle: run.subtitle }), display: plannedRowDisplay(plan.workflowId, run.input) }));
+    return issue(command, context, identity => ({ ...identity, label: `${input.source === "rerun" ? "Rerun" : "Start"} ${descriptor.label}`, targetLabel: countLabel(rows),
+      effect: "workflow-start", source: input.source, workflowId: descriptor.id, dryRun, startPlan: {
+        startPlanId: planned.startPlanId, workflowId: planned.workflowId, expectedVersion: planned.expectedVersion, expiresAt: planned.expiresAt, dryRun: planned.dryRun,
+        browserMode: planned.browserMode ?? request.browserMode, captureBrowserScreenshots: true, fingerprints: planned.fingerprints, planned: rows } }), {
+      planExpiresAt: plan.expiresAt,
+      assertCurrent() {
+        input.assertSource(); assertPlan(false);
+        const current = settings();
+        if (current.configSnapshotId !== plan.configSnapshotId || current.fingerprint !== plan.configFingerprint) refuse();
+      },
+      assertApplied() { assertPlan(true); },
+    });
+  }
+
+  const startParameters = z.strictObject({ workflow: z.string().min(1).max(80), entries: z.array(z.string().min(1).max(400)).min(1).max(ASSISTANT_START_ROWS_MAX) });
+  const rerunParameters = z.strictObject({ run: referenceSchema("R") });
+  const runActionParameters = z.strictObject({ run: referenceSchema("R"), action: z.enum(["pause", "resume", "cancel"]) });
+  const notificationParameters = z.strictObject({ action: z.enum(["read", "unread", "snooze", "unsnooze"]), target: z.union([z.literal("all"), referenceSchema("N")]) });
+
+  const plugin: AssistantPlugin = { domain: "proposals", tools: [
+    { kind: "proposal", name: "propose_workflow_start",
+      description: "Prepare a card to start one served workflow for 1 to 20 entries; the operator confirms it. Each entry is one line of that workflow's input format (see describe_workflow), or exactly a run reference to reuse that run's input. Use references for people and IDs exactly as given. List every entry the operator asked for; the card shows every row.",
+      parameters: startParameters,
+      async propose(value, context) {
+        const { workflow, entries } = startParameters.parse(value), { descriptor } = startable(workflow);
+        const parser = descriptor.surfaces.inputRun?.parser;
+        const runs: { runId: string; version: number }[] = [];
+        const submissions = entries.map(entry => {
+          if (/^\s*\[\[R/u.test(entry)) {
+            const reference = context.references.resolve(entry, ["R"]), run = reusableRun(reference.target, workflow);
+            if (reference.version !== undefined && reference.version !== run.version) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
+            runs.push({ runId: run.envelope.runId, version: run.version });
+            return JsonValueSchema.parse(run.input.raw);
+          }
+          if (parser === undefined) refuse();
+          const [parsed, ...rest] = parseInputRunText(parser, context.references.expandArgument(entry, ["E", "P"]));
+          if (parsed === undefined || rest.length > 0) refuse();
+          return JsonValueSchema.parse(toRawSubmission(parsed));
+        });
+        const assertSource = () => { for (const run of runs) if (reusableRun(run.runId, workflow).version !== run.version) refuse(); };
+        return planStart(context, { workflowId: workflow, submissions, source: runs.length === entries.length && entries.length === 1 ? "run" : "entries", assertSource,
+          accepts: planned => planned.length === submissions.length
+            && planned.every((run, index) => canonicalJsonStringify(run.rawInput) === canonicalJsonStringify(submissions[index])) });
+      } },
+    { kind: "proposal", name: "propose_rerun",
+      description: "Prepare a card to rerun one run with its own input and all of its steps; the operator confirms it. Value changes stay in the Rerun dialog.",
+      parameters: rerunParameters,
+      async propose(value, context) {
+        const reference = context.references.resolve(rerunParameters.parse(value).run, ["R"]);
+        const run = requireTrustRun(deps.runs, reference.target);
+        if (reference.version !== undefined && reference.version !== run.version) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
+        const values = deps.rerunValues({ runId: run.envelope.runId, expectedVersion: run.version });
+        if (values.state !== "available") refuse();
+        const snapshot = values.snapshot, steps = snapshot.steps.map(step => step.key);
+        // The rerun carries the source's own retained input, as the Rerun dialog does; partial or protected sources stay in the dialog.
+        if (snapshot.sourceInput.state !== "available") refuse();
+        const rerunSource = { runId: snapshot.source.runId, expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys: steps, copiedFrom: [] };
+        return planStart(context, { workflowId: snapshot.source.workflow, submissions: [snapshot.sourceInput.value], rerunSource, selectedStepKeys: steps, source: "rerun",
+          assertSource: () => { if (requireTrustRun(deps.runs, run.envelope.runId).version !== run.version) refuse(); },
+          accepts: planned => planned.length === 1 });
+      } },
+    { kind: "proposal", name: "propose_run_action",
+      description: "Prepare a card to pause, resume or cancel one run in the queue; the operator confirms it. The existing run command decides whether the action is allowed.",
+      parameters: runActionParameters,
+      async propose(value, context) {
+        const input = runActionParameters.parse(value), reference = context.references.resolve(input.run, ["R"]);
+        const run = requireTrustRun(deps.runs, reference.target);
+        if (reference.version !== undefined && reference.version !== run.version) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
+        const descriptor = deps.descriptors.resolve(run.envelope.workflow), label = descriptor?.label ?? run.envelope.workflow;
+        const target = { runId: run.envelope.runId, expectedVersion: run.version };
+        const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
+          family: "run", type: input.action, target });
+        const row: AssistantProposalRow = { title: run.displayName ?? label, display: plannedRowDisplay(run.envelope.workflow, run.input.parsed) };
+        const verb = input.action === "pause" ? "Pause" : input.action === "resume" ? "Resume" : "Cancel";
+        return issue(command, context, identity => ({ ...identity, label: `${verb} ${label}`, targetLabel: row.title.slice(0, 160), effect: "run-action", action: input.action,
+          workflowId: run.envelope.workflow, run: target, row }), {
+          assertCurrent() { if (requireTrustRun(deps.runs, run.envelope.runId).version !== run.version) refuse(); } });
+      } },
+    { kind: "proposal", name: "propose_notification_action",
+      description: "Prepare a card to mark notifications read or unread, or to snooze or unsnooze them: all current ones, or one notification reference. The operator confirms it.",
+      parameters: notificationParameters,
+      async propose(value, context) {
+        const input = notificationParameters.parse(value);
+        if (input.target === "all") {
+          const operation: NotificationCollectionOperation = NotificationCollectionOperationSchema.parse(input.action);
+          const observe = () => deps.database.withAuthorityReadSnapshot(() => deps.database.authority.notifications.collection(context.actorId, operation));
+          const target = observe();
+          if (target.matchingCount === 0) refuse();
+          const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
+            family: "notification", type: `${NOTIFICATION_ACTIONS[input.action]}-all`, target });
+          const noun = `${String(target.matchingCount)} current notifications`;
+          return issue(command, context, identity => ({ ...identity, effect: "local-write", targetLabel: noun,
+            label: input.action === "read" ? `Mark ${noun} read` : input.action === "unread" ? `Mark ${noun} unread` : input.action === "snooze" ? `Snooze ${noun}` : `Unsnooze ${noun}` }), {
+            assertCurrent() { if (canonicalJsonStringify(observe()) !== canonicalJsonStringify(target)) refuse(); } });
+        }
+        const id = context.references.resolve(input.target, ["N"]).target, record = deps.database.authority.notifications.get(id);
+        if (record === undefined || record.actorId !== context.actorId) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
+        const target = { notificationId: record.notificationId, actorId: record.actorId, expectedVersion: record.version };
+        const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
+          family: "notification", type: NOTIFICATION_ACTIONS[input.action], target });
+        const verb = input.action === "read" ? "Mark read" : input.action === "unread" ? "Mark unread" : input.action === "snooze" ? "Snooze" : "Unsnooze";
+        return issue(command, context, identity => ({ ...identity, effect: "local-write", label: `${verb}: notification`, targetLabel: record.title.slice(0, 160) }), {
+          assertCurrent() { if (deps.database.authority.notifications.get(id)?.version !== record.version) refuse(); } });
+      } },
+  ] };
+
+  return Object.freeze({
+    plugin,
+    /** Confirm or Cancel one issued card: identity, revision, expiry and the reviewed digest first; one claim; UNKNOWN is never retried. */
+    async decideAction(decision: AssistantActionDecision, signal: AbortSignal): Promise<AssistantActionResult> {
+      signal.throwIfAborted(); deps.assertCurrent();
+      const issued = pending.get(decision.actionId);
+      if (issued === undefined || issued.chat.chatId !== decision.chatId || issued.revision !== decision.revision
+        || Date.parse(issued.expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");
+      issued.assertCurrent();
+      if (canonicalJsonStringify(deps.database.authority.assistantAuthorization.action(decision.actionId)) !== canonicalJsonStringify(issued.record)) throw new Error("assistant-action-record-stale");
+      if (decision.decision === "cancel") {
+        pending.delete(decision.actionId);
+        deps.authorization.cancel(issued.chat, decision.actionId, decision.revision);
+        return { state: "cancelled", actionId: decision.actionId };
+      }
+      if (decision.reviewedDigest !== issued.digest) throw new Error("assistant-reviewed-proposal-mismatch");
+      pending.delete(decision.actionId);
+      deps.authorization.approve(issued.chat, decision.actionId, decision.revision);
+      // After the claim every failure, including this Confirm's own abort, is UNKNOWN: the action is spent and never retried.
+      try {
+        const current = () => { signal.throwIfAborted(); issued.assertCurrent(); };
+        const result = issued.start
+          ? await deps.authorization.consumeStart(issued.chat, decision.actionId, current, command => deps.commands.submit(command))
+          : deps.authorization.consume(issued.chat, decision.actionId);
+        if (!issued.start && result !== null) deps.commands.publish(issued.record.command, result);
+        signal.throwIfAborted();
+        if (result?.state !== "applied") return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
+        issued.assertApplied();
+        return { state: "applied", actionId: decision.actionId };
+      } catch { return { state: "unknown", actionId: decision.actionId }; }
+    },
+  });
+}

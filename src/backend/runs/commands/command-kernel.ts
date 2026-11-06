@@ -2868,6 +2868,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         || entry.family === "start" && dependencies.assistantRevalidate !== undefined
         || entry.family === "settings" && entry.action !== "apply-protected-settings"
         || entry.family === "worker-browser" && entry.action === "spawn-worker" && dependencies.assistantRevalidate !== undefined
+        || entry.family === "run" && (entry.action === "pause" || entry.action === "resume" || entry.action === "cancel") && dependencies.assistantRevalidate !== undefined
       )).map(entry => ({ family: entry.family, action: entry.action, classification: entry.classification, subject: entry.family === "start" ? "classified" as const : "none" as const }));
       const identity = { commands: availability(), schema: deriveSchemaHash(CommandRequestSchema, "input"),
         surface: dependencies.assistantSurface?.() ?? null,

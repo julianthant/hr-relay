@@ -14,7 +14,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
 import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
-import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
+import { assistantProposalDigest, useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
 import { type ComposerDraft, useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
 
@@ -123,10 +123,12 @@ it.each(['notification', 'workflow'] as const)('renders the existing served %s c
   let current!: ReturnType<typeof useAssistantController>, confirmations = 0;
   const identity = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1 };
   const proposal = kind === 'workflow' ? ASSISTANT_START_PROPOSAL : { ...identity,
-    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', subject: 'none' as const, effect: 'local-write' as const };
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', effect: 'local-write' as const };
   const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
-    async assistantDecide(input: { chatId: string; actionId: string; revision: number; decision: 'confirm' | 'cancel' }) {
-      assert.deepEqual(input, { ...identity, decision: 'confirm' }); confirmations++;
+    async assistantDecide(input: { chatId: string; actionId: string; revision: number; decision: 'confirm' | 'cancel'; reviewedDigest?: string }) {
+      const { reviewedDigest, ...decision } = input;
+      assert.deepEqual(decision, { ...identity, decision: 'confirm' });
+      assert.equal(reviewedDigest, await assistantProposalDigest(proposal)); confirmations++;
       return { state: 'applied' as const, actionId: input.actionId };
     } };
   const producer = createAssistantMockProducer();
@@ -152,7 +154,8 @@ it.each(['notification', 'workflow'] as const)('renders the existing served %s c
   const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, false);
   assert.equal(confirmations, 0);
   await act(async () => { confirm.click(); confirm.click(); });
-  assert.equal(confirmations, 1); assert.match(host.textContent ?? '', kind === 'workflow' ? /Started/u : /Done/u);
+  await vi.waitFor(() => assert.equal(confirmations, 1));
+  await act(async () => { await vi.waitFor(() => assert.match(host.textContent ?? '', kind === 'workflow' ? /Started/u : /Done/u)); });
   assert.equal(host.querySelector('article[aria-label^="Proposed "]'), null);
 });
 
@@ -229,7 +232,7 @@ it.each([
   let decisions = 0, requests = 0, signal: AbortSignal | undefined;
   const action = { chatId: crypto.randomUUID(), actionId: crypto.randomUUID(), revision: 1 };
   const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'action-proposal', proposal: { ...action,
-    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark current notifications read', targetLabel: 'Current notifications', subject: 'none', effect: 'local-write' } }; },
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark current notifications read', targetLabel: 'Current notifications', effect: 'local-write' } }; },
     assistantDecide(_input: unknown, abort?: AbortSignal) { decisions++; signal = abort; return held.promise; } };
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };
@@ -302,7 +305,7 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   let current!: ReturnType<typeof useAssistantController>, decisions = 0;
   const proposal = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1,
-    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', subject: 'none' as const, effect: 'local-write' as const };
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', effect: 'local-write' as const };
   const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
     async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_VERIFICATION_FAILED' as const }; } };
   function Harness() {

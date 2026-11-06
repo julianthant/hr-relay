@@ -154,24 +154,38 @@ const AssistantActionProposalFields = {
   ...AssistantActionIdentitySchema.shape,
   expiresAt: z.string().datetime(), label: z.string().min(1).max(160), targetLabel: z.string().min(1).max(160),
 };
+/** At most this many planned rows on one start card. */
+export const ASSISTANT_START_ROWS_MAX = 20;
+/** What one planned row shows, derived on the server from the planned canonical input, never from model text. */
+export const AssistantRowDisplaySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("person"), name: z.string().min(1).max(160).optional(), employeeId: z.string().regex(/^\d{8}$/u).optional() }),
+  z.strictObject({ kind: z.literal("document"), documentNumber: z.string().min(1).max(40) }),
+  z.strictObject({ kind: z.literal("request") }),
+]);
+export const AssistantProposalRowSchema = z.strictObject({ title: z.string().min(1), subtitle: z.string().min(1).optional(), display: AssistantRowDisplaySchema })
+  .refine(row => row.display.kind !== "person" || row.display.name !== undefined || row.display.employeeId !== undefined, "a person row shows a name or an EID");
+export type AssistantProposalRow = z.infer<typeof AssistantProposalRowSchema>;
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
-  z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("none"), effect: z.literal("local-write") }),
-  z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("selected-run"), effect: z.literal("workflow-start"),
+  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("local-write") }),
+  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("workflow-start"), source: z.enum(["entries", "run", "rerun"]),
     workflowId: z.string().min(1), dryRun: z.boolean(),
-    person: z.strictObject({ name: z.string().min(1).max(160).optional(), employeeId: z.string().regex(/^\d{8}$/u).optional() }).optional(),
     startPlan: StartPlanWireSchema.pick({
       startPlanId: true, workflowId: true, expectedVersion: true, expiresAt: true, dryRun: true,
-      browserMode: true, captureBrowserScreenshots: true, fingerprints: true, planned: true,
+      browserMode: true, captureBrowserScreenshots: true, fingerprints: true,
     }).extend({
       browserMode: StartPlanWireSchema.shape.browserMode.unwrap(), captureBrowserScreenshots: z.literal(true),
-      planned: z.array(StartPlanWireSchema.shape.planned.element.pick({ title: true, subtitle: true })).length(1),
+      planned: z.array(AssistantProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
     }),
   }).refine(value => value.startPlan.workflowId === value.workflowId && value.startPlan.dryRun === value.dryRun
-    && value.targetLabel === value.startPlan.planned[0]?.title
+    && (value.source === "entries" || value.startPlan.planned.length === 1)
     && Date.parse(value.expiresAt) <= Date.parse(value.startPlan.expiresAt), "assistant start must bind one accepted current plan"),
+  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("run-action"), action: z.enum(["pause", "resume", "cancel"]),
+    workflowId: z.string().min(1), run: z.strictObject({ runId: z.uuid(), expectedVersion: z.number().int().positive() }), row: AssistantProposalRowSchema }),
 ]);
 export type AssistantActionProposal = z.infer<typeof AssistantActionProposalSchema>;
-export const AssistantActionDecisionSchema = AssistantActionIdentitySchema.extend({ decision: z.enum(["confirm", "cancel"]) });
+/** Confirm carries the SHA-256 of the canonical JSON of the exact proposal the operator reviewed; Cancel is identity only. */
+export const AssistantActionDecisionSchema = AssistantActionIdentitySchema.extend({ decision: z.enum(["confirm", "cancel"]), reviewedDigest: FingerprintSchema.optional() })
+  .refine(value => (value.decision === "confirm") === (value.reviewedDigest !== undefined), "a confirm carries the reviewed proposal digest; a cancel carries none");
 export type AssistantActionDecision = z.infer<typeof AssistantActionDecisionSchema>;
 export const AssistantUnknownActionResultSchema = z.strictObject({ state: z.literal("unknown"), actionId: z.uuid() });
 export const AssistantActionResultSchema = z.discriminatedUnion("state", [

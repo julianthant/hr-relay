@@ -66,7 +66,8 @@ it("keeps operator confirmation behind the same bounded loopback/media door and 
     const response = await app.request(url, { method: "POST", headers: { ...headers, ...patch }, body: JSON.stringify(identity) });
     assert.ok(response.status === 403 || response.status === 415);
   }
-  for (const body of ["malformed", JSON.stringify({ ...identity, command: { source: "assistant" } }), "x".repeat(20_001)]) {
+  for (const body of ["malformed", JSON.stringify({ ...identity, command: { source: "assistant" } }), JSON.stringify({ ...identity, decision: "confirm" }),
+    JSON.stringify({ ...identity, reviewedDigest: "a".repeat(64) }), "x".repeat(20_001)]) {
     assert.equal((await app.request(url, { method: "POST", headers, body })).status, 400);
   }
   assert.equal(calls, 0);
@@ -77,7 +78,7 @@ it("keeps operator confirmation behind the same bounded loopback/media door and 
 
 it("returns an issued automatic unknown action unchanged without converting it to a generic refusal", async () => {
   const action = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1,
-    expiresAt: "2099-01-01T00:00:00Z", label: "Mark 25 current notifications read", targetLabel: "25 current notifications", subject: "none" as const, effect: "local-write" as const };
+    expiresAt: "2099-01-01T00:00:00Z", label: "Mark 25 current notifications read", targetLabel: "25 current notifications", effect: "local-write" as const };
   const result = { state: "unknown" as const, actionId: action.actionId, action };
   const app: DashboardApp = new Hono(); let calls = 0;
   registerAssistantRoutes(app, { async respond() { calls++; return result; } });

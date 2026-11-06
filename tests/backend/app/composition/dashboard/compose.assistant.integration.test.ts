@@ -9,11 +9,20 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
+import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
+import { assistantProposalDigest } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
+
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../../../../src/backend/assistant/plugins/workflows/facts.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema } from "../../../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
@@ -268,5 +277,464 @@ it.each(["every-action"] as const)('serves preference CAS, replay and verificati
       assert.equal(context.database.authority.commands.get(foreign.commandId), undefined);
       assert.equal(context.database.authority.commandAudits.findByCommand(foreign.commandId), undefined);
 
+  });
+});
+
+function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySnapshot>[0], before: ReturnType<typeof faultAuthoritySnapshot>,
+  reason: "canonical-completion-required" | "action-decision") {
+  assertHttpFaultOnly(owner, before, 2);
+  const added = owner.database.authority.timelineEvents.page({ limit: 500 }).slice(before.timeline.length);
+  const [proposal, http] = added; assert.ok(proposal && http);
+  assert.ok(proposal.cursor < http.cursor);
+  assert.notEqual(proposal.eventId, http.eventId);
+  const events = added.map(record => {
+    assert.deepEqual(record.scope, { kind: "transport", connectionId: "local" });
+    assert.equal(record.payload.kind, "debug");
+    if (record.payload.kind !== "debug") throw new Error("assistant refusal diagnostic required");
+    const { build, pid, pinned, ...event } = record.payload.event;
+    assert.ok(build.length > 0); assert.equal(pid, process.pid); assert.equal(pinned, false);
+    z.uuid().parse(event.correlationId);
+    return event;
+  });
+  assert.notEqual(events[0].correlationId, events[1].correlationId);
+  assert.deepEqual(events.map(event => ({ ...event, correlationId: "generated" })), [
+    { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason, code: "ASSISTANT_PROPOSAL_REFUSED" },
+    { category: "http", phase: "failed", correlationId: "generated", area: "request", reason: "operation-refused", code: "ASSISTANT_PROPOSAL_REFUSED",
+      method: "POST", route: reason === "canonical-completion-required" ? "/api/v1/assistant/respond" : "/api/v1/assistant/action", status: 200 },
+  ]);
+}
+
+it.each([
+  { mode: "every-action", staleAccount: false }, { mode: "every-action", staleAccount: true },
+] as const)("proposes notification collection actions through the composed service with staleAccount=$staleAccount and bounded outbound data", async ({ mode, staleAccount }) => {
+  const installed = true;
+  await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
+    if (installed) {
+      const preferenceResponse = await originalFetch(`${origin}/api/v1/assistant/model-preference`);
+      assert.equal(preferenceResponse.status, 200);
+      assert.equal(preferenceResponse.headers.get('cache-control'), 'no-store');
+      const preference = AssistantModelPreferenceViewSchema.parse(await preferenceResponse.json());
+      assert.equal(preference.profileId, context.admission.profileBinding.profileId);
+      assert.equal(preference.epoch, context.profileEpoch);
+      assert.equal(preference.revision, 0);
+      publicCapabilityResponses(transport);
+      const verified = AssistantResultSchema.parse(await post('assistant/respond', { conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
+      assert.equal(verified.state, 'answered');
+    }
+    if (installed) {
+      const grant = CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+        family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode } } }));
+      assert.equal(grant.state, "applied");
+      const id = randomUUID(), ids = [id, ...Array.from({ length: 24 }, () => randomUUID())];
+      context.database.withAuthorityTransaction(({ notifications }) => { for (const [index, notificationId] of ids.entries()) notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator", dedupeFingerprint: index.toString(16).padStart(64, "0"),
+        trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary", links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }],
+        count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })); });
+      const noCallBaseline = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
+      const noCallRows = context.database.authority.notifications.listByActor("local-operator");
+      const durableRows = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, "state.db"), database => ({
+        actions: database.prepare("SELECT * FROM assistant_actions ORDER BY id").all(),
+        commands: database.prepare("SELECT * FROM commands ORDER BY id").all(),
+        audits: database.prepare("SELECT * FROM command_audits ORDER BY id").all(),
+      }));
+      const noCallDurable = durableRows();
+      transport.setResponse(init => {
+        if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+        return new Response(completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }], request.model, "text_without_effect"), { headers: { "content-type": "text/event-stream" } });
+      });
+      {
+        const prose = AssistantResultSchema.parse(await post("assistant/respond", { conversationId: randomUUID(), messageId: randomUUID(), message: "mark notifications read" }));
+        assert.equal(prose.state, "answered");
+        assert.deepEqual(durableRows(), noCallDurable);
+        assert.deepEqual(context.database.authority.notifications.listByActor("local-operator"), noCallRows);
+        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, 0);
+      }
+      let turns = 0;
+      transport.setResponse(init => {
+        if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+        const outbound = JSON.stringify(request);
+        for (const local of [...ids, "Local title", "Local summary", "unrecognized private local request"]) assert.equal(outbound.includes(local), false);
+        turns++;
+        const output = turns === 1 ? [{ type: "function_call", namespace: "relay", name: "propose_notification_action", call_id: "call_local", arguments: JSON.stringify({ action: "read", target: "all" }), status: "completed" }]
+          : [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Notification updated." }] }];
+        return new Response(completedResponseStream(output, request.model, `resp_${turns}`), { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const result = AssistantResultSchema.parse(await post("assistant/respond", { conversationId: randomUUID(), messageId: randomUUID(), message: "mark notifications read" }));
+      if (mode === "every-action") {
+        assert.equal(result.state, "action-proposal"); if (result.state !== "action-proposal") throw new Error("pending operator action required");
+        assert.equal(turns, 1, "operator DTO never returns to model");
+        assert.equal(result.proposal.targetLabel, "25 current notifications");
+        assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
+        const record = context.database.authority.assistantAuthorization.action(result.proposal.actionId); assert.ok(record);
+        assert.equal(record.command.source, "assistant");
+        const before = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
+        const foreign = AssistantActionResultSchema.parse(await post("assistant/action", { chatId: randomUUID(), actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm", reviewedDigest: await assistantProposalDigest(result.proposal) }));
+        assert.equal(foreign.state, "refused"); assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, before, "action-decision");
+        const decision = { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm", reviewedDigest: await assistantProposalDigest(result.proposal) };
+        const edited = await assistantProposalDigest({ ...result.proposal, targetLabel: "24 current notifications" });
+        const beforeEdited = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
+        assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", { ...decision, reviewedDigest: edited })).state, "refused");
+        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, beforeEdited, "action-decision");
+        assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
+        if (staleAccount) {
+          await context.account.signOut();
+          const stopped = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
+          assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
+          assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, stopped, 1);
+          assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
+        } else {
+        const confirmed = AssistantActionResultSchema.parse(await post("assistant/action", decision));
+        assert.equal(confirmed.state, "applied");
+        const settled = context.database.authority.assistantAuthorization.action(result.proposal.actionId); assert.ok(settled);
+        assert.equal(settled.state, "settled");
+        const audit = context.database.authority.commandAudits.findByCommand(settled.command.commandId);
+        assert.equal(audit?.request.source, "assistant"); assert.equal(audit?.versionChanges.length, 25);
+        const after = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
+        assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
+        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, after, "action-decision");
+        }
+      } else throw new Error("granted mode required");
+      for (const notificationId of ids) assert.equal(context.database.authority.notifications.get(notificationId)?.status, staleAccount ? "unread" : "read");
+    }
+
+  });
+});
+
+
+it.each(["current", "deleted"] as const)("rechecks the %s selected source after the real same-workflow capacity wait", async change => {
+  type Birth = { child: ReturnType<typeof spawn>; member: WorkerPoolMember; ready: Promise<unknown>;
+    closed: Promise<{ code: number | null; signal: string | null }> };
+  const birth = Promise.withResolvers<Birth>(), children: Birth[] = [];
+  await withServedAssistant(async ({ profile, context, transport, clock, origin }) => {
+    const database = context.database, client = createDashboardClient({ baseUrl: origin });
+    const pending: Promise<{ result: unknown } | { error: unknown }>[] = [], failures: unknown[] = [];
+    let processLock: ReturnType<typeof bindWorkerProcessAdmission>["processLock"] | undefined;
+    try {
+      const grant = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(),
+        requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-settings",
+        target: { expectedRevision: context.settings.read().record.revision }, payload: { patch: {},
+          patchFingerprint: deriveRawSettingsPatchFingerprint({}), settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } });
+      assert.equal(grant.state, "applied");
+      publicCapabilityResponses(transport);
+      assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, "answered");
+      const plan = await client.submitStartPlan({ workflowId: "person-lookup", dryRun: false,
+        submissions: [{ emplId: "10873690" }, { emplId: "10873698" }], browserMode: "headless", captureBrowserScreenshots: true });
+      assert.deepEqual(plan.refused, []); assert.equal(plan.planned.length, 2);
+      const firstCommandId = randomUUID();
+      let firstSettled = false;
+      const first = client.executeCommand({ commandId: firstCommandId, requestedAt: clock.now().toISOString(),
+        requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
+        target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints })
+        .then(result => { firstSettled = true; return { result }; }, (error: unknown) => { firstSettled = true; return { error }; });
+      pending.push(first);
+      const owned = await Promise.race([birth.promise, first.then(outcome => {
+        if ("error" in outcome) throw outcome.error;
+        throw new Error(`first start settled before worker birth: ${outcome.result.state}`);
+      })]);
+      assert.equal(await owned.ready, "ready");
+      assert.equal(firstSettled, false);
+      assert.equal(children.length, 1);
+      const firstAudit = database.authority.commandAudits.findByCommand(firstCommandId);
+      assert.equal(firstAudit?.result.state, "applied");
+      assert.equal(database.authority.workerLeases.get(owned.member.workerId), undefined);
+      const runs = database.authority.runs.listByWorkflow("person-lookup"); assert.equal(runs.length, 2);
+      const selected = runs.find(run => z.object({ emplId: z.string() }).parse(run.input.raw).emplId === "10873698"); assert.ok(selected);
+      const cancelCommandId = randomUUID();
+      assert.equal((await client.executeCommand({ commandId: cancelCommandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator",
+        source: "queue-row", family: "run", type: "cancel", target: { runId: selected.envelope.runId, expectedVersion: selected.version } })).state, "applied");
+      assert.equal(database.authority.commandAudits.findByCommand(cancelCommandId)?.result.state, "applied");
+      const source = database.authority.runs.get(selected.envelope.runId); assert.ok(source);
+      assert.equal(source.lifecycle.state, "terminal");
+      assert.equal(source.envelope.parent, undefined);
+      assert.deepEqual(database.authority.runs.listChildren(source.envelope.runId), []);
+      assert.equal(database.authority.runs.listByWorkflow("person-lookup").filter(run => run.lifecycle.state === "queued").length, 1);
+      const subjectRef = `run_${source.envelope.runId}_${source.version}`;
+      let proposalTurns = 0;
+      transport.setResponse(init => {
+        assert.equal(typeof init.body, "string");
+        if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+        const outbound = JSON.stringify(request);
+        for (const privateValue of [subjectRef, "10873690", "10873698"]) assert.equal(outbound.includes(privateValue), false);
+        const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token);
+        proposalTurns++;
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: "propose_workflow_start", call_id: "call_start_proposal",
+          arguments: JSON.stringify({ workflow: "person-lookup", entries: [token] }), status: "completed" }], request.model, "resp_start_proposal"), { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const proposed = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: "Run Person Lookup again for this run", subjectRef });
+      assert.equal(proposed.state, "action-proposal");
+      if (proposed.state !== "action-proposal") throw new Error("confirmed start proposal required");
+      assert.equal(proposalTurns, 1);
+      const record = database.authority.assistantAuthorization.action(proposed.proposal.actionId); assert.ok(record);
+      assert.equal(record.command.family, "start");
+      if (record.command.family !== "start") throw new Error("canonical start command required");
+      const assistantPlan = database.authority.startPlans.get(record.command.target.startPlanId); assert.ok(assistantPlan);
+      assert.notEqual(assistantPlan.startPlanId, plan.startPlanId);
+      assert.deepEqual(assistantPlan.refused, []); assert.equal(assistantPlan.planned.length, 1);
+      assert.deepEqual(assistantPlan.planned[0]?.input.value, source.input.parsed.value);
+      const beforeRuns = database.authority.runs.listByWorkflow("person-lookup"), beforeControls = database.authority.workerControls.list();
+      assert.equal(record.state, "prepared");
+      assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
+      assert.equal(proposed.proposal.effect, "workflow-start"); if (proposed.proposal.effect !== "workflow-start") throw new Error("start card required");
+      assert.equal(proposed.proposal.source, "run");
+      assert.deepEqual(proposed.proposal.startPlan.planned.map(row => row.display), [{ kind: "person", employeeId: "10873698" }]);
+      const decision = AssistantActionDecisionSchema.parse({ chatId: proposed.proposal.chatId, actionId: proposed.proposal.actionId, revision: proposed.proposal.revision, decision: "confirm",
+        reviewedDigest: await assistantProposalDigest(proposed.proposal) });
+      assert.ok(typeof client.assistantDecide === "function");
+      let assistantSettled = false;
+      const confirmation = client.assistantDecide(decision).then(result => { assistantSettled = true; return { result }; },
+        (error: unknown) => { assistantSettled = true; return { error }; });
+      pending.push(confirmation);
+      await vi.waitFor(() => assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed"), { timeout: 5_000, interval: 25 });
+      assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
+      assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), beforeRuns);
+      assert.deepEqual(database.authority.workerControls.list(), beforeControls);
+      assert.equal(database.authority.commands.get(record.command.commandId), undefined);
+      assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
+      assert.equal(children.length, 1);
+      const sibling = beforeRuns.find(run => run.envelope.runId !== source.envelope.runId); assert.ok(sibling);
+      assert.equal(sibling.lifecycle.state, "queued");
+      if (change === "deleted") {
+        const deleteCommandId = randomUUID();
+        const deletion = await client.executeCommand({ commandId: deleteCommandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator",
+          source: "queue-row", family: "run", type: "delete", target: { runId: source.envelope.runId, expectedVersion: source.version } });
+        assert.equal(deletion.state, "applied");
+        if (deletion.state !== "applied") throw new Error("disposable terminal source deletion required");
+        assert.deepEqual(deletion.affectedTargets, [{ family: "run", runId: source.envelope.runId }]);
+        assert.equal(database.authority.commandAudits.findByCommand(deleteCommandId)?.result.state, "applied");
+        assert.equal(database.authority.runs.get(source.envelope.runId), undefined);
+        assert.equal(database.authority.deletedRuns.get(source.envelope.runId)?.runId, source.envelope.runId);
+        assert.deepEqual(database.authority.runs.get(sibling.envelope.runId), sibling);
+      }
+      const afterChangeRuns = database.authority.runs.listByWorkflow("person-lookup");
+      const tombstone = database.authority.deletedRuns.get(source.envelope.runId);
+      assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
+      assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed");
+      assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
+      assert.deepEqual(database.authority.workerControls.list(), beforeControls);
+      const pid = owned.child.pid; assert.ok(pid !== undefined);
+      const workerDatabase = AuthorityDatabase.open(context.admission,
+        { path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-capacity-birth" }, clock,
+        undefined, undefined, undefined, context.credentials);
+      let binderCloseAttempted = false;
+      try {
+        const bound = bindWorkerProcessAdmission({ authorityPath: profile.path, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot),
+          clock, pid, workerId: owned.member.workerId, open: () => workerDatabase, close: value => { binderCloseAttempted = true; value.close(); },
+          admit: value => value.withAuthorityReadSnapshot(() => {
+            const slot = value.authority.workerSlots.get(owned.member.workerId); assert.ok(slot);
+            assert.deepEqual(workerPoolMember(slot), owned.member); return owned.member.workerId;
+          }) });
+        processLock = bound.processLock;
+        const spawnCommandId = runCapacityCommandId(firstCommandId, "spawn-worker", owned.member.poolIndex);
+        assert.equal(workerDatabase.authority.workerControls.get(spawnCommandId)?.request.type, "spawn-worker");
+        assert.equal(workerDatabase.authority.workerLeases.start({ commandId: spawnCommandId, workerId: bound.workerId, workflow: "person-lookup",
+          browserSystems: ["crm", "ucpath"], processId: pid, requestedBy: "local-operator", now: clock.now().toISOString() }).state, "started");
+      } finally { if (!binderCloseAttempted) workerDatabase.close(); }
+      const firstOutcome = await first;
+      if ("error" in firstOutcome) throw firstOutcome.error;
+      assert.equal(firstOutcome.result.state, "applied");
+      const outcome = await confirmation;
+      if ("error" in outcome) throw outcome.error;
+      assert.equal(outcome.result.state, change === "current" ? "applied" : "unknown");
+      const settled = database.authority.assistantAuthorization.action(record.id); assert.ok(settled);
+      assert.equal(settled.state, change === "current" ? "settled" : "unknown");
+      const audit = database.authority.commandAudits.findByCommand(record.command.commandId);
+      if (change === "current") {
+        assert.ok(audit);
+        assert.deepEqual(audit.request, record.command); assert.equal(audit.result.state, "applied");
+        assert.equal(audit.request.source, "assistant");
+        const newRuns = database.authority.runs.listByWorkflow("person-lookup").filter(run => !beforeRuns.some(before => before.envelope.runId === run.envelope.runId));
+        assert.equal(newRuns.length, 1);
+        assert.deepEqual(newRuns[0]?.input.parsed, source.input.parsed);
+      } else {
+        assert.equal(audit, undefined);
+        assert.equal(database.authority.commands.get(record.command.commandId), undefined);
+        assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), afterChangeRuns);
+        assert.deepEqual(database.authority.deletedRuns.get(source.envelope.runId), tombstone);
+      }
+      assert.deepEqual(database.authority.runs.get(sibling.envelope.runId), sibling);
+      assert.deepEqual(database.authority.commandAudits.findByCommand(firstCommandId), firstAudit);
+      assert.equal(database.authority.commandAudits.findByCommand(cancelCommandId)?.result.state, "applied");
+      assert.equal(children.length, 1);
+      assert.deepEqual(database.authority.workerControls.list().map(control => control.commandId), beforeControls.map(control => control.commandId));
+      const finishedRuns = database.authority.runs.listByWorkflow("person-lookup"), finishedControls = database.authority.workerControls.list();
+      const beforeRefusal = faultAuthoritySnapshot({ database, stateRoot: context.admission.stateRoot });
+      assert.equal((await client.assistantDecide(decision)).state, "refused");
+      assertAssistantProposalFaults({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, "action-decision");
+      assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
+      assert.deepEqual(database.authority.workerControls.list(), finishedControls);
+      assert.equal(children.length, 1);
+    } catch (error) { failures.push(error); }
+    for (const owned of children) {
+      try {
+        if (owned.child.connected) await new Promise<void>((resolve, reject) => {
+          owned.child.send("stop", error => { if (error === null) resolve(); else reject(error); });
+        });
+        assert.deepEqual(await owned.closed, { code: 0, signal: null });
+        const pid = owned.child.pid; assert.ok(pid !== undefined);
+        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+        assert.throws(() => process.kill(-pid, 0), { code: "ESRCH" });
+      } catch (error) { failures.push(error); }
+    }
+    for (const execution of pending) {
+      const outcome = await execution;
+      if ("error" in outcome) failures.push(outcome.error);
+    }
+    if (failures.length === 0) {
+      try {
+        assert.equal(children.length, 1); assert.ok(processLock);
+        const owned = children[0]; assert.ok(owned);
+        const member = owned.member, lease = database.authority.workerLeases.get(member.workerId); assert.ok(lease);
+        assert.equal(lease.processId, owned.child.pid);
+        const lifetime = { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt };
+        database.settleInterruptedWorker(profile.lifetime, member.workerId, lease.leaseGeneration, clock.now().toISOString());
+        assert.equal(database.authority.workerLeases.get(member.workerId)?.lifecycle.state, "stopped");
+        database.assertWorkerLifecycleRelease(member.workerId);
+        assert.ok(database.authority.workerControls.browsers(member.workerId).every(browser => browser.health === "closed"));
+        processLock.release();
+        database.assertStoppedWorkerLifetime(member, lifetime);
+      } catch (error) { failures.push(error); }
+    }
+    if (failures.length > 0) throw new AggregateError(failures, "Assistant capacity wait fixture failed", { cause: failures[0] });
+  }, { spawn: ({ member }) => {
+    const child = spawn(process.execPath, ["-e", 'process.on("message", () => { process.disconnect(); }); process.send("ready");'],
+      { detached: true, env: {}, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    const ready = once(child, "message").then(([message]: unknown[]) => message);
+    const closed = new Promise<{ code: number | null; signal: string | null }>(resolve => { child.once("close", (code, signal) => resolve({ code, signal })); });
+    const owned = { child, member, ready, closed }; children.push(owned); birth.resolve(owned);
+    return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
+  } });
+});
+
+it('confirms run actions, issues reruns and entry lists, and refuses expired, stale and changed cards before any effect', async () => {
+  await withServedAssistant(async fixture => {
+    const { context, transport, origin, clock, post } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
+    const database = context.database;
+    let cleanupSubscription = () => {};
+    try {
+      if (client.assistantDecide === undefined) throw new Error('assistant decide owner required');
+      const decide = (decision: Parameters<NonNullable<typeof client.assistantDecide>>[0]) => { if (client.assistantDecide === undefined) throw new Error('assistant decide owner required'); return client.assistantDecide(decision); };
+      assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+        family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } })).state, "applied");
+      publicCapabilityResponses(transport);
+      assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+      let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
+      const outputs: unknown[] = [];
+      transport.setResponse(init => {
+        if (typeof init.body !== 'string') throw Error('synthetic request body required');
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), last = request.input.at(-1);
+        // After a tool output the scripted model answers in prose; the turn's disposition comes from the tool outcome.
+        if (last !== undefined && 'type' in last && last.type === 'function_call_output') {
+          outputs.push(JSON.parse(last.output));
+          return new Response(completedResponseStream([{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Done.' }] }],
+            request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        const [name, args] = next(JSON.stringify(request));
+        return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name, call_id: `call_${randomUUID()}`, arguments: JSON.stringify(args), status: 'completed' }],
+          request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
+      });
+      const refusedTurn = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
+        next = script;
+        return client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
+      };
+      const selected = (outbound: string) => { const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token); return token; };
+      const propose = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
+        next = script;
+        const result = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
+        assert.equal(result.state, 'action-proposal'); if (result.state !== 'action-proposal') throw new Error('card required');
+        return result.proposal;
+      };
+      const confirm = async (proposal: Parameters<typeof assistantProposalDigest>[0]) => decide(AssistantActionDecisionSchema.parse({
+        chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision, decision: 'confirm', reviewedDigest: await assistantProposalDigest(proposal) }));
+
+      const expired = await propose('Cancel this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'cancel' }], subjectRef);
+      clock.setWall(new Date(clock.nowMs() + 61_000));
+      assert.equal((await confirm(expired)).state, 'refused');
+      assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
+
+      const cancel = await propose('Cancel this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'cancel' }], subjectRef);
+      assert.equal(cancel.effect, 'run-action');
+      assert.equal(database.authority.assistantAuthorization.action(cancel.actionId)?.command.family, 'run');
+      assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
+      assert.equal((await confirm(cancel)).state, 'applied');
+      const cancelled = database.authority.runs.get(run.envelope.runId); assert.ok(cancelled && cancelled.lifecycle.state === 'terminal');
+      assert.equal(database.authority.commandAudits.findByCommand(database.authority.assistantAuthorization.action(cancel.actionId)?.command.commandId ?? '')?.request.source, 'assistant');
+      assert.equal((await confirm(cancel)).state, 'refused');
+
+      const stale = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: 'Pause this run', subjectRef });
+      assert.deepEqual(stale, { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
+
+      const current = `run_${run.envelope.runId}_${cancelled.version}`;
+      assert.deepEqual(await refusedTurn('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current),
+        { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED }, 'a cancelled source is not rerun-eligible');
+      const durableCounts = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => ({
+        actions: raw.prepare('SELECT id FROM assistant_actions').all().length, plans: raw.prepare('SELECT id FROM run_requests').all().length }));
+      const countsBefore = durableCounts();
+      assert.deepEqual(await refusedTurn('Run Person Lookup again for this run', outbound => ['propose_workflow_start', { workflow: 'person-lookup', entries: [selected(outbound)] }], subjectRef),
+        { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }, 'a moved selected run cannot be reused');
+      assert.deepEqual(durableCounts(), countsBefore);
+
+      const second = seedAssistantReadRun(fixture);
+      const dayOf = async (runId: string) => {
+        const day = (await client.searchRuns({ q: runId, scope: 'run', limit: 1 })).results[0]?.partitionDay; assert.ok(day); return day;
+      };
+      const day = await dayOf(second.run.envelope.runId);
+      // Only a published snapshot or patch reaches this subscriber; a fresh read would pass even without publication.
+      const published: { revision: number; pause: string | undefined }[] = [];
+      await new Promise<void>((resolve, reject) => {
+        const subscription = client.subscribeDay({ day, onDay: received => {
+          const row = received.queueSurfaces.find(surface => surface.runId === second.run.envelope.runId);
+          if (row !== undefined) published.push({ revision: row.rowRevision, pause: row.pauseControl?.state });
+        }, onState: state => { if (state.state === 'live') resolve(); else if (state.state === 'stopped') reject(new Error('day subscription stopped')); } });
+        cleanupSubscription = () => subscription.close();
+      });
+      await vi.waitFor(() => assert.ok(published.length > 0), { timeout: 5_000, interval: 25 });
+      const pause = await propose('Pause this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'pause' }], second.subjectRef);
+      const beforePause = published.length;
+      assert.equal((await confirm(pause)).state, 'applied');
+      const paused = database.authority.runs.get(second.run.envelope.runId); assert.ok(paused?.pause !== undefined);
+      await vi.waitFor(() => assert.ok(published.slice(beforePause).some(row => row.revision === paused.version && row.pause === 'paused')), { timeout: 5_000, interval: 25 });
+      const resume = await propose('Resume this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'resume' }], `run_${paused.envelope.runId}_${paused.version}`);
+      const beforeResume = published.length;
+      assert.equal((await confirm(resume)).state, 'applied');
+      const resumed = database.authority.runs.get(second.run.envelope.runId); assert.ok(resumed && resumed.pause === undefined);
+      await vi.waitFor(() => assert.ok(published.slice(beforeResume).some(row => row.revision === resumed.version && row.pause !== 'paused')), { timeout: 5_000, interval: 25 });
+      cleanupSubscription();
+      for (const commandId of [pause, resume].map(card => database.authority.assistantAuthorization.action(card.actionId)?.command.commandId ?? '')) {
+        assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, 'applied', 'one canonical execution per confirmed card');
+      }
+
+      const documents = await propose('Separate documents 4502 and 4510', () => ['propose_workflow_start', { workflow: 'separations', entries: ['4502', '4510'] }]);
+      assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
+      assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);
+      assert.equal(documents.targetLabel, '2 documents');
+      assert.equal((await decide({ chatId: documents.chatId, actionId: documents.actionId, revision: documents.revision, decision: 'cancel' })).state, 'cancelled');
+
+      const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
+        const eid = /\[\[E1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(eid);
+        return ['propose_workflow_start', { workflow: 'person-lookup', entries: [eid, 'Jordan Lee'] }];
+      });
+      assert.equal(listed.effect, 'workflow-start'); if (listed.effect !== 'workflow-start') throw new Error('start card required');
+      assert.deepEqual(listed.startPlan.planned.map(row => row.display), [{ kind: 'person', employeeId: '10812345' }, { kind: 'person', name: 'Jordan Lee' }]);
+      assert.equal(listed.targetLabel, '2 people');
+      const record = database.authority.assistantAuthorization.action(listed.actionId); assert.ok(record && record.command.family === 'start');
+      const startPlanId = record.command.family === 'start' ? record.command.target.startPlanId : '';
+      assert.equal((await decide({ chatId: listed.chatId, actionId: listed.actionId, revision: listed.revision, decision: 'cancel' })).state, 'cancelled');
+      assert.equal(database.authority.startPlans.get(startPlanId)?.consumedBy, undefined);
+
+      database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
+        dedupeFingerprint: 'd'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Local title', summary: 'Local summary',
+        links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
+      const notices = await propose('Mark notifications read', () => ['propose_notification_action', { action: 'read', target: 'all' }]);
+      database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
+        dedupeFingerprint: 'f'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Later title', summary: 'Later summary',
+        links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
+      assert.equal((await confirm(notices)).state, 'refused');
+      assert.ok(database.authority.notifications.listByActor('local-operator').every(row => row.status === 'unread'));
+    } finally { cleanupSubscription(); }
   });
 });

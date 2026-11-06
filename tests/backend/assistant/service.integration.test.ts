@@ -35,7 +35,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
     return new Response(typeof step === "string" ? step : step(body), { headers: { "Content-Type": "text/event-stream" } });
   });
   const invoked: string[] = [];
-  const echo: AssistantTool = { name: "echo", description: "Echo a value with references expanded.", parameters: Echo, output: EchoOutput,
+  const echo: AssistantTool = { kind: "read", name: "echo", description: "Echo a value with references expanded.", parameters: Echo, output: EchoOutput,
     privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value, context) { invoked.push("echo"); return { value: context.references.expandArgument(Echo.parse(value).value, ["E"]) }; } };
   const plugin: AssistantPlugin = { domain: "test", tools: input.tools ?? [echo] };
@@ -84,7 +84,7 @@ it("runs one tool per response, binds its output to the call and reuses a repeat
 
 it("keeps an unrecovered tool refusal as the turn's typed refusal and continues after recovery", async () => {
   let fail = true;
-  const flaky: AssistantTool = { name: "flaky", description: "Fails once.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const flaky: AssistantTool = { kind: "read", name: "flaky", description: "Fails once.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value) { if (fail) { fail = false; throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE"); } return { value: Echo.parse(value).value }; } };
   const w = await world({ tools: [flaky] });
   try {
@@ -101,7 +101,7 @@ it("keeps an unrecovered tool refusal as the turn's typed refusal and continues 
 
 it("applies refusal bookkeeping to cached outcomes in call order", async () => {
   const reads: string[] = [];
-  const keyed: AssistantTool = { name: "keyed", description: "Fails for bad.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const keyed: AssistantTool = { kind: "read", name: "keyed", description: "Fails for bad.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value) { const { value: key } = Echo.parse(value); reads.push(key); if (key === "bad") throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE"); return { value: key }; } };
   const w = await world({ tools: [keyed] });
   try {
@@ -115,8 +115,25 @@ it("applies refusal bookkeeping to cached outcomes in call order", async () => {
   } finally { await w.f.cleanup(); }
 });
 
+it("ends the turn with a proposal card and keeps a refused proposal recoverable", async () => {
+  const card = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, expiresAt: "2099-01-01T00:00:00.000Z",
+    label: "Mark 2 current notifications read", targetLabel: "2 current notifications", effect: "local-write" } as const;
+  let refuse = true;
+  const proposal: AssistantTool = { kind: "proposal", name: "propose", description: "Prepare a card.", parameters: Echo,
+    async propose() { if (refuse) { refuse = false; throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED"); } return card; } };
+  const w = await world({ tools: [proposal] });
+  try {
+    w.script.push(call("propose", { value: "a" }), body => {
+      assert.deepEqual(lastOutput(body), { error: "ASSISTANT_PROPOSAL_REFUSED", text: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED });
+      return call("propose", { value: "b" });
+    });
+    assert.deepEqual(await w.ask("Mark them read"), { state: "action-proposal", proposal: card });
+    assert.equal(w.posts(), 2);
+  } finally { await w.f.cleanup(); }
+});
+
 it("refuses an expired or foreign reference as stale for the model to recover", async () => {
-  const resolve: AssistantTool = { name: "resolve", description: "Resolve a reference.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const resolve: AssistantTool = { kind: "read", name: "resolve", description: "Resolve a reference.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value, context) { return { value: context.references.resolve(Echo.parse(value).value, ["E"]).target }; } };
   const w = await world({ tools: [resolve] });
   try {
@@ -143,7 +160,7 @@ it("treats an unoffered tool and malformed arguments as terminal protocol failur
 
 it("keeps an unexpected tool failure fatal even after an earlier recoverable refusal", async () => {
   let calls = 0;
-  const broken: AssistantTool = { name: "broken", description: "Refuses, then breaks.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const broken: AssistantTool = { kind: "read", name: "broken", description: "Refuses, then breaks.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke() { calls++; if (calls === 1) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE"); throw new Error("projection defect"); } };
   const w = await world({ tools: [broken] });
   try {
@@ -153,7 +170,7 @@ it("keeps an unexpected tool failure fatal even after an earlier recoverable ref
 });
 
 it("stops at eight model calls and refuses an oversized tool output for recovery", async () => {
-  const big: AssistantTool = { name: "big", description: "Large output.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const big: AssistantTool = { kind: "read", name: "big", description: "Large output.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value) { return { value: Echo.parse(value).value.repeat(100) }; } };
   const w = await world({ tools: [big] });
   try {

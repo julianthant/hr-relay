@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AssistantFailureCode } from "../../../models/dashboard/assistant.js";
+import type { AssistantActionProposal, AssistantFailureCode } from "../../../models/dashboard/assistant.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { AssistantReferenceKind, AssistantReferenceTable } from "../references.js";
 
@@ -10,16 +10,27 @@ export interface AssistantToolContext {
   readonly references: AssistantReferenceTable;
   readonly actorId: string;
   assertCurrent(): void;
+  /** The turn's captured authority (composition, model policy, account) without its request signal; a proposal keeps it for Confirm. */
+  assertRetainedCurrent(): void;
 }
-export interface AssistantTool {
+interface AssistantToolIdentity {
   readonly name: string;
   readonly description: string;
   readonly parameters: z.ZodType;
+}
+export interface AssistantReadTool extends AssistantToolIdentity {
+  readonly kind: "read";
   readonly output: z.ZodType;
   /** Every output leaf path with its origin; the redaction audit registers it as this tool's process-egress surface. */
   readonly privacy: readonly Readonly<{ path: string; origin: AssistantToolLeafOrigin }>[];
   invoke(argumentsValue: unknown, context: AssistantToolContext): Promise<JsonValue>;
 }
+/** Prepares one confirmation card; its result goes to the operator, never back to the model, and ends the turn. */
+export interface AssistantProposalTool extends AssistantToolIdentity {
+  readonly kind: "proposal";
+  propose(argumentsValue: unknown, context: AssistantToolContext): Promise<AssistantActionProposal>;
+}
+export type AssistantTool = AssistantReadTool | AssistantProposalTool;
 export interface AssistantPlugin {
   readonly domain: string;
   readonly tools: readonly AssistantTool[];
