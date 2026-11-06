@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import type { RunRecord } from "../../../../src/models/run/record.js";
+import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -80,17 +80,17 @@ export function removeEmptyExclusiveSessionLeaseFixture(database: DatabaseSync):
   database.exec("DROP TABLE exclusive_session_leases");
 }
 
-export function readNative6RunRecord(database: DatabaseSync, input: unknown): RunRecord {
+export function readNative6RunRecord(database: DatabaseSync, input: unknown): PredecessorRunRecord {
   inspectNativeAuthority(database, 6);
   const row = z.record(z.string(), z.union([z.string(), z.number(), z.null()])).parse(input);
   assert.equal(Object.hasOwn(row, "pause_state"), false);
-  return runRecordFromRow({ ...row, pause_state: null });
+  return predecessorRunRecordFromRow({ ...row, pause_state: null });
 }
 
-export function updateNative6RunFixture(database: DatabaseSync, record: RunRecord): void {
+export function updateNative6RunFixture(database: DatabaseSync, record: PredecessorRunRecord): void {
   inspectNativeAuthority(database, 6);
   assert.equal(Object.hasOwn(record, "pause"), false);
-  const entries = Object.entries(runRecordColumns(record)).filter(([key]) => key !== "id" && key !== "pause_state");
+  const entries = Object.entries(runRecordColumns(record, PredecessorRunRecordSchema)).filter(([key]) => key !== "id" && key !== "pause_state");
   const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
     .run(...entries.map(([, value]) => value), record.envelope.runId, record.version - 1).changes);
   assert.equal(changes, 1, "native6 fixture run-version-fence-lost");
