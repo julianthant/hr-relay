@@ -649,6 +649,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The requested model is unavailable for this ChatGPT connection. Review the available models before trying again.",
     EmptyParametersSchema,
   ),
+  CHATGPT_MODELS_UNAVAILABLE: catalogEntry(
+    "Relay could not read the models available to this ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
+    EmptyParametersSchema,
+  ),
   CHATGPT_REQUEST_REJECTED: catalogEntry(
     "ChatGPT rejected the request Relay sent. Relay's integration needs correction; review the local diagnostics before retrying.",
     EmptyParametersSchema,

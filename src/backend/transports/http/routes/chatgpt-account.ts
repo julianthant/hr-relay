@@ -11,7 +11,7 @@ import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import { wireError } from "./failure-status.js";
 
-export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "readAccount" | "signIn" | "signOut">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "signOut">; readonly chatGptOcrTest?: ChatGptOcrTestService }
 function failure(error: unknown, dispatched = false) {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : "CHATGPT_AUTH_UNAVAILABLE";
@@ -44,10 +44,10 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     if (!ChatGptAttemptIdSchema.safeParse(id).success || latest?.id !== id) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
     return latest;
   };
-  app.get("/api/v1/settings/chatgpt-account", c => {
+  app.get("/api/v1/settings/chatgpt-account", async c => {
     c.header("Cache-Control", "no-store");
     try {
-      const account = service().readAccount();
+      const account = await service().refreshAccount();
       return c.json(ChatGptAccountViewSchema.parse(latest?.pending === true
         ? { state: "signing-in", attemptId: latest.id, expiresAt: latest.authorization.expiresAt, authorizationUrl: latest.authorization.authorizationUrl, account } : account));
     } catch (error) {
@@ -87,7 +87,7 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     try {
       const current = attempt(id), completion = await waitForCompletion(current.completion, c.req.raw.signal);
       if (current.loggingFailure !== undefined) return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
-      return c.json(ChatGptSignInCompletionSchema.parse(completion.state === "completed" ? { ...completion, account: service().readAccount() } : completion));
+      return c.json(ChatGptSignInCompletionSchema.parse(completion.state === "completed" ? { ...completion, account: await service().refreshAccount() } : completion));
     }
     catch (error) {
       return c.json(failure(error), 400);

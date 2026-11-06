@@ -47,9 +47,12 @@ export const ChatGptShapeKeySchema = z.enum(["*", "[]", "type", "sequence_number
   "verbosity", "max_output_tokens", "max_tool_calls", "user", "service_tier", "background", "conversation", "access_programs", "cyber"]);
 const ChatGptShapePathSchema = z.array(ChatGptShapeKeySchema).max(8);
 export const ChatGptInferenceDiagnosticSchema = z.strictObject({
-  operation: z.enum(["ocr", "assistant"]),
+  operation: z.enum(["ocr", "assistant", "account"]),
   path: z.enum(["transport", "http-error-body", "http-error", "content-type", "stream-read", "stream-decode", "stream-json", "stream-schema",
-    "stream-error", "stream-refusal", "response-failed", "response-incomplete", "stream-delta", "stream-done", "terminal-schema", "output-schema", "stream-incomplete", "usage-persistence", "resource-closure"]),
+    "stream-error", "stream-refusal", "response-failed", "response-incomplete", "stream-delta", "stream-done", "terminal-schema", "output-schema", "stream-incomplete", "usage-persistence", "resource-closure",
+    "auth-account", "auth-refresh", "auth-refresh-rotation", "auth-refresh-subject", "auth-token-http", "auth-token-body", "auth-token-schema", "auth-discovery", "auth-jwks", "auth-id-token-header", "auth-id-token-signature", "auth-id-token-claims", "auth-id-token-audience", "auth-id-token-time", "auth-id-token-nonce",
+    "catalog-request", "catalog-body", "catalog-schema"]),
+  jsonFailure: z.enum(["missing-body", "read", "too-large", "decode", "parse"]).optional(),
   contentType: ChatGptContentTypeSchema,
   hasBody: z.boolean().optional(),
   transport: z.strictObject({ source: z.enum(["native", "injected"]), status: z.number().int().min(100).max(599),
@@ -64,7 +67,7 @@ export const ChatGptInferenceDiagnosticSchema = z.strictObject({
     "subscription_sharing_usage_unavailable", "subscription_sharing_unsupported_capability", "subscription_sharing_route_not_supported",
     "subscription_sharing_invalid_user", "subscription_sharing_user_unavailable", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context",
     "model_not_found", "invalid_request_error", "unsupported_value", "unsupported_parameter", "missing_required_parameter", "invalid_value", "invalid_type",
-    "rate_limit_exceeded", "insufficient_quota", "server_error"]),
+    "rate_limit_exceeded", "insufficient_quota", "server_error", "invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated", "invalid_client"]),
 });
 export type ChatGptInferenceDiagnostic = z.infer<typeof ChatGptInferenceDiagnosticSchema>;
 

@@ -542,7 +542,7 @@ it('keeps pre-effect resource uncertainty visible even when verification is canc
   assert.equal(closure.cause, primary); assert.equal(f.calls(), 0); assert.equal(f.planned(), 0);
 });
 
-it.each(['CHATGPT_AUTH_UNAVAILABLE', 'CHATGPT_USAGE_UNAVAILABLE', 'CHATGPT_MODEL_UNAVAILABLE', 'CHATGPT_REQUEST_REJECTED', 'CHATGPT_RATE_LIMITED', 'CHATGPT_DIAGNOSTICS_UNAVAILABLE', 'CHATGPT_OCR_FAILED', 'CHATGPT_OCR_INCOMPLETE', 'CHATGPT_SERVICE_CLOSED', 'CHATGPT_ASSISTANT_REFUSED'] as const)('keeps %s capability failure visible instead of returning generic unavailability', async code => {
+it.each(['CHATGPT_AUTH_UNAVAILABLE', 'CHATGPT_USAGE_UNAVAILABLE', 'CHATGPT_MODEL_UNAVAILABLE', 'CHATGPT_MODELS_UNAVAILABLE', 'CHATGPT_REQUEST_REJECTED', 'CHATGPT_RATE_LIMITED', 'CHATGPT_DIAGNOSTICS_UNAVAILABLE', 'CHATGPT_OCR_FAILED', 'CHATGPT_OCR_INCOMPLETE', 'CHATGPT_SERVICE_CLOSED', 'CHATGPT_ASSISTANT_REFUSED'] as const)('keeps %s capability failure visible instead of returning generic unavailability', async code => {
   const f = fixture();
   const service = createAssistantService({ ...f.options, verifySelectedModel: async () => { throw new ChatGptAccountError(code); } });
   const result = await service.respond({ message: ASSISTANT_VERIFY_COMMAND }, new AbortController().signal);

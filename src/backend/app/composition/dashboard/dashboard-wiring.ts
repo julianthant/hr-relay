@@ -321,7 +321,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     assistant,
     chatGptOcrTest,
     chatGptAccount: {
-      readAccount: () => { assertCurrent(); const result = chatGptAccount.readAccount(); assertCurrent(); return result; },
+      refreshAccount: async () => { assertCurrent(); const result = await chatGptAccount.refreshAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
     },

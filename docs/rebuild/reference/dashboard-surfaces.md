@@ -549,6 +549,9 @@ Lost completion delivery retains those listeners and the original deadline even 
 already shows connected. Successful completion replay reads the current account, and the browser
 revalidates it after delivery before publishing account state. Sign-out in progress is unavailable;
 an original typed closure refusal remains refused regardless of the current account.
+Account reads renew eligible ChatGPT access tokens before returning Settings state, including after
+restart. A renewable access-token expiry therefore keeps the connection; temporary renewal failures
+remain unavailable, and terminal refresh denial requires sign-in again.
 
 ### Editable fields, Credentials, and Paths
 

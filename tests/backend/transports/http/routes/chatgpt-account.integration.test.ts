@@ -18,7 +18,7 @@ it("preserves the original typed closure refusal even when the current account i
   const app: DashboardApp = new Hono();
   let reads = 0;
   registerChatGptAccountRoutes(app, { chatGptAccount: {
-    readAccount: () => { reads++; return ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" }); },
+    refreshAccount: async () => { reads++; return ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" }); },
     signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise, cancel: async () => {} }),
     signOut: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }),
   } });
@@ -77,6 +77,30 @@ it("serves token-free account lifecycle with original PKCE, state and nonce bind
     assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
     assert.deepEqual(ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json()),
       { state: "completed", attemptId: started.attemptId, account: { state: "signed-out" } });
+  } finally { await f.cleanup(); }
+});
+
+it("renews expired Settings reads instead of publishing sign-in-again state", async () => {
+  const f = await setup();
+  try {
+    await f.connected(); f.clock.advanceWall(3_600_000);
+    assert.deepEqual(f.service.readAccount(), { state: "expired" });
+    const result = ChatGptAccountStateSchema.parse(await (await f.request()).json());
+    assert.equal(result.state, "connected");
+    if (result.state !== "connected") throw new Error("renewed Settings account required");
+    assert.equal(Date.parse(result.expiresAt), f.clock.nowMs() + 3_600_000);
+    assert.equal(f.repository.read()?.session?.refreshToken, "synthetic-refresh-2");
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+  } finally { await f.cleanup(); }
+});
+
+it("keeps a temporary renewal failure unavailable instead of asserting that reconnection is required", async () => {
+  const f = await setup();
+  try {
+    await f.connected(); f.clock.advanceWall(3_600_000); f.setTokenStatus(503);
+    const before = f.repository.read(), result = ChatGptAccountStateSchema.parse(await (await f.request()).json());
+    assert.deepEqual(result, { state: "unavailable", code: "CHATGPT_AUTH_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text });
+    assert.deepEqual(f.repository.read(), before);
   } finally { await f.cleanup(); }
 });
 

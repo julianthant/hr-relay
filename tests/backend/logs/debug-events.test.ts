@@ -17,6 +17,7 @@ describe("bounded native debug events", () => {
       assert.throws(() => writer.emit({ ...event, chatGptInference: { ...chatGptInference, [field]: "PRIVATE_CANARY" } }));
     assert.equal(records.length, 0);
     for (const metadata of [
+      { jsonFailure: "PRIVATE_CANARY" },
       { events: { types: ["PRIVATE_EVENT_CANARY"], truncated: false } },
       { terminalShape: { fields: [{ path: ["response", "PRIVATE_KEY_CANARY"], type: "string" }], truncated: false } },
       { terminalShape: { fields: [{ path: ["response", "id"], type: "PRIVATE_VALUE_CANARY" }], truncated: false } },

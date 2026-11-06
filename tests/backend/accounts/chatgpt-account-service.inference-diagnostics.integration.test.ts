@@ -62,6 +62,51 @@ for (const operation of ["ocr", "assistant"] as const) {
 }
 
 it.each([
+  ["parse", () => new Response("PRIVATE_RESPONSE_CANARY", { headers: { "content-type": "application/json" } })],
+  ["too-large", () => Response.json({ models: [], private: "PRIVATE_RESPONSE_CANARY".repeat(4000) })],
+  ["decode", () => new Response(new Uint8Array([255]), { headers: { "content-type": "application/json" } })],
+  ["missing-body", () => new Response(null, { status: 204 })],
+] as const)("records assistant catalog %s failure separately from a verified OCR account", async (jsonFailure, response) => {
+  const f = await fixture();
+  try {
+    await f.connected(); await f.service.extractText(image); const before = f.repository.read();
+    f.setModelsHook(async () => response());
+    await assert.rejects(f.service.listAssistantModels(), { code: "CHATGPT_MODELS_UNAVAILABLE" });
+    assert.deepEqual(f.repository.read(), before); assert.equal(f.records.length, 1);
+    const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("catalog diagnostic required");
+    assert.equal(payload.event.route, "/v1/models"); assert.equal(payload.event.method, "GET");
+    assert.equal(payload.event.chatGptInference?.operation, "assistant");
+    assert.equal(payload.event.chatGptInference?.path, "catalog-body");
+    assert.equal(payload.event.chatGptInference?.jsonFailure, jsonFailure);
+    assert.equal(JSON.stringify([f.records, f.mirrors]).includes("CANARY"), false);
+  } finally { await f.cleanup(); }
+});
+
+it.each(["signature", "claims", "audience", "time", "rotation", "subject"] as const)("records assistant refresh %s failures before any inference request without private values", async cause => {
+  const f = await fixture();
+  try {
+    await f.connected(); const before = f.repository.read(); f.clock.advanceWall(3_600_000);
+    if (cause === "signature") f.tamperSignature();
+    if (cause === "claims") f.setClaims({ iss: "PRIVATE_ISSUER_CANARY" });
+    if (cause === "audience") f.setClaims({ aud: "PRIVATE_AUDIENCE_CANARY" });
+    if (cause === "time") f.setClaims({ exp: Math.floor(f.clock.nowMs() / 1000) - 1 });
+    if (cause === "rotation") f.setToken({ refresh_token: undefined });
+    if (cause === "subject") f.setClaims({ sub: "PRIVATE_SUBJECT_CANARY" });
+    await assert.rejects(f.service.inferAssistant(assistant), { code: "CHATGPT_AUTH_INVALID" });
+    assert.deepEqual(f.repository.read(), before); assert.equal(f.records.length, 1);
+    const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("authentication diagnostic required");
+    const path = cause === "rotation" || cause === "subject" ? `auth-refresh-${cause}` : `auth-id-token-${cause}`;
+    assert.equal(payload.event.chatGptInference?.operation, "assistant"); assert.equal(payload.event.chatGptInference?.path, path);
+    assert.equal(payload.event.route, undefined);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+    const logged = JSON.stringify([f.records, f.mirrors]);
+    for (const value of ["CANARY", "synthetic-access", "synthetic-refresh", "synthetic@example.com", "synthetic-subject", "oaiapp_fixture"]) assert.equal(logged.includes(value), false);
+  } finally { await f.cleanup(); }
+});
+
+it.each([
   ["http-error-body", () => new Response("PRIVATE_RESPONSE_CANARY", { status: 502, headers: { "content-type": "text/html; private=PRIVATE_HEADER_CANARY" } }), "CHATGPT_OCR_FAILED", "text/html"],
   ["http-error", () => Response.json({ error: { code: "PRIVATE_CODE_CANARY", message: "PRIVATE_RESPONSE_CANARY" } }, { status: 500 }), "CHATGPT_OCR_FAILED", "application/json"],
   ["content-type", () => new Response("PRIVATE_RESPONSE_CANARY", { headers: { "content-type": "private/PRIVATE_HEADER_CANARY" } }), "CHATGPT_OCR_FAILED", "other"],
