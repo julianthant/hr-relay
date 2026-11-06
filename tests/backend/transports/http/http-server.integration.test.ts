@@ -199,7 +199,7 @@ afterEach(_afterEachFixture0);
     await clientClosed.promise;
     assert.equal(observedSignal, routedRequest.signal, "the socket must abort the Request delivered to Hono");
     assert.equal(routedRequest.signal.aborted, true);
-    assert.match(String(routedRequest.signal.reason), /aborted/u);
+    assert.match(String(routedRequest.signal.reason), /disconnected before response handoff/);
     assert.deepEqual(events, ["route-started", "signal-aborted", "cleanup-settled"]);
     assert.equal(responses.length, 0, "a disconnected pre-handoff request must not receive headers");
   });

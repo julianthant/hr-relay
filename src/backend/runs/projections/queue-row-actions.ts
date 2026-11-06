@@ -156,7 +156,7 @@ export function queueRowActions(
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
   const retry = facts.batchMemberRetryAvailable === true && facts.status === "failed" && !facts.isChild && !facts.parkedWrite
-    && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
+    && policyEnables(policy, "retry", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "retry-batch-member", label: "Retry", kind: "command", command: "retry",
       expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["banner"] })] : [];
   const recover = facts.recoverySource !== undefined && !facts.isChild && !facts.parkedWrite

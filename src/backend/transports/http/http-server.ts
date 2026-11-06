@@ -97,7 +97,6 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       if (!transfer.response.writableFinished) void cancel(undefined);
     };
     transfer.response.once("close", onClose);
-    if (transfer.response.destroyed) void cancel(undefined);
     const finish = (): void => {
       transfer.response.off("close", onClose);
       settle();
@@ -125,10 +124,7 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       },
       cancel,
     }, { highWaterMark: 0 });
-    const headers = new Headers(response.headers);
-    // Declared chunked so a failing body read destroys the connection instead of ending as an empty success.
-    if (!headers.has("content-length")) headers.set("transfer-encoding", "chunked");
-    return new Response(body, { status: response.status, statusText: response.statusText, headers });
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
   };
 
   const handle = async (request: Request, bindings: HttpBindings | Http2Bindings): Promise<Response> => {
@@ -140,15 +136,33 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     const transfer: Transfer = { ...(mount === undefined ? {} : { mount }), response: outgoing, done: finished.promise };
     active.add(transfer);
     void finished.promise.then(() => { active.delete(transfer); });
+    // The adapter aborts with a bare string; the route gets one Error naming where the client left.
+    const abort = new AbortController();
+    let handedOff = false;
+    request.signal.addEventListener("abort", () => {
+      abort.abort(new Error(transfer.reason === "shutdown" ? "dashboard server is shutting down"
+        : `dashboard client disconnected ${handedOff ? "during response transfer" : "before response handoff"}`));
+    }, { once: true });
+    const routed = new Request(request.url, {
+      method: request.method, headers: request.headers, signal: abort.signal,
+      ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body, duplex: "half" }),
+    });
     try {
-      const response = await (mount?.app ?? deps.app).fetch(request);
+      const response = await (mount?.app ?? deps.app).fetch(routed);
+      if (abort.signal.aborted) {
+        // The client left before handoff: release the body quietly; nobody receives this response.
+        try { await response.body?.cancel(abort.signal.reason); } catch (cleanup: unknown) { settleFailure(transfer, asError(cleanup), false); }
+        finished.resolve();
+        return new Response(null, { status: 499 });
+      }
       if (response.body === null) {
         finished.resolve();
         return response;
       }
-      return ownBody(response, transfer, request, finished.resolve);
+      handedOff = true;
+      return ownBody(response, transfer, routed, finished.resolve);
     } catch (error: unknown) {
-      settleFailure(transfer, asError(error), false);
+      if (!abort.signal.aborted) settleFailure(transfer, asError(error), false);
       finished.resolve();
       throw error;
     }

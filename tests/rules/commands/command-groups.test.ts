@@ -19,7 +19,7 @@ it("preserves released child IDs and UUID variants with browser-safe hashing", (
 it("derives the complete child envelope without changing provenance or target version", () => {
   const bulk = BulkRunCommandRequestSchema.parse({ commandId: "11111111-1111-4111-8111-111111111111",
     bulkCommandId: "11111111-1111-4111-8111-111111111111", requestedAt: "2026-08-03T12:00:00.000Z",
-    requestedBy: "local-operator", source: "dashboard", reason: "Operator review", family: "run", type: "cancel",
+    requestedBy: "local-operator", source: "dashboard", reason: "Operator review", family: "run", type: "cancel", mode: "best-effort",
     targets: [{ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 }] });
   const child = deriveBulkChildCommand(bulk, bulk.targets[0]);
   assert.deepEqual(child, { commandId: deriveBulkChildCommandId(bulk.bulkCommandId, bulk.targets[0].runId),

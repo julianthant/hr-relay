@@ -226,6 +226,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         type: "cancel",
         bulkCommandId: "00000000-0000-4000-8000-000000000097",
         targets: [{ runId: UUID_4, expectedVersion: 1 }],
+        mode: "best-effort",
       }),
     });
     assert.equal(bulkResponse.status, 403);
@@ -304,6 +305,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       family: "run",
       type: "cancel",
       bulkCommandId: "1a000000-0000-4000-8000-00000000000b",
+      mode: "best-effort",
     } as const;
     const postBulk = async (body: unknown): Promise<{ status: number; payload: Record<string, unknown> }> => {
       const response = await h.app.request("/api/v1/commands/bulk", {

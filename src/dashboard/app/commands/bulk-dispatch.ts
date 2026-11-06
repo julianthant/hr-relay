@@ -192,6 +192,7 @@ export function composeBulkRunCommand(plan: BulkVerbPlan, context: BulkCommandCo
       family: "run",
       type: plan.verb,
       targets: plan.eligible.map(({ runId, expectedVersion }) => ({ runId, expectedVersion })),
+      mode: "best-effort",
     },
   };
 }

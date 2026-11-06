@@ -337,7 +337,7 @@ const BULK_RUN_COMMAND = {
   family: "run",
   type: "bump",
   targets: [{ runId: UUID_3, expectedVersion: 1 }],
-  mode: "all-or-none",
+  mode: "best-effort",
 };
 const PRESENT_PROOF_REFERENCE = {
   proofSchemaHash: HASH_A,

@@ -234,6 +234,7 @@ describe("authority classification and command families", () => {
       family: "run",
       type: "bump",
       targets: [{ runId: UUID_3, expectedVersion: 1 }],
+      mode: "best-effort",
     };
     assert.equal(BulkRunCommandRequestSchema.safeParse(bulk).success, true);
     assert.equal(BulkRunCommandRequestSchema.safeParse({ ...bulk, type: "plan-version-bump", targetVersion: HASH_A }).success, false);

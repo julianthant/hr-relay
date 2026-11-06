@@ -95,7 +95,7 @@ describe("the composed worker process control through the kernel pool door", () 
     let bulkExecutions = 0;
     const bulkPending = ingress.executeBulk({
       commandId: bulkCommandId, bulkCommandId, requestedAt: NOW,
-      requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel",
+      requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", mode: "best-effort",
       targets: [{ runId: RUN_ID, expectedVersion: 1 }],
     }, () => {
       bulkExecutions += 1;

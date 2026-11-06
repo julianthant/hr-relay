@@ -306,7 +306,7 @@ export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-workbook-row"),
     target: WorkbookRowChoiceTargetSchema,
     payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1) }) }),
-    /** Native Retry/Restart remain distinct from explicit checkpoint recovery. */
+    /** Native Retry remains distinct from explicit checkpoint recovery. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "pause", "resume", "cancel", "bump"]), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recover-run"), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
@@ -657,6 +657,7 @@ export const BulkRunCommandRequestSchema = z.strictObject({
   type: z.enum(["retry", "pause", "resume", "cancel", "bump"]),
   bulkCommandId: CommandIdSchema,
   targets: z.array(RunVersionTargetSchema).min(1),
+  mode: z.literal("best-effort"),
 });
 
 /** Exact accepted parent identity for ordered N-child replay. */

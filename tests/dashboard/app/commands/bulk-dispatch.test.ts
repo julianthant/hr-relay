@@ -212,7 +212,7 @@ describe("composeBulkRunCommand — a plan with nothing eligible refuses", () =>
     assert.equal(composeBulkRunCommand(plan, context).state, "refused");
   });
 
-  it("composes an envelope whose bulk identity seeds the child identities", () => {
+  it("composes a best-effort envelope whose bulk identity seeds the child identities", () => {
     const plan = planBulkVerb(
       [row("run-1", "Alpha", [servedCommand("cancel", 4)]), row("run-2", "Bravo", [servedCommand("cancel", 9)])],
       "cancel",
@@ -223,6 +223,7 @@ describe("composeBulkRunCommand — a plan with nothing eligible refuses", () =>
     const request = (composed as { request: Record<string, unknown> }).request;
     assert.equal(request.family, "run");
     assert.equal(request.type, "cancel");
+    assert.equal(request.mode, "best-effort", "the runtime executes no other mode, and the client never asks for one");
     assert.equal(request.bulkCommandId, request.commandId, "the bulk identity is the child identities' seed");
     assert.deepEqual(request.targets, [
       { runId: "run-1", expectedVersion: 4 },

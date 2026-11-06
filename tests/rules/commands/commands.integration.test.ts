@@ -46,7 +46,7 @@ async function fixture() {
 }
 function acceptance() {
   const id = randomUUID();
-  const request = BulkRunCommandRequestSchema.parse({ commandId: id, bulkCommandId: id, requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", reason: "synthetic selection", targets: [{ runId: randomUUID(), expectedVersion: 1 }, { runId: randomUUID(), expectedVersion: 4 }] });
+  const request = BulkRunCommandRequestSchema.parse({ commandId: id, bulkCommandId: id, requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", reason: "synthetic selection", mode: "best-effort", targets: [{ runId: randomUUID(), expectedVersion: 1 }, { runId: randomUUID(), expectedVersion: 4 }] });
   return { bulkCommandId: id, request, requestFingerprint: deriveBulkRunCommandFingerprint(request) };
 }
 function lifecycleCommand(commandId: string) {
