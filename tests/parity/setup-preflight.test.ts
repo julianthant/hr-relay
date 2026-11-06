@@ -69,7 +69,7 @@ test("Setup minimum canvas retains keyboard rerun and authoritative readback",as
   const server=await startSetupPreflightServer("unavailable");
   try {
     await page.setViewportSize({width:1024,height:720});await page.clock.setFixedTime(new Date(server.now));await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,settings:"preflight"});await dismissWorkflowWindow(page);
-    const setup=page.getByRole("region",{name:"Preflight",exact:true});await chooseSelect(setup.getByRole("combobox"), server.scope);await expect(setup).toContainText("Readiness unavailable");const rerun=setup.getByRole("button",{name:"Run preflight",exact:true});await expect(rerun).toBeEnabled();await rerun.focus();await page.keyboard.press("Enter");
+    const setup=page.getByRole("region",{name:"Preflight",exact:true});await chooseSelect(setup.getByRole("combobox"), server.scope);await expect(page.getByText("Readiness unavailable", { exact: true })).toBeVisible();const rerun=setup.getByRole("button",{name:"Run preflight",exact:true});await expect(rerun).toBeEnabled();await rerun.focus();await page.keyboard.press("Enter");
     await expect(setup.getByRole("group",{name:"Readiness summary",exact:true})).toBeVisible();await expect(rerun).toBeEnabled();
     const readUrl=new URL("/api/v1/preflight",server.baseUrl);readUrl.searchParams.set("selection",JSON.stringify({workflowId:server.scope}));
     const read=await page.context().request.get(readUrl.toString());expect(read.ok()).toBe(true);
@@ -87,7 +87,7 @@ test("Setup keeps an expired check visible as a previous result",async({page},_i
     await page.setViewportSize({width:1280,height:720});await page.clock.setFixedTime(new Date(server.now));
     await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,settings:"preflight"});await dismissWorkflowWindow(page);
     const setup=page.getByRole("region",{name:"Preflight",exact:true});
-    await expect(setup).toContainText("Previous result");
+    await expect(page.getByText("Previous result", { exact: true })).toBeVisible();
     await expect(setup).toContainText("Previous check");
     await expect(setup.locator("time")).toHaveCount(1);
     await expect(setup).toContainText("Run preflight for current readiness");

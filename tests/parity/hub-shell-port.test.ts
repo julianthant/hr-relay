@@ -176,7 +176,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
       await expect(animations).not.toBeChecked();
       await expect(appearance.locator(".ds-switch-copy .ds-text-meta,.ds-field-description")).toHaveCount(0);
-      await expect(page.getByText("Settings write unconfirmed", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Settings save unconfirmed", { exact: true })).toHaveCount(0);
       const search = page.locator(".settings-nav-search input");
       const fill = await search.evaluate(element => getComputedStyle(element).backgroundColor);
       await page.keyboard.press("Tab");
@@ -197,7 +197,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(animations).toBeEnabled(); expect(writes).toBe(1); expect(profileReads).toBe(2);
       await page.locator('[data-settings-path="appearance.animations"] .ds-switch-control').click(); await page.emulateMedia({ reducedMotion: "reduce" });
       await expect(animations).toBeChecked(); expect(writes).toBe(2);
-      await expect(page.getByText("Settings write unconfirmed", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Settings save unconfirmed", { exact: true })).toHaveCount(0);
       expect(await page.locator(".hub-logout").evaluate(element => getComputedStyle(element).transitionDuration)).toBe("0s");
       await page.getByRole("link", { name: "Storage", exact: true }).click();
       for (const selector of [".ds-form-group > .ds-result-row", ".diagnostic-check-entry > .ds-result-row"]) {

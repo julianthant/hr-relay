@@ -165,12 +165,12 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
 
       await page.route("**/api/v1/commands", route => route.abort("failed"), { times: 1 });
       await task.fill("240");
-      await expect(page.getByText("Settings write unconfirmed", { exact: true })).toBeVisible();
+      await expect(page.getByText("Settings save unconfirmed", { exact: true })).toBeVisible();
 
       await page.reload(); await expect(task).toBeVisible();
       await page.route("**/api/v1/commands", route => route.fulfill({ status: 403, json: { state: "error", code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "Synthetic refusal", retryable: false } }), { times: 1 });
       await task.fill("270");
-      await expect(page.getByText("Settings were not applied", { exact: true })).toBeVisible();
+      await expect(page.getByText("Settings weren't saved", { exact: true })).toBeVisible();
 
       await attachTree(page, info, evidence("autosave", theme, width));
     } finally { gate.resolve(); await server.close(); }
@@ -434,7 +434,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(setupRegion.getByRole("group", { name: "Readiness summary", exact: true })).toContainText("Checking readiness");
 
         gate.resolve();
-        await expect(setupRegion.getByText("Previous result", { exact: true })).toBeVisible();
+        await expect(page.getByText("Previous result", { exact: true })).toBeVisible();
         await expect(setupRegion.getByRole("button", { name: "Run preflight", exact: true })).toBeEnabled();
 
         await attachTree(page, info, evidence(`preflight-${scene}-coverage`, theme, width));
@@ -505,12 +505,12 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
 
       await page.route("**/api/v1/commands", route => route.abort("failed"), { times: 1 });
       await username.fill("synthetic-unconfirmed-user"); await heading.click();
-      await expect(page.getByText("Credentials write unconfirmed", { exact: true })).toBeVisible();
+      await expect(page.getByText("Credentials save unconfirmed", { exact: true })).toBeVisible();
 
       await page.reload(); await expect(username).toHaveValue("synthetic-baseline-user");
       await page.route("**/api/v1/commands", route => route.fulfill({ status: 403, json: { state: "error", code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "Synthetic refusal", retryable: false } }), { times: 1 });
       await username.fill("synthetic-refused-user"); await heading.click();
-      await expect(page.getByText("Credentials were not applied", { exact: true })).toBeVisible();
+      await expect(page.getByText("Credentials weren't saved", { exact: true })).toBeVisible();
 
       await attachTree(page, info, evidence("credentials-save", theme, width));
     } finally { gate.resolve(); await server.close(); }

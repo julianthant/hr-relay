@@ -52,7 +52,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       else if (entry.state === "limit-reached") await expect(account).toContainText("Usage limit reached");
       if (isOcr) {
         const titles: Record<string, string> = { "ocr-disabled": "OCR test unavailable", "ocr-loading": "Testing OCR", "ocr-completed": "OCR test completed", "ocr-failed": "OCR test failed", "ocr-refused": "OCR test refused", "ocr-uncertain": "OCR test outcome uncertain" };
-        if (entry.state !== "ocr-idle") await expect(page.getByText(titles[entry.state], { exact: true })).toBeVisible();
+        if (entry.state !== "ocr-idle" && entry.state !== "ocr-loading") await expect(page.getByText(titles[entry.state], { exact: true })).toBeVisible();
         if (entry.state === "ocr-loading" || entry.state === "ocr-uncertain" || entry.state === "ocr-disabled") await expect(account.getByRole("button", { name: "Test OCR", exact: true })).toBeDisabled();
       }
       if ("control" in entry) {

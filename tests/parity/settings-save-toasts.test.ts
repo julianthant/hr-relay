@@ -94,7 +94,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("");
       await expect(toasts).toHaveCount(0); await expect(page.getByText("Saved", { exact: true })).toBeVisible();
       await page.route("**/api/v1/commands", route => route.abort("failed"), { times: 1 });
-      await task.fill("240"); await expect(page.getByText("Settings write unconfirmed", { exact: true })).toBeVisible();
+      await task.fill("240"); await expect(page.getByText("Settings save unconfirmed", { exact: true })).toBeVisible();
       const unconfirmed = toasts.filter({ hasText: "Settings save unconfirmed" });
       await expect(unconfirmed).toHaveCount(1);
       await expect(unconfirmed).not.toContainText("Saved Task");
@@ -121,7 +121,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("heading", { name: "Credentials", exact: true }).click();
       const refused = toasts.filter({ hasText: "Credentials weren't saved" });
       await expect(refused).toHaveCount(1);
-      await expect(page.getByText("Credentials were not applied", { exact: true })).toBeVisible();
+      await expect(page.getByText("Credentials weren't saved", { exact: true })).toBeVisible();
       await expect(username).toHaveValue("private-refused-sentinel");
       await expect(refused).not.toContainText("private-refused-sentinel");
       await expect(page.locator("body")).not.toContainText("private-server-sentinel");

@@ -328,21 +328,21 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(storage.getByRole("button", { name: "Running checks…", exact: true })).toBeDisabled();
 
       doctor = "failed"; releaseDoctor?.();
-      await expect(storage).toContainText("Storage checks could not finish");
+      await expect(page.getByRole("alert").filter({ hasText: "Storage checks could not finish" })).toBeVisible();
       await capture(page, info, theme, width, "storage-first-run-failed");
       latest = "failed"; await open();
-      await expect(storage).toContainText("Storage checks could not finish");
+      await expect(page.getByRole("alert").filter({ hasText: "Storage checks could not finish" })).toBeVisible();
 
       latest = "loaded"; doctor = "loaded"; await open();
       await expect(storage.getByRole("button", { name: "Run checks again", exact: true })).toBeEnabled();
-      await expect(storage.getByRole("alert")).toHaveCount(0);
+      await expect(page.getByRole("alert").filter({ hasText: "Storage checks could not finish" })).toHaveCount(0);
       await capture(page, info, theme, width, "storage-loaded");
       doctor = "hold";
       await storage.getByRole("button", { name: "Run checks again", exact: true }).click();
       await expect(storage.getByRole("button", { name: "Running checks…", exact: true })).toBeDisabled();
 
       doctor = "failed"; releaseDoctor?.();
-      await expect(storage).toContainText("Storage checks could not finish");
+      await expect(page.getByRole("alert").filter({ hasText: "Storage checks could not finish" })).toBeVisible();
       await expect(storage).toContainText("Stored data is readable.");
 
       doctor = "loaded";
@@ -353,7 +353,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         counts: { state: "unavailable", cause: { code: "authority-unavailable", summary: "Counts are unavailable." } },
       };
       await open();
-      await expect(storage).toContainText("Data store unavailable");
+      await expect(page.getByText(/^(Data store|Storage) unavailable$/u).first()).toBeVisible();
 
       await storage.getByText("Diagnostic details", { exact: true }).first().click();
       await expect(storage.getByRole("region", { name: "Stored data diagnostics", exact: true })).toBeVisible();

@@ -96,7 +96,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
       else await route.continue();
     });
     await password.blur();
-    await expect(page.getByText("Credentials write unconfirmed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Credentials save unconfirmed", { exact: true })).toBeVisible();
     await expect(password).toBeDisabled();
     const afterLost = await client.editableSettings(); expect(afterLost.revision).toBe(1);
     if (afterLost.protectedSettings.state !== "available") throw new Error("protected-readback-unavailable");
@@ -133,7 +133,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     // Lose the confirming GET after the next real effect; retry must keep its identity.
     await page.route("**/api/v1/settings/editable", route => route.abort("failed"), { times: 1 });
     await page.getByRole("button", { name: "Retry edit", exact: true }).click();
-    await expect(page.getByText("Credentials write unconfirmed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Credentials save unconfirmed", { exact: true })).toBeVisible();
     const retryEdit = ProtectedSettingsCommandRequestSchema.parse(attempts.at(-1));
     expect(retryEdit.target.expectedRevision).toBe(protectedBaseline + 3);
     expect(retryEdit.payload.entries).toEqual({ ucpathPassword: { set: secret } });
