@@ -37,6 +37,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
   "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
   "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/process-identity.integration.test.ts",
   "tests/backend/storage/maintenance/existing-data-backup.flat-storage.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
