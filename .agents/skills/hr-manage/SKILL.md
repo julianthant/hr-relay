@@ -20,7 +20,6 @@ Browser operations read `~/.agents/skill-library/playwright-cli/REFERENCE.md`. P
 playwright-cli list                                           # identify sessions; close only sessions owned by this task
 ls .tracker/locks/                                    # D181 role locks: server / worker — a stale pid here explains "already running"
 npm run dashboard                                              # ONE terminal: BFF :3938 + vite :5174 (Ctrl+C stops both); BFF alone: npm run cli -- dashboard
-npm run build:manifest && git diff --quiet src/workflow-kit/validation/generated-build-manifest.ts || echo "TREE MOVED — restart the BFF"
 npm run cli -- worker <workflow-id> --pool-index 1 [--drain]   # one worker; batch pool indices must be admitted and distinct (1–3), see §3
 npm run cli -- storage doctor                                  # authority + span reconciliation (+ backup report) before a batch
 npm run cli -- storage backup                                  # the ONLY way a verified SQLite backup is written (D322)

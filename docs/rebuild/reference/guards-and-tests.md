@@ -5,55 +5,35 @@ This reference owns test selection, runner containment, coverage policy, and gua
 acceptance scope and the gate schedule. A declared test, scenario ID, or guard is not evidence that
 it ran.
 
-Tracked TypeScript files use LF on every platform through `.gitattributes`. Build manifests and
+Tracked TypeScript files use LF on every platform through `.gitattributes`. The build id and
 reviewed-source pins hash the exact checkout bytes; consistent line endings preserve those byte
 checks when generation moves between Windows, macOS and Linux.
 
-## Build manifest preparation
+## Contract fingerprints and build id
 
-`src/workflow-kit/validation/generated-build-manifest.ts` is an ignored build artifact at its
-existing static import path. `scripts/build/workflow-build-manifest.ts` owns manifest-only
-preparation: compute the existing source/toolchain fingerprints, render exact bytes, and atomically
-replace changed output. Unchanged bytes preserve the file's modification time. Only that exact
-generated target is excluded before import resolution; ordinary unresolved imports still fail.
-Runtime consumers eagerly parse the static module and never generate it or fall back.
+`compileWorkflow` computes `descriptor.contractFingerprint` in memory from the declared shapes only: the
+workflow-kit version (`WORKFLOW_KIT_VERSION`), id, version, input, canonical input and result schema
+hashes, the entry graph, and each task contract's id, effect and schema hashes. `taskImplFingerprint`
+derives a checkpoint's `implFingerprint` the same way. No file is generated and no source is read, so
+compilation stays browser-safe, and shared code edits never invalidate Retry, Recover or claims.
 
-Vitest prepares at config evaluation before listing, discovery or imports for every project,
-including PC listing and cached PC slots that skip the integration web build. Both Vite configs
-prepare through the dashboard config before loading the graph. Parity's bundle helper prepares
-before input digests, cache decisions and global process precompilation. Package prehooks prepare
-before CLI, smoke, dashboard/backend launch, dashboard production launch, typecheck, lint, the
-dashboard benchmark and store-catalog generation. Consuming CI checkouts explicitly prepare after
-dependency installation.
-
-Automatic preparation runs only `build:manifest:prepare`; it never regenerates the four tracked
-workflow registries. Explicit `build:manifest` retains registry generation before manifest
-preparation. `build:registries:check` is read-only; `build:manifest:check` runs that registry check
-before checking manifest bytes. Neither has a preparation hook. Missing, stale, corrupt or
-reformatted check inputs fail without repair.
-Raw source commands that bypass these entry points require explicit `build:manifest:prepare`
-first; `stores:catalog:check` also imports the runtime graph and needs that prepared prerequisite.
-Checks never supply it themselves. The merge train regenerates tracked registries, the store catalog
-and roadmap; the ignored manifest is outside generated-conflict resolution.
-
-Vitest watch, Vite and dev dashboard sessions use the source/toolchain snapshot prepared at startup.
-After editing any workflow/task closure input or changing the installed toolchain, restart the
-Vitest watcher and affected Vite/dev dashboard sessions. Preparation must finish before collecting
-results or using the changed graph. Automatic reruns and HMR after such edits are not current
-fingerprint evidence until restart. Test-only edits outside fingerprint inputs may reuse the
-session. One-shot tests and builds prepare afresh on every invocation.
-
-Future desktop packaging must generate and independently check before backend/renderer bundling,
-include the static module, and run without `src/` or the development generator. Missing or corrupt
-packaged data must refuse startup. There is no current Electron packaging system or acceptance
-proof; frontend bundle checks do not establish packaged-runtime acceptance.
+The app build id (`src/backend/app/build-id.ts`) hashes the worker-runnable source under `src/backend`,
+`src/workflow-kit`, `src/workflows`, `src/models`, `src/rules` and `src/cli.ts`, the `package-lock.json`
+entries those files load (ordinary, optional and peer dependencies with nested resolution, every recorded
+platform binary included) and the Node version. `src/dashboard` and frontend-only packages are excluded.
+`scripts/dev/secure-env-bootstrap.ts` captures it before loading the application graph; a worker refuses
+to start when its id differs from its parent's. A missing source root, an unresolved required dependency
+or an unclassifiable import specifier stops startup by name. The id is stamped on each run envelope and
+checked only before a write's first effect; it never enters a contract fingerprint or claim, Retry or
+Recover admission.
 
 `scripts/build/windows-observer-policy.ts` bundles the canonical shared `privatePathRejects`
 implementation as CommonJS for the two isolated Windows SQLite observers. esbuild is a direct
 pinned build dependency; Node builtins and Koffi remain external. The ignored artifact and input/digest
-metadata live under `node_modules/.cache/relay/`. Source-tool configuration and manifest preparation
-prepare them without regenerating registries; the independent manifest check rebuilds expected bytes
-in memory and refuses missing or stale outputs without writing. Unchanged bytes keep their timestamps.
+metadata live under `node_modules/.cache/relay/`. `npm run build:observer-policy` prepares them; it runs
+before the CLI, dashboard, backend, smoke and benchmark commands and from the Vitest and Vite configs.
+`npm run build:observer-policy -- --check` rebuilds expected bytes in memory and refuses missing or stale
+outputs without writing. Unchanged bytes keep their timestamps.
 
 Only Windows observer calls validate the metadata's confined public source/dependency inputs and
 artifact SHA256; the child checks its artifact again before loading the shared native policy. Missing,
@@ -373,9 +353,7 @@ its descendants, and only then releases the command lock. It does not take a sui
 command lock remains the private file under `.tracker/data/locks`.
 
 `scripts/test/artifact-policy.ts` and its architecture owner keep generated coverage/test output
-and the exact `BUILD_MANIFEST_PATH` untracked and ignored. The Git census includes that manifest
-path and checks ignore rules independently of index membership. A tracked manifest fails even
-when its complete bytes are current. Preparation never changes Git ownership; correcting the
+untracked and ignored, checking ignore rules independently of index membership. Correcting the
 index is an explicit repository operation. Accepted task evidence belongs in the main checkout's ignored `.work/`
 folder; the artifact policy's external-evidence-root check covers its injected listing, not that
 brief receipt convention.
@@ -437,7 +415,7 @@ npm run test:perf
 Coverage runs alone and selects unit, integration, and architecture without perf. The perf project
 runs afterward without coverage instrumentation. Separate full unit, integration, and architecture
 reruns add no acceptance evidence for unchanged inputs. The brief may additionally
-require `npm run build:manifest:check`, `npm run stores:catalog:check`, or other affected freshness
+require `npm run build:registries:check`, `npm run stores:catalog:check`, or other affected freshness
 checks. Derived output is regenerated at its source before its freshness check.
 
 Before coverage, the operator gate still requires free memory, no swap pressure, and no listener

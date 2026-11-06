@@ -93,11 +93,10 @@ For a new operator workflow:
    Public picker orders and registered proof orders are nonnegative integers, unique across indexes.
    Use `{ kind: "child-only" }` for a workflow admitted only through declared delegation edges,
    or `{ kind: "unregistered" }` to keep its module, store and proofs out of production registries.
-3. Run `npm run build:manifest` and `npm run stores:catalog`. The manifest command first runs
-   `build:registries`, which derives the backend module/store/proof lists and a separate browser-safe
-   descriptor tuple. Existing registry imports remain the public entrypoints; do not edit generated lists.
-4. Run `npm run build:manifest:check` and `npm run stores:catalog:check`. Registry freshness is part
-   of the manifest check. `build:registries` and `build:registries:check` also run independently.
+3. Run `npm run build:registries` and `npm run stores:catalog`. `build:registries` derives the backend
+   module/store/proof lists and a separate browser-safe descriptor tuple. Existing registry imports
+   remain the public entrypoints; do not edit generated lists.
+4. Run `npm run build:registries:check` and `npm run stores:catalog:check`.
 5. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
    evidence folder.
 
@@ -169,9 +168,12 @@ skipped outputs are `undefined`.
 each entry has one owner, references resolve once, and dependencies have no cycle. Step-owned
 entries use the exact shared step object. Omission refusals follow §7.
 
-`compileWorkflow` requires a factory-produced definition and memoizes by definition object and
-manifest identity. Regenerate on `has no build-manifest entry`; one definition cannot compile under
-different manifests. `composeWorkflowModule` refuses missing/duplicate stores and mismatched
+`compileWorkflow` requires a factory-produced definition and memoizes by definition object. Its
+contract fingerprint covers the kit version, id, version, declared schemas, entry graph and task
+contracts, never source bytes. A code-only change to a read task, including one whose freshness is
+infinite, reuses older checkpoints until you bump the workflow `version` (or `WORKFLOW_KIT_VERSION`
+for a kit semantics change); bump it whenever task semantics change without a schema change. Writes
+always refuse across app builds. `composeWorkflowModule` refuses missing/duplicate stores and mismatched
 contract objects. Fix the named owner rather than copying a declaration.
 
 ### 4.4 Operation display and Explorer
@@ -335,10 +337,10 @@ Inspect these existing tests for the affected seam:
 - `tests/workflows/descriptor-registry.test.ts`: registration identity and ordering.
 - `tests/architecture/workflow-kit/workflow-layout.test.ts`: paths.
 - `tests/architecture/workflow-kit/workflow-authoring-budget.test.ts`: budget.
-- `tests/architecture/workflow-kit/descriptor-coverage.test.ts`: manifest coverage.
+- `tests/architecture/workflow-kit/descriptor-coverage.test.ts`: descriptor and bundle-boundary coverage.
 - `tests/architecture/workflow-kit/step-omission-invariants.test.ts`: omissions.
 
-Check `npm run build:manifest:check`, `npm run stores:catalog:check` and `auditImplBindings`
+Check `npm run build:registries:check`, `npm run stores:catalog:check` and `auditImplBindings`
 consumers when their inputs change.
 
 Before proposing integration, run `npm run typecheck`, `npm run lint`, `npm run web:build`,

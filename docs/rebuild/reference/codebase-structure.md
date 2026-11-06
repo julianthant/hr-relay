@@ -28,11 +28,9 @@ This map names the current source, test, and documentation owners. Relay runs lo
 
 `npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
 and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
-`npm run build:manifest` runs that generator, then prepares the ignored
-`src/workflow-kit/validation/generated-build-manifest.ts`. `build:manifest:prepare` prepares only
-the manifest and the ignored Windows observer policy artifact under `node_modules/.cache/relay/`; source-tool configs and package prehooks call it before graph loading. Read-only
-`build:manifest:check` checks registry freshness before manifest bytes. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
-owns preparation boundaries, watcher restart requirements and the future packaging contract.
+`npm run build:observer-policy` prepares the ignored Windows observer policy artifact under
+`node_modules/.cache/relay/`; runtime package prehooks and the Vitest/Vite configs call it. [Guards and tests](guards-and-tests.md#contract-fingerprints-and-build-id)
+owns the contract fingerprint and build id.
 `npm run stores:catalog` generates the catalog section in `docs/rebuild/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
@@ -139,7 +137,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer parts, authored walkthrough schema and finite local choice projection. Registered workflow definitions own the content; the Explorer query serves it after definition identity checks. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
-| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated prepared static manifest and fingerprint resolvers. |
+| `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/app/build-id.ts` owns the worker-scoped app build id. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
