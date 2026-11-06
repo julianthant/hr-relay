@@ -37,7 +37,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
   const invoked: string[] = [];
   const echo: AssistantTool = { name: "echo", description: "Echo a value with references expanded.", parameters: Echo, output: EchoOutput,
     privacy: [{ path: "value", origin: "repository-authored" }],
-    async invoke(value, context) { invoked.push("echo"); return { value: context.references.expand(Echo.parse(value).value) }; } };
+    async invoke(value, context) { invoked.push("echo"); return { value: context.references.expandArgument(Echo.parse(value).value, ["E"]) }; } };
   const plugin: AssistantPlugin = { domain: "test", tools: input.tools ?? [echo] };
   const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => FACTS,
     owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), plugins: () => [plugin],
@@ -96,6 +96,22 @@ it("keeps an unrecovered tool refusal as the turn's typed refusal and continues 
     fail = true;
     w.script.push(call("flaky", { value: "a" }), call("flaky", { value: "b" }), assistantMessageStream("Recovered."));
     assert.deepEqual(await w.ask("Read it"), { state: "answered", text: "Recovered." });
+  } finally { await w.f.cleanup(); }
+});
+
+it("applies refusal bookkeeping to cached outcomes in call order", async () => {
+  const reads: string[] = [];
+  const keyed: AssistantTool = { name: "keyed", description: "Fails for bad.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+    async invoke(value) { const { value: key } = Echo.parse(value); reads.push(key); if (key === "bad") throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE"); return { value: key }; } };
+  const w = await world({ tools: [keyed] });
+  try {
+    w.script.push(call("keyed", { value: "bad" }), call("keyed", { value: "good" }), call("keyed", { value: "bad" }), assistantMessageStream("Done."));
+    assert.deepEqual(await w.ask("Go"), { state: "refused", code: "ASSISTANT_READ_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_READ_UNAVAILABLE });
+    assert.deepEqual(reads, ["bad", "good"]);
+    reads.length = 0;
+    w.script.push(call("keyed", { value: "good" }), call("keyed", { value: "bad" }), call("keyed", { value: "good" }), assistantMessageStream("Done."));
+    assert.deepEqual(await w.ask("Go"), { state: "answered", text: "Done." });
+    assert.deepEqual(reads, ["good", "bad"]);
   } finally { await w.f.cleanup(); }
 });
 
@@ -186,7 +202,8 @@ it("keeps explicit verification separate from the tool loop and refuses an inval
   try {
     assert.equal((await w.ask(`  ${ASSISTANT_VERIFY_COMMAND} `)).state, "answered");
     assert.equal(verified, 1); assert.equal(w.posts(), 0);
-    assert.equal((await w.service.respond({ conversationId: randomUUID(), messageId: randomUUID(), message: "Explain", subjectRef: "not-a-run" }, new AbortController().signal)).state, "refused");
+    for (const subjectRef of ["not-a-run", `run_${randomUUID()}_99999999999999999999`]) assert.deepEqual(await w.service.respond({ conversationId: randomUUID(), messageId: randomUUID(), message: "Explain", subjectRef }, new AbortController().signal),
+      { state: "refused", code: "ASSISTANT_INVALID", message: ASSISTANT_FAILURES.ASSISTANT_INVALID });
     assert.equal(w.posts(), 0);
   } finally { await w.f.cleanup(); }
 });

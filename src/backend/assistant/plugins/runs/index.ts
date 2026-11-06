@@ -4,7 +4,7 @@ import { QueueStatusSchema } from "../../../../models/dashboard/projection.js";
 import { operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
 import { ErrorCodeSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
-import { referenceSchema, type AssistantPlugin, type AssistantToolContext } from "../plugin.js";
+import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "../plugin.js";
 import type { AssistantPluginDeps } from "../registry.js";
 
 const RunRow = z.strictObject({
@@ -39,7 +39,12 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
   const Logs = z.strictObject({ total: z.number().int().nonnegative(), steps: z.array(z.strictObject({
     at: z.iso.datetime(), label: z.string(), state: z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]),
     skipped: z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]).nullable() })) });
-  const runId = (token: string, context: AssistantToolContext) => context.references.resolve(token, ["R"]).target;
+  /** A pinned reference (the selected run) refuses once its row has moved on, before any fact is read out. */
+  const currentDetail = (token: string, context: AssistantToolContext) => {
+    const entry = context.references.resolve(token, ["R"]), detail = deps.runDetail(entry.target);
+    if (entry.version !== undefined && detail.rowRevision !== entry.version) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
+    return { id: entry.target, detail };
+  };
   const indexed = (id: string) => deps.search({ q: id, scope: "run", facets: {}, limit: 1 }).results.find(result => result.runId === id);
   return { domain: "runs", tools: [
     { name: "find_runs",
@@ -58,8 +63,7 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
       privacy: [{ path: "gate.label", origin: "repository-authored" }, { path: "gate.reason", origin: "repository-authored" },
         { path: "outcome.reason", origin: "repository-authored" }, { path: "failure.text", origin: "repository-authored" }],
       async invoke(value, context) {
-        const id = runId(runParameters.parse(value).run, context);
-        const detail = deps.runDetail(id), result = indexed(id);
+        const { id, detail } = currentDetail(runParameters.parse(value).run, context), result = indexed(id);
         context.assertCurrent();
         const { gate, outcome } = detail, failureCode = result?.metadata.failureCode ?? null;
         return JsonValueSchema.parse(ReadRun.parse({
@@ -75,7 +79,7 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
       description: "Read the last steps of one run's Logs timeline in order: label, state and why a skipped step did not run.",
       parameters: logsParameters, output: Logs, privacy: [{ path: "steps[].label", origin: "repository-authored" }],
       async invoke(value, context) {
-        const input = logsParameters.parse(value), events = deps.runDetail(runId(input.run, context)).timeline.events;
+        const input = logsParameters.parse(value), events = currentDetail(input.run, context).detail.timeline.events;
         context.assertCurrent();
         return JsonValueSchema.parse({ total: events.length, steps: events.slice(-input.last).map(event => ({ at: event.at, label: event.label, state: event.state,
           skipped: event.notRun.state === "present" ? event.notRun.reason : null })) });

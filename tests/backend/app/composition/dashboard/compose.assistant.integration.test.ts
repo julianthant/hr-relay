@@ -193,6 +193,37 @@ it('serves the read tools through authenticated composition without private prov
   });
 });
 
+it('refuses an old selected-run revision before reading out the newer run', async () => {
+  await withServedAssistant(async fixture => {
+    const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
+    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
+    publicCapabilityResponses(transport);
+    assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+    const cancelled = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'queue-row',
+      family: 'run', type: 'cancel', target: { runId: run.envelope.runId, expectedVersion: run.version } });
+    assert.equal(cancelled.state, 'applied');
+    const current = context.database.authority.runs.get(run.envelope.runId); assert.ok(current && current.version !== run.version);
+    const outputs: unknown[] = [];
+    let turns = 0;
+    transport.setResponse(init => {
+      if (typeof init.body !== 'string') throw Error('synthetic request body required');
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), outbound = JSON.stringify(request);
+      const last = request.input.at(-1);
+      if (last !== undefined && 'type' in last && last.type === 'function_call_output') outputs.push(JSON.parse(last.output));
+      const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token);
+      turns++;
+      const output = turns === 1 ? [{ type: 'function_call', namespace: 'relay', name: 'read_run', call_id: 'read_run', arguments: JSON.stringify({ run: token }), status: 'completed' }]
+        : [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'The run is cancelled.' }] }];
+      return new Response(completedResponseStream(output, request.model, `resp_${String(turns)}`), { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    assert.deepEqual(await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: 'Explain this run', subjectRef }),
+      { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
+    assert.deepEqual(outputs, [{ error: 'ASSISTANT_READ_STALE', text: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }]);
+    assert.equal(turns, 2);
+    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
+  });
+});
+
 it.each(["every-action"] as const)('serves preference CAS, replay and verification for %s', async mode => {
   await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
     const preferenceResponse = await originalFetch(`${origin}/api/v1/assistant/model-preference`);

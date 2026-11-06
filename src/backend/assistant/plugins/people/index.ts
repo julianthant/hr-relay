@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { CrossDateSearchStateFacetSchema } from "../../../../models/dashboard/search.js";
+import { CROSS_DATE_SEARCH_QUERY_LIMIT, CrossDateSearchStateFacetSchema } from "../../../../models/dashboard/search.js";
 import { WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
-import { referenceSchema, type AssistantPlugin } from "../plugin.js";
+import { AssistantToolRefusal, referenceSchema, type AssistantPlugin } from "../plugin.js";
 import type { AssistantPluginDeps } from "../registry.js";
 import { runReferences } from "../runs/index.js";
 
@@ -17,8 +17,9 @@ export function peoplePlugin(deps: AssistantPluginDeps, workflowLabel: (id: stri
     description: "Find people by the name the operator typed, or by a person or EID reference. Returns one person reference per distinct person with their most recent runs. Copy references exactly; never write a name yourself.",
     parameters, output: Output, privacy: [],
     async invoke(value, context) {
-      const query = context.references.expand(parameters.parse(value).query);
-      const page = deps.search({ q: query.slice(0, 160), scope: "subject", facets: {}, limit: 50 });
+      const query = context.references.expandArgument(parameters.parse(value).query, ["P", "E"]);
+      if (query.length > CROSS_DATE_SEARCH_QUERY_LIMIT) throw new AssistantToolRefusal("ASSISTANT_LIMIT");
+      const page = deps.search({ q: query, scope: "subject", facets: {}, limit: 50 });
       context.assertCurrent();
       const people = new Map<string, { person: string; runs: z.infer<typeof Output>["people"][number]["runs"] }>();
       for (const result of page.results) {

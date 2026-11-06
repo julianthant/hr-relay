@@ -149,10 +149,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const table = references.table(request.data.conversationId, options.owner(), ++generations);
         const selectedRun = request.data.subjectRef === undefined ? undefined : selectedRunReference(request.data.subjectRef);
         const history: AssistantInputItem[] = [
-          { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined : table.issue("R", selectedRun.runId, "the selected run", selectedRun.runId), options.clock.now().toISOString().slice(0, 10)) },
+          { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined
+            : table.issue("R", selectedRun.runId, "the selected run", selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
           { role: "user", content: maskOperatorText(request.data.message, table) },
         ];
-        const unrecovered = new Map<string, AssistantFailureCode>(), outputs = new Map<string, string>(), callIds = new Set<string>();
+        const unrecovered = new Map<string, AssistantFailureCode>(), outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>();
         const context = { signal, references: table, actorId: options.actorId, assertCurrent: assertAuthority };
         for (let step = 0; step < MAX_MODEL_CALLS; step++) {
           assertAuthority();
@@ -177,21 +178,23 @@ export function createAssistantService(options: AssistantServiceOptions) {
           const parsed = JsonValueSchema.parse(tool.parameters.parse(argumentsValue));
           if (canonicalJsonStringify(parsed) !== canonicalJsonStringify(argumentsValue)) return refused("ASSISTANT_INVALID");
           const key = canonicalJsonStringify({ name: tool.name, arguments: parsed });
-          let output = outputs.get(key);
-          if (output === undefined) {
+          let outcome = outcomes.get(key);
+          if (outcome === undefined) {
             try {
-              output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(await tool.invoke(parsed, context))));
+              const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(await tool.invoke(parsed, context))));
               assertAuthority();
               if (Buffer.byteLength(output) > MAX_TOOL_OUTPUT_BYTES) throw new AssistantToolRefusal("ASSISTANT_LIMIT");
-              unrecovered.delete(tool.name);
+              outcome = { output };
             } catch (error) {
               const code = toolRefusalCode(error);
               if (code === undefined) throw error;
-              if (!unrecovered.has(tool.name)) unrecovered.set(tool.name, code);
-              output = canonicalJsonStringify({ error: code, text: ASSISTANT_FAILURES[code] });
+              outcome = { code, output: canonicalJsonStringify({ error: code, text: ASSISTANT_FAILURES[code] }) };
             }
-            outputs.set(key, output);
+            outcomes.set(key, outcome);
           }
+          if (outcome.code === undefined) unrecovered.delete(tool.name);
+          else if (!unrecovered.has(tool.name)) unrecovered.set(tool.name, outcome.code);
+          const output = outcome.output;
           history.push({ type: "function_call_output", call_id: call.call_id, namespace: call.namespace, name: call.name,
             ...(call.caller === undefined ? {} : { caller: call.caller }), output });
         }
@@ -227,9 +230,9 @@ function toolRefusalCode(error: unknown): AssistantFailureCode | undefined {
   return undefined;
 }
 const SELECTED_RUN = /^run_([a-f0-9-]{36})_([1-9][0-9]*)$/u;
-function selectedRunReference(subjectRef: string): { runId: string } {
-  const match = SELECTED_RUN.exec(subjectRef);
-  if (match === null || !z.uuid().safeParse(match[1]).success) throw new AssistantProtocolError("assistant-selected-run-invalid");
-  return { runId: match[1] };
+function selectedRunReference(subjectRef: string): { runId: string; revision: number } {
+  const match = SELECTED_RUN.exec(subjectRef), revision = Number(match?.[2]);
+  if (match === null || !z.uuid().safeParse(match[1]).success || !Number.isSafeInteger(revision)) throw new AssistantProtocolError("assistant-selected-run-invalid");
+  return { runId: match[1], revision };
 }
 export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'modelPreference' | 'permission'>>;

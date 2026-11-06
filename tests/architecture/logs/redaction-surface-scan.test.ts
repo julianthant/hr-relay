@@ -257,7 +257,13 @@ describe("redaction surface scan — the declaration audit", () => {
     }
     const unexcepted = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { surface: entry.surface, path: entry.path, origin: entry.origin } : entry);
     assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, unexcepted).some(problem => problem.includes("needs a written exception")));
-    assert.deepEqual([...EGRESS_DECISION_LEAVES], ["egress/assistant-user-message|content"]);
+    assert.deepEqual([...EGRESS_DECISION_LEAVES], [["egress/assistant-user-message|content", { egress: "process-egress", origin: "operator-authored" }]]);
+    for (const origin of ["captured-hr-value", "external-text", "local-filesystem-name", "protected-value"] as const) {
+      const reclassified = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { ...entry, origin } : entry);
+      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, reclassified).some(problem => problem.includes('egress/assistant-user-message (process-egress) leaf "content"') && problem.includes("may not carry at all")), origin);
+    }
+    const looped = REDACTION_SURFACES.map(surface => surface.id === "egress/assistant-user-message" ? { ...surface, egress: "os-notification" as const } : surface);
+    assert.ok(auditSurfaceOrigins(looped, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('egress/assistant-user-message (os-notification) leaf "content"') && problem.includes("may not carry at all")));
     const moved = REDACTION_SURFACES.map(surface => surface.id === "request/assistant" ? { ...surface, egress: "process-egress" as const } : surface);
     assert.ok(auditSurfaceOrigins(moved, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('request/assistant (process-egress) leaf "message"') && problem.includes("may not carry at all")));
   });

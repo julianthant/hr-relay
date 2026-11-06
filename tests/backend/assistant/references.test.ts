@@ -13,7 +13,7 @@ it("issues one idempotent token per record and substitutes only this generation'
   assert.equal(table.issue("R", "run-a", "Person Lookup run, 2026-11-06", "run-a"), "[[R1.g4]]");
   assert.equal(table.display("[[P1.g4]] and [[P2.g4]] ran [[R1.g4]]; [[P1.g3]] [[P9.g4]] [[X1.g4]]"),
     "Avery Synthetic and Blake Synthetic ran Person Lookup run, 2026-11-06; [[P1.g3]] [[P9.g4]] [[X1.g4]]");
-  assert.equal(table.expand("[[R1.g4]]"), "run-a");
+  assert.equal(table.expandArgument("[[R1.g4]]", ["R"]), "run-a");
   assert.equal(table.resolve(" [[P1.g4]] ", ["P"]).target, "Avery Synthetic");
 });
 
@@ -62,7 +62,28 @@ it("masks EIDs as references and other identifiers as fixed markers", () => {
   assert.equal(table.resolve("[[E1.g5]]", ["E"]).expand, "10812345");
   for (const marker of ["[redacted SSN]", "[redacted email]", "[redacted phone]", "[redacted number]"]) {
     assert.throws(() => table.resolve(marker, ["E", "P", "R", "N", "S", "A"]), AssistantReferenceError);
-    assert.equal(table.expand(marker), marker);
+    assert.equal(table.expandArgument(marker, ["E"]), marker);
   }
   assert.equal(table.display("[ [P1.g5] ]"), "[ [P1.g5] ]");
+});
+
+it("expands tool arguments strictly: every token-shaped part must be a current issued reference of an allowed kind", () => {
+  const table = createAssistantReferenceTable(6);
+  const eid = table.issue("E", "10812345", "10812345"), person = table.issue("P", "Avery Synthetic", "Avery Synthetic");
+  assert.equal(table.expandArgument(`find ${person} or ${eid}`, ["P", "E"]), "find Avery Synthetic or 10812345");
+  const refused = (text: string, reason: string) => assert.throws(() => table.expandArgument(text, ["P", "E"]), (error: unknown) => error instanceof AssistantReferenceError && error.reason === reason, text);
+  refused(`${person} and [[P1.g5]]`, "reference-expired");
+  refused("[[P9.g6]]", "reference-unknown");
+  refused("[[X1.g6]]", "reference-unknown");
+  refused(`${table.issue("R", "run-a", "run")}`, "reference-kind");
+  assert.equal(table.expandArgument("plain [ [P1.g6] ] text", ["P"]), "plain [ [P1.g6] ] text");
+});
+
+it("pins a version on a reference separately from the unpinned reference to the same record", () => {
+  const table = createAssistantReferenceTable(7);
+  const unpinned = table.issue("R", "run-a", "run", "run-a"), pinned = table.issue("R", "run-a", "the selected run", "run-a", 3);
+  assert.notEqual(unpinned, pinned);
+  assert.equal(table.resolve(unpinned, ["R"]).version, undefined);
+  assert.equal(table.resolve(pinned, ["R"]).version, 3);
+  assert.equal(table.issue("R", "run-a", "the selected run", "run-a", 3), pinned);
 });

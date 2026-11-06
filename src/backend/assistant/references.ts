@@ -7,12 +7,15 @@ export interface AssistantReferenceEntry {
   readonly display: string;
   /** Text a tool argument becomes when it names this reference (an EID's digits, a person's name). */
   readonly expand: string;
+  /** The exact row revision this reference was issued for, when the reference pins one (the selected run). */
+  readonly version?: number;
 }
 export class AssistantReferenceError extends Error {
   constructor(readonly reason: "reference-unknown" | "reference-expired" | "reference-kind" | "reference-limit") { super(reason); this.name = "AssistantReferenceError"; }
 }
 
 const TOKEN = /\[\[([PERNSA])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]/gu;
+const TOKEN_SHAPED = /\[\[[A-Za-z][0-9]+\.g[0-9]+\]\]/gu;
 const EXACT_TOKEN = /^\[\[([PERNSA])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]$/u;
 const MAX_ENTRIES = 500;
 
@@ -20,14 +23,14 @@ export function createAssistantReferenceTable(generation: number) {
   if (!Number.isSafeInteger(generation) || generation < 1) throw new Error("assistant-reference-generation-invalid");
   const entries = new Map<string, AssistantReferenceEntry>(), byTarget = new Map<string, string>();
   const counters = new Map<AssistantReferenceKind, number>();
-  function issue(kind: AssistantReferenceKind, target: string, display: string, expand: string = display): string {
-    const key = `${kind}:${target}`, existing = byTarget.get(key);
+  function issue(kind: AssistantReferenceKind, target: string, display: string, expand: string = display, version?: number): string {
+    const key = `${kind}:${target}:${String(version ?? "")}`, existing = byTarget.get(key);
     if (existing !== undefined) return existing;
     if (entries.size >= MAX_ENTRIES) throw new AssistantReferenceError("reference-limit");
     const n = (counters.get(kind) ?? 0) + 1;
     counters.set(kind, n);
     const token = `[[${kind}${String(n)}.g${String(generation)}]]`;
-    entries.set(token, Object.freeze({ kind, target, display, expand }));
+    entries.set(token, Object.freeze({ kind, target, display, expand, ...(version === undefined ? {} : { version }) }));
     byTarget.set(key, token);
     return token;
   }
@@ -50,7 +53,8 @@ export function createAssistantReferenceTable(generation: number) {
   return Object.freeze({
     generation, issue, resolve,
     display: (text: string) => replace(text, entry => entry.display),
-    expand: (text: string) => replace(text, entry => entry.expand),
+    /** A tool argument with every token-shaped part resolved strictly; an unknown, expired or wrong-kind reference refuses. */
+    expandArgument: (text: string, kinds: readonly AssistantReferenceKind[]) => text.replace(TOKEN_SHAPED, token => resolve(token, kinds).expand),
   });
 }
 export type AssistantReferenceTable = ReturnType<typeof createAssistantReferenceTable>;

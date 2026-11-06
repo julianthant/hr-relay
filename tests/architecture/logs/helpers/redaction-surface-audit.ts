@@ -128,11 +128,10 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
 });
 
 /** The only leaves admitted past a refused egress rule, each by a named operator decision; they still need a written exception. */
-export const EGRESS_DECISION_LEAVES: ReadonlySet<string> = new Set([
-  // D1 (11-06): the masked assistant user message goes to ChatGPT.
-  "egress/assistant-user-message|content",
+export const EGRESS_DECISION_LEAVES: ReadonlyMap<string, Readonly<{ egress: SurfaceEgress; origin: LeafOrigin }>> = new Map([
+  // D1 (11-06): the masked operator-authored assistant user message goes to ChatGPT.
+  ["egress/assistant-user-message|content", { egress: "process-egress", origin: "operator-authored" }],
 ]);
-
 export function originRule(
   egress: SurfaceEgress,
   origin: LeafOrigin,
@@ -363,7 +362,8 @@ export function auditSurfaceOrigins(
         );
         continue;
       }
-      const rule = EGRESS_DECISION_LEAVES.has(key) ? "exception" : originRule(surface.egress, entry.origin);
+      const decision = EGRESS_DECISION_LEAVES.get(key);
+      const rule = decision !== undefined && decision.egress === surface.egress && decision.origin === entry.origin ? "exception" : originRule(surface.egress, entry.origin);
       if (rule === "refused") {
         violations.push(
           `${surface.id} (${surface.egress}) leaf "${leaf.path}" is declared ${entry.origin}, which a `
