@@ -680,8 +680,8 @@ export async function executeClaimedRun(
           terminal: { result: built.record, authorization },
         }, descriptor, built.authorization));
       };
-      if (deps.authority.withAuthorityTransaction !== undefined) deps.authority.withAuthorityTransaction(settle);
-      else if (accounting === undefined) settle();
+      if (accounting === undefined) settle();
+      else if (deps.authority.withAuthorityTransaction !== undefined) deps.authority.withAuthorityTransaction(settle);
       else throw new Error("delegation-accounting-transaction-unavailable");
       return RunExecutionOutcomeSchema.parse({ state: "done", runId });
     };
