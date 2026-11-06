@@ -60,7 +60,7 @@ import { canonicalJsonStringify,JsonValueSchema,type JsonValue } from "../../../
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { WriteIntentRecordSchema,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
-import { BUILD_MANIFEST,resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
@@ -1759,7 +1759,7 @@ function gateEvidenceScope(
         || checkpoint.nodeId !== nodeId || checkpoint.attempt > run.envelope.attempt
         || checkpoint.descriptorVersion !== descriptor.version
         || checkpoint.contractFingerprint !== descriptor.contractFingerprint
-        || checkpoint.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, node.uses.id)
+        || checkpoint.implFingerprint !== taskImplFingerprint(node.uses)
         || checkpoint.output.schemaHash !== expectedSchemaHash) {
         reject(request, "schema-mismatch", `gate ${gate.id} dependency checkpoint ${nodeId} is not compatible with this run's descriptor`);
       }

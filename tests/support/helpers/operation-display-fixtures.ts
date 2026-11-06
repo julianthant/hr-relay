@@ -6,7 +6,6 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presenta
 import { EidSchema, ItemIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
-import { fixtureBuildManifest } from "../fixtures/workflow-definition-fixtures.js";
 
 
 
@@ -237,13 +236,5 @@ export function createOperationDisplayFixtures() {
     });
   }
 
-  const displayManifest = fixtureBuildManifest([
-    DISPLAY_NESTED_ID,
-    DISPLAY_CHILD_A_ID,
-    DISPLAY_CHILD_B_ID,
-    DISPLAY_FORWARD_ID,
-    DISPLAY_REVERSED_ID,
-    DISPLAY_LEGACY_ID,
-  ]);
-  return { DISPLAY_FORWARD_ID, outerWorkflow, displayManifest, DISPLAY_NESTED_ID, DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_REVERSED_ID, DISPLAY_LEGACY_ID, DisplayInput, DisplayCanonicalInput, ChildAResult, ChildBResult, DelegationPolicy, searchInvocation, DisplayResult, ChildARef, ChildBRef };
+  return { DISPLAY_FORWARD_ID, outerWorkflow, DISPLAY_NESTED_ID, DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_REVERSED_ID, DISPLAY_LEGACY_ID, DisplayInput, DisplayCanonicalInput, ChildAResult, ChildBResult, DelegationPolicy, searchInvocation, DisplayResult, ChildARef, ChildBRef };
 }

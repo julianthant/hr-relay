@@ -10,7 +10,6 @@ import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
 import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema } from "../../../src/models/systems/onbase/import-document.js";
-import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
 import { fakeOnbasePage } from "../../support/helpers/browser/fake-onbase-page.js";
@@ -43,8 +42,7 @@ async function runOnbase(mode: "dry-run" | "committed" | "lost-acknowledgement")
   const claimed = database.authority.runs.claimNext({ workflow: descriptor.id, workerId: slot.workerId, workerLifetime: lifetime.workerLifetime, now: clock.now().toISOString() });
   assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
   const sequencer = createWriteSequencer({ lifecycle: harness.deps.lifecycle, stores: harness.deps.stores, authority: database, sessions: harness.manager,
-    emitter: harness.emitter.emitter, clock, ids: harness.deps.ids, scheduler: harness.scheduler, taskDeadlineMs: 60000, operator: "local-operator", log: harness.deps.log,
-    resolveImplFingerprint: () => FingerprintSchema.parse("a".repeat(64)) });
+    emitter: harness.emitter.emitter, clock, ids: harness.deps.ids, scheduler: harness.scheduler, taskDeadlineMs: 60000, operator: "local-operator", log: harness.deps.log });
   const result = await executeClaimedRun({ ...harness.deps, writeSequencer: sequencer, artifacts: { open: async () => Readable.from([bytes]),
     put: async () => { throw new Error("unexpected artifact write"); } } },
   { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: new AbortController().signal });

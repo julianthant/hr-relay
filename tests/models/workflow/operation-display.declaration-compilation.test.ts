@@ -17,7 +17,7 @@ import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-
 import { compileWorkflow, defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 
-const { DISPLAY_NESTED_ID, DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_FORWARD_ID, DISPLAY_REVERSED_ID, DISPLAY_LEGACY_ID, DisplayInput, DisplayCanonicalInput, ChildAResult, ChildBResult, DelegationPolicy, searchInvocation, outerWorkflow, displayManifest } = createOperationDisplayFixtures();
+const { DISPLAY_NESTED_ID, DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_FORWARD_ID, DISPLAY_REVERSED_ID, DISPLAY_LEGACY_ID, DisplayInput, DisplayCanonicalInput, ChildAResult, ChildBResult, DelegationPolicy, searchInvocation, outerWorkflow } = createOperationDisplayFixtures();
 
 const NestedResult = z.strictObject({ approved: z.boolean() });
 
@@ -162,7 +162,7 @@ const reversedWorkflow = outerWorkflow(DISPLAY_REVERSED_ID, "reversed");
 const legacyWorkflow = outerWorkflow(DISPLAY_LEGACY_ID, undefined);
 
 function compileDisplayWorkflow(definition: Parameters<typeof compileWorkflow>[0]) {
-  return compileWorkflow(definition, { manifest: displayManifest });
+  return compileWorkflow(definition);
 }
 
 const SearchEntry = {

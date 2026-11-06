@@ -9,16 +9,6 @@ import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-regis
 import { unregisteredOcrParentWorkflow } from "../../../support/fixtures/ocr/parent-workflow.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 
-vi.mock("../../../../src/workflow-kit/validation/generated-build-manifest.js", async importOriginal => {
-  const { GENERATED_BUILD_MANIFEST: manifest } = await importOriginal<typeof import("../../../../src/workflow-kit/validation/generated-build-manifest.js")>();
-  const { collectSourceClosure, fingerprintSourceSet } = await import("../../../../scripts/build/workflow-build-manifest.js");
-  const sources = collectSourceClosure(process.cwd(), "tests/support/fixtures/ocr/parent-workflow.ts");
-  return { GENERATED_BUILD_MANIFEST: { ...manifest, workflows: [...manifest.workflows,
-    ...["fixture-ocr-parent", "fixture-ocr-unregistered-parent"].map(id => ({ id, sources,
-      fingerprint: fingerprintSourceSet(manifest.toolchain, id, sources) })),
-  ] } };
-});
-
 vi.mock("../../../../src/backend/app/registries/generated-workflow-modules.js", async importOriginal => {
   const actual = await importOriginal<typeof import("../../../../src/backend/app/registries/generated-workflow-modules.js")>();
   const { ocrParentWorkflow } = await import("../../../support/fixtures/ocr/parent-workflow.js");

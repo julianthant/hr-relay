@@ -7,6 +7,7 @@ export function kernelRejectMemberRecord<Input>(
       readonly configFingerprint: string;
       readonly configSnapshotId: string;
       readonly traceId: string;
+      readonly buildId: string;
     };
     readonly input: Input;
   },
@@ -23,6 +24,7 @@ export function kernelRejectMemberRecord<Input>(
       workflow: "kernel-reject",
       itemId: deriveItemId("kernel-reject", itemKey),
       traceId,
+      buildId: parent.envelope.buildId,
       descriptorVersion: 1,
       contractFingerprint: parent.envelope.contractFingerprint,
       resolvedInstance: { ucpath: "prod" },

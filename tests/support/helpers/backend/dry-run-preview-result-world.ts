@@ -8,7 +8,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { type FinalizationHarness } from "../kuali-finalization-fixtures.js";
 import { ManualScheduler, recordingLogger, recordingTimelineEmitter } from "../phase1f-executor-harness.js";
@@ -90,8 +90,7 @@ export function createDryRunPreviewResultTestWorld() {
           scheduler,
           taskDeadlineMs: 60_000,
           operator: "local-operator",
-          log,
-          resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+          log
         }),
       });
     };

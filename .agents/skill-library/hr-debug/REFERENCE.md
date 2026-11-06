@@ -34,7 +34,7 @@ before forming a theory.
 2. `playwright-cli -s=dbg open "<url>"` headless through the Fast Duo workflow session (`channel: chromium`); use the registered protected credential source and follow the [environment and credential contract](../../../docs/reference/clock-config-secrets.md) and the [operating reference](../repository-work/REFERENCE.md#environment); `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
-5. Re-run the failing step live; then the focused unit or architecture check that covers it. Run `npm run build:manifest` if a descriptor closure moved.
+5. Re-run the failing step live; then the focused unit or architecture check that covers it. If scenario-test evidence is needed, record the gap for operator-led design.
 6. Close only browser sessions owned by this task. Record: the run id, the anchor before/after, the live proof — in the migration doc or the store AGENTS.md (invariants only). Lesson-worthy → tell the operator.
 
 Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the grid (D213); Kuali paints client-side (~1 s menubar, ~3 s heading, empty-heading decoys) — bound-wait for the fact; a Kuali `actionId` names a step, not a document — prove the document number from the h1; TritON renders one field under three labels — labels identify the realm; ui-grid virtualization terminates on coverage, not on `scrollTop` (D205); header names must come from the same container as the cells.
@@ -45,7 +45,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - `sessionAcquireMs` (60 s) bounds the whole login chain; do not raise it to hide a dead session.
 
 ## 4 · Runtime / singleton
-- BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE fingerprint: `curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint'` vs `src/workflow-kit/validation/generated-build-manifest.ts` after `npm run build:manifest`. Mismatch → restart the BFF; every run it planned is unclaimable.
+- BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE build: `curl -s localhost:3938/api/v1/explorer | jq -r .buildId` vs `npx tsx -e 'import("./src/backend/runtime/build-id.ts").then(m => console.log(m.computeBuildId(process.cwd())))'`. Mismatch → restart the BFF (new workers refuse with `relay-build-changed-under-running-app`). Runs approved before the restart refuse new writes (`WRITE_BUILD_CHANGED`); Retry approves them under the new build.
 - `ls "$HOME/Library/Application Support/Relay/.tracker/data/locks"` (Windows: `%LOCALAPPDATA%\Relay\.tracker\data\locks`) + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
 - Worker wedged at boot with its own old claim → D200 (lease is the evidence; sweep by workerId). A `claimed` row with an `attempting` intent is refused at startup by design — that is a §4.1 recovery, not a restart.
 
@@ -59,7 +59,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - Run status joins authority; logs re-read notes JSONL — the surfaces BESIDE a broken one are what hide it.
 
 ## 7 · Guards / build
-- `build:manifest` after ANY edit under a descriptor's import closure; `descriptor-coverage` diff = stale manifest.
+- `build:registries` after adding or moving a workflow; `build:registries:check` is the freshness check.
 - New guard = file + `docs/guard-inventory.json` entry, same commit; retire only with a `retired` entry.
 - A browser-reachable module importing `node:*` crashes dev and only warns in prod — never alias/stub; move the Node half to a server module (`dashboard-wire-boundary` prints the chain).
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.

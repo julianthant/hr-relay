@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 import { foundationFixture } from "../../../support/helpers/database-foundation/fixtures.js";
 
@@ -67,7 +68,7 @@ it("fresh native authority has the exact current physical inventory", async () =
       assert.equal(CURRENT_TABLES.length, 51);
       assert.deepEqual(actual, CURRENT_TABLES);
       assert.deepEqual(AUTHORITY_TABLE_REGISTRY.map(row => row.name).sort(), CURRENT_TABLES);
-      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 22);
+      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
     } finally { raw.close(); }
   } finally { await f.dispose(); }
 });

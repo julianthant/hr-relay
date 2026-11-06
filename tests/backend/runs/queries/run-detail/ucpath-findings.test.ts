@@ -22,7 +22,7 @@ import { SchemaBoundCanonicalValueSchema } from "../../../../../src/models/valid
 import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest, WriteIntentRecordSchema } from "../../../../../src/rules/write-safety/write-safety.js";
 import { flow } from "../../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../../src/workflow-kit/fingerprints.js";
 import { FIXTURE_PARKED_WRITE_INTENT } from "../../../../support/fixtures/dashboard/run-detail/gates-park.js";
 import { runRecordOf, uuidOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 
@@ -78,7 +78,7 @@ function fixture() {
       probeTaskId: UcpathReadTransactionFindings.id, evidenceDigest: "0".repeat(64) }),
     evidence: { schemaHash: deriveSchemaHash(UcpathReadTransactionFindings.output, "output"), value: scanOf() },
     findingsIdentity: { activityId: uuidOf(13), descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-      claimGeneration: 1, implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, UcpathReadTransactionFindings.id) } });
+      claimGeneration: 1, implFingerprint: taskImplFingerprint(UcpathReadTransactionFindings) } });
   assert.ok(ack.kind === "parked-write-check" && ack.findingsIdentity);
   const activity = { activityId: uuidOf(13), operation: "parked-write-check", runId: run.envelope.runId, workflow: descriptor.id,
     attempt: 1, traceId: run.envelope.traceId, nodeId: "file-termination", writeIntentId: intent.writeIntentId,

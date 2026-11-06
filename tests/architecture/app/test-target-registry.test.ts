@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { GENERATED_BUILD_MANIFEST } from "../../../src/workflow-kit/validation/generated-build-manifest.js";
+import { READABLE_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { TEST_DATA_INPUT_NAMES, TestDataInputValueSchemas } from "../../../src/models/config/test-data.js";
 import { ProtectedSettingsNameSchema } from "../../../src/models/config/protected-settings.js";
 import {
@@ -165,8 +166,8 @@ describe("test target registry architecture", () => {
     assert.equal(Object.hasOwn(subject?.workflows[FINALIZATION_WORKFLOW]?.publicInput ?? {}, "documentNumber"), false);
   });
 
-  it("gives every entry an owning workflow the build manifest actually built", () => {
-    const built = new Set<string>(GENERATED_BUILD_MANIFEST.workflows.map(({ id }) => id));
+  it("gives every entry a registered owning workflow", () => {
+    const built = new Set<string>([...READABLE_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS].map(descriptor => String(descriptor.id)));
     for (const { label, workflows } of TEST_TARGET_REGISTRY.targets) {
       for (const workflow of Object.keys(workflows)) {
         assert.equal(built.has(workflow), true, `test target ${label} names unbuilt workflow ${workflow}`);

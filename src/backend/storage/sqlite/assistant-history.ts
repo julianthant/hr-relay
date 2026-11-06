@@ -7,7 +7,7 @@ import {
 } from "../../../models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
-export const ASSISTANT_HISTORY_MIGRATION = Object.freeze({ version: 22, statements: Object.freeze([
+export const ASSISTANT_HISTORY_MIGRATION = Object.freeze({ version: 23, statements: Object.freeze([
   `CREATE TABLE assistant_conversations (
     id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>0), selected_at TEXT,
     payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), draft TEXT NOT NULL, composer TEXT NOT NULL,

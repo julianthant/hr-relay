@@ -23,7 +23,7 @@ import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js"
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { deriveIdentityEvidenceDigest } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
@@ -112,7 +112,7 @@ describe("gate resolution", () => {
       output: { schemaHash: deriveSchemaHash(task.uses.output, "output"), value: output },
       descriptorVersion: identityCheckDescriptor.version,
       contractFingerprint: identityCheckDescriptor.contractFingerprint,
-      implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, task.uses.id),
+      implFingerprint: taskImplFingerprint(task.uses),
       provenance: [],
       writtenAt: NOW,
     });

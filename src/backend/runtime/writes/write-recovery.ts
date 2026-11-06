@@ -24,7 +24,6 @@ import {
   PositiveIntSchema,
   WriteIntentIdSchema,
 } from "../../../rules/identity/ids.js";
-import type { Fingerprint, TaskId } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import {
@@ -45,10 +44,7 @@ import {
   type WriteBindingRepositories,
   type WriteResolutionArm,
 } from "./write-resolution-binding.js";
-import {
-  BUILD_MANIFEST,
-  resolveTaskImplFingerprint,
-} from "../../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { rejectCommandRequest } from "../../runs/commands/command-refusal.js";
 import type {
   WriteResolutionContext,
@@ -125,7 +121,7 @@ export async function checkParkedWrite(input: Readonly<{
         probe: { ...input.probe, sessions: input.sessions }, sessions: input.sessions,
         configureRun: () => input.configureRun(run) };
       if (intent.taskId === "ucpath/create-termination") {
-        const implFingerprint = resolveTaskImplFingerprint(BUILD_MANIFEST, UcpathReadTransactionFindings.id);
+        const implFingerprint = taskImplFingerprint(UcpathReadTransactionFindings);
         const findings = await executeRecoveryFindings(activity);
         evidence = { schemaHash: deriveSchemaHash(UcpathReadTransactionFindings.output, "output"), value: JsonValueSchema.parse(findings.output) };
         findingsIdentity = { activityId: findings.activityId, descriptorVersion: run.envelope.descriptorVersion,
@@ -208,7 +204,6 @@ export interface WriteRecoveryDependencies {
   readonly taskDeadlineMs: number;
   readonly operator: unknown;
   readonly log: TaskLogger;
-  readonly resolveImplFingerprint?: (taskId: TaskId) => Fingerprint;
   readonly hooks?: WriteSequencerHooks;
 }
 
@@ -230,8 +225,6 @@ type AttemptingIntent = Extract<WriteIntentRecord, { status: "attempting" }>;
 
 export function createWriteRecoveryService(deps: WriteRecoveryDependencies): WriteRecoveryService {
   const operator = ActorIdSchema.parse(deps.operator);
-  const resolveImplFingerprint = deps.resolveImplFingerprint
-    ?? ((taskId: TaskId) => resolveTaskImplFingerprint(BUILD_MANIFEST, taskId));
   const instant = () => IsoInstantSchema.parse(deps.clock.now().toISOString());
   const probeDeps: ProbeReadDeps = {
     stores: deps.stores,
@@ -378,7 +371,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
         intent,
         commitContract,
         operator,
-        implFingerprint: resolveImplFingerprint(commitContract.id),
+        implFingerprint: taskImplFingerprint(commitContract),
         proofSource: "recovery-probe",
         proofValue,
         outputValue,
@@ -507,7 +500,6 @@ export interface WriteResolutionDependencies {
     settleResolvedParkedAbsence(input: unknown): WriteIntentRecord;
   };
   readonly ids: IdFactory;
-  readonly resolveImplFingerprint?: (taskId: TaskId) => Fingerprint;
   readonly hooks?: WriteSequencerHooks;
 }
 
