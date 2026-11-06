@@ -98,7 +98,7 @@ it("captures genuine stopped-profile authority with exact bigint reader identiti
 it("witnesses flat offline maintenance files with their exact bytes and an exact high Windows inode", async () => {
   const f = await createHistoricalFlatProfileFixture();
   const target = join(f.workspace, ".tracker", "control", "installation.json");
-  const realInode = BigInt(fs.lstatSync(target).ino), status = identities.fileStatus, descriptor = identities.descriptorStatus;
+  const realInode = fs.lstatSync(target, { bigint: true }).ino, status = identities.fileStatus, descriptor = identities.descriptorStatus;
   const inode = 21_110_623_253_370_483n;
   let descriptorDelta = 0n;
   const exact = (info: fs.BigIntStats, delta: bigint) => { info.ino = inode + delta; return info; };

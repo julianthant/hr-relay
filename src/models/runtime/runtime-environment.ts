@@ -180,6 +180,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   TZ: [
     "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
     "tests/perf/dashboard-fixture.integration.test.ts",
+    "tests/backend/storage/admission/process-identity.integration.test.ts",
   ],
 } as const;
 
