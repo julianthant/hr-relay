@@ -28,9 +28,9 @@ function render(proposal: typeof pause, disposition: Disposition = 'review') {
 
 describe('assistant proposal card rows', () => {
   it('pairs each person\'s Name and EID in served order with the total', () => {
-    const { facts } = render(withRows([person('Morgan Vega', '20202020'), person('Avery Sample', '10101010'), { title: 'EID 30303030', display: { kind: 'person', employeeId: '30303030' } }], { targetLabel: '3 people' }));
-    expect(facts.slice(0, -1)).toEqual([['Name', 'Morgan Vega'], ['EID', '20202020'], ['Name', 'Avery Sample'], ['EID', '10101010'],
-      ['Name', 'Not provided'], ['EID', '30303030'], ['Total', '3']]);
+    const { facts } = render(withRows([person('Morgan Vega', '10000002'), person('Avery Sample', '10101010'), { title: 'EID 10000003', display: { kind: 'person', employeeId: '10000003' } }], { targetLabel: '3 people' }));
+    expect(facts.slice(0, -1)).toEqual([['Name', 'Morgan Vega'], ['EID', '10000002'], ['Name', 'Avery Sample'], ['EID', '10101010'],
+      ['Name', 'Not provided'], ['EID', '10000003'], ['Total', '3']]);
     expect(facts.at(-1)).toEqual(['Options', 'Read only']);
   });
   it('shows Separations document numbers as documents, never as people', () => {
@@ -55,7 +55,7 @@ describe('assistant proposal card rows', () => {
   });
   it('names the one row or the served count on the resolved line', () => {
     expect(render(withRows([person('Avery Sample', '10101010')]), 'confirmed').host.textContent).toBe('Start Person Lookup · Avery SampleStarted');
-    expect(render(withRows([person('Morgan Vega', '20202020'), person('Avery Sample', '10101010')], { targetLabel: '2 people' }), 'cancelled').host.textContent).toBe('Start Person Lookup · 2 peopleNot started');
+    expect(render(withRows([person('Morgan Vega', '10000002'), person('Avery Sample', '10101010')], { targetLabel: '2 people' }), 'cancelled').host.textContent).toBe('Start Person Lookup · 2 peopleNot started');
     expect(render(pause, 'confirmed').host.textContent).toBe('Pause Onboarding · Onboarding requestDone');
   });
 });
