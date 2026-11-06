@@ -421,7 +421,7 @@ it(`refuses accounting with a ${ownership} after manual Resume`, async () => {
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
 });
 
-for (const boundary of ["active in its child join", "already paused", "at first native success admission", "at first native failure admission", "at failure diagnostic capture", "at accounting capture", "at typed refusal failure admission"] as const)
+for (const boundary of ["active in its child join", "already paused", "at first native success admission", "at first native failure admission", "at failure diagnostic capture", "at failure diagnostic capture after Pause", "at accounting capture", "at typed refusal failure admission"] as const)
 it(`retries a member while its parent is ${boundary}`, async () => {
   const f = fixture;
   const paused = boundary === "already paused";
@@ -444,7 +444,8 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   const originalChildren = f.children().map(child => ({ runId: child.envelope.runId, bytes: canonicalJsonStringify(child) }));
   const originalEnvelope = canonicalJsonStringify(f.current().envelope), originalRows = originalBytes(f);
   const firstFailureAdmission = boundary === "at first native failure admission", failureAdmission = firstFailureAdmission || typedRefusal;
-  const diagnosticCapture = boundary === "at failure diagnostic capture";
+  const pauseFirst = boundary === "at failure diagnostic capture after Pause";
+  const diagnosticCapture = pauseFirst || boundary === "at failure diagnostic capture";
   if (firstFailureAdmission || diagnosticCapture) f.control.failAccounting = true;
   const previous = failed(f), execute = f.canonical.childRuns.executeChildRuns.bind(f.canonical.childRuns);
   const retry = f.runCommand("retry", previous);
@@ -467,9 +468,15 @@ it(`retries a member while its parent is ${boundary}`, async () => {
       assert.equal(original.lifecycle.state, "running");
       assert.equal(original.pause, undefined);
       const writes = [...f.persistence.values()].map(value => value.submissions.length);
+      if (pauseFirst) {
+        assert.equal(f.canonical.kernel.execute(f.runCommand("pause", original)).state, "applied");
+        assert.equal(f.current().pause?.state, "requested");
+      }
+      const operatorPause = f.current().pause;
       assert.equal(f.canonical.kernel.execute(retry).state, "applied");
       assert.deepEqual(runClaim(f.current()), claim);
       assert.equal(f.current().pause?.state, "requested");
+      if (pauseFirst) assert.deepEqual(f.current().pause, operatorPause);
       assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), writes);
       return DiagnosticBundleSchema.parse({ bundleId: randomUUID(), runId: original.envelope.runId,
         origin: { kind: "failure", failureId: context.failure.failureId }, createdAt: f.clock.now().toISOString(),
