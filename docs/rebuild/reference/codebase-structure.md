@@ -22,7 +22,6 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/test/` | Suite measurement, shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
 | `.github/workflows/ci.yml`, `release.yml`, `ci-checks.yml`, `release-checks.yml` | Disjoint event entries and per-PR supersession; separately admitted portable-only and full-release check pipelines, stable required summaries and timing publication. |
 | `scripts/verify/` | Repository privacy, browser-login and test-target verification. Standalone verification holds the runtime listener; abandoned reservations settle through startup recovery. |
-| `scripts/verify-parity-json.ts` | Desktop parity runner. |
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
 

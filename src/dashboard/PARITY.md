@@ -1,7 +1,6 @@
 # Dashboard parity suite
 
-`npm run test:parity` runs `scripts/verify-parity-json.ts assert`, which launches Playwright with
-`playwright.parity.config.ts` and validates the resulting JSON evidence. The suite checks the
+`npm run test:parity` runs Playwright with `playwright.parity.config.ts`; its exit code is the result. The suite checks the
 presentation contract with mock values, plus keyboard, focus, loading, and interaction behavior.
 It does not prove live workflow or service readiness.
 
@@ -63,11 +62,6 @@ includes the expected, actual, and diff images. Accessibility/metadata drift nam
 theme, viewport, variant, reference path, and differing lines. Inspect both visual and semantic
 halves before changing source.
 CI uploads the output directory, including failure images and error contexts alongside the JSON report.
-
-The wrapper rejects stale or malformed JSON, unsafe report paths, missing required accessibility
-attachments, duplicate evidence names, wrong digests, and non-passing required evidence producers.
-The process exit and current report are both evidence; an old successful report cannot certify a
-new run. Missing static `required-a11y-evidence` declarations or body-backed attachments fail.
 
 ## Current presentation choices
 
