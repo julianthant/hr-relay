@@ -18,7 +18,7 @@ flowchart LR
   Browser --> HR[External HR systems]
 ```
 
-One operator and one machine make local persistence and process coordination a better fit than a hosted service. That choice still needs request admission: browser mutations pass Host and Origin guards before their bodies or effects are processed. Browser-safe schemas live in `src/models/`, pure decisions in `src/rules/`, and effectful work in `src/backend/`. [Constraints](../AGENTS.md#backend), [mutation ingress](../src/backend/transports/http/routes/operator-mutation-ingress.ts), [source boundaries](rebuild/reference/codebase-structure.md#workflow-ownership-and-imports).
+One operator and one machine make local persistence and process coordination a better fit than a hosted service. That choice still needs request admission: browser mutations pass Host and Origin guards before their bodies or effects are processed. Browser-safe schemas live in `src/models/`, pure decisions in `src/rules/`, and effectful work in `src/backend/`. [Constraints](../AGENTS.md#backend), [mutation ingress](../src/backend/transports/http/routes/operator-mutation-ingress.ts), [source boundaries](reference/codebase-structure.md#workflow-ownership-and-imports).
 
 ## A workflow declaration connects execution and explanation
 
@@ -66,7 +66,7 @@ Workers renew the exact run claim on a cadence. Losing the claim aborts executio
 
 Ordinary startup accepts the current database schema, version 6 at this pin. An explicit stopped upgrade validates the old authority, obtains and verifies a backup, then applies the migration. Backup verification checks bytes, checksum, source identity, and database contents. Startup does not replace an incompatible database with an empty one. [Schema](../src/backend/storage/sqlite/migrations.ts), [boot state](../src/backend/storage/sqlite/authority-boot.ts), [upgrade](../src/backend/storage/maintenance/upgrade.ts), [backup verification](../src/backend/storage/sqlite/backup-service.ts).
 
-Settings belong to the same authority as the database. Readers authenticate saved settings against commands, audits, and configuration snapshots. Worker resources use the run's retained snapshot and verify its fingerprint. Private credentials have a separate local file store; database backup and restore do not replace that credential authority. [Settings storage](../src/backend/storage/sqlite/settings-storage.ts), [run resources](../src/backend/app/composition/worker/run-resources.ts), [credential store](../src/backend/storage/configuration/credential-store.ts), [configuration contract](rebuild/reference/clock-config-secrets.md).
+Settings belong to the same authority as the database. Readers authenticate saved settings against commands, audits, and configuration snapshots. Worker resources use the run's retained snapshot and verify its fingerprint. Private credentials have a separate local file store; database backup and restore do not replace that credential authority. [Settings storage](../src/backend/storage/sqlite/settings-storage.ts), [run resources](../src/backend/app/composition/worker/run-resources.ts), [credential store](../src/backend/storage/configuration/credential-store.ts), [configuration contract](reference/clock-config-secrets.md).
 
 ## Account integration, OCR custody, and assistant limits
 

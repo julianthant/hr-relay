@@ -9,9 +9,9 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `AGENTS.md` | Repository instructions. Nearer instructions own backend, registry, system, and dashboard constraints. |
 | `.agents/` | Project agent data: skill entrypoints in `skills/`, with canonical operating references in `skill-library/`. |
 | `config/` | Runtime isolation and test-data configuration. |
-| `docs/rebuild/reference/` | Current contracts and this map. |
-| `docs/rebuild/guides/` | Workflow authoring guide. |
-| `docs/rebuild/guard-inventory.json` | Guard owners and reasons. |
+| `docs/reference/` | Current contracts and this map. |
+| `docs/guides/` | Workflow authoring guide. |
+| `docs/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Dashboard-owned Chromium enrollment and backend-signed workflow login runtimes. |
@@ -32,7 +32,7 @@ and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step
 the manifest and the ignored Windows observer policy artifact under `node_modules/.cache/relay/`; source-tool configs and package prehooks call it before graph loading. Read-only
 `build:manifest:check` checks registry freshness before manifest bytes. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
 owns preparation boundaries, watcher restart requirements and the future packaging contract.
-`npm run stores:catalog` generates the catalog section in `docs/rebuild/reference/stores.md`.
+`npm run stores:catalog` generates the catalog section in `docs/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
 Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Git worktrees live in its gitignored `.worktrees/<branch>/` folder.

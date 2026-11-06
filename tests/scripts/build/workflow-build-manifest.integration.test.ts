@@ -165,7 +165,7 @@ it("pins package prehooks and consuming CI checkout preparation without autoheal
 
 it("prepares the cold train catalog consumer after registry generation while its check stays read-only", () => {
   fixture(root => {
-    const catalog = "docs/rebuild/reference/stores.md";
+    const catalog = "docs/reference/stores.md";
     mkdirSync(dirname(join(root, catalog)), { recursive: true });
     cpSync(join(REPO_ROOT, catalog), join(root, catalog));
     const npm = (script: string) => spawnSync("npm", ["run", script], { cwd: root, encoding: "utf8", timeout: scaledMs(25_000) });

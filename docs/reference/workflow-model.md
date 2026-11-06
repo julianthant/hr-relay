@@ -797,7 +797,7 @@ The workflow has no transaction, gate, parallel, or delegation node. Its dry-run
 ## Not built yet
 
 - The wiring base must consume served descriptor projections through existing dashboard components, retaining explicit loading, empty, failure, refusal, and uncertain states.
-- Workflow coding follows the approved maps and review policy in the [root instructions](../../../AGENTS.md#what-to-build). Each workflow switches to served data, one at a time, after wiring across its required surfaces, a dry run where supported, and operator sign-off.
+- Workflow coding follows the approved maps and review policy in the [root instructions](../../AGENTS.md#what-to-build). Each workflow switches to served data, one at a time, after wiring across its required surfaces, a dry run where supported, and operator sign-off.
 - A workflow that first uses child-run execution must verify its registered targets, durable fan-out and recovery behavior through worker composition.
 
 

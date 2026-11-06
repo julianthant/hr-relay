@@ -186,7 +186,7 @@ Other native files count half because two workers share them.
 | parity | macOS, operator-started full releases only | 3 shards | Desktop parity |
 
 With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
-admission and draft policy are described in [repository governance](../../repository-governance.md).
+admission and draft policy are described in [repository governance](../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
 Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
 For a file reported by both platforms, the shared timing map retains the slower observation regardless
@@ -464,7 +464,7 @@ removing unique protection or disguising an unrun gate.
 
 ## 5. Guard registration and removal
 
-`docs/rebuild/guard-inventory.json` is the machine-readable guard inventory. Every active entry
+`docs/guard-inventory.json` is the machine-readable guard inventory. Every active entry
 names a unique guard, file, owner, invariant, and `replacementRequired: true`.
 `tests/architecture/tooling/guard-manifest.test.ts` compares active files to recursive discovery of
 `tests/architecture/` in both directions. An unregistered file or missing active file fails. A
@@ -588,7 +588,10 @@ update mode refreshes all halves together.
 
 Outputs live under ignored `tests/parity/.output/`.
 
-[Dashboard parity](../../../src/dashboard/PARITY.md) owns detailed scene and
+The parity child uses runner containment with an inactivity bound of **180,000 ms** without
+stdout/stderr. A stall fails, preserves diagnostics, and stops the group with TERM then KILL.
+Continuous output can defeat an inactivity bound; it does not prove progress. Inner deadlines
+remain unchanged. [Dashboard parity](../../src/dashboard/PARITY.md) owns detailed scene and
 verification rules; [frontend/backend integration](frontend-backend-integration.md) owns wiring
 acceptance.
 

@@ -379,7 +379,7 @@ mock case for behavioral comparison. These checks do not establish live service 
 Boundary checks in `tests/architecture/dashboard/` cover wire connectivity, browser import closure,
 Fast Refresh exports, Settings vocabulary, and the absence of phone capture. Performance fixtures under
 `tests/perf/frontend/` prove complete search/copy/selection, interaction, and heap cleanup against
-Queue and Logs without HR services. Visual wiring uses the current [parity suite](../../../src/dashboard/PARITY.md)
+Queue and Logs without HR services. Visual wiring uses the current [parity suite](../../src/dashboard/PARITY.md)
 with mock values and zero diffs. No source schema, assertion, reference, membership, timeout,
 or coverage floor changes merely to make wiring pass.
 
