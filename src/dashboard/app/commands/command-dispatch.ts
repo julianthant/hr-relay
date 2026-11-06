@@ -204,8 +204,6 @@ export function composeCommandRequest(
       }
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     }
-    case "restart":
-      return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     case "archive":
       return { state: "refused", reason: "Archive page removed" };
     case "recover-run":
