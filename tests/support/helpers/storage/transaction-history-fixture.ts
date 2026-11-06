@@ -11,6 +11,7 @@ import { separationsDescriptor } from "../registered-workflows.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import { atomicWriteCheckpoint, releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { ledgerCommitFixture, fixtureUuid } from "../../fixtures/ledger-projection-fixtures.js";
+import { currentBuildId } from "../../../../src/backend/app/build-id.js";
 export const HISTORY_NOW = "2026-09-09T12:00:00.000Z";
 export const historyClock = capturedInstantClock(HISTORY_NOW);
 export async function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) {
@@ -25,7 +26,7 @@ export async function historyWorld(options: Readonly<{ terminalize?: boolean }> 
       database.authority.runs.enqueue(RunRecordSchema.parse({ envelope: { workflow:ledger.workflowId,runId:ledger.runId,itemId:ledger.itemId,
         traceId:ledger.traceId,descriptorVersion:separationsDescriptor.version,contractFingerprint:separationsDescriptor.contractFingerprint,resolvedInstance:{[ledger.system]:ledger.instance},
         configFingerprint:ledger.configFingerprint,configSnapshotId:admitted.snapshot.configSnapshotId,shape:"single",priority:"interactive",
-        dryRun:false,attempt:ledger.attempt,enqueuedAt:ledger.fencedAt },
+        dryRun:false,attempt:ledger.attempt,enqueuedAt:ledger.fencedAt,buildId:currentBuildId() },
         input:{raw:{},parsed:{schemaHash:HASH_A,value:{},protectedBindings:[]},ingressSchemaHash:HASH_A},
         lifecycle:{state:"queued"},claimGeneration:0,version:1,createdAt:ledger.fencedAt,updatedAt:ledger.fencedAt }));
       const slots = database.authority.workerSlots.list(separationsDescriptor.id).filter(entry => entry.retiredAt === null);
