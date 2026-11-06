@@ -59,6 +59,8 @@ export interface OwnedBrowserProcess {
 }
 
 const PROFILE_IN_USE_MESSAGES = ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."] as const;
+// Outside Playwright's positive id range; the reply is consumed here, never forwarded.
+const BROWSER_CLOSE_MESSAGE_ID = Number.MIN_SAFE_INTEGER;
 
 async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["launch"]>[0]): Promise<BrowserContext> {
   const timeoutMs = z.number().positive().parse(input.timeoutMs);
@@ -77,7 +79,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
     diagnosticTail = (diagnosticTail + data.toString("utf8")).slice(-512);
     if (PROFILE_IN_USE_MESSAGES.some(message => diagnosticTail.includes(message))) profileInUse = true;
   });
-  let birthFailure: Error | undefined, processFailure: Error | undefined;
+  let birthFailure: Error | undefined, processFailure: Error | undefined, closeRefused: ((error: Error) => void) | undefined;
   child.once("spawn", () => { spawned = true; });
   const startup: { connecting?: Promise<BrowserContext> } = {};
   const exit = new Promise<void>(resolve => {
@@ -95,7 +97,11 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
             if (graceful) {
               const context = await startup.connecting, browser = context?.browser();
               if (!browser) throw new Error("DUO_SETUP_STOP_FAILED");
-              if (browser.isConnected()) { const pipe = await browser.newBrowserCDPSession(); await pipe.send("Browser.close"); }
+              if (browser.isConnected()) {
+                const refused = new Promise<never>((_resolve, reject) => { closeRefused = reject; });
+                transport.send({ id: BROWSER_CLOSE_MESSAGE_ID, method: "Browser.close" });
+                await Promise.race([exit, refused]);
+              }
             } else if (!child.kill("SIGKILL")) throw new Error("DUO_SETUP_STOP_FAILED", processFailure === undefined ? undefined : { cause: processFailure });
           }
           await exit; await Promise.allSettled([startup.connecting]);
@@ -121,6 +127,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
       try { value = JSON.parse(raw); }
       catch { transport.close(); disconnect(); return; }
       if (typeof value !== "object" || value === null || Array.isArray(value)) { transport.close(); disconnect(); return; }
+      if ("id" in value && value.id === BROWSER_CLOSE_MESSAGE_ID) { if ("error" in value) closeRefused?.(new Error("DUO_SETUP_STOP_FAILED")); continue; }
       transport.onmessage?.(value);
     }
   });

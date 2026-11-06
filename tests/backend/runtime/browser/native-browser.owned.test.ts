@@ -3,6 +3,7 @@ import { ChildProcess } from "node:child_process";
 import { PassThrough } from "node:stream";
 import { chromium, type Browser, type BrowserContext, type ConnectOverCDPTransport } from "playwright";
 import { it, vi } from "vitest";
+import { z } from "zod";
 import { DEFAULT_BROWSER_LAUNCHER, BrowserLaunchUncertainError, chromiumProfileInUse, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 
 function isPipeTransport(value: unknown): value is ConnectOverCDPTransport {
@@ -59,25 +60,42 @@ for (const stopped of [true, false]) it(`uses private pipes and requires positiv
   } finally { connect.mockRestore(); kill.mockRestore(); write.destroy(); read.destroy(); }
 });
 
-for (const exits of [false, true]) it(`ordinary shutdown sends Browser.close without forcing a child and requires its exit (exit=${exits})`, async () => {
+for (const outcome of ["exit-without-reply", "no-exit", "refused", "transport-failed"] as const) it(`ordinary shutdown sends Browser.close on the owned root pipe and requires positive exit (${outcome})`, async () => {
   child = new ChildProcess();
   const write = new PassThrough(), read = new PassThrough();
   Object.defineProperty(child, "stdio", { value: [null, null, null, write, read] });
   const kill = vi.spyOn(child, "kill").mockImplementation(() => assert.fail("ordinary shutdown must not force the child"));
-  const calls: string[] = [];
+  const sessionCalls: string[] = [];
   const context = { browser: () => browser } as unknown as BrowserContext;
   const browser = { isConnected: () => true, contexts: () => [context], newBrowserCDPSession: async () => ({
-    async send(method: string) { calls.push(method); if (method === "Browser.close" && exits) child.emit("exit", 0, null); }, async detach() {},
+    // A shutdown session that never answers: closure must not wait on it.
+    async send(method: string) { sessionCalls.push(method); if (method === "Browser.close") await new Promise<never>(() => {}); }, async detach() {},
   }) } as unknown as Browser;
-  const connect = vi.spyOn(chromium, "connectOverCDP").mockResolvedValue(browser);
+  let transport: ConnectOverCDPTransport | undefined;
+  const connect = vi.spyOn(chromium, "connectOverCDP").mockImplementation(async value => { assert.ok(isPipeTransport(value)); transport = value; return browser; });
   let process: OwnedBrowserProcess | undefined;
   try {
     await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: "synthetic-owned-profile", extensionDirectory: "synthetic-extension", headless: true,
       nativeOnly: true, acceptDownloads: false, downloadsPath: "synthetic-owned-profile", viewport: { width: 640, height: 720 }, timeoutMs: 50,
       ownedProcess: owned => { process = owned; } });
-    assert.ok(process);
-    if (exits) await process.stop(50, true); else await assert.rejects(process.stop(50, true), /DUO_SETUP_STOP_FAILED/);
-    assert.deepEqual(calls, ["Browser.setDownloadBehavior", "Browser.close"]); assert.equal(process.exited(), exits);
+    assert.ok(process); assert.ok(transport);
+    const forwarded: object[] = []; transport.onmessage = value => forwarded.push(value);
+    const sent: { id: number; method: string }[] = [];
+    write.on("data", (value: Buffer) => {
+      const message = z.strictObject({ id: z.number(), method: z.string() }).parse(JSON.parse(value.toString("utf8").replace(/\0$/u, "")));
+      sent.push(message);
+      if (outcome === "exit-without-reply") child.emit("exit", 0, null);
+      if (outcome === "refused") read.write(JSON.stringify({ id: message.id, error: { code: -32000, message: "synthetic refusal" } }) + "\0");
+    });
+    if (outcome === "transport-failed") write.destroy();
+    const started = Date.now();
+    if (outcome === "exit-without-reply") await process.stop(2000, true);
+    else await assert.rejects(process.stop(outcome === "refused" ? 2000 : 50, true), /DUO_SETUP_STOP_FAILED/);
+    if (outcome !== "no-exit" && outcome !== "transport-failed") assert.ok(Date.now() - started < 1000, "settles on exit or refusal, not the deadline");
+    assert.deepEqual(sessionCalls, ["Browser.setDownloadBehavior"]);
+    assert.deepEqual(sent.map(message => message.method), outcome === "transport-failed" ? [] : ["Browser.close"]);
+    assert.equal(process.exited(), outcome === "exit-without-reply");
+    assert.deepEqual(forwarded, [], "the shutdown reply is never forwarded to Playwright");
     const args = launches.at(-1)?.args; assert.ok(args); assert.ok(args.includes("--disable-extensions")); assert.ok(args.includes("--use-mock-keychain"));
     assert.ok(args.includes("--no-sandbox"));
     assert.equal(args.some(arg => arg.startsWith("--load-extension=")), false);

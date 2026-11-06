@@ -4,7 +4,7 @@ import { copyFileSync, readFileSync } from "node:fs";
 import { basename, join, relative, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { chromium, type BrowserContext } from "playwright";
+import { chromium } from "playwright";
 import { it, vi } from "vitest";
 import { composeWorkerRuntime, WorkerLaunchUncertainError } from "../../../../src/backend/app/composition/worker-compose.js";
 import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
@@ -32,14 +32,6 @@ import { healthyRuntimePreflightRunners } from "../../../support/fixtures/prefli
 import { happySessionHarness, ManualScheduler, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const retainedLaunchCustody: object[] = [];
-const errorGraph = (value: unknown, depth = 0, seen = new Set<unknown>()): string[] => {
-  if (value === undefined || seen.has(value) || depth > 12) return [];
-  seen.add(value);
-  const pad = "  ".repeat(depth);
-  if (!(value instanceof Error)) return [`${pad}${JSON.stringify(value) ?? typeof value}`];
-  const members: readonly unknown[] = value instanceof AggregateError ? value.errors : [];
-  return [`${pad}${value.name}: ${value.message}`, ...members.flatMap(member => errorGraph(member, depth + 1, seen)), ...errorGraph(value.cause, depth + 1, seen)];
-};
 
 for (const { mode: failure, name } of [
   { mode: "close", name: "retains an unproved closure report while settling the worker lease as crashed" },
@@ -55,10 +47,6 @@ for (const { mode: failure, name } of [
   const lifetimeLock = f.lifetime;
   const managers: WorkerSessionManager[] = [];
   let launches = 0, probes = 0, launchFailure: Promise<never> | undefined;
-  const probeObservations: { exited: () => boolean; context?: BrowserContext; contextClosed: boolean }[] = [];
-  const observations = () => [`probes=${String(probes)} launches=${String(launches)} leaseBeforeLaunch=${String(beforeLaunch !== undefined)}`,
-    ...probeObservations.map((probe, index) => `probe ${String(index)}: launched=${String(probe.context !== undefined)} exited=${String(probe.exited())} contextClosed=${String(probe.contextClosed)}`
-      + ` connected=${String(probe.context?.browser()?.isConnected())} openPages=${String(probe.context?.pages().filter(page => !page.isClosed()).length)}`)].join("\n");
   let closedWorkerDatabase: AuthorityDatabase | undefined, launchedDirectory: string | undefined;
   let beforeLaunch: WorkerLeaseRecord | undefined, launchReport: WorkerLaunchUncertainError | undefined;
   let profileRoot: string | undefined;
@@ -107,17 +95,13 @@ for (const { mode: failure, name } of [
       envelope: { ...run.envelope, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } }));
     assert.equal(queued.state, "inserted");
     const nativeLaunch = DEFAULT_BROWSER_LAUNCHER.launch.bind(DEFAULT_BROWSER_LAUNCHER);
-    vi.spyOn(DEFAULT_BROWSER_LAUNCHER, "launch").mockImplementation(async input => {
-      const owner = input.ownedProcess;
-      if (owner === undefined) return nativeLaunch(input);
-      assert.equal(input.nativeOnly, true); assert.equal(input.headless, true);
-      assert.equal(input.timeoutMs, context.resolveSettings(context.settings.read().record.settings).config.timeouts.sessionAcquireMs);
-      probes += 1;
-      const observed: (typeof probeObservations)[number] = { exited: () => false, contextClosed: false };
-      probeObservations.push(observed);
-      const launched = await nativeLaunch({ ...input, ownedProcess: owned => { observed.exited = () => owned.exited(); owner(owned); } });
-      observed.context = launched; launched.once("close", () => { observed.contextClosed = true; });
-      return launched;
+    vi.spyOn(DEFAULT_BROWSER_LAUNCHER, "launch").mockImplementation(input => {
+      if (input.ownedProcess !== undefined) {
+        assert.equal(input.nativeOnly, true); assert.equal(input.headless, true);
+        assert.equal(input.timeoutMs, context.resolveSettings(context.settings.read().record.settings).config.timeouts.sessionAcquireMs);
+        probes += 1;
+      }
+      return nativeLaunch(input);
     });
     vi.spyOn(chromium, "launchPersistentContext").mockImplementation((directory, options) => {
       assert.deepEqual(options?.args, ["--disable-extensions"]);
@@ -140,10 +124,7 @@ for (const { mode: failure, name } of [
         assert.equal(contains(error, runtimeFailure), true);
         assert.equal(contains(error, loggingFailure), true);
       }
-      if (failure === "launch") {
-        if (!(error instanceof WorkerLaunchUncertainError)) throw new Error(`worker-launch-uncertain-required\n${observations()}\n${errorGraph(error).join("\n")}`, { cause: error });
-        launchReport = error;
-      }
+      if (failure === "launch") { assert.ok(error instanceof WorkerLaunchUncertainError); launchReport = error; }
       return true;
     });
     if (failure === "close" || failure === "close-log") {
