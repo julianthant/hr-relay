@@ -206,6 +206,7 @@ The repository holds only the current version. No compatibility readers, old mig
 | Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, the system's `AGENTS.md` |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
 | Tests and guards | `ref guards-and-tests` |
+| Live dry run, "verify X in the app" | [`/verify`](.agents/skills/verify/SKILL.md) and its [feature map](.agents/skills/verify/features/README.md) |
 | Environment, porting, conventions | The [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
 
 ## Commands
