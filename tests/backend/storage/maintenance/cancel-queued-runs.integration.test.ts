@@ -63,7 +63,8 @@ it("plans without source writes, binds the exact capture, cancels with lifecycle
     const raw = new DatabaseSync(f.databasePath, { readOnly: true });
     try {
       inspectNativeAuthority(raw, 6);
-      assert.throws(() => runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId)), /native schema/u);
+      assert.throws(() => runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId)),
+        (error: unknown) => error instanceof z.ZodError && error.issues.some(issue => issue.code === "invalid_type" && issue.path.join(".") === "envelope.buildId"));
       const run = readNative6RunRecord(raw, raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
       assert.equal(run.lifecycle.state, "terminal");
       assert.deepEqual(run.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: run.updatedAt, errorSummary: "cancelled offline: stale queued run" });
