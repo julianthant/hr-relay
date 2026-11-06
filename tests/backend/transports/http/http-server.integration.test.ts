@@ -199,7 +199,7 @@ afterEach(_afterEachFixture0);
     await clientClosed.promise;
     assert.equal(observedSignal, routedRequest.signal, "the socket must abort the Request delivered to Hono");
     assert.equal(routedRequest.signal.aborted, true);
-    assert.match(String(routedRequest.signal.reason), /disconnected before response handoff/);
+    assert.match(String(routedRequest.signal.reason), /aborted/u);
     assert.deepEqual(events, ["route-started", "signal-aborted", "cleanup-settled"]);
     assert.equal(responses.length, 0, "a disconnected pre-handoff request must not receive headers");
   });
@@ -721,7 +721,7 @@ afterEach(_afterEachFixture0);
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(transferErrors.length, 1, "the disconnect is observed exactly once, never swallowed");
-    assert.match(transferErrors[0]?.message ?? "", /closed while waiting for drain|disconnected/u);
+    assert.match(transferErrors[0]?.message ?? "", /dashboard response closed/u);
   });
 });
 }
