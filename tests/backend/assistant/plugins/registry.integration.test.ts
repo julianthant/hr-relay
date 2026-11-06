@@ -13,11 +13,15 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { AssistantInferenceRequestSchema } from "../../../../src/models/dashboard/assistant.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { EditableWorkbookSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { NotificationRecordSchema } from "../../../../src/models/notifications/notifications.js";
-import { DESCRIPTORS, SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { chatGptFixture } from "../../../support/helpers/chatgpt-account-fixtures.js";
 import { completedResponseStream } from "../../../support/helpers/chatgpt-response-stream.js";
@@ -37,7 +41,7 @@ const CANARIES = {
   subject: RESOLVED.selected.name, eid: RESOLVED.selected.emplId, actor: "canary-actor-operator", runTitle: "Canary run title",
   notificationTitle: "Canary notification title", notificationSummary: "Canary notification summary",
   workbook: "Canary Roster Workbook", worksheet: "Canary Worksheet", cell: "Canary cell value", typeName: "Canary Workbook Type",
-  fieldLabel: "Canary Field Label", field: "roster.CanaryField",
+  fieldLabel: "Canary Field Label", field: "roster.CanaryField", header: "Canary column header", setting: "Canary Operator Label",
 } as const;
 const WireSchema = AssistantInferenceRequestSchema.safeExtend({ store: z.literal(false), stream: z.literal(true), parallel_tool_calls: z.literal(false),
   include: z.tuple([z.literal("reasoning.encrypted_content")]) });
@@ -57,13 +61,26 @@ async function seededOwners() {
     contractFingerprint: e.contractFingerprint, resolvedInstance: e.resolvedInstance, configFingerprint: e.configFingerprint, configSnapshotId: e.configSnapshotId });
   database.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse(searchingCheckpoint(41, RESOLVED)));
   const now = clock.now().toISOString();
-  database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator",
-    dedupeFingerprint: "a".repeat(64), trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: CANARIES.notificationTitle,
-    summary: CANARIES.notificationSummary, links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1, lastSeenAt: now, createdAt: now, updatedAt: now })));
+  database.withAuthorityTransaction(({ notifications }) => {
+    notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator",
+      dedupeFingerprint: "a".repeat(64), trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: CANARIES.notificationTitle,
+      summary: CANARIES.notificationSummary, links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1, lastSeenAt: now, createdAt: now, updatedAt: now }));
+    // A run-linked notification whose display context resolves the run's subject.
+    notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator",
+      dedupeFingerprint: "c".repeat(64), trigger: "failed", channel: "inbox", status: "unread", snooze: { state: "not-snoozed" }, title: CANARIES.notificationTitle,
+      links: [{ kind: "run", runId: run.envelope.runId }], count: 1, version: 1, lastSeenAt: now, createdAt: now, updatedAt: now }));
+  });
+  const patch = { "actor.label": { set: CANARIES.setting } };
+  const saved = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
+    settings: createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), { apply: () => { throw new Error("ordinary settings use no credentials"); } } as never) }, {
+    commandId: randomUUID(), family: "settings", type: "apply-settings", requestedAt: now, requestedBy: "local-operator", source: "settings-surface",
+    target: { expectedRevision: readSettings(database.authority).revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+  assert.equal(saved.state, "applied");
   const library = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const type = library.putType({ id: randomUUID(), name: CANARIES.typeName, keyFieldId: null, fields: [CANARIES.field], defaultWorkbookId: null, fieldLabels: { [CANARIES.field]: CANARIES.fieldLabel } });
   const created = library.create(EditableWorkbookSchema.parse({ name: CANARIES.workbook, themes: [], hasFormulas: false,
-    sheets: [{ id: randomUUID(), name: CANARIES.worksheet, width: 1, hidden: [], rows: [{ id: randomUUID(), cells: [{ value: CANARIES.cell }] }] }] }));
+    sheets: [{ id: randomUUID(), name: CANARIES.worksheet, width: 1, hidden: [], headerRow: 1,
+      rows: [{ id: randomUUID(), cells: [{ value: CANARIES.header }] }, { id: randomUUID(), cells: [{ value: CANARIES.cell }] }] }] }));
   const entry = library.catalog().find(candidate => candidate.libraryId === created.libraryId); assert.ok(entry);
   await library.libraryAction(created.libraryId, { operationId: randomUUID(), expectedRevision: entry.state.revision, expectedVersion: entry.version,
     change: { kind: "metadata", metadata: { typeId: z.object({ id: z.string() }).parse(type).id, sharePoint: null } } }, new AbortController().signal);
@@ -72,12 +89,13 @@ async function seededOwners() {
       authorityGeneration: database.getMeta().authorityGeneration, searchRuns: input => database.authority.runs.search(input) })) } });
   const runDetail = createRunDetailTestWorld().depsOf(w);
   const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID }, publishQueued: () => undefined });
-  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors: { resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor }, runDetailDeps: runDetail, assertCurrent() {},
+  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors: { resolve: () => subjectDescriptor as never }, runDetailDeps: runDetail, assertCurrent() {},
     notificationObserver: { status: () => { throw new Error("observer unused by the snapshot"); } } as never,
     notificationTarget: createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get }) });
   const facts = assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup"));
   return { w, run, plugins: () => createAssistantPlugins(createAssistantPluginDeps({ database, runDetail, assertCurrent() {}, facts: () => facts,
-    search: () => search, notifications: () => notifications, workbooks: () => library })), facts, settings: () => readSettings(database.authority).settings };
+    search: () => search, notifications: () => notifications, workbooks: () => library })), facts, settings: () => readSettings(database.authority).settings,
+    notificationSubjects: () => notifications.snapshot("local-operator").flatMap(row => row.kind === "notification" && row.context.state === "available" ? [row.context.subject] : []) };
 }
 
 it("keeps every seeded personal value out of the provider requests across all production read tools", async () => {
@@ -99,7 +117,7 @@ it("keeps every seeded personal value out of the provider requests across all pr
       }
       const calls: readonly (readonly [string, unknown])[] = [["find_runs", { workflow: null, status: null, day: null, limit: 5 }], ["find_people", { query: tokens.person }],
         ["read_run", { run: tokens.run }], ["read_run_logs", { run: tokens.run, last: 5 }], ["list_notifications", { unreadOnly: false }],
-        ["list_spreadsheets", { includeRemoved: false }], ["read_settings", { key: null }]];
+        ["list_spreadsheets", { limit: 10 }], ["read_settings", { key: null }]];
       const next = calls[step++];
       const output = next === undefined ? [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: `Found ${String(tokens.person)} in ${String(tokens.run)}.` }] }]
         : [{ type: "function_call", namespace: "relay", name: next[0], call_id: `call_${String(step)}`, arguments: JSON.stringify(next[1]), status: "completed" }];
@@ -120,12 +138,13 @@ it("keeps every seeded personal value out of the provider requests across all pr
     assert.deepEqual(z.object({ people: z.array(z.object({ person: z.string() })) }).parse(people).people.map(entry => entry.person), [tokens.person]);
     assert.equal(z.object({ person: z.string(), workflow: z.literal("person-lookup") }).parse(read).person, tokens.person);
     z.object({ steps: z.array(z.unknown()) }).parse(logs);
-    assert.deepEqual(z.object({ items: z.array(z.object({ trigger: z.string() })) }).parse(notifications).items.map(item => item.trigger), ["storage"]);
-    assert.deepEqual(z.object({ sheets: z.array(z.strictObject({ sheet: z.string(), version: z.number(), worksheets: z.literal(1), rows: z.literal(1), removed: z.literal(false) })) }).parse(sheets).sheets.length, 1);
-    for (const entry of z.object({ settings: z.array(z.object({ value: z.unknown() })) }).parse(settings).settings) {
-      assert.ok(typeof entry.value === "boolean" || typeof entry.value === "number" || entry.value === "set" || entry.value === "unset");
-    }
-    assert.ok(Object.keys(owners.settings()).length > 0);
+    assert.deepEqual(z.object({ items: z.array(z.object({ trigger: z.string() })) }).parse(notifications).items.map(item => item.trigger).sort(), ["failed", "storage"]);
+    assert.deepEqual(z.strictObject({ sheets: z.array(z.strictObject({ sheet: z.string(), version: z.number(), worksheets: z.literal(1), rows: z.literal(1) })), more: z.literal(false) }).parse(sheets).sheets.length, 1);
+    const served = z.object({ settings: z.array(z.object({ key: z.string(), value: z.unknown() })) }).parse(settings).settings;
+    for (const entry of served) assert.ok(typeof entry.value === "boolean" || typeof entry.value === "number" || entry.value === "set" || entry.value === "unset", entry.key);
+    assert.deepEqual(served.find(entry => entry.key === "actor.label"), { key: "actor.label", value: "set" });
+    assert.equal(z.object({ actor: z.object({ label: z.string() }) }).parse(owners.settings()).actor.label, CANARIES.setting);
+    assert.ok(owners.notificationSubjects().includes(CANARIES.subject), "the run-linked notification resolves the subject locally");
     assert.ok(Object.values(CANARIES).every(value => !JSON.stringify(debug).includes(value)));
   } finally { await f.cleanup(); }
 });
