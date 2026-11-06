@@ -459,7 +459,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
     }
     return joined;
   };
-  let discarded = 0, captured = false;
+  let discarded = 0, captured = false, settling = false;
   const retryHeldParent = () => {
     reached = true;
     const claim = runClaim(f.current()); assert.ok(claim);
@@ -483,6 +483,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
         assert.equal(f.current().pause?.state, "requested");
       }
       if (!settlementRetry) retryHeldParent();
+      settling = true;
       return DiagnosticBundleSchema.parse({ bundleId: randomUUID(), runId: original.envelope.runId,
         origin: { kind: "failure", failureId: context.failure.failureId }, createdAt: f.clock.now().toISOString(),
         contentDigest: "a".repeat(64), configFingerprint: context.configFingerprint, descriptorFingerprint: context.descriptorFingerprint,
@@ -536,7 +537,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   const transaction = f.database.withAuthorityTransaction.bind(f.database);
   let transactionDepth = 0;
   if (boundary === "at accounting capture" || settlementRetry) f.database.withAuthorityTransaction = work => {
-    if (settlementRetry && captured && !reached && transactionDepth === 0) retryHeldParent();
+    if (settlementRetry && settling && !reached && transactionDepth === 0) retryHeldParent();
     if (!settlementRetry && !reached && transactionDepth === 0 && f.current().lifecycle.state === "validating") {
       reached = true;
       const claim = runClaim(f.current()); assert.ok(claim);
