@@ -1,6 +1,7 @@
+import { delegationAccountingExecution } from "../../storage/sqlite/delegation-authority.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
-import { RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
@@ -11,7 +12,6 @@ import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import { shouldRetryTaskFailure } from "../policies/task-retry.js";
 
@@ -266,6 +266,8 @@ class RunAbandonedError extends Error {
   }
 }
 
+class RunPauseRequestedError extends RunAbandonedError {}
+
 /* ── small helpers ───────────────────────────────────────────────────────── */
 
 const RunnableTaskSchema = z.custom<(args: {
@@ -420,6 +422,15 @@ export async function executeClaimedRun(
     }
   };
 
+  const pauseAtBoundary = (): void => {
+    checkCancellation();
+    const current = getRun();
+    if (current.pause?.state === "requested") {
+      requireOriginalClaim(current);
+      throw new RunPauseRequestedError("paused");
+    }
+  };
+
   const transitionTo = (lifecycle: RunLifecycle): RunRecord => {
     const current = getRun();
     checkCancellation();
@@ -544,6 +555,11 @@ export async function executeClaimedRun(
     /* ── validating: ref workflow-model entry validation, before any browser ────── */
     transitionTo({ state: "validating", workerId: claim.workerId, ...(workerLifetime === undefined ? {} : { workerLifetime }), claimedAt, heartbeatAt: instant() });
 
+    pauseAtBoundary();
+    const accounting = deps.authority.withAuthorityTransaction?.(repositories =>
+      delegationAccountingExecution(repositories, descriptor, getRun()));
+    const assertAccounting = (): void => { pauseAtBoundary(); accounting?.assertCurrent(); };
+
     const problems: string[] = [];
     let canonicalInput: JsonValue | undefined;
     try {
@@ -656,11 +672,17 @@ export async function executeClaimedRun(
         authorizedAt: built.record.createdAt,
         consequence: { kind: "done", result: built.record },
       });
-      requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "success",
-        commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest,
-          ...(current.delegationRefresh === undefined ? {} : { refreshCommandId: current.delegationRefresh.commandId, claimGeneration: current.claimGeneration }) }),
-        terminal: { result: built.record, authorization },
-      }, descriptor, built.authorization));
+      const settle = () => {
+        assertAccounting();
+        requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "success",
+          commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest,
+            ...(current.delegationRefresh === undefined ? {} : { refreshCommandId: current.delegationRefresh.commandId, claimGeneration: current.claimGeneration }) }),
+          terminal: { result: built.record, authorization },
+        }, descriptor, built.authorization));
+      };
+      if (deps.authority.withAuthorityTransaction !== undefined) deps.authority.withAuthorityTransaction(settle);
+      else if (accounting === undefined) settle();
+      else throw new Error("delegation-accounting-transaction-unavailable");
       return RunExecutionOutcomeSchema.parse({ state: "done", runId });
     };
 
@@ -785,15 +807,24 @@ export async function executeClaimedRun(
         plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
         continue;
       }
+      const retainedAccounting = accounting?.plan.retain.includes(String(node.id)) === true;
+      if (accounting?.plan.recompute.includes(String(node.id))) {
+        plan.set(String(node.id), { mode: "execute" });
+        continue;
+      }
+      if (retainedAccounting && node.kind === "child-run") {
+        plan.set(String(node.id), { mode: "replay-child", evidence: completedOwnDelegation(node) });
+        continue;
+      }
       const explicit = startIndex !== undefined && envelope.continuation === undefined;
-      const inAncestorRegion = envelope.continuation !== undefined || (explicit
+      const inAncestorRegion = retainedAccounting || envelope.continuation !== undefined || (explicit
         ? index < (startIndex ?? 0) || ownGateResume && index === startIndex && node.id === resolvedResumeGate?.nodeId : ancestorRegionOpen);
       if (!inAncestorRegion) {
         plan.set(String(node.id), { mode: "execute" });
         continue;
       }
       if (node.kind === "task") {
-        if (node.replay === "always-rerun" && envelope.continuation === undefined) {
+        if (node.replay === "always-rerun" && envelope.continuation === undefined && !retainedAccounting) {
           // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
           plan.set(String(node.id), { mode: "execute" });
           continue;
@@ -814,7 +845,10 @@ export async function executeClaimedRun(
             continue;
           }
         }
-        const stored = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
+        const stored = retainedAccounting
+          ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
+            .filter(record => record.runId === runId).at(-1)
+          : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
 
         if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined && envelope.continuation === undefined) && stored !== undefined && stored.runId !== runId) {
           if (explicit) {
@@ -834,6 +868,7 @@ export async function executeClaimedRun(
           node.uses.output,
           deps.authority.evidenceSchemaHash?.bind(deps.authority),
         );
+        if (retainedAccounting && !load.found) throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-unavailable");
         // `stored` is the repository's strict parse already; a found load has a row.
         const storedRecord = load.found ? requireStoredCheckpoint(stored, String(node.id)) : undefined;
         const storedAssertion = storedRecord?.assertion;
@@ -1477,7 +1512,15 @@ export async function executeClaimedRun(
         });
         try {
           const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath, taskAttempt);
-          if (declaredProjections.length === 0) {
+          if (accounting?.plan.recompute.includes(String(node.id))) {
+            pauseAtBoundary();
+            if (deps.authority.withAuthorityTransaction === undefined) throw new Error("delegation-accounting-transaction-unavailable");
+            deps.authority.withAuthorityTransaction(repositories => {
+              assertAccounting();
+              repositories.runCheckpoints.insert(record);
+              deps.publishCheckpoint?.(repositories, record);
+            });
+          } else if (declaredProjections.length === 0) {
             if (deps.publishCheckpoint === undefined) deps.authority.authority.runCheckpoints.insert(record);
             else {
               if (deps.authority.withAuthorityTransaction === undefined) throw new Error("checkpoint-publication-transaction-unavailable");
@@ -1576,6 +1619,8 @@ export async function executeClaimedRun(
         && canonicalJsonStringify(completedOwnDelegation(node)) !== canonicalJsonStringify(entry.evidence)) {
         throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
       }
+      if (accounting?.plan.retain.includes(String(node.id)) && entry.mode === "replay-child") return entry.evidence;
+      if (accounting?.plan.joinNodeId === node.id) return undefined;
       const sourceEvidence = continuationAuthority?.delegation(String(node.id), String(node.edgeId));
       if (sourceEvidence !== undefined) {
         const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
@@ -1590,13 +1635,7 @@ export async function executeClaimedRun(
     const childBatchOutputs = new Map<string, JsonValue>();
 
     for (const [index, node] of nodes.entries()) {
-      if (getRun().pause?.state === "requested") {
-        requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: getRun().pause?.commandId }),
-          runId, claim,
-        }));
-        return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
-      }
+      pauseAtBoundary();
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "exercised" });
       checkCancellation();
       if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
@@ -2227,16 +2266,20 @@ export async function executeClaimedRun(
               await deps.sessions.closeAll("parked");
               return RunExecutionOutcomeSchema.parse({ ...pending.data, state: "yielded-delegation" });
             }
-            checkCancellation();
+            pauseAtBoundary();
             requireOriginalClaim(getRun());
-            deps.lifecycle.assertCurrentExecution({ runId, claim });
-            const evidence = sourceEvidence ?? deps.authority.withAuthorityTransaction?.(repositories => repositories.dependencies.evidence(runId, node.id));
-            if (entry.mode === "replay-child" && canonicalJsonStringify(evidence) !== canonicalJsonStringify(entry.evidence)) {
-              throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
-            }
-            if (evidence === undefined) throw new Error("delegation-outcome-authority-unavailable");
-            const resolution = resolveDelegationEvidenceOutput(evidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority));
-            if (canonicalJsonStringify(raw) !== canonicalJsonStringify(resolution.output)) throw new Error("delegation-outcome-value-mismatch");
+            const resolved = deps.authority.withAuthorityTransaction?.(repositories => {
+              assertAccounting();
+              deps.lifecycle.assertCurrentExecution({ runId, claim });
+              const evidence = sourceEvidence ?? repositories.dependencies.evidence(runId, node.id);
+              if (entry.mode === "replay-child" && canonicalJsonStringify(evidence) !== canonicalJsonStringify(entry.evidence))
+                throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
+              const resolution = resolveDelegationEvidenceOutput(evidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority));
+              if (canonicalJsonStringify(raw) !== canonicalJsonStringify(resolution.output)) throw new Error("delegation-outcome-value-mismatch");
+              return { evidence, resolution };
+            });
+            if (resolved === undefined) throw new Error("delegation-outcome-authority-unavailable");
+            const { evidence, resolution } = resolved;
             childResultEvidence.set(String(node.id), evidence);
             if (resolution.kind === "preview") {
               if (!envelope.dryRun) throw new Error("delegation-preview-dry-run-required");
@@ -2271,10 +2314,7 @@ export async function executeClaimedRun(
     }
 
 
-    if (getRun().pause?.state === "requested") {
-      requireLifecycleApplied(deps.lifecycle.acknowledgePause({ commandId: lifecycleCommandId("executor-final-pause", { runId, generation: claim.claimGeneration }), runId, claim }));
-      return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
-    }
+    assertAccounting();
     if (envelope.dryRun) {
       const support = workflowDryRunSupport(descriptor);
       if (support.state === "supported") {
@@ -2298,9 +2338,21 @@ export async function executeClaimedRun(
   try {
     return await interpret();
   } catch (error) {
+    let failure = error;
+    if (failure instanceof RunPauseRequestedError) {
+      try {
+        checkCancellation();
+        const current = getRun();
+        requireOriginalClaim(current);
+        requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
+          runId, claim,
+        }));
+        return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
+      } catch (pauseFailure) { failure = pauseFailure; }
+    }
     // A command can commit cancellation between a boundary read and terminal admission.
     // Settle it here, after any enclosing evidence transaction has unwound.
-    let failure = error;
     if (failure instanceof RunLifecycleRefusedError) {
       try { checkCancellation(); } catch (cancellation) { failure = cancellation; }
     }

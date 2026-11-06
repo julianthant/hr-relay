@@ -32,9 +32,11 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
+import { taskSpanPath } from "../../logs/span-emitter.js";
 import { authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
-import { authorizeWorkflowDelegationRefresh, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.js";
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -648,11 +650,19 @@ export class RunRecordService {
       const delegationResumed = operation === "resume" ? captureDelegationResume(repositories, request.runId) : [];
       if (delegationResumed === undefined || delegationResumed.length > 0 && !authenticateDelegationResume(repositories, request, delegationResumed)) return refused({ reason: "policy-refused" });
       const now = this.dependencies.clock.now().toISOString();
+      const resumeDescriptor = operation === "resume" && delegationResumed.length > 0
+        ? this.dependencies.resolveDescriptor?.(current.envelope.workflow) : undefined;
+      if (operation === "resume" && delegationResumed.length > 0 && resumeDescriptor === undefined)
+        throw new RunContinuationRefusedError("delegation-resume-definition-unavailable");
+      const resumeAuthorization = resumeDescriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(resumeDescriptor, current);
+      const accounting = resumeAuthorization === undefined ? undefined : workflowDelegationAccounting(resumeAuthorization, current);
+      const accountingResume = accounting !== undefined && repositories.dependencies.groups(request.runId).some(({ group }) =>
+        group.invocation.nodeId === accounting.joinNodeId && group.children.some(member => member.attempt === "retry"));
       const result = repositories.runs.setPause({ runId: request.runId, expectedVersion: request.expectedVersion, now,
-        ...(operation === "resume" ? { continuation: captureRunContinuation(repositories, current) } : {}),
+        ...(operation === "resume" && !accountingResume ? { continuation: captureRunContinuation(repositories, current) } : {}),
         pause: operation === "resume" ? undefined : runClaim(current) === undefined
           ? { state: "paused", requestedAt: now, pausedAt: now, commandId: request.commandId }
-          : { state: "requested", requestedAt: now, commandId: request.commandId } });
+          : { state: "requested", requestedAt: now, commandId: request.commandId } }, accountingResume ? resumeAuthorization : undefined);
       if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
       this.recordJournal(repositories, journal.command, journalRun(result.run));
       return { state: "applied" as const, run: result.run };
@@ -1120,7 +1130,7 @@ export class RunRecordService {
           planFingerprint: delegation.group.manifest.manifestFingerprint, policy: delegation.group.manifest.policy });
         const retryJournal = this.inspectJournal(repositories, "delegation-retry", retryRequest, { kind: "version", expectedVersion: retryRequest.expectedVersion });
         if (retryJournal.state !== "new") throw new Error("delegation-retry-replay-divergent");
-        repositories.dependencies.activateRetry(retryRequest, now, delegation.refreshAuthorization);
+        repositories.dependencies.activateRetry(retryRequest, now, delegation.refreshAuthorization ?? delegation.accountingAuthorization);
         this.recordJournal(repositories, retryJournal.command, journalRun(next));
         const change = this.holdParentAfterChildRetry(delegation, retryRequest);
         if (change !== undefined) relatedRunChanges.push(change);
@@ -1214,7 +1224,7 @@ export class RunRecordService {
           planFingerprint: delegation.group.manifest.manifestFingerprint, policy: delegation.group.manifest.policy });
         const retryJournal = this.inspectJournal(repositories, "delegation-retry", retryRequest, { kind: "version", expectedVersion: retryRequest.expectedVersion });
         if (retryJournal.state !== "new") throw new Error("delegation-retry-replay-divergent");
-        repositories.dependencies.activateRetry(retryRequest, now, delegation.refreshAuthorization);
+        repositories.dependencies.activateRetry(retryRequest, now, delegation.refreshAuthorization ?? delegation.accountingAuthorization);
         this.recordJournal(repositories, retryJournal.command, journalRun(next));
         const change = this.holdParentAfterChildRetry(delegation, retryRequest);
         if (change !== undefined) relatedRunChanges.push(change);
@@ -1227,10 +1237,12 @@ export class RunRecordService {
 
   private parentRefreshAuthorization(repositories: AuthorityRepositories, child: RunRecord) {
     const parent = child.envelope.parent === undefined ? undefined : repositories.runs.get(child.envelope.parent.runId);
-    if (parent === undefined || !(parent.lifecycle.state === "parked-gate" || parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done"
-      || parent.lifecycle.state === "queued" && parent.delegationRefresh !== undefined)) return;
+    if (parent === undefined) return;
     const descriptor = this.dependencies.resolveDescriptor?.(parent.envelope.workflow);
-    return descriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(descriptor, parent);
+    const authorization = descriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(descriptor, parent);
+    if (authorization !== undefined && workflowDelegationAccounting(authorization, parent) !== undefined) return authorization;
+    return parent.lifecycle.state === "parked-gate" || parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done"
+      || parent.lifecycle.state === "queued" && parent.delegationRefresh !== undefined ? authorization : undefined;
   }
 
   private holdParentAfterChildRetry(delegation: ReturnType<typeof prepareDelegationRetry>, retry: z.infer<typeof DelegationRetryRequestSchema>) {
@@ -1467,6 +1479,20 @@ export class RunRecordService {
 
   private recordLifecycleEvent(repositories: AuthorityRepositories, operation: LifecycleOperation,
     commandId: string, run: RunRecord): void {
+    if (operation === "terminalize" && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"
+      && run.delegationRefresh !== undefined) {
+      const initial = repositories.runResults.getInitialSettlement(run.envelope.runId);
+      const descriptor = this.dependencies.resolveDescriptor?.(run.envelope.workflow);
+      const authorization = descriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(descriptor, run);
+      const accounting = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, run);
+      const nodeId = accounting?.recompute.at(-1);
+      if (initial !== undefined && initial.run.version < run.version && nodeId !== undefined)
+        createNoteTimelineWriter({ repository: repositories.timelineEvents, clock: this.dependencies.clock }).emitRunLog({
+          workflow: run.envelope.workflow, level: "step", message: "Member retry updated this outcome. The earlier receipt is retained.",
+          address: { runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+            spanPath: taskSpanPath(run.envelope.traceId, NodeIdSchema.parse(nodeId), 1, run.claimGeneration) },
+        }, run);
+    }
     if (["claim-next", "transition", "worker-transition", "terminalize", "requeue", "recover-crash"].includes(operation)) {
       const lifecycle = run.lifecycle;
       if (lifecycle.state === "parked-write") {

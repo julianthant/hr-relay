@@ -1,3 +1,4 @@
+import type { SpanEmitter } from "../../../../src/backend/logs/span-emitter.js";
 import { BUILD_MANIFEST } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
 import type { createRetainedApprovedRecordReader } from "../../fixtures/ocr/retained-approved-records.js";
@@ -70,6 +71,8 @@ export function createOcrReviewWorld() {
       approvedReader?: typeof createRetainedApprovedRecordReader;
       approvedStore?: RegisteredTaskStore;
       manualPageFailure?: (sourcePage: number) => boolean;
+      onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void;
+      onTransactionSettled?: () => void;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       if (options.reviewedPages !== undefined) assert.equal(options.reviewedPages.length, options.pageCount);
@@ -136,11 +139,16 @@ export function createOcrReviewWorld() {
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
       const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
         : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
-      const writeSequencer = options.dryRun === true || options.member !== undefined ? createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
+      const sequencer = options.dryRun === true || options.member !== undefined ? createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
         sessions: harness.manager, emitter: harness.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: harness.scheduler,
         taskDeadlineMs: 60_000, operator: "local-operator", log: harness.deps.log }) : undefined;
+      const writeSequencer = sequencer === undefined ? undefined : { ...sequencer, async executeTransaction(...args: Parameters<typeof sequencer.executeTransaction>) {
+        const settled = await sequencer.executeTransaction(...args);
+        options.onTransactionSettled?.();
+        return settled;
+      } };
       const notes = options.operatorEvidence === true ? createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) : undefined;
-      const canonical = canonicalChildExecution({ ...harness.deps, ...(options.buildManifest === undefined ? {} : { buildManifest: options.buildManifest }), artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
+      const canonical = canonicalChildExecution({ ...harness.deps, emitter: { emit: event => { harness.deps.emitter.emit(event); options.onSpan?.(event); } }, ...(options.buildManifest === undefined ? {} : { buildManifest: options.buildManifest }), artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
         { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");

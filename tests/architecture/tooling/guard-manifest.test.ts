@@ -459,7 +459,7 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runtime/writes/operation-action-binding.ts",
       "src/backend/runtime/writes/receipt-derivation-binding.ts",
       "src/backend/runtime/gates/repeat-proof.ts",
-      "src/backend/runtime/checkpoints/run-checkpoint-reader.ts",
+      "src/backend/storage/sqlite/run-continuation.ts",
       "src/backend/runtime/execution/run-executor.ts",
       "src/backend/runtime/execution/run-failure.ts",
       "src/backend/runtime/workers/worker-loop.ts",

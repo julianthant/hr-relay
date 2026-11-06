@@ -105,7 +105,15 @@ actual synchronous parent version changes, while a later wakeup retains its own 
 reads authenticate the release and derive `running` at its owning step, or `blocked` when an awaited
 descendant holds a `block-parent` edge. Approval stays on the run that owns the gate. Child changes
 refresh every waiting ancestor. A manual retry pauses its parent through the existing pause control;
-Resume binds its native command identity to the exact completed retry receipts before another claim. Delegated Retry uses
+Resume binds its native command identity to the exact completed retry receipts before another claim.
+For a factory-proved aggregate whose own graph is read-only, member Retry preserves the parent envelope
+through manual Resume, including an existing continuation or its absence. Readiness authenticates
+the latest applied native Resume independently of continuation issuance. The aggregate plan reuses
+the approved upstream evidence and unchanged children, joins current replacement outcomes, and
+executes only its derived read-accounting consumers at the current claim generation. Old accounting
+checkpoints remain historical evidence; they cannot satisfy a later superseding outcome. Checkpoint
+and terminal publication recheck the same claim, Resume and member digests in their authority transaction.
+Delegated Retry uses
 the same checkpoint, transaction and uncertain-write validation as checkpoint recovery.
 
 Fan-out revisions retain an unbroken native predecessor chain. A consumed result cites an exact

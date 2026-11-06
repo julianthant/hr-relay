@@ -1,7 +1,7 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
-import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import { authenticateWorkbookReferenceChoice, authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
@@ -33,7 +33,6 @@ import { canonicalDelegationChild, planCanonicalDelegation } from "./delegation-
 import { isLiveWorker } from "../../../models/run/worker.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { delegatedCandidateEligible } from "./run-claim-admission.js";
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
 import { CheckpointExpectationSchema, loadCheckpoint, resolveFreshnessBound } from "../../../models/workflow/checkpoint.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
 import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
