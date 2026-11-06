@@ -294,7 +294,9 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     return () => window.clearInterval(timer);
   }, [client, enabled, onboarding, settle, settleRead]);
   const awaitingLogout = state?.state === "cancelling" || state?.state === "refused" && state.code === "PROFILE_LOGOUT_BLOCKED";
-  const awaitingSession = Boolean(failure) && state === undefined || awaitingLogout || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
+  const closureUncertain = (state?.state === "refused" || state?.state === "error") && state.code === "BROWSER_CLOSURE_UNPROVED";
+  const recovering = Boolean(failure) && state === undefined || closureUncertain;
+  const awaitingSession = recovering || awaitingLogout || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
   useEffect(() => {
     if (!enabled || !awaitingSession) return;
     let reading = false;
@@ -303,12 +305,12 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       reading = true;
       const request = generation.current;
       void client.readProfileSession().then(value => {
-        if (live.current && generation.current === request && (value.state === "active" || value.state === PROFILE_ONBOARDING_STATE || value.state === "signed-out" || awaitingLogout && value.state !== "cancelling")) settle(value);
+        if (live.current && generation.current === request && (value.state === "active" || recovering && (value.state === PROFILE_ONBOARDING_STATE || value.state === "signed-out") || awaitingLogout && value.state !== "cancelling")) settle(value);
       }, () => {}).finally(() => { reading = false; });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [client, enabled, awaitingSession, awaitingLogout, settle]);
-  const unavailable = Boolean(failure) || state?.state === "refused" || state?.state === "error";
+  }, [client, enabled, awaitingSession, awaitingLogout, recovering, settle]);
+  const unavailable = Boolean(failure) || closureUncertain;
   const scope = useMemo(() => ({ client, unavailable, operationId: onboarding?.operationId, profileId: onboarding?.profileId, failure }), [client, onboarding?.operationId, onboarding?.profileId, failure, unavailable]);
   const currentScope = useRef(scope); currentScope.current = scope;
   const port = useMemo<ServedOnboardingPort>(() => {

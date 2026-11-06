@@ -426,6 +426,41 @@ for (const source of ["action", "poll"] as const) it(`keeps polling and permits 
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
 });
 
+for (const code of ["PROFILE_LOGOUT_BLOCKED", "PROFILE_SIGN_IN_REFUSED", "BROWSER_CLOSURE_UNPROVED"] as const) it(`scopes login unavailability and session recovery to closure uncertainty after ${code}`, async () => {
+  vi.useFakeTimers();
+  const active = { state: "active", profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready", epoch: 1 };
+  const reads = [{ state: "refused", code }, { state: "signed-out", signUpRequired: false }, { state: "signed-out", signUpRequired: false }, onboardingDraft(), active];
+  const paths: string[] = [];
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
+    const path = new URL(url).pathname; paths.push(path);
+    return Response.json(path.endsWith("/sign-in") ? { state: "refused", code } : reads[Math.min(paths.filter(value => value.endsWith("/state")).length, reads.length) - 1]);
+  } });
+  const host = document.createElement("div"), root = createRoot(host);
+  let session!: ReturnType<typeof usePublicProfileSession>;
+  function Probe() { session = usePublicProfileSession(client, true); return null; }
+  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.deepEqual(session.state, { state: "refused", code });
+    const closure = code === "BROWSER_CLOSURE_UNPROVED";
+    assert.equal(session.port.unavailable, closure);
+    if (closure) await assert.rejects(session.port.submit("login", details), /ONBOARDING_SCOPE_REPLACED/);
+    else await act(async () => { assert.deepEqual(await session.port.submit("login", details), { state: "refused", code }); });
+    assert.equal(paths.filter(path => path.endsWith("/sign-in")).length, closure ? 0 : 1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    if (code === "PROFILE_SIGN_IN_REFUSED") {
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      assert.equal(paths.filter(path => path.endsWith("/state")).length, 4);
+      assert.deepEqual(session.state, { state: "refused", code }, "an ordinary refusal survives signed-out and foreign draft reads");
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      assert.deepEqual(session.state, active);
+    } else {
+      assert.deepEqual(session.state, { state: "signed-out", signUpRequired: false });
+      assert.equal(session.port.unavailable, false);
+    }
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
+});
+
 it("maps each Duo method state to its approved label, note and track without inventing completion", () => {
   assert.deepEqual(duoMethodLabels, { idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Not confirmed", unavailable: "Unavailable" });
   for (const method of ["key", "touch"] as const) {
