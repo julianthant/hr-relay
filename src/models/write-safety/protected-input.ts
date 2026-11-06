@@ -74,13 +74,15 @@ const PublicProtectedInputMarkerSchema = z.strictObject({ kind: z.literal("legac
 /** Closed protected fields that can occur in the admitted Separations input/output graph. */
 const PROTECTED_COMMENT_FIELDS = new Set(["timekeeperComments", "dateChangeComments", "observedExistingComments"]);
 
+function isJsonArray(value: JsonValue): value is readonly JsonValue[] { return Array.isArray(value); }
+
 /** Fingerprint projection only: private execution values stay in their canonical records. */
 export function valueFreeProtectedData(value: unknown, bindings?: readonly ProtectedInputBinding[]): JsonValue {
   const parsed = JsonValueSchema.parse(value);
   const sensitive = new Map<string, string>();
   const collect = (entry: JsonValue, inherited: readonly ProtectedInputBinding[]): void => {
     if (entry === null || typeof entry !== "object") return;
-    if (Array.isArray(entry)) { for (const child of entry) collect(JsonValueSchema.parse(child), inherited); return; }
+    if (isJsonArray(entry)) { for (const child of entry) collect(child, inherited); return; }
     const metadata: unknown = Reflect.get(entry, "protectedBindings");
     const active = metadata === undefined ? inherited : ProtectedInputBindingsSchema.parse(metadata);
     for (const [key, child] of Object.entries(entry)) {
@@ -93,7 +95,7 @@ export function valueFreeProtectedData(value: unknown, bindings?: readonly Prote
   collect(parsed, bindings ?? []);
   const project = (entry: JsonValue, inherited: readonly ProtectedInputBinding[]): JsonValue => {
     if (entry === null || typeof entry !== "object") return entry;
-    if (Array.isArray(entry)) return entry.map((child) => project(JsonValueSchema.parse(child), inherited));
+    if (isJsonArray(entry)) return entry.map((child) => project(child, inherited));
     const metadata: unknown = Reflect.get(entry, "protectedBindings");
     const ownBindings = metadata === undefined ? inherited : ProtectedInputBindingsSchema.parse(metadata);
     return Object.fromEntries(Object.entries(entry).map(([key, child]) => {

@@ -534,8 +534,12 @@ execution evaluate the same condition; a skipped gate creates no operator decisi
 `discarded`, `interrupted`, and `superseded`. `runTransitionViolation` checks legal edges.
 A terminal `interrupted` run may return to `queued`. An ordinary retry creates another run.
 An authenticated read-only delegation refresh can also return an unapproved completed parent to
-`queued` on its existing row. It retains the earlier terminal result and receipt as immutable
-settlements; current output remains unavailable until the refreshed execution settles.
+`queued` on its existing row. A factory-proved aggregate with a read-only own graph can refresh
+its authenticated done or failed settlement after a failed writing member is replaced. It reuses
+the original approval and successful children; only the new child owns write authority. Its manual
+Resume preserves the entire envelope and continuation, while its derived accounting consumers run
+fresh against the current member receipts. Earlier terminal results, receipts and accounting
+checkpoints remain immutable and readable; current output remains unavailable until refresh settles.
 
 A gate records its typed result separately from checkpoints. The executor emits `gate.opened`,
 closes sessions, and persists `parked-gate` with `gateId` and `resumeAt`. Resolution requeues the
@@ -702,7 +706,7 @@ fingerprint, and claim generation. `checkpointLookupKey` uses the logical tuple
 separate immutable observations.
 
 `src/backend/storage/sqlite/authority-database.ts` owns the checkpoint repository and its latest
-and exact reads. `src/backend/runtime/checkpoints/run-checkpoint-reader.ts` restricts source-bound
+and exact reads. `src/backend/storage/sqlite/run-continuation.ts` restricts source-bound
 and fresh restart reads to this run's own attempt rows. Authenticated continuation prefers its own
 rows and then reads only its exact retained source coordinates; ordinary recovery uses the item's
 latest row. `loadCheckpoint` returns `{ found: true, ... }` or `{ found: false, reason }`, validating

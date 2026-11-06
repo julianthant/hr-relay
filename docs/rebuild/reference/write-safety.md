@@ -101,6 +101,14 @@ desired-effect identity. Original and freshly read stable content must agree; ob
 not become transaction identity. The member authenticates the approved OCR record and native child
 lineage before acquiring contacts.
 
+Individual failed-member Retry authenticates the complete item/continuation write history and
+any retained transaction mapping before enqueue. A committed or already-present effect, unresolved
+natural key or UNKNOWN refuses another member attempt. A settled aggregate's original receipt is
+materialized before replacement-dependency mutation; later accounting receives a new immutable
+settlement and receipt. Parent Resume and accounting reuse cannot grant descendant mutation authority.
+Direct aggregate-member Recover is refused; its operator entry is member Retry. Authenticated
+parent-owned continuation recovery keeps its existing scope.
+
 The contact-specific Save driver consumes its retained prepared plan once, checks the mutation
 capability, and re-reads the complete staged set before Save. The production page adapter clicks only
 when exactly one visible `[id="#ICSave"]` matches, then waits for the busy indicator to hide and the

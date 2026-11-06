@@ -18,7 +18,7 @@ import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js"
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
-import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
@@ -62,8 +62,8 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { WriteIntentRecordSchema,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
 import { BUILD_MANIFEST,resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
-import { descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
+import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type TargetReference,type VersionChange } from "../lifecycle/run-fan-out.js";
@@ -286,6 +286,7 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
+  readonly ensureReceipt?: (runId: string) => unknown;
   readonly workbookRows?: Readonly<{
     resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown;
     resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue | Readonly<{ state: "pending" }>;
@@ -696,6 +697,17 @@ function executeRetry(
   let record: RunRecord;
   let children: readonly RunRecord[] = [];
   try {
+    if (request.type === "retry" && current.envelope.parent !== undefined) {
+      const parent = repositories.runs.get(current.envelope.parent.runId);
+      const parentDescriptor = parent === undefined ? undefined : dependencies.descriptors.resolve(parent.envelope.workflow);
+      const authorization = parent === undefined || parentDescriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(parentDescriptor, parent);
+      if (parent !== undefined && parent.lifecycle.state === "terminal" && authorization !== undefined
+        && workflowDelegationAccounting(authorization, parent) !== undefined) {
+        assertDelegationRetryUnwritten(repositories, current, descriptor);
+        if (dependencies.ensureReceipt === undefined) throw new RunContinuationRefusedError("delegation-accounting-receipt-service-unavailable");
+        dependencies.ensureReceipt(parent.envelope.runId);
+      }
+    }
     record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
       commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,

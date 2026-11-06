@@ -9,6 +9,7 @@ import { realpathSync } from "node:fs";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -38,6 +39,11 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     } });
   const unused = (): never => { throw new Error("unrequested canonical fixture effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
+    ensureReceipt: runId => {
+      const run = database.authority.runs.get(runId); assert.ok(run);
+      const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
+      return createReceiptService({ database, runReader: lifecycle, descriptors: [descriptor] }).ensureReceipt(runId);
+    },
     descriptors: { resolve }, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
     workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused,

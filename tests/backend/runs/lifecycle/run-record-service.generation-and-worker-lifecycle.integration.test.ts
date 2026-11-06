@@ -162,13 +162,17 @@ describe("canonical run-record service", () => {
     }
     measure("assertCurrentExecution", 0, () => service.assertCurrentExecution({ runId: claim.run.envelope.runId,
       claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration } }));
+    const activeClaim = runClaim(claim.run);
+    assert.ok(activeClaim);
+    const beforeRetryRead = database.authority.runs.get(claim.run.envelope.runId);
+    assert.equal(measure("delegationRetryExecution", 0, () => service.delegationRetryExecution({ runId: claim.run.envelope.runId,
+      claim: { workerId: activeClaim.workerId, claimGeneration: activeClaim.claimGeneration } })), undefined);
+    assert.deepEqual(database.authority.runs.get(claim.run.envelope.runId), beforeRetryRead);
     const childNode = descriptorRuntimeNodes(plan1Parent.descriptor).find(node => node.kind === "child-run");
     assert.ok(childNode?.kind === "child-run");
     const input = Plan1Input.parse({ emplId: "10800000", text: "same", mode: "ok" });
     const plan = planDelegationFanOut({ edgeId: childNode.edgeId, target: childNode.target, cardinality: childNode.cardinality,
       join: childNode.join, policy: childNode.policy, bound: input, deriveChildItemId: () => source.envelope.itemId });
-    const activeClaim = runClaim(claim.run);
-    assert.ok(activeClaim);
     const retainedLifetime = testWorkerLifetime(database, claim.run.envelope.workflow, 1).workerLifetime;
     measure("workerTransition", 0, () => assert.throws(() => service.workerTransition({ commandId: commandId(),
       runId: claim.run.envelope.runId, claim: { workerId: activeClaim.workerId, claimGeneration: activeClaim.claimGeneration },
@@ -282,7 +286,7 @@ describe("worker lifecycle service capability", () => {
   it("separates command authority and stable nested identities", async () => {
     const { service } = await fixture();
     assert.deepEqual(Object.keys(workerRunLifecyclePort(service)).sort(),
-      ["acknowledgePause", "admitDelegation", "assertCurrentExecution", "claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
+      ["acknowledgePause", "admitDelegation", "assertCurrentExecution", "delegationRetryExecution", "claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
     assert.deepEqual(Object.keys(runContinuationPort(service)), ["transition"]);
     assert.equal(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("worker", UUID_1));
     assert.notEqual(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("continuation", UUID_1));

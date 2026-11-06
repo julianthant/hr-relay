@@ -579,7 +579,36 @@ const RUN_RESULT_AUTHORIZATIONS = new WeakMap<
   Readonly<{ result: string; currentRun: string }>
 >();
 
-const DELEGATION_REFRESH_AUTHORIZATIONS = new WeakMap<object, Readonly<{ descriptor: AnyWorkflowDescriptor; run: string }>>();
+export interface DelegationAccountingPlan {
+  readonly joinNodeId: string;
+  readonly target: AnyWorkflowDescriptor;
+  readonly recompute: readonly string[];
+  readonly retain: readonly string[];
+}
+
+function delegationAccountingPlan(descriptor: AnyWorkflowDescriptor): DelegationAccountingPlan | undefined {
+  const nodes = descriptorRuntimeNodes(descriptor), state = projectionStateOf(descriptor);
+  if ((descriptor.artifactProjections?.length ?? 0) > 0
+    || nodes.some(node => node.kind !== "child-run" && (node.kind !== "task" || node.uses.effect !== "read"))) return;
+  const joins = nodes.flatMap(node => {
+    if (node.kind !== "child-run" || node.await !== "terminal" || node.join !== "all-settled"
+      || node.policy.afterChildRetry !== "manual-parent-resume") return [];
+    const target = state.targets?.get(String(node.id));
+    return target !== undefined && workflowDryRunSupport(target).state === "supported" ? [{ node, target }] : [];
+  });
+  const join = joins.length === 1 ? joins[0] : undefined;
+  if (join === undefined) return;
+  const affected = new Set<string>([join.node.id]);
+  for (const node of nodes) if (node.dependsOn.some(id => affected.has(id))) affected.add(node.id);
+  const accounting = nodes.filter(node => affected.has(node.id) && node.id !== join.node.id);
+  if (accounting.length === 0 || accounting.some(node => node.kind !== "task" || node.uses.effect !== "read"
+    || node.uses.provenance.default !== "derived")
+    || workflowTerminalResultExecution(descriptor).dependsOn.some(id => !affected.has(id))) return;
+  return Object.freeze({ joinNodeId: join.node.id, target: join.target, recompute: Object.freeze(accounting.map(node => String(node.id))),
+    retain: Object.freeze(nodes.filter(node => !affected.has(node.id)).map(node => String(node.id))) });
+}
+
+const DELEGATION_REFRESH_AUTHORIZATIONS = new WeakMap<object, Readonly<{ descriptor: AnyWorkflowDescriptor; run: string; accounting?: DelegationAccountingPlan }>>();
 
 export function authorizeWorkflowDelegationRefresh(descriptor: AnyWorkflowDescriptor, run: RunRecord): object | undefined {
   const state = projectionStateOf(descriptor);
@@ -587,9 +616,10 @@ export function authorizeWorkflowDelegationRefresh(descriptor: AnyWorkflowDescri
     || descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new Error("delegation-refresh-definition-mismatch");
   if (descriptorRuntimeNodes(descriptor).some(node => node.kind === "child-run") && state.targets === undefined) throw new Error("delegation-refresh-target-authority-unavailable");
   const support = workflowDryRunSupport(descriptor);
-  if (support.state !== "unsupported" || support.reason !== "no-transaction-node") return undefined;
+  const accounting = delegationAccountingPlan(descriptor);
+  if ((support.state !== "unsupported" || support.reason !== "no-transaction-node") && accounting === undefined) return undefined;
   const authorization = Object.freeze({});
-  DELEGATION_REFRESH_AUTHORIZATIONS.set(authorization,{ descriptor, run: canonicalJsonStringify(run) });
+  DELEGATION_REFRESH_AUTHORIZATIONS.set(authorization,{ descriptor, run: canonicalJsonStringify(run), ...(accounting === undefined ? {} : { accounting }) });
   return authorization;
 }
 
@@ -597,8 +627,13 @@ export function assertWorkflowDelegationRefreshAuthorization(authorization: obje
   const bound = authorization === undefined ? undefined : DELEGATION_REFRESH_AUTHORIZATIONS.get(authorization);
   if (bound === undefined || bound.run !== canonicalJsonStringify(run)) throw new Error("delegation-refresh-factory-authorization-unavailable");
   const support = workflowDryRunSupport(bound.descriptor);
-  if (support.state !== "unsupported" || support.reason !== "no-transaction-node") throw new Error("delegation-refresh-transactions-unsupported");
+  if ((support.state !== "unsupported" || support.reason !== "no-transaction-node") && bound.accounting === undefined) throw new Error("delegation-refresh-transactions-unsupported");
   return bound.descriptor;
+}
+
+export function workflowDelegationAccounting(authorization: object, run: RunRecord): DelegationAccountingPlan | undefined {
+  assertWorkflowDelegationRefreshAuthorization(authorization, run);
+  return DELEGATION_REFRESH_AUTHORIZATIONS.get(authorization)?.accounting;
 }
 
 // WeakMap membership authenticates the result; copied tokens carry no authority.
