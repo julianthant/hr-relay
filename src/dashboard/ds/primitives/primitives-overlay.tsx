@@ -714,8 +714,10 @@ export interface DsToast {
   description?: string;
   /** a single recovery action — "Retry", "Undo", "Open the run" */
   action?: { label: string; onAction: () => void };
-  /** ms before auto-dismiss; default 3000. `danger` never auto-dismisses. */
+  /** ms before auto-dismiss; default 3000. `danger` never auto-dismisses unless a duration is given. */
   duration?: number;
+  /** stays until its owner dismisses it; its action does not close it */
+  sticky?: boolean;
 }
 
 interface ToastContextValue {
@@ -741,8 +743,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const id = `toast-${++nextId.current}`;
       manager.add({ id, title: input.title, description: input.description,
         type: input.tone === "danger" ? "error" : input.tone,
-        timeout: input.tone === "danger" ? 0 : input.duration ?? 3000,
-        actionProps: input.action ? { children: input.action.label, onClick: () => { input.action?.onAction(); manager.close(id); } } : undefined,
+        timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 0 : 3000),
+        actionProps: input.action ? { children: input.action.label, onClick: () => { input.action?.onAction(); if (!input.sticky) manager.close(id); } } : undefined,
       });
       return id;
     },
@@ -753,14 +755,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   </ToastPrimitive.Provider></ToastContext.Provider>;
 }
 
+/** A toast tied to the surface that renders it: shown while mounted, withdrawn when the state clears.
+ * `sticky` is for a state the operator must act on; otherwise it dismisses itself. */
+export function Notice({ tone, title, description, action, sticky = false }: Pick<DsToast, "tone" | "title" | "description" | "action" | "sticky">) {
+  const { toast, dismiss } = useToasts();
+  const onAction = useRef(action?.onAction);
+  onAction.current = action?.onAction;
+  const label = action?.label;
+  useEffect(() => {
+    const id = toast({ tone, title, description, sticky, duration: 6000, action: label === undefined ? undefined : { label, onAction: () => onAction.current?.() } });
+    return () => dismiss(id);
+  }, [toast, dismiss, tone, title, description, label, sticky]);
+  return null;
+}
+
 function ToastViewport() {
   const { toasts } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
     {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success" && !item.actionProps) && "pointer-events-none")}>
       <BaseToastContent><BaseToastIcon type={item.type} />
-        <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
-        {item.actionProps && <BaseToastAction disabled={inert} />}
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-[var(--ds-space-snug)]"><div><BaseToastTitle /><BaseToastDescription /></div>
+          {item.actionProps && <BaseToastAction disabled={inert} />}</div>
         <BaseToastClose disabled={inert} className={!inert && item.type === "success" && !item.actionProps ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
       </BaseToastContent>
     </BaseToast>)}

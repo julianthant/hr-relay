@@ -171,6 +171,7 @@ export {
   Tooltip,
   TooltipProvider,
   ToastProvider,
+  Notice,
   useToasts,
   useDsModalPresence,
   useDsModalOpen,
