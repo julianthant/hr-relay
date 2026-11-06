@@ -1,10 +1,10 @@
+import { ocrModule, ocrPageModule, ocrPageReadingModule, ocrSourcePagesModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { auditWorkflowModuleRoles } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
-import { ocrModule, ocrPageModule, workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS, workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { ocrWorkflow } from "../../../src/workflows/ocr/workflow.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
@@ -25,7 +25,6 @@ import { ItemIdSchema } from "../../../src/rules/identity/ids.js";
 import { sourceFixture, donePage, submittedPage, READING_ID, SOURCE_RUN_ID } from "../../support/fixtures/ocr/source-pages.js";
 import { readOcrPageFixture } from "../../support/fixtures/ocr/read-page.js";
 import { ocrTaskContext } from "../../support/fixtures/ocr/task-context.js";
-import { ocrSourcePagesModule, ocrPageReadingModule } from "../../../src/backend/app/registries/step-proof-modules.js";
 
 const descriptor = compileWorkflow(ocrWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
@@ -114,7 +113,7 @@ describe("child-only OCR document graph", () => {
     assert.ok(workflowExplorerDeclaration(ocrWorkflow));
     for (const id of ["ocr", "ocr-page"]) {
       assert.throws(() => workflowModuleOf(id));
-      assert.equal(WORKFLOW_DESCRIPTORS.some(descriptor => descriptor.id === id), false);
+      assert.equal(DESCRIPTORS.some(descriptor => descriptor.id === id), false);
       assert.throws(() => childWorkflowModuleOf("person-lookup", id));
     }
     assert.equal(nodes.some(node => node.kind === "transaction"), false);

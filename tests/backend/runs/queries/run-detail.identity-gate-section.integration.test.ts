@@ -1,8 +1,8 @@
+import { separationsIdentityCheckModule } from "../../../support/helpers/registered-workflows.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { separationsIdentityCheckModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import {
 availableSections,
 buildRunDetail,

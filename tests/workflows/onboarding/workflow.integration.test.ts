@@ -16,12 +16,12 @@ import { CrmReadOnboardingRecord } from "../../../src/models/systems/crm/read-on
 import { CrmReadOnboardingDates } from "../../../src/models/systems/crm/read-onboarding-dates.js";
 import { readHireDataTask } from "../../../src/backend/systems/crm/tasks/read-hire-data.js";
 import { readHirePlanTask } from "../../../src/workflows/onboarding/tasks/read-hire-plan.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.js";
 import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
 import { SearchPersonMatch } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { registration } from "../../../src/workflows/onboarding/index.js";
-import { childWorkflowModuleOf, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { PUBLIC_WORKFLOWS } from "../../../src/workflows/registry.js";
+import { DESCRIPTORS, childWorkflowModuleOf, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
@@ -60,10 +60,10 @@ describe("onboarding workflow", () => {
     assert.deepEqual(result.roster, ONBOARDING_INPUT_EXAMPLE.roster.row.binding);
   });
   it("has workflow-owned task calls, a harness for every timeline checkpoint and exact implementation bindings", () => {
-    assert.deepEqual(registration.exposure, { kind: "public", order: 2 });
+    assert.ok(PUBLIC_WORKFLOWS.includes(registration));
     assert.deepEqual(descriptor.requiredWorkbookTypeIds, ["onboarding-roster"]);
     const registered = workflowModuleOf("onboarding");
-    assert.equal(WORKFLOW_DESCRIPTORS.find(value => String(value.id) === "onboarding"), registered.descriptor);
+    assert.equal(DESCRIPTORS.find(value => String(value.id) === "onboarding"), registered.descriptor);
     assert.equal(childWorkflowModuleOf("onboarding", "i9-lookup").descriptor.id, "i9-lookup");
     assert.deepEqual(STEP_PROOF_MODULES.filter(module => module.role.kind === "chunk-harness" && module.role.of === "onboarding")
       .map(module => module.descriptor.id), registration.proofs.map(proof => proof.definition.id));

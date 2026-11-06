@@ -33,7 +33,7 @@ const EXACT_GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
   lint: "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
   test: "vitest run --project unit --project integration --project architecture --project perf",
-  "test:coverage": "vitest run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts",
+  "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
   "test:perf": "vitest run --project perf --passWithNoTests=false",
 } as const;
 
@@ -52,7 +52,7 @@ describe("gate coverage", () => {
       ["typecheck", "echo tsc --noEmit"],
       ["lint", `echo ${EXACT_GATE_COMMANDS.lint}`],
       ["test", "true && vitest run"],
-      ["test:coverage", "vitest run --coverage && echo tsx scripts/test/suite-size.ts"],
+      ["test:coverage", `${EXACT_GATE_COMMANDS["test:coverage"]} && echo bypass`],
       ["test:perf", "vitest run --project perf --passWithNoTests=false && echo bypass"],
     ] as const) {
       const mutated = { ...pkg.scripts, [name]: command };

@@ -4,5 +4,11 @@ import { emergencyContactMembersDefinition } from "./steps/members/step.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { emergencyContactWorkflow } from "./workflow.js";
 import { emergencyContactStore } from "./task-registry.js";
-export const registration = deepFreeze({ definition: emergencyContactWorkflow, exposure: { kind: "public", order: 5 },
-  store: emergencyContactStore, proofs: [defineStepProof(emergencyContactWorkflow, emergencyContactReadDocumentDefinition), defineStepProof(emergencyContactWorkflow, emergencyContactMembersDefinition)] } as const);
+export const registration = deepFreeze({
+  definition: emergencyContactWorkflow,
+  store: emergencyContactStore,
+  proofs: [
+    defineStepProof(emergencyContactWorkflow, emergencyContactReadDocumentDefinition),
+    defineStepProof(emergencyContactWorkflow, emergencyContactMembersDefinition),
+  ],
+} as const);
