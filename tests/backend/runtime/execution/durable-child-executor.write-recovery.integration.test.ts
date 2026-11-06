@@ -8,7 +8,6 @@ import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisit
 import assert from "node:assert/strict";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { ExtractFormPage } from "../../../../src/models/processing/ocr/extract-form-page.js";
 import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { descriptorRuntimeNodes, authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
@@ -33,7 +32,7 @@ import { createTransactionHistory } from "../../../../src/backend/storage/sqlite
 
 import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunResultRecordSchema, delegationDependencyRecord, deriveRunResultDigest, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { Plan1Output, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { Plan1Output, plan1Contract, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
@@ -221,7 +220,7 @@ it(`authenticates task and transaction prerequisites through child resume with u
   const transaction = checkpoints.find(checkpoint => checkpoint.nodeId === "write");
   assert.ok(observation && transaction);
   assert.ok((observation.observationOrigins?.length ?? 0) > 0);
-  assert.equal(observation.implFingerprint, taskImplFingerprint(ExtractFormPage));
+  assert.equal(observation.implFingerprint, taskImplFingerprint(plan1Contract));
   assert.equal(transaction.implFingerprint, taskImplFingerprint(WriteFixtureCommit));
   const retained = canonicalJsonStringify(checkpoints);
   assert.equal(f.database.authority.runs.listChildren(f.run.envelope.runId).length, 1);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { readProfileIdentity } from "../../../src/models/config/secrets.js";
@@ -320,6 +321,7 @@ export function finalizationQueuedRun(
       descriptorVersion: 1,
       contractFingerprint:
         separationsKualiFinalizationDescriptor.contractFingerprint,
+      buildId: currentBuildId(),
       resolvedInstance: { kuali: "prod", ucpath: "prod" },
       configFingerprint: FINALIZATION_CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,

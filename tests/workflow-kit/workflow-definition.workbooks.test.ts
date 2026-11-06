@@ -88,7 +88,8 @@ describe("direct workbook type requirements", () => {
     expect(descriptor.requiredWorkbookTypeIds).not.toBe(definition.requiredWorkbookTypeIds);
     expect(workflowPlanning(descriptor).requiredWorkbookTypeIds).toBe(descriptor.requiredWorkbookTypeIds);
     expect(workflowProjections(descriptor).requiredWorkbookTypeIds).toBe(descriptor.requiredWorkbookTypeIds);
-    expect(descriptor.contractFingerprint).toBe(fingerprint);
+    expect(descriptor.contractFingerprint).not.toBe(fingerprint);
+    expect(descriptor.contractFingerprint).toBe(compileWorkflow(defineWorkflow({ ...base, requiredWorkbookTypeIds: ids })).descriptor.contractFingerprint);
     expect(definition.role).toEqual({ kind: "standalone" });
     expect(() => workflowPlanning({ ...descriptor })).toThrow(/only available for a descriptor/u);
     expect(() => workflowProjections({ ...descriptor })).toThrow(/exact object/u);

@@ -12,7 +12,9 @@ import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../../
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
+  absentProbeEvidence,
   WRITE_FIXTURE_NODE_ID,
+  WRITE_FIXTURE_NOW,
   WRITE_FIXTURE_RUN_ID,
   WRITE_FIXTURE_WORKFLOW_ID,
   writeFixtureDescriptor,
@@ -23,8 +25,8 @@ import {
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 
 const build = vi.hoisted(() => ({ id: "a".repeat(64) }));
-vi.mock("../../../../src/backend/app/build-id.js", async importOriginal => ({
-  ...await importOriginal<typeof import("../../../../src/backend/app/build-id.js")>(),
+vi.mock("../../../../src/backend/runtime/build-id.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../../../../src/backend/runtime/build-id.js")>(),
   currentBuildId: () => build.id,
 }));
 
@@ -52,6 +54,7 @@ describe("write sequencer — a write is approved under one build", () => {
   it("writes once when the approving build is the running build", async () => {
     const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun());
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const outcome = await h.execute(contextFor(run, claim));
     assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
     assert.equal(effects(h.world.events).filter(event => event.startsWith("commit-click:")).length, 1);
@@ -61,6 +64,7 @@ describe("write sequencer — a write is approved under one build", () => {
   it("replays a committed outcome under a later build without another click", async () => {
     const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun());
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await h.execute(contextFor(run, claim));
     const clicks = effects(h.world.events).length;
     build.id = BUILD_Y;
@@ -72,6 +76,7 @@ describe("write sequencer — a write is approved under one build", () => {
   it("replays a committed write under a later build, then refuses the next uncommitted write", async () => {
     const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun());
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await h.execute(contextFor(run, claim, writeFixtureTraversalDescriptor));
     const clicks = effects(h.world.events).filter(event => event.startsWith("commit-click:")).length;
     assert.equal(clicks, 1);
@@ -120,6 +125,7 @@ describe("write sequencer — a write is approved under one build", () => {
     assert.equal(retried.run.envelope.buildId, BUILD_Y);
     const next = await claimQueued(h);
     assert.equal(next.run.envelope.runId, retried.run.envelope.runId);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const outcome = await h.execute(contextFor(next.run, next.claim));
     assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
     assert.equal(effects(h.world.events).filter(event => event.startsWith("commit-click:")).length, 1);
@@ -145,12 +151,9 @@ describe("write sequencer — a write is approved under one build", () => {
     assert.equal(created.state, "applied");
     if (created.state !== "applied") throw new Error("child create refused");
     assert.equal(created.run.envelope.buildId, BUILD_X);
-    const cancelled = service.transition({
-      commandId: randomUUID(), runId: parent.envelope.runId, expectedVersion: parent.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() },
-    });
-    assert.equal(cancelled.state, "applied");
-    const child = await claimQueued(h);
+    assert.equal((await claimQueued(h)).run.envelope.runId, parent.envelope.runId);
+    h.admitWorker(2);
+    const child = await claimQueued(h, 2);
     assert.equal(child.run.envelope.runId, created.run.envelope.runId);
     await assert.rejects(h.execute(contextFor(child.run, child.claim)), (error: unknown) => error instanceof TaskError && error.code === "WRITE_BUILD_CHANGED");
     assert.deepEqual(effects(h.world.events), []);
@@ -160,9 +163,9 @@ describe("write sequencer — a write is approved under one build", () => {
 
 type WriteHarness = Awaited<ReturnType<typeof harness>>;
 
-async function claimQueued(h: WriteHarness) {
+async function claimQueued(h: WriteHarness, poolIndex = 1) {
   const now = h.clock.now().toISOString();
-  const member = h.database.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
+  const member = h.database.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID).find(slot => slot.poolIndex === poolIndex && slot.retiredAt === null);
   assert.ok(member);
   const lease = h.database.authority.workerLeases.get(member.workerId);
   if (lease === undefined) throw new Error("fixture claim authority unavailable");

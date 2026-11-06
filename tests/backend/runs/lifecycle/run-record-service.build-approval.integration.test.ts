@@ -5,20 +5,20 @@ import { z } from "zod";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { WORKFLOW_KIT_VERSION, workflowContractFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
-import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 
 const build = vi.hoisted(() => ({ id: "c".repeat(64) }));
-vi.mock("../../../../src/backend/app/build-id.js", async importOriginal => ({
-  ...await importOriginal<typeof import("../../../../src/backend/app/build-id.js")>(),
+vi.mock("../../../../src/backend/runtime/build-id.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../../../../src/backend/runtime/build-id.js")>(),
   currentBuildId: () => build.id,
 }));
 
 const BUILD_X = "c".repeat(64);
 const BUILD_Y = "d".repeat(64);
+const PUBLICATION = { title: "Retry", actorId: "local-operator" };
 const { fixture, created, cleanup } = createRunRecordServiceTestWorld();
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -43,7 +43,7 @@ describe("read-only admission across builds", () => {
     const retried = h.lifecycle.retry({
       commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version,
       runtimeConfig: selectRunRuntime(h.database.authority),
-    }, h.descriptor);
+    }, h.descriptor, PUBLICATION);
     assert.equal(retried.state, "applied");
     if (retried.state !== "applied") throw new Error("retry refused");
     assert.equal(retried.run.envelope.buildId, BUILD_Y);
@@ -87,28 +87,30 @@ describe("read-only admission across builds", () => {
   it("refuses descriptor version, schema, and kit drift at retry", async () => {
     build.id = BUILD_X;
     const { service, request, runtimeConfig, clock } = await fixture();
-    const source = created(service, {
-      ...request, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
-    });
-    const cancelled = service.transition({
-      commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() },
-    });
-    assert.equal(cancelled.state, "applied");
-    if (cancelled.state !== "applied") throw new Error("cancel refused");
+    const cancelledSource = (overrides: Readonly<{ descriptorVersion?: number; contractFingerprint?: string }>) => {
+      const source = created(service, { ...request, descriptorVersion: personLookupDescriptor.version,
+        contractFingerprint: personLookupDescriptor.contractFingerprint, ...overrides });
+      const cancelled = service.transition({
+        commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() },
+      });
+      if (cancelled.state !== "applied") throw new Error("cancel refused");
+      return cancelled.run;
+    };
+    const retry = (source: Readonly<{ envelope: { runId: string }; version: number }>) => service.retry({
+      commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version, runtimeConfig,
+    }, personLookupDescriptor, PUBLICATION);
     const kitDrift = workflowContractFingerprint({ ...printed, kit: WORKFLOW_KIT_VERSION + 1 });
     const schemaDrift = workflowContractFingerprint({ ...printed, result: z.object({ n: z.number() }) });
     assert.notEqual(kitDrift, workflowContractFingerprint(printed));
     assert.notEqual(schemaDrift, workflowContractFingerprint(printed));
-    const retry = (descriptor: AnyWorkflowDescriptor) => service.retry({
-      commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: cancelled.run.version, runtimeConfig,
-    }, descriptor);
-    const mismatch = { state: "refused" as const, refusal: { reason: "schema-mismatch" as const, digest: source.envelope.contractFingerprint } };
-    assert.deepEqual(retry({ ...personLookupDescriptor, version: personLookupDescriptor.version + 1 }), mismatch);
-    assert.deepEqual(retry({ ...personLookupDescriptor, contractFingerprint: schemaDrift }), mismatch);
-    assert.deepEqual(retry({ ...personLookupDescriptor, contractFingerprint: kitDrift }), mismatch);
+    for (const drift of [{ descriptorVersion: personLookupDescriptor.version + 1 }, { contractFingerprint: schemaDrift }, { contractFingerprint: kitDrift }]) {
+      const source = cancelledSource(drift);
+      assert.deepEqual(retry(source), { state: "refused", refusal: { reason: "schema-mismatch", digest: source.envelope.contractFingerprint } });
+    }
+    const source = cancelledSource({});
     build.id = BUILD_Y;
-    const next = retry(personLookupDescriptor);
+    const next = retry(source);
     assert.equal(next.state, "applied");
     if (next.state !== "applied") throw new Error("same-contract retry refused");
     assert.equal(next.run.envelope.buildId, BUILD_Y);

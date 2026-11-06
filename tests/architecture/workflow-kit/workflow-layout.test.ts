@@ -345,7 +345,7 @@ const FIXTURES: readonly LayoutFixture[] = [
       files["src/workflows/combo/workflow.ts"] = "export const workflow = buildIt({ id: someId });\n";
     }),
     modules: cleanFixtureModules(),
-    expected: /workflow\.ts: build manifest needs exactly one string-literal descriptor id/,
+    expected: /workflow\.ts: workflow source needs exactly one string-literal descriptor id/,
   },
   {
     name: "nested-below-a-step-folder",

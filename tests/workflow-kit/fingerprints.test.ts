@@ -6,7 +6,7 @@ import { taskImplFingerprint, workflowContractFingerprint } from "../../src/work
 
 const Input = z.strictObject({ eid: z.string() });
 const Output = z.strictObject({ found: z.boolean() });
-const read = { id: taskId("fixture/read-person"), effect: "read" as const, input: Input, output: Output };
+const read = { id: taskId("workflow:fixture/read-person"), effect: "read" as const, input: Input, output: Output };
 const base = {
   id: "fixture-fingerprint", version: 1, input: Input, canonicalInput: Input, result: Output,
   graph: [{ id: "read", kind: "task", dependsOn: [] }], contracts: [read],
