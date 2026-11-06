@@ -155,7 +155,7 @@ test('served automatic unknown and lost respond have no Retry or new Send', asyn
     await page.goto(`${baseUrl}?served=1&${mode}=1`);
     const input = page.getByRole('textbox', { name: 'Message Relay' }); await expect(input).toBeEnabled();
     await input.fill('mark notifications read'); await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    await expect(page.getByText(/Action outcome is unknown/).first()).toBeVisible();
+    await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry reply' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     if (mode === 'autoUnknown') {

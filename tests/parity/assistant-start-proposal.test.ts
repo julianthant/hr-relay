@@ -8,6 +8,7 @@ import { assistantProposalDigest } from "../../src/dashboard/surfaces/assistant/
 import { ASSISTANT_UNKNOWN_NOTICE } from "../../src/dashboard/surfaces/assistant/assistant-model.js";
 import { AssistantActionDecisionSchema, AssistantRequestSchema } from "../../src/models/dashboard/assistant.js";
 import { captureParityPair } from "./helpers/capture.js";
+import { PARITY_CHAT_ID, serveAssistantHistory } from "./helpers/assistant-history.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -31,14 +32,6 @@ const PLANS = {
   "multi-": { proposal: ASSISTANT_START_MULTI_PROPOSAL, facts: [["Name", "Avery Sample"], ["EID", "10101010"], ["Name", "Morgan Vega"], ["EID", "20202020"],
     ["Name", "Alex Rivera"], ["EID", "30303030"], ["Total", "3"], ["Options", "Read only"]], resolved: "3 people" },
 } as const;
-const CHAT = "00000000-0000-4000-8000-00000000000a";
-/** One served empty chat; the fixture BFF has no assistant history. */
-async function serveHistory(page: Page) {
-  const chat = { id: CHAT, title: "New chat", revision: 1, createdAt: "2026-10-19T00:00:00Z", expiresAt: "2099-01-01T00:00:00Z" };
-  await page.route("**/api/v1/assistant/history", route => route.fulfill({ json: route.request().method() === "GET" ? { chats: [chat], selectedId: CHAT } : { state: "saved", conversationId: CHAT, revision: 1 } }));
-  await page.route(`**/api/v1/assistant/conversations/${CHAT}`, route => route.fulfill({ json: { id: CHAT, title: "New chat", revision: 1, draft: "", composer: "", importTotal: 0, importNotice: null, messages: [] } }));
-}
-
 for (const theme of ["light", "dark"]) for (const [plan, { proposal, facts, resolved }] of Object.entries(PLANS)) for (const outcome of ["applied", "cancelled", "unknown"] as const) {
   test(`selected-run ${plan}start ${outcome} ${theme}`, async ({ page }, info) => {
     const decisions: unknown[] = [], requests: unknown[] = [], errors: string[] = [];
@@ -49,7 +42,7 @@ for (const theme of ["light", "dark"]) for (const [plan, { proposal, facts, reso
     await page.route("**/api/v1/settings/chatgpt-account", route => route.fulfill({ json: {
       state: "connected", name: "Fixture Operator", email: "operator@example.edu", expiresAt: "2099-10-19T00:00:00Z", planUsage: "enabled",
     } }));
-    await serveHistory(page);
+    await serveAssistantHistory(page);
     await page.route("**/api/v1/assistant/respond", route => {
       requests.push(AssistantRequestSchema.parse(route.request().postDataJSON()));
       return route.fulfill({ json: { kind: "result", result: { state: "action-proposal", proposal } } });
@@ -72,7 +65,7 @@ for (const theme of ["light", "dark"]) for (const [plan, { proposal, facts, reso
     const start = card.getByRole("button", { name: "Confirm", exact: true });
     await expect(start).toBeEnabled(); expect(decisions).toEqual([]);
     const selected = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === FIXTURE_IDS.doneRun); expect(selected).toBeDefined();
-    expect(requests).toEqual([{ conversationId: CHAT, expectedRevision: 1, messageId: expect.any(String), message: "start selected workflow", subjectRef: `run_${FIXTURE_IDS.doneRun}_${selected!.rowRevision}` }]);
+    expect(requests).toEqual([{ conversationId: PARITY_CHAT_ID, expectedRevision: 1, messageId: expect.any(String), message: "start selected workflow", subjectRef: `run_${FIXTURE_IDS.doneRun}_${selected!.rowRevision}` }]);
     const contrast = await start.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color }));
     expect(contrast.background).not.toBe(contrast.color);
     if (outcome === "applied") await capture(page, info, `${plan}proposal`, theme);
