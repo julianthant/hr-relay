@@ -170,7 +170,7 @@ test('served automatic unknown and lost respond have no Retry or new Send', asyn
 const LOCAL_PROPOSAL = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1, expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', effect: 'local-write' };
 const CONNECTED = { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' };
 const SERVED_SCENES = {
-  'signed-out': { account: { state: 'signed-out' }, strip: 'Reconnect the ChatGPT account' },
+  'signed-out': { account: { state: 'signed-out' }, strip: 'Reconnect ChatGPT to use the assistant.' },
   unverified: { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/ },
   'unverified-narrow': { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/, width: 300 },
   disabled: { account: { ...CONNECTED, planUsage: 'disabled' }, strip: /Open Settings/ },
