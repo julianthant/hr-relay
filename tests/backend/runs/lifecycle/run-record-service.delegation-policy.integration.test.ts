@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
-import { descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
@@ -44,6 +44,7 @@ function terminal(run: RunRecord, outcome: "cancelled" | "done"): void {
 async function fixture(policy: "cascade" | "independent", unawaited = false, continuation = false, stores = plan1Stores) {
   const { root: compiled, modules } = continuation ? { root: childContinuationRoot, modules: childContinuationModules }
     : unawaited ? childUnawaitedModules(policy) : childPolicyModules(policy);
+  bindWorkflowDelegationTargets(modules.map(module => module.descriptor));
   assert.equal(plan1Contract.effect, "read");
   for (const module of modules) {
     assert.ok(descriptorRuntimeNodes(module.descriptor).every(node => node.kind !== "transaction"));
