@@ -8,6 +8,7 @@ import { insertNativeCommand } from "./command-record-row.js";
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
 import { executeNativeRunDeletion, prepareNativeRunDeletion, RunDeletionRefusedError } from "./native-run-deletion.js";
 import { childrenFirst, lifecycleCommand, recordAudit, requireSettledPreBuildRun } from "./pre-build-run-deletion.js";
+import { readRestoreWriteFences } from "./restore-write-fences.js";
 import { predecessorRunRecordFromRow } from "./run-record-row.js";
 
 export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
@@ -128,14 +129,39 @@ function workerLifetimeClosure(database: DatabaseSync): { runs: Set<string>; see
   return { runs, seeds };
 }
 
+/** A closure run may go only when every write it touched is committed and proven; missing or inconsistent evidence is never safe. */
 function refuseUnresolvedWrites(database: DatabaseSync, closure: ReadonlySet<string>): void {
-  const unresolved = rows(database, `SELECT run_id FROM write_intents WHERE status NOT IN ('committed','observed-present')
-    UNION ALL SELECT attempt.run_id FROM write_attempts attempt WHERE NOT EXISTS(SELECT 1 FROM write_intents WHERE id=attempt.intent_id)`);
-  if (unresolved.some(row => row.run_id === null || closure.has(text(row, "run_id")))) throw new Error("authority-upgrade-unresolved-writes");
+  try { readRestoreWriteFences(database); }
+  catch { throw new Error("authority-upgrade-unresolved-writes"); }
+  const refuse = (sql: string) => {
+    for (const row of rows(database, sql)) if (row.run_id === null || closure.has(text(row, "run_id"))) throw new Error("authority-upgrade-unresolved-writes");
+  };
+  refuse("SELECT run_id FROM write_intents WHERE status<>'committed'");
+  refuse(`SELECT attempt.run_id FROM write_attempts attempt LEFT JOIN write_intents intent ON intent.id=attempt.intent_id
+    WHERE intent.id IS NULL OR intent.status<>'committed' OR intent.run_id IS NOT attempt.run_id
+      OR json_extract(attempt.payload_json,'$.outcome.state')<>'committed'`);
   for (const id of closure) {
-    const row = database.prepare("SELECT state FROM runs WHERE id=?").get(id);
-    if (z.object({ state: z.string() }).parse(row).state === "parked-write") throw new Error("authority-upgrade-unresolved-writes");
+    const row = z.object({ state: z.string() }).parse(database.prepare("SELECT state FROM runs WHERE id=?").get(id));
+    if (row.state === "parked-write") throw new Error("authority-upgrade-unresolved-writes");
+    const fenced = rows(database, "SELECT operation_id, payload_json FROM timeline_events WHERE run_id=?", id)
+      .some(event => event.operation_id !== null || hasTransactionFence(json(event.payload_json)));
+    if (fenced && database.prepare("SELECT 1 FROM write_intents WHERE run_id=? AND status='committed'").get(id) === undefined) {
+      throw new Error("authority-upgrade-unresolved-writes");
+    }
   }
+}
+
+function hasTransactionFence(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasTransactionFence);
+  if (value === null || typeof value !== "object") return false;
+  const object = RowSchema.parse(value);
+  return typeof object.t === "string" && object.t.startsWith("transaction.") || Object.values(object).some(hasTransactionFence);
+}
+
+/** Resolution journals that authenticate kept write intents; they stay with the write evidence. */
+function writeResolutionCommands(database: DatabaseSync): Set<string> {
+  return new Set(rows(database, "SELECT json_extract(payload_json,'$.resolution.commandId') AS command_id FROM write_intents WHERE json_type(payload_json,'$.resolution')='object'")
+    .map(row => text(row, "command_id")));
 }
 
 function mentions(values: Iterable<unknown>, ids: ReadonlySet<string>): boolean {
@@ -144,17 +170,21 @@ function mentions(values: Iterable<unknown>, ids: ReadonlySet<string>): boolean 
 }
 
 /** Worker history and every journal naming a closure run; kept rows that still need them refuse the upgrade. */
-function deleteJournals(database: DatabaseSync, closure: ReadonlySet<string>, seeds: ReadonlySet<string>): void {
-  const doomed = new Set(seeds);
+function deleteJournals(database: DatabaseSync, closure: ReadonlySet<string>, seeds: ReadonlySet<string>, kept: ReadonlySet<string>): void {
+  const history = new Set(seeds), named = new Set<string>();
   for (const row of rows(database, "SELECT * FROM commands")) {
     const request = json(row.request_json);
-    if (row.family === "worker-browser" || (row.family === "run-lifecycle" && WORKER_OPERATIONS.has(z.object({ operation: z.string() }).parse(request).operation))
-      || mentions([row.target_id, request, json(row.outcome_json)], closure)) doomed.add(text(row, "id"));
+    if (row.family === "worker-browser" || (row.family === "run-lifecycle" && WORKER_OPERATIONS.has(z.object({ operation: z.string() }).parse(request).operation))) history.add(text(row, "id"));
+    else if (mentions([row.target_id, request, json(row.outcome_json)], closure)) named.add(text(row, "id"));
   }
   for (const row of rows(database, "SELECT * FROM command_audits")) {
-    const payload = json(row.payload_json), kind = z.object({ result: z.object({ kind: z.string() }).optional() }).parse(payload).result?.kind;
-    if (kind === "worker" || kind === "worker-recovery" || mentions([payload], closure)) doomed.add(text(row, "command_id"));
+    const payload = json(row.payload_json);
+    const lifecycle = z.object({ kind: z.literal("run-lifecycle"), result: z.object({ kind: z.string() }) }).safeParse(payload);
+    if (lifecycle.success && (lifecycle.data.result.kind === "worker" || lifecycle.data.result.kind === "worker-recovery")) history.add(text(row, "command_id"));
+    else if (mentions([payload], closure)) named.add(text(row, "command_id"));
   }
+  for (const id of kept) if (history.has(id)) throw new Error("authority-upgrade-retained-run-reference");
+  const doomed = new Set([...history, ...[...named].filter(id => !kept.has(id))]);
   for (const row of rows(database, "SELECT * FROM commands WHERE parent_id IS NOT NULL")) {
     if (doomed.has(z.string().parse(row.parent_id)) !== doomed.has(text(row, "id"))) throw new Error("authority-upgrade-retained-run-reference");
   }
@@ -190,7 +220,8 @@ function readRun(database: DatabaseSync, id: string): PredecessorRunRecord {
 }
 
 /** Deletes each closure tree through native run deletion; a tree whose checkpoints another tree still references waits for it. */
-function deleteTrees(database: DatabaseSync, closure: ReadonlySet<string>, now: string, captureFile: CaptureFile): void {
+function deleteTrees(database: DatabaseSync, closure: ReadonlySet<string>, now: string, captureFile: CaptureFile): Set<string> {
+  const commands = new Set<string>();
   const trees = new Map<string, PredecessorRunRecord[]>();
   for (const id of closure) {
     let run = readRun(database, id);
@@ -200,13 +231,19 @@ function deleteTrees(database: DatabaseSync, closure: ReadonlySet<string>, now: 
   }
   let waiting = [...trees.entries()];
   while (waiting.length > 0) {
-    const blocked = waiting.filter(([rootId, members]) => !deleteTree(database, readRun(database, rootId), members, now, captureFile));
+    const blocked = waiting.filter(([rootId, members]) => {
+      const commandId = deleteTree(database, readRun(database, rootId), members, now, captureFile);
+      if (commandId !== undefined) commands.add(commandId);
+      return commandId === undefined;
+    });
     if (blocked.length === waiting.length) throw new RunDeletionRefusedError("shared-checkpoint");
     waiting = blocked;
   }
+  return commands;
 }
 
-function deleteTree(database: DatabaseSync, root: PredecessorRunRecord, members: readonly PredecessorRunRecord[], now: string, captureFile: CaptureFile): boolean {
+/** Returns the deletion command id, or undefined when another tree must go first. */
+function deleteTree(database: DatabaseSync, root: PredecessorRunRecord, members: readonly PredecessorRunRecord[], now: string, captureFile: CaptureFile): string | undefined {
   const request = CanonicalDeleteRequestSchema.parse({ commandId: randomUUID(), runId: root.envelope.runId, expectedVersion: root.version });
   const command = lifecycleCommand("delete", request, { kind: "version", expectedVersion: root.version }, now);
   insertNativeCommand(database, command);
@@ -217,19 +254,22 @@ function deleteTree(database: DatabaseSync, root: PredecessorRunRecord, members:
   } catch (error) {
     if (!(error instanceof RunDeletionRefusedError) || error.reason !== "shared-checkpoint") throw error;
     database.prepare("DELETE FROM commands WHERE id=?").run(command.commandId);
-    return false;
+    return undefined;
   }
   for (const runId of cascadeRunIds) {
     executeNativeRunDeletion(database, prepareNativeRunDeletion(database, readRun(database, runId), deletion(runId), captureFile, "execution", STORED_SHAPE_VERSION));
   }
   recordAudit(database, command, { kind: "deletion", runIds: cascadeRunIds }, now);
-  return true;
+  return command.commandId;
 }
 
-function assertNoRetainedReference(database: DatabaseSync, closure: ReadonlySet<string>): void {
+/** `journals` are the conversion's own deletion commands and the kept write-resolution commands; both name closure runs by design. */
+function assertNoRetainedReference(database: DatabaseSync, closure: ReadonlySet<string>, journals: ReadonlySet<string>): void {
   for (const table of rows(database, "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").map(row => text(row, "name"))) {
     if (DELETION_RETAINED_TABLES.has(table)) continue;
     for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
+      if (table === "commands" && journals.has(text(RowSchema.parse(row), "id"))) continue;
+      if (table === "command_audits" && journals.has(text(RowSchema.parse(row), "command_id"))) continue;
       if (mentions([...Object.values(RowSchema.parse(row)).filter(value => typeof value === "string"), ...jsonColumns(RowSchema.parse(row))], closure)) {
         throw new Error("authority-upgrade-retained-run-reference");
       }
@@ -266,10 +306,11 @@ export function convertWorkerCustody(database: DatabaseSync, now: string, captur
   const members = childrenFirst([...closure].map(id => readRun(database, id)));
   for (const run of members) requireSettledPreBuildRun(database, run.envelope.runId, now, settleEvidence);
   const batches = new Set([...closure].flatMap(id => rows(database, "SELECT batch_id FROM runs WHERE id=? AND batch_id IS NOT NULL", id).map(row => text(row, "batch_id"))));
-  deleteJournals(database, closure, seeds);
-  deleteTrees(database, closure, now, captureFile);
+  const resolutions = writeResolutionCommands(database);
+  deleteJournals(database, closure, seeds, resolutions);
+  const deletions = deleteTrees(database, closure, now, captureFile);
   for (const id of batches) database.prepare("DELETE FROM run_batches WHERE id=? AND NOT EXISTS(SELECT 1 FROM runs WHERE batch_id=?)").run(id, id);
-  assertNoRetainedReference(database, closure);
+  assertNoRetainedReference(database, closure, new Set([...deletions, ...resolutions]));
   for (const sql of triggers) database.exec(sql);
 }
 
