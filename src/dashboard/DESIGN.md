@@ -187,6 +187,6 @@ status fill changes without changing the information's position.
 - Keep focus rings on interactive controls; programmatic takeover focus does not draw an extra default browser ring.
 
 Read [PARITY.md](PARITY.md) before judging a visual difference and
-[the wiring contract](../../docs/rebuild/reference/frontend-backend-integration.md) before replacing a producer.
+[the wiring contract](../../docs/reference/frontend-backend-integration.md) before replacing a producer.
 
 Credentials uses existing ResultRow components for the signed-in profile name and per-word initials. Both are read-only; their values come from bootstrap actor.label.
