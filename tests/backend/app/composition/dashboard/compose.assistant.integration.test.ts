@@ -50,6 +50,29 @@ type ServedAssistantFixture = {
   origin: string;
   post: (path: string, value: unknown) => Promise<unknown>;
 };
+function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySnapshot>[0], before: ReturnType<typeof faultAuthoritySnapshot>,
+  reason: "canonical-completion-required" | "action-decision") {
+  assertHttpFaultOnly(owner, before, 2);
+  const added = owner.database.authority.timelineEvents.page({ limit: 500 }).slice(before.timeline.length);
+  const [proposal, http] = added; assert.ok(proposal && http);
+  assert.ok(proposal.cursor < http.cursor);
+  assert.notEqual(proposal.eventId, http.eventId);
+  const events = added.map(record => {
+    assert.deepEqual(record.scope, { kind: "transport", connectionId: "local" });
+    assert.equal(record.payload.kind, "debug");
+    if (record.payload.kind !== "debug") throw new Error("assistant refusal diagnostic required");
+    const { build, pid, pinned, ...event } = record.payload.event;
+    assert.ok(build.length > 0); assert.equal(pid, process.pid); assert.equal(pinned, false);
+    z.uuid().parse(event.correlationId);
+    return event;
+  });
+  assert.notEqual(events[0].correlationId, events[1].correlationId);
+  assert.deepEqual(events.map(event => ({ ...event, correlationId: "generated" })), [
+    { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason, code: "ASSISTANT_PROPOSAL_REFUSED" },
+    { category: "http", phase: "failed", correlationId: "generated", area: "request", reason: "operation-refused", code: "ASSISTANT_PROPOSAL_REFUSED",
+      method: "POST", route: reason === "canonical-completion-required" ? "/api/v1/assistant/respond" : "/api/v1/assistant/action", status: 200 },
+  ]);
+}
 type ServedAssistantOwner = {
   profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   transport?: Awaited<ReturnType<typeof chatGptFixture>>;
@@ -299,7 +322,7 @@ it.each([
         assert.equal(refused.state, "refused"); if (refused.state === "refused") assert.equal(refused.code, "ASSISTANT_PROPOSAL_REFUSED");
         assert.deepEqual(durableRows(), noCallDurable);
         assert.deepEqual(context.database.authority.notifications.listByActor("local-operator"), noCallRows);
-        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, 1);
+        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, "canonical-completion-required");
         const help = AssistantResultSchema.parse(await post("assistant/respond", { message: "help permissions" }));
         assert.equal(help.state, "answered");
       }
@@ -329,7 +352,7 @@ it.each([
         assert.equal(record.command.source, "assistant");
         const before = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
         const foreign = AssistantActionResultSchema.parse(await post("assistant/action", { chatId: randomUUID(), actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" }));
-        assert.equal(foreign.state, "refused"); assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, before, 1);
+        assert.equal(foreign.state, "refused"); assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, before, "action-decision");
         const decision = { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" };
         if (staleAccount) {
           await context.account.signOut();
@@ -346,7 +369,7 @@ it.each([
         assert.equal(audit?.request.source, "assistant"); assert.equal(audit?.versionChanges.length, 25);
         const after = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
         assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
-        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, after, 1);
+        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, after, "action-decision");
         }
       } else { assert.equal(result.state, "answered"); assert.equal(turns, 1); }
       for (const notificationId of ids) assert.equal(context.database.authority.notifications.get(notificationId)?.status, staleAccount ? "unread" : "read");
@@ -561,7 +584,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       const finishedRuns = database.authority.runs.listByWorkflow("person-lookup"), finishedControls = database.authority.workerControls.list();
       const beforeRefusal = faultAuthoritySnapshot({ database, stateRoot: context.admission.stateRoot });
       assert.equal((await client.assistantDecide(decision)).state, "refused");
-      assertHttpFaultOnly({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, 1);
+      assertAssistantProposalFaults({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, "action-decision");
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
       assert.deepEqual(database.authority.workerControls.list(), finishedControls);
       assert.equal(children.length, 1);
