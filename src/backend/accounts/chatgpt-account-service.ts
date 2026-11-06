@@ -1,5 +1,5 @@
 import { ASSISTANT_PROVIDER_EFFORTS, AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
-import { AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
+import { ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_REQUEST_MAX_BYTES, AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, assistantInputMedia, assistantUserParts, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
 import { type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
 import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -767,7 +767,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   async function inferBoundAssistant(input: AssistantInferenceRequest, signal?: AbortSignal, operation?: InferenceOperation) {
     active();
     const parsed = AssistantInferenceRequestSchema.safeParse(input);
-    if (!parsed.success || Buffer.byteLength(JSON.stringify(parsed.data)) > 160_000) throw fault("CHATGPT_OCR_INVALID");
+    if (!parsed.success) throw fault("CHATGPT_OCR_INVALID");
+    // Attachment Base64 is exempt from the 160,000-byte structure budget; it has its own decoded-media and whole-request bounds.
+    const media = assistantInputMedia(parsed.data.input), bytes = Buffer.byteLength(JSON.stringify(parsed.data));
+    if (bytes - media.base64Chars > 160_000 || bytes > ASSISTANT_REQUEST_MAX_BYTES || media.bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES
+      || !parsed.data.input.every(canonicalMedia)) throw fault("CHATGPT_OCR_INVALID");
     return responseStream(parsed.data.model, parsed.data.input, (terminal, text, textOutputIndex, argumentDeltas) => {
       const result = AssistantInferenceResultSchema.parse({ responseId: terminal.id, model: terminal.model, output: terminal.output });
       if (result.model !== parsed.data.model) throw fault("CHATGPT_OCR_INCOMPLETE");
@@ -1167,3 +1171,12 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;
+
+/** Media parts must carry canonical Base64, so decoded lengths are exact. */
+function canonicalMedia(item: AssistantInferenceRequest["input"][number]): boolean {
+  return assistantUserParts(item).every(part => {
+    if (part.type === "input_text") return true;
+    const url = part.type === "input_image" ? part.image_url : part.file_data, payload = url.slice(url.indexOf(",") + 1);
+    return Buffer.from(payload, "base64").toString("base64") === payload;
+  });
+}

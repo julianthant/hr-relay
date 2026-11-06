@@ -1,9 +1,10 @@
 import { wireError } from "./failure-status.js";
 import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantPermissionViewSchema, AssistantModelPreferenceViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
-  AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema } from "../../../../models/dashboard/assistant.js";
+  AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
 import type { AssistantService } from "../../../assistant/service.js";
 import type { DashboardApp } from "./api-types.js";
-import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
+import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
+import { AssistantAttachmentRefusal } from "../../../assistant/attachments.js";
 
 async function readInput(request: Request, maxBytes = 20_000): Promise<unknown> {
   const reader = request.body?.getReader();
@@ -18,6 +19,30 @@ async function readInput(request: Request, maxBytes = 20_000): Promise<unknown> 
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
   } finally { try { await reader.cancel(); } finally { reader.releaseLock(); } }
 }
+
+/** Reads a raw upload with a real byte counter; overflow and abort cancel the stream before more is buffered. */
+async function readUpload(request: Request, maxBytes: number, signal: AbortSignal): Promise<Uint8Array> {
+  const reader = request.body?.getReader();
+  if (reader === undefined) return new Uint8Array();
+  const chunks: Uint8Array[] = []; let size = 0;
+  const abort = () => { void reader.cancel().catch(() => {}); };
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    for (;;) {
+      signal.throwIfAborted();
+      const chunk = await reader.read(); if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > maxBytes) throw new AssistantAttachmentRefusal("ASSISTANT_ATTACHMENT_TOO_LARGE");
+      chunks.push(chunk.value);
+    }
+    signal.throwIfAborted();
+    return new Uint8Array(Buffer.concat(chunks));
+  } finally {
+    signal.removeEventListener("abort", abort);
+    try { await reader.cancel(); } finally { reader.releaseLock(); }
+  }
+}
+const uploadName = (value: string | undefined) => { try { return decodeURIComponent(value ?? ""); } catch { return ""; } };
 
 export function registerAssistantRoutes(app: DashboardApp, service: AssistantService | undefined): void {
   app.get("/api/v1/assistant/permission", c => {
@@ -71,6 +96,17 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
       if (service?.history === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
       return c.json(AssistantHistoryResultSchema.parse(service.history(input)));
     } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
+  });
+  // Upload bytes use the file media type; Host/Origin admission still applies before any byte is read.
+  app.use("/api/v1/assistant/conversations/:conversationId/attachments", operatorOpaqueIngressGuard);
+  app.post("/api/v1/assistant/conversations/:conversationId/attachments", async c => {
+    c.header("Cache-Control", "no-store");
+    if (service?.stage === undefined) return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503);
+    try {
+      const result = AssistantStageResultSchema.parse(await service.stage({ conversationId: c.req.param("conversationId"), contentType: c.req.header("content-type"),
+        name: uploadName(c.req.header("x-relay-file-name")), read: (maxBytes, signal) => readUpload(c.req.raw, maxBytes, signal) }, c.req.raw.signal));
+      return c.json(result, result.state === "staged" ? 201 : 422);
+    } catch { return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503); }
   });
   app.use("/api/v1/assistant/action", operatorMutationIngressGuard);
   app.post("/api/v1/assistant/action", async c => {

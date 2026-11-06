@@ -144,3 +144,27 @@ it("serves history reads with no-store, guards history writes before the body an
   assert.equal((await unavailable.request(url)).status, 503);
   assert.equal((await unavailable.request(url, { method: "POST", headers, body: rename })).status, 503);
 });
+
+it("stages raw attachment bytes behind the opaque door with a counted reader and passes refusals through", async () => {
+  const app: DashboardApp = new Hono(); const seen: { name: string; contentType: string | undefined; bytes?: Uint8Array; refused?: string }[] = [];
+  registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); },
+    async stage(input, signal) {
+      const entry: (typeof seen)[number] = { name: input.name, contentType: input.contentType }; seen.push(entry);
+      try { entry.bytes = await input.read(8, signal); }
+      catch (error) { entry.refused = error instanceof Error ? error.message : "?"; return { state: "refused", code: "ASSISTANT_ATTACHMENT_TOO_LARGE" }; }
+      return { state: "staged", attachment: { id: "33333333-3333-4333-8333-333333333333", mediaType: "text/plain", name: input.name, byteLength: entry.bytes.byteLength,
+        expiresAt: "2026-11-06T00:15:00.000Z" } };
+    } });
+  const path = "http://127.0.0.1:3938/api/v1/assistant/conversations/11111111-1111-4111-8111-111111111111/attachments";
+  const headers = { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "text/plain", "x-relay-file-name": encodeURIComponent("Notes ü.txt") };
+  for (const patch of [{ origin: "https://foreign.example" }, { host: "foreign.example" }]) {
+    assert.equal((await app.request(path, { method: "POST", headers: { ...headers, ...patch }, body: "12345678" })).status, 403);
+  }
+  assert.equal(seen.length, 0);
+  const staged = await app.request(path, { method: "POST", headers, body: "12345678" });
+  assert.equal(staged.status, 201); assert.equal(staged.headers.get("cache-control"), "no-store");
+  assert.deepEqual(seen[0], { name: "Notes ü.txt", contentType: "text/plain", bytes: new TextEncoder().encode("12345678") });
+  const over = await app.request(path, { method: "POST", headers, body: "123456789" });
+  assert.equal(over.status, 422); assert.deepEqual(await over.json(), { state: "refused", code: "ASSISTANT_ATTACHMENT_TOO_LARGE" });
+  assert.equal(seen[1]?.refused, "ASSISTANT_ATTACHMENT_TOO_LARGE");
+});

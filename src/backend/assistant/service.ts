@@ -4,12 +4,14 @@ import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.j
 import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
+  ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES, type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia,
   type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantPermissionViewSchema, type AssistantPermissionView } from "../../models/dashboard/assistant.js";
 import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
-import { AssistantReferenceError, createAssistantReferences, maskOperatorText } from "./references.js";
+import { AssistantReferenceError, type AssistantReferenceTable, createAssistantReferences, maskOperatorText } from "./references.js";
 import { AssistantAuthorizationError } from "./authorization.js";
+import { admitAttachment, AssistantAttachmentRefusal, attachmentMediaType } from "./attachments.js";
 import { AssistantToolRefusal, type AssistantPlugin } from "./plugins/plugin.js";
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/registry.js";
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
@@ -73,6 +75,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
   /** Live inference per conversation, so Clear aborts it. */
   const live = new Map<string, AbortController>();
   const now = () => options.clock.now().toISOString();
+  let staging = false;
   // Policy is installed by trusted composition, never by a request or model.
   function captureModelPolicy() {
     let snapshot: AssistantModelPolicySnapshot | undefined;
@@ -135,6 +138,27 @@ export function createAssistantService(options: AssistantServiceOptions) {
         throw error;
       }
     },
+    /** Stages one upload: one at a time per profile, read within 30 seconds, validated, then stored under the owned chat. No provider call. */
+    async stage(input: Readonly<{ conversationId: string; contentType: string | undefined; name: string; read(maxBytes: number, signal: AbortSignal): Promise<Uint8Array> }>,
+      requestSignal: AbortSignal): Promise<AssistantStageResult> {
+      if (staging) return { state: "refused", code: "ASSISTANT_ATTACHMENT_BUSY" };
+      staging = true;
+      const deadline = AbortSignal.timeout(ASSISTANT_ATTACHMENT_UPLOAD_MS);
+      try {
+        const conversationId = z.uuid().parse(input.conversationId), mediaType = attachmentMediaType(input.contentType);
+        const bytes = await input.read(ASSISTANT_ATTACHMENT_TYPES[mediaType].maxBytes, AbortSignal.any([requestSignal, deadline]));
+        if (deadline.aborted) return { state: "refused", code: "ASSISTANT_ATTACHMENT_TIMEOUT" };
+        admitAttachment(mediaType, input.name, bytes);
+        const record = options.history().stage({ id: randomUUID(), conversationId, mediaType, name: input.name, bytes, now: now() });
+        return { state: "staged", attachment: { id: record.id, mediaType: record.mediaType, name: record.name, byteLength: record.byteLength, expiresAt: record.expiresAt } };
+      } catch (error) {
+        if (error instanceof AssistantAttachmentRefusal || error instanceof AssistantHistoryRefusal) return { state: "refused", code: error.code };
+        if (deadline.aborted) return { state: "refused", code: "ASSISTANT_ATTACHMENT_TIMEOUT" };
+        if (requestSignal.aborted) return { state: "refused", code: "ASSISTANT_CANCELLED" };
+        if (error instanceof z.ZodError) return { state: "refused", code: "ASSISTANT_INVALID" };
+        throw error;
+      } finally { staging = false; }
+    },
     async respond(input: unknown, requestSignal: AbortSignal): Promise<AssistantRespondEnvelope> {
       const request = AssistantRequestSchema.safeParse(input);
       if (!request.success) return { kind: "result", result: refused("ASSISTANT_INVALID") };
@@ -194,7 +218,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const table = references.table(request.conversationId, options.owner(), history.nextOrdinal(request.conversationId));
         const masked = maskOperatorText(request.message, table);
         const acceptance = history.accept({ conversationId: request.conversationId, expectedRevision: request.expectedRevision, messageId: request.messageId,
-          text: request.message, modelText: masked, subjectRef: request.subjectRef ?? null, attachments: [], now: options.clock.now().toISOString() });
+          text: request.message, modelText: masked, subjectRef: request.subjectRef ?? null, attachments: request.attachments ?? [], now: options.clock.now().toISOString() });
         if (acceptance.state === "repeat") return { repeat: { conversationId: request.conversationId, messageId: request.messageId, ordinal: acceptance.ordinal,
           revision: acceptance.revision, delivery: acceptance.delivery } };
         current = { ordinal: acceptance.ordinal, revision: acceptance.revision, createdAt: acceptance.createdAt };
@@ -211,14 +235,21 @@ export function createAssistantService(options: AssistantServiceOptions) {
           assertCurrent();
           if (!options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
         };
+        let textBytes = 0;
+        const files = <T extends AssistantAttachmentRecord>(rows: readonly T[]) => {
+          for (const row of rows) if (ASSISTANT_ATTACHMENT_TYPES[row.mediaType].content === "text") textBytes += row.byteLength;
+          return rows;
+        };
         const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
         const input: AssistantInputItem[] = [
           { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined
             : table.issue("R", selectedRun.runId, "the selected run", selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
-          ...history.replay(request.conversationId, current.ordinal).map(replayed),
-          { role: "user", content: masked },
+          ...history.replay(request.conversationId, current.ordinal).map(row => row.messageId === undefined ? replayed(row)
+            : userTurn(row.modelText, files(history.turnAttachments(row.messageId)), table)),
+          userTurn(masked, files(history.turnAttachments(request.messageId)), table),
         ];
-        if (Buffer.byteLength(JSON.stringify(input)) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_CHAT_FULL") };
+        if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { result: refused("ASSISTANT_ATTACHMENT_TOO_LARGE") };
+        if (structureBytes(input) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_CHAT_FULL") };
         const unrecovered = new Map<string, AssistantFailureCode>(), outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>();
         const assertRetainedCurrent = () => {
           options.assertComposition?.();
@@ -227,7 +258,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const context = { signal, references: table, actorId: options.actorId, conversationId: request.conversationId, assertCurrent: assertAuthority, assertRetainedCurrent };
         for (let step = 0; step < MAX_MODEL_CALLS; step++) {
           assertAuthority();
-          if (Buffer.byteLength(JSON.stringify(input)) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_LIMIT") };
+          if (structureBytes(input) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_LIMIT") };
           const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model: policy.data.model,
             reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[policy.data.effort] }, input, tools: [registry.namespace] }, signal, assertAuthority));
           assertAuthority();
@@ -300,6 +331,23 @@ export function createAssistantService(options: AssistantServiceOptions) {
 }
 
 const stop = (code: AssistantFailureCode) => ({ result: refused(code) });
+/** Serialized size without attachment Base64, which has its own media bound. */
+const structureBytes = (input: readonly AssistantInputItem[]) => Buffer.byteLength(JSON.stringify(input)) - assistantInputMedia(input).base64Chars;
+const ATTACHMENT_LABEL = { image: "image", file: "PDF", text: "text file", none: "spreadsheet (inspect_attachment reads its structure; its values are never shown)" } as const;
+/** An operator turn with its accepted attachments: each gets an `A` reference and a label; original names stay local. */
+function userTurn(text: string, files: readonly (AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>)[], table: AssistantReferenceTable): AssistantInputItem {
+  if (files.length === 0) return { role: "user", content: text };
+  const content: AssistantUserContentPart[] = [{ type: "input_text", text }];
+  for (const file of files) {
+    const kind = ASSISTANT_ATTACHMENT_TYPES[file.mediaType].content, base64 = Buffer.from(file.bytes).toString("base64");
+    content.push({ type: "input_text", text: `Attachment ${table.issue("A", file.id, file.name)}: ${ATTACHMENT_LABEL[kind]}` });
+    if (kind === "image") content.push({ type: "input_image", image_url: `data:${file.mediaType};base64,${base64}`, detail: "high" });
+    else if (kind === "file") content.push({ type: "input_file", filename: `attachment-${String(file.ordinal)}.pdf`, file_data: `data:application/pdf;base64,${base64}` });
+    else if (kind === "text") content.push({ type: "input_text", text: ATTACHMENT_TEXT.decode(file.bytes) });
+  }
+  return { role: "user", content };
+}
+const ATTACHMENT_TEXT = new TextDecoder("utf-8", { fatal: true });
 /** Replay text as plain messages; tool items and reasoning are never replayed. */
 function replayed(row: Readonly<{ role: "operator" | "assistant"; modelText: string }>): AssistantInputItem {
   if (row.role === "operator") return { role: "user", content: row.modelText };
@@ -338,4 +386,4 @@ function selectedRunReference(subjectRef: string): { runId: string; revision: nu
   if (match === null || !z.uuid().safeParse(match[1]).success || !Number.isSafeInteger(revision)) throw new AssistantProtocolError("assistant-selected-run-invalid");
   return { runId: match[1], revision };
 }
-export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'modelPreference' | 'permission' | 'historyView' | 'conversation' | 'history'>>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'stage' | 'modelPreference' | 'permission' | 'historyView' | 'conversation' | 'history'>>;
