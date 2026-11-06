@@ -156,7 +156,12 @@ for (const selected of ["held", "none", "healthy"] as const) it(`holds one perso
     const after = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
     assert.equal(after.activeProfileId, selected === "healthy" ? firstProfileId : null);
     assert.equal(after.sessionGeneration, before.sessionGeneration + (selected === "held" ? 1 : 0));
-    await assertHeld(first.workspace, first.lifetime, clock, "second@ucsd.edu", "STORAGE_PROFILE_FORMAT_UNSUPPORTED");
+    if (selected === "healthy") {
+      const other = signIn(first.workspace, first.lifetime, clock, "second@ucsd.edu");
+      try { const result = other.attempt(); assert.ok(result.state === "refused" && result.code === "PROFILE_TRANSITION_BLOCKED", JSON.stringify(result)); }
+      finally { await other.close(); }
+      assert.deepEqual(JSON.parse(readFileSync(registryPath, "utf8")), after);
+    } else await assertHeld(first.workspace, first.lifetime, clock, "second@ucsd.edu", "STORAGE_PROFILE_FORMAT_UNSUPPORTED");
     const session = signIn(first.workspace, first.lifetime, clock, "fixture@ucsd.edu");
     try { const result = session.attempt(); assert.equal(result.state, "active", JSON.stringify(result)); } finally { await session.close(); }
   } finally { await first.close(); }
