@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { it, vi } from 'vitest';
 import { assistantProposalDigest, createAssistantController, ASSISTANT_CONFIRM_HOLD } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
+import { assistantModelLabel } from '../../../../src/models/config/assistant-model-preference.js';
 import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
 
@@ -80,7 +81,8 @@ it('confirms the actual issued action identity once; a lost start is unknown, a 
     c.action({ type: 'confirm' }); c.action({ type: 'confirm' });
     await vi.waitFor(() => { const turn = c.snapshot().turn; assert.ok(turn.state === 'proposal' && turn.disposition === settled, `${String(lost)} ${String(stored)}`); });
     const last = c.snapshot().messages.at(-1)?.text;
-    if (lost) assert.equal(last, settled === 'unknown' ? ASSISTANT_UNKNOWN_NOTICE : stored ?? ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED);
+    // Without a history there is nothing to read back: the card goes stale with no line.
+    if (lost) assert.equal(last, settled === 'unknown' ? ASSISTANT_UNKNOWN_NOTICE : stored ?? 'Review this proposal. No action has been applied.');
     c.action({ type: 'confirm' }); c.action({ type: 'retry' }); assert.equal(calls, 1);
   }
 });
@@ -164,7 +166,7 @@ it('shows the served preference and dispatches the explicit choice through the s
   const f = preferenceControls(), initial = f.view;
   sendControl(f.c, ASSISTANT_MODEL_COMMAND);
   await vi.waitFor(() => assert.notEqual(f.c.snapshot().turn.state, "waiting"));
-  assert.ok(f.c.snapshot().messages.at(-1)?.text.includes(initial.preference.slug));
+  assert.ok(f.c.snapshot().messages.at(-1)?.text.includes(assistantModelLabel(initial.preference.slug)));
   assert.equal(f.sent.length, 0); assert.equal(f.replies.length, 0);
   sendControl(f.c, ASSISTANT_MODEL_COMMAND + ' fixture-selected ' + ASSISTANT_DEFAULT_EFFORT);
   await vi.waitFor(() => assert.equal(f.feedback.length, 1));
@@ -173,7 +175,7 @@ it('shows the served preference and dispatches the explicit choice through the s
   assert.deepEqual(command.payload, { slug: 'fixture-selected', effort: ASSISTANT_DEFAULT_EFFORT });
   assert.equal(command.requestedBy, LOCAL_OPERATOR_ACTOR_ID); assert.equal(command.source, 'dashboard-assistant-model-preference');
   assert.equal(f.feedback[0]?.kind, "confirmed"); assert.equal(f.reads, 3);
-  assert.ok(f.c.snapshot().messages.at(-1)?.text.includes(f.view.preference.slug));
+  assert.ok(f.c.snapshot().messages.at(-1)?.text.includes(assistantModelLabel(f.view.preference.slug)));
   assert.equal(f.executor.retainedAttempts()[0]?.scope.client, f.scope.client);
 });
 it('rejects malformed setup arguments without an inference call or command', async () => {

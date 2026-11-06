@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
@@ -280,7 +281,7 @@ it.each([
   retain.mockRestore(); server.close();
 });
 
-it('shows run and notification reconciliation guidance after a lost response without replay', async () => {
+it('shows the one unknown line after a lost response without replay', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
   const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } });
@@ -294,8 +295,7 @@ it('shows run and notification reconciliation guidance after a lost response wit
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'unknown');
-  const notice = [...document.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes('Check the current run or notification state'));
-  assert.ok(notice); assert.match(notice.textContent ?? '', /Do not retry this request/u);
+  assert.deepEqual([...document.querySelectorAll('[role="alert"]')].map(node => node.textContent), [ASSISTANT_UNKNOWN_NOTICE]);
   await act(async () => { current.onAction({ type: 'retry' }); current.onAction({ type: 'send' }); current.onAction({ type: 'confirm' }); });
   assert.equal(calls, 1);
 });
