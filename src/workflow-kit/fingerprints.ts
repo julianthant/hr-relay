@@ -40,12 +40,13 @@ export function workflowContractFingerprint(input: Readonly<{
   result: z.ZodType;
   graph: readonly Readonly<{ id: string; kind: string; dependsOn: readonly string[] }>[];
   contracts: readonly ContractShape[];
+  kit?: number;
 }>): Fingerprint {
   const tasks = [...new Map(input.contracts.map(contract => [String(contract.id), taskIdentity(contract)])).entries()]
     .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     .map(([, identity]) => identity);
   return FingerprintSchema.parse(sha256Hex(`hrauto:workflow-contract:v1\0${canonicalJsonStringify({
-    kit: WORKFLOW_KIT_VERSION,
+    kit: input.kit ?? WORKFLOW_KIT_VERSION,
     id: input.id,
     version: input.version,
     input: deriveSchemaHash(input.input, "input"),
