@@ -1,4 +1,4 @@
-import { projectWorkflowExplorerPreview, type PreviewSelection, type FieldSource, type FlowPart, type FlowStep } from "../../models/workflow/explorer-preview.js";
+import type { FieldSource, FlowPart, FlowStep } from "../../models/workflow/explorer-preview.js";
 import type { WorkflowExplorerWire } from "../../models/dashboard/explorer.js";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { ExplorerWorkflowWire, ExplorerNodeWire, ExplorerTaskWire, SourceLinkWire } from "../../models/dashboard/explorer.js";
@@ -57,7 +57,7 @@ function declaredActions(items: readonly WorkflowOperationDisplaySnapshot["invoc
   ]);
 }
 
-export function projectExplorerDefinition(workflow: ExplorerWorkflowWire, selection: PreviewSelection = {}): ExplorerWiringState {
+export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): ExplorerWiringState {
   const pending = workflow.nodes.flatMap(node => node.tasks).find(task => task.binding.state === "pending");
   if (pending) return { state: "refused", failure: createErrorCatalogFailure("EXPLORER_TASK_BINDING_UNAVAILABLE", {}), evidence: { taskId: pending.taskId, binding: pending.binding } };
   if (workflow.definitionPreview.state === "unavailable") return { state: "unavailable", reason: workflow.definitionPreview.reason };
@@ -184,11 +184,6 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire, select
       if (!source) mismatch(`destination source ${invocation.id}:${slot.id}`);
       sources.set(destinations[0].fieldId, { ...source, detail: `${source.detail}${details.length ? ` ${details.join("; ")}.` : ""}`, ...(reads.length ? { reads } : {}), ...(chain.length ? { chain } : {}) });
     }
-    if (workflow.walkthrough !== undefined) {
-      const declared = new Set(workflow.walkthrough.steps.flatMap(step => step.nodes));
-      if (declared.size !== nodes.size || [...declared].some(id => !nodes.has(id))) mismatch("walkthrough node coverage");
-      return { state: "ready", projection: projectWorkflowExplorerPreview(workflow.walkthrough, selection) };
-    }
     const operatorSteps: FlowStep[] = [];
     for (const group of preview.groups) {
       if (group.operatorFields === undefined) {
@@ -217,7 +212,7 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire, select
 }
 
 const unavailableExplorerClient = {};
-export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number, selection?: PreviewSelection): ExplorerWiringState {
+export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number): ExplorerWiringState {
   const resource = useSettingsRead<WorkflowExplorerWire>(client ?? unavailableExplorerClient, `explorer:${workflowId ?? "none"}:${version ?? "current"}`);
   const result = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   useEffect(() => {
@@ -229,8 +224,8 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
     if (result.value === undefined) return { state: "loading" };
     if (!workflow) return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text };
     if (version !== undefined && workflow.version !== version) return { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
-    return projectExplorerDefinition(workflow, selection);
-  }, [result.value, workflowId, version, selection]);
+    return projectExplorerDefinition(workflow);
+  }, [result.value, workflowId, version]);
   if (workflowId === undefined) return { state: "idle" };
   if (client === undefined) return { state: "unavailable", reason: "Registered workflow data is unavailable because the dashboard client is not connected." };
   if (result.state === "failed" && result.value === undefined) return { state: "refused", failure: createErrorCatalogFailure("DASHBOARD_READ_FAILED", {}), evidence: result.error };

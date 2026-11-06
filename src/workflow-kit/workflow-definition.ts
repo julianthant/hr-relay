@@ -1,4 +1,3 @@
-import { WorkflowExplorerPreviewSchema, type WorkflowExplorerPreview } from "../models/workflow/explorer-preview.js";
 import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
@@ -804,7 +803,6 @@ export interface WorkflowDefinitionSpec<
   readonly intake?: IntakeProjection;
   /** Optional v1 action display declaration; omitted definitions remain legacy. */
   readonly operationDisplay?: WorkflowOperationDisplayDeclaration;
-  readonly explorerPreview?: WorkflowExplorerPreview;
     /** The graph, authored through the typed author so each entry's input/output binds to THIS
      *  input schema; returns the ordered timeline tuples and the terminal result declaration. */
   readonly steps: (author: WorkflowAuthor<InputSchema>) => Readonly<{
@@ -824,7 +822,6 @@ export interface WorkflowDefinition<
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
   readonly operationDisplay?: WorkflowOperationDisplayDeclaration;
-  readonly explorerPreview?: WorkflowExplorerPreview;
   readonly steps: readonly WorkflowTimelineTuple[];
   readonly result: WorkflowResultDeclaration<InputSchema, ResultSchema>;
 }
@@ -910,17 +907,10 @@ export function defineWorkflow<
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
   const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
-  const { steps: authorSteps, input, role, intake, operationDisplay, explorerPreview, ...presentation } = spec;
+  const { steps: authorSteps, input, role, intake, operationDisplay, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay));
   validateSteps(id, authored.steps, authored.result.references);
-  if (explorerPreview !== undefined) {
-    WorkflowExplorerPreviewSchema.parse(explorerPreview);
-    const nodes = new Set(flattenEntries(authored.steps).flatMap(entryNodeIds));
-    const declared = new Set(explorerPreview.steps.flatMap(step => step.nodes));
-    if ([...nodes].some(node => !declared.has(node)) || [...declared].some(node => !nodes.has(node))) {
-      throw new Error(`workflow ${id} Explorer preview does not cover its registered nodes`);
-    }
-  }
+
   for (const entry of flattenEntries(authored.steps)) Object.freeze(entry.references);
   Object.freeze(authored.result.references);
   return Object.freeze({
@@ -931,7 +921,6 @@ export function defineWorkflow<
     role,
     ...(intake === undefined ? {} : { intake }),
     ...(operationDisplay === undefined ? {} : { operationDisplay }),
-    ...(explorerPreview === undefined ? {} : { explorerPreview }),
     steps: Object.freeze(authored.steps.map(([group, entries]) => Object.freeze([
       Object.freeze(Object.defineProperty({ ...group }, GROUP_OWNER, {
         value: group[GROUP_OWNER] ?? group, enumerable: false,
@@ -1248,7 +1237,7 @@ export function compileWorkflow<
   if (definition.kind !== "workflow-definition") {
     throw new Error("compileWorkflow requires a value produced by defineWorkflow");
   }
-  const { kind, input, role, intake, operationDisplay: operationDisplayDeclaration, explorerPreview: _explorerPreview, steps, result, ...presentation } = definition;
+  const { kind, input, role, intake, operationDisplay: operationDisplayDeclaration, steps, result, ...presentation } = definition;
   void kind;
   void input;
   void role;

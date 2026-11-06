@@ -703,7 +703,7 @@ pending until the download settles and reports refusal without starting another 
 
 ## Explorer
 
-Person Lookup and Separations declare read-only Explorer walkthroughs in their registered workflow definitions. The query serves their node-bound steps, forms, actions, fictional examples, preview choices and field sources to the existing timeline components. Preview choices change only local presentation; they never approve gates or execute work. Definition admission requires complete registered-node coverage, and the renderer retains graph, operation and source-lineage validation before projecting the walkthrough. Person Lookup shows its current single-person Search and Match paths; delegation nodes remain absent. Other workflows use their registered timeline groups and operator fields, or declared task labels, purposes and actions. No run values are inferred.
+Every registered workflow's Explorer timeline is generated from its definition. A timeline group with operator fields is one step: its description and the fields' fictional examples. Other groups show one step per node with its label, purpose (or the group description), structure and declared actions. The renderer validates graph, operation and source lineage before projecting. No run values are inferred.
 
 Explorer mounts in Settings and describes itself as fictional preview data. Its workflow picker
 uses stable fixture IDs and the shared catalog. Local scenario/choice controls alter the preview's

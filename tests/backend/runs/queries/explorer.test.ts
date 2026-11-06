@@ -487,7 +487,7 @@ describe("the workflow explorer projection", () => {
     if (resolveAction.purpose.state !== "authored") return;
     assert.match(
       resolveAction.purpose.text,
-      /refuses two actions for one number/u,
+      /Find the Kuali separation action/u,
     );
   });
 

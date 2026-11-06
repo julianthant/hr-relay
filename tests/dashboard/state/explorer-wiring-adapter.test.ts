@@ -24,7 +24,6 @@ import { buildWorkflowCatalog, type WorkflowCatalogEntry } from "../../../src/da
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
 const compiled = structuredClone(wire.workflows.find(workflow => workflow.definitionPreview.state === "compiled")!);
-delete compiled.walkthrough;
 
 function changed(change: (workflow: ExplorerWorkflowWire) => void): ExplorerWorkflowWire {
   const workflow = structuredClone(compiled);
@@ -38,7 +37,6 @@ function redigest(definition: WorkflowOperationDisplaySnapshot): WorkflowOperati
 }
 function lineageWorkflow(): ExplorerWorkflowWire {
   const base = structuredClone(wire.workflows.find(workflow => workflow.id === "separations")!);
-  delete base.walkthrough;
   const task = wire.workflows.flatMap(workflow => workflow.nodes.flatMap(node => node.tasks)).find(task => task.arm === "task" && task.effect === "read")!;
   const field = (path: string, side: "input" | "output") => ({ path, side, kind: "string", presence: "always", recorded: { state: "unknown", reason: "No run is loaded" } });
   const binding = { state: "bound", storeNamespace: "crm", storeKind: "browser", driverSystem: "crm" };
@@ -83,7 +81,6 @@ describe("Explorer registered projection", () => {
     assert.equal(WorkflowExplorerWireSchema.safeParse(missing).success, false);
     for (const original of wire.workflows) {
       const workflow = structuredClone(original);
-      delete workflow.walkthrough;
       if (workflow.definitionPreview.state !== "compiled") continue;
       const result = projectExplorerDefinition(workflow);
       assert.equal(result.state, "ready", result.state === "refused" ? String(result.evidence) : workflow.id);

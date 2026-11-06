@@ -11,7 +11,6 @@ import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 function workflowWire() {
   const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-03T17:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
   const workflow = wire.workflows.find(workflow => workflow.id === "person-lookup"); assert.ok(workflow);
-  delete workflow.walkthrough;
   return workflow;
 }
 function projected() {

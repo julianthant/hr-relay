@@ -878,7 +878,6 @@
   "tests/dashboard/state/client-context.test.ts": 0.2,
   "tests/dashboard/state/explorer-wiring-adapter.presentation.test.ts": 1.3,
   "tests/dashboard/state/explorer-wiring-adapter.test.ts": 1,
-  "tests/dashboard/state/explorer-wiring-adapter.walkthrough.test.ts": 0.1,
   "tests/dashboard/state/inbox-wiring-adapter.test.ts": 0.2,
   "tests/dashboard/state/intake-wiring-adapter.test.ts": 3.4,
   "tests/dashboard/state/person-preferences-model.test.ts": 0.4,

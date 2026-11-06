@@ -605,9 +605,11 @@ function workflowWire(
   const descriptorPath = workflowSourcePath(workflowId, module.role);
   const modulePath = descriptorPath;
 
-  const purposeByNode = new Map(
-    descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
-  );
+  // A node without its own purpose is described by its timeline group.
+  const purposeByNode = new Map([
+    ...descriptor.timeline.flatMap((group) => group.description === undefined ? [] : group.nodes.map((member) => [String(member.id), group.description] as const)),
+    ...descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose] as const),
+  ]);
 
 
 
@@ -623,7 +625,6 @@ function workflowWire(
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     operationStructure: operationStructureWire(descriptor),
-    ...(definition?.explorerPreview === undefined ? {} : { walkthrough: definition.explorerPreview }),
     definitionPreview: declaration === undefined
       ? { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" }
       : { state: "compiled", groups: declaration, systemsFirstUse },
@@ -674,7 +675,7 @@ function workflowWire(
       purpose: proseWire(
         purposeByNode.get(String(node.id)),
         `${workflowId} node ${String(node.id)}`,
-        `${descriptorPath}'s \`nodePurposes\``,
+        `${descriptorPath}'s \`nodePurposes\` or its timeline group's \`description\``,
       ),
       dependsOn: [...node.dependsOn],
       shape: nodeShape(node),
