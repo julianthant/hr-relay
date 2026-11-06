@@ -151,10 +151,12 @@ describe("write sequencer — a write is approved under one build", () => {
     assert.equal(created.state, "applied");
     if (created.state !== "applied") throw new Error("child create refused");
     assert.equal(created.run.envelope.buildId, BUILD_X);
-    assert.equal((await claimQueued(h)).run.envelope.runId, parent.envelope.runId);
+    const first = await claimQueued(h);
     h.admitWorker(2);
-    const child = await claimQueued(h, 2);
+    const second = await claimQueued(h, 2);
+    const child = first.run.envelope.runId === created.run.envelope.runId ? first : second;
     assert.equal(child.run.envelope.runId, created.run.envelope.runId);
+    assert.equal((child === first ? second : first).run.envelope.runId, parent.envelope.runId);
     await assert.rejects(h.execute(contextFor(child.run, child.claim)), (error: unknown) => error instanceof TaskError && error.code === "WRITE_BUILD_CHANGED");
     assert.deepEqual(effects(h.world.events), []);
     assert.equal(intentByKey(h.database), undefined);

@@ -88,7 +88,7 @@ describe("read-only admission across builds", () => {
     build.id = BUILD_X;
     const { service, request, runtimeConfig, clock } = await fixture();
     const cancelledSource = (overrides: Readonly<{ descriptorVersion?: number; contractFingerprint?: string }>) => {
-      const source = created(service, { ...request, descriptorVersion: personLookupDescriptor.version,
+      const source = created(service, { ...request, commandId: randomUUID(), descriptorVersion: personLookupDescriptor.version,
         contractFingerprint: personLookupDescriptor.contractFingerprint, ...overrides });
       const cancelled = service.transition({
         commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version,
