@@ -40,10 +40,11 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) model.rename(id, title); }, history);
   const assistantTest = useContext(PreflightAssistantContext);
-  const seenPreference = useRef(modelPreference);
-  const modelChanged = useCallback((view: AssistantModelPreferenceView) => {
-    const prior = seenPreference.current; seenPreference.current = view.preference;
-    if (prior !== undefined && (prior.slug !== view.preference.slug || prior.effort !== view.preference.effort)) assistantTest.invalidate?.();
+  const seenRevision = useRef<string | undefined>(undefined);
+  const modelChanged = useCallback((view: AssistantModelPreferenceView, saved: boolean) => {
+    const revision = `${view.profileId}:${String(view.epoch)}:${String(view.revision)}`, prior = seenRevision.current; seenRevision.current = revision;
+    // Every accepted save bumps the revision, even for the same choice; a read only reveals a change when it differs from the last seen revision.
+    if (saved || prior !== undefined && prior !== revision) assistantTest.invalidate?.();
     preferenceChanged?.(view);
   }, [assistantTest, preferenceChanged]);
   const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged: modelChanged });

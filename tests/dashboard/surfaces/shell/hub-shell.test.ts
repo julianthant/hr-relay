@@ -38,7 +38,7 @@ it("keeps the served assistant closed until requested and preserves its close an
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it("invalidates a shown Preflight result only when the saved model preference actually changes", async () => {
+it("invalidates a shown Preflight result on a confirmed model save, even for the same choice, but not on a read", async () => {
   const { app } = createFixtureBff();
   const served = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const current = await served.assistantModelPreference?.(); assert.ok(current);
@@ -73,5 +73,9 @@ it("invalidates a shown Preflight result only when the saved model preference ac
     assert.equal(invalidations, 0);
     await send(`${ASSISTANT_MODEL_COMMAND} ${current.preference.slug} ${effort}`);
     assert.equal(invalidations, 1);
+    await send(`${ASSISTANT_MODEL_COMMAND} ${current.preference.slug} ${effort}`);
+    assert.equal(invalidations, 2);
+    await send(ASSISTANT_MODEL_COMMAND);
+    assert.equal(invalidations, 2);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

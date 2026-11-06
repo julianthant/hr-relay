@@ -16,7 +16,7 @@ export const ASSISTANT_CONFIRM_HOLD = 'Confirmation is unavailable until the ser
 type Binding = Readonly<{ authority: unknown; subjectRef?: AssistantSubject['subjectRef'];
   commands?: Pick<DashboardCommandBinding, 'executor' | 'scope' | 'feedback'>;
   refreshAccount?: () => Promise<void>;
-  preferenceChanged?: (view: AssistantModelPreferenceView) => void;
+  preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void;
 }>;
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
@@ -90,7 +90,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         if (client.assistantModelPreference === undefined) { complete(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE); return; }
         const view = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(request.abort.signal));
         if (!current()) return;
-        if (parts.length === 1) { request.binding.preferenceChanged?.(view); complete(preferenceText(view)); return; }
+        if (parts.length === 1) { request.binding.preferenceChanged?.(view, false); complete(preferenceText(view)); return; }
         if (preference?.success !== true) return;
         const commands = request.binding.commands;
         if (commands === undefined || commands.scope.actorId !== LOCAL_OPERATOR_ACTOR_ID || !Object.is(commands.scope.client, client)) {
@@ -109,7 +109,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
           } });
         if (!current()) return;
         if (outcome.kind === "uncertain") { publish(assistantReducer(state, { type: "uncertain", requestId })); return; }
-        if (outcome.kind === "confirmed") { const actual = AssistantModelPreferenceViewSchema.parse(outcome.readback); request.binding.preferenceChanged?.(actual); complete(preferenceText(actual)); }
+        if (outcome.kind === "confirmed") { const actual = AssistantModelPreferenceViewSchema.parse(outcome.readback); request.binding.preferenceChanged?.(actual, true); complete(preferenceText(actual)); }
         else complete(outcome.feedback.text);
         return;
       }
@@ -200,7 +200,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   });
 }
 
-export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void }) {
   const { history, preferenceChanged } = options ?? {};
   const [launcherBottom, setLauncherBottom] = useState<string>();
   useLayoutEffect(() => {
