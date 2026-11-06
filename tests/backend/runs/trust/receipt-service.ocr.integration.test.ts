@@ -64,7 +64,7 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
   const input: ReceiptBuildInput = { descriptor: f.root.descriptor, run, result,
     checkpoints: repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId), gateResults: [gate],
     delegations,
-    authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(repositories, f.canonical.lifecycle, row) };
+    authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(repositories, f.canonical.lifecycle, row, f.resolve) };
   assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
   const { authenticateSnapshotApproval: _authenticate, ...unproved } = input;
   assert.throws(() => buildRunEvidenceReceipt(unproved), /OCR_REVIEW_REFUSED/u);
@@ -98,7 +98,7 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
     const expected = failure === "native" ? { name: "Error", message: "delegation-gate-resume-authority-unavailable" }
       : { name: "OcrReviewRefusedError", message: "OCR_REVIEW_REFUSED" };
     assert.throws(() => buildRunEvidenceReceipt({ ...input,
-      authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(altered, f.canonical.lifecycle, row) }), expected, name);
+      authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(altered, f.canonical.lifecycle, row, f.resolve) }), expected, name);
     const refused = createReceiptService({ database: ocrProofReadDatabase(f.database, altered), runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
     assert.throws(() => refused.ensureReceipt(run.envelope.runId), expected, name);
   }

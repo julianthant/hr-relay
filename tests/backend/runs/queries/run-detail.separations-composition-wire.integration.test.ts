@@ -6,7 +6,7 @@ import { timelineCheckpointReference } from "../../../../src/models/events/timel
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -182,7 +182,7 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
     },
     descriptorVersion: separationsDescriptor.version,
     contractFingerprint: separationsDescriptor.contractFingerprint,
-    implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, SeparationsMatchIdentity.id),
+    implFingerprint: taskImplFingerprint(SeparationsMatchIdentity),
     provenance: [],
     writtenAt: GATE_NOW,
   });

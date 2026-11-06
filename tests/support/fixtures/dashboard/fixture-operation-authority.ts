@@ -43,7 +43,6 @@ import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { testRunLifecycle, testRunService, testWorkerPorts } from "../run-lifecycle-fixtures.js";
 import { openAuthorityHarness, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
 import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "../plan1-operation-workflows.js";
-import { fixtureBuildManifest } from "../workflow-definition-fixtures.js";
 import { PARITY_DIST_DIR } from "../../helpers/dashboard/served-fixtures/bundle.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { startFixtureServer } from "../../helpers/dashboard/served-fixtures/fixture-bff.js";
@@ -142,7 +141,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     const app: DashboardApp = new Hono();
     app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
     app.use("*", async (c, next) => { c.set("requestActorId", LOCAL_OPERATOR_ACTOR_ID); await next(); });
-    registerExplorerRoutes(app, { ...explorer, explorer: { ...explorer.explorer, modules, buildManifest: fixtureBuildManifest(modules.map((module) => module.descriptor.id)) } });
+    registerExplorerRoutes(app, { ...explorer, explorer: { ...explorer.explorer, modules } });
     registerRunDetailRoutes(app, { runDetail: detailDeps });
     registerTrustRoutes(app, { runDetail: detailDeps });
     const day = clock.now().toISOString().slice(0, 10);

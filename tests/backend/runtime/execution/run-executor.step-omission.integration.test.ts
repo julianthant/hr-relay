@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -258,7 +259,7 @@ function secondRunFor(descriptor: AnyWorkflowDescriptor, startAt?: string) {
       runId: UUID_4,
       workflow: descriptor.id,
       traceId: TraceIdSchema.parse(`${descriptor.code}-170000-3333`),
-      contractFingerprint: descriptor.contractFingerprint,
+      contractFingerprint: descriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: {},
       attempt: 2,
       ...(startAt === undefined ? {} : { startAt }),

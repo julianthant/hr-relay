@@ -3,7 +3,7 @@ import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-lo
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { testRunLifecycle, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_RUN_ID, absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { WRITE_FIXTURE_RUN_ID, absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
 import assert from "node:assert/strict";
@@ -39,7 +39,7 @@ describe("write resolution", () => {
       idleRepollMs: 1_000, log, stopSignal: new AbortController().signal, exitWhenIdle: true,
       writeSequencerFor: manager => createWriteSequencer({ lifecycle: testRunLifecycle(harness.database, harness.clock), stores,
         authority: harness.database, sessions: manager, emitter, clock: harness.clock, ids, scheduler, taskDeadlineMs: 60_000,
-        operator: "local-operator", log, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT }) });
+        operator: "local-operator", log  }) });
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID); assert.ok(parked && parked.lifecycle.state === "parked-write");
     const intent = harness.database.authority.writeIntents.listByRun(WRITE_FIXTURE_RUN_ID)[0]; assert.ok(intent.status === "parked"); if (intent.status !== "parked") throw new Error("fixture intent must be parked");
     return { runId: WRITE_FIXTURE_RUN_ID, version: parked.version, intent };

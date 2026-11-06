@@ -40,11 +40,13 @@ projects prepare and commit child steps under one graph node.
 
 `identity.matchKey` declares the durable natural key. The start service derives the item identity
 from the workflow and match key. Changing a match key changes item identity; it is not a display
-edit. Descriptor `version` is a positive integer. `contractFingerprint` comes from the generated
-build manifest in `src/workflow-kit/validation/build-manifest.ts`; source hashing canonicalizes
-CRLF to LF before parsing and caching, so checkout line endings do not change fingerprints.
-Authors do not supply it to
-`defineWorkflow`.
+edit. Descriptor `version` is a positive integer. `contractFingerprint` is computed by `compileWorkflow`
+(`src/workflow-kit/fingerprints.ts`) from the kit version, id, version, declared schemas, entry graph
+and task contracts; it reads no source, so line endings and shared code edits never move it. Authors
+do not supply it to `defineWorkflow`. Each run envelope also carries the app `buildId` that approved
+it (a delegated child carries its parent's); a transaction refuses to derive its key, fence or click
+under a different build, and a parked-write resolution treats equal contracts as identical code only
+under the same build.
 
 `requiredWorkbookTypeIds` declares the types of existing library reference workbooks or linked
 masters this workflow directly needs. It preserves exact IDs and order, rejects invalid or repeated

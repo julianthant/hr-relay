@@ -3,12 +3,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync,mkdtempSync,readFileSync,realpathSync,rmSync,statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { it } from "vitest";
-import { collectSourceClosure,fingerprintSourceSet } from "../../../../../scripts/build/workflow-build-manifest.js";
-import { parseBuildManifest } from "../../../../../src/models/workflow/build-manifest.js";
-import { BUILD_MANIFEST } from "../../../../../src/workflow-kit/validation/build-manifest.js";
 import { composeWorkerArtifactProjector } from "../../../../../src/backend/app/composition/worker/artifact-output.js";
 import { prepareApplicationDataWorkspace } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -49,10 +45,6 @@ it.each(["single", "collection"] as const)("publishes a task's %s output through
     else ctx.recordData({ direction: "read", field: "archive.files", value: archive.files });
     return { archive };
   } });
-  const sources = collectSourceClosure(process.cwd(), fileURLToPath(import.meta.url));
-  const entry = (id: string) => ({ id, sources, fingerprint: fingerprintSourceSet(BUILD_MANIFEST.toolchain, id, sources) });
-  const buildManifest = parseBuildManifest({ ...BUILD_MANIFEST, workflows: [...BUILD_MANIFEST.workflows, entry(descriptor.id)],
-    tasks: [...BUILD_MANIFEST.tasks, entry(contract.id)] });
   try {
     const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission }); await artifacts.ready;
     const artifactProjector = composeWorkerArtifactProjector({ admission: f.profile.admission, database: f.db, artifacts, clock: f.clock });
@@ -67,7 +59,7 @@ it.each(["single", "collection"] as const)("publishes a task's %s output through
     const sessions = await sessionManagerFor(happySessionHarness(), f.clock);
     const result = await executeClaimedRun({ descriptor, lifecycle: testRunLifecycle(f.db, f.clock), stores: defineTaskStoreRegistry([defineWorkflowStore(descriptor.id, { publishArchive: task })],
       { scenarioIds: [scenario], tasks: [{ id: contract.id, effect: "read" }] }), authority: f.db, sessions, emitter: recordingEmitter().emitter, clock: f.clock,
-      ids: sequentialIdFactory("f"), scheduler: new ManualScheduler(f.clock, 0), taskDeadlineMs: 60_000, log: recordingLogger().log, artifacts, artifactProjector, buildManifest },
+      ids: sequentialIdFactory("f"), scheduler: new ManualScheduler(f.clock, 0), taskDeadlineMs: 60_000, log: recordingLogger().log, artifacts, artifactProjector },
       { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: new AbortController().signal });
     assert.equal(result.state, "done", JSON.stringify(result.state === "failed" ? f.db.authority.failures.get(result.failureId) : result));
     const file = f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`); assert.ok(file);

@@ -131,7 +131,6 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npm run build:manifest:prepare
       - run: npm run typecheck
       - run: npm run lint
       - run: npm ci
@@ -140,7 +139,9 @@ jobs:
         working-directory: fast-duo
       - run: npm run lint
         working-directory: fast-duo
-      - run: npm run build:manifest:check
+      - run: npm run build:registries:check
+      - run: npm run build:observer-policy
+      - run: npm run build:observer-policy -- --check
       - run: npm run stores:catalog:check
       - run: npm run roadmap:check
 
@@ -172,7 +173,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npm run build:manifest:prepare
+      - run: npm run build:observer-policy
       - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
@@ -223,7 +224,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npm run build:manifest:prepare
+      - run: npm run build:observer-policy
       - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
@@ -321,7 +322,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npm run build:manifest:prepare
+      - run: npm run build:observer-policy
       - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
@@ -460,7 +461,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npm run build:manifest:prepare
+      - run: npm run build:observer-policy
       - uses: actions/cache@v6
         id: browsers
         with:

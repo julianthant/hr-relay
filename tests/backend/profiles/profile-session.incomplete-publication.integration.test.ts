@@ -34,6 +34,7 @@ import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 
 async function historicalPrematureFixture() {
   const started = performance.now();
@@ -256,7 +257,7 @@ function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPre
     const run = RunRecordSchema.parse({ envelope: { workflow: separationsDescriptor.id, runId, itemId, traceId,
       descriptorVersion: separationsDescriptor.version, contractFingerprint: separationsDescriptor.contractFingerprint,
       resolvedInstance: { ucpath: "test" }, configFingerprint: snapshot.fingerprint, configSnapshotId: snapshot.configSnapshotId,
-      shape: "single", priority: "interactive", dryRun: false, attempt: 1, enqueuedAt: at },
+      shape: "single", priority: "interactive", dryRun: false, attempt: 1, enqueuedAt: at, buildId: currentBuildId() },
       input: { raw: {}, parsed: { schemaHash: sha256Hex("historical fixture input"), value: {}, protectedBindings: [] }, ingressSchemaHash: sha256Hex("historical fixture input") },
       lifecycle: kind === "deleted" ? { state: "terminal", outcome: "interrupted", endedAt: at }
         : { state: "parked-write", writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, parkedAt: at, code: "unknown", message: "Historical outcome remains unknown" },

@@ -27,8 +27,6 @@ import { Plan1Output, plan1Contract } from "../../../support/fixtures/plan1-oper
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
-import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
 import { createWorkflowRegistry } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 const rootModule = childExecutionModules.find(module => module.descriptor === childExecutionRoot.descriptor);
@@ -46,29 +44,6 @@ afterEach(async () => {
   }
   if (failures.length > 0) throw new AggregateError(failures, "child composition cleanup failed");
 });
-
-for (const kind of ["missing-task", "foreign-task-provenance", "foreign-workflow-provenance"] as const) {
-  it(`refuses ${kind} in the private compiled registry before profile or worker effects`, async () => {
-    let authorityReads = 0;
-    const readTask = childExecutionBuildManifest.tasks.find(entry => entry.id === "ocr/extract-form-page");
-    const foreignTask = childExecutionBuildManifest.tasks.find(entry => entry.id === "ucpath/submit-write-fixture");
-    const foreignWorkflow = childExecutionBuildManifest.workflows.find(entry => entry.id !== childExecutionRoot.descriptor.id);
-    assert.ok(readTask && foreignTask && foreignWorkflow);
-    const manifest: BuildManifest = { ...childExecutionBuildManifest,
-      tasks: kind === "missing-task" ? childExecutionBuildManifest.tasks.filter(entry => entry !== readTask)
-        : kind === "foreign-task-provenance" ? childExecutionBuildManifest.tasks.map(entry => entry === readTask
-          ? { ...entry, fingerprint: foreignTask.fingerprint, sources: foreignTask.sources } : entry) : childExecutionBuildManifest.tasks,
-      workflows: kind === "foreign-workflow-provenance" ? childExecutionBuildManifest.workflows.map(entry => entry.id === childExecutionRoot.descriptor.id
-        ? { ...entry, fingerprint: foreignWorkflow.fingerprint, sources: foreignWorkflow.sources } : entry) : childExecutionBuildManifest.workflows,
-    };
-    await assert.rejects(composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {},
-      args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"],
-      get admission(): never { authorityReads++; throw new Error("unrequested-fixture-authority"); },
-      executionRegistry: { ...executionResolution, stores: childExecutionStores, manifest },
-      write: () => undefined }), /different build manifest/u);
-    assert.equal(authorityReads, 0);
-  });
-}
 
 it("keeps a synthetic compiled workflow unavailable through the ordinary production registry", async () => {
   let authorityReads = 0;
@@ -162,8 +137,7 @@ it("executes two real children and a nested child with one actual home process a
   runtimeAttempted = true;
   const report = await composeWorkerRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, isolation: rebuildRuntimeIsolation,
     repoRoot: profile.workspace, args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"], env: {},
-    executionRegistry: { ...executionResolution, stores: childExecutionStores,
-      manifest: childExecutionBuildManifest },
+    executionRegistry: { ...executionResolution, stores: childExecutionStores },
     write: () => undefined }).catch((error: unknown) => {
       const observations = health.map(report => ({
         authority: report.authority.state,

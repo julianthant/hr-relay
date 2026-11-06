@@ -58,20 +58,16 @@ npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and se
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
 npm run web:build         # production bundle into dist/dashboard
 
-npm run build:manifest     # regenerate tracked registries and prepare the ignored manifest
-npm run build:manifest:prepare # prepare only the ignored manifest
+npm run build:registries   # regenerate the tracked workflow registries
 npm run build:registries:check # read-only tracked registry freshness
-npm run build:manifest:check # read-only registry freshness, then manifest byte freshness
+npm run build:observer-policy # prepare the ignored Windows observer policy artifact
 npm run stores:catalog     # regenerate the generated §2 task catalog in docs/reference/stores.md
 npm run stores:catalog:check # fail if the committed catalog is stale
 ```
 
-Source tools prepare the ignored static manifest before loading their graphs; automatic preparation
-never regenerates tracked registries. Independent checks refuse missing or stale inputs without
-repair. After editing fingerprint inputs or the installed toolchain, restart affected Vitest watch,
-Vite and dev dashboard sessions before collecting current results. See
-[manifest preparation](../../../docs/reference/guards-and-tests.md#build-manifest-preparation)
-for all boundaries, exact-byte checks and the future packaging contract.
+Contract fingerprints are computed in memory and need no preparation. A running dashboard freezes its
+build id at start, so restart it after editing worker code. See
+[contract fingerprints and build id](../../../docs/reference/guards-and-tests.md#contract-fingerprints-and-build-id).
 
 Vitest schedules at most four isolated file forks (or the available CPU count when lower).
 The 2026-09-02 full coverage gate repeatedly timed out its 30-second fixture/guard checks at the

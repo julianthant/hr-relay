@@ -30,7 +30,7 @@ buildIdentityEvidencePacket,
 deriveIdentityEvidenceDigest,
 } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
-import { BUILD_MANIFEST,resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import {
 FIXTURE_IDENTITY_GATE,
@@ -141,7 +141,7 @@ function checkpointOf(packet: IdentityEvidencePacket, nodeId = "comparison"): Ru
     output: { schemaHash: deriveSchemaHash(task.uses.output, "output"), value },
     descriptorVersion: IDENTITY_DESCRIPTOR.version,
     contractFingerprint: IDENTITY_DESCRIPTOR.contractFingerprint,
-    implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, task.uses.id),
+    implFingerprint: taskImplFingerprint(task.uses),
     provenance: [],
     writtenAt: NOW,
   });

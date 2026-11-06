@@ -13,7 +13,7 @@ import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/check
 import { SeparationsMatchDepartmentOption } from "../../../../src/models/workflows/separations/match-department-option.js";
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { COMPARISON_NODE, DEPARTMENT_NODE, GATE_NODE, JOB_SUMMARY_NODE, NAME_SEARCH_NODE } from "../../../../src/workflows/separations/workflow.js";
 import { UUID_7 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { FINALIZATION_JOB_SUMMARY_READ, FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_NOW, FINALIZATION_RUN_ID, FINALIZATION_RUN_INPUT, FINALIZATION_SCOPE_OUTPUTS, FINALIZATION_WORKER_ID, finalizationHarness, finalizationQueuedRun, type FinalizationHarness } from "../kuali-finalization-fixtures.js";
@@ -99,7 +99,7 @@ export function createFinalizationTerminalTestWorld(retainedBinding?: import("..
         descriptorVersion: separationsKualiFinalizationDescriptor.version,
         contractFingerprint:
           separationsKualiFinalizationDescriptor.contractFingerprint,
-        implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, contract.id),
+        implFingerprint: taskImplFingerprint(contract),
         provenance: evidenceLeaves(parsedOutput).map(({ path }) => ({
           path,
           source,
