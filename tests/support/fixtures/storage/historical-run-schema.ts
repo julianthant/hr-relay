@@ -26,7 +26,7 @@ export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
 }
 
 export function restoreSchema19RunSettlementFixture(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 21) restoreSchema20CompletionFixture(database);
+  if (database.prepare("PRAGMA user_version").get()?.user_version !== 20) restoreSchema20CompletionFixture(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 20);
   assert.equal(database.prepare("SELECT count(*) AS count FROM (SELECT run_id FROM run_results GROUP BY run_id HAVING count(*)>1)").get()?.count, 0);
   database.exec("DROP TRIGGER runs_completion_immutable");

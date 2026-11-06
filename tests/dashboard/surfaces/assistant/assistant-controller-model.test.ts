@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
@@ -110,7 +110,7 @@ function preferenceControls() {
   let reads = 0, refreshes = 0, lostResponse = false, gate: Promise<void> | undefined, answer = 'Done';
   let reader: (signal?: AbortSignal) => Promise<AssistantModelPreferenceView> = async () => view;
   const client = {
-    async assistantRespond(input: AssistantRequest): Promise<AssistantResult> { replies.push(input); return { state: 'answered', text: answer }; },
+    async assistantRespond(input: AssistantRequest): Promise<AssistantRespondEnvelope> { replies.push(input); return { kind: 'result', result: { state: 'answered', text: answer } }; },
     async assistantModelPreference(signal?: AbortSignal) { reads++; signals.push(signal); return reader(signal); },
     async executeCommand(input: unknown): Promise<CommandResult> {
       const command = AssistantModelPreferenceCommandRequestSchema.parse(input); sent.push(command);
@@ -128,7 +128,7 @@ function preferenceControls() {
   const commands = { executor, scope, feedback: (value: CommandOutcome) => { feedback.push(value); } };
   const binding = { authority: 'selected', subjectRef: 'fixture-subject', commands,
     refreshAccount: async () => { refreshes++; } };
-  const c = createAssistantController(resultClient(client), binding);
+  const c = createAssistantController(client, binding);
   return { c, binding, commands, executor, sent, replies, signals, feedback, scope,
     get view() { return view; }, get reads() { return reads; }, get refreshes() { return refreshes; },
     setReader(value: typeof reader) { reader = value; }, setGate(value: Promise<void>) { gate = value; },
@@ -295,6 +295,6 @@ it('allows Test assistant again after the operator cancels a proposal', async ()
   c.action({ type: 'cancel' });
   await vi.waitFor(() => { const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal'); if (turn.state === 'proposal') assert.equal(turn.disposition, 'cancelled'); });
   c.action({ type: 'verify' });
-  await vi.waitFor(() => assert.equal(requests, 2));
-  assert.equal(c.snapshot().verification?.state, 'passed');
+  await vi.waitFor(() => assert.equal(c.snapshot().verification?.state, 'passed'));
+  assert.equal(requests, 2);
 });
