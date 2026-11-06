@@ -146,15 +146,11 @@ stay disabled; exact replay retains the original command identity and never crea
 Readback authenticates the immutable failed source and one native replacement independently of the
 action still being served.
 
-Emergency Contact consumer Retry is unavailable. Native Retry can race with a running parent that
-has already read the earlier dependency result: it admits a replacement and requests pause, then
-parent failure settlement refuses the nonterminal replacement and the worker exits. EC enablement
-is deferred pending a separately designed and reviewed native repair. An explicitly paused parent
-does not grant a consumer Retry action. Existing OCR page and lookup child Retry remain separate.
-
-Settled mixed-outcome EC parents also remain immutable and refuse member Retry under their current
-all-settled/allow-partial/manual-parent-resume policy. Enabling Retry after settlement is a separate
-policy follow-up. Approved snapshots, committed Save evidence and UNKNOWN fences remain unchanged.
+Logs can serve Retry for an eligible failed Emergency Contact member while the parent is waiting,
+paused or settled. A settled mixed-outcome EC parent still admits Retry of each eligible failed
+member. Confirming it requeues the parent, clears completion and mints a replacement while the old
+settlement and receipt stay. UNKNOWN and a committed or unresolved Save still refuse. OCR page and
+lookup child Retry remain separate.
 
 Lookup status filters admit a batch when one of its attempts matches and retain its canonical
 selected-day cohort. The well labels its population as people on this day: the wire does not claim

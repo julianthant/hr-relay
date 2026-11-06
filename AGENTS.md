@@ -37,7 +37,7 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 - **OCR**: reads PDF pages, groups records and looks up identities for the operator to review and release. It writes nothing to HR systems.
 - **EC (Emergency Contact)**: reads a PDF through OCR, then delegates each approved OCR record to an EC member that previews or saves that person's primary contact in UCPath. It is not part of OCR.
 - **Parent / delegated rows / member list**: a parent run delegates work to child runs. The Queue shows the children as the parent's delegated rows; the parent's member list is its approved records in source order. A child is not a separate workflow run the operator starts.
-- **Settled parent**: a parent whose members have all finished. A settled EC parent with mixed outcomes is immutable and refuses member Retry.
+- **Settled parent**: a parent whose members have all finished. A settled mixed-outcome EC parent still admits Retry of each eligible failed member. UNKNOWN and a committed or unresolved Save still refuse.
 - **SharePoint Download**: the Spreadsheets library's Sync of one SharePoint `.xlsx`/`.csv` into a workbook. It is not a workflow.
 - **Spreadsheets library**: the typed workbook store (one mutable master per workbook, manual named versions). Workflow outputs go there, never to loose files.
 

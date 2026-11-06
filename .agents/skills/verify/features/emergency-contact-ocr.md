@@ -17,7 +17,7 @@ Check the source first: `grep emergency-contact config/dashboard-workflow-source
 
 ## Passing dry run
 
-OCR reaches the review gate with record lines, then Verified after release. When EC is served: members end Previewed (never Saved), the parent result retains the approved snapshot, and `explain run` shows no Save attempt. A settled mixed-outcome EC parent is immutable and refuses member Retry.
+OCR reaches the review gate with record lines, then Verified after release. When EC is served: members end Previewed (never Saved), the parent result retains the approved snapshot, and `explain run` shows no Save attempt. A settled mixed-outcome EC parent still admits Retry of each eligible failed member. UNKNOWN and a committed or unresolved Save still refuse.
 
 ## Gotchas
 
