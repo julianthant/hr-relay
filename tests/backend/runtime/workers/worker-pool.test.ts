@@ -14,19 +14,22 @@ function fakePort(pid: number | undefined = 4242) {
   const sent: WorkerParentMessage[] = [], kills: (string | undefined)[] = [];
   let exitListener: ((code: number | null, signal: string | null) => void) | undefined;
   let errorListener: ((error: Error) => void) | undefined;
+  let disconnectListener: (() => void) | undefined;
   let messageListener: ((message: unknown) => void) | undefined;
-  const state = { killResult: true, disconnected: false };
+  const state = { killResult: true, disconnected: false, sendError: null as Error | null };
   const port: WorkerProcessPort = {
     pid,
-    send(message, callback) { sent.push(message); callback(null); },
+    send(message, callback) { sent.push(message); callback(state.sendError); },
     kill(signal) { kills.push(signal); return state.killResult; },
     disconnect() { state.disconnected = true; },
+    onDisconnect(listener) { disconnectListener = listener; },
     onExit(listener) { exitListener = listener; },
     onError(listener) { errorListener = listener; },
     onWorkerMessage(listener) { messageListener = listener; },
   };
   return { port, sent, kills, state,
     exit(code: number | null = 0, signal: string | null = null) { exitListener?.(code, signal); },
+    disconnect() { disconnectListener?.(); },
     error(error: Error) { errorListener?.(error); },
     message(message: unknown) { messageListener?.(message); },
     ready(overrides: Record<string, unknown> = {}) {
@@ -40,13 +43,15 @@ function world(options: Partial<Pick<WorkerPoolDependencies, "platform">> & { se
   const timers: { at: number; run: () => void; cancelled: boolean }[] = [];
   const ports: ReturnType<typeof fakePort>[] = [];
   const settled: WorkerExitFact[] = [];
+  const faults: unknown[] = [];
   let nextPid: number | undefined = 4242;
   const pool = createWorkerPool({ profileId: PROFILE, sessionGeneration: 3, clock, platform: options.platform ?? "darwin", ids: { uuid: randomUUID },
     timeouts: { readyMs: 1_000, gracefulMs: 2_000, sigtermMs: 3_000, exitObservationMs: 500 },
     scheduler: { schedule(at, run) { const timer = { at, run, cancelled: false }; timers.push(timer); return { cancel() { timer.cancelled = true; } }; } },
     spawn: () => { const port = fakePort(nextPid); ports.push(port); return port.port; },
-    settleExit: async (_member, exit) => { settled.push(exit); await options.settle?.(exit); } });
-  return { pool, ports, settled, clock,
+    settleExit: async (_member, exit) => { settled.push(exit); await options.settle?.(exit); },
+    onFault: (_member, error) => { faults.push(error); } });
+  return { pool, ports, settled, faults, clock,
     set nextPid(value: number | undefined) { nextPid = value; },
     async advance(ms: number) {
       clock.advanceMonotonic(ms);
@@ -129,7 +134,7 @@ describe("worker pool", () => {
   it("escalates a stop with IPC, then SIGTERM, then SIGKILL on macOS", async () => {
     const w = world(), { port, target } = await running(w);
     const stopped = w.pool.stop(target, "shutdown"); await flush();
-    assert.deepEqual(port.sent.at(-1), { kind: "worker-stop", reason: "shutdown" });
+    assert.deepEqual(port.sent.at(-1), { kind: "worker-stop", reason: "shutdown", mode: "after-run" });
     await w.advance(2_000); assert.deepEqual(port.kills, ["SIGTERM"]);
     await w.advance(3_000); assert.deepEqual(port.kills, ["SIGTERM", "SIGKILL"]);
     port.exit(null, "SIGKILL");
@@ -173,6 +178,8 @@ describe("worker pool", () => {
     await w.advance(1_000);
     await assert.rejects(late, { code: "WORKER_REQUEST_TIMED_OUT" });
     port.message({ kind: "worker-reply", requestId: third.requestId, outcome: { state: "done", result: null } });
+    assert.equal(w.faults.some(error => error instanceof Error && "code" in error && error.code === "WORKER_REQUEST_TIMED_OUT"), true);
+    assert.equal(w.pool.snapshot()[0]?.state, "running");
     const pending = w.pool.request(target, { type: "close-for-removal" }, 1_000); await flush();
     port.exit(1, null);
     await assert.rejects(pending, { code: "WORKER_EXITED" });
@@ -196,6 +203,63 @@ describe("worker pool", () => {
     w.ports[1]?.ready();
     assert.equal((await again).state, "running");
     assert.equal(w.settled.length, 3);
+  });
+
+  it("faults a member when a request send fails and rejects with that error", async () => {
+    const w = world(), { port, target } = await running(w);
+    const cause = Object.assign(new Error("ipc closed"), { code: "ERR_IPC_CHANNEL_CLOSED" });
+    port.state.sendError = cause;
+    const pending = w.pool.request(target, { type: "close-for-removal" }, 1_000);
+    await assert.rejects(pending, (error: unknown) => error === cause);
+    assert.equal(w.pool.snapshot()[0]?.state, "stopping");
+    assert.equal(w.settled.length, 0);
+    port.exit(1, null); await flush();
+    assert.equal(w.pool.snapshot()[0]?.state, "exited");
+    assert.equal(w.settled.length, 1);
+  });
+
+  it("rejects pending requests on disconnect and stays running until the OS exit", async () => {
+    const w = world(), { port, target } = await running(w);
+    const pending = w.pool.request(target, { type: "close-for-removal" }, 1_000); await flush();
+    port.disconnect();
+    await assert.rejects(pending, { code: "WORKER_EXITED" });
+    assert.equal(w.pool.snapshot()[0]?.state, "running");
+    assert.equal(w.settled.length, 0);
+    port.exit(0, null); await flush();
+    assert.equal(w.pool.snapshot()[0]?.state, "exited");
+  });
+
+  it("reserves a workerId while a failed settlement is retried", async () => {
+    let settle: (error?: Error) => void = () => {};
+    let calls = 0;
+    const w = world({ settle: () => {
+      calls += 1;
+      if (calls === 1) throw new Error("settlement refused");
+      return new Promise<void>((resolve, reject) => { settle = error => error === undefined ? resolve() : reject(error); });
+    } });
+    const { port } = await running(w);
+    port.exit(1, null); await flush();
+    const first = w.pool.start(member);
+    const second = w.pool.start(member);
+    await assert.rejects(second, { code: "WORKER_ALREADY_RUNNING" });
+    assert.equal(w.ports.length, 1);
+    settle(new Error("still refused"));
+    await assert.rejects(first, { code: "WORKER_EXIT_SETTLEMENT_FAILED" });
+    assert.equal(w.ports.length, 1);
+  });
+
+  it("records pause as its own message and keeps directive apart from a busy run", async () => {
+    const w = world(), { port, view, target } = await running(w);
+    assert.equal(view.directive, "run");
+    const paused = w.pool.pause(target); await flush();
+    const message = port.sent.at(-1);
+    assert.equal(message?.kind, "worker-pause");
+    assert.ok(message?.kind === "worker-pause");
+    port.message({ kind: "worker-reply", requestId: message.requestId, outcome: { state: "done", result: { directive: "pause" } } });
+    assert.equal((await paused).directive, "pause");
+    port.message({ kind: "worker-activity", activity: { state: "busy", runId: "00000000-0000-4000-8000-000000000001" } });
+    assert.equal(w.pool.snapshot()[0]?.directive, "pause");
+    assert.equal(w.pool.snapshot()[0]?.activity?.state, "busy");
   });
 
   it("bounds stopAll when a member never exits", async () => {

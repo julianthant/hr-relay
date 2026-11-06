@@ -10,7 +10,7 @@ export const WORKER_MESSAGE_PREFIX = "worker-";
 export const WorkerControlRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.enum(["refresh-browser", "reopen-browser"]), browserSessionId: BrowserSessionIdSchema }),
   z.strictObject({ type: z.literal("check-parked-write"), command: JsonValueSchema }),
-  z.strictObject({ type: z.enum(["close-for-removal", "pause", "resume"]) }),
+  z.strictObject({ type: z.literal("close-for-removal") }),
 ]);
 export type WorkerControlRequest = z.infer<typeof WorkerControlRequestSchema>;
 
@@ -37,8 +37,13 @@ export const WorkerChildMessageSchema = z.discriminatedUnion("kind", [
 ]);
 export type WorkerChildMessage = z.infer<typeof WorkerChildMessageSchema>;
 
+export const WorkerDirectiveSchema = z.enum(["run", "pause"]);
+export type WorkerDirective = z.infer<typeof WorkerDirectiveSchema>;
+
 export const WorkerParentMessageSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("worker-stop"), reason: z.enum(["operator", "shutdown", "logout", "reset", "remove", "fault"]) }),
+  z.strictObject({ kind: z.literal("worker-stop"), reason: z.enum(["operator", "shutdown", "logout", "reset", "remove", "fault"]), mode: z.literal("after-run") }),
+  z.strictObject({ kind: z.literal("worker-pause"), requestId: z.uuid() }),
+  z.strictObject({ kind: z.literal("worker-resume"), requestId: z.uuid() }),
   z.strictObject({ kind: z.literal("worker-request"), requestId: z.uuid(), sentAt: IsoInstantSchema, deadlineMs: z.number().int().positive(), request: WorkerControlRequestSchema }),
 ]);
 export type WorkerParentMessage = z.infer<typeof WorkerParentMessageSchema>;

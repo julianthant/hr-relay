@@ -4,7 +4,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { WorkerChildMessageSchema, type WorkerActivity, type WorkerChildBrowserObservation, type WorkerControlRequest,
-  type WorkerParentMessage, type WorkerStopReason } from "./worker-messages.js";
+  type WorkerDirective, type WorkerParentMessage, type WorkerStopReason } from "./worker-messages.js";
 import { WorkerIpcProtocolError } from "./worker-ipc-router.js";
 
 export interface WorkerPoolMember {
@@ -21,6 +21,7 @@ export interface WorkerProcessPort {
   /** `undefined` on Windows, where the only kill is TerminateProcess. */
   kill(signal: "SIGTERM" | "SIGKILL" | undefined): boolean;
   disconnect(): void;
+  onDisconnect(listener: () => void): void;
   onExit(listener: (code: number | null, signal: string | null) => void): void;
   onError(listener: (error: Error) => void): void;
   onWorkerMessage(listener: (message: unknown) => void): void;
@@ -38,6 +39,7 @@ export interface WorkerMemberView {
   readonly lifetimeId: string;
   readonly version: number;
   readonly state: "starting" | "running" | "stopping" | "exited";
+  readonly directive: WorkerDirective;
   readonly pid: number | undefined;
   readonly startedAt: string;
   readonly activity: WorkerActivity | undefined;
@@ -90,6 +92,9 @@ interface MemberRecord {
   readonly startedAt: string;
   version: number;
   state: WorkerMemberView["state"];
+  directive: WorkerDirective;
+  /** Set for the whole settlement retry, before its await, so a second start cannot spawn. */
+  settling: boolean;
   activity: WorkerActivity | undefined;
   readonly browsers: Map<string, WorkerChildBrowserObservation>;
   held: WorkerMemberView["held"];
@@ -111,7 +116,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   const after = (ms: number, run: () => void): MonotonicDeadlineHandle => deps.scheduler.schedule(deps.clock.monotonicMs() + ms, run);
 
   const view = (record: MemberRecord): WorkerMemberView => Object.freeze({
-    member: record.member, lifetimeId: record.lifetimeId, version: record.version, state: record.state, pid: record.port.pid,
+    member: record.member, lifetimeId: record.lifetimeId, version: record.version, state: record.state, directive: record.directive, pid: record.port.pid,
     startedAt: record.startedAt, activity: record.activity, browsers: Object.freeze([...record.browsers.values()]), exit: record.exit, held: record.held,
   });
   const changed = (record: MemberRecord): void => {
@@ -126,8 +131,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     cancelTimers(record);
     const fact: WorkerExitFact = { code, signal, at: at(), outcome: record.stopping === undefined ? "crashed" : "stopped" };
     record.state = "exited"; record.held = undefined;
-    for (const pending of record.pending.values()) { pending.timer.cancel(); pending.reject(new WorkerPoolError("WORKER_EXITED")); }
-    record.pending.clear();
+    rejectPending(record, new WorkerPoolError("WORKER_EXITED"));
     record.ready?.(new WorkerPoolError("WORKER_EXITED"));
     try { await deps.settleExit(record.member, fact); record.exit = { ...fact, settlement: "settled" }; }
     catch (error) { record.settlementFailure = error; record.exit = { ...fact, settlement: "failed" }; deps.onFault?.(record.member, error); }
@@ -155,7 +159,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     record.stopping = record.exited;
     const lastResort = (): void => { kill(record, "SIGKILL"); observeExit(record); };
     if (immediate) { lastResort(); return record.stopping; }
-    record.port.send({ kind: "worker-stop", reason }, error => { if (error !== null) deps.onFault?.(record.member, error); });
+    record.port.send({ kind: "worker-stop", reason, mode: "after-run" }, error => { if (error !== null) deps.onFault?.(record.member, error); });
     record.timers.push(after(timeouts.gracefulMs, () => {
       if (deps.platform === "win32") { lastResort(); return; }
       kill(record, "SIGTERM");
@@ -186,7 +190,9 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
         fault(record, error);
         return;
       }
-      record.activity = message.activity; record.state = "running";
+      record.activity = message.activity;
+      record.directive = message.activity.state === "paused" ? "pause" : "run";
+      record.state = "running";
       cancelTimers(record); changed(record);
       record.ready?.(undefined); record.ready = undefined;
     } else if (message.kind === "worker-activity") {
@@ -198,12 +204,37 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       changed(record);
     } else {
       const pending = record.pending.get(message.requestId);
-      if (pending === undefined) return;
+      if (pending === undefined) { deps.onFault?.(record.member, new WorkerPoolError("WORKER_REQUEST_TIMED_OUT")); return; }
       record.pending.delete(message.requestId); pending.timer.cancel();
-      if (message.outcome.state === "done") pending.resolve(message.outcome.result);
-      else pending.reject(new WorkerPoolError(message.outcome.code));
+      if (message.outcome.state === "done") {
+        const directive = directiveOf(message.outcome.result);
+        if (directive !== undefined) { record.directive = directive; changed(record); }
+        pending.resolve(message.outcome.result);
+      } else pending.reject(new WorkerPoolError(message.outcome.code));
     }
   };
+
+  const directiveOf = (result: JsonValue): WorkerDirective | undefined => {
+    if (typeof result !== "object" || result === null || Array.isArray(result) || !("directive" in result)) return undefined;
+    return result.directive === "run" || result.directive === "pause" ? result.directive : undefined;
+  };
+  const rejectPending = (record: MemberRecord, error: Error): void => {
+    for (const pending of record.pending.values()) { pending.timer.cancel(); pending.reject(error); }
+    record.pending.clear();
+  };
+  const awaitReply = (record: MemberRecord, message: Exclude<WorkerParentMessage, { kind: "worker-stop" }>, deadlineMs: number): Promise<JsonValue> =>
+    new Promise((resolve, reject) => {
+      const timer = after(deadlineMs, () => {
+        if (record.pending.delete(message.requestId)) reject(new WorkerPoolError("WORKER_REQUEST_TIMED_OUT"));
+      });
+      record.pending.set(message.requestId, { resolve, reject, timer });
+      record.port.send(message, error => {
+        if (error === null || !record.pending.delete(message.requestId)) return;
+        timer.cancel();
+        reject(error);
+        fault(record, error);
+      });
+    });
 
   const current = (target: WorkerTarget): MemberRecord => {
     const record = records.get(target.workerId);
@@ -221,15 +252,16 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
 
     async start(member: WorkerPoolMember): Promise<WorkerMemberView> {
       const prior = records.get(member.workerId);
-      if (prior !== undefined && prior.state !== "exited") throw new WorkerPoolError(prior.held === undefined ? "WORKER_ALREADY_RUNNING" : "WORKER_EXIT_UNOBSERVED");
+      if (prior !== undefined && (prior.state !== "exited" || prior.settling)) throw new WorkerPoolError(prior.held === undefined ? "WORKER_ALREADY_RUNNING" : "WORKER_EXIT_UNOBSERVED");
       if (prior?.exit?.settlement === "failed") {
-        try { await deps.settleExit(prior.member, prior.exit); prior.exit = { ...prior.exit, settlement: "settled" }; prior.settlementFailure = undefined; changed(prior); }
-        catch (error) { prior.settlementFailure = error; throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED", { cause: error }); }
+        prior.settling = true;
+        try { await deps.settleExit(prior.member, prior.exit); prior.exit = { ...prior.exit, settlement: "settled" }; prior.settlementFailure = undefined; prior.settling = false; changed(prior); }
+        catch (error) { prior.settlementFailure = error; prior.settling = false; throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED", { cause: error }); }
       }
       const port = deps.spawn(member);
       let resolveExited!: () => void;
       const exited = new Promise<void>(resolve => { resolveExited = resolve; });
-      const record: MemberRecord = { member, lifetimeId: deps.ids.uuid(), port, startedAt: at(), version: 0, state: "starting",
+      const record: MemberRecord = { member, lifetimeId: deps.ids.uuid(), port, startedAt: at(), version: 0, state: "starting", directive: "run", settling: false,
         activity: undefined, browsers: new Map(), held: undefined, exit: undefined, settlementFailure: undefined,
         pending: new Map(), timers: [], stopping: undefined, exited, resolveExited, ready: undefined };
       records.set(member.workerId, record);
@@ -244,6 +276,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
         throw new WorkerPoolError("WORKER_START_FAILED", { cause: failure });
       }
       port.onExit((code, signal) => { void onExit(record, code, signal); });
+      port.onDisconnect(() => { if (record.state !== "exited") rejectPending(record, new WorkerPoolError("WORKER_EXITED")); });
       port.onError(error => { if (record.state !== "exited") fault(record, error); });
       port.onWorkerMessage(raw => { receive(record, raw); });
       record.timers.push(after(timeouts.readyMs, () => {
@@ -269,18 +302,21 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     async request(target: WorkerTarget, request: WorkerControlRequest, deadlineMs: number): Promise<JsonValue> {
       const record = current(target);
       if (record.state !== "running") throw new WorkerPoolError(record.state === "exited" ? "WORKER_EXITED" : "WORKER_BUSY");
-      const requestId = deps.ids.uuid();
-      return await new Promise<JsonValue>((resolve, reject) => {
-        const timer = after(deadlineMs, () => {
-          if (record.pending.delete(requestId)) reject(new WorkerPoolError("WORKER_REQUEST_TIMED_OUT"));
-        });
-        record.pending.set(requestId, { resolve, reject, timer });
-        record.port.send({ kind: "worker-request", requestId, sentAt: at(), deadlineMs, request }, error => {
-          if (error === null || !record.pending.delete(requestId)) return;
-          timer.cancel();
-          reject(new WorkerPoolError("WORKER_EXITED", { cause: error }));
-        });
-      });
+      return await awaitReply(record, { kind: "worker-request", requestId: deps.ids.uuid(), sentAt: at(), deadlineMs, request }, deadlineMs);
+    },
+
+    async pause(target: WorkerTarget): Promise<WorkerMemberView> {
+      const record = current(target);
+      if (record.state !== "running") throw new WorkerPoolError(record.state === "exited" ? "WORKER_EXITED" : "WORKER_BUSY");
+      await awaitReply(record, { kind: "worker-pause", requestId: deps.ids.uuid() }, timeouts.readyMs);
+      return view(record);
+    },
+
+    async resume(target: WorkerTarget): Promise<WorkerMemberView> {
+      const record = current(target);
+      if (record.state !== "running") throw new WorkerPoolError(record.state === "exited" ? "WORKER_EXITED" : "WORKER_BUSY");
+      await awaitReply(record, { kind: "worker-resume", requestId: deps.ids.uuid() }, timeouts.readyMs);
+      return view(record);
     },
 
     /** Stops every member that has not exited and waits only within each member's bounded escalation. */

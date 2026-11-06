@@ -18,7 +18,7 @@ const refused = (code: ErrorCatalogCode): WorkerReplyOutcome => ({ state: "refus
 
 /**
  * The child end of the worker family. Claims and controls share one turn: a control never starts while a run is
- * claimed or another control runs, and a run is never claimed while a control runs. Pause and resume take no turn.
+ * claimed or another control runs, and a run is never claimed while a control runs. Pause and resume are their own messages and take no turn.
  */
 export function createWorkerChildChannel(input: Readonly<{
   send(message: WorkerChildMessage): void;
@@ -35,8 +35,6 @@ export function createWorkerChildChannel(input: Readonly<{
       case "reopen-browser": return await input.handlers.reopenBrowser(request.browserSessionId);
       case "check-parked-write": return await input.handlers.checkParkedWrite(request.command);
       case "close-for-removal": return await input.handlers.closeForRemoval();
-      case "pause": return input.handlers.pause();
-      case "resume": return input.handlers.resume();
     }
   };
   const outcomeOf = (error: unknown): WorkerReplyOutcome => {
@@ -54,12 +52,15 @@ export function createWorkerChildChannel(input: Readonly<{
       const reply = (outcome: WorkerReplyOutcome): void => { input.send({ kind: "worker-reply", requestId: message.requestId, outcome }); };
       if (seen.has(message.requestId)) { reply(refused("WORKER_IPC_PROTOCOL_INVALID")); return; }
       seen.add(message.requestId);
+      if (message.kind === "worker-pause" || message.kind === "worker-resume") {
+        reply({ state: "done", result: message.kind === "worker-pause" ? input.handlers.pause() : input.handlers.resume() });
+        return;
+      }
       if (input.clock.nowMs() >= Date.parse(message.sentAt) + message.deadlineMs) { reply(refused("WORKER_REQUEST_EXPIRED")); return; }
-      const untimed = message.request.type === "pause" || message.request.type === "resume";
-      if (!untimed && turn !== "free") { reply(refused("WORKER_BUSY")); return; }
-      if (!untimed) turn = "control";
+      if (turn !== "free") { reply(refused("WORKER_BUSY")); return; }
+      turn = "control";
       void run(message.request).then(result => { reply({ state: "done", result }); }, error => { reply(outcomeOf(error)); })
-        .finally(() => { if (!untimed) turn = "free"; });
+        .finally(() => { turn = "free"; });
     },
     /** The claim loop asks before each claim; false while a control runs. */
     beginRun(): boolean {

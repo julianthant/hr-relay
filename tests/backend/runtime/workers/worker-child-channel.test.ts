@@ -25,12 +25,16 @@ function channel(overrides: Partial<WorkerChildControlHandlers> = {}) {
     child.receive({ kind: "worker-request", requestId, sentAt: clock.now().toISOString(), deadlineMs, request: body });
     return requestId;
   };
+  const directive = (kind: "worker-pause" | "worker-resume", requestId: string = randomUUID()) => {
+    child.receive({ kind, requestId });
+    return requestId;
+  };
   const reply = (requestId: string) => {
     const message = sent.find(entry => entry.kind === "worker-reply" && entry.requestId === requestId);
     return message?.kind === "worker-reply" ? message.outcome : undefined;
   };
   const refusal = (requestId: string) => { const outcome = reply(requestId); return outcome?.state === "refused" ? outcome.code : undefined; };
-  return { child, clock, sent, stops, request, reply, refusal, release: () => release?.() };
+  return { child, clock, sent, stops, request, directive, reply, refusal, release: () => release?.() };
 }
 
 it("runs one control at a time and never beside a claimed run, while pause and resume take no turn", async () => {
@@ -39,14 +43,14 @@ it("runs one control at a time and never beside a claimed run, while pause and r
   assert.equal(c.child.beginRun(), false);
   const second = c.request({ type: "reopen-browser", browserSessionId: browser });
   assert.deepEqual(c.reply(second), { state: "refused", code: "WORKER_BUSY", message: "WORKER_BUSY" });
-  const pause = c.request({ type: "pause" }); await flush();
+  const pause = c.directive("worker-pause"); await flush();
   assert.deepEqual(c.reply(pause), { state: "done", result: { directive: "pause" } });
   c.release(); await flush();
   assert.deepEqual(c.reply(first), { state: "done", result: { browserSessionId: browser } });
   assert.equal(c.child.beginRun(), true);
   const busy = c.request({ type: "close-for-removal" });
   assert.equal(c.reply(busy)?.state, "refused");
-  const resume = c.request({ type: "resume" }); await flush();
+  const resume = c.directive("worker-resume"); await flush();
   assert.equal(c.reply(resume)?.state, "done");
   c.child.endRun();
   assert.equal(c.child.beginRun(), true);
@@ -76,6 +80,6 @@ it("replies with a handler's catalog code, INTERNAL_FAILURE otherwise, and fails
   assert.equal(c.refusal(plain), "INTERNAL_FAILURE");
   assert.equal(JSON.stringify(c.sent).includes("private detail"), false);
   assert.throws(() => { c.child.receive({ kind: "worker-request", requestId: "not-a-uuid" }); }, { code: "WORKER_IPC_PROTOCOL_INVALID" });
-  c.child.receive({ kind: "worker-stop", reason: "shutdown" });
+  c.child.receive({ kind: "worker-stop", reason: "shutdown", mode: "after-run" });
   assert.deepEqual(c.stops, ["shutdown"]);
 });

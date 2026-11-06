@@ -1,3 +1,4 @@
+import { Server } from "node:net";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 export class WorkerIpcProtocolError extends Error {
@@ -9,6 +10,7 @@ export class WorkerIpcProtocolError extends Error {
 export interface IpcEndpoint {
   on(event: "message", listener: (message: unknown, handle: unknown) => void): unknown;
   off(event: "message", listener: (message: unknown, handle: unknown) => void): unknown;
+  disconnect(): void;
 }
 
 export type IpcFamilyHandler = (message: Readonly<{ kind: string }>, handle: unknown) => void;
@@ -24,7 +26,12 @@ export function createIpcRouter(endpoint: IpcEndpoint, onInvalid: (error: Worker
   const receive = (message: unknown, handle: unknown): void => {
     const kind = typeof message === "object" && message !== null && "kind" in message && typeof message.kind === "string" ? message.kind : undefined;
     const handler = kind === undefined ? undefined : owner(kind);
-    if (kind === undefined || handler === undefined) { onInvalid(new WorkerIpcProtocolError(kind ?? "missing-kind")); return; }
+    if (kind === undefined || handler === undefined) {
+      if (handle instanceof Server) handle.close();
+      endpoint.disconnect();
+      onInvalid(new WorkerIpcProtocolError(kind ?? "missing-kind"));
+      return;
+    }
     handler({ ...(message as Record<string, unknown>), kind }, handle);
   };
   endpoint.on("message", receive);
