@@ -36,8 +36,7 @@ export function rewritePredecessorCommand(raw: DatabaseSync, commandId: string, 
       if (evidence?.kind !== "lifecycle-evidence" || evidence.requestFingerprint !== record.requestFingerprint) continue;
       const run = runSettlementContext(result);
       const columns = runSettlementColumns(run, createRunTerminalEvidenceResult(RunRecordSchema.parse(run), { ...evidence, requestFingerprint: FingerprintSchema.parse(command.requestFingerprint) }));
-      raw.prepare("DELETE FROM run_results WHERE id=?").run(String(Json.parse(result).id));
-      raw.prepare(`INSERT INTO run_results (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
+      raw.prepare(`UPDATE run_results SET ${Object.keys(columns).map(column => `${column}=?`).join(",")} WHERE id=?`).run(...Object.values(columns), String(Json.parse(result).id));
     }
   });
 }
