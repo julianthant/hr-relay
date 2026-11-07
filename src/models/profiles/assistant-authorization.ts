@@ -1,13 +1,9 @@
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
-import { AssistantActionManifestSchema, AssistantApprovalBindingSchema, AssistantPermissionPolicySchema } from "./assistant-permissions.js";
+import { AssistantActionManifestSchema, AssistantApprovalBindingSchema } from "./assistant-permissions.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../rules/commands/commands.js";
 import { FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 
-export const AssistantGrantRecordSchema = z.strictObject({
-  id: z.literal("current"), profileId: z.uuid(), policy: AssistantPermissionPolicySchema,
-  commandId: z.uuid(), updatedAt: IsoInstantSchema,
-}).refine(record => record.policy.grant.profileId === record.profileId, "assistant-grant-profile-mismatch");
 export const AssistantChatRecordSchema = z.strictObject({
   id: z.uuid(), profileId: z.uuid(), epoch: PositiveIntSchema,
   createdAt: IsoInstantSchema, expiresAt: IsoInstantSchema,
@@ -21,7 +17,7 @@ export const AssistantStoredCommandSchema = CommandRequestSchema.superRefine((co
   let admitted = command.family === "start" || command.family === "notification" || command.family === "workflow-batch"
     || (command.family === "worker-browser" && command.type === "spawn-worker")
     || (command.family === "run" && (command.type === "pause" || command.type === "resume" || command.type === "cancel"));
-  if (command.type === "apply-settings") admitted = command.payload.assistantPermission === undefined && Object.entries(command.payload.patch).every(([, operation]) =>
+  if (command.type === "apply-settings") admitted = Object.entries(command.payload.patch).every(([, operation]) =>
     ("clear" in operation || typeof operation.set === "boolean" || typeof operation.set === "number"));
   if (!admitted) context.addIssue({ code: "custom", message: "assistant-command-values-unbound" });
 });

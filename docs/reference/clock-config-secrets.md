@@ -557,7 +557,7 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 25. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 26. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
@@ -565,7 +565,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 and 24. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 25` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 26` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -575,7 +575,7 @@ admission check, creates the absent canonical profile database and its current b
 Schemas 1 through 24 are inspected only under stopped upgrade or maintenance authority; ordinary readers
 use the current layout. Stopped inspection projects the absent pre-v15 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
-The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence. The v24 migration moves the assistant effort preference to light|medium|high|xhigh|max: a stored `low` becomes `light` in the preference, its commands (request digest recomputed) and their audits, with the audit and preference triggers dropped and recreated around the conversion.
+The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence. The v24 migration moves the assistant effort preference to light|medium|high|xhigh|max: a stored `low` becomes `light` in the preference, its commands (request digest recomputed) and their audits, with the audit and preference triggers dropped and recreated around the conversion. The v26 migration drops the empty `assistant_grants` table; a store that still holds a grant, an assistant action, or a command or audit carrying `assistantPermission` refuses the upgrade with `assistant-grant-history-unsupported` and keeps its version.
 
 The v21 migration updates only the completion-immutability trigger: an authenticated aggregate refresh may replace a done or failed current completion while retaining its exact prior result and receipt rows. Failed predecessors require matching retained failure evidence; unrelated completion changes remain refused.
 
@@ -583,15 +583,12 @@ The v22 migration deletes every run approved before envelopes carried a build id
 
 The v23 migration adds the assistant history tables `assistant_conversations` and `assistant_messages` (`assistant-history.ts`): at most 20 chats per profile, 200 messages per chat, at most 2,000,000 UTF-16 units of titles, drafts and message display text across a profile's unexpired chats, and a fixed 30-day expiry. An accepted turn keeps one slot for its reply; a write that would exceed a bound is refused and rolled back. Expiry fences an accepted send and its settlement whether or not cleanup has run. Settlement may change only a `sending` turn's delivery, code and update time; every other message field is written once. A stream or transport loss after the Responses POST settles as `delivery-unknown`; provider refusals and complete but invalid responses settle as `refused`. Startup settles every unfinished send as `delivery-unknown` before the history routes serve and reclaims expired chats, then hourly; a failed hourly reclamation emits `ASSISTANT_HISTORY_CLEANUP_FAILED`.
 
-Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
-An explicit operator `apply-settings` command may carry `assistantPermission` with the expected
-policy revision and mode, together with an empty ordinary patch. Settings and grant revisions
-settle in the same transaction; stale revisions refuse without partial changes. Ordinary Settings
-catalogue, persisted schema hash and commands without that field retain their existing grammar.
-Neither displayed permission defaults nor assistant-issued commands can mint a grant. The private
-profile-token composition issues chat custody and revalidates grants and canonical action bindings
-before consumption and at the asynchronous effect boundary. Subject-dependent, protected and
-unbound private/freeform actions remain unavailable until their actual owners are connected.
+Assistant chats and once-consumable actions use two profile-owned authority tables. The operator's
+Confirm on each card is the only assistant authorization; no grant or Settings permission exists.
+The private profile-token composition issues chat custody and revalidates the person, session epoch,
+manifest and canonical action binding before consumption and at the asynchronous effect boundary.
+Subject-dependent, protected and unbound private/freeform actions remain unavailable until their
+actual owners are connected.
 
 `AuthorityBootStore` reports `healthy` with mutations `available`, or `degraded-read-only` with
 mutations `blocked`. Empty, corrupt, unavailable, or incompatible existing authority does not become a

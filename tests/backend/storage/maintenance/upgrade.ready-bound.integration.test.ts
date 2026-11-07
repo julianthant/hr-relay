@@ -130,7 +130,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
   const raw = new DatabaseSync(profile.path);
   try {
     raw.exec("PRAGMA foreign_keys=ON");
-    for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+    for (const table of ["assistant_actions", "assistant_chats"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
     if (sourceVersion === 22) removeEmptySchema23AssistantHistory(raw);
     else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
@@ -211,7 +211,7 @@ it("upgrades a genuinely READY bound profile with exact preference conversion, r
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock, undefined, undefined, undefined, credentials);
       try {
         assert.equal(database.authority.assistantModelPreference.get(), undefined);
-        for (const table of ["assistant_grants", "assistant_chats", "assistant_actions"]) {
+        for (const table of ["assistant_chats", "assistant_actions"]) {
           const raw = new DatabaseSync(f.path, { readOnly: true });
           try { assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0); } finally { raw.close(); }
         }

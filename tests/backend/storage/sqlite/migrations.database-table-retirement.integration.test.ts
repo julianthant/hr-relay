@@ -11,7 +11,6 @@ const CURRENT_TABLES = [
   "assistant_actions",
   "assistant_chats",
   "assistant_conversations",
-  "assistant_grants",
   "assistant_messages",
   "assistant_model_preference",
   "auth_leases",

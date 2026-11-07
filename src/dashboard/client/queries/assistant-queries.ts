@@ -1,11 +1,10 @@
-import { AssistantPermissionViewSchema, type AssistantPermissionView, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, AssistantRequestSchema, AssistantRespondEnvelopeSchema, type AssistantRespondEnvelope, AssistantHistoryViewSchema, type AssistantHistoryView,
+import { AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, AssistantRequestSchema, AssistantRespondEnvelopeSchema, type AssistantRespondEnvelope, AssistantHistoryViewSchema, type AssistantHistoryView,
   AssistantConversationViewSchema, type AssistantConversationView, AssistantHistoryOperationSchema, type AssistantHistoryOperation, AssistantHistoryResultSchema, type AssistantHistoryResult, AssistantActionDecisionSchema, AssistantActionResultSchema, type AssistantActionDecision, type AssistantActionResult, type AssistantRequest,
   AssistantStageResultSchema, type AssistantStageResult } from "../../../models/dashboard/assistant.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
 
 export interface AssistantQueries {
-  assistantPermission?(signal?: AbortSignal): Promise<AssistantPermissionView>;
   assistantModelPreference?(signal?: AbortSignal): Promise<AssistantModelPreferenceView>;
   assistantDecide?(input: AssistantActionDecision, signal?: AbortSignal): Promise<AssistantActionResult>;
   assistantRespond(input: AssistantRequest, signal?: AbortSignal): Promise<AssistantRespondEnvelope>;
@@ -17,9 +16,6 @@ export interface AssistantQueries {
 }
 export function createAssistantQueries(transport: DashboardTransport): AssistantQueries {
   return Object.freeze({
-    async assistantPermission(signal?: AbortSignal) {
-      return parseOrThrow(AssistantPermissionViewSchema, "assistant-permission", await transport.requestJson("/api/v1/assistant/permission", signal === undefined ? {} : { signal }));
-    },
     async assistantModelPreference(signal?: AbortSignal) {
       return parseOrThrow(AssistantModelPreferenceViewSchema, 'model-preference', await transport.requestJson("/api/v1/assistant/model-preference", signal === undefined ? {} : { signal }));
     },

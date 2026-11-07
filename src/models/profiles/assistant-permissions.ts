@@ -17,30 +17,6 @@ import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { SubjectEvidenceSchema } from "../../rules/write-safety/write-safety-primitives.js";
 
-/** Settings may initialize this mode only together with an explicit operator grant. */
-export const ASSISTANT_PERMISSION_INITIAL_MODE = "every-action" as const;
-
-export { AssistantPermissionModeSchema, type AssistantPermissionMode } from "./assistant-permission-mode.js";
-import { AssistantPermissionModeSchema, StoredAssistantPermissionModeSchema } from "./assistant-permission-mode.js";
-
-export const AssistantOperatorGrantSchema = z.strictObject({
-  grantId: z.uuid(),
-  profileId: ProfileIdSchema,
-  policyRevision: PositiveIntSchema,
-  mode: StoredAssistantPermissionModeSchema,
-  grantedAt: IsoInstantSchema,
-});
-
-export const AssistantPermissionPolicySchema = z.strictObject({
-  revision: PositiveIntSchema,
-  mode: StoredAssistantPermissionModeSchema,
-  grant: AssistantOperatorGrantSchema,
-}).superRefine((policy, context) => {
-  if (policy.grant.policyRevision !== policy.revision || policy.grant.mode !== policy.mode) {
-    context.addIssue({ code: "custom", message: "operator grant must match the policy revision and mode" });
-  }
-});
-
 export const AssistantActionManifestEntrySchema = z.strictObject({
   family: CommandFamilySchema,
   action: CommandActionSchema,
@@ -68,12 +44,7 @@ export const AssistantActionManifestSchema = z.strictObject({
 export const AssistantAuthoritySchema = z.strictObject({
   profileId: ProfileIdSchema,
   accountSessionEpoch: PositiveIntSchema,
-  policy: AssistantPermissionPolicySchema,
   manifest: AssistantActionManifestSchema,
-}).superRefine((authority, context) => {
-  if (authority.policy.grant.profileId !== authority.profileId) {
-    context.addIssue({ code: "custom", message: "operator grant profile must match the active profile" });
-  }
 });
 export type AssistantAuthority = z.infer<typeof AssistantAuthoritySchema>;
 
@@ -108,9 +79,6 @@ export const AssistantConfigDescriptorSchema = z.discriminatedUnion("kind", [
 export const AssistantApprovalBindingSchema = z.strictObject({
   profileId: ProfileIdSchema,
   accountSessionEpoch: PositiveIntSchema,
-  policyRevision: PositiveIntSchema,
-  mode: StoredAssistantPermissionModeSchema,
-  grantId: z.uuid(),
   manifestRevision: PositiveIntSchema,
   family: CommandFamilySchema,
   action: CommandActionSchema,
@@ -125,7 +93,6 @@ export type AssistantApprovalBinding = z.infer<typeof AssistantApprovalBindingSc
 
 export const AssistantRefusalCodeSchema = z.enum([
   "ASSISTANT_AUTHORITY_INVALID",
-  "ASSISTANT_GRANT_REQUIRED",
   "ASSISTANT_MODEL_PROPOSAL_REFUSED",
   "ASSISTANT_PROPOSAL_MISMATCH",
   "ASSISTANT_UNCLASSIFIED",
@@ -140,8 +107,6 @@ export type AssistantRefusalCode = z.infer<typeof AssistantRefusalCodeSchema>;
 export const AssistantStaleFieldSchema = z.enum([
   "profile",
   "epoch",
-  "policy",
-  "grant",
   "manifest",
   "target",
   "subject",
@@ -227,24 +192,9 @@ export const ASSISTANT_COMMAND_INVENTORY = deepFreeze(COMMAND_FAMILY_REGISTRY.fl
   })),
 ));
 
-const AuthorityShellSchema = z.strictObject({
-  profileId: ProfileIdSchema,
-  accountSessionEpoch: PositiveIntSchema,
-  policy: z.strictObject({
-    revision: PositiveIntSchema,
-    mode: AssistantPermissionModeSchema,
-    grant: z.unknown().optional(),
-  }),
-  manifest: AssistantActionManifestSchema,
-});
-
 export function readAssistantAuthority(input: unknown):
   | { readonly ok: true; readonly authority: AssistantAuthority }
-  | { readonly ok: false; readonly code: "ASSISTANT_AUTHORITY_INVALID" | "ASSISTANT_GRANT_REQUIRED" } {
-  const shell = AuthorityShellSchema.safeParse(input);
-  if (!shell.success) return { ok: false, code: "ASSISTANT_AUTHORITY_INVALID" };
-  if (shell.data.policy.grant === undefined) return { ok: false, code: "ASSISTANT_GRANT_REQUIRED" };
+  | { readonly ok: false; readonly code: "ASSISTANT_AUTHORITY_INVALID" } {
   const parsed = AssistantAuthoritySchema.safeParse(input);
-  if (!parsed.success) return { ok: false, code: "ASSISTANT_GRANT_REQUIRED" };
-  return { ok: true, authority: parsed.data };
+  return parsed.success ? { ok: true, authority: parsed.data } : { ok: false, code: "ASSISTANT_AUTHORITY_INVALID" };
 }

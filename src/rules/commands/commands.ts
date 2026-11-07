@@ -2,7 +2,6 @@ import { z } from "zod";
 import { OcrReviewRecordSchema, OcrOperatorPagesSchema } from "../../models/ocr/review-record.js";
 import { AssistantModelPreferenceSchema } from "../../models/config/assistant-model-preference.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
-import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { RunContinuationSchema } from "../../models/run/continuation.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
 import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
@@ -206,10 +205,6 @@ export const AssistantModelPreferenceCommandRequestSchema = z.strictObject({
   payload: AssistantModelPreferenceSchema,
 });
 
-export const AssistantPermissionChangeSchema = z.strictObject({
-  expectedPolicyRevision: NonNegativeIntSchema, mode: StoredAssistantPermissionModeSchema,
-});
-
 export const SettingsCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("settings"),
@@ -219,12 +214,7 @@ export const SettingsCommandRequestSchema = z.strictObject({
     settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
     patch: z.record(z.string().min(1), SettingsLeafOperationSchema),
-    assistantPermission: AssistantPermissionChangeSchema.optional(),
   }).superRefine((payload, context) => {
-    if (payload.assistantPermission !== undefined) {
-      if (Object.keys(payload.patch).length !== 0) context.addIssue({ code: "custom", path: ["patch"], message: "permission command requires an empty ordinary patch" });
-      return;
-    }
     const ordinary = SettingsPatchSchema.safeParse(payload.patch);
     if (!ordinary.success) for (const issue of ordinary.error.issues) context.addIssue({ ...issue, path: ["patch", ...issue.path] });
   }),

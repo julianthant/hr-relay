@@ -8,8 +8,6 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import type { CommandKernel } from "../runs/commands/command-kernel.js";
 import type { Clock } from "../../rules/time/clock.js";
-import { AssistantPermissionViewSchema } from "../../models/dashboard/assistant.js";
-import { readSettings } from "../runtime/settings/settings-runtime.js";
 
 export class AssistantAuthorizationError extends Error {
   constructor(reason: string, readonly code: AssistantRefusalCode = "ASSISTANT_BINDING_STALE") {
@@ -42,13 +40,11 @@ export function createAssistantAuthorization(ports: Ports) {
   };
   const decision = (capability: Chat, command: CommandRequest, approval?: AssistantApprovalBinding) => {
     const { current } = chat(capability);
-    const grant = repository.grant();
-    if (grant === undefined || grant.profileId !== current.profileId) throw new AssistantAuthorizationError("assistant-grant-required", "ASSISTANT_GRANT_REQUIRED");
     const manifest = AssistantActionManifestSchema.parse(ports.kernel.assistantManifest());
     const resolved = { profileId: current.profileId, accountSessionEpoch: current.epoch, command,
       subject: command.family === "start" ? { kind: "catalog", catalogKey: "assistant-selected-subject", bindingDigest: command.payload.inputFingerprint } : { kind: "none" }, cancelled: false, checkOutcome: { state: "none" } };
     const checked = checkAssistantAction({ phase: approval === undefined ? "prepare" : "dispatch",
-      authority: { profileId: current.profileId, accountSessionEpoch: current.epoch, policy: grant.policy, manifest },
+      authority: { profileId: current.profileId, accountSessionEpoch: current.epoch, manifest },
       proposal: { commandId: command.commandId, family: command.family, action: command.type, target: command.target },
       resolved, ...(approval === undefined ? {} : { approval }) });
     if (checked.state === "refused") throw new AssistantAuthorizationError(checked.code, checked.code);
@@ -67,20 +63,6 @@ export function createAssistantAuthorization(ports: Ports) {
     }
   };
   return Object.freeze({
-    permission() {
-      return ports.database.withAuthorityReadSnapshot(() => {
-        const current = ports.current(), grant = repository.grant();
-        if (grant !== undefined && (grant.profileId !== current.profileId || grant.policy.mode !== "every-action")) {
-          throw new AssistantAuthorizationError("assistant-permission-authority-invalid", "ASSISTANT_AUTHORITY_INVALID");
-        }
-        const settings = readSettings(ports.database.authority);
-        const view = AssistantPermissionViewSchema.parse({ ...current, mode: "every-action",
-          state: grant === undefined ? "grant-required" : "granted", policyRevision: grant?.policy.revision ?? 0,
-          settingsRevision: settings.revision, settingsSchemaHash: settings.settingsSchemaHash });
-        if (!same(current, ports.current())) throw new AssistantAuthorizationError("assistant-permission-owner-changed");
-        return view;
-      });
-    },
     createChat(): Chat {
       return ports.database.withAuthorityTransaction(() => {
         const current = ports.current(), createdAt = now(), chatId = randomUUID();
@@ -136,10 +118,9 @@ export function createAssistantAuthorization(ports: Ports) {
         const current = ports.current(), owner = repository.chat(row.chatId);
         if (row.state !== "claimed" || owner === undefined || owner.profileId !== current.profileId || owner.epoch !== current.epoch
           || Date.parse(owner.expiresAt) <= ports.clock.nowMs() || Date.parse(row.expiresAt) <= ports.clock.nowMs()) throw new AssistantAuthorizationError("assistant-effect-not-authorized");
-        const grant = repository.grant(), manifest = ports.kernel.assistantManifest();
-        if (grant === undefined) throw new AssistantAuthorizationError("assistant-grant-required", "ASSISTANT_GRANT_REQUIRED");
+        const manifest = ports.kernel.assistantManifest();
         const checked = checkAssistantAction({ phase: "dispatch", authority: { profileId: current.profileId,
-          accountSessionEpoch: current.epoch, policy: grant.policy, manifest },
+          accountSessionEpoch: current.epoch, manifest },
           proposal: { commandId, family: row.command.family, action: row.command.type, target: row.command.target },
           resolved: { profileId: current.profileId, accountSessionEpoch: current.epoch, command: row.command,
             subject: row.binding.subject, cancelled: false, checkOutcome: { state: "none" } }, approval: row.binding });

@@ -6,7 +6,7 @@ import { timelineCheckpointReference } from "../../../../src/models/events/timel
 import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
 import type { ExclusiveSessionLease } from "../../../../src/models/sessions/exclusive-session-lease.js";
 import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
-import { createCommandKernel, executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -465,13 +465,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
         pausePoolWorker: unavailable, resumePoolWorker: unavailable, refreshPoolBrowser: unavailable, reopenPoolBrowser: unavailable } },
       prepareAssistantModelPreference: async () => () => true });
     const fixture = { profileId, kernel, authorization: createAssistantAuthorization({ database: db, kernel, clock: CLOCK,
-      current: () => ({ profileId, epoch: 1 }) }), grant() {
-      const result = executeSettingsCommand(dependencies, { family: "settings", type: "apply-settings", commandId: randomUUID(),
-        requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
-        target: { expectedRevision: readSettings(db.authority).revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-          patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } });
-      assert.equal(result.state, "applied");
-    } };
+      current: () => ({ profileId, epoch: 1 }) }) };
     return fixture;
   }
   const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
@@ -498,9 +492,8 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       db.authority.commands.insert(COMMAND_FIXTURES[0]);
       db.authority.ocrReviews.append(review, 0);
     }, mutate: db => { db.authority.ocrReviews.approve(approval); } },
-    { table: "assistant_grants", mutate: db => { assistant(db).grant(); } },
     { table: "assistant_chats", mutate: db => { assistant(db).authorization.createChat(); } },
-    { table: "assistant_actions", prepare: db => { const fixture = assistant(db); fixture.grant(); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {
+    { table: "assistant_actions", prepare: db => { const fixture = assistant(db); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {
       const prepared = assistantActions.get(db); assert.ok(prepared);
       const { fixture: { authorization }, chat } = prepared;
       const patch = { "browser.headless": { set: false } };

@@ -3,7 +3,6 @@ import { OcrFormTypeSchema } from "../ocr/form-registry.js";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { z } from "zod";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
-import { AssistantPermissionModeSchema } from "../profiles/assistant-permission-mode.js";
 import { StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
@@ -17,15 +16,6 @@ export const AssistantModelPreferenceViewSchema = z.strictObject({
   preference: AssistantModelPreferenceSchema,
 });
 export type AssistantModelPreferenceView = z.infer<typeof AssistantModelPreferenceViewSchema>;
-const AssistantPermissionIdentitySchema = z.strictObject({
-  profileId: z.uuid(), epoch: z.number().int().nonnegative(), mode: AssistantPermissionModeSchema,
-  settingsRevision: z.number().int().positive(), settingsSchemaHash: FingerprintSchema,
-});
-export const AssistantPermissionViewSchema = z.discriminatedUnion("state", [
-  AssistantPermissionIdentitySchema.extend({ state: z.literal("grant-required"), policyRevision: z.literal(0) }),
-  AssistantPermissionIdentitySchema.extend({ state: z.literal("granted"), policyRevision: z.number().int().positive() }),
-]);
-export type AssistantPermissionView = z.infer<typeof AssistantPermissionViewSchema>;
 export const AssistantModelPreferenceRecordSchema = z.strictObject({
   format: z.literal(1), id: z.literal("current"), profileId: z.uuid(), revision: z.number().int().positive(),
   preference: AssistantModelPreferenceSchema, commandId: z.uuid(), auditId: z.uuid(), updatedAt: z.iso.datetime(),
@@ -193,6 +183,15 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_SUBJECT_REQUIRED: ERROR_CATALOG.ASSISTANT_SUBJECT_REQUIRED.text,
   ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
   ASSISTANT_SPREADSHEET_REFUSED: ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text,
+  ASSISTANT_AUTHORITY_INVALID: ERROR_CATALOG.ASSISTANT_AUTHORITY_INVALID.text,
+  ASSISTANT_MODEL_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_MODEL_PROPOSAL_REFUSED.text,
+  ASSISTANT_PROPOSAL_MISMATCH: ERROR_CATALOG.ASSISTANT_PROPOSAL_MISMATCH.text,
+  ASSISTANT_UNCLASSIFIED: ERROR_CATALOG.ASSISTANT_UNCLASSIFIED.text,
+  ASSISTANT_OPTIONS_UNBOUND: ERROR_CATALOG.ASSISTANT_OPTIONS_UNBOUND.text,
+  ASSISTANT_SUBJECT_MISMATCH: ERROR_CATALOG.ASSISTANT_SUBJECT_MISMATCH.text,
+  ASSISTANT_BINDING_STALE: ERROR_CATALOG.ASSISTANT_BINDING_STALE.text,
+  ASSISTANT_UNKNOWN_NOT_REPLAYABLE: ERROR_CATALOG.ASSISTANT_UNKNOWN_NOT_REPLAYABLE.text,
+  ASSISTANT_EFFECT_UNDERSTATED: ERROR_CATALOG.ASSISTANT_EFFECT_UNDERSTATED.text,
 });
 export type AssistantFailureCode = keyof typeof ASSISTANT_FAILURES;
 export const AssistantActionIdentitySchema = z.strictObject({ chatId: z.uuid(), actionId: z.uuid(), revision: z.number().int().positive() });

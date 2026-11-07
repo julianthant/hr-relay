@@ -38,7 +38,7 @@ import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { StoredOcrExtractionSchema, type StoredOcrExtraction } from "../../../models/ocr/stored-extraction.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
-import { AssistantActionRecordSchema,AssistantChatRecordSchema,AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
+import { AssistantActionRecordSchema,AssistantChatRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
@@ -130,6 +130,7 @@ import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
+import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
@@ -1116,7 +1117,7 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
   }
 
 
-function nativeTableKey(table: AuthorityTableName | "explorer_overrides", database: DatabaseSync): string {
+function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeof RETIRED_ASSISTANT_GRANT_TABLE, database: DatabaseSync): string {
   if (table === "run_results") return readIntPragma(database,"user_version") >= 20 ? "id" : "run_id";
   if (table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
@@ -1284,10 +1285,11 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
     return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
   };
+  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
-    if (table.startsWith("workbook_") || table === "explorer_overrides") continue;
+    if (table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE) continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
@@ -1337,14 +1339,6 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             inspected = { ...raw, payload_json: canonicalJsonStringify(plan) };
           }
           const record = nativeOrdinaryRecordFromRow(table,inspected,expectedSchemaVersion);
-          if (table === "assistant_grants") {
-            const grant = AssistantGrantRecordSchema.parse(record), owner = readMetaRow(database);
-            if (grant.profileId !== owner.profile_id) throw new Error("assistant-grant-profile-mismatch");
-            const command = CommandRequestSchema.parse(commandFromRow(database.prepare("SELECT * FROM commands WHERE id=?").get(grant.commandId)));
-            if (command.type !== "apply-settings" || command.payload.assistantPermission === undefined
-              || command.payload.assistantPermission.mode !== grant.policy.mode
-              || command.payload.assistantPermission.expectedPolicyRevision !== grant.policy.revision - 1) throw new Error("assistant-grant-command-mismatch");
-          }
           if (table === "assistant_chats") {
             if (AssistantChatRecordSchema.parse(record).profileId !== readMetaRow(database).profile_id) throw new Error("assistant-chat-profile-mismatch");
           }
@@ -1369,8 +1363,6 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
       validated++;
     }
   }
-  if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
-    && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
   // Below schema 24 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
@@ -1598,10 +1590,10 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
   const currentTables = AuthorityCopyInspectionSchema.shape.tables;
-  const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
-    z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
+  const tables = expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION ? z.array(z.union([currentTables.element,
+    z.strictObject({ name: z.enum(["explorer_overrides", RETIRED_ASSISTANT_GRANT_TABLE]), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1613,7 +1605,8 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
-    tables: names.map((name) => ({ name, classification: expectedSchemaVersion < 10 && name === "explorer_overrides"
+    tables: names.map((name) => ({ name, classification: (expectedSchemaVersion < 10 && name === "explorer_overrides")
+      || (expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION && name === RETIRED_ASSISTANT_GRANT_TABLE)
       ? "authority" : tableClassification(AuthorityTableNameSchema.parse(name)) })),
     counts: pendingCounts(database),
   });
@@ -1689,6 +1682,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
           deletePreBuildRuns(database, clock.now().toISOString(), ref => inspectArtifactDeletionFile(admission, ref),
             (record, run) => settlePredecessorRunEvidence(database, record, run));
         }
+        if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) assertNoAssistantGrantHistory(database);
         database.exec(statement);
         if (migration.version === 16 && index === 2) migratePersonPreferences(database);
         if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);

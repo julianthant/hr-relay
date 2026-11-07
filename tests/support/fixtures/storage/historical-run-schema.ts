@@ -7,8 +7,19 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Steps an empty current authority back to schema 24: the attachments table did not exist yet. */
+/** Steps an empty current authority back to schema 25: the empty operator grant table still existed. */
+export function restoreSchema25AssistantGrants(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 26);
+  const ddl = SQLITE_MIGRATIONS.find(migration => migration.version === 8)?.statements.join("\n");
+  const table = ddl?.match(/CREATE TABLE assistant_grants \([\s\S]*?\n\) STRICT;/u)?.[0], trigger = ddl?.match(/CREATE TRIGGER assistant_grants_revision[\s\S]*?END;/u)?.[0];
+  assert.ok(table && trigger);
+  database.exec(`${table}\n${trigger}`);
+  database.exec("UPDATE database_states SET schema_version=25; PRAGMA user_version=25");
+}
+
+/** Steps an empty schema-25 authority back to schema 24: the attachments table did not exist yet. */
 export function removeEmptySchema25Attachments(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 26) restoreSchema25AssistantGrants(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 25);
   assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_attachments").get()?.count, 0);
   database.exec("DROP TABLE assistant_attachments");
@@ -17,7 +28,7 @@ export function removeEmptySchema25Attachments(database: DatabaseSync): void {
 
 /** Steps a schema-24 authority back to schema 23: schema 24 converts stored efforts in place and keeps the same layout. */
 export function regressSchema24EffortScale(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 25) removeEmptySchema25Attachments(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 25) removeEmptySchema25Attachments(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 24);
   database.exec("UPDATE database_states SET schema_version=23; PRAGMA user_version=23");
 }

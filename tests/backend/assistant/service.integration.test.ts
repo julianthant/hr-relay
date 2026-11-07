@@ -9,6 +9,7 @@ import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.j
 import { assistantMessageStream, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { createAssistantService, type AssistantServiceOptions } from "../../../src/backend/assistant/service.js";
 import { AssistantToolRefusal, type AssistantPlugin, type AssistantTool } from "../../../src/backend/assistant/plugins/plugin.js";
+import { AssistantAuthorizationError } from "../../../src/backend/assistant/authorization.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -140,6 +141,19 @@ it("ends the turn with a proposal card and keeps a refused proposal recoverable"
     });
     assert.deepEqual(await w.ask("Pause it"), { state: "action-proposal", proposal: card });
     assert.equal(w.posts(), 2);
+  } finally { await w.f.cleanup(); }
+});
+
+it("hands the model an authorization refusal under its own code", async () => {
+  const proposal: AssistantTool = { kind: "proposal", name: "propose", description: "Prepare a card.", parameters: Echo,
+    async propose() { throw new AssistantAuthorizationError("assistant-binding-stale", "ASSISTANT_BINDING_STALE"); } };
+  const w = await world({ tools: [proposal] });
+  try {
+    w.script.push(call("propose", { value: "a" }), body => {
+      assert.deepEqual(lastOutput(body), { error: "ASSISTANT_BINDING_STALE", text: ASSISTANT_FAILURES.ASSISTANT_BINDING_STALE });
+      return assistantMessageStream("Not prepared.");
+    });
+    assert.deepEqual(await w.ask("Pause it"), { state: "refused", code: "ASSISTANT_BINDING_STALE", message: ASSISTANT_FAILURES.ASSISTANT_BINDING_STALE });
   } finally { await w.f.cleanup(); }
 });
 

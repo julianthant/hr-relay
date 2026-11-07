@@ -836,10 +836,6 @@ export const ERROR_CATALOG = Object.freeze({
     "The assistant permission could not be read. No action was taken.",
     EmptyParametersSchema,
   ),
-  ASSISTANT_GRANT_REQUIRED: catalogEntry(
-    "The assistant has no operator grant. No action was taken.",
-    EmptyParametersSchema,
-  ),
   ASSISTANT_MODEL_PROPOSAL_REFUSED: catalogEntry(
     "The assistant proposal was refused. No action was taken.",
     EmptyParametersSchema,

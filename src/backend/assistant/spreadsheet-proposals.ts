@@ -76,12 +76,11 @@ const rowsOf = (workbook: ImportedWorkbook) => String(workbook.sheets.reduce((su
 export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDeps) {
   const issued = new Map<string, Issued>();
   const prune = () => { for (const [id, entry] of issued) if (entry.state !== "claimed" && Date.parse(entry.expiresAt) <= deps.clock.nowMs()) issued.delete(id); };
-  /** Profile, epoch, grant and tool contract; a change to any refuses the card. */
+  /** Profile, epoch and tool contract; a change to any refuses the card. */
   const authority = (chatId: string) => {
-    const chat = deps.database.authority.assistantAuthorization.chat(chatId), grant = deps.database.authority.assistantAuthorization.grant();
-    if (chat === undefined || grant === undefined || grant.profileId !== chat.profileId) throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED");
-    return canonicalJsonStringify({ profileId: chat.profileId, epoch: chat.epoch, policy: grant.policy,
-      manifestRevision: deps.kernel.assistantManifest().revision });
+    const chat = deps.database.authority.assistantAuthorization.chat(chatId);
+    if (chat === undefined) throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED");
+    return canonicalJsonStringify({ profileId: chat.profileId, epoch: chat.epoch, manifestRevision: deps.kernel.assistantManifest().revision });
   };
   const typed = (context: AssistantToolContext, value: string) => { if (!context.operatorText.includes(value)) throw new AssistantToolRefusal("ASSISTANT_INVALID"); return value; };
   const versionOf = (context: AssistantToolContext, entry: ReturnType<typeof catalogEntry>, token: string) => {

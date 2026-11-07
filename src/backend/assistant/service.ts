@@ -5,7 +5,7 @@ import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/
 import { z } from "zod";
 import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES, type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia,
-  type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantPermissionViewSchema, type AssistantPermissionView } from "../../models/dashboard/assistant.js";
+  type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem } from "../../models/dashboard/assistant.js";
 import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
@@ -35,7 +35,6 @@ export interface AssistantServiceOptions {
   readonly debugEvents?: { emit(event: Omit<z.input<typeof DebugEventSchema>, "build" | "pid">): void };
   readonly verifySelectedModel?: (signal: AbortSignal) => Promise<void>;
   readonly readModelPreference?: () => AssistantModelPreferenceView;
-  readonly readPermission?: () => AssistantPermissionView;
   readonly account: Pick<ChatGptAccountService, "inferAssistant" | "listAssistantModels" | "readAuthority" | "revalidateAuthority">;
   /** Trusted composition currentness (selected profile and runtime); runs before and after every await. */
   readonly assertComposition?: () => void;
@@ -101,10 +100,6 @@ export function createAssistantService(options: AssistantServiceOptions) {
       code: "ASSISTANT_PROPOSAL_REFUSED" });
   };
   return Object.freeze({
-    permission() {
-      if (options.readPermission === undefined) throw new Error("assistant-permission-unavailable");
-      return AssistantPermissionViewSchema.parse(options.readPermission());
-    },
     modelPreference() {
       if (options.readModelPreference === undefined) throw new AssistantModelPolicyError('assistant-model-preference-unavailable');
       return AssistantModelPreferenceViewSchema.parse(options.readModelPreference());
@@ -377,7 +372,7 @@ function toolRefusalCode(error: unknown): AssistantFailureCode | undefined {
   if (error instanceof AssistantToolRefusal) return error.code;
   if (error instanceof AssistantReferenceError) return error.reason === "reference-limit" ? "ASSISTANT_LIMIT" : "ASSISTANT_READ_STALE";
   if (error instanceof TargetNotFoundError || error instanceof SectionUnavailableError) return "ASSISTANT_READ_UNAVAILABLE";
-  if (error instanceof AssistantAuthorizationError) return "ASSISTANT_PROPOSAL_REFUSED";
+  if (error instanceof AssistantAuthorizationError) return error.code;
   return undefined;
 }
 const SELECTED_RUN = /^run_([a-f0-9-]{36})_([1-9][0-9]*)$/u;
@@ -386,4 +381,4 @@ function selectedRunReference(subjectRef: string): { runId: string; revision: nu
   if (match === null || !z.uuid().safeParse(match[1]).success || !Number.isSafeInteger(revision)) throw new AssistantProtocolError("assistant-selected-run-invalid");
   return { runId: match[1], revision };
 }
-export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'stage' | 'modelPreference' | 'permission' | 'historyView' | 'conversation' | 'history'>>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'stage' | 'modelPreference' | 'historyView' | 'conversation' | 'history'>>;

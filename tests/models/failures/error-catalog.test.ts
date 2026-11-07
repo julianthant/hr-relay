@@ -254,7 +254,6 @@ describe("error catalog", () => {
   it("registers every assistant refusal code with fixed operator text", () => {
     const expected = {
       ASSISTANT_AUTHORITY_INVALID: "The assistant permission could not be read. No action was taken.",
-      ASSISTANT_GRANT_REQUIRED: "The assistant has no operator grant. No action was taken.",
       ASSISTANT_MODEL_PROPOSAL_REFUSED: "The assistant proposal was refused. No action was taken.",
       ASSISTANT_PROPOSAL_MISMATCH: "The assistant proposal does not match this command. No action was taken.",
       ASSISTANT_UNCLASSIFIED: "This command is not classified for the assistant. No action was taken.",

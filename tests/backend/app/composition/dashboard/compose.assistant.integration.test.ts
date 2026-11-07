@@ -24,7 +24,6 @@ import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../../
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
-import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { chatGptFixture , publicCapabilityResponses } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
@@ -215,7 +214,6 @@ it('serves the read tools through authenticated composition without private prov
     assert.equal(foreign.status, 403); assert.equal(turns, 3);
     assert.deepEqual(durable(), before); assert.deepEqual(context.database.authority.workerControls.list(), controls);
     assert.deepEqual(context.database.authority.runs.get(run.envelope.runId), run);
-    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
   });
 });
 
@@ -246,11 +244,10 @@ it('refuses an old selected-run revision before reading out the newer run', asyn
       { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
     assert.deepEqual(outputs, [{ error: 'ASSISTANT_READ_STALE', text: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }]);
     assert.equal(turns, 2);
-    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
   });
 });
 
-it.each(["every-action"] as const)('serves preference CAS, replay and verification for %s', async mode => {
+it('serves preference CAS, replay and verification', async () => {
   await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
     const preferenceResponse = await originalFetch(`${origin}/api/v1/assistant/model-preference`);
       assert.equal(preferenceResponse.status, 200);
@@ -263,10 +260,6 @@ it.each(["every-action"] as const)('serves preference CAS, replay and verificati
       const verified = AssistantResultSchema.parse(await send(postDoor(post), { message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
       assert.equal(verified.state, 'answered');
 
-    const grant = CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-        family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
-        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode } } }));
-    assert.equal(grant.state, "applied");
     const view = AssistantModelPreferenceViewSchema.parse(await (await originalFetch(`${origin}/api/v1/assistant/model-preference`)).json());
       const command = { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator",
         source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
@@ -322,8 +315,8 @@ function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySn
 }
 
 it.each([
-  { mode: "every-action", staleAccount: false }, { mode: "every-action", staleAccount: true },
-] as const)("changes notifications at once without a card through the composed service with staleAccount=$staleAccount and bounded outbound data", async ({ mode, staleAccount }) => {
+  { staleAccount: false }, { staleAccount: true },
+] as const)("changes notifications at once without a card through the composed service with staleAccount=$staleAccount and bounded outbound data", async ({ staleAccount }) => {
   const installed = true;
   await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
     if (installed) {
@@ -339,10 +332,6 @@ it.each([
       assert.equal(verified.state, 'answered');
     }
     if (installed) {
-      const grant = CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-        family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
-        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode } } }));
-      assert.equal(grant.state, "applied");
       const id = randomUUID(), ids = [id, ...Array.from({ length: 24 }, () => randomUUID())];
       context.database.withAuthorityTransaction(({ notifications }) => { for (const [index, notificationId] of ids.entries()) notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator", dedupeFingerprint: index.toString(16).padStart(64, "0"),
         trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary", links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }],
@@ -411,12 +400,6 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
     const pending: Promise<{ result: unknown } | { error: unknown }>[] = [], failures: unknown[] = [];
     let processLock: ReturnType<typeof bindWorkerProcessAdmission>["processLock"] | undefined;
     try {
-      const grant = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(),
-        requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-settings",
-        target: { expectedRevision: context.settings.read().record.revision }, payload: { patch: {},
-          patchFingerprint: deriveRawSettingsPatchFingerprint({}), settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-          assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } });
-      assert.equal(grant.state, "applied");
       publicCapabilityResponses(transport);
       assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, "answered");
       const plan = await client.submitStartPlan({ workflowId: "person-lookup", dryRun: false,
@@ -610,15 +593,12 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
 
 it('confirms run actions, issues reruns and entry lists, and refuses expired, stale and changed cards before any effect', async () => {
   await withServedAssistant(async fixture => {
-    const { context, transport, origin, clock, post } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
+    const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
     const database = context.database;
     let cleanupSubscription = () => {};
     try {
       if (client.assistantDecide === undefined) throw new Error('assistant decide owner required');
       const decide = (decision: Parameters<NonNullable<typeof client.assistantDecide>>[0]) => { if (client.assistantDecide === undefined) throw new Error('assistant decide owner required'); return client.assistantDecide(decision); };
-      assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-        family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
-        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } })).state, "applied");
       publicCapabilityResponses(transport);
       assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
       let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
@@ -731,10 +711,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
 
 it('refuses a PDF start while Emergency Contact is not served and confirms an attached spreadsheet as a library import', async () => {
   await withServedAssistant(async fixture => {
-    const { context, transport, origin, clock, post } = fixture, client = createDashboardClient({ baseUrl: origin }), database = context.database;
-    assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-      family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
-      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } })).state, "applied");
+    const { context, transport, origin, clock } = fixture, client = createDashboardClient({ baseUrl: origin }), database = context.database;
     publicCapabilityResponses(transport);
     assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
