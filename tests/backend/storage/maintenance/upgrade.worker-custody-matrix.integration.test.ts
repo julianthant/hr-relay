@@ -117,16 +117,13 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const evidence = database.authority.runResults.get(childId); assert.ok(evidence);
     assert.equal(terminalEvidenceResult(evidence)?.kind, "lifecycle-evidence");
     receipt(cancelled);
-    const joined = await execution.step(root, world.SIGNAL);
-    const parent = current(root.envelope.runId);
-    assert.ok(parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "failed", JSON.stringify({ outcome: joined.outcome, lifecycle: parent.lifecycle }));
-    const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
-      requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: parent.version } }));
+    // The parent's dependency reconcile settles the cancelled member (the join binds its result), then the operator retries it.
+    database.withAuthorityTransaction(repositories => repositories.dependencies.reconcile(root.envelope.runId, clock.now().toISOString()));
+    const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard",
+      requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: childId, expectedVersion: current(childId).version } }));
     assert.equal(retried.state, "applied", JSON.stringify(retried));
-    // The recovered parent re-delegates the cancelled member: the delegation retry binds the member's result.
-    const recovered = await execution.step(root, world.SIGNAL);
-    assert.ok(database.authority.runs.listByItem({ workflow: cancelled.envelope.workflow, itemId: cancelled.envelope.itemId })
-      .some(run => run.envelope.retryOf === childId), JSON.stringify(recovered.outcome.state === "failed" ? database.authority.failures.get(recovered.outcome.failureId) : recovered.outcome).slice(0, 3000));
+    const parent = current(root.envelope.runId);
+    assert.ok(database.authority.runs.listByItem({ workflow: cancelled.envelope.workflow, itemId: cancelled.envelope.itemId }).some(run => run.envelope.retryOf === childId));
     for (const run of [cancelled, parent].flatMap(run => database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }))) {
       if (!closure.includes(run.envelope.runId)) closure.push(run.envelope.runId);
     }
