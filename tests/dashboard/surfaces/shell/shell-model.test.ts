@@ -281,6 +281,15 @@ describe_m1("workflowStatusCounts — the band's scope selector", () => {
   });
 });
 
+describe_m1("running count — the rail pill", () => {
+  it_m1("reads the served running count from that workflow's own statusCounts", () => {
+    const served = WorkflowCountWireSchema_m1.parse({ workflowId: "person-lookup", count: 3,
+      statusCounts: [{ status: "running", count: 2 }, { status: "queued", count: 1 }] });
+    expect_m1(statusCount_m1(workflowStatusCounts_m1([served], "person-lookup"), "running")).toBe(2);
+    expect_m1(WorkflowCountWireSchema_m1.safeParse({ ...served, count: 2 }).success).toBe(false);
+  });
+});
+
 describe_m1("totalCount — the `All` segment", () => {
   it_m1("keeps Cancelling active and selectable, including after its selected bucket empties", () => {
     const counts = z_m1.array(WorkflowCountWireSchema_m1).parse([{
