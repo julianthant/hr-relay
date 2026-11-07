@@ -50,7 +50,7 @@ const CHANGED_TABLES = new Set(["runs", "deleted_runs", "commands", "command_aud
  * A real delegation tree on the current schema, then returned to schema 20-22: a cancelled member recovered from a worker crash
  * (claim, recover-crash, lifecycle-evidence result and receipt, all carrying the worker lifetime), the parent's join of its
  * resultDigest and the operator's retry embedding it, beside a kept unrelated run with its receipt, a library type and saved settings.
- * The kept-reference variant points the kept settings row at the closure's retry command.
+ * The kept-reference variant adds a library type naming a closure run.
  */
 async function predecessorStore(version: SourceVersion, variant: Variant) {
   const { root: compiled, modules } = childPolicyModules("cascade");
@@ -106,7 +106,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
   const lock = profile.machine.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
   reconcileExitedWorker({ machine: profile.machine, admission: profile.admission, database, clock, lifecycle: execution.lifecycle, lock, workerId: owner.workerId });
   const closure = [root.envelope.runId, childId];
-  let retryCommandId: string | undefined, childDigest: string | undefined;
+  let childDigest: string | undefined;
   if (variant !== "attempting-write") {
     const cancelled = current(childId);
     assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled", JSON.stringify(cancelled.lifecycle));
@@ -116,8 +116,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const joined = await execution.step(root, world.SIGNAL);
     const parent = current(root.envelope.runId);
     assert.ok(parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "failed", JSON.stringify({ outcome: joined.outcome, lifecycle: parent.lifecycle }));
-    retryCommandId = randomUUID();
-    const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: retryCommandId, family: "run", type: "recover-run", source: "dashboard",
+    const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
       requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: parent.version } }));
     assert.equal(retried.state, "applied", JSON.stringify(retried));
     for (const run of [cancelled, parent].flatMap(run => database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }))) {
@@ -127,6 +126,9 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
   }
 
   database.authority.workbooks.putType({ id: "custody-roster", name: "Custody roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
+  if (variant === "kept-reference") {
+    database.authority.workbooks.putType({ id: "closure-roster", name: `Roster for ${closure.at(-1) ?? childId}`, keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
+  }
 
   h.authority.closeDatabase();
   await h.manager.closeAll("worker-stop");
@@ -137,7 +139,6 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     assert.notEqual(writePredecessorWorkerLifetimes(raw, childId).length, 0);
     raw.exec("BEGIN EXCLUSIVE");
     restorePredecessorCustodySchema(raw);
-    if (variant === "kept-reference") raw.prepare("UPDATE settings SET command_id=?").run(retryCommandId ?? "");
     if (version === 20) restoreSchema20CompletionFixture(raw);
     else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
     raw.exec("COMMIT");
@@ -147,19 +148,20 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
 }
 
 function read(path: string) {
-  const raw = new DatabaseSync(path, { readOnly: true });
-  try {
-    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name));
-    return {
-      kept: Object.fromEntries(tables.filter(table => !CHANGED_TABLES.has(table) && !isWorkerCustodyDroppedTable(table))
-        .map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
-      triggers: raw.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND name NOT LIKE 'worker_%' AND name NOT LIKE 'browser_%' ORDER BY name").all(),
-      run: (runId: string) => ["runs", "run_results", "run_receipts"].map(table => raw.prepare(`SELECT * FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"}=? ORDER BY rowid`).all(runId)),
-      everyRow: () => tables.flatMap(table => raw.prepare(`SELECT * FROM ${table}`).all().map(row => ({ table, json: JSON.stringify(row) }))),
-      count: (sql: string, ...parameters: string[]) => Number(raw.prepare(sql).get(...parameters)?.count),
-      foreignKeys: raw.prepare("PRAGMA foreign_key_check").all(),
-    };
-  } finally { raw.close(); }
+  const query = <T>(read: (raw: DatabaseSync) => T): T => {
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try { return read(raw); } finally { raw.close(); }
+  };
+  const tables = query(raw => raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name)));
+  return {
+    kept: query(raw => Object.fromEntries(tables.filter(table => !CHANGED_TABLES.has(table) && !isWorkerCustodyDroppedTable(table))
+      .map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]))),
+    triggers: query(raw => raw.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND name NOT LIKE 'worker_%' AND name NOT LIKE 'browser_%' ORDER BY name").all()),
+    run: (runId: string) => query(raw => ["runs", "run_results", "run_receipts"].map(table => raw.prepare(`SELECT * FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"}=? ORDER BY rowid`).all(runId))),
+    everyRow: () => query(raw => tables.flatMap(table => raw.prepare(`SELECT * FROM ${table}`).all().map(row => ({ table, json: JSON.stringify(row) })))),
+    count: (sql: string, ...parameters: string[]) => query(raw => Number(raw.prepare(sql).get(...parameters)?.count)),
+    foreignKeys: query(raw => raw.prepare("PRAGMA foreign_key_check").all()),
+  };
 }
 
 const upgrade = (s: Awaited<ReturnType<typeof predecessorStore>>) => upgradeProfileAtStartup(profileBrowserClosure, s.profile.machine, s.profileId, hostFacts, systemClock);
