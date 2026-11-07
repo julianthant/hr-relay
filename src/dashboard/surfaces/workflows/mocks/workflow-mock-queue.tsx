@@ -28,7 +28,11 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const queueRoot = useRef<HTMLDivElement>(null);
   const deleted = useRef(false);
   const deleteLauncher = useRef<HTMLElement | null>(null);
-  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns), [runs, anchorIso, allRuns]);
+  const [names, setNames] = useState<ReadonlyMap<string, string>>(new Map());
+  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns).map(surface => {
+    const name = names.get(surface.runId);
+    return name === undefined ? surface : { ...surface, displayName: { state: "present" as const, value: name } };
+  }), [runs, anchorIso, allRuns, names]);
   const outcomes = useMemo(() => mockQueueOutcomes(runs), [runs]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const queueState = useMemo(() => ({
@@ -38,6 +42,12 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
     nowIso,
   }), [selected, runs, nowIso, surfaces]);
   const queueHandlers = useMemo(() => ({
+    // shortcut: names live in this mock only; persisting a rename is a later backend part.
+    onRenameTitle: (runId: string, name: string) => setNames(current => {
+      const next = new Map(current);
+      if (name) next.set(runId, name); else next.delete(runId);
+      return next;
+    }),
     onSelect: (id: string) => {
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);
