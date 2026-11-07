@@ -37,7 +37,8 @@ describe("the composed worker pool through the kernel", () => {
     assert.deepEqual(h.settled, [WORKER_1]);
     assert.equal(view(h).state, "exited");
     assert.equal(view(h).exit?.outcome, "crashed");
-    assert.equal(h.database.authority.runs.get(claimed.run.envelope.runId)?.lifecycle.state, "interrupted");
+    const settled = h.database.authority.runs.get(claimed.run.envelope.runId)?.lifecycle;
+    assert.ok(settled?.state === "terminal" && settled.outcome === "interrupted", JSON.stringify(settled));
 
     assert.equal((await commands.submit(dashboardLaunch(h, "10203373").request)).state, "applied");
     await settleMicrotasks();
@@ -71,16 +72,23 @@ describe("the composed worker pool through the kernel", () => {
     assert.equal(view(h).state, "running");
   });
 
-  it("stops a member over IPC, observes its exit and lets Retry start it again", async () => {
+  it("resets a member by stopping it over IPC into a fresh process, and Retry restarts only an exited member", async () => {
     const h = await openControlHarness();
     await planWorkers(h, 1); await settleMicrotasks();
+    const first = view(h);
     assert.equal((await h.kernel.executeWorkerPool({ ...envelope(h), type: "stop-worker", target: memberTarget(h) })).state, "applied");
+    await settleMicrotasks();
     assert.deepEqual(h.children[0]?.sent.map(message => message.kind), ["worker-stop"]);
     assert.deepEqual(h.children[0]?.kills, []);
-    assert.equal(view(h).exit?.outcome, "stopped");
-    const retried = h.kernel.executeWorkerPool({ ...envelope(h), type: "retry-worker", target: memberTarget(h) });
-    assert.equal((await retried).state, "applied");
     assert.equal(h.children.length, 2);
+    assert.notEqual(view(h).lifetimeId, first.lifetimeId);
+    assert.equal(view(h).state, "running");
+    const running = await h.kernel.executeWorkerPool({ ...envelope(h), type: "retry-worker", target: memberTarget(h) });
+    assert.equal(running.state, "rejected");
+    h.children[1]?.exit(1, null); await settleMicrotasks();
+    assert.equal(view(h).exit?.outcome, "crashed");
+    assert.equal((await h.kernel.executeWorkerPool({ ...envelope(h), type: "retry-worker", target: memberTarget(h) })).state, "applied");
+    assert.equal(h.children.length, 3);
     assert.equal(view(h).state, "running");
   });
 
@@ -88,13 +96,14 @@ describe("the composed worker pool through the kernel", () => {
     const h = await openControlHarness();
     await planWorkers(h, 1); await settleMicrotasks();
     const browserSessionId = "bbbbbbbb-0001-4000-8000-000100000000";
-    const target = { ...memberTarget(h), browserSessionId };
+    const browserTarget = () => { const { workflowId: _workflow, ...target } = memberTarget(h); return { ...target, browserSessionId }; };
+    const target = browserTarget();
     assert.equal((await h.kernel.executeWorkerPool({ ...envelope(h), type: "refresh-browser", target })).state, "applied");
     const request = h.children[0]?.sent.find(message => message.kind === "worker-request");
     assert.ok(request?.kind === "worker-request");
     assert.deepEqual(request.request, { type: "refresh-browser", browserSessionId });
     h.children[0]?.exit(1, null); await settleMicrotasks();
-    const refused = await h.kernel.executeWorkerPool({ ...envelope(h), type: "refresh-browser", target: { ...memberTarget(h), browserSessionId } });
+    const refused = await h.kernel.executeWorkerPool({ ...envelope(h), type: "refresh-browser", target: browserTarget() });
     assert.notEqual(refused.state, "applied");
   });
 

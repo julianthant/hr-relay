@@ -49,7 +49,7 @@ export function createDashboardPoolTestWorld() {
   /** `real` swaps the scripted children for real processes from the given launch and spawner. */
   async function openControlHarness(behavior: Partial<ScriptedWorkerBehavior> = {},
     real?: (lifetime: RuntimeLifetimeLock) => Readonly<{ launch: WorkerCliLaunchSpec; spawn: WorkerProcessSpawner }>): Promise<ControlHarness> {
-    const profile = await createBoundProfileFixture(), root = profile.stateRoot;
+    const profile = await createBoundProfileFixture(real === undefined ? {} : { sharedMachine: true }), root = profile.stateRoot;
     const clock = manualClock(new Date(NOW));
     const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
       undefined, undefined, undefined, boundProfileCredentials(profile.admission));
