@@ -620,6 +620,27 @@ describe("exact lifecycle reservation", () => {
     expect(() => assertStoppedProfileResourcesClosed(h.database.readProfileResourceCustody())).not.toThrow();
   });
 
+  it("refuses an unborn uncertain stop-worker restart at startup and releases its reservation", async () => {
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
+    stopped(h, h.deps.workerId); owner.children.at(-1)?.emitExit(1, null);
+    const lease = h.database.authority.workerLeases.get(h.deps.workerId), slot = h.database.authority.workerSlots.get(h.deps.workerId);
+    if (lease === undefined || slot === undefined) throw new Error("missing authority");
+    const now = h.authority.clock.now().toISOString();
+    const record = h.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+      commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now,
+      target: { workerId: lease.workerId, membershipRevision: slot.membershipRevision, controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
+    }, randomUUID(), now, personLookupDescriptor));
+    expect(record).toMatchObject({ lifecycle: { operation: { kind: "retry", mode: "browserless" } }, reset: { work: { kind: "absent" } } });
+    h.database.authority.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: record.admittedAt });
+    h.database.authority.workerControls.transition(record.commandId, "executing", { state: "uncertain", startedAt: record.admittedAt,
+      observedAt: now, message: "worker-retirement-child-close-unproved" });
+    expect(h.database.authority.workerLeases.get(h.deps.workerId)?.controlCommandId).toBe(record.commandId);
+    h.database.settleUnbornWorkerRetries(now);
+    expect(h.database.authority.workerControls.get(record.commandId)).toMatchObject({ phase: { state: "refused", message: "worker-retry-never-started" } });
+    expect(h.database.authority.commandAudits.findByCommand(record.commandId)?.result).toMatchObject({ state: "rejected" });
+    expect(h.database.authority.workerLeases.get(h.deps.workerId)?.controlCommandId).toBeUndefined();
+  });
+
   it("keeps an uncertain Retry whose replacement was born", async () => {
     const h = await fixture(), owner = await owned(h, h.deps.workerId);
     stopped(h, h.deps.workerId); owner.children.at(-1)?.emitExit(1, null);
