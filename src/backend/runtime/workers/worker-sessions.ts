@@ -1,7 +1,4 @@
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
-import { mintWorkerControlClosure, type WorkerControlClosure } from "../../storage/sqlite/worker-control.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { WorkerLifecycleBindingSchema, WorkerResetBindingSchema, type WorkerLifecycleBinding, type WorkerResetBinding } from "../../../models/run/worker-control.js";
 import { WorkerControlRefusal, WorkerBrowserObservationSchema, type WorkerBrowserObservation } from "../../../models/run/worker-control.js";
 
 import { z } from "zod";
@@ -99,7 +96,6 @@ type WorkerSessionEventCore =
   }>;
 
 export interface WorkerSessionManagerOptions {
-  readonly resetOwner?: Pick<WorkerResetBinding, "member" | "lifetime">;
   readonly workerId: WorkerId;
   readonly workflowId: WorkflowId;
   readonly stores: TaskStoreRegistry;
@@ -116,7 +112,7 @@ export interface WorkerSessionManagerOptions {
   readonly onEvent?: (event: WorkerSessionEvent) => void;
   readonly onFailure?: (failure: { system: BrowserSystemId; reason: "abandoned-acquisition-failed" | "abandoned-session-close-failed"; sessionId?: string }) => void;
   readonly onActivity?: (activity: "acquiring" | "authenticating" | "closing") => () => void;
-  readonly onObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
+  readonly onObservation?: (observation: WorkerBrowserObservation) => void;
   /** Production persistence seam for explicit per-run browser screenshots. */
   readonly browserScreenshotCapture?: RunBrowserScreenshotCapture;
 }
@@ -126,6 +122,8 @@ interface AcquisitionEnvelope {
   readonly deadlineMonotonicMs: number;
   readonly cancel: (reason: Error) => void;
   readonly claimStaleRequestRecovery: () => boolean;
+  /** An idle Reopen names the retained session it replaces; that worker's own released lease admits the exclusive replacement. */
+  readonly replacesSessionId?: string;
 }
 
 function browserStoreFor(
@@ -366,9 +364,6 @@ export class WorkerSessionManager {
   readonly #onActivity: WorkerSessionManagerOptions["onActivity"];
   readonly #onObservation: WorkerSessionManagerOptions["onObservation"];
   readonly #onFailure: WorkerSessionManagerOptions["onFailure"];
-  readonly #resetOwner: Pick<WorkerResetBinding, "member" | "lifetime"> | undefined;
-  #resetEpoch = 0;
-  readonly #observedSessions = new Set<string>();
   #controlInFlight = false;
   readonly #retained = new Map<string, Readonly<{ openedAt: string; factory: WorkerBrowserSessionFactory; acquireMs: number; duo: DuoCeremonyGateFactory; defaultMode: BrowserPresentationMode }>>();
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
@@ -385,7 +380,6 @@ export class WorkerSessionManager {
   }> | undefined;
 
   constructor(options: WorkerSessionManagerOptions) {
-    this.#resetOwner = options.resetOwner === undefined ? undefined : structuredClone(options.resetOwner);
     this.#workerId = WorkerIdSchema.parse(options.workerId);
     this.#executionWorkflowId = WorkflowIdSchema.parse(options.workflowId);
     this.#stores = options.stores;
@@ -456,7 +450,6 @@ export class WorkerSessionManager {
   }
 
   async controlBrowser(type: "refresh-browser" | "reopen-browser", sessionId: string, signal: AbortSignal): Promise<WorkerBrowserResource> {
-    this.#resetEpoch += 1;
     const resource = this.assertControlTarget(sessionId);
     const retained = this.#retained.get(resource.sessionId);
     if (retained === undefined) throw new WorkerControlRefusal("worker-browser-retained-settings-unavailable");
@@ -477,7 +470,7 @@ export class WorkerSessionManager {
       this.#acquireDeadlineMs = retained.acquireMs;
       this.#duoCeremony = retained.duo;
       this.#defaultBrowserMode = retained.defaultMode;
-      const replacement = await this.#acquireBounded(SessionNeedSchema.parse({ system: resource.system, session: "reuse-worker", access: "read", ...(resource.acceptDownloads ? { acceptDownloads: true } : {}), ...(resource.exclusive ? { exclusive: true } : {}) }), resource.instance, resource.configFingerprint, BrowserPresentationModeSchema.parse(resource.browserMode), signal);
+      const replacement = await this.#acquireBounded(SessionNeedSchema.parse({ system: resource.system, session: "reuse-worker", access: "read", ...(resource.acceptDownloads ? { acceptDownloads: true } : {}), ...(resource.exclusive ? { exclusive: true } : {}) }), resource.instance, resource.configFingerprint, BrowserPresentationModeSchema.parse(resource.browserMode), signal, resource.sessionId);
       if (replacement.sessionId === resource.sessionId || replacement.profileDirectory !== resource.profileDirectory) {
         await this.#closeSystem(replacement.system, "poisoned");
         throw new Error("worker-browser-replacement-identity-mismatch");
@@ -501,7 +494,7 @@ export class WorkerSessionManager {
   }
 
   #observe(resource: WorkerBrowserResource, health: WorkerBrowserObservation["health"]): void {
-    this.#onObservation?.(WorkerBrowserObservationSchema.omit({ leaseGeneration: true }).parse({ ...(this.#retained.get(resource.sessionId) === undefined ? {} : { openedAt: this.#retained.get(resource.sessionId)?.openedAt }), workerId: this.#workerId, sessionId: resource.sessionId, system: resource.system,
+    this.#onObservation?.(WorkerBrowserObservationSchema.parse({ ...(this.#retained.get(resource.sessionId) === undefined ? {} : { openedAt: this.#retained.get(resource.sessionId)?.openedAt }), workerId: this.#workerId, sessionId: resource.sessionId, system: resource.system,
       ...(resource.instance === undefined ? {} : { instance: resource.instance }), configFingerprint: resource.configFingerprint,
       profileRevision: resource.profileRevision,
       signInFingerprint: resource.signInFingerprint,
@@ -586,7 +579,6 @@ export class WorkerSessionManager {
     use: (driver: BrowserDriver, captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>) => Promise<Result>,
     screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result> {
-    this.#resetEpoch += 1;
     if (this.#closingReason !== undefined) {
       throw new Error(
         `${need.system} driver lease cannot start while worker sessions are closing for ${this.#closingReason}`,
@@ -713,26 +705,6 @@ export class WorkerSessionManager {
     if (screenshot.state === "unavailable") return screenshot.reason;
   }
 
-  async closeForReset(input: WorkerResetBinding): Promise<WorkerControlClosure> {
-    return this.#closeForControl(WorkerResetBindingSchema.parse(input));
-  }
-
-  async closeForRetirement(input: WorkerLifecycleBinding): Promise<WorkerControlClosure> {
-    const binding = WorkerLifecycleBindingSchema.parse(input);
-    if (binding.operation.kind !== "remove") throw new Error("worker-retirement-invalid-operation");
-    return this.#closeForControl(binding);
-  }
-
-  async #closeForControl(binding: WorkerResetBinding | WorkerLifecycleBinding): Promise<WorkerControlClosure> {
-    if (binding.member.workerId !== this.#workerId || this.#resetOwner === undefined
-      || canonicalJsonStringify(this.#resetOwner) !== canonicalJsonStringify({ member: binding.member, lifetime: binding.lifetime })) throw new Error("worker-reset-closure-member-conflict");
-    await this.closeAll("worker-stop");
-    if (this.#resources.size !== 0 || this.#starting.size !== 0 || this.#tails.size !== 0 || this.#acquisitionCleanupFailures.size !== 0) throw new Error("worker-reset-closure-unproved");
-    const epoch = this.#resetEpoch;
-    return mintWorkerControlClosure(binding, [...this.#observedSessions], () => this.#resetEpoch === epoch
-      && this.#resources.size === 0 && this.#starting.size === 0 && this.#tails.size === 0);
-  }
-
   async closeAll(reason: "parked" | "worker-stop"): Promise<void> {
     if (this.#closingReason !== undefined) {
       throw new Error(`worker ${this.#workerId} browser sessions are already closing for ${this.#closingReason}`);
@@ -815,6 +787,7 @@ export class WorkerSessionManager {
     configFingerprint: Fingerprint,
     browserMode: BrowserPresentationMode,
     signal: AbortSignal,
+    replacesSessionId?: string,
   ): Promise<WorkerBrowserResource> {
     const acquisition = new AbortController();
     const forwardAbort = (): void => {
@@ -842,6 +815,7 @@ export class WorkerSessionManager {
         staleRequestRecovered = true;
         return true;
       },
+      ...(replacesSessionId === undefined ? {} : { replacesSessionId }),
     });
     try {
       return await waitForAcquisition(started, acquisition.signal, need.system);
@@ -1017,7 +991,6 @@ export class WorkerSessionManager {
     if (exclusive !== (need.exclusive === true)) {
       throw new Error(`${need.system} session exclusivity disagrees with its registered provider`);
     }
-    this.#resetEpoch += 1;
     const acquired = this.#onActivity?.("acquiring");
     let resource: WorkerBrowserResource;
     try {
@@ -1033,10 +1006,10 @@ export class WorkerSessionManager {
       signal,
       duoCeremony: gate,
       claimStaleRequestRecovery: envelope.claimStaleRequestRecovery,
+      ...(envelope.replacesSessionId === undefined ? {} : { replacesSessionId: envelope.replacesSessionId }),
       acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs - this.#clock.monotonicMs()),
     });
     } finally { acquired?.(); }
-    this.#observedSessions.add(resource.sessionId);
     this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
     let login: LoginResult;
     try {

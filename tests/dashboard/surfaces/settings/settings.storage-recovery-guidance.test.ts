@@ -103,10 +103,7 @@ it("keeps idle, loading, failure, successful refresh and failed refresh distinct
   assert.match(dom.textContent ?? "", /Recovery.*Not checked/su);
   assert.equal(dom.querySelector('[data-slot="skeleton"]'), null);
   assert.doesNotMatch(dom.textContent ?? "", /Synthetic doctor unavailable/u);
-  const failure = [...dom.querySelectorAll('[role="alert"]')].find(candidate => candidate.textContent?.includes('Storage checks could not finish') && candidate.querySelector('button'));
-  assert.ok(failure);
-  await openDisclosure(failure, "Diagnostic details");
-  assert.equal(dom.querySelector('[aria-label="Check error diagnostics"]')?.textContent, ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
+  assert.ok([...dom.querySelectorAll('[role="alert"]')].some(candidate => candidate.textContent?.includes('Storage checks could not finish')));
   assert.doesNotMatch(dom.textContent ?? "", /Synthetic doctor unavailable/u);
   assert.equal(doctorButton(dom).disabled, false);
   await act(async () => { doctorButton(dom).click(); resolve(HEALTHY); });
@@ -115,9 +112,7 @@ it("keeps idle, loading, failure, successful refresh and failed refresh distinct
   assert.match(dom.textContent ?? "", /Recovery.*Clear/su);
   await act(async () => { reject(new Error("Synthetic refresh failed")); });
   assert.doesNotMatch(dom.textContent ?? "", /Synthetic refresh failed/u);
-  const refreshFailure = [...dom.querySelectorAll('[role="alert"]')].find(candidate => candidate.textContent?.includes('Storage checks could not finish') && candidate.querySelector('button'));
-  assert.ok(refreshFailure);
-  await openDisclosure(refreshFailure, "Diagnostic details");
+  assert.ok([...dom.querySelectorAll('[role="alert"]')].some(candidate => candidate.textContent?.includes('Storage checks could not finish')));
   assert.ok(dom.textContent?.includes(ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text));
   assert.doesNotMatch(dom.textContent ?? "", /Synthetic refresh failed/u);
   assert.match(dom.textContent ?? "", /Recovery.*Clear/su);
@@ -149,8 +144,8 @@ it("preserves unavailable credentials, upgrade history and counts beside corrupt
     authorityUpgrades: {state: "unavailable", cause}, protectedSettings: {state: "unavailable", cause},
     recovery: {state: "interrupted", findings: [{marker: "authority-restore", state: "interrupted"}]}});
   const dom = await mountDoctor(report);
-  assert.match(dom.textContent ?? "", /Data store unavailable/u);
   assert.doesNotMatch(dom.textContent ?? "", /Data store available/u);
+  assert.match(dom.textContent ?? "", /Data store unavailable/u);
   assert.match(dom.textContent ?? "", /Stored data.*Unavailable/su);
   assert.match(dom.textContent ?? "", /Recovery.*Interrupted/su);
   assert.match(dom.textContent ?? "", /An interrupted operation needs review/u);
@@ -210,13 +205,13 @@ it("loads a fresh last completed report on revisit without running the doctor, w
   assert.equal(runs, 0);
   assert.match(dom.textContent ?? "", /Last checked/u);
   assert.match(dom.textContent ?? "", /Recovery.*Clear/su);
-  assert.match(dom.textContent ?? "", /Data store unavailable/u);
+  assert.doesNotMatch(dom.textContent ?? "", /Data store unavailable/u); // the shell notice owns the unavailable state, so the page adds no second toast
   assert.doesNotMatch(dom.textContent ?? "", /Data store available/u);
 });
 
 it("keeps nonzero work counts visible without classifying normal work as a failure", async () => {
   const report = StorageDoctorWireSchema.parse({...HEALTHY, counts: {state: "available", values: {
-    pendingCommands: 3, unresolvedWriteIntents: 2, leases: 4, providerReservations: 1, artifactOutbox: 5,
+    pendingCommands: 3, unresolvedWriteIntents: 2, providerReservations: 1, artifactOutbox: 5,
   }}});
   const dom = await mountDoctor(report);
   const group = dom.querySelector('[aria-label="Work in progress"]');

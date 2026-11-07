@@ -3,7 +3,7 @@ import { useSettingsRead } from "../../../state/settings-read-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import type { StorageDoctorLatestWire } from "../../../../models/dashboard/storage.js";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useStorageClient } from "./storage-client.js";
 import { z } from "zod";
@@ -100,3 +100,7 @@ export function useStorageDoctor() {
   };
   return { doctor, runDoctor };
 }
+
+/** Set while this person's data was restored from a backup; no provider means no notice. */
+export const RestoreNoticeContext = createContext<{ backupCapturedAt: string } | undefined>(undefined);
+export const useRestoreNotice = () => useContext(RestoreNoticeContext);

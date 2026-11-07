@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps } from "../../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS } from "../../../fixtures/intake-kernel-seams.js";
@@ -115,7 +116,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
           throw new Error("write resolution is not wired in the parity seed");
         },
       },
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
     const commands = createDashboardCommandService({ kernel, projection });
     const startPlans = createStartPlanService({

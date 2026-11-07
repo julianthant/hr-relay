@@ -10,8 +10,9 @@ import { composeWorkerRuntime, WorkerLaunchUncertainError } from "../../../../sr
 import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
 import { hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
-import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import { WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/models/run/worker.js";
+import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import type { WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
 import { composeSelectedProfileStorage, RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
@@ -34,10 +35,10 @@ import { happySessionHarness, ManualScheduler, personLookupQueuedRun } from "../
 const retainedLaunchCustody: object[] = [];
 
 for (const { mode: failure, name } of [
-  { mode: "close", name: "retains an unproved closure report while settling the worker lease as crashed" },
+  { mode: "close", name: "retains an unproved closure report" },
   { mode: "close-log", name: "retains unproved closure when its diagnostic fails and the next diagnostic succeeds" },
   { mode: "runtime-log", name: "retains the original session closure failure when runtime diagnostics fail" },
-  { mode: "launch", name: "reports launch-uncertain with custody held and leaves the worker lease unchanged" },
+  { mode: "launch", name: "reports launch-uncertain with custody held and leaves the worker slot unchanged" },
 ] as const) it(name, async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
@@ -48,7 +49,7 @@ for (const { mode: failure, name } of [
   const managers: WorkerSessionManager[] = [];
   let launches = 0, probes = 0, launchFailure: Promise<never> | undefined;
   let closedWorkerDatabase: AuthorityDatabase | undefined, launchedDirectory: string | undefined;
-  let beforeLaunch: WorkerLeaseRecord | undefined, launchReport: WorkerLaunchUncertainError | undefined;
+  let beforeLaunch: WorkerSlotRecord | undefined, launchReport: WorkerLaunchUncertainError | undefined;
   let profileRoot: string | undefined;
   const machineRoot = f.admission.captureBrowserRegistryContext().machineRoot;
   const registryPath = join(machineRoot, "machine", "browser-roots.json");
@@ -105,7 +106,7 @@ for (const { mode: failure, name } of [
     });
     vi.spyOn(chromium, "launchPersistentContext").mockImplementation((directory, options) => {
       assert.deepEqual(options?.args, ["--disable-extensions"]);
-      beforeLaunch = context.database.authority.workerLeases.get("person-lookup-worker-1"); assert.ok(beforeLaunch);
+      beforeLaunch = context.database.authority.workerSlots.get("person-lookup-worker-1"); assert.ok(beforeLaunch);
       launches += 1; launchedDirectory = directory; launchFailure = Promise.reject(new Error("uncertain launch failure")); return launchFailure;
     });
   }
@@ -129,29 +130,20 @@ for (const { mode: failure, name } of [
     });
     if (failure === "close" || failure === "close-log") {
       assert.ok(report); assert.equal(report.closure, "unproved"); assert.deepEqual(report.outcomes, []);
-      const lease = context.database.authority.workerLeases.get(report.workerId);
-      assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
     }
     else if (failure === "runtime-log") {
       assert.equal(report, undefined); assert.ok(failedWorkerId);
-      const lease = context.database.authority.workerLeases.get(failedWorkerId);
-      assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
     }
     else {
       assert.equal(report, undefined); assert.ok(launchReport); assert.ok(beforeLaunch);
       assert.deepEqual(launchReport.report, { state: "launch-uncertain", custody: "held", workerId: beforeLaunch.workerId, workflowId: "person-lookup" });
       assert.equal(hasUnprovedSourceClosure(launchReport), true);
-      const expectedLease = beforeLaunch;
-      const lease = withReadonlyAuthoritySnapshot(f.path, database => {
-        const row = database.prepare("SELECT payload_json FROM worker_leases WHERE worker_id=?").get(expectedLease.workerId);
-        assert.ok(row && typeof row.payload_json === "string");
-        return WorkerLeaseRecordSchema.parse(JSON.parse(row.payload_json));
-      });
-      assert.notEqual(lease.lifecycle.state, "stopped"); assert.deepEqual(lease, expectedLease);
+      const expectedSlot = beforeLaunch;
+      assert.deepEqual(context.database.authority.workerSlots.get(expectedSlot.workerId), expectedSlot);
       assert.ok(probes > 0); assert.equal(launches, 1); assert.ok(launchedDirectory);
       const registry = BrowserRootsSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
-      const owned = registry.roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === expectedLease.workerId);
-      assert.deepEqual(owned.map(row => basename(row.directory)).sort(), [...expectedLease.browserSystems].sort());
+      const owned = registry.roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === expectedSlot.workerId);
+      assert.deepEqual(owned.map(row => basename(row.directory)).sort(), [...workflowProjections(personLookupDescriptor).systems].sort());
       const uncertain = owned.find(row => join(machineRoot, row.directory) === launchedDirectory);
       assert.ok(uncertain); assert.equal(uncertain.launch.state, "unknown");
       for (const row of owned) {

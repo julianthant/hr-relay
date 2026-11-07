@@ -1,19 +1,16 @@
-import { WorkerControlRefusal } from "../../../../src/models/run/worker-control.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
-import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 
-export async function neverBornFixture(realDoctor = false, typedSpawnRefusal = false) {
+/** A signed-in dashboard whose worker spawner counts and refuses every spawn; `realDoctor` lets a test race the authority doctor. */
+export async function startAdmissionFixture(realDoctor = false) {
   const profile = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(profile.workspace, name));
@@ -38,37 +35,10 @@ export async function neverBornFixture(realDoctor = false, typedSpawnRefusal = f
           try { return await checking; } catch (error) { detectorErrors.push(error); throw error; }
         },
       }),
-      workerProcess: { spawn: () => { spawns += 1; throw typedSpawnRefusal ? new WorkerControlRefusal("attempted fixture spawn refused after entry") : new Error("refused start must not spawn a worker"); } } });
+      workerProcess: { spawn: () => { spawns += 1; throw new Error("refused start must not spawn a worker"); } } });
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
     return { profile, runtime, dashboard, token: active.token, clock, context, spawns: () => spawns, detectorErrors, armDoctorRace() { doctorRace = true; }, disarmDoctorRace() { doctorRace = false; },
       post: (path: string, input: unknown) => fetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(input) }),
       async close() { try { await dashboard.stop(); } finally { await profile.close(); } } };
   } catch (error) { await runtime.close(); await profile.close(); throw error; }
-}
-
-export async function refusedStart(f: Awaited<ReturnType<typeof neverBornFixture>>, refuse = true, startup: "refused" | "unknown" = refuse ? "refused" : "unknown") {
-  const response = await f.post("start-plans", { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false });
-  assert.equal(response.status, 200);
-  const plan = StartPlanWireSchema.parse(await response.json());
-  if (refuse) f.armDoctorRace();
-  const command = { commandId: randomUUID(), family: "start", type: "start-run", requestedAt: f.clock.now().toISOString(),
-    requestedBy: "local-operator", source: "run-start", target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints };
-  const started = await f.post("commands", command); assert.equal(started.status, 200);
-  const result = CommandResultSchema.parse(await started.json()); assert.equal(result.state, "applied");
-  if (result.state !== "applied") throw new Error("fixture enqueue required");
-  assert.equal(result.workerStartup?.state, startup);
-  const spawn = f.context.database.authority.workerControls.get(result.workerStartup?.commandId ?? ""); assert.ok(spawn?.request.type === "spawn-worker");
-  const slot = f.context.database.authority.workerSlots.get(spawn.request.payload.workerId); assert.ok(slot);
-  return { command, result, slot, spawn };
-}
-
-export function nativeWorkerBytes(path: string) {
-  const db = new DatabaseSync(path, { readOnly: true });
-  try { return { commands: db.prepare("SELECT * FROM commands ORDER BY id").all(),
-    audits: db.prepare("SELECT * FROM command_audits ORDER BY id").all(), controls: db.prepare("SELECT * FROM worker_controls ORDER BY command_id").all(),
-    runs: db.prepare("SELECT * FROM runs ORDER BY id").all(),
-    generation: db.prepare("SELECT authority_generation FROM database_states").all(),
-    timeline: db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),
-    slots: db.prepare("SELECT * FROM worker_slots ORDER BY id").all(), pools: db.prepare("SELECT * FROM worker_pools ORDER BY workflow").all() }; }
-  finally { db.close(); }
 }

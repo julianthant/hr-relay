@@ -284,7 +284,7 @@ const BOOTSTRAP = {
 };
 const DAY = {
   day: "2026-07-31", descriptorHash: HASH_A, projectionGeneration: 1, snapshotCursor: "pc:1",
-  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [], workerPools: [], notifications: [],
+  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerAuthority: { state: "present", members: [] }, workerPools: [], notifications: [],
 };
 const DETAIL = {
   runId: UUID_1, rowRevision: 1, panelKind: "run",
@@ -430,7 +430,6 @@ const SQLITE_ARTIFACT_OUTBOX = {
 const AUTHORITY_PENDING_COUNTS = {
   pendingCommands: 1,
   unresolvedWriteIntents: 1,
-  leases: 1,
   providerReservations: 1,
   artifactOutbox: 1,
 };

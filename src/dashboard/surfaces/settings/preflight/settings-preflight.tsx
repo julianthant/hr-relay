@@ -4,7 +4,7 @@ import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { ReactNode } from "react";
 import { CapabilitiesSection } from "./settings-capabilities.js";
-import { Badge, Banner, BodySection, Button, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field } from "../../../ds/ui.js";
+import { Badge, BodySection, Button, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { usePreflightActions } from "./preflight-actions-model.js";
 import { usePreflightScope } from "./preflight-client.js";
@@ -140,15 +140,15 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         <Button variant="secondary" onClick={() => { void testOcr(); }} disabled={ocr.state === "disabled" || ocrBusy || ocr.state === "uncertain"} loading={ocrBusy}>Test OCR</Button>
         <Button variant="secondary" onClick={() => { void testAssistant(); }} disabled={assistantTest.state === "loading"} loading={assistantTest.state === "loading"}>Test assistant</Button>
       </div>
-      {(assistantTest.state === "passed" || assistantTest.state === "failed") && <Banner className="mb-[var(--ds-space-heading-content)]" tone={assistantTest.state === "passed" ? "success" : "danger"}
-        title={assistantTest.state === "passed" ? "Assistant test passed" : "Assistant test failed"}>{assistantTest.state === "failed" ? assistantTest.message : "The assistant can answer now. Run the test again if it stops replying."}</Banner>}
-      {ocr.state !== "idle" && <Banner className="mb-[var(--ds-space-heading-content)]"
-        tone={ocr.state === "completed" ? "success" : ocrBusy ? "info" : ocr.state === "failed" ? "danger" : "warning"}
-        title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "loading" ? "Testing OCR" : ocr.state === "disabled" ? "OCR test unavailable" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}>
-        {ocr.state === "completed" ? `Model: ${ocr.model}` : ocr.state === "loading" ? "Reading the fixed synthetic test page." : ERROR_CATALOG[ocr.code].text}
-      </Banner>}
-    {preflight.state === "refused" && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
-    {historical && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
+      {(assistantTest.state === "passed" || assistantTest.state === "failed") && <Notice tone={assistantTest.state === "passed" ? "success" : "danger"}
+        title={assistantTest.state === "passed" ? "Assistant test passed" : "Assistant test failed"} description={assistantTest.state === "failed" ? assistantTest.message : undefined} />}
+      {ocr.state === "disabled" && <p className={cn(dsText.meta, "mb-[var(--ds-space-heading-content)]")}><span className="font-semibold">OCR test unavailable</span> <span>{ERROR_CATALOG[ocr.code].text}</span></p>}
+      {ocr.state !== "idle" && ocr.state !== "loading" && ocr.state !== "disabled" && <Notice
+        tone={ocr.state === "completed" ? "success" : ocr.state === "failed" ? "danger" : "warning"}
+        title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}
+        description={ocr.state === "completed" ? `Model: ${ocr.model}` : ERROR_CATALOG[ocr.code].text} />}
+    {preflight.state === "refused" && <Notice tone="warning" title="Readiness unavailable" description={preflight.message} />}
+    {historical && <Notice sticky tone="warning" title="Previous result" description={previousMessage} action={{ label: "Run preflight", onAction: onRerun }} />}
     {preflight.state !== "refused" && (displayed === undefined ? show && <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
       <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label">
         <StatusDot status={busy ? "running" : historical ? "queued" : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
@@ -188,8 +188,8 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
       <Button size="sm" variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
     </div>
     {preflight.state === "idle" && <span className={dsText.meta}>No current preflight report. Loading readiness…</span>}
-    {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
-    {previousMessage !== undefined && <Banner tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
+    {preflight.state === "refused" && <Notice tone="warning" title="Readiness unavailable" description={preflight.message} />}
+    {previousMessage !== undefined && <Notice sticky tone="warning" title="Previous result" description={previousMessage} action={{ label: "Run preflight", onAction: onRerun }} />}
     {displayed !== undefined && <>
       <span className={cn(dsText.meta, "break-words text-[color:var(--ds-fg-muted)]")}>
         Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {fmtClock(displayed.report.checkedAt)}</time>

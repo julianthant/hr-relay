@@ -309,7 +309,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
     queueSurfaces: rawSurfaces,
 
     workerPools: [],
-    workerOperations: [],
     workerAuthority: { state: "present", members: ["running", "idle", "starting", "failed", "idle"].map((phase, index) => ({
       workerId: `person-lookup-worker-${String(index + 1)}`, workflow: WORKFLOW_ID,
       ordinal: index + 1, poolIndex: index + 1, membershipRevision: 1, phase,

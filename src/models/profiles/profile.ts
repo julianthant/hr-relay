@@ -1,6 +1,5 @@
 import { CanonicalCrashRecoveryRequestSchema } from "../run/worker.js";
 import { FileIdentitySchema } from "../storage/file-identity.js";
-import { WorkerPoolMemberSchema } from "../run/worker-slot.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { ProfileDisplayNameSchema, ProfileIdentitySchema, profileInitials } from "./profile-identity.js";
@@ -228,11 +227,10 @@ export const LogoutSettlementSchema = z.strictObject({
   before: LogoutFingerprintSchema,
   after: LogoutFingerprintSchema.optional(),
   requests: z.array(CanonicalCrashRecoveryRequestSchema).max(100_000),
-  workers: z.array(z.strictObject({ member: WorkerPoolMemberSchema, processId: z.number().int().positive(), leaseGeneration: z.number().int().positive() })).max(64),
 }).refine(value => value.phase === "prepared" ? value.after === undefined : value.after !== undefined, "logout settlement fingerprint prefix invalid");
 
 export const LogoutOperationSchema = z.strictObject({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   kind: z.literal("logout"),
   operationId: z.uuid(),
   profileId: z.uuid(),

@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
@@ -14,13 +15,12 @@ import { createCommandKernel } from "../../../../src/backend/runs/commands/comma
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { OfflineSpanRootRepairService } from "../../../../src/backend/runs/recovery/span-root-repair.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { StartPlanRecordSchema,derivePlannedInputFingerprint } from "../../../../src/models/run/start-plan.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { appliedRunIds } from "../../../support/fixtures/operator-command-fixtures.js";
@@ -62,8 +62,7 @@ async function fixture(ambiguous=false) {
   const unused=()=>{throw new Error("unrequested runtime effect");};
   const kernel=createCommandKernel({authority:database,lifecycle,clock,ids,appVersion:"0.1.0",descriptors,
     writeResolution:{recheck:unused,resolveAbsent:unused},configIdentity:UNSTORED_CONFIG_IDENTITY,intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
-    workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
-      stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}}});
+    workerRuntime:{pool:unusedWorkerPool(unused)}});
   const planner=createStartPlanService({authority:database,authorityRead:database,descriptors,clock,ids:sequentialIdFactory("b"),
     planTtlMs:600000,configFingerprint:active.configFingerprint,configSnapshotId:active.configSnapshotId,plannedBy:"local-operator"});
   let plan=planner.plan({workflowId:descriptor.id,submissions:ambiguous?[{eid:"10812345"}]:[{eid:"10812345",mode:"write"}],dryRun:true,selectedStepKeys:descriptor.timeline.map(step=>step.key)});
@@ -79,11 +78,9 @@ async function fixture(ambiguous=false) {
     target:{workflowId:descriptor.id,startPlanId:plan.startPlanId,expectedVersion:plan.expectedVersion},payload:plan.fingerprints});
   const runIds=appliedRunIds(result);assert.equal(runIds.length,ambiguous?2:1);
   const created=database.authority.runs.get(runIds[0]);assert.ok(created);
-  const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{ commandId: ids.uuid(), workflow: descriptor.id,
-    poolIndex: 1, expectedPoolVersion: 0, processId: process.pid, now: NOW },ids.uuid()));
-  assert.equal(database.authority.workerLeases.start({workerId:slot.workerId,workflow:descriptor.id,browserSystems:[],processId:process.pid,requestedBy:"local-operator",now:NOW}).state,"started");
+  const slot=database.withAuthorityTransaction(repositories=>admitFixtureSlot(repositories,descriptor.id,1,NOW));
   const run=requireLifecycleApplied(lifecycle.claimNext({commandId:ids.uuid(),workflow:descriptor.id,workerId:slot.workerId,
-    workerLifetime:testWorkerLifetime(database,descriptor.id,slot.poolIndex).workerLifetime,runtimeConfig:{
+    runtimeConfig:{
     generation:active.generation,settingsRevision:active.settingsRevision,settingsFingerprint:active.settingsFingerprint,configFingerprint:active.configFingerprint}}));
   database.close();
   const issueOperation = () => profile.admission.acquireOfflineMaintenance();

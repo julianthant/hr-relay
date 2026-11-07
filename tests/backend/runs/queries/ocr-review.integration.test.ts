@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -72,8 +73,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
   const kernel = createCommandKernel({ authority: f.database, lifecycle: reader, clock: f.clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
     descriptors: publicDescriptors, readableDescriptors: { resolve: f.resolve }, configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
-      stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+    workerRuntime: { pool: unusedWorkerPool(unused) } });
   const start = authenticateRootRun(f.database.authority, f.run).command;
   const refused = kernel.execute({ ...start, commandId: randomUUID() });
   assert.equal(refused.state, "rejected"); if (refused.state === "rejected") assert.equal(refused.code, "target-not-found");

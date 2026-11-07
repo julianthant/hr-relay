@@ -64,11 +64,9 @@
     - heading "Spreadsheet intake" [level=2]
     - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row. mapping onto Person Lookup
     - button "Close"
-    - alert: This intake session could not be read The task stopped with an unclassified failure. Review local diagnostic evidence.
 - region "Assistant panel":
   - region "Relay assistant":
     - button "Update Alex Rivera work email"
-    - button "Chat files"
     - button "Chats"
     - button "New chat"
     - button "Close assistant"
@@ -105,4 +103,7 @@
     - button "Add workers"
     - button "Settings"
     - button "Log out"
-- region "Notifications"
+- region "Notifications":
+  - alert "Intake session could not be read":
+    - heading "Intake session could not be read" [level=2]
+    - paragraph: The task stopped with an unclassified failure. Review local diagnostic evidence.

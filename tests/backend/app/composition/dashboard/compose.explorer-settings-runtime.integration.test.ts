@@ -131,9 +131,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const records: Parameters<typeof children.realStubSpawner>[0] = [];
     const runtime = await composeDashboardRuntime({ lifetimeLock,
       frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
-      workerProcess: { launch: children.stubLaunch(join(profile.stateRoot, "state.db"),
-        join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "installed", process.execPath, lifetimeLock),
-        spawn: children.realStubSpawner(records, lifetimeLock), birth: { pollMs: 25, timeoutMs: 10_000 } },
+      workerProcess: { launch: children.stubLaunch(lifetimeLock), spawn: children.realStubSpawner(records, lifetimeLock) },
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -184,9 +182,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.ok(records[0]?.pid !== undefined);
     const database = profile.openDatabase({ path: join(profile.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
     try {
-      const started = database.authority.workerLeases.get("person-lookup-worker-1");
-      assert.ok(started);
-      assert.equal(started.processId, records[0].pid);
+      assert.equal(database.authority.workerSlots.get("person-lookup-worker-1")?.retiredAt, null);
       assert.deepEqual(database.authority.timelineEvents.page({}).filter(record => record.payload.kind === "span"), []);
     } finally { database.close(); }
     const deadline = setTimeout(() => {
@@ -199,13 +195,10 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }
     const card = days.at(-1)?.workerCards[0];
     assert.equal(card?.workerId, "person-lookup-worker-1");
-    assert.equal(card?.state, "starting");
-    assert.ok(card);
-    assert.ok(card.controls);
-    assert.deepEqual(card.controls.ownership, { state: "owned" });
-    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
-    assert.deepEqual(card?.browsers, []);
-    assert.equal(records[0]?.exited, false);
+    assert.ok(card?.state === "starting" || card?.state === "idle");
+    assert.equal(card.controls?.basis.state, "present");
+    assert.deepEqual(card.browsers, []);
+    assert.equal(records[0]?.child.exitCode, null);
   }, scaledMs(20_000));
 
   it("plans new runs with saved settings without a dashboard restart", async () => {

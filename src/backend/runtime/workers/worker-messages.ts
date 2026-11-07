@@ -25,14 +25,13 @@ export const WorkerActivitySchema = z.strictObject({
 }).refine(activity => (activity.state === "busy") === (activity.runId !== undefined), "worker-activity-run-binding-invalid");
 export type WorkerActivity = z.infer<typeof WorkerActivitySchema>;
 
-export const WorkerChildBrowserObservationSchema = WorkerBrowserObservationSchema.omit({ leaseGeneration: true });
-export type WorkerChildBrowserObservation = z.infer<typeof WorkerChildBrowserObservationSchema>;
+export type WorkerChildBrowserObservation = z.infer<typeof WorkerBrowserObservationSchema>;
 
 export const WorkerChildMessageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("worker-ready"), workerId: WorkerIdSchema, pid: z.number().int().positive(), profileId: z.uuid(),
     sessionGeneration: z.number().int().nonnegative(), browserSystems: z.array(BrowserSystemIdSchema), activity: WorkerActivitySchema }),
   z.strictObject({ kind: z.literal("worker-activity"), activity: WorkerActivitySchema }),
-  z.strictObject({ kind: z.literal("worker-browser"), observation: WorkerChildBrowserObservationSchema }),
+  z.strictObject({ kind: z.literal("worker-browser"), observation: WorkerBrowserObservationSchema }),
   z.strictObject({ kind: z.literal("worker-reply"), requestId: z.uuid(), outcome: WorkerReplyOutcomeSchema }),
 ]);
 export type WorkerChildMessage = z.infer<typeof WorkerChildMessageSchema>;

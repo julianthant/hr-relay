@@ -30,7 +30,7 @@ for (const mutation of ["old-revision", "skipped-revision", "operation-content"]
       syncBuiltinESMExports();
       try {
         assert.throws(() => mutation === "operation-content"
-          ? f.machine.publishProfileOperation(LogoutOperationSchema.parse({ schemaVersion: 2, kind: "logout", operationId: randomUUID(),
+          ? f.machine.publishProfileOperation(LogoutOperationSchema.parse({ schemaVersion: 3, kind: "logout", operationId: randomUUID(),
             profileId: f.admission.profileBinding.profileId, sessionGeneration: f.machine.readProfileRegistry().sessionGeneration, source, at: "2026-11-01T00:00:00.000Z", phase: "complete" }))
           : f.machine.publishProfileRegistry(before, advanceProfileRegistryDocument(before, {})), /fixture logical publication/u);
       } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }

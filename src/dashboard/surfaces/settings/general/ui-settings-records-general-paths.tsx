@@ -3,7 +3,7 @@ import { useRef,useState,type ReactNode } from "react";
 import { z } from "zod";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import { Banner,BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Switch,dsText } from "../../../ds/ui.js";
+import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Switch,dsText, Notice } from "../../../ds/ui.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { LoadingRegion,SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
@@ -109,7 +109,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance, deleteAc
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
-    {editor.editor.state === "failed" && sectionId !== "paths" && <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>}
+    {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
       : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section={sectionId} contentOnly />}
@@ -122,8 +122,8 @@ function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId:
   if (editor.editor.state !== "loaded") throw new Error("settings-form-document-unavailable");
   const document = editor.editor.document;
   return <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
-      {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
-      {editor.readProblem !== undefined && <Banner tone="warning" title="Current settings unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
+      {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={editor.readProblem} action={{ label: "Refresh", onAction: editor.reload }} />}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} />}</div>
     </Form>;

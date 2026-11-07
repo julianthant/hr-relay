@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
@@ -10,12 +10,13 @@ import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admiss
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, OPENABLE_AUTHORITY_SCHEMA_VERSIONS, SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, boundProfileCredentials, withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 
 const fields = (email: string, clock: TestClock) => ({ email, password: "disposable-fixture-password", at: clock.now().toISOString() });
 
@@ -165,4 +166,51 @@ for (const selected of ["held", "none", "healthy"] as const) it(`holds one perso
     const session = signIn(first.workspace, first.lifetime, clock, "fixture@ucsd.edu");
     try { const result = session.attempt(); assert.equal(result.state, "active", JSON.stringify(result)); } finally { await session.close(); }
   } finally { await first.close(); }
+});
+
+/** A signed-up profile (registry, credentials, settings) left at schema 20 by a stopped build. */
+async function schema20Profile() {
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
+  const native = new DatabaseSync(f.path);
+  try { native.exec("BEGIN EXCLUSIVE"); restoreSchema20CompletionFixture(native); native.exec("COMMIT"); } finally { native.close(); }
+  return { f, clock };
+}
+const userVersion = (path: string) => { const raw = new DatabaseSync(path, { readOnly: true }); try { return raw.prepare("PRAGMA user_version").get()?.user_version; } finally { raw.close(); } };
+
+it("starts and signs in to a populated schema-20 profile", async () => {
+  const { f, clock } = await schema20Profile(), restore = vi.spyOn(OfflineAuthorityRestoreService.prototype, "restoreNewest");
+  try {
+    assert.equal(userVersion(f.path), 20);
+    f.admission.release(); f.machine.release(); clock.advanceWall(1000);
+    await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock);
+    assert.equal(restore.mock.calls.length, 0);
+    const session = signIn(f.workspace, f.lifetime, clock, "fixture@ucsd.edu");
+    try { const result = session.attempt(); assert.equal(result.state, "active", JSON.stringify(result)); } finally { await session.close(); }
+    assert.equal(userVersion(f.path), CURRENT_AUTHORITY_SCHEMA_VERSION);
+  } finally { restore.mockRestore(); await f.close(); }
+});
+
+it("reads the restore-candidate inventory of a schema-20 copy", async () => {
+  const { f } = await schema20Profile();
+  try {
+    const candidate = join(f.stateRoot, "backups", "schema-20-candidate.sqlite");
+    mkdirSync(join(f.stateRoot, "backups"), { recursive: true, mode: 0o700 }); copyFileSync(f.path, candidate);
+    const sha256 = createHash("sha256").update(readFileSync(candidate)).digest("hex");
+    // Restore reads the candidate as the stopped-maintenance owner, as takeStoppedProfileBackupFixture does.
+    withOfflineMaintenanceSync(f.admission, operation => {
+      operation.consume();
+      const stopped = f.admission.forStoppedMaintenance(operation);
+      try {
+        const copy = stopped.verifiedReadOnlyCopy(candidate, sha256);
+        try { assert.ok(AuthorityDatabase.readRestoreCandidateInventory(stopped, copy, candidate, operation)); } finally { copy.release(); }
+      } finally { if (stopped !== f.admission) stopped.release(); }
+    });
+  } finally { await f.close(); }
+});
+
+it("opens at startup and restore exactly the upgradeable stopped versions plus the current one", () => {
+  const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => from + index);
+  assert.deepEqual(UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS, range(8, CURRENT_AUTHORITY_SCHEMA_VERSION - 1));
+  assert.deepEqual(OPENABLE_AUTHORITY_SCHEMA_VERSIONS, range(8, CURRENT_AUTHORITY_SCHEMA_VERSION));
+  assert.equal(SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.at(-1), CURRENT_AUTHORITY_SCHEMA_VERSION - 1);
 });

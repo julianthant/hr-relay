@@ -111,7 +111,8 @@ describe("SQLite settings authority", () => {
         const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
         const result = executeSettingsCommand({ authority: db, clock, ids: { uuid: randomUUID }, settings }, ${JSON.stringify(foreign)});
         assert.equal(result.state, 'rejected'); assert.equal(result.code, 'command-divergent');
-      } finally { db.close(); admission.release(); machine.release(); await lifetime.close(); process.disconnect(); }
+      } finally { db.close(); admission.release(); machine.release(); }
+      process.exit(0);
     `, [], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)) });
     assert.equal(child.status, 0, child.stderr);
     assert.deepEqual(readFileSync(path), bytes);

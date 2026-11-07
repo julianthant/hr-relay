@@ -110,7 +110,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const rerun = status.getByRole("button", { name: "Run preflight", exact: true });
       await expect(scope).toBeVisible();
       await chooseSelect(scope, server.scope);
-      await expect(surface).toContainText("Readiness unavailable");
+      await expect(page.getByText("Readiness unavailable", { exact: true })).toBeVisible();
       await expect(rerun).toBeEnabled();
       await assertHeadingActions(surface);
       let release: (() => void) | undefined;

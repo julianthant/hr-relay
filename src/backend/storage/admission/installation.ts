@@ -28,6 +28,7 @@ import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { assertCanonicalProfileBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
+import { OPENABLE_AUTHORITY_SCHEMA_VERSIONS } from "../sqlite/migrations.js";
 import { requireRuntimeAdmission } from "./admission-identity.js";
 import type { RuntimeAdmission, StartupRegistrationProof } from "./admission.js";
 import { OfflineMaintenanceOperationUnavailableError,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,assertOfflineMaintenanceOperation,isOfflineMaintenanceOperationActive,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
@@ -1182,7 +1183,7 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator, fla
     else if (canonicalJsonStringify(readStrict(path, z.unknown())) !== canonicalJsonStringify(value)) fail("profile-machine-initialization-changed");
   };
   const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, profiles: [], activeProfileId: null, sessionGeneration: 0 });
-  publish(join(directory, "browser-roots.json"), BrowserRootsSchema.parse({ schemaVersion: 2, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] }));
+  publish(join(directory, "browser-roots.json"), BrowserRootsSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] }));
   publish(join(directory, "profile-registry-version.json"), { schemaVersion: 8 });
   publish(join(directory, "profiles.json"), document);
   publish(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
@@ -1312,7 +1313,7 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
       const file = readPrivateFile(join(operationDirectory, name), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined) fail("profile-operation-identity-mismatch");
       const version = z.looseObject({ schemaVersion: z.number().int(), kind: z.string(), phase: z.string() }).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
-      if (version.kind === "logout" && version.schemaVersion !== 2) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", {
+      if (version.kind === "logout" && version.schemaVersion !== 3) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", {
         cause: new Error(version.phase === "complete" ? "profile-control-upgrade-legacy-logout-completion-unproved" : "profile-control-upgrade-legacy-logout-epoch-unproved") });
     }
   }
@@ -2256,7 +2257,7 @@ export interface StoppedControlProfileInventory { readonly profileId: string }
 
 const stoppedControlInventories = new WeakMap<StoppedControlProfileInventory, Readonly<{
   binding: z.infer<typeof ProfileDatabaseBindingSchema>; stateRoot: string; artifactRoot: string; machineRoot: string; locator: RuntimeLocator;
-  schemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22; conversionOperationId: string; backupDirectory: string;
+  schemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23; conversionOperationId: string; backupDirectory: string;
   pendingPlan(): CanonicalCredentialConversionPlan | undefined;
   assertCanonicalConversion(operationId: string, digest: string): void;
   assertCanonicalPublication(operationId: string, digest: string): void;
@@ -2707,7 +2708,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         if (!plan) {
           const { planStoppedBrowserRoots, probeStoppedControlBrowserRoots } = await import("../browser-roots.js");
           if (pending === undefined) {
-            let browsers: BrowserRootsDocument = BrowserRootsSchema.parse({ schemaVersion: 2, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] });
+            let browsers: BrowserRootsDocument = BrowserRootsSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] });
             for (const [index, claim] of claims.entries()) {
               const admission = admissions[index]; if (admission === undefined) fail("profile-control-upgrade-inventory-required");
               const planned = planStoppedBrowserRoots(admission, claim, browsers.nextGeneration, browsers.nextHandle, systemClock);
@@ -2812,9 +2813,9 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       };
       const binding = ProfileDatabaseBindingSchema.parse({ installationId: locator.installationId, profileId });
       const databaseBinding = readProfileDatabaseBinding(join(locator.stateRoot, "profiles", profileId, "state.db"));
-      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(databaseBinding.schemaVersion)
+      if (databaseBinding.state !== "bound" || !OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(databaseBinding.schemaVersion)
         || canonicalJsonStringify(databaseBinding.binding) !== canonicalJsonStringify(binding)) fail("profile-control-upgrade-database-schema-unsupported");
-      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22)]).parse(databaseBinding.schemaVersion);
+      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23)]).parse(databaseBinding.schemaVersion);
       const pendingPlan = () => {
         held();
         const receipt = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;

@@ -19,7 +19,7 @@ export function SessionPanel({ catalog, open, onOpenChange, settingsOpen, onSett
     if (scenario !== null && scenario !== 'refused' && scenario !== 'uncertain') throw new Error('SESSION_COMMAND_SCENARIO_INVALID');
     return createFixtureSessionPort(fixture!, catalog, scenario ?? 'normal');
   }, [source, fixture, catalog]);
-  const commands = useSessionPreviewCommands(initial, catalog, source === "served" ? servedPort : fixturePort!, binding === undefined || source === "mock" ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId, records: binding.dayState.day.state === "loaded" ? binding.dayState.day.value.workerOperations : undefined });
+  const commands = useSessionPreviewCommands(initial, catalog, source === "served" ? servedPort : fixturePort!, binding === undefined || source === "mock" ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId });
   useSessionAddFeedback(commands.operations.add);
   const data = commands.data;
   const display = useMemo((): SessionsViewState => {

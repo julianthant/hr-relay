@@ -233,12 +233,28 @@ export const REVIEWED_CATCH_DEFAULTS = [
     ]
   },
   {
-    "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "reason": "The rejection observer preserves the original drain promise, which shutdown races and propagates as aggregate failure. A failed owned-child exit reconciliation is retained as recoveryFailure, reported through onFault, blocks spawn and lifecycle reuse, and is included in the final drain failure rather than becoming successful exit settlement.",
+    "path": "src/backend/runtime/workers/worker-pool.ts",
+    "reason": "A failed re-settlement of a prior exit keeps that failure as settlementFailure, releases the settling reservation and throws WORKER_EXIT_SETTLEMENT_FAILED with the cause; a failed spawn releases the reservation and rethrows. Neither marks the exit settled nor publishes a member.",
     "statements": [
       {
-        "kind": "promise",
-        "sha256": "fe87e7320347865bece1e14540e6e4f1a9d2b30b2c7c46d6c1be17968ee456f0",
+        "kind": "try",
+        "sha256": "c0e13aa136ee1dede2bf1a5a57ae05a6bec578b62a5bceb73a6535f71f133952",
+        "occurrences": 1
+      },
+      {
+        "kind": "try",
+        "sha256": "1d80392a765f5b88bd188fb97f28377e942a17f5f7416f27bb6c53ab133c79b2",
+        "occurrences": 1
+      }
+    ]
+  },
+  {
+    "path": "src/backend/storage/sqlite/worker-custody-migration.ts",
+    "reason": "Only RunDeletionRefusedError with reason shared-checkpoint skips the closure deletion; the conversion removes its own unexecuted deletion command and returns no command id, so the run stays. Every other preflight failure propagates and aborts the migration.",
+    "statements": [
+      {
+        "kind": "try",
+        "sha256": "7a946b25fdacd1a1cc7f2dbce85c2f67b93d59b7a04716dce89aa63e221bbd8f",
         "occurrences": 1
       }
     ]

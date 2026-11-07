@@ -2,7 +2,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
-import { ERROR_CATALOG } from "../../src/models/failures/error-catalog.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -18,7 +17,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     const interrupted = StorageDoctorWireSchema.parse({ ...FIXTURE_STORAGE_DOCTOR,
       recovery: { state: "interrupted", findings: [{ marker: "authority-restore", state: "interrupted" }] },
-      counts: { state: "available", values: { pendingCommands: 3, unresolvedWriteIntents: 2, leases: 4, providerReservations: 1, artifactOutbox: 5 } },
+      counts: { state: "available", values: { pendingCommands: 3, unresolvedWriteIntents: 2, providerReservations: 1, artifactOutbox: 5 } },
       protectedSettings: { state: "available", entries: ProtectedSettingsNameSchema.options.map((name, index) => ({ name, present: index === 0 })) },
       authorityUpgrades: { state: "available", phases: [{ phase: "settled", fromSchemaVersion: 26, toSchemaVersion: 27, recordedAt: FIXTURE_STORAGE_DOCTOR.checkedAt }] },
     });
@@ -90,14 +89,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(primary).toContainText("No storage updates have been recorded.");
       await expect(surface.getByRole("group", { name: "Connections", exact: true })).toContainText("Unavailable");
       await run.click();
-      await expect(surface.getByRole("alert")).toContainText("Storage checks could not finish");
+      await expect(page.getByRole("alert").filter({ hasText: "Storage checks could not finish" })).toBeVisible();
       await expect(surface.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
       await expect(surface.getByRole("heading", { name: "Data store and recovery", exact: true })).toBeVisible();
       await expect(recovery).toContainText("No unfinished storage operations.");
       await expect(stamp).toHaveAttribute("dateTime", healthy.checkedAt);
       await expect(run).toBeEnabled();
-      await surface.getByRole("alert").getByRole("button", { name: "Diagnostic details", exact: true }).click();
-      await expect(surface.getByRole("region", { name: "Check error diagnostics", exact: true })).toHaveText(ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
       expect(await surface.innerText()).not.toMatch(/span_stream|record-digest/u);
       expect(requests).toBe(3);
       expect(errors).toEqual([]);

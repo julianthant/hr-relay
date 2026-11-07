@@ -107,7 +107,7 @@ const APP_DAY = DashboardDayWireSchema_m1.parse({
   workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
   statusCounts: [],
   queueSurfaces: [],
-  workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [],
+  workerCards: [], workerAuthority: { state: "present", members: [] },
   workerPools: [],
   notifications: [],
 });
@@ -908,8 +908,8 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 describe_m2('real mounted dashboard through the typed mock transport', () => {
 
   for (const save of [
-    { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed", inline: "Settings write unconfirmed" },
-    { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed", inline: "Credentials write unconfirmed" },
+    { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed" },
+    { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed" },
   ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
@@ -940,18 +940,16 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.match(toasts[0]?.textContent ?? "", new RegExp(save.title, "u"));
     assert_m2.match(toasts[0]?.textContent ?? "", /Your draft is retained\. Retry the exact attempt to confirm the result\./u);
     assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /Command result|private-credential-sentinel|private-transport-sentinel/u);
-    assert_m2.match(h.host.textContent ?? "", new RegExp(save.inline, "u"));
     assert_m2.equal(input.value, save.value);
     await settle(); assert_m2.equal(commands.length, 1, "uncertainty must not retry automatically");
     const retry = async () => {
-      const button = [...h.host.querySelectorAll("button")].find(candidate => candidate.textContent === "Retry exact attempt");
+      const button = [...document.querySelectorAll("button")].find(candidate => candidate.textContent === "Retry exact attempt");
       assert_m2.ok(button, "missing exact retry");
       await act_m2(async () => button.click()); await settle();
     };
     await retry();
     assert_m2.equal(commands.length, 2);
-    assert_m2.equal(document.querySelectorAll('[data-slot="toast"]').length, 1, "repeated uncertainty keeps the existing warning");
-    assert_m2.equal(document.querySelector('[data-slot="toast"]') === toasts[0], true, "the original warning identity is retained");
+    assert_m2.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style")).length, 1, "repeated uncertainty shows one warning");
     await retry();
     assert_m2.equal(commands.length, 3);
     assert_m2.deepEqual(commands, [commands[0], commands[0], commands[0]], "all retries keep the original command identity and bytes");
@@ -961,7 +959,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.doesNotMatch(activeToasts[0]?.textContent ?? "", /save unconfirmed/u);
     assert_m2.match(activeToasts[0]?.textContent ?? "", replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
   });
-  it_m2("dismisses only the recovered command warning while another Settings command remains unknown", async () => {
+  it_m2("withdraws a section's warning when it is left and dismisses a replayed command's own warning", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
@@ -983,22 +981,19 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       await act_m2(async () => input.blur()); await settle();
     };
     await edit("Task", "240");
-    const ordinaryWarning = document.querySelector('[data-slot="toast"]'); assert_m2.ok(ordinaryWarning);
+    assert_m2.match(document.querySelector('[data-slot="toast"]')?.textContent ?? "", /Settings save unconfirmed/u);
     const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Credentials");
     assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
     await edit("UCPath username", "Synthetic credential");
     assert_m2.equal(commands.length, 2);
     assert_m2.notEqual(commands[0]?.commandId, commands[1]?.commandId);
-    assert_m2.equal(document.querySelectorAll('[data-slot="toast"]').length, 2);
-    const retry = [...h.host.querySelectorAll("button")].find(button => button.textContent === "Retry exact attempt"); assert_m2.ok(retry);
+    const shown = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+    assert_m2.equal(shown().length, 1, "each section shows only its own warning");
+    assert_m2.match(shown()[0]?.textContent ?? "", /Credentials save unconfirmed/u);
+    const retry = [...document.querySelectorAll("button")].find(button => button.textContent === "Retry exact attempt"); assert_m2.ok(retry);
     await act_m2(async () => retry.click()); await settle();
     assert_m2.equal(commands.length, 3); assert_m2.deepEqual(commands[2], commands[1]);
-    assert_m2.equal(ordinaryWarning.isConnected, true);
-    assert_m2.equal(ordinaryWarning.hasAttribute("data-ending-style"), false, "another command cannot dismiss the unresolved warning");
-    const active = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
-    assert_m2.equal(active.length, 2);
-    assert_m2.equal(active.filter(node => node.textContent?.includes("Settings save unconfirmed")).length, 1);
-    assert_m2.equal(active.filter(node => node.textContent?.includes("Credentials save unconfirmed")).length, 0);
+    assert_m2.equal(shown().filter(node => node.textContent?.includes("Credentials save unconfirmed")).length, 0, "the replayed command's warning is dismissed");
   });
   it_m2("retains the served Delete run label when its original row disappears", async () => {
     const candidate = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.surfaceKind === "single" && row.actions.some(action => action.kind === "command" && action.command === "delete"));

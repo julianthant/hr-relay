@@ -6,7 +6,8 @@ import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
 import { ParkedWriteCheckResultSchema, type ParkedWriteCheckTarget, type ParkedWriteCheckResult } from "../../../rules/commands/commands.js";
-import { WorkerControlRefusal, type WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
+import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
+import type { ParkedWriteCheckAcknowledgement } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { valueFreeProtectedData, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
@@ -93,7 +94,7 @@ export async function checkParkedWrite(input: Readonly<{
   probe: Omit<ProbeReadDeps, "sessions" | "retainCallback">;
   sessions: Pick<TransactionSessionHost, "withDriver" | "closeAll"> & RunConfigFingerprintBinding;
   configureRun: (run: RunRecord) => Readonly<{ taskDeadlineMs: number }>;
-}>): Promise<Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>> {
+}>): Promise<ParkedWriteCheckAcknowledgement> {
   input.signal.throwIfAborted();
   if (input.requestedBy !== "local-operator") throw new WorkerControlRefusal("PARKED_CHECK_UNAVAILABLE");
   const { run, intent, node, commitInput } = requireParkedWriteCheckTarget(input.repositories, input.target, input.descriptor);
@@ -106,8 +107,8 @@ export async function checkParkedWrite(input: Readonly<{
   const readInput = findingsTarget === undefined ? commitInput : { emplId: findingsTarget.emplId, expectedName: findingsTarget.expectedName };
   const task = input.probe.stores.stores.flatMap(store => Object.values(store.tasks)).find(value => value.contract.id === readTaskId);
   const instance = run.envelope.resolvedInstance[intent.system];
-  let evidence: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["evidence"];
-  let findingsIdentity: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["findingsIdentity"];
+  let evidence: ParkedWriteCheckAcknowledgement["evidence"];
+  let findingsIdentity: ParkedWriteCheckAcknowledgement["findingsIdentity"];
   let observedTaskId = probeId;
   let state: ParkedWriteCheckResult["state"] = "unavailable";
   let code: ParkedWriteCheckResult["code"] = "PARKED_CHECK_UNAVAILABLE";
@@ -151,7 +152,7 @@ export async function checkParkedWrite(input: Readonly<{
     ...(evidence === undefined ? {} : { probeTaskId: observedTaskId }),
     evidenceDigest: sha256Hex(canonicalJsonStringify({ target: input.target, state, code, evidence: evidence ?? null,
       ...(findingsIdentity === undefined ? {} : { findingsIdentity }) })) });
-  return { kind: "parked-write-check", result, ...(evidence === undefined ? {} : { evidence }),
+  return { result, ...(evidence === undefined ? {} : { evidence }),
     ...(findingsIdentity === undefined ? {} : { findingsIdentity }) };
 }
 

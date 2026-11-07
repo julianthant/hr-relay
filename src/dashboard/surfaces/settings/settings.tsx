@@ -4,7 +4,7 @@ import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { plural } from "../shared/status/format.js";
@@ -294,29 +294,22 @@ export function SettingsPage({
 
       <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
-        {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && !pathTargetLoading && <Banner tone="warning" title="Setting unavailable">This setting is unavailable on the selected page.</Banner>}
+        {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && !pathTargetLoading && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
         {editor.editor.state === "failed" && !activeSettingsEditorSection
           && !isDataSection
           && activeId !== "spreadsheets"
           && activeId !== SETTINGS_PREFLIGHT_SECTION_ID
           && activeId !== SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
-          <Banner tone="danger" title="Editable settings unavailable">
-            {editor.editor.message.replace(/ Try again\.$/u, "")} <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
-          </Banner>
+          <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />
         )}
         {/* Refuse unknown settings destinations; redirecting would label the wrong page as the requested one. */}
         {resolution.state === "unknown" && (
           resolution.requested === "ui-catalog" ? <Banner tone="info" title="UI catalog removed">Use the Settings navigation to return to a dashboard page.</Banner> : resolution.requested === "archive" ? <Banner tone="info" title="Archive page removed">
             Existing stored run data has not been deleted. <Button variant="ghost" onClick={() => requestExit(onClose)}>Return to dashboard</Button>
-          </Banner> : <Banner tone="danger" title="No such settings section">
-            This build has no settings section called “{resolution.requested}”. Pick one from the
-            list beside this.
-          </Banner>
+          </Banner> : <Notice tone="danger" title="No such settings section" description={resolution.requested} />
         )}
         {resolution.state === "empty" && (
-          <Banner tone="warning" title="No settings sections">
-            The server listed no settings sections and this build contributes none.
-          </Banner>
+          <Notice tone="warning" title="No settings sections" />
         )}
         {isDataSection && dataContent}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
@@ -372,4 +365,4 @@ export function SettingsPage({
     </TakeoverFrame>
   );
 }
-export { StorageBanner } from "./storage/storage-settings.js";
+export { StorageNotice } from "./storage/storage-settings.js";

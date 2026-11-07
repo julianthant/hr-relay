@@ -58,7 +58,7 @@ function dayOf(
   const template = FIXTURE_DAY_WIRE.workerAuthority.members[0];
   if (template === undefined) throw new Error("missing exact member fixture template");
   const members = workerCards.map(card => ({ ...template, workerId: card.member.workerId, workflow: card.member.workflowId,
-    ordinal: card.member.ordinal, poolIndex: card.member.poolIndex, membershipRevision: card.member.membershipRevision }));
+    ordinal: card.member.ordinal, poolIndex: card.member.poolIndex }));
   return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards, workerPools, workerAuthority: { state: "present", members } });
 }
 

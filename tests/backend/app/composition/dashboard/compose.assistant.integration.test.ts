@@ -6,8 +6,6 @@ import { z } from "zod";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
@@ -20,13 +18,11 @@ import { NotificationRecordSchema } from "../../../../../src/models/notification
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
-import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { chatGptFixture , publicCapabilityResponses } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
-import { runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
+import { ScriptedWorkerChild } from "../../../../support/helpers/backend/fake-worker-port.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
@@ -203,7 +199,7 @@ it('serves canonical selected-run reads through authenticated composition withou
       chats: database.prepare('SELECT * FROM assistant_chats ORDER BY id').all(), actions: database.prepare('SELECT * FROM assistant_actions ORDER BY id').all(),
       commands: database.prepare('SELECT * FROM commands ORDER BY id').all(), audits: database.prepare('SELECT * FROM command_audits ORDER BY id').all(),
     }));
-    const before = durable(), controls = context.database.authority.workerControls.list();
+    const before = durable();
     assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
     const answered = await client.assistantRespond({ message: 'explain this run', subjectRef });
     assert.equal(answered.state, 'answered'); if (answered.state !== 'answered') throw Error('composed canonical answer required');
@@ -234,7 +230,7 @@ it('serves canonical selected-run reads through authenticated composition withou
     const refused = await client.assistantRespond({ message: 'run status', subjectRef });
     assert.equal(refused.state, 'refused'); if (refused.state === 'refused') assert.equal(refused.code, 'ASSISTANT_PROPOSAL_REFUSED');
     assert.equal(turns, 2);
-    assert.deepEqual(durable(), before); assert.deepEqual(context.database.authority.workerControls.list(), controls);
+    assert.deepEqual(durable(), before);
     assert.deepEqual(context.database.authority.runs.get(run.envelope.runId), run);
     assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
   });
@@ -425,10 +421,8 @@ it.each(["every-action"] as const)('serves preference CAS, replay and verificati
 });
 
 it.each(["current", "deleted"] as const)("rechecks the %s selected source after the real same-workflow capacity wait", async change => {
-  type Birth = { child: ReturnType<typeof spawn>; member: WorkerPoolMember; ready: Promise<unknown>;
-    closed: Promise<{ code: number | null; signal: string | null }> };
-  const birth = Promise.withResolvers<Birth>(), children: Birth[] = [];
-  await withServedAssistant(async ({ profile, context, transport, clock, origin }) => {
+  const birth = Promise.withResolvers<ScriptedWorkerChild>(), children: ScriptedWorkerChild[] = [];
+  await withServedAssistant(async ({ context, transport, clock, origin }) => {
     const database = context.database, client = createDashboardClient({ baseUrl: origin });
     const pending: Promise<{ result: unknown } | { error: unknown }>[] = [], failures: unknown[] = [];
     try {
@@ -454,12 +448,10 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         if ("error" in outcome) throw outcome.error;
         throw new Error(`first start settled before worker birth: ${outcome.result.state}`);
       })]);
-      assert.equal(await owned.ready, "ready");
       assert.equal(firstSettled, false);
       assert.equal(children.length, 1);
       const firstAudit = database.authority.commandAudits.findByCommand(firstCommandId);
       assert.equal(firstAudit?.result.state, "applied");
-      assert.equal(database.authority.workerLeases.get(owned.member.workerId), undefined);
       const runs = database.authority.runs.listByWorkflow("person-lookup"); assert.equal(runs.length, 2);
       const selected = runs.find(run => z.object({ emplId: z.string() }).parse(run.input.raw).emplId === "10873698"); assert.ok(selected);
       const cancelCommandId = randomUUID();
@@ -498,7 +490,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.notEqual(assistantPlan.startPlanId, plan.startPlanId);
       assert.deepEqual(assistantPlan.refused, []); assert.equal(assistantPlan.planned.length, 1);
       assert.deepEqual(assistantPlan.planned[0]?.input.value, source.input.parsed.value);
-      const beforeRuns = database.authority.runs.listByWorkflow("person-lookup"), beforeControls = database.authority.workerControls.list();
+      const beforeRuns = database.authority.runs.listByWorkflow("person-lookup");
       assert.equal(record.state, "prepared");
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
       const decision = { chatId: proposed.proposal.chatId, actionId: proposed.proposal.actionId, revision: proposed.proposal.revision, decision: "confirm" as const };
@@ -510,7 +502,6 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       await vi.waitFor(() => assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed"), { timeout: 5_000, interval: 25 });
       assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), beforeRuns);
-      assert.deepEqual(database.authority.workerControls.list(), beforeControls);
       assert.equal(database.authority.commands.get(record.command.commandId), undefined);
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
       assert.equal(children.length, 1);
@@ -533,21 +524,8 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
       assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed");
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
-      assert.deepEqual(database.authority.workerControls.list(), beforeControls);
-      const pid = owned.child.pid; assert.ok(pid !== undefined);
-      const workerDatabase = AuthorityDatabase.open(context.admission,
-        { path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-capacity-birth" }, clock,
-        undefined, undefined, undefined, context.credentials);
-      try {
-        workerDatabase.withAuthorityReadSnapshot(() => {
-          const slot = workerDatabase.authority.workerSlots.get(owned.member.workerId); assert.ok(slot);
-          assert.deepEqual(workerPoolMember(slot), owned.member);
-        });
-        const spawnCommandId = runCapacityCommandId(firstCommandId, "spawn-worker", owned.member.poolIndex);
-        assert.equal(workerDatabase.authority.workerControls.get(spawnCommandId)?.request.type, "spawn-worker");
-        assert.equal(workerDatabase.authority.workerLeases.start({ commandId: spawnCommandId, workerId: owned.member.workerId, workflow: "person-lookup",
-          browserSystems: ["crm", "ucpath"], processId: pid, requestedBy: "local-operator", now: clock.now().toISOString() }).state, "started");
-      } finally { workerDatabase.close(); }
+      assert.equal(database.authority.workerSlots.get(owned.workerId)?.workflow, "person-lookup");
+      owned.ready();
       const firstOutcome = await first;
       if ("error" in firstOutcome) throw firstOutcome.error;
       assert.equal(firstOutcome.result.state, "applied");
@@ -574,51 +552,21 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.deepEqual(database.authority.commandAudits.findByCommand(firstCommandId), firstAudit);
       assert.equal(database.authority.commandAudits.findByCommand(cancelCommandId)?.result.state, "applied");
       assert.equal(children.length, 1);
-      assert.deepEqual(database.authority.workerControls.list().map(control => control.commandId), beforeControls.map(control => control.commandId));
-      const finishedRuns = database.authority.runs.listByWorkflow("person-lookup"), finishedControls = database.authority.workerControls.list();
+      const finishedRuns = database.authority.runs.listByWorkflow("person-lookup");
       const beforeRefusal = faultAuthoritySnapshot({ database, stateRoot: context.admission.stateRoot });
       assert.equal((await client.assistantDecide(decision)).state, "refused");
       assertAssistantProposalFaults({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, "action-decision");
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
-      assert.deepEqual(database.authority.workerControls.list(), finishedControls);
       assert.equal(children.length, 1);
     } catch (error) { failures.push(error); }
-    for (const owned of children) {
-      try {
-        if (owned.child.connected) await new Promise<void>((resolve, reject) => {
-          owned.child.send("stop", error => { if (error === null) resolve(); else reject(error); });
-        });
-        assert.deepEqual(await owned.closed, { code: 0, signal: null });
-        const pid = owned.child.pid; assert.ok(pid !== undefined);
-        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
-        assert.throws(() => process.kill(-pid, 0), { code: "ESRCH" });
-      } catch (error) { failures.push(error); }
-    }
     for (const execution of pending) {
       const outcome = await execution;
       if ("error" in outcome) failures.push(outcome.error);
     }
-    if (failures.length === 0) {
-      try {
-        assert.equal(children.length, 1);
-        const owned = children[0]; assert.ok(owned);
-        const member = owned.member, lease = database.authority.workerLeases.get(member.workerId); assert.ok(lease);
-        assert.equal(lease.processId, owned.child.pid);
-        const lifetime = { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt };
-        database.settleInterruptedWorker(profile.lifetime, member.workerId, lease.leaseGeneration, clock.now().toISOString());
-        assert.equal(database.authority.workerLeases.get(member.workerId)?.lifecycle.state, "stopped");
-        database.assertWorkerLifecycleRelease(member.workerId);
-        assert.ok(database.authority.workerControls.browsers(member.workerId).every(browser => browser.health === "closed"));
-        database.assertStoppedWorkerLifetime(member, lifetime);
-      } catch (error) { failures.push(error); }
-    }
     if (failures.length > 0) throw new AggregateError(failures, "Assistant capacity wait fixture failed", { cause: failures[0] });
-  }, { spawn: ({ member }) => {
-    const child = spawn(process.execPath, ["-e", 'process.on("message", () => { process.disconnect(); }); process.send("ready");'],
-      { detached: true, env: {}, stdio: ["ignore", "ignore", "ignore", "ipc"] });
-    const ready = once(child, "message").then(([message]: unknown[]) => message);
-    const closed = new Promise<{ code: number | null; signal: string | null }>(resolve => { child.once("close", (code, signal) => resolve({ code, signal })); });
-    const owned = { child, member, ready, closed }; children.push(owned); birth.resolve(owned);
-    return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
+  }, { spawn: request => {
+    const child = new ScriptedWorkerChild(7001, request, { ready: false, exitOnStop: true, reply: () => ({ state: "done", result: null }) });
+    children.push(child); birth.resolve(child);
+    return child;
   } });
 });

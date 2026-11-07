@@ -82,7 +82,7 @@ async function world(clock: Clock = systemClock) {
     if (result.state !== "cancelling") throw new Error("fixture logout did not produce its actual operation");
     const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(join(fixture.machine.stateRoot, "machine", "operations", `${result.operationId}.json`), "utf8")));
     const database = sources.get(profileId); assert.ok(database);
-    const stopped = await database.settlePendingLogout(fixture.machine, operation, [], { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
+    const stopped = await database.settlePendingLogout(fixture.machine, operation, { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
     await stopped.complete();
     completed.set(operation.operationId, { profileId, epoch: operation.sessionGeneration + 1 });
     stopped.dispose();
@@ -172,9 +172,8 @@ describe("profile restore continuity", () => {
       assert.equal(intent.status, "attempting"); assert.equal(run.lifecycle.state, "running");
       assert.equal(run.envelope.attempt, intent.runAttempt);
       assert.deepEqual(database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
-      const membership = database.authority.workerSlots.get(claim.workerId), lease = database.authority.workerLeases.get(claim.workerId);
-      assert.ok(membership); assert.ok(lease); assert.equal(claim.claimGeneration, run.claimGeneration);
-      assert.notEqual(lease.lifecycle.state, "stopped");
+      const membership = database.authority.workerSlots.get(claim.workerId);
+      assert.ok(membership); assert.equal(claim.claimGeneration, run.claimGeneration);
       await drill.takeBackup(database, paths);
       closeDatabase(); drill.corrupt(paths);
       const corrupted = readFileSync(paths.authorityPath);
@@ -194,7 +193,6 @@ describe("profile restore continuity", () => {
         assert.deepEqual(current.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
         assert.deepEqual(current.authority.runs.get(run.envelope.runId), run);
         assert.deepEqual(current.authority.workerSlots.get(claim.workerId), membership);
-        assert.deepEqual(current.authority.workerLeases.get(claim.workerId), lease);
         assert.equal(current.authority.writeIntents.get(intent.writeIntentId)?.status, "attempting");
         assert.equal(current.authority.runs.get(run.envelope.runId)?.envelope.attempt, intent.runAttempt);
       } finally { current.close(); }

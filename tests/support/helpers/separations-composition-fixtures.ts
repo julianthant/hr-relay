@@ -1,7 +1,7 @@
 import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
-import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { openBoundDatabaseFixture } from "./admission-fixture.js";
@@ -421,17 +421,13 @@ export function compositionClaimRunning(
   const now = clock.now().toISOString();
   const enqueued = database.authority.runs.enqueue(runInput);
   if (enqueued.state !== "inserted") throw new Error(`enqueue outcome was ${enqueued.state}`);
-  const claimMember1 = database.authority.workerSlots.get(workerId);
-  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const workerLifetime = testWorkerLifetime(database, COMPOSITION_WORKFLOW_ID, claimMember1.poolIndex).workerLifetime;
-  const claimed = database.authority.runs.claimNext({ workerLifetime,
-    workflow: COMPOSITION_WORKFLOW_ID,
+  const claimed = database.authority.runs.claimNext({ workflow: COMPOSITION_WORKFLOW_ID,
     workerId,
     now,
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  const base = { workerId, workerLifetime, claimedAt: now, heartbeatAt: now };
+  const base = { workerId, claimedAt: now, heartbeatAt: now };
   const validating = database.authority.runs.transition({
     runId: claimed.run.envelope.runId,
     expectedVersion: claimed.run.version,

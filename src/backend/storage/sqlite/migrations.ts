@@ -10,16 +10,42 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 22;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 23;
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
 export const PRE_BUILD_RUN_DELETION_ID = "pre-build-run-deletion:v1";
+/** Migration 23 drops durable worker custody; the pool holds it in memory. */
+export const WORKER_CUSTODY_SCHEMA_VERSION = 23;
+/** Tables migration 23 drops; only stopped inspection of an older source still names them. */
+export const WORKER_CUSTODY_DROPPED_TABLES = ["worker_leases", "worker_controls", "browser_sessions"] as const;
+export const isWorkerCustodyDroppedTable = (table: string): table is typeof WORKER_CUSTODY_DROPPED_TABLES[number] => (WORKER_CUSTODY_DROPPED_TABLES as readonly string[]).includes(table);
+export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
+export const WORKER_CUSTODY_SCAN_ID = "worker-custody-grammar-scan:v1";
+export const WORKER_CUSTODY_SLOT_REBUILD_ID = "worker-custody-slot-rebuild:v1";
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21] as const;
+/** Durable worker custody becomes in-memory pool state: leases, controls and browser rows go, slots keep ordinal, pool index and pause. */
+export const WORKER_CUSTODY_MIGRATION_STATEMENTS: readonly string[] = [
+  `CREATE TEMP TABLE worker_pause_capture AS SELECT worker_id, directive='pause' AS paused FROM worker_leases lease
+    WHERE lease_generation=(SELECT MAX(lease_generation) FROM worker_leases WHERE worker_id=lease.worker_id)`,
+  "DROP TABLE worker_controls",
+  "DROP TABLE browser_sessions",
+  "DROP TABLE worker_leases",
+  `SELECT '${WORKER_CUSTODY_SLOT_REBUILD_ID}'`,
+  "DROP TABLE worker_pause_capture",
+  `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`,
+  `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
+];
+
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
+
+/** Stopped versions a database may be upgraded from; every version list derives from these, so they cannot drift. */
+export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.filter(version => version >= 8);
+/** Versions startup, restore and admission open: every upgradeable version plus the current one. */
+export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = [...UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS, CURRENT_AUTHORITY_SCHEMA_VERSION];
 
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
@@ -945,19 +971,20 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: 22, statements: [
     `SELECT '${PRE_BUILD_RUN_DELETION_ID}'`,
   ] },
+  { version: WORKER_CUSTODY_SCHEMA_VERSION, statements: WORKER_CUSTODY_MIGRATION_STATEMENTS },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
     toSchemaVersion, sourceContentFingerprint, statements })).digest("hex");
 }
 
-export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides")[] {
-  return [...(version < 10 ? ["explorer_overrides" as const] : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
+export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number])[] {
+  return [...(version < 10 ? ["explorer_overrides" as const] : []), ...(version < WORKER_CUSTODY_SCHEMA_VERSION ? WORKER_CUSTODY_DROPPED_TABLES : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
     && (version >= 9 || name !== "assistant_model_preference")
