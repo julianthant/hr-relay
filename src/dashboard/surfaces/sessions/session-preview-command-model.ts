@@ -53,6 +53,14 @@ export function sessionCommandEffect(day: DashboardDayWire, request: CommandRequ
   }
 }
 
+/** A worker command whose reply was pending or lost is applied once the served day shows its effect; the readback checks that effect again. */
+function servedApplication(command: CommandRequest) {
+  if (command.family !== "worker-browser") return undefined;
+  const target = command.type === "plan-worker-count" ? { family: "worker-pool", workflowId: command.target.workflowId }
+    : { family: "worker-browser", workerId: command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId };
+  return CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets: [target] });
+}
+
 export function createSessionPreviewPort(current: () => Readonly<{ binding?: SessionCommandBinding; catalog: readonly WorkflowCatalogEntry[] }>): SessionPreviewCommandPort {
   const attempts = new Map<string, NativeAttempt>();
   const requireBinding = () => {
@@ -153,9 +161,8 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
           if (retained !== undefined) {
             if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
             if (retained.outcome?.kind === "uncertain") {
-              const reply = CommandResultSchema.safeParse(retained.outcome.reply);
               const outcome = await binding.executor.check(command.commandId, { ...options(attempt, binding),
-                observe: async () => reply.success && sessionCommandEffect(day, command) ? reply.data : undefined });
+                observe: async () => sessionCommandEffect(day, command) ? servedApplication(command) : undefined });
               if (outcome.kind !== "confirmed") return { id: request.id, state: "uncertain", message: outcome.feedback.text };
             } else if (retained.outcome?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
           }
