@@ -1,7 +1,7 @@
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { useEffect, useDeferredValue, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, MoreHorizontal, Plus, Undo2, Redo2 } from 'lucide-react';
-import { Spinner, Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, Field, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
+import { Spinner, Banner, Notice, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, Field, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/primitives/dropdown-menu.js';
 import { addSpreadsheetColumn, cellDisplayText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCellProblem, spreadsheetForeground, spreadsheetInsertionAvailability, spreadsheetSaveMatches, spreadsheetValuesOnly, type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
 import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
@@ -132,9 +132,9 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
       <DropdownMenu><DropdownMenuTrigger asChild><Button variant="secondary" disabled={busy || !sheet} icon={<Download className="size-3.5" />}>Export copy</Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Export spreadsheet" align="end" className="w-52"><DropdownMenuItem onSelect={() => void exportFile('xlsx')}>Excel workbook (.xlsx)</DropdownMenuItem><DropdownMenuItem onSelect={() => void exportFile('csv')}>Current sheet (.csv)</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       {onMapping && <DropdownMenu><DropdownMenuTrigger asChild><IconButton variant="ghost" label="Workbook actions" disabled={busy} icon={<MoreHorizontal className="size-4" />} /></DropdownMenuTrigger><DropdownMenuContent aria-label="Workbook actions" align="end"><DropdownMenuItem onSelect={onMapping}>Edit column mappings</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
     </>} />
-    {save?.document === document && (save.result.state === 'pending' ? <p role="status" className="text-body text-ui-secondary">Saving… · Draft kept</p> : save.result.state === 'confirmed' ? <p role="status" className="text-body text-ui-secondary">Saved · version {save.result.version}</p> : <Banner tone="warning" title={save.result.state === 'conflict' ? 'Save version conflict' : save.result.state === 'uncertain' ? 'Save uncertain' : 'Save refused'}>{save.result.reason} Draft kept.</Banner>)}
-    {!sheet && <Banner tone="danger" title="Sheet unavailable"><p>This sheet is no longer in the workbook.</p><Button onClick={() => { setSheetId(''); setPage(0); }}>Open first sheet</Button></Banner>}
-    {error && <Banner tone="danger" title="Spreadsheet unavailable">{error}</Banner>}
+    {save?.document === document && (save.result.state === 'pending' ? <p role="status" className="text-body text-ui-secondary">Saving… · Draft kept</p> : save.result.state === 'confirmed' ? <p role="status" className="text-body text-ui-secondary">Saved · version {save.result.version}</p> : <Notice tone="warning" title={save.result.state === 'conflict' ? 'Save version conflict' : save.result.state === 'uncertain' ? 'Save uncertain' : 'Save refused'} description={`${save.result.reason} Draft kept.`} />)}
+    {!sheet && <Notice sticky tone="danger" title="Sheet unavailable" description="No longer in the workbook." action={{ label: "Open first sheet", onAction: () => { setSheetId(''); setPage(0); } }} />}
+    {error && <Notice tone="danger" title="Spreadsheet unavailable" description={error} />}
     {sheet && <>
       <div className="spreadsheet-editor-toolbar">
         <div className="spreadsheet-toolbar-group" role="group" aria-label="Sheet view"><label className="spreadsheet-sheet-picker"><span>Sheet</span><Select disabled={busy} aria-label="Workbook sheet" value={sheet.id} onChange={event => { setSheetId(event.target.value); setPage(0); setSort(null); setQuery(''); setColumnPage(0); }}>{document.sheets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></label>

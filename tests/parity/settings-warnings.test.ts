@@ -17,24 +17,9 @@ async function sectionWarning(page: Page, title: string, groupName: string) {
     expect(row.padding).toBeGreaterThanOrEqual(row.minimum);
     return;
   }
-  const layout = await warning.evaluate(node => {
-    const banner = node.closest<HTMLElement>('[role="alert"],[role="status"]');
-    if (!banner) throw new Error("settings-warning-banner-missing");
-    const section = banner.closest(".ds-body-section");
-    const rect = banner.getBoundingClientRect();
-    const style = getComputedStyle(banner);
-    return { nested: banner.closest(".ds-form-group") !== null, inSection: section !== null,
-      x: rect.x, y: rect.y, width: rect.width, bottom: rect.bottom, padding: Number.parseFloat(style.paddingLeft),
-      cozy: Number.parseFloat(style.getPropertyValue("--ds-space-cozy")),
-      gap: Number.parseFloat(style.getPropertyValue("--ds-space-heading-content")) };
-  });
-  expect(layout.nested).toBe(false); expect(layout.inSection).toBe(true);
-  expect(layout.padding).toBe(layout.cozy);
-  const group = page.getByRole("group", { name: groupName, exact: true });
-  const box = await group.boundingBox(); expect(box).not.toBeNull();
-  expect(Math.abs(box!.x - layout.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(box!.width - layout.width)).toBeLessThanOrEqual(1);
-  expect(box!.y - layout.bottom).toBeGreaterThanOrEqual(layout.gap - 1);
+  // Warnings outside the App data row are toasts, not section banners.
+  await expect(page.getByRole("status").or(page.getByRole("alert")).filter({ hasText: title })).toHaveCount(1);
+  await expect(page.getByRole("group", { name: groupName, exact: true })).toBeVisible();
 }
 async function attach(page: Page, info: TestInfo, name: string) {
   const body = await page.locator("body").ariaSnapshot();
@@ -44,8 +29,8 @@ async function attach(page: Page, info: TestInfo, name: string) {
 for (const entry of [
   { section: "general", path: "**/api/v1/settings/chatgpt-account", title: "ChatGPT account unavailable", group: "ChatGPT account" },
   { section: "paths", path: "**/api/v1/settings/editable", title: "App-data locations couldn’t be read.", group: "App data" },
-  { section: "routes", path: "editable", title: "Onboarding roster URL unavailable", group: "SharePoint" },
-]) test(`Settings warning slot and spacing for ${entry.section}`, { annotation: [{ type: "required-a11y-evidence", description: `settings-warning-${entry.section}.a11y.yml` }] }, async ({ page }, info) => {
+  { section: "routes", path: "editable", title: "Roster URL unavailable", group: "SharePoint" },
+]) test(`Settings warning toast for ${entry.section}`, { annotation: [{ type: "required-a11y-evidence", description: `settings-warning-${entry.section}.a11y.yml` }] }, async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
   if (entry.path === "editable") {
@@ -75,7 +60,7 @@ test("Settings fixed app data never dispatches a relocation command", { annotati
   } finally { await server.close(); }
 });
 
-test("Settings account command uncertainty uses the section slot", { annotation: [{ type: "required-a11y-evidence", description: "settings-warning-account-action.a11y.yml" }] }, async ({ page }, info) => {
+test("Settings account command uncertainty shows a toast", { annotation: [{ type: "required-a11y-evidence", description: "settings-warning-account-action.a11y.yml" }] }, async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
   await page.route("**/api/v1/settings/chatgpt-account/sign-in", route => route.abort("failed"));

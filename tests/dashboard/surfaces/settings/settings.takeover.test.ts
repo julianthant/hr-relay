@@ -47,7 +47,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
       onSection: () => undefined,
       }),
     }));
-    assert.match(markup, /called “budgets”\./u);
+    assert.match(markup, /No such settings section.*budgets/u);
     assert.ok(!markup.includes("&quot;budgets&quot;"), markup);
   });
 

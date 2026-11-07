@@ -125,7 +125,7 @@ import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegation
 import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
-import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -2319,7 +2319,7 @@ export class AuthorityDatabase implements Disposable {
     owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
     return withAuthorityDatabaseReadOnly(copy, path, database => {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
-      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || !OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
       const facts = Object.freeze(browserProfileInventory(database, version));
       owner.assertStoppedProfile(operation); return facts;
@@ -2577,7 +2577,7 @@ export class AuthorityDatabase implements Disposable {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_NEWER_VERSION", { cause: new AuthoritySchemaVersionError(version) });
-        if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) {
+        if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)) {
           throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: new AuthoritySchemaVersionError(version) });
         }
         return work(database, version);
@@ -2712,7 +2712,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || !UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -7069,6 +7069,34 @@ export class AuthorityDatabase implements Disposable {
         const current = this.authority.workerControls.get(record.commandId);
         if (current?.phase.state === "executing") this.authority.workerControls.transition(record.commandId, "executing", {
           state: "uncertain", startedAt: current.phase.startedAt, observedAt: now, message: error.message });
+      }
+    }
+  }
+
+  /** Startup only: a Retry whose reserved old lifetime is still exact never birthed; refuse it and release the reservation. */
+  settleUnbornWorkerRetries(now: string): void {
+    // A bound supervisor may own an unregistered child; before it, the held lifetime lock excludes every prior child.
+    if (this.#nonBirthOwner !== undefined) throw new Error("worker-retry-startup-settlement-refused");
+    for (const record of this.authority.workerControls.list()) {
+      const binding = record.lifecycle;
+      if (record.auditedAt !== undefined || record.request.type !== "retry-worker" || record.phase.state !== "uncertain"
+        || record.effect !== undefined || binding?.operation.kind !== "retry") continue;
+      try {
+        this.withAuthorityTransaction(repositories => {
+          const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
+          if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
+            || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
+            || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
+          this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
+          const message = "worker-retry-never-started";
+          this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+          const { controlCommandId: _released, ...rest } = lease;
+          this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
+          repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+            result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.startsWith("worker-")) throw error;
       }
     }
   }
