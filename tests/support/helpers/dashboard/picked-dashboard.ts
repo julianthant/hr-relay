@@ -77,7 +77,7 @@ export function pickedRunWorld(state: PickedRunState) {
   const capturePair = state === "before-after";
   const captures = capturePair ? [before, after] : state === "captures" ? [shot(2, "step")] : [];
   const note = { native: native(3), noteId: uuidOf(1003), runId: row.runId, sequence: 3, at: FIXTURE_NOW, level: "info", message: capturePair ? "Save and Submit" : "Read employee search",
-    ...(capturePair ? { operatorAction: { kind: "click", label: "Save and Submit", submit: true, sessionId } } : {}) };
+    ...(capturePair ? { operatorAction: { kind: "click", label: "Save and Submit", sessionId } } : {}) };
   const failed = state === "pre-submit-failed" || state === "post-submit-unknown" || state === "post-submit-proved";
   const failureNote = { native: native(5), noteId: uuidOf(1005), runId: row.runId, sequence: 5, at: FIXTURE_NOW, level: "warning", message: "Screenshot capture unavailable.",
     fields: [{ key: "code", kind: "text", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" }, { key: "boundary", kind: "text", value: state === "pre-submit-failed" ? "before-submit" : "after-submit" }] };
