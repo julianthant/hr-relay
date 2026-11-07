@@ -4,8 +4,9 @@ import { buildRunLogsSection, runDataObservationsForRun } from "../../../../src/
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { personLookupModule } from "../../../support/helpers/registered-workflows.js";
-import { failureRecordOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
-import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
 
 const { world, queuedEventOf, runRecordOf, cleanup } = createRunQueueProjectionTestWorld();
@@ -34,24 +35,24 @@ it("projects a declaration's typed scalar text without changing raw values, miss
   });
 });
 
-it("flags each declared field a failed read never observed, on the node's last observed row", async () => {
+it("flags each declared field a failed read task never observed, on the node's last observed row", async () => {
   const w = await world(); queuedEventOf(w, { seed: 86, descriptor: personLookupModule.descriptor });
   const queued = w.authority.records.get(uuidOf(86)); assert.ok(queued); const at = w.clock.now().toISOString();
+  const taskId = "workflow:person-lookup/read-active-status";
+  const allowed = (field: string, value: string | null) => ({ direction: "read" as const, field, values: [{ key: field, state: "allowed" as const, classification: "safe-diagnostic" as const, transform: "allow" as const, value }] });
   w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: "person-lookup", runId: queued.envelope.runId, attempt: 1, traceId: queued.envelope.traceId,
-    spanPath: `${queued.envelope.traceId}/active-status#1`, nodeId: "active-status", taskId: "workflow:person-lookup/read-active-status", points: [
-      { direction: "read", field: "status", values: [{ key: "status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "active" }] },
-    ] });
+    spanPath: `${queued.envelope.traceId}/active-status#1`, nodeId: "active-status", taskId, points: [allowed("status", "active"), allowed("title", null)] });
   w.projection.ingestFromTimeline();
-  const origins = dataOriginViewsOf(personLookupModule).map(origin => ({ ...origin, operatorFields: ["status", "department"].map(field => ({ label: field, kind: "output" as const, fieldPath: field })) }));
-  const failure = FailureRecordSchema.parse({ ...failureRecordOf({ seed: 86, code: "FIXTURE_READ_FAILED" }), nodeId: "active-status" });
-  const read = (operation: "read" | "click") => {
-    const run = runRecordOf({ seed: 86, descriptor: personLookupModule.descriptor, lifecycle: { state: "terminal", outcome: "failed", endedAt: at, failureId: failure.failureId } });
-    const trust = { getFailure: () => FailureRecordSchema.parse({ ...failure, action: { operation } }), ensureReceipt: () => { throw new Error("unused"); }, countFailuresByFingerprint: () => 0 };
+  const failure = buildNodeFailureRecord({ run: queued, failureId: uuidOf(186), nodeId: NodeIdSchema.parse("active-status"), taskId: TaskIdSchema.parse(taskId), error: new Error("fixture read failed"), occurredAt: at });
+  const run = runRecordOf({ seed: 86, descriptor: personLookupModule.descriptor, lifecycle: { state: "terminal", outcome: "failed", endedAt: at, failureId: failure.failureId } });
+  const trust = { getFailure: () => failure, ensureReceipt: () => { throw new Error("unused"); }, countFailuresByFingerprint: () => 0 };
+  const fieldsFor = (dir: "read" | "write") => {
+    const origins = dataOriginViewsOf(personLookupModule).map(origin => ({ ...origin, ...(origin.taskId === taskId ? { dir } : {}), operatorFields: ["status", "title", "department"].map(field => ({ label: field, kind: "output" as const, fieldPath: field })) }));
     const deps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, trust, descriptors: { resolve: () => ({ dataOrigins: origins }) } };
     const section = buildRunLogsSection(deps, run.envelope.runId, undefined, run); assert.ok(section.section === "logs");
     const row = section.payload.rows?.find(candidate => candidate.kind === "observed"); assert.ok(row?.kind === "observed");
     return row.displayFields;
   };
-  assert.deepEqual(read("read"), [{ direction: "read", label: "status", value: "active" }, { direction: "read", label: "department", unread: true }]);
-  assert.deepEqual(read("click"), [{ direction: "read", label: "status", value: "active" }], "only a failed read flags unread fields");
+  assert.deepEqual(fieldsFor("read"), [{ direction: "read", label: "status", value: "active" }, { direction: "read", label: "department", unread: true }], "an empty observation is not unread");
+  assert.deepEqual(fieldsFor("write"), [{ direction: "read", label: "status", value: "active" }], "only a failed read task flags unread fields");
 });

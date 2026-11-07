@@ -467,14 +467,19 @@ function unreadReadFields(deps: RunDetailQueryDeps, authority: RunRecord, entrie
   const { lifecycle } = authority;
   if (lifecycle.state !== "terminal" || lifecycle.outcome !== "failed" || lifecycle.failureId === undefined) return undefined;
   const failure = deps.trust?.getFailure(lifecycle.failureId);
-  if (failure?.action?.operation !== "read" || failure.nodeId === undefined) return undefined;
+  if (failure?.nodeId === undefined || failure.taskId === undefined) return undefined;
+  const origin = deps.descriptors.resolve(authority.envelope.workflow)?.dataOrigins
+    ?.find(entry => entry.nodeId === failure.nodeId && entry.taskId === failure.taskId);
+  if (origin?.dir !== "read") return undefined;
   const observed = entries.filter((entry): entry is Extract<RunLogScanEntry, { kind: "observed" }> => entry.kind === "observed"
-    && entry.producer.nodeId === failure.nodeId && entry.event.attempt === failure.attempt);
+    && entry.producer.nodeId === failure.nodeId && entry.producer.taskId === failure.taskId && entry.event.attempt === failure.attempt);
   const last = observed.at(-1);
   if (last === undefined) return undefined;
-  const seen = new Set(observed.flatMap(entry => operatorFieldsOf(entry).map(({ label }) => label)));
-  const labels = [...new Set((last.producer.operatorFields ?? []).filter(field => field.kind === "output").map(({ label }) => label))]
-    .filter(label => !seen.has(label));
+  const keys = observed.flatMap(entry => entry.event.points.flatMap(point => point.values.map(({ key }) => key)));
+  const outputs = (last.producer.operatorFields ?? []).filter(field => field.kind === "output");
+  const seen = new Set(outputs.filter(field => keys.some(key => field.fieldPath === key || field.fieldPath.startsWith(`${key}.`)))
+    .map(({ label }) => label));
+  const labels = [...new Set(outputs.map(({ label }) => label))].filter(label => !seen.has(label));
   return labels.length === 0 ? undefined : { logId: logIdOf(last), labels };
 }
 
