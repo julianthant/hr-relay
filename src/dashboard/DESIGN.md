@@ -108,7 +108,7 @@ The assistant is a floating, draggable bottom-right panel: tinted header (histor
 Browser captures stay inline. A verified before/after pair sits under its declared submit action,
 with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
 
-Warnings and failures are toasts (`Notice`, or `useToasts`): a title and at most one short line, with no code, outcome or explanatory paragraph. A one-off result (an action failed or was refused) dismisses itself. A state the operator must act on (unavailable storage, unread settings, a pending check) is `sticky`, carries one action button, and shows again whenever its surface mounts while the state still holds. These stay inline: field validation beside its input, anything inside a dialog or drawer (toasts are inert while one is open; the Start run dialog uses `Banner`/`Refusal`), confirmations that need two choices, empty states, and the run log failure card.
+Warnings and failures are toasts (`Notice`, or `useToasts`): a title and at most one short line, with no code, outcome or explanatory paragraph. A one-off result (an action failed or was refused) dismisses itself. A state the operator must act on (unavailable storage, unread settings, a pending check) is `sticky`, carries one action button, and shows again whenever its surface mounts while the state still holds. These stay inline: field validation beside its input, anything inside a dialog or drawer (toasts are inert while one is open; the Start run dialog uses `Banner`/`Refusal`), confirmations that need two choices, empty states, and a failed step's decision in Logs.
 Required browser slots without an observed session read “Not opened”; observed health failures stay “Unavailable”.
 
 ## Run logs
@@ -123,8 +123,70 @@ Shared by every workflow's served Logs (`projectRunLogs`); display only, so evid
 - Leave stage state to the timeline strip: no Pending, In progress, Completed or Failed lines. Skipped keeps one line, "Skipped · Not needed for this run"; a wait or cancel keeps its line.
 - Never write a "<step> completed" line for a step with no rows.
 - Label a capture with its step's system and "Browser"; its caption is its label, else its capture time.
-- A failed step is one card: the step's failure title, a Failed badge, the catalog sentence for its code, and the write outcome in operator words ("No changes were made." in the footer; any other outcome as a caution sentence). Never "Write state: …", a developer remark about the panel, or a failure code.
+- A failed step follows the failure rule under Decisions: its failure title, the catalog sentence for its code, and the write outcome in operator words ("Nothing was written."). Never "Write state: …", a developer remark about the panel, or a failure code.
 - Do not repeat a fact between the card, the row, and the timeline.
+
+### Type levels in Logs and Explorer
+
+Use one level per role, from the existing scale, and never two roles at one level in the same view.
+
+| Role | Logs | Explorer |
+| --- | --- | --- |
+| Page title | Not used | `PageHeading` |
+| Section title (run title, "Run options") | `text-section` | `text-section` |
+| Step title | `text-heading` | `text-section` |
+| Decision question | `text-heading` | Not used |
+| Page card title | `text-control` semibold | `text-control` semibold |
+| Field and column label | `text-body` medium; column headers `text-caption` muted | `text-body` medium, secondary |
+| Meta (time, system, mode, counts) | `text-caption` muted | `text-caption` muted |
+
+Times and IDs use the body face with tabular figures, never the data face.
+
+### Steps
+
+- One time per step, in the left column. Rows inside the step have no time.
+- A step reads in order: page cards, clicks, captures, then its outcome line, then any decision.
+- A page card shows the page name and its mode (Fill, Read) on the right. Its values sit in rows under it, or in one table when the page lists records.
+- A click is a plain line with the pointer icon: "Clicked Search". Never draw it as a button.
+- Every finished step ends with one outcome line in Explorer's words, with a check icon.
+
+### Decisions
+
+A decision is answered where its evidence is. It is never a separate card, dock or banner.
+
+- Anatomy, in order: the question (`text-heading`), at most one note line (`text-body` secondary), the evidence or input, then the actions on one row.
+- Picking one of several records puts a radio column in the page card that lists them. The primary action names the choice ("Continue with Morrow, Bea A.") and stays disabled until a row is chosen.
+- A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
+- A value to correct, or a transaction number to confirm, is a labelled input on the action row, before the buttons.
+- A failure uses the same anatomy. The question is the failure title in the danger colour, the note is the catalog sentence plus the write outcome, and the actions are Retry step (only when nothing was written) and Add note.
+- A cancel in progress is one line with a loading icon. It has no actions.
+- A refused command is a toast (title and one line). The transcript does not change.
+- Buttons are standard size: one primary, then secondary buttons. The run-ending action (Cancel run, Reject) is secondary, never ghost text.
+- No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
+
+### Status signals
+
+Each state keeps its own badge in the queue row and the run header, and its own word and colour in the step's time column. The timeline strip keeps its bar styles and names the state in its label.
+
+| State | Header and queue | Time column under the step time |
+| --- | --- | --- |
+| Waiting for you | Review (`waiting`) | "Waiting" and the wait time, info colour |
+| Write parked or uncertain submit | Write parked (`parked`, dashed) | "Parked" and the wait time, warning colour |
+| Failed | Failed (`failed`) | "Failed", danger colour |
+| Stalled | Failed with the label Stalled | "No progress" and the time, danger colour |
+| Paused | Queued with the label Paused | "Paused", muted |
+| Cancelling | Cancelling (`cancelling`) | "Cancelling", muted |
+
+## Explorer
+
+Explorer is a generated review spec of what a workflow does. It never shows simulated runs or action buttons.
+
+- Run options sit above the step list as a "Run options" section: a label above each select, in one row.
+- Step 1 is "Open browser sessions", with a chip for each system the run signs in to. Logs never show this step.
+- A step reads: title and system, one description line, check lines (outside page cards), page cards, clicks as plain lines ("Clicks Search").
+- A decision point is a select under the evidence it reads. It lists every outcome declared there, ending with "Anything else", with what happens next beside it. Changing it changes the steps below.
+- When an outcome stops the run, the steps after it are hidden and the run's end line states the stop in the danger colour, once.
+- There is no "If" label. Fill values keep their source button. Sample values come from the definition's examples.
 
 ## Motion
 
