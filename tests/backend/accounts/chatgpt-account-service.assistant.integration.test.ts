@@ -159,6 +159,23 @@ it("refuses a catalog that settles after signout and cancels held inference on a
   } finally { release(); await f.cleanup(); }
 });
 
+it("a page close while the catalog body is read is a cancellation and leaves the account usable", async () => {
+  const f = await chatGptFixture(undefined, profiles.create), entered = Promise.withResolvers<void>(), abort = new AbortController();
+  try {
+    await f.connected();
+    // As the native fetch does: an aborted request errors its body with the signal's reason.
+    let calls = 0, pulls = 0;
+    f.setModelsHook(init => calls++ > 0 ? Promise.resolve(Response.json({ models: [{ slug: request.model, display_name: "Sol", visibility: "list" }] })) : Promise.resolve(new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      init?.signal?.addEventListener("abort", () => { controller.error(init.signal?.reason); }, { once: true });
+    }, pull(controller) { if (pulls++ === 0) controller.enqueue(new TextEncoder().encode('{"models":[')); else entered.resolve(); } }, { highWaterMark: 0 }), { headers: { "content-type": "application/json" } })));
+    const catalog = f.service.listAssistantModels(abort.signal);
+    await entered.promise; abort.abort();
+    await assert.rejects(catalog, { code: "CHATGPT_OCR_CANCELLED" });
+    assert.deepEqual((await f.service.listAssistantModels()).catalog.models.map(model => model.slug), [request.model]);
+    assert.equal(f.service.readAccount().state, "connected");
+  } finally { await f.cleanup(); }
+});
+
 it("refreshes account-specific models after a fresh sign-in without a bundled catalog fallback", async () => {
   const f = await chatGptFixture(undefined, profiles.create);
   try {

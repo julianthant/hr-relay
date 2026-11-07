@@ -71,7 +71,7 @@ function authUrl(value: string): string {
 async function boundedJson(response: Response, diagnostic?: ChatGptInferenceDiagnostic, invalidCode: ChatGptAccountCode = "CHATGPT_AUTH_INVALID", maxBytes = 64_000): Promise<unknown> {
   if (!response.ok || response.body === null) { if (diagnostic !== undefined) diagnostic.jsonFailure = "missing-body"; await response.body?.cancel(); throw fault(invalidCode === "CHATGPT_AUTH_INVALID" ? "CHATGPT_AUTH_UNAVAILABLE" : invalidCode); }
   const reader = response.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
-  let outcome: { readonly kind: "value"; readonly value: unknown } | { readonly kind: "error"; readonly error: unknown };
+  let outcome: { readonly kind: "value"; readonly value: unknown } | { readonly kind: "error"; readonly error: unknown }, readError: unknown;
   try {
     for (;;) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length;
       if (size > maxBytes) { if (diagnostic !== undefined) diagnostic.jsonFailure = "too-large"; throw fault(invalidCode); } chunks.push(chunk.value); }
@@ -81,8 +81,9 @@ async function boundedJson(response: Response, diagnostic?: ChatGptInferenceDiag
     try { outcome = { kind: "value", value: JSON.parse(text) as unknown }; }
     catch { outcome = { kind: "error", error: fault(invalidCode) }; }
     if (outcome.kind === "value" && diagnostic !== undefined) delete diagnostic.jsonFailure;
-  } catch (error) { if (diagnostic !== undefined) diagnostic.jsonFailure ??= "read"; outcome = { kind: "error", error: error instanceof ChatGptAccountError ? error : fault(invalidCode) }; }
-  try { await reader.cancel(); } catch (error) { outcome = { kind: "error", error: error instanceof ChatGptResourceClosureUnprovedError ? error : fault("CHATGPT_AUTH_UNAVAILABLE") }; }
+  } catch (error) { readError = error; if (diagnostic !== undefined) diagnostic.jsonFailure ??= "read"; outcome = { kind: "error", error: error instanceof ChatGptAccountError ? error : fault(invalidCode) }; }
+  // An errored stream's cancel repeats the read's own error: the stream is already closed.
+  try { await reader.cancel(); } catch (error) { if (readError === undefined || error !== readError) outcome = { kind: "error", error: error instanceof ChatGptResourceClosureUnprovedError ? error : fault("CHATGPT_AUTH_UNAVAILABLE") }; }
   reader.releaseLock();
   if (outcome.kind === "error") throw outcome.error;
   return outcome.value;
@@ -202,7 +203,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       function closeReader(cancel: boolean): Promise<void> {
         readerClosure ??= (async () => {
           const failures: unknown[] = [];
-          if (cancel) try { await reader.cancel(); } catch (cause) { failures.push(cause); }
+          // A stream errored by this request's own abort is already closed; cancel only reports that stored reason.
+          if (cancel) try { await reader.cancel(); } catch (cause) { if (!combined.aborted || cause !== combined.reason) failures.push(cause); }
           try { reader.releaseLock(); } catch (cause) { failures.push(cause); }
           requests.delete(controller);
           if (failures.length !== 0) {
