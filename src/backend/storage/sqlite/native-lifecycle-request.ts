@@ -24,6 +24,9 @@ const schemas = {
   delete:CanonicalDeleteRequestSchema,purge:CanonicalPurgeRequestSchema,
   "clear-history": RunHistoryCommandSchema,
 };
+export function runLifecycleRequestFingerprint(operation: string, request: unknown): string {
+  return sha256Hex(`hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(request)}`);
+}
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);
   if (!Object.hasOwn(schemas,command.operation)) throw new Error("run-lifecycle-operation-unavailable");
@@ -31,7 +34,7 @@ export function validateNativeLifecycleRequest(input: unknown): void {
   const parsed = schemas[operation].parse(command.request);
   if (z.object({commandId:z.string()}).parse(parsed).commandId !== command.commandId
     || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)
-    || command.requestFingerprint !== sha256Hex(`hrauto:run-lifecycle-command:v1\0${command.operation}\0${canonicalJsonStringify(parsed)}`)) {
+    || command.requestFingerprint !== runLifecycleRequestFingerprint(command.operation, parsed)) {
     throw new Error("run-lifecycle-request-binding-mismatch");
   }
   let expectedFence: unknown;

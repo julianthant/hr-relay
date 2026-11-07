@@ -4,7 +4,7 @@ import { z } from "zod";
 import { RunDeleteInputSchema } from "../../../models/run/deleted-run.js";
 import type { PredecessorRunRecord } from "../../../models/run/record.js";
 import { CanonicalDeleteRequestSchema } from "./run-store-contracts.js";
-import { commandFromRow, insertNativeCommand } from "./command-record-row.js";
+import { insertNativeCommand } from "./command-record-row.js";
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, WORKER_CUSTODY_SLOT_REBUILD_ID } from "./migrations.js";
 import { executeNativeRunDeletion, prepareNativeRunDeletion, RunDeletionRefusedError } from "./native-run-deletion.js";
 import { childrenFirst, lifecycleCommand, recordAudit, requireSettledPreBuildRun } from "./pre-build-run-deletion.js";
@@ -13,7 +13,7 @@ import { confirmationPublicationFromRow } from "../../../models/events/confirmed
 import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
-import { predecessorCustodyRunFromRow } from "./worker-custody-predecessor.js";
+import { isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow } from "./worker-custody-predecessor.js";
 
 const SLIM_WORKER_SLOTS = [
   `CREATE TABLE worker_slots (
@@ -40,7 +40,6 @@ BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
 const WORKER_SLOT_CHILDREN = ["auth_leases", "exclusive_session_leases"] as const;
 
 const REMOVED_KEYS = new Set(["workerLifetime", "membershipRevision", "leaseGeneration", "controlBasis"]);
-const WORKER_OPERATIONS = new Set(["worker-admission", "worker-standing-recovery", "worker-verification-admission", "worker-verification-retirement"]);
 const DELETE_BLOCKING_TRIGGERS = ["command_audits_retained", "commands_bulk_retained", "run_batches_retained", "ocr_review_revisions_retained", "ocr_approved_snapshots_retained"];
 /** Native run deletion retains these by design; they may still name a deleted run. */
 const DELETION_RETAINED_TABLES = new Set(["write_intents", "write_attempts", "deleted_runs", "artifacts", "database_upgrades"]);
@@ -168,7 +167,7 @@ function settledIntent(database: DatabaseSync, row: Row): SettledWrite {
     if (attempt.outcome.state === "committed") continue;
     const resolution = intent.resolution;
     if (attempt.outcome.state !== "parked" || resolution?.writeAttemptId !== attempt.writeAttemptId) throw new Error("write-attempt-unsettled");
-    authenticateParkedWriteResolution(intent, attempt, commandFromRow(database.prepare("SELECT * FROM commands WHERE id=?").get(resolution.commandId)),
+    authenticateParkedWriteResolution(intent, attempt, predecessorCommandFromRow(database.prepare("SELECT * FROM commands WHERE id=?").get(resolution.commandId)),
       nativeOrdinaryRecordFromRow("command_audits", database.prepare("SELECT * FROM command_audits WHERE id=?").get(resolution.auditId)));
   }
   confirmationPublicationFromRow(intent, row.publication_json);
@@ -191,7 +190,7 @@ function doomedJournals(database: DatabaseSync, closure: ReadonlySet<string>, se
   const history = new Set(seeds), named = new Set<string>();
   for (const row of rows(database, "SELECT * FROM commands")) {
     const request = json(row.request_json);
-    if (row.family === "worker-browser" || (row.family === "run-lifecycle" && WORKER_OPERATIONS.has(z.object({ operation: z.string() }).parse(request).operation))) history.add(text(row, "id"));
+    if (isPredecessorWorkerHistory(row)) history.add(text(row, "id"));
     else if (mentions([row.target_id, request, json(row.outcome_json)], closure)) named.add(text(row, "id"));
   }
   for (const row of rows(database, "SELECT * FROM command_audits")) {
@@ -206,12 +205,6 @@ function doomedJournals(database: DatabaseSync, closure: ReadonlySet<string>, se
     if (doomed.has(z.string().parse(row.parent_id)) !== doomed.has(text(row, "id"))) throw new Error("authority-upgrade-retained-run-reference");
   }
   return doomed;
-}
-
-/** The predecessor commands the conversion deletes; the stopped validator reads every other command strictly. */
-export function workerCustodyDoomedCommands(database: DatabaseSync): ReadonlySet<string> {
-  const { runs, seeds } = workerLifetimeClosure(database);
-  return doomedJournals(database, runs, seeds, writeResolutionCommands(database));
 }
 
 function deleteJournals(database: DatabaseSync, closure: ReadonlySet<string>, seeds: ReadonlySet<string>, kept: ReadonlySet<string>): void {
