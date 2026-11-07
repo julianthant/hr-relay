@@ -12,7 +12,8 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { authenticateParkedWriteResolution } from "../../../../src/rules/write-safety/parked-resolution.js";
 import { WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
-import { restorePredecessorCustodySchema, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
+import { writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
+import { restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-custody-migration.js";
 
 const { cleanup, roundTrip, parkedIntent, resolutionCommand } = createParkedWriteRoundTripTestWorld();
@@ -40,7 +41,7 @@ async function recovered(extra: (fence: FenceSpan) => readonly unknown[] = () =>
   const raw = new DatabaseSync(h.profile.path);
   raw.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000");
   assert.notEqual(writePredecessorWorkerLifetimes(raw, WRITE_FIXTURE_RUN_ID).length, 0, "the run must be claimed with a worker lifetime");
-  raw.exec("BEGIN EXCLUSIVE"); restorePredecessorCustodySchema(raw);
+  raw.exec("BEGIN EXCLUSIVE"); restoreSchema22WorkerCustodyFixture(raw);
   raw.exec("UPDATE database_states SET schema_version=22; PRAGMA user_version=22; COMMIT");
   const migrate = () => migrateWorkerCustody(raw, WRITE_FIXTURE_NOW, ref => inspectArtifactDeletionFile(h.profile.admission, ref));
   return { h, raw, resolution: settled.resolution, migrate };
