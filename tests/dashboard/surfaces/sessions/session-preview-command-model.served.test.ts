@@ -35,7 +35,7 @@ function dayWith(count = 1): DashboardDayWire {
   assert.equal(base.workerAuthority.state, "present");
   if (base.workerAuthority.state !== "present") throw new Error("fixture authority");
   return DashboardDayWireSchema.parse({ ...base, workerPools: count === 0 ? [] : [{ workflowId: "person-lookup", desiredWorkers: count, version: 1, plannedBy: "local-operator", plannedAt: now }],
-    workerAuthority: { state: "present", members: base.workerAuthority.members.slice(0, count).map(slot => ({ ...slot, phase: "idle" })) },
+    workerAuthority: { state: "present", members: base.workerAuthority.members.slice(0, count).map(slot => ({ ...slot, paused: false })) },
     workerCards: base.workerCards.slice(0, count).map(card => ({ ...card, state: "idle", directive: "run", browsers: [], currentRun: { state: "absent", reason: "no current run" },
       controls: basis(LIFETIME) })) });
 }
