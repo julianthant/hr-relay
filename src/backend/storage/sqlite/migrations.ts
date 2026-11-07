@@ -970,7 +970,7 @@ export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sour
 }
 
 export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides" | typeof RETIRED_ASSISTANT_GRANT_TABLE)[] {
-  return [...(version < 10 ? ["explorer_overrides" as const] : []), ...(version >= 8 && version < 26 ? [RETIRED_ASSISTANT_GRANT_TABLE] as const : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
+  const names = [...(version < 10 ? ["explorer_overrides" as const] : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
     && (version >= 9 || name !== "assistant_model_preference")
@@ -980,6 +980,10 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
     && (version >= 17 || !name.startsWith("ocr_"))
     && (version >= 18 || !["workbook_library_state", "workbook_library_actions", "workbook_library_snapshots"].includes(name))
     && (version >= 13 || !["workbook_creations", "workbook_types", "workbook_operations"].includes(name)))];
+  // The retired grant table keeps its registry position (after settings) so predecessor content fingerprints are unchanged.
+  if (version < 8 || version >= 26) return names;
+  const at = names.indexOf("settings") + 1;
+  return [...names.slice(0, at), RETIRED_ASSISTANT_GRANT_TABLE, ...names.slice(at)];
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {
