@@ -15,6 +15,7 @@ import { createProfileRegistry } from "../../../../../src/backend/profiles/regis
 import { initializeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { ProfileSessionLogUnavailableError, readLocalDebugLog } from "../../../../../src/backend/storage/events/local-debug-log.js";
 import { ProfileSelectionChangeSchema } from "../../../../../src/models/profiles/profile.js";
+import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../../src/backend/storage/source-closure.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, type ProtectedSettingsApplyInput } from "../../../../../src/models/config/protected-settings.js";
@@ -243,5 +244,34 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
     assert.equal((await client.readProfileSession()).state, "signed-out");
     assert.deepEqual(await client.resumeProfile(), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
     await assert.rejects(client.bootstrap());
+  } finally { await app?.stop(); await f.close(); }
+});
+
+it("joins two resumes fired at once after a restart, so neither page is told to wait for another profile", async () => {
+  const f = await createBoundProfileFixture({ sharedMachine: true }), clock = manualClock(new Date("2026-11-04T12:00:00Z"));
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
+  let machine = f.machine, app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, origin = "";
+  const start = async () => {
+    const running = await composeDashboardApplication({ admission: machine, lifetimeLock: f.lifetime, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      workerProcess: { spawn() { throw new Error("resume must not spawn a worker"); } } });
+    origin = `http://127.0.0.1:${running.port}`;
+    return running;
+  };
+  const post = (path: string, body: unknown) => fetch(`${origin}${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+  try {
+    app = await start();
+    assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: fields.email, password: fields.password })).json()).state, "active");
+    await app.stop(); app = undefined;
+    machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
+    app = await start();
+    const responses = await Promise.all([post("/api/v1/profile/resume", {}), post("/api/v1/profile/resume", {})]);
+    const bodies = await Promise.all(responses.map(async response => PublicProfileStateSchema.parse(await response.json())));
+    assert.deepEqual(responses.map(response => response.status), [200, 200], JSON.stringify(bodies));
+    assert.deepEqual(bodies.map(body => body.state), ["active", "active"], JSON.stringify(bodies));
+    assert.deepEqual(bodies[0], bodies[1]);
+    const cookies = responses.map(response => response.headers.get("set-cookie")?.split(";", 1)[0]);
+    assert.ok(cookies[0]); assert.equal(cookies[0], cookies[1]);
+    assert.equal((await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie: cookies[0] ?? "" } })).status, 200);
   } finally { await app?.stop(); await f.close(); }
 });

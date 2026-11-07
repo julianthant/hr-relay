@@ -193,7 +193,10 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };
+  let resumeInFlight: Promise<void> | undefined;
   const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
+    // A page reload during a resume sends a second resume; it waits for the first and then answers from its outcome.
+    if (mode === "resume" && resumeInFlight !== undefined) { await resumeInFlight; return activate(request, mode); }
     if (transitioning || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     if (selection !== undefined) {
       if (mode !== "resume") throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
@@ -203,6 +206,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.duoState });
     }
     transitioning = true;
+    let settled: () => void = () => undefined;
+    if (mode === "resume") resumeInFlight = new Promise<void>(resolve => { settled = resolve; });
     try {
       const result = await (async () => {
         if (mode === "signup") return profileRuntime.session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
@@ -222,8 +227,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         return ProfileOnboardingStateSchema.parse(state);
       }
       if (result.state !== "active") return { state: "refused" as const, code: result.code };
-      return mountActive(result);
-    } finally { transitioning = false; }
+      return await mountActive(result);
+    } finally { transitioning = false; if (mode === "resume") { resumeInFlight = undefined; settled(); } }
   };
   const admitProfile = async (mode: "signup" | "signin" | "resume", request: Request) => {
     const activated = await activate(request, mode);
