@@ -12,7 +12,7 @@ import { z } from "zod";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { ActorIdSchema, WorkerIdSchema, type PositiveInt, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, type PositiveInt, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -29,6 +29,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { type Clock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import { admitFixtureSlot } from "../../fixtures/run-lifecycle-fixtures.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { ManualScheduler, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 
@@ -155,6 +156,9 @@ export function createWorkerCompositionTestWorld() {
     lines?: string[];
   }>) {
     ensureBaselineRuntimeConfig(options.repoRoot, options.clock);
+    const slots = open(options.repoRoot, options.clock);
+    try { slots.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, options.poolIndex, options.clock.now().toISOString())); }
+    finally { slots.close(); }
     const lifetimeLock = owner(options.repoRoot).lifetime;
     return {
       lifetimeLock,
@@ -218,42 +222,6 @@ export function createWorkerCompositionTestWorld() {
       restore() { loopSpy.mockRestore(); },
     };
   }
-  async function workerLifetime(stateRoot: string, clock: TestClock, workerIdInput: string) {
-    const workerId = WorkerIdSchema.parse(workerIdInput), database = reopen(stateRoot, clock);
-    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: {} });
-    await once(child, "spawn");
-    assert.ok(child.pid);
-    const exited = once(child, "exit");
-    const crash = async () => {
-      if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await exited; }
-      assert.ok(child.exitCode !== null || child.signalCode !== null);
-    };
-    try {
-      const started = database.authority.workerLeases.start({ workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"],
-        processId: child.pid, requestedBy: "local-operator", now: clock.now().toISOString() });
-      assert.equal(started.state, "started");
-      if (started.state !== "started") throw new Error("worker-fixture-birth-refused");
-      const close = async () => {
-        const lease = database.authority.workerLeases.get(workerId); assert.ok(lease);
-        if (lease.lifecycle.state !== "stopped") {
-          const now = clock.now().toISOString();
-          assert.equal(database.authority.workerLeases.control({ workerId, expectedVersion: lease.version,
-            control: { directive: "stop", requestedAt: now, requestedBy: "local-operator" }, now }).state, "applied");
-          for (const state of ["stopping", "stopped"] as const) {
-            assert.equal(database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: lease.leaseGeneration,
-              lifecycle: state === "stopped" ? { state, startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "shutdown" }
-                : { state, startedAt: lease.lifecycle.startedAt, heartbeatAt: now }, now }).state, "applied");
-          }
-        }
-        await crash();
-      };
-      return { pid: child.pid, lease: started.lease, crash, close };
-    } catch (error) {
-      try { await crash(); }
-      catch (closeError) { throw new AggregateError([error, closeError], "worker lifetime startup cleanup failed", { cause: closeError }); }
-      throw error;
-    }
-  }
   async function concurrentWorkers(repoRoot: string, clock: TestClock) {
     const children: ChildProcess[] = [], exits: Promise<unknown[]>[] = [], closes: Promise<unknown[]>[] = [];
     const replies: Promise<unknown[]>[] = [];
@@ -310,5 +278,5 @@ export function createWorkerCompositionTestWorld() {
     for (const [root, fixture] of profiles) { await fixture.close(); profiles.delete(root); }
   };
   return { openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig,
-    resolvedSettings, profileAdmission, stateRootFor, captureSyntheticClosure, workerLifetime, concurrentWorkers, databaseDescriptors, closeDatabases, composeInput, cleanup };
+    resolvedSettings, profileAdmission, stateRootFor, captureSyntheticClosure, concurrentWorkers, databaseDescriptors, closeDatabases, composeInput, cleanup };
 }

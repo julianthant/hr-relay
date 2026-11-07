@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { WORKER_CUSTODY_CONVERSION_ID, WORKER_CUSTODY_MIGRATION_STATEMENTS, WORKER_CUSTODY_SCAN_ID, WORKER_CUSTODY_SLOT_REBUILD_ID,
-  assertWorkerCustodyConverted, convertWorkerCustody, rebuildWorkerSlots } from "../../../../src/backend/storage/sqlite/worker-custody-migration.js";
+import { WORKER_CUSTODY_CONVERSION_ID, WORKER_CUSTODY_MIGRATION_STATEMENTS, WORKER_CUSTODY_SCAN_ID } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "../../../../src/backend/storage/sqlite/worker-custody-migration.js";
 
 type CaptureFile = Parameters<typeof convertWorkerCustody>[2];
 
@@ -10,9 +10,8 @@ export function migrateWorkerCustody(database: DatabaseSync, now: string, captur
   database.exec("BEGIN EXCLUSIVE");
   try {
     for (const statement of WORKER_CUSTODY_MIGRATION_STATEMENTS) {
-      if (statement.includes(WORKER_CUSTODY_SLOT_REBUILD_ID)) rebuildWorkerSlots(database);
       if (statement.includes(WORKER_CUSTODY_CONVERSION_ID)) convertWorkerCustody(database, now, captureFile, (record, run) => settlePredecessorRunEvidence(database, record, run));
-      database.exec(statement);
+      execMigrationStatement(database, statement);
       if (statement.includes(WORKER_CUSTODY_SCAN_ID)) assertWorkerCustodyConverted(database);
     }
     database.exec("COMMIT");

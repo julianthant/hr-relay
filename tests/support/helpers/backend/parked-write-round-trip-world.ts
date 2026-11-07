@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
@@ -93,7 +94,7 @@ export function createParkedWriteRoundTripTestWorld() {
         authority: database,
         ids
       }),
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
 
     const park = async (failCommit = true) => {

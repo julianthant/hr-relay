@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
@@ -234,8 +235,6 @@ export async function harness(options: {
       listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -317,15 +316,7 @@ export async function harness(options: {
         throw new Error("write resolution is not wired in this harness");
       },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      spawnPoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      refreshPoolBrowser: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      reopenPoolBrowser: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      stopPoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      pausePoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      resumePoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials),
   });
   const commands = createDashboardCommandService({ kernel, projection });

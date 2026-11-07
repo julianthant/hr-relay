@@ -90,7 +90,6 @@ export function createDashboardModelFixtures() {
     statusCounts: [{ status: "running", count: 1 }],
     queueSurfaces: [QUEUE],
     workerPools: [],
-    workerOperations: [],
     workerAuthority: { state: "present", members: [{
       workerId: "onboarding-worker-1", workflow: "onboarding", ordinal: 1, poolIndex: 1, membershipRevision: 1,
       phase: "running", retiredAt: null, retirementCommandId: null, reservationCommandId: null,
