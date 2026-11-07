@@ -21,9 +21,11 @@ for (const theme of ["light", "dark"] as const) test(`assistant mock @ ${theme}`
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   for (const frame of ASSISTANT_FRAMES.filter(item => ONLY === undefined || ONLY.includes(item.id))) {
-    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setViewportSize({ width: 1680, height: 900 });
     const workflow = frame.logs.workflow;
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: workflow, mockRun: `mock:${workflow}:sample` }))}&assistantMock=${frame.id}`);
+    // Mock presentation only: keep Queue and Logs clear of the open panel so both read side by side.
+    await page.addStyleTag({ content: "#dashboard-main-region{padding-right:464px}" });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs.getByRole("heading", { level: 2 })).toHaveText(frame.logs.subject);
     await expect(page.getByRole("region", { name: "Relay assistant", exact: true })).toBeVisible();
