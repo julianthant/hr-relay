@@ -11,6 +11,7 @@ const OUT = process.env.DECISION_MOCK_OUT ?? join(import.meta.dirname, "../../.w
 
 async function grow(page: Page, scroller: Locator) {
   await page.mouse.move(1, 1);
+  await page.setViewportSize({ width: 1280, height: 720 });
   const extra = await scroller.evaluate(node => node.scrollHeight - node.clientHeight);
   if (extra > 0) await page.setViewportSize({ width: 1280, height: 720 + extra + 8 });
   await page.waitForTimeout(300);
