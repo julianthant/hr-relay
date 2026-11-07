@@ -17,6 +17,13 @@ import { QUEUED_RUN, RUN_ID, TRACE_ID } from "../../../support/fixtures/phase1f-
 
 const SHAPE_VERSION = BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1;
 
+/** The rest of the forward path after the pre-build deletion, so the stamped version has its real shape. */
+function applyLaterMigrations(database: DatabaseSync): void {
+  for (const migration of SQLITE_MIGRATIONS.filter(row => row.version >= BUILD_ID_ENVELOPE_SCHEMA_VERSION)) {
+    for (const statement of migration.statements) database.exec(statement);
+  }
+}
+
 function store(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
@@ -58,6 +65,7 @@ function owner(database: DatabaseSync) {
 function upgrade(database: DatabaseSync): void {
   database.exec("BEGIN EXCLUSIVE");
   deletePreBuildRuns(database, NOW, () => { throw new Error("artifact-unexpected"); }, owner(database));
+  applyLaterMigrations(database);
   database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
   database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   database.exec("COMMIT");
@@ -88,6 +96,7 @@ it("deletes a predecessor queued run through the cancel door without inserting a
     assert.equal("buildId" in terminal.envelope, false);
     assert.equal(inspectNativeAuthority(database, SHAPE_VERSION).schemaVersion, SHAPE_VERSION);
     deletePreBuildRuns(database, NOW, () => { throw new Error("artifact-unexpected"); }, owner(database));
+    applyLaterMigrations(database);
     database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
     database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
     database.exec("COMMIT");
