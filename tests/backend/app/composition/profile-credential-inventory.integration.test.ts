@@ -1,4 +1,7 @@
 import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { enumerateProfileCredentialMembership } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
@@ -11,7 +14,7 @@ import { chmodSync, copyFileSync, linkSync, lstatSync, renameSync, mkdirSync, mk
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
@@ -29,6 +32,8 @@ import { CanonicalCredentialHeadSchema, CredentialMaintenanceHold } from "../../
 import { createHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { readStoppedCredentialConversion } from "../../../../src/backend/storage/configuration/credential-conversion.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { scaledMs } from "../../../support/time-scale.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 
 
 async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
@@ -338,3 +343,27 @@ for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`det
 });
 
 
+it("reads the upgrade authority a fixed number of times per stopped enumeration regardless of file count", async () => {
+  const f = await fixture(), profileId = f.admission.profileBinding.profileId;
+  let stopped: RuntimeAdmission | undefined, restore: OfflineMaintenanceOperation | undefined, primary: { error: unknown } | undefined;
+  try {
+    await f.context.account.close(); f.context.database.close(); f.admission.release();
+    restore = f.machine.acquireOfflineMaintenance();
+    stopped = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, profileId, restore, f.clock, { primaryDisplay: null });
+    const admission = stopped, facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
+    const keychainReads = () => {
+      const spy = vi.spyOn(FakeKeyringEntry.prototype, "getPassword");
+      try { const { identities } = enumerateProfileCredentialMembership(admission, facts, join(f.stateRoot, "browsers"), profileBrowserClosure); return { reads: spy.mock.calls.length, paths: identities.length }; }
+      finally { spy.mockRestore(); }
+    };
+    const small = keychainReads();
+    for (let index = 0; index < 25; index += 1) mkdirSync(join(f.stateRoot, "scratch", `walk-${index}`), { recursive: true });
+    const large = keychainReads();
+    assert.equal(large.paths >= small.paths + 25, true);
+    assert.equal(small.reads > 0, true);
+    assert.equal(large.reads, small.reads);
+  } catch (error) { primary = { error }; }
+  try { stopped?.release(); restore?.release(); await f.cleanup(); }
+  catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "authority-read-fixture-close-failed", { cause: error }); }
+  if (primary !== undefined) throw primary.error;
+}, scaledMs(30000));

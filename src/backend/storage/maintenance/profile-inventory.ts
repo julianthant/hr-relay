@@ -396,7 +396,8 @@ export function enumerateProfileCredentialMembership<Custody extends CredentialM
     const path = join(directory, name); inventoryFileIdentity(path);
     return { path, sha256: createHash("sha256").update(readFileSync(path)).digest("hex"), companion: /-(?:wal|shm)$/u.test(name) };
   });
-  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, browserClosure, ownedWriter, ownedCredentialStages, registryMembership(admission));
+  const registry = registryMembership(admission);
+  return admission.withStatePaths(assertPath => enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, assertPath, suspects, browserClosure, ownedWriter, ownedCredentialStages, registry));
 }
 
 export function enumerateFlatBackupRecoveryMembership<Custody extends CredentialMembershipCustody>(root: string, custody: Custody, browserClosure: ProfileBrowserClosure) {
