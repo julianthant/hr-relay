@@ -60,12 +60,15 @@ for (const theme of ["light", "dark"] as const) {
           await expect(page.locator(".log-capture-group img")).toHaveJSProperty("naturalWidth", 850);
         }
         if (state === "before-after") {
-          const pair = page.locator(".log-capture-group--submit");
-          await expect(pair.locator("figure")).toHaveCount(2);
-          await expect(pair.locator("figcaption")).toContainText(["Before submit", "After submit"]);
-          await expect(pair.locator("img").first()).toHaveJSProperty("naturalWidth", 850);
-          const cards = await pair.locator("figure").evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return { top: box.top, width: box.width, height: box.height }; }));
-          expect(cards[0]).toEqual(cards[1]);
+          // Each submit capture is its own screenshot row: before above after, at the same size.
+          const rows = page.locator(".log-capture-group--submit");
+          await expect(rows).toHaveCount(2);
+          await expect(rows.locator("figure")).toHaveCount(2);
+          await expect(rows.locator("figcaption")).toContainText(["Before submit", "After submit"]);
+          await expect(rows.locator("img").first()).toHaveJSProperty("naturalWidth", 850);
+          const cards = await rows.locator("figure").evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return { top: box.top, width: box.width, height: box.height }; }));
+          expect(cards[1].top).toBeGreaterThan(cards[0].top);
+          expect({ width: cards[1].width, height: cards[1].height }).toEqual({ width: cards[0].width, height: cards[0].height });
         }
         if (state === "dry-run") await expect(page.getByRole("region", { name: "Full dry-run preview", exact: true })).toBeVisible();
         if (state === "pre-submit-failed") await expect(page.getByText("Submit not clicked", { exact: true })).toBeVisible();
