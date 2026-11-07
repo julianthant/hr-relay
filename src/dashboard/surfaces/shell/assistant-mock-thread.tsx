@@ -1,8 +1,7 @@
-import { Fragment, useEffect, useRef, useState } from "react";
-import { ChevronRight, LoaderCircle, Paperclip, Undo2 } from "lucide-react";
-import { Button, useToasts } from "../../ds/ui.js";
+import { Fragment, useEffect, useRef } from "react";
+import { Check, ChevronRight, Paperclip, Undo2 } from "lucide-react";
+import { useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import { DecisionCard } from "../run-detail/logs/decision-card.js";
 import { ACTIVITY, type AssistantFrame, type ChatItem, type Row } from "../assistant/assistant-mock-frames.js";
 import { AssistantReply } from "./assistant-panel.js";
 
@@ -20,7 +19,7 @@ function Inline({ text }: { text: string }) {
 }
 
 /** Sentences first; consecutive "- " lines become one bullet list. */
-function Text({ text, running }: { text: string; running?: boolean }) {
+function Text({ text }: { text: string }) {
   const blocks: (string | string[])[] = [];
   for (const line of text.split("\n")) {
     const last = blocks.at(-1);
@@ -30,37 +29,32 @@ function Text({ text, running }: { text: string; running?: boolean }) {
   }
   return <AssistantReply>{blocks.map((block, index) => Array.isArray(block)
     ? <ul key={index} className="my-1 list-disc pl-5">{block.map(line => <li key={line}><Inline text={line} /></li>)}</ul>
-    : <p key={index} className="m-0">{running && index === 0 && <LoaderCircle aria-label="Running" className="mr-1.5 inline size-3.5 -translate-y-px animate-spin text-ui-info" />}<Inline text={block} /></p>)}</AssistantReply>;
+    : <p key={index} className="m-0"><Inline text={block} /></p>)}</AssistantReply>;
 }
 
-/** Borderless rows: hairline separators, no box or header; a value on the right, its old value struck and a differing source below. */
-export function Rows({ rows, single, inset = true }: { rows: readonly Row[]; single?: boolean; inset?: boolean }) {
-  const [picked, setPicked] = useState(() => rows.map((_, index) => !single || index === 0));
-  return <div className={cn("flex flex-col", inset && "pl-[33px]")}>{rows.map((row, index) => <div key={row.primary + index} className={cn("flex min-w-0 items-start gap-3 py-2.5 text-body", index > 0 && "border-t border-ui-stroke", row.open && "cursor-pointer")}>
-    {row.pick && <input type={single ? "radio" : "checkbox"} name="assistant-pick" className="mt-0.5 size-3.5 shrink-0 accent-[var(--ui-info)]" checked={picked[index]} aria-label={row.primary}
-      onChange={() => setPicked(values => values.map((value, at) => single ? at === index : at === index ? !value : value))} />}
+/** History · Activity rows: hairline separators, no box or header; each row opens its log. */
+function Rows({ rows }: { rows: readonly Row[] }) {
+  return <div className="flex flex-col">{rows.map((row, index) => <div key={row.primary + index} className={cn("flex min-w-0 cursor-pointer items-start gap-3 py-2.5 text-body", index > 0 && "border-t border-ui-stroke")}>
     <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-medium">{row.primary}</span>
       {row.secondary && <span className="truncate text-caption text-ui-muted" title={row.secondary}>{row.secondary}</span>}</span>
-    {row.value && <span className="flex shrink-0 flex-col items-end text-right tabular-nums">
-      <span>{row.before && <><s className="text-ui-muted">{row.before}</s><span className="px-1.5 text-ui-muted">→</span></>}<span className={cn(row.before !== undefined || row.fill ? "font-medium text-ui-info" : "text-ui-secondary")}>{row.value}</span></span>
-      {row.source && <span className="text-caption text-ui-muted">{row.source}</span>}</span>}
-    {row.open && <ChevronRight aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-muted" />}
+    {row.value && <span className="shrink-0 tabular-nums text-ui-secondary">{row.value}</span>}
+    <ChevronRight aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-muted" />
   </div>)}</div>;
 }
 
 function Item({ item }: { item: ChatItem }) {
   switch (item.kind) {
     case "you": return <div className="hub-message operator">{item.text}{item.file && <span className="hub-sent-file"><Paperclip aria-hidden />{item.file}</span>}</div>;
-    case "text": return <Text text={item.text} running={item.running} />;
-    case "rows": return <Rows rows={item.rows} single={item.single} />;
-    case "buttons": return <div className="-mt-2 flex gap-2 pl-[33px]"><Button size="sm" variant="primary">{item.primary}</Button>{item.secondary?.map(label => <Button key={label} size="sm">{label}</Button>)}</div>;
-    case "decision": return <div className="pl-[33px]"><DecisionCard title={item.title} confirmLabel={item.confirm} /></div>;
+    case "text": return <Text text={item.text} />;
+    case "session": return <div className="hub-session" role="status"><span className="hub-spinner" aria-hidden />
+      <span className="hub-session-copy"><span>{item.label}</span><small>{item.meta}</small></span><button type="button" className="hub-pill">Stop</button></div>;
+    case "answered": return <p className="hub-answered"><Check aria-hidden />{item.text}</p>;
   }
 }
 
 /** Today's assistant actions for the History view's Activity tab. */
 export function AssistantMockActivity() {
-  return <Rows rows={ACTIVITY} inset={false} />;
+  return <Rows rows={ACTIVITY} />;
 }
 
 export function AssistantMockThread({ frame }: { frame: AssistantFrame }) {
