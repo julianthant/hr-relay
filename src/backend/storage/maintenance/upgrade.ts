@@ -16,7 +16,7 @@ import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../sqlite/migrations.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfileUpgradeInventory,StorageBackupClosureUnprovedError,type ProfileBrowserClosure,type StoppedBackupClosure } from "./profile-inventory.js";
 
@@ -224,7 +224,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
   const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock, browserClosure });
   const initial = inspect();
-  const closure = !input.plan && [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(initial.schemaVersion)
+  const closure = !input.plan && UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(initial.schemaVersion)
     ? await prepareStoppedBackupClosure(browserClosure, owner, restore, clock, processLockRoot) : undefined;
   let inventory = inspectInventory();
   const revalidate = (backup?: VerifiedBackup) => {
@@ -244,7 +244,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
     await owner.completeStartupUpgradeLogout();
     return report("already-upgraded");
   }
-  if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
+  if (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
   const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore, "schema-migration");
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
