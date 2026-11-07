@@ -46,8 +46,8 @@ function Item({ item }: { item: ChatItem }) {
   switch (item.kind) {
     case "you": return <div className="hub-message operator">{item.text}{item.file && <span className="hub-sent-file"><Paperclip aria-hidden />{item.file}</span>}</div>;
     case "text": return <Text text={item.text} />;
-    case "session": return <div className="hub-session" role="status"><span className="hub-spinner" aria-hidden />
-      <span className="hub-session-copy"><span>{item.label}</span><small>{item.meta}</small></span><button type="button" className="hub-pill">Stop</button></div>;
+    case "session": return <AssistantReply><div className="hub-session" role="status"><span className="hub-spinner" aria-hidden />
+      <span className="hub-session-copy"><span>{item.label}</span><small>{item.meta}</small></span><button type="button" className="hub-pill">Stop</button></div></AssistantReply>;
     case "answered": return <p className="hub-answered"><Check aria-hidden />{item.text}</p>;
   }
 }

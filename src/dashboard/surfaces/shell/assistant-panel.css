@@ -115,7 +115,7 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 /* Assistant mock: primary actions use the Start a run blue. */
 #hub-panel-assistant{--ds-accent:var(--ui-info);--ds-accent-fg:var(--ui-canvas);--ds-accent-hover:var(--ui-info)}
 #hub-panel-assistant .hub-icon[aria-pressed=true]{background:var(--ui-hover);color:var(--ui-primary)}
-#hub-panel-assistant .hub-session{display:flex;align-items:center;gap:12px;margin-left:33px;padding:10px 10px 10px 14px;border:1px solid var(--ui-stroke);border-radius:12px;background:var(--ui-table)}
+#hub-panel-assistant .hub-session{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;border:1px solid var(--ui-stroke);border-radius:12px;background:var(--ui-table)}
 #hub-panel-assistant .hub-session>.hub-spinner{width:12px;height:12px;margin:0;color:var(--ui-info);align-self:flex-start;margin-top:3px}
 #hub-panel-assistant .hub-session-copy{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;font-size:12px;line-height:18px;font-weight:500}
 #hub-panel-assistant .hub-session-copy small{font-size:11px;line-height:16px;font-weight:400;color:var(--ui-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
