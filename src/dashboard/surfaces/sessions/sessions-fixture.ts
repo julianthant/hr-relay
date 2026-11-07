@@ -24,18 +24,16 @@ const workers: readonly [SessionWorker, SessionWorker, SessionWorker, SessionWor
 const browser = (label: string, state: SessionWorker["browsers"][number]["state"]) => ({ id: `${label}-${state}`, label, state });
 const deeperStates: readonly SessionWorker[] = [
   { ...workers[0], id: "state-1", label: "Worker 1", state: "failed", elapsed: "6m 02s", action: "Failed", problem: "Worker stopped unexpectedly.", timeline: undefined, browsers: [] },
-  { ...workers[0], id: "state-2", label: "Worker 2", state: "stopped", elapsed: "3m 40s", action: "Stopped", problem: "stopped by you", timeline: undefined, browsers: [] },
+  { ...workers[0], id: "state-2", label: "Worker 2", state: "stopped", elapsed: "3m 40s", action: "Stopped", problem: "You stopped this worker.", timeline: undefined, browsers: [] },
   { ...workers[0], id: "state-3", label: "Worker 3", state: "waiting", action: "Confirm the matching employee", timeline: sampleTimeline("separations", 14, "waiting") },
   { ...workers[0], id: "state-4", label: "Worker 4", state: "paused", action: "Read the timecard", timeline: sampleTimeline("separations", 11, "paused") },
   { ...workers[0], id: "state-5", label: "Worker 5", state: "running", action: "Read the timecard", note: "Pausing after this item", timeline: sampleTimeline("separations", 11) },
   { ...workers[0], id: "state-6", label: "Worker 6", state: "running", action: "Read the timecard", note: "Stopping after this item", timeline: sampleTimeline("separations", 11) },
   { ...workers[1], id: "state-7", label: "Worker 7", state: "running", action: "Read the job summary", timeline: sampleTimeline("person-lookup", 3, "failed"), browsers: [browser("UCPath", "ready")] },
-  { ...workers[0], id: "state-8", label: "Worker 8", state: "running", action: "Read the timecard", timeline: sampleTimeline("separations", 11), browsers: [browser("Kuali", "ready"), browser("UCPath", "unavailable"), browser("Kronos", "closed")] },
+  { ...workers[0], id: "state-8", label: "Worker 8", state: "running", action: "Read the timecard", timeline: sampleTimeline("separations", 11), browsers: [browser("Kuali", "ready"), browser("SharePoint", "unavailable"), browser("UCPath", "failed"), browser("Kronos", "closed")] },
   { ...workers[2], id: "state-9", label: "Worker 9", state: "starting", action: "Preparing worker", timeline: sampleTimeline("separations", 0), browsers: [browser("Kuali", "starting"), browser("UCPath", "unopened"), browser("Kronos", "unopened")] },
-  { ...workers[0], id: "state-10", label: "Worker 10", state: "running", action: "Run timeline is not served on this day", timeline: undefined, timelineUnavailable: "Run timeline is not served on this day" },
-  { ...workers[0], id: "state-11", label: "Worker 11", state: "idle", subject: undefined, action: "Ready for the next run", elapsed: undefined, timeline: undefined, problem: "Browser requirements were not served by this dashboard snapshot", browsers: [] },
-  { ...workers[0], id: "state-12", label: "Worker 12", state: "running", action: "Read the timecard", timeline: sampleTimeline("separations", 11), browsers: [browser("Kuali", "ready"), browser("UCPath", "active"), browser("Kronos", "ready"), browser("OnBase", "ready"), browser("CRM", "starting"), browser("SharePoint", "unavailable"), browser("Duo", "ready")] },
-  { ...workers[0], id: "state-13", label: "Worker 13", workflow: "Work-Study Employment Verification", subject: "Alexandria Montgomery-Hernandez Fitzgerald", state: "running", action: "Verify the matching person against the Work-Study roster", timeline: sampleTimeline("separations", 5) },
+  { ...workers[0], id: "state-10", label: "Worker 10", state: "running", action: "Read the timecard", timeline: sampleTimeline("separations", 11), browsers: [browser("Kuali", "ready"), browser("UCPath", "active"), browser("Kronos", "ready"), browser("OnBase", "ready"), browser("CRM", "starting"), browser("SharePoint", "unavailable"), browser("Duo", "ready")] },
+  { ...workers[0], id: "state-11", label: "Worker 11", workflow: "Work-Study Employment Verification", subject: "Alexandria Montgomery-Hernandez Fitzgerald", state: "running", action: "Verify the matching person against the Work-Study roster", timeline: sampleTimeline("separations", 5) },
 ];
 export function sessionsSample(scenario: string): SessionsViewState {
   switch (scenario) {
