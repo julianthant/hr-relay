@@ -22,7 +22,6 @@ export const WORKER_CUSTODY_DROPPED_TABLES = ["worker_leases", "worker_controls"
 export const isWorkerCustodyDroppedTable = (table: string): table is typeof WORKER_CUSTODY_DROPPED_TABLES[number] => (WORKER_CUSTODY_DROPPED_TABLES as readonly string[]).includes(table);
 export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
 export const WORKER_CUSTODY_SCAN_ID = "worker-custody-grammar-scan:v1";
-export const WORKER_CUSTODY_SLOT_REBUILD_ID = "worker-custody-slot-rebuild:v1";
 
 /** Durable worker custody becomes in-memory pool state: leases, controls and browser rows go, slots keep ordinal, pool index and pause. */
 export const WORKER_CUSTODY_MIGRATION_STATEMENTS: readonly string[] = [
@@ -31,7 +30,28 @@ export const WORKER_CUSTODY_MIGRATION_STATEMENTS: readonly string[] = [
   "DROP TABLE worker_controls",
   "DROP TABLE browser_sessions",
   "DROP TABLE worker_leases",
-  `SELECT '${WORKER_CUSTODY_SLOT_REBUILD_ID}'`,
+  // Slot children keep their rows and keys; the commit-time foreign key check proves every slot came back.
+  "PRAGMA defer_foreign_keys=ON",
+  `CREATE TEMP TABLE worker_slot_capture AS SELECT slot.id, slot.workflow, slot.ordinal, json_extract(slot.payload_json,'$.poolIndex') AS pool_index,
+    COALESCE(pause.paused,0) AS paused, slot.retired_at, slot.created_at, slot.updated_at
+    FROM worker_slots slot LEFT JOIN worker_pause_capture pause ON pause.worker_id=slot.id`,
+  "DROP TABLE worker_slots",
+  `CREATE TABLE worker_slots (
+ id TEXT PRIMARY KEY, workflow TEXT NOT NULL REFERENCES worker_pools(workflow), ordinal INTEGER NOT NULL UNIQUE CHECK(ordinal>0),
+ pool_index INTEGER NOT NULL CHECK(pool_index>0), paused INTEGER NOT NULL CHECK(paused IN (0,1)),
+ retired_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+) STRICT`,
+  "INSERT INTO worker_slots SELECT * FROM worker_slot_capture",
+  `CREATE TRIGGER worker_slots_retained BEFORE DELETE ON worker_slots
+BEGIN SELECT RAISE(ABORT,'worker-slot-retirement-retained'); END`,
+  `CREATE TRIGGER worker_slots_identity BEFORE UPDATE ON worker_slots
+WHEN NEW.id IS NOT OLD.id OR NEW.workflow IS NOT OLD.workflow OR NEW.ordinal IS NOT OLD.ordinal OR NEW.pool_index IS NOT OLD.pool_index
+ OR NEW.created_at IS NOT OLD.created_at OR (OLD.retired_at IS NOT NULL AND NEW.retired_at IS NOT OLD.retired_at)
+BEGIN SELECT RAISE(ABORT,'worker-slot-identity-immutable'); END`,
+  `CREATE TRIGGER worker_slots_no_replace BEFORE INSERT ON worker_slots
+WHEN EXISTS(SELECT 1 FROM worker_slots WHERE id=NEW.id OR ordinal=NEW.ordinal)
+BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
+  "DROP TABLE worker_slot_capture",
   "DROP TABLE worker_pause_capture",
   `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`,
   `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
