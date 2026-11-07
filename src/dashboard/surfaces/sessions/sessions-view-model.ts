@@ -70,7 +70,8 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       : row.pipeline.length === 0 ? "No steps are served for this run"
       : row.pipeline.some(step => step.state === "skipped" || step.state === "cancelled") ? "The current timeline contains states unavailable in this view" : undefined;
     const timeline: SessionNode[] | undefined = timelineUnavailable === undefined ? row?.pipeline.map(step => ({ id: step.id, label: step.label,
-      state: step.state === "done" ? "completed" : step.state === "blocked" ? "waiting" : step.state === "active" && card.state === "paused" ? "paused"
+      state: step.state === "done" ? "completed" : step.state === "blocked" ? "waiting" : step.state === "active" && (card.state === "paused" || card.state === "failed" && card.stopReason !== "crashed") ? "paused"
+        : step.state === "active" && card.state === "failed" ? "failed"
         : step.state === "active" ? "active" : step.state === "failed" ? "failed" : "pending" })) : undefined;
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
