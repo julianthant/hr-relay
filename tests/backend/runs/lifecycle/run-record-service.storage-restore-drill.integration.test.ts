@@ -145,13 +145,6 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     useDatabase(healthy, () => {
       const service = new RunRecordService({ database: healthy, clock: CLOCK, ids: { uuid: randomUUID },
         publishQueued: () => { throw new Error("test must not enqueue"); } });
-      const fingerprint = AuthorityDatabase.inspectExistingReadOnly(p.admission, p.authorityPath).authorityContentFingerprint;
-      const metadata = healthy.getMeta();
-      assert.deepEqual(service.renewClaim({ commandId: randomUUID(), runId: current.runId,
-        claim: { workerId: WorkerIdSchema.parse(current.workerId), claimGeneration: current.claimGeneration } }),
-      { state: "refused", refusal: { reason: "lost" } });
-      assert.deepEqual(healthy.getMeta(), metadata);
-      assert.equal(AuthorityDatabase.inspectExistingReadOnly(p.admission, p.authorityPath).authorityContentFingerprint, fingerprint);
       assert.deepEqual(inspect(p.authorityPath), current);
       assert.equal(healthy.authority.writeIntents.listByRun(current.runId).every(intent => intent.status === "committed" || intent.status === "observed-present"), true);
       const request = { commandId: randomUUID(), runId: current.runId, expectedVersion: current.version,
@@ -163,6 +156,14 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
       assert.equal(queued.run.claimGeneration, current.claimGeneration);
       const replayGeneration = healthy.getMeta().authorityGeneration;
       assert.deepEqual(service.requeue(request), { state: "applied-already", run: queued.run }); assert.equal(healthy.getMeta().authorityGeneration, replayGeneration);
+      // Claims carry no durable lease, so recovery, not the restore, fences the pre-restore claim; refusing it writes nothing.
+      const fingerprint = AuthorityDatabase.inspectExistingReadOnly(p.admission, p.authorityPath).authorityContentFingerprint;
+      const metadata = healthy.getMeta();
+      assert.deepEqual(service.renewClaim({ commandId: randomUUID(), runId: current.runId,
+        claim: { workerId: WorkerIdSchema.parse(current.workerId), claimGeneration: current.claimGeneration } }),
+      { state: "refused", refusal: { reason: "lost" } });
+      assert.deepEqual(healthy.getMeta(), metadata);
+      assert.equal(AuthorityDatabase.inspectExistingReadOnly(p.admission, p.authorityPath).authorityContentFingerprint, fingerprint);
       healthy.settleInterruptedWorker(p.lifetime, member.workerId, CLOCK.now().toISOString());
       assert.deepEqual(healthy.authority.writeIntents.get(current.intent.writeIntentId), current.intent);
       assert.deepEqual(healthy.authority.writeAttempts.get(current.attempt.writeAttemptId), current.attempt);
