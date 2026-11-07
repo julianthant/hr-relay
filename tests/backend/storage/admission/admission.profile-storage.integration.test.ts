@@ -412,7 +412,7 @@ it.each(["held", "released"] as const)("observes healthy profile evidence across
     withPrivateFileLock(join(root, ".tracker", "control"), ".installation-mutation.lock", () => { if (phase === "held") pause(); });
     if (phase === "released") pause();
     machine.release(); fs.writeFileSync(done, "done");
-    await lifetime.close(); process.disconnect();
+    process.exit(0);
   `, f.workspace, phase, ready, finish, done, String(f.lifetime.port)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const closed = once(child, "close"); let output = "";
   assert.ok(child.stderr);

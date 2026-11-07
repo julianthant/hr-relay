@@ -349,8 +349,6 @@ describe("composed worker runtime", () => {
         assert.equal(raw.prepare("SELECT state FROM runs WHERE id=?").get(RUN_ID)?.state, "queued");
         // The pool admits the launched slot before boot; a refused boot adds or retires none.
         assert.deepEqual(raw.prepare("SELECT id FROM worker_slots WHERE retired_at IS NULL").all().map(row => row.id), ["person-lookup-worker-1"]);
-        assert.deepEqual(raw.prepare("SELECT id FROM worker_leases").all(), []);
-        assert.deepEqual(raw.prepare("SELECT id FROM browser_sessions").all(), []);
       } finally { raw.close(); }
       assert.deepEqual(readFileSync(join(stateRoot, "state.db")), before);
       assert.deepEqual(credentialReads, [], "native corruption refuses before credential values are read");

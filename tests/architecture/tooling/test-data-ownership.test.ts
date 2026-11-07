@@ -36,6 +36,7 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/fixtures/storage/historical-flat-profile-fixture.ts",
   "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts",
   "tests/support/fixtures/storage/retained-historical-data.ts",
+  "tests/support/fixtures/storage/historical-run-schema.ts",
 ]);
 const SHARED_ROOTS = ["tests/support/fixtures", "tests/support/helpers"];
 const CROSS_TIER_ROOTS = ["tests", "scripts", "src"];

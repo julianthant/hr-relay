@@ -814,13 +814,13 @@ it("allocates distinct durable activation generations under cross-process exclus
       diagnostic = { state: 'diagnostic', phase, causes: describe(error) };
       process.exitCode = 1;
     } finally {
-      try { await session?.closeOnboarding(); session?.close(); admission?.release(); await lifetime.close(); process.stdin.destroy(); process.disconnect(); }
+      try { await session?.closeOnboarding(); session?.close(); admission?.release(); process.stdin.destroy(); }
       catch (error) {
         if (diagnostic === undefined) diagnostic = { state: 'diagnostic', phase: 'close', causes: describe(error) };
         else diagnostic.cleanup = describe(error);
         process.exitCode = 1;
       }
-      process.stdout.write(JSON.stringify(diagnostic ?? output));
+      process.stdout.write(JSON.stringify(diagnostic ?? output), () => process.exit());
     }
   `;
   const controller = machineAdmissions.get(root);
