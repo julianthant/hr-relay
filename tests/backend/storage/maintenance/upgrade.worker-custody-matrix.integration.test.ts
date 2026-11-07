@@ -193,16 +193,21 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   assert.deepEqual(after.kept, before.kept);
   assert.deepEqual(after.upgrades.slice(0, before.upgrades.length), before.upgrades);
   assert.ok(after.upgrades.length > before.upgrades.length);
-  assert.deepEqual(after.triggers, before.triggers);
+  // Migration 21 rewrites this trigger; every other trigger comes through verbatim.
+  const unchanged = (rows: readonly Record<string, unknown>[]) => rows.filter(row => version > 20 || row.name !== "runs_completion_immutable");
+  assert.deepEqual(unchanged(after.triggers), unchanged(before.triggers));
+  assert.ok(after.triggers.some(row => row.name === "runs_completion_immutable"));
   assert.deepEqual(after.foreignKeys, []);
   for (const runId of s.closure) {
     assert.equal(after.count("SELECT count(*) AS count FROM runs WHERE id=?", runId), 0, runId);
     assert.equal(after.count("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?", runId), 1, runId);
   }
-  for (const table of ["run_delegations", "delegation_dependencies", "run_results", "run_receipts", "run_failures", "timeline_events", "notifications"]) {
+  // On 20 and 21 the pre-build deletion clears history like the operator's Clear history: notifications and journals keep naming the tombstones.
+  const runOwned = ["run_delegations", "delegation_dependencies", "run_results", "run_receipts", "run_failures", "timeline_events", ...version === 22 ? ["notifications"] : []];
+  for (const table of runOwned) {
     assert.ok(after.everyRow().filter(row => row.table === table).every(row => s.closure.every(runId => !row.json.includes(runId))), table);
   }
-  assert.deepEqual(after.everyRow().filter(row => row.json.includes(digest)).map(row => row.table), []);
+  assert.deepEqual(after.everyRow().filter(row => (version === 22 || runOwned.includes(row.table)) && row.json.includes(digest)).map(row => row.table), []);
   assert.ok(after.everyRow().every(row => !row.json.includes("workerLifetime") && !row.json.includes("membershipRevision") && !row.json.includes("controlBasis")),
     "the removed custody grammar is gone");
   assert.equal(after.count("SELECT count(*) AS count FROM commands WHERE family='worker-browser'"), 0);
@@ -227,7 +232,7 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   } finally { admission.release(); }
 });
 
-it.each(([20, 21, 22] as const).flatMap(version => (["attempting-write", "kept-reference"] as const).map(variant => ({ version, variant }))))(
+it.each([...([20, 21, 22] as const).map(version => ({ version, variant: "attempting-write" as const })), { version: 22 as const, variant: "kept-reference" as const }])(
   "refuses a schema $version closure with $variant and leaves the store byte-identical", async ({ version, variant }) => {
     const s = await predecessorStore(version, variant);
     const bytes = readFileSync(s.path), before = read(s.path);
@@ -240,3 +245,12 @@ it.each(([20, 21, 22] as const).flatMap(version => (["attempting-write", "kept-r
     const raw = new DatabaseSync(s.path, { readOnly: true });
     try { assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version); } finally { raw.close(); }
   });
+
+it.each([20, 21] as const)("keeps a library row a schema %s closure run wrote against the run's tombstone", async version => {
+  const s = await predecessorStore(version, "kept-reference");
+  const writer = s.closure.at(-1) ?? "", library = (path: string) => read(path).count("SELECT count(*) AS count FROM workbook_operations WHERE json_extract(request_json,'$.source.runId')=?", writer);
+  assert.equal(library(s.path), 1);
+  assert.equal((await upgrade(s)).state, "upgraded");
+  assert.equal(library(s.path), 1);
+  assert.equal(read(s.path).count("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?", writer), 1);
+});
