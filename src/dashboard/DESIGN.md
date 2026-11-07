@@ -140,7 +140,7 @@ Use one level per role, from the existing scale, and never two roles at one leve
 | Field and column label | `text-body` medium; column headers `text-caption` muted | `text-body` medium, secondary |
 | Meta (time, system, mode, counts) | `text-caption` muted | `text-caption` muted |
 
-Times and IDs use the body face with tabular figures, never the data face.
+Times, durations, capture times and IDs use the body face with tabular figures, never the data face.
 
 ### Steps
 
@@ -158,24 +158,27 @@ A decision is answered where its evidence is. It is never a separate card, dock 
 - Picking one of several records puts a radio column in the page card that lists them. The primary action names the choice ("Continue with Morrow, Bea A.") and stays disabled until a row is chosen.
 - A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
 - A value to correct, or a transaction number to confirm, is a labelled input on the action row, before the buttons.
-- A failure uses the same anatomy. The question is the failure title in the danger colour, the note is the catalog sentence plus the write outcome, and the actions are Retry step (only when nothing was written) and Add note.
+- A failure uses the same anatomy. The question is the failure title in the danger colour, and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written, or "Checked by hand, continue" after a confirmed write, so the run can finish. There is no Add note action.
+- An unconfirmed write (parked, or uncertain after a restart) always asks "Did the <record> save in <system>?". The note says what did not confirm and where to check. The actions are Confirm saved and "Not saved, <what Relay does next>" (for example "Not saved, file it again"). A transaction or document number input appears only when that system issues one.
+- A batch member failure lists the members in one table: failed members first, then the saved ones folded into a count row ("11 saved"). The action retries that member only.
 - A cancel in progress is one line with a loading icon. It has no actions.
 - A refused command is a toast (title and one line). The transcript does not change.
+- Toasts and the assistant launcher sit above the Logs footer and never cover its search, copy or latest controls.
 - Buttons are standard size: one primary, then secondary buttons. The run-ending action (Cancel run, Reject) is secondary, never ghost text.
 - No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
 
 ### Status signals
 
-Each state keeps its own badge in the queue row and the run header, and its own word and colour in the step's time column. The timeline strip keeps its bar styles and names the state in its label.
+Each state keeps its own badge in the queue row and the run header, its own word in the step's time column, and its own timeline bar. Waiting uses one colour everywhere: the warning colour of the queue's Needs you band, the hatched timeline bar and the time column. Waiting, failed and parked runs sit under Needs you.
 
 | State | Header and queue | Time column under the step time |
 | --- | --- | --- |
-| Waiting for you | Review (`waiting`) | "Waiting" and the wait time, info colour |
-| Write parked or uncertain submit | Write parked (`parked`, dashed) | "Parked" and the wait time, warning colour |
+| Waiting for you | Review (`waiting`), hatched warning timeline bar | "Waiting" and the wait time, warning colour |
+| Write parked or uncertain submit | Write parked (`parked`, dashed), dashed warning outline timeline bar | "Parked" and the wait time, warning colour |
 | Failed | Failed (`failed`) | "Failed", danger colour |
 | Stalled | Failed with the label Stalled | "No progress" and the time, danger colour |
 | Paused | Queued with the label Paused | "Paused", muted |
-| Cancelling | Cancelling (`cancelling`) | "Cancelling", muted |
+| Cancelling | Cancelling (`cancelling`), muted timeline bar | "Cancelling", muted |
 
 ## Explorer
 
@@ -184,7 +187,7 @@ Explorer is a generated review spec of what a workflow does. It never shows simu
 - Run options sit above the step list as a "Run options" section: a label above each select, in one row.
 - Step 1 is "Open browser sessions", with a chip for each system the run signs in to. Logs never show this step.
 - A step reads: title and system, one description line, check lines (outside page cards), page cards, clicks as plain lines ("Clicks Search").
-- A decision point is a select under the evidence it reads. It lists every outcome declared there, ending with "Anything else", with what happens next beside it. Changing it changes the steps below.
+- A decision point is a select under the evidence it reads, including terminal reads such as employment status (Active, Inactive, Not found). It lists every outcome declared there, ending with "Anything else", with what happens next beside it. Changing it changes the steps below.
 - When an outcome stops the run, the steps after it are hidden and the run's end line states the stop in the danger colour, once.
 - There is no "If" label. Fill values keep their source button. Sample values come from the definition's examples.
 
@@ -206,7 +209,7 @@ status fill changes without changing the information's position.
 - Compose public primitives; change a shared variant at its owner instead of forking a component.
 - Use defined tokens for color, size, radius, depth, and duration; verify any runtime custom property has an actual writer.
 - Keep the theme root above Tooltip and Toast providers so their fragment siblings inherit tokens.
-- Reserve the toast viewport's bottom inset for the Sessions bar; panel notices belong to their panel's coordinate space.
+- Reserve the toast viewport's bottom inset for the Sessions bar and the Logs footer; panel notices belong to their panel's coordinate space.
 - Let a segmented frame own its height and make segments fill it; give free space to the control group rather than multiple `ml-auto` siblings.
 - Use `CardBase` with a growing body for aligned card bottoms and `CompareGrid` for peer records that share row tracks.
 - Put facts shared by every row on the group heading; show per-row departures next to the affected value.

@@ -3,9 +3,16 @@ import type { LogDecisionAction, LogDecisionAnswer } from "./logs/log-decision-m
 import { LogFeed } from "./logs/log-feed.js";
 import type { LogStep } from "./logs/log-feed-model.js";
 import { LogTimeline } from "./logs/log-timeline.js";
+import { decisionMock, type MockState } from "./decision-mock/decision-mock-model.js";
+import { DecisionMockFeed } from "./decision-mock/decision-mock-logs.js";
+import { StatusBadge } from "../shared/status/status.js";
 import { Button } from "../../ds/ui.js";
 import { runHeaderAction, type RunHeaderContext } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";
+
+const MOCK_BADGE: Readonly<Record<MockState, { status: "waiting" | "parked" | "failed" | "queued" | "cancelling"; label?: string }>> = {
+  review: { status: "waiting" }, parked: { status: "parked" }, failed: { status: "failed" }, paused: { status: "queued", label: "Paused" }, stalled: { status: "failed", label: "Stalled" }, cancelling: { status: "cancelling" },
+};
 
 /** The production log layout accepts presentation data and has no transport dependency. */
 export const LogPanel = memo(function LogPanel({ title, steps, timeline, status, toolbar, onDecision, onReview, initialStepId, navigation, content, context, afterStep }: {
@@ -14,9 +21,18 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, status,
   title: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; status?: ReactNode; toolbar?: ReactNode; initialStepId?: string;
   navigation?: ReactNode; content?: ReactNode; context?: RunHeaderContext; afterStep?: (id: string) => ReactNode;
 }) {
+  const mock = decisionMock();
+  if (mock?.scene) {
+    const data = mock.scene;
+    title = data.subject;
+    status = <StatusBadge {...MOCK_BADGE[data.state]} presentation="queue" />;
+    toolbar = undefined;
+    navigation = <LogTimeline stages={data.timeline} onJump={() => undefined} />;
+    content = <DecisionMockFeed data={data} />;
+  }
   const action = runHeaderAction(steps, timeline);
   const header = (jump?: (stepId: string, entryId?: string) => void) => <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3">
-    <div className="flex min-h-6 min-w-0 flex-wrap items-center gap-3"><h2 className="m-0 min-w-0 text-heading text-balance">{title}</h2>{context?.reviewPending && action?.label === 'Review' && jump ? undefined : status}
+    <div className="flex min-h-6 min-w-0 flex-wrap items-center gap-3"><h2 className={`m-0 min-w-0 ${mock ? "text-section" : "text-heading"} text-balance`}>{title}</h2>{context?.reviewPending && action?.label === 'Review' && jump ? undefined : status}
       <span className="ml-auto flex flex-wrap items-center gap-2">{action && jump && <Button size="sm" onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)}>{action.label}</Button>}{toolbar}</span>
     </div>
   </header>;

@@ -11,8 +11,15 @@ import { MOCK_WORKFLOWS } from "../workflows/mocks/workflow-mock-catalog.js";
 
 import type { DashboardClient } from "../../client/index.js";
 import { useExplorerWiring } from "../../state/explorer-wiring-adapter.js";
+import { decisionMock } from "../run-detail/decision-mock/decision-mock-model.js";
+import { DecisionExplorer } from "../run-detail/decision-mock/decision-mock-explorer.js";
 import { formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
-export function WorkflowExplorer({ catalog, client }: { catalog: readonly WorkflowCatalogEntry[]; client?: DashboardClient }) {
+export function WorkflowExplorer(props: { catalog: readonly WorkflowCatalogEntry[]; client?: DashboardClient }) {
+  const mock = decisionMock();
+  return mock && !mock.scene ? <DecisionExplorer /> : <WorkflowExplorerBody {...props} />;
+}
+
+function WorkflowExplorerBody({ catalog, client }: { catalog: readonly WorkflowCatalogEntry[]; client?: DashboardClient }) {
   const workflows = useMemo(() => explorerWorkflowOptions(catalog), [catalog]);
   const [workflowId, setWorkflowId] = useViewState("explorerWorkflow", explorerRecoveryWorkflow(catalog));
   const id = MOCK_WORKFLOWS.find(flow => flow.id === workflowId.replace(/^fixture-/u, ""))?.id;
