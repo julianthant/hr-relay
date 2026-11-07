@@ -5,7 +5,7 @@ import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { LAUNCHER_PLACEMENTS, MARK_DIRECTIONS } from "../../src/dashboard/surfaces/shell/assistant-mark.js";
+import { LAUNCHER_PLACEMENTS, MARK_DIRECTIONS } from "../../src/dashboard/surfaces/shell/assistant-mark-model.js";
 
 // Logo design mock: stills per direction and theme (motion reduced, so every state is static) and one short dark recording per direction.
 const OUT = process.env.ASSISTANT_LOGO_OUT ?? join(import.meta.dirname, "../../.work/assistant-logo");

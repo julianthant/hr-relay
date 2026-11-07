@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AssistantMark, MARK_STATES, type MarkDirection, type MarkState } from "./assistant-mark.js";
+import { AssistantMark } from "./assistant-mark.js";
+import { MARK_STATES, type MarkDirection, type MarkState } from "./assistant-mark-model.js";
 import { AssistantReply } from "./assistant-panel.js";
 
 const NAMES: Readonly<Record<MarkDirection, string>> = { relay: "Relay", nodes: "Nodes", orbit: "Orbit" };

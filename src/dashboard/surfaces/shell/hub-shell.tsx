@@ -7,7 +7,8 @@ import { ChevronDown, History, LogOut, Pencil, Plus, Search, Sparkles, Trash2, X
 import { Button, Dialog, DialogContent, DialogFooter, EmptyState, Tab, TabList, TabPanel, Tabs } from "../../ds/ui.js";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockActivity } from "./assistant-mock-thread.js";
-import { AssistantMark, assistantLauncher, assistantLogo, assistantLogoState } from "./assistant-mark.js";
+import { AssistantMark } from "./assistant-mark.js";
+import { assistantLauncher, assistantLogo, assistantLogoState } from "./assistant-mark-model.js";
 import { chatAge, createMockHubChatsPort, useHubChats, useHubPanelPosition, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
 import type { AssistantPorts } from "./assistant-panel-model.js";
