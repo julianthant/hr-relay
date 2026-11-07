@@ -111,7 +111,7 @@ it("converts the populated schema 22 closure, keeps unrelated evidence byte-iden
     }
     assert.equal(s.raw.prepare("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?").get(s.runId)?.count, 1);
     for (const table of ["commands", "command_audits", "runs", "run_results", "run_receipts"]) {
-      assert.equal(s.raw.prepare(`SELECT count(*) AS count FROM ${table} WHERE ${table === "commands" ? "request_json" : "payload_json"} LIKE '%workerLifetime%'`).get()?.count, 0, table);
+      assert.ok(s.raw.prepare(`SELECT * FROM ${table}`).all().every(row => !JSON.stringify(row).includes("workerLifetime")), table);
     }
     assert.deepEqual(keptRows(s.raw, s.keptRunId), kept);
   } finally { s.raw.close(); }
