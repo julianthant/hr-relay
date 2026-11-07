@@ -10,7 +10,7 @@ function Inline({ text }: { text: string }) {
   return <>{text.split(/(\*\*.+?\*\*|\{\{.+?\}\}|~~.+?~~|!!.+?!!|__.+?__)/u).map((part, index) => {
     const inner = part.slice(2, -2);
     if (part.startsWith("**")) return <strong key={index} className="font-medium">{inner}</strong>;
-    if (part.startsWith("{{")) return <button key={index} type="button" className="font-medium text-ui-info underline decoration-ui-info/60 underline-offset-2 hover:decoration-ui-info">{inner}</button>;
+    if (part.startsWith("{{")) return <button key={index} type="button" className="cursor-pointer font-medium text-ui-info underline-offset-2 hover:underline">{inner}</button>;
     if (part.startsWith("~~")) return <s key={index} className="text-ui-muted">{inner}</s>;
     if (part.startsWith("!!")) return <span key={index} className="font-medium text-ui-danger">{inner}</span>;
     if (part.startsWith("__")) return <span key={index} className="font-medium text-ui-info">{inner}</span>;

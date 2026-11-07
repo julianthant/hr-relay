@@ -5,7 +5,7 @@ import { EC_PEOPLE, MOCK_SCENES, decisionMock, ecGroup, ecMemberSteps, fill, pag
 export const OPERATOR = "Alex Rivera";
 
 /**
- * Text markup: **bold**, {{link}} (blue, underlined; only opens data: a person, a run, a log, Show in Queue), ~~old value~~, !!failure word!!, __changed or new value__ (blue); lines starting "- " are bullets.
+ * Text markup: **bold**, {{link}} (blue, underlined on hover; only opens data: a person, a run, a log, Show in Queue), ~~old value~~, !!failure word!!, __changed or new value__ (blue); lines starting "- " are bullets.
  * Everything in the panel is conversation: a sentence, bullets for lists; links only open data and never act; more than 8 non-approval items is a count with Show in Queue.
  * Actions happen only when the operator asks, or replies yes to a question.
  * Approval is a typed short yes that Relay (never the model) recognises; anything else is a change request.
