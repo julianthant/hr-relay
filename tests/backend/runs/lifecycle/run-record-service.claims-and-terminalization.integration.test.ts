@@ -567,6 +567,20 @@ describe("canonical run-record service", () => {
     });
   });
 
+  it("a null display name drops the key and bumps the version, named or not", async () => {
+    const { service, request } = await fixture();
+    const run = created(service, request);
+    const named = service.transition({ commandId: "84000000-0000-4000-8000-000000000017", runId: run.envelope.runId, expectedVersion: run.version, displayName: "Named" });
+    if (named.state !== "applied") throw new Error("rename refused");
+    const cleared = service.transition({ commandId: "84000000-0000-4000-8000-000000000018", runId: run.envelope.runId, expectedVersion: named.run.version, displayName: null });
+    if (cleared.state !== "applied") throw new Error("clear refused");
+    assert.equal(Object.hasOwn(cleared.run, "displayName"), false);
+    assert.equal(cleared.run.version, named.run.version + 1);
+    const again = service.transition({ commandId: "84000000-0000-4000-8000-000000000019", runId: run.envelope.runId, expectedVersion: cleared.run.version, displayName: null });
+    if (again.state !== "applied") throw new Error("second clear refused");
+    assert.equal(again.run.version, cleared.run.version + 1);
+  });
+
   it("refuses a display-name self-edge on a terminal run", async () => {
     const { service, request } = await fixture();
     const run = created(service, request);

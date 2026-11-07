@@ -6749,7 +6749,10 @@ export class AuthorityDatabase implements Disposable {
           request.expectedVersion,
           request.now,
           undefined,
-          (current) => RunRecordSchema.parse({ ...current, displayName: request.displayName }),
+          (current) => {
+            const { displayName: _previous, ...rest } = current;
+            return RunRecordSchema.parse(request.displayName === null ? rest : { ...rest, displayName: request.displayName });
+          },
         );
       },
       setPause: (input: unknown, accountingAuthorization?: object) => {
