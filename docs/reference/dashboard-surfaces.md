@@ -703,7 +703,7 @@ pending until the download settles and reports refusal without starting another 
 
 ## Explorer
 
-Person Lookup and Separations declare read-only Explorer walkthroughs in their registered workflow definitions. The query serves their node-bound steps, forms, actions, fictional examples, preview choices and field sources to the existing timeline components. Preview choices change only local presentation; they never approve gates or execute work. Definition admission requires complete registered-node coverage, and the renderer retains graph, operation and source-lineage validation before projecting the walkthrough. Person Lookup shows its current single-person Search and Match paths; delegation nodes remain absent. Other workflows use their registered timeline groups and operator fields, or declared task labels, purposes and actions. No run values are inferred.
+Every registered workflow's Explorer timeline is generated from its definition. A timeline group with operator fields is one step: its description and the fields' fictional examples. Other groups show one step per node with its label, purpose (or the group description) and structure. The renderer validates the graph before projecting. No run values are inferred.
 
 Explorer mounts in Settings and describes itself as fictional preview data. Its workflow picker
 uses stable fixture IDs and the shared catalog. Local scenario/choice controls alter the preview's
@@ -867,9 +867,8 @@ Run and Rerun have no capture-off choice. Options show a locked “Always on” 
 summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
 capture failure (no click) from post-submit missing evidence with either independently proved or
 unknown write outcome. Submit captures use equal cards with captions below the image. Served task
-captures retain their verified node, attempt, browser session and boundary. A complete pair attaches
-only to the sole declared commit click for that node/session; ambiguous or incomplete associations
-remain separate. Capture log identities remain on the rendered figures. Structured capture-failure
+captures retain their verified node, attempt, browser session and boundary, and each shows as its own
+screenshot row. Capture log identities remain on the rendered figures. Structured capture-failure
 notes distinguish no click before submit, an unknown outcome after submit, and an independently
 proved outcome. The served dry-run result supplies exercise counts, Not clicked stages and tagged
 sample facts at the end of Logs. Missing preview authority remains explicitly unavailable. The

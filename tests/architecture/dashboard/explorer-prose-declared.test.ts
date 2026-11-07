@@ -52,11 +52,12 @@ describe("explorer prose is declared for every registered workflow", () => {
         workflow.summary,
         { state: "authored", text: module.descriptor.summary ?? "" },
       );
-      const declared = new Map(
-        module.descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
-      );
-      // The factory already refuses a partial list; asserting coverage here is
-      // what proves the PROJECTION reads all of it rather than the first few.
+      const declared = new Map([
+        ...module.descriptor.timeline.flatMap((group) => group.description === undefined ? [] : group.nodes.map((member) => [String(member.id), group.description] as const)),
+        ...module.descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose] as const),
+      ]);
+      // Every node is described by its own purpose or its group's description;
+      // full coverage proves the PROJECTION reads all of it rather than the first few.
       assert.equal(declared.size, descriptorRuntimeNodes(module.descriptor).length);
       for (const node of workflow.nodes) {
         assert.deepEqual(

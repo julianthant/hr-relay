@@ -21,8 +21,7 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
   const [scenario, setScenario] = useState<PreviewScenario>(DEFAULT_SCENARIO);
   const [mockScenario, setMockScenario] = useState(DEFAULT_MOCK_SCENARIO);
   const [choices, setChoices] = useState(initialWorkflowChoices());
-  const selection = useMemo(() => ({ ...choices, ...scenario }), [choices, scenario]);
-  const resource = useExplorerWiring(client, served?.id, served?.served?.version, selection);
+  const resource = useExplorerWiring(client, served?.id, served?.served?.version);
   if (identity.client !== client || identity.workflowId !== workflowId) {
     setIdentity({ client, workflowId, epoch: identity.epoch + (identity.client !== client ? 1 : 0) }); setScenario(DEFAULT_SCENARIO); setMockScenario(DEFAULT_MOCK_SCENARIO);
     setChoices(initialWorkflowChoices(id));

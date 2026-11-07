@@ -1,6 +1,4 @@
-import { OperationChildResultReferenceSchema } from "../workflow/operation-action-identity.js";
-import { SnapshotWorkflowValueReferenceSchema } from "../workflow/operation-display-snapshot.js";
-import { OperationInputLineageSchema, OperationChildResultIdentitySchema } from "../workflow/operation-action-identity.js";
+import { OperationChildResultIdentitySchema, OperationChildResultReferenceSchema, OperationInputLineageSchema, SnapshotWorkflowValueReferenceSchema } from "../workflow/operation-action-identity.js";
 /** The span/notes wire and at-rest contract: a zod-only leaf module whose id patterns are restated locally and pinned byte-for-byte by the parity test. */
 import { z } from "zod";
 import { DataObservationOriginsSchema } from "./data-observation-origin.js";

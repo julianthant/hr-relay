@@ -1,6 +1,5 @@
-import { PERSON_LOOKUP_LIVE_READ } from "./person-lookup-manifest.js";
-
 const WORKFLOWS_WITHOUT_SCENARIO_MANIFESTS = new Set([
+  "person-lookup",
   "separations",
   "separations-kuali-finalization",
 ]);
@@ -14,11 +13,10 @@ export class DryRunScenarioUnavailableError extends Error {
 }
 
 export function listDryRunScenarioWorkflows(): readonly string[] {
-  return ["person-lookup"];
+  return [];
 }
 
 export function loadDryRunScenarioManifest(workflow: string): Promise<unknown> {
-  if (workflow === "person-lookup") return Promise.resolve(PERSON_LOOKUP_LIVE_READ);
   if (WORKFLOWS_WITHOUT_SCENARIO_MANIFESTS.has(workflow)) {
     throw new DryRunScenarioUnavailableError(workflow);
   }

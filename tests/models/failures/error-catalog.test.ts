@@ -110,8 +110,6 @@ describe("error catalog", () => {
       DASHBOARD_READ_FAILED: "The dashboard could not load this from the local service. Try again.",
       LOGS_READ_FAILED_TITLE: "Could not load logs",
       LOGS_UNAVAILABLE_TITLE: "Logs unavailable",
-      LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: "Confirmed actions unavailable",
-      LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: "The response did not supply complete confirmed-action evidence.",
     } as const;
     for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
       const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));

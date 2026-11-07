@@ -4,7 +4,6 @@ import type { createRetainedApprovedRecordReader } from "../../fixtures/ocr/reta
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
-import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { EmergencyContactInputSchema } from "../../../../src/models/workflows/emergency-contact/input.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../../src/backend/processing/providers/ocr-approved-snapshot-adapter.js";
@@ -151,9 +150,7 @@ export function createOcrReviewWorld() {
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
         { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
-          return { ...(!needsPlanEvidence ? {} : { taskNotes: notes,
-          confirmedActionPublisher: createConfirmedActionPublisher({ workerId: claim.workerId, streamId: randomUUID(), clock, capacity: 256,
-            append: event => { const current = database.authority.runs.get(event.action.runId); assert.ok(current); notes.emitConfirmedAction(event, current); } }) }), providers: { configSnapshots: database.authority.configSnapshots,
+          return { ...(!needsPlanEvidence ? {} : { taskNotes: notes }), providers: { configSnapshots: database.authority.configSnapshots,
           idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
             reader: options.approvedReader === undefined
               ? createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()})

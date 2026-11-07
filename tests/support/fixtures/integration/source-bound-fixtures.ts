@@ -21,7 +21,6 @@ import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { ActorIdSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { StartPlanWire } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
-import type { ConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-database-admission.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -37,7 +36,7 @@ const retainedSourceBoundFixtureOwners = new Set<object>();
 
 export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource,
   profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
-  publisherFactory?: (clock: Clock, workerId: string) => ConfirmedActionPublisher, childDescriptors: readonly AnyWorkflowDescriptor[] = []) {
+  childDescriptors: readonly AnyWorkflowDescriptor[] = []) {
   bindWorkflowDelegationTargets([descriptor, ...childDescriptors]);
   const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
@@ -98,11 +97,9 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
   }
   const emitter = recordingEmitter();
   const worker = workerRunLifecyclePort(lifecycle);
-  const publisher = publisherFactory?.(clock, slot.workerId);
   const common = { lifecycle: worker, stores, authority: database, sessions: manager, emitter: emitter.emitter,
     childRuns: createDurableChildRunExecutor({ authority: database, admission: { admitAndRelease: (context, plan) => lifecycle.admitDelegation(context, plan) },
       resolveTarget: id => { const target = descriptors.resolve(id); if (target === undefined) throw new Error("fixture-child-descriptor-missing"); return target; } }),
-    ...(publisher === undefined ? {} : { confirmedActionPublisher: publisher }),
     clock, ids, scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000, log: recordingLogger().log };
   const sequencer = createWriteSequencer({ ...common, operator: "local-operator"  });
   const recovery = createWriteRecoveryService({ ...common, continuation: runContinuationPort(lifecycle), operator: "local-operator"  });
@@ -150,7 +147,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
   function fresh(run: RunRecord) { const value = database.authority.runs.get(run.envelope.runId); assert.ok(value); return value; }
   let disposeAttempted = false, disposeFailure: Error | undefined;
   retainedSourceBoundFixtureOwners.delete(held);
-  return { profile, publisher, authorityPath:profile.path,database, get descriptor() { return registeredDescriptor; },
+  return { profile, authorityPath:profile.path,database, get descriptor() { return registeredDescriptor; },
     registerDescriptor(next: AnyWorkflowDescriptor) {
       bindWorkflowDelegationTargets([next, ...childDescriptors]);
       registeredDescriptor = next;

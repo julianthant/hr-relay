@@ -17,7 +17,7 @@ inputs, outputs, and provenance. [Write safety](write-safety.md) owns external-w
 The descriptor is a compiler product, not a second authored workflow.
 
 The authored definition carries identity and presentation fields, ingress and canonical-input
-schemas, a role, optional intake and operation-display declarations, and a `steps(author)` callback.
+schemas, a role, optional intake, and a `steps(author)` callback.
 The callback returns ordered `[WorkflowTimelineGroup, readonly AnyWorkflowEntry[]]` tuples and a
 terminal `result` declaration. Tuple order determines presentation. Typed entry references determine
 execution dependencies.
@@ -288,10 +288,9 @@ explicit timeline only when groups differ from the one-entry default or carry om
 resolves the fingerprint from the build manifest and memoizes one compiled value per definition
 object and manifest. Compiling that object under another manifest refuses.
 
-`CompiledWorkflow` contains `definition`, `descriptor`, `contracts`, `operationDisplay`, and
-`storeNamespaces`. `composeWorkflowModule` drops unused stores, resolves required stores, places
-browser stores first, and returns `descriptor`, `stores`, `role`, `intake`, `definition`, and
-`operationDisplay`.
+`CompiledWorkflow` contains `definition`, `descriptor`, `contracts`, and `storeNamespaces`.
+`composeWorkflowModule` drops unused stores, resolves required stores, places browser stores first,
+and returns `descriptor`, `stores`, `role`, `intake`, and `definition`.
 
 #### 1.6.1 Entry algebra
 
@@ -309,25 +308,10 @@ its leaves cannot depend on sibling results. The compiler orders all external pr
 the cohort. Task-only parallel entries retain their independent checkpoint replay. The low-level graph vocabulary also contains `branch`; the
 workflow author does not expose a separate branch entry.
 
-#### 1.6.4 Operation display
+#### 1.6.4 Result dependencies
 
-`src/models/workflow/operation-display.ts` owns the versioned display vocabulary and compiler.
-A definition without `operationDisplay` compiles to `{ capability: "legacy", version: 0 }`.
-A complete declaration covers every contract occurrence, typed value slot, action, template,
-transformation, outcome, and continuation. `compileWorkflowOperationDisplay` validates coverage
-and references. Transaction display reads must name the actual write-safety probe and required
-verification contracts; `operationDisplayEntries` checks them in the workflow compiler.
-
-Display nesting is presentation only. `operationDisplay.execution` derives from entry references
-and does not schedule work. `src/models/workflow/operation-display-snapshot.ts` freezes complete
-structure into a run envelope. Missing or foreign frozen structure stays unavailable.
-
-#### 1.6.5 Result sources
-
-`result(schema, references, derive, sources?)` declares terminal dependencies and optional direct or
-`derived` lineage. Sources name actual dependency fields. A derived source names each input; equal
-values do not establish causality. The terminal-result owner validates source digests and exact
-retained evidence.
+`result(schema, references, derive)` declares terminal dependencies and a pure derivation. The
+terminal-result owner validates exact retained evidence.
 
 An awaited `one/terminal/one` child may supply `child-resolved` terminal evidence. The descriptor
 factory validates the child workflow, schema, run, parent edge, and retained result identity.
@@ -337,20 +321,6 @@ A child result is not a parent checkpoint.
 A resolved gate supplies `gate-resolved` terminal evidence. The factory checks its node, run,
 resolution kind, result schema and checkpoint fingerprint. The terminal record retains its exact
 gate reference and record digest; native completion compares them with the retained gate row.
-
-#### 1.6.6 Action confirmation and step results
-
-`src/backend/runtime/writes/operation-action-binding.ts` binds action observations to frozen
-occurrences. `src/models/workflow/operation-action-identity.ts` owns their identity vocabulary.
-A callback returning proves completion of the gesture, not its expected effect.
-`confirmationActionId` names a declared same-page verifier. Confirmation requires that later
-verification, the exact invocation, and the same physical browser-session incarnation.
-
-Confirmed task facts and declared outcome selection use the invocation's frozen action tree.
-Missing evidence is `unavailable`, duplicate evidence or multiple matches is `ambiguous`, and no
-matching declared outcome is `no-match`. These states are distinct from a confirmed result.
-[Task contract](task-contract.md) owns the context methods. Action confirmation does not authorize
-a write, move its fence, or permit retry of an unknown submit.
 
 ## 2. Workflow input and RunEnvelope
 
@@ -366,7 +336,8 @@ Workflow input stays constant. Outputs belong to run context. Kernel controls be
 - Requested and resolved system instances, shape, priority, browser mode, and screenshot policy.
 - `dryRun`, `stepOmissions`, `recovery`, `sourceBound`, and the attempt.
 - `startAt`, `injected`, `freshnessOverride`, and `retryOf` when present.
-- Frozen operation-display capability and snapshot when present.
+- `operationDisplayCapability` and `operationDisplaySnapshot`, kept only as recorded data on older
+  runs. New runs do not set them and nothing reads them.
 
 The envelope rejects inconsistent requested instances, self-parent or self-retry identity,
 wrong-attempt freshness overrides, duplicate patches, and a patch aimed at the entry node.
@@ -411,7 +382,7 @@ still requires the fresh filing-presence proof.
 
 The terminal record retains every stage and authenticates actual read checkpoints through its
 dependencies. No transaction checkpoint, write intent, submit fence, mutation capability or
-successful-write receipt is created. Sample-derived preparations produce no confirmed-action
+successful-write receipt is created. Sample-derived preparations produce no
 write authority. Sample values are labelled in Logs, served stage accounting and captured images;
 real writes reject preview bindings, preview scope and reserved sample values before browser work.
 
@@ -657,7 +628,7 @@ not missing context. Original conditional skips are re-evaluated from the source
 condition and authenticated dependency scope. An absent required gate result still refuses.
 Exact own checkpoints use the current native owner even when ordinary gate resolution requeues a
 continuation without adding a Pause/Resume self-reference; foreign checkpoints require retained lineage.
-Reusing a transaction does not publish a new submit confirmation or mark the publisher unhealthy;
+Reusing a transaction publishes no new submit confirmation;
 new-submit publication requires settlement evidence from the current execution.
 
 Child-dependent transaction mappings use native authenticated delegation evidence. The original

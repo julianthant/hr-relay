@@ -1,3 +1,4 @@
+import type { WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { z } from "zod";
 import { UcpathCreateTermination } from "../../../../models/systems/ucpath/create-termination.js";
 import {
@@ -69,6 +70,17 @@ export const UCPATH_TRANSACTION_STEP = defineWorkflowStep({
   key: "ucpath-transaction",
   label: "UCPath transaction",
 });
+
+/** Operator text and fields for this group in Explorer and Logs. */
+const UCPATH_TRANSACTION_DISPLAY = {
+  description: "Clear pending terminations, file the termination in UCPath and verify its receipt.",
+  system: "ucpath",
+  operatorFields: [
+    { label: "Transaction number", example: "T000000001", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "transactionNumber" }] },
+    { label: "Approval status", example: "Submitted", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "approvalStatus" }] },
+    { label: "Effective date", example: "4/26/2031", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "effectiveDate" }] },
+  ],
+} satisfies WorkflowGroupOptions;
 
 export const PENDING_SET_NODE = "pending-set";
 export const SWEEP_NODE = "clear-pending";
@@ -230,7 +242,7 @@ export function buildTermination({ task, transaction, group }: Author, extractio
   }));
   return {
     receipt, clearPending, fileTermination,
-    steps: [[group(UCPATH_TRANSACTION_STEP, { omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]]] as const
+    steps: [[group(UCPATH_TRANSACTION_STEP, { ...UCPATH_TRANSACTION_DISPLAY, omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]]] as const
   };
 }
 

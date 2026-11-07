@@ -1,13 +1,9 @@
-import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
-
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { ClassifiedDiagnosticValueSchema, maskSsnText, sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../../models/events/types.js";
 import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";
-import type { JsonValue } from "../../../rules/validation/canonical-json.js";
-import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-provenance.js";
 import { assertNoteWithinRunScope } from "../../../models/run/note-scope.js";
 import type { RecoveryActivity } from "../../../models/run/recovery-activity.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -16,100 +12,6 @@ import { randomUUID } from "node:crypto";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
-import { ConfirmedActionEventSchema, type ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
-import { registeredUiSensitivity } from "../../systems/browser-shared/semantic-ui-effect.js";
-
-export function isLocalActionValueEligible(
-  action: ConfirmedActionEvent["action"],
-  authority: RunRecord,
-  source: ConfirmedActionEvent["source"],
-): boolean {
-  const declaredAction = (action: ConfirmedActionEvent["action"]) => {
-    const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate =>
-      candidate.id === action.invocationId && candidate.entryId === action.nodeId
-      && candidate.taskId === action.taskId);
-    if (invocation === undefined) throw new Error("confirmed-action-frozen-invocation-missing");
-    if (JSON.stringify(action.occurrencePath) !== JSON.stringify(invocation.occurrencePath)
-      || action.logicalSessionId !== invocation.operation.session.id
-      || (source.kind === "browser"
-        ? invocation.operation.system !== source.system
-          || invocation.operation.session.kind !== "browser"
-          || invocation.operation.session.system !== source.system
-        : invocation.operation.system !== "local" || invocation.operation.session.kind !== "local")) {
-      throw new Error("confirmed-action-frozen-source-mismatch");
-    }
-    const matches: (typeof invocation.operation.actions)[number][] = [];
-    const visit = (actions: readonly (typeof invocation.operation.actions)[number][]): void => {
-      for (const candidate of actions) {
-        if (candidate.id === action.logicalActionId) matches.push(candidate);
-        if (candidate.children !== undefined) visit(candidate.children);
-      }
-    };
-    visit(invocation.operation.actions);
-    if (matches.length !== 1) throw new Error("confirmed-action-frozen-action-mismatch");
-    return matches[0];
-  };
-  const declared = declaredAction(action);
-  if (action.value?.consumed.state !== "observed") return true;
-  if (source.kind === "browser") {
-    const sensitivity = registeredUiSensitivity(source.system, declared.target ?? declared.id);
-    if (sensitivity !== "public" && sensitivity !== "hr") return false;
-  }
-  const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate => candidate.id === action.invocationId);
-  const slot = invocation?.operation.values.find(candidate => candidate.id === declared.valueSlot);
-  if (slot === undefined || declared.valueSlot !== action.value.slot || slot.source.path !== action.value.fieldPath) {
-    throw new Error("confirmed-action-frozen-value-slot-mismatch");
-  }
-  const reference = slot.source.kind === "contract-output"
-    ? { kind: "task-output" as const, entryId: invocation!.entryId, path: slot.source.path }
-    : invocation?.bindings.find(binding => binding.slot === slot.id)?.value;
-  const producer = action.value.producer;
-  const matches = reference !== undefined && producer.kind === reference.kind && (() => {
-    switch (reference.kind) {
-      case "run-input": return producer.kind === "run-input" && producer.path === reference.path;
-      case "configuration": return producer.kind === "configuration" && producer.key === reference.key && producer.schemaHash === reference.schemaHash;
-      case "constant": return producer.kind === "constant" && producer.valueDigest === reference.valueDigest;
-      case "task-output": case "child-output": return (producer.kind === "task-output" || producer.kind === "child-output")
-        && producer.entryId === reference.entryId && producer.path === reference.path;
-      case "transformation": return producer.kind === "transformation" && producer.transformId === reference.transformId && producer.path === reference.path;
-      default: return false;
-    }
-  })();
-  if (!matches) throw new Error("confirmed-action-frozen-value-producer-mismatch");
-  if (source.kind === "headless") {
-    return declared.valueSlot !== undefined && declared.valueSlot === action.value.slot
-      && invocation?.operation.values.some(slot => slot.id === declared.valueSlot) === true;
-  }
-  const sensitivity = registeredUiSensitivity(source.system, declared.target ?? declared.id);
-  return sensitivity === "public" || sensitivity === "hr";
-}
-
-function maskNoteValue(value: JsonValue): JsonValue {
-  if (typeof value === "string") return maskSsnText(value);
-  if (Array.isArray(value)) return value.map(maskNoteValue);
-  if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, maskNoteValue(child)]));
-}
-
-function maskOccurrenceValue(action: ConfirmedActionEvent["action"]): ConfirmedActionEvent["action"] {
-  const value = action.value;
-  return value?.consumed.state === "observed" ? { ...action,
-    value: { ...value, consumed: { ...value.consumed, value: maskNoteValue(value.consumed.value) } } } : action;
-}
-
-function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): ConfirmedActionEvent {
-  const event = ConfirmedActionEventSchema.parse(input);
-  if (event.eventId !== `${event.workerStreamId}/${String(event.sequence)}`) throw new Error("confirmed-action-stream-identity-mismatch");
-  if (event.action.runId !== authority.envelope.runId
-    || event.action.definitionFingerprint !== authority.envelope.contractFingerprint
-    || event.action.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
-  const safeAction = isLocalActionValueEligible(event.action, authority, event.source) ? event.action : { ...event.action, value: undefined };
-  if (event.kind === "trace") return ConfirmedActionEventSchema.parse({ ...event, action: maskOccurrenceValue(safeAction) });
-  const verifier = event.proof.verifier;
-  const safeVerifier = isLocalActionValueEligible(verifier, authority, event.source) ? verifier : { ...verifier, value: undefined };
-  return ConfirmedActionEventSchema.parse({ ...event, action: maskOccurrenceValue(safeAction),
-    proof: { ...event.proof, verifier: maskOccurrenceValue(safeVerifier) } });
-}
 
 const RunNoteAddressSchema = z.strictObject({
   runId: z.string().min(1),
@@ -144,7 +46,6 @@ export interface NoteTimelineWriterDeps {
 
 export interface NoteTimelineWriter {
   emitNote(input: unknown): NoteWire;
-  emitConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): NoteWire;
   emitRunLog(input: Readonly<{
     workflow: string;
     address: z.input<typeof RunNoteAddressSchema>;
@@ -167,7 +68,7 @@ export interface NoteTimelineWriter {
 export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTimelineWriter {
   const pid = z.number().int().positive().parse(deps.pid ?? process.pid);
   const write = (input: unknown, authority?: RunRecord, occurredAt?: string, action?: BrowserAction,
-    taskFields?: Parameters<TaskLogger["info"]>[1], confirmedAction?: ConfirmedActionEvent): NoteWire => {
+    taskFields?: Parameters<TaskLogger["info"]>[1]): NoteWire => {
     const ingress = NoteIngressSchema.parse(input);
     const at = deps.clock.now();
     if (authority !== undefined) {
@@ -209,19 +110,17 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
       pid,
       level: ingress.level,
       message: sanitizeDebugText(ingress.message),
-      ...(confirmedAction === undefined ? {} : { confirmedAction }),
       ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId,
         ...(action.value === undefined ? {} : { value: typeof action.value === "string" && action.kind !== "screenshot" ? maskSsnText(action.value) : action.value }),
-        ...(action.kind !== "screenshot" || action.physicalSessionId === undefined ? {} : { physicalSessionId: action.physicalSessionId }),
-        ...(action.operation === undefined ? {} : { operation: maskOccurrenceValue(action.operation) }) } }),
+        ...(action.kind !== "screenshot" || action.physicalSessionId === undefined ? {} : { physicalSessionId: action.physicalSessionId }) } }),
       ...(fields.length === 0 ? {} : { fields }),
     });
     if (Buffer.byteLength(JSON.stringify(note), "utf8") > 256 * 1024) {
       throw new Error("timeline-note-size-exceeded");
     }
-    deps.repository.append({ schemaVersion: 1, eventId: confirmedAction === undefined ? randomUUID() : deriveStableUuid("browser-action", confirmedAction.eventId), workflow: note.workflow,
+    deps.repository.append({ schemaVersion: 1, eventId: randomUUID(), workflow: note.workflow,
       scope: "runId" in note ? { kind: "run", runId: note.runId } : { kind: "worker", workerId: note.workerId },
-      occurredAt: note.ts, recordedAt: confirmedAction?.recordedAt ?? at.toISOString(), retentionDate: localDatePart(confirmedAction === undefined ? at : new Date(confirmedAction.recordedAt)),
+      occurredAt: note.ts, recordedAt: at.toISOString(), retentionDate: localDatePart(at),
       payload: { kind: "note", note }, source: { kind: "native" } });
     return note;
   };
@@ -251,31 +150,9 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
       at: z.iso.datetime({ offset: true }),
       value: z.union([z.string(), z.boolean()]).optional(),
       physicalSessionId: z.uuid().optional(),
-      operation: DeclaredActionOccurrenceSchema.optional(),
     }).parse(input.action);
     if (Date.parse(action.at) > deps.clock.now().getTime()) {
       throw new Error("browser action occurred after note append time");
-    }
-    const occurrence = action.operation;
-    const observed = occurrence?.value?.consumed.state === "observed";
-    let eligible = false;
-    if (occurrence !== undefined) {
-      if (occurrence.runId !== authority.envelope.runId
-        || occurrence.definitionFingerprint !== authority.envelope.contractFingerprint
-        || occurrence.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
-      const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate =>
-        candidate.id === occurrence.invocationId);
-      if (invocation === undefined) throw new Error("confirmed-action-frozen-invocation-missing");
-      const session = invocation.operation.session;
-      let source: ConfirmedActionEvent["source"];
-      if (session.kind === "browser") {
-        if (session.system === undefined) throw new Error("confirmed-action-frozen-source-mismatch");
-        source = { kind: "browser", system: session.system };
-      } else {
-        source = { kind: "headless", system: "workflow" };
-      }
-      const admitted = isLocalActionValueEligible(occurrence, authority, source);
-      eligible = observed && admitted;
     }
     const { value: rawValue, ...withoutRawValue } = action;
     const screenshotAssociation = action.kind === "screenshot"
@@ -283,12 +160,6 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
     const durableAction: BrowserAction = {
       ...withoutRawValue,
       ...(screenshotAssociation === undefined ? {} : { value: screenshotAssociation }),
-      ...(eligible && rawValue !== undefined && occurrence?.value?.consumed.state === "observed"
-        && rawValue === occurrence.value.consumed.value ? { value: rawValue } : {}),
-      ...(observed && !eligible && occurrence.value !== undefined ? { operation: {
-        ...occurrence, value: { ...occurrence.value,
-          consumed: { state: "withheld", reason: "classification-required" } },
-      } } : {}),
     };
     return write({
       workflow: input.workflow,
@@ -297,19 +168,8 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
       message: browserActionMessage(durableAction),
     }, authority, action.at, durableAction);
   };
-  const emitConfirmedAction: NoteTimelineWriter["emitConfirmedAction"] = (input, authority) => {
-    const confirmedAction = safeConfirmedAction(input, authority);
-    return write({
-      workflow: authority.envelope.workflow,
-      address: { runId: confirmedAction.action.runId, attempt: confirmedAction.action.attempt,
-        traceId: confirmedAction.traceId,
-        spanPath: `confirmed/${confirmedAction.action.nodeId}/${confirmedAction.action.taskId}/${String(confirmedAction.action.taskAttempt)}` },
-      level: "step", message: confirmedAction.kind === "fact" ? "Confirmed action" : "Action lifecycle",
-    }, authority, confirmedAction.recordedAt, undefined, undefined, confirmedAction);
-  };
   return Object.freeze({
     emitNote: (input: unknown): NoteWire => write(input),
-    emitConfirmedAction,
     emitRunLog,
     emitRunNote,
     emitRunAction,

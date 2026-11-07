@@ -77,12 +77,12 @@ export function pickedRunWorld(state: PickedRunState) {
   const capturePair = state === "before-after";
   const captures = capturePair ? [before, after] : state === "captures" ? [shot(2, "step")] : [];
   const note = { native: native(3), noteId: uuidOf(1003), runId: row.runId, sequence: 3, at: FIXTURE_NOW, level: "info", message: capturePair ? "Save and Submit" : "Read employee search",
-    ...(capturePair ? { operatorAction: { kind: "click", label: "Save and Submit", submit: true, sessionId } } : {}) };
+    ...(capturePair ? { operatorAction: { kind: "click", label: "Save and Submit", sessionId } } : {}) };
   const failed = state === "pre-submit-failed" || state === "post-submit-unknown" || state === "post-submit-proved";
   const failureNote = { native: native(5), noteId: uuidOf(1005), runId: row.runId, sequence: 5, at: FIXTURE_NOW, level: "warning", message: "Screenshot capture unavailable.",
     fields: [{ key: "code", kind: "text", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" }, { key: "boundary", kind: "text", value: state === "pre-submit-failed" ? "before-submit" : "after-submit" }] };
   const notes = [...captures.map(capture => capture.note), note, ...(failed ? [failureNote] : [])].sort((left, right) => left.sequence - right.sequence);
-  const logs = RunDetailSectionResponseSchema.parse({ section: "logs", payload: { runId: row.runId, confirmedActions: [], confirmedActionBindings: [], notes,
+  const logs = RunDetailSectionResponseSchema.parse({ section: "logs", payload: { runId: row.runId, notes,
     rows: notes.map(note => ({ kind: "note", native: note.native, logId: note.noteId, sequence: note.sequence, note })), nextCursor: { state: "absent", reason: "end-of-page" },
     ...(state === "dry-run" ? { dryRunPreview: { state: "available", coverage: "full", stages: [
       { id: "searching", label: "Search for employee", state: "exercised", detail: "Read and verified the sample employee.", sample: { label: "dry-run sample", value: "Sample employee" } },

@@ -15,7 +15,7 @@ import {
 import {
   SeparationsReadSeparationPlan
 } from "../../../../models/workflows/separations/read-separation-plan.js";
-import type { StepProofSpec, WorkflowAuthor } from "../../../../workflow-kit/workflow-definition.js";
+import type { StepProofSpec, WorkflowAuthor, WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
 import type { SeparationsInput } from "../../workflow.js";
@@ -25,6 +25,20 @@ export const KUALI_EXTRACTION_STEP = defineWorkflowStep({
   key: "kuali-extraction",
   label: "Kuali extraction",
 });
+
+/** Operator text and fields for this group in Explorer and Logs. */
+const KUALI_EXTRACTION_DISPLAY = {
+  description: "Find the Kuali separation action, read the separation document and work out the separation plan and termination type.",
+  system: "kuali",
+  operatorFields: [
+    { label: "Document number", example: "3000001", sources: [{ nodeId: "resolve-action", kind: "output", fieldPath: "documentNumber" }] },
+    { label: "Employee", example: "Quillan, Petra A.", sources: [{ nodeId: "document", kind: "output", fieldPath: "employee.name" }] },
+    { label: "Employee ID", example: "10000001", sources: [{ nodeId: "document", kind: "output", fieldPath: "employee.eid" }] },
+    { label: "Last day worked", example: "4/25/2031", sources: [{ nodeId: "plan", kind: "output", fieldPath: "kualiLastDayWorked" }] },
+    { label: "Separation date", example: "4/26/2031", sources: [{ nodeId: "plan", kind: "output", fieldPath: "kualiSeparationDate" }] },
+    { label: "Termination type", example: "Resignation", sources: [{ nodeId: "termination-type", kind: "output", fieldPath: "terminationType" }] },
+  ],
+} satisfies WorkflowGroupOptions;
 
 export const ACTION_NODE = "resolve-action";
 export const DOCUMENT_NODE = "document";
@@ -75,7 +89,7 @@ const SeparationsKualiReadResultSchema = z.strictObject({
   termination: MatchTerminationTypeOutputSchema,
 });
 
-export function buildExtraction({ task }: Author) {
+export function buildExtraction({ task, group }: Author) {
   const action = task(actionNode, [], ({ input }) => ({
     documentNumber: input.documentNumber,
   }));
@@ -99,7 +113,7 @@ export function buildExtraction({ task }: Author) {
       documentNumber: input.documentNumber,
     }),
   );
-  return { action, document, plan, terminationType, steps: [[KUALI_EXTRACTION_STEP, [action, document, plan, terminationType]]] as const };
+  return { action, document, plan, terminationType, steps: [[group(KUALI_EXTRACTION_STEP, KUALI_EXTRACTION_DISPLAY), [action, document, plan, terminationType]]] as const };
 }
 
 export const separationsKualiReadDefinition = defineStep({

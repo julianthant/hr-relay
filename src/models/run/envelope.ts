@@ -16,10 +16,7 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 import { CheckpointPatchSchema, FreshnessOverrideSchema } from "../workflow/checkpoint.js";
-import {
-  WorkflowOperationDisplaySnapshotSchema,
-  requireWorkflowOperationDisplaySnapshot,
-} from "../workflow/operation-display-snapshot.js";
+import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { StepOmissionsSchema } from "../workflow/step-omission.js";
 
 export const SystemInstanceSchema = z.enum(["prod", "test"]);
@@ -64,10 +61,9 @@ const RUN_ENVELOPE_SHAPE = {
   contractFingerprint: FingerprintSchema,
   /** The app build that approved this run's writes; a delegated child carries its parent's. */
   buildId: FingerprintSchema,
-    /* Stamped for older enqueues so a missing complete snapshot cannot be quietly read as a legacy run. */
+  /** Recorded by older enqueues; nothing writes or reads either field now. */
   operationDisplayCapability: z.enum(["legacy", "complete"]).optional(),
-    /** Present only for a complete display minted with this exact run. */
-  operationDisplaySnapshot: WorkflowOperationDisplaySnapshotSchema.optional(),
+  operationDisplaySnapshot: JsonValueSchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
   resolvedInstance: InstanceSelectionSchema,
   configFingerprint: FingerprintSchema,
@@ -98,34 +94,6 @@ const RUN_ENVELOPE_SHAPE = {
 };
 
 function refineRunEnvelope(envelope: z.infer<z.ZodObject<Omit<typeof RUN_ENVELOPE_SHAPE, "buildId">>>, context: z.RefinementCtx): void {
-  if (envelope.operationDisplayCapability === "complete" && envelope.operationDisplaySnapshot === undefined) {
-    context.addIssue({
-      code: "custom",
-      path: ["operationDisplaySnapshot"],
-      message: `complete run ${envelope.workflow} is missing its frozen operation display snapshot`,
-    });
-  }
-  if (envelope.operationDisplayCapability === "legacy" && envelope.operationDisplaySnapshot !== undefined) {
-    context.addIssue({
-      code: "custom",
-      path: ["operationDisplaySnapshot"],
-      message: `legacy run ${envelope.workflow} cannot carry a complete operation display snapshot`,
-    });
-  }
-  if (envelope.operationDisplaySnapshot !== undefined) {
-    try {
-      requireWorkflowOperationDisplaySnapshot(envelope.operationDisplaySnapshot, {
-        workflowId: envelope.workflow,
-        definitionFingerprint: envelope.contractFingerprint,
-      });
-    } catch (error) {
-      context.addIssue({
-        code: "custom",
-        path: ["operationDisplaySnapshot"],
-        message: error instanceof Error ? error.message : "operation display snapshot is corrupt",
-      });
-    }
-  }
   if (envelope.retryOf === envelope.runId) {
     context.addIssue({ code: "custom", path: ["retryOf"], message: "a run cannot be a cross-run retry of itself" });
   }

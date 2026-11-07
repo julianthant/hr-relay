@@ -20,19 +20,8 @@ import { retainedRunProtectedBindings } from "../../../models/write-safety/prote
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
 import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
-
-function field(value: unknown, path: string): JsonValue {
-  let current: unknown = value;
-  for (const part of path.split(".")) {
-    if (current === null || typeof current !== "object" || !Object.hasOwn(current, part))
-      throw new RerunRefusedError("invalid-value", "Recovery configuration coordinates do not resolve.");
-    current = Reflect.get(current, part);
-  }
-  return JsonValueSchema.parse(current);
-}
 
 export function assertRunRecoveryCommandScope(repositories: AuthorityRepositories, sourceCommandId: string | undefined) {
   if (sourceCommandId === undefined) throw new RunContinuationRefusedError("run-recovery-command-scope-unavailable");
@@ -109,7 +98,7 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
   const nodes = descriptorRuntimeNodes(descriptor);
   const completed = new Set<string>();
   const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue, historical = false): {
-    input: JsonValue; outputs: Record<string, JsonValue>; configuration: Readonly<Record<string, JsonValue>>;
+    input: JsonValue; outputs: Record<string, JsonValue>;
     protectedInputBindings: ReturnType<typeof retainedRunProtectedBindings>;
   } => {
     const outputs: Record<string, JsonValue> = {};
@@ -140,16 +129,7 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
         outputs[dependency] = gate.result.value;
       }
     }
-    const configuration: Record<string, JsonValue> = {};
-    const keys = descriptor.operationDisplay?.capability === "complete" ? descriptor.operationDisplay.transforms
-      .flatMap(transform => transform.inputs.flatMap(source => source.value.kind === "configuration" ? [source.value.key] : [])) : [];
-    if (keys.length > 0) {
-      const snapshot = repositories.configSnapshots.get(source.envelope.configSnapshotId);
-      if (snapshot === undefined || snapshot.fingerprint !== source.envelope.configFingerprint
-        || sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint) throw new RerunRefusedError("schema-mismatch", "Saved transaction configuration is unavailable.");
-      for (const key of keys) configuration[key] = field(snapshot.config, key);
-    }
-    return { input: value, outputs, configuration: Object.freeze(configuration), protectedInputBindings: retainedRunProtectedBindings(source) };
+    return { input: value, outputs, protectedInputBindings: retainedRunProtectedBindings(source) };
   };
   for (const node of nodes) {
     if (node.kind !== "transaction") continue;

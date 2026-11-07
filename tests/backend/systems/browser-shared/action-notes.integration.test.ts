@@ -5,44 +5,31 @@ import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { withBrowserActionNotes, recordBrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { absentProbeEvidence, WRITE_FIXTURE_EID, WRITE_FIXTURE_NOW, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence, WRITE_FIXTURE_NOW } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
 
 {
 
-const { disposers, harness, claimRunning, contextFor, intentByKey } = createWriteSequencerTestWorld();
+const { disposers, harness, claimRunning, contextFor } = createWriteSequencerTestWorld();
 
 const cleanupOriginalFixture = async () => {
   for (const dispose of disposers.splice(0)) await dispose();
 };
 
-describe("completed transaction gesture binding", () => {
+describe("completed transaction gestures", () => {
 afterEach(cleanupOriginalFixture);
 
-  it("binds prepare and commit inside their bounded task roles before the post-settlement drain", async () => {
+  it("drains prepare and commit gestures after the transaction settles", async () => {
     const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    const bound: { role: "prepare" | "commit"; targetId: string; physicalSessionId?: string }[] = [];
     const drained: string[] = [];
 
     const outcome = await withBrowserActionNotes(
       h.clock,
-      () => h.execute({
-        ...contextFor(run, claim),
-        operationActionBinders: {
-          prepare: (action) => {
-            bound.push({ role: "prepare", targetId: action.targetId, physicalSessionId: action.physicalSessionId });
-            return action;
-          },
-          commit: (action) => {
-            bound.push({ role: "commit", targetId: action.targetId, physicalSessionId: action.physicalSessionId });
-            return action;
-          },
-        },
-      }),
+      () => h.execute(contextFor(run, claim)),
       (actions) => drained.push(...actions.map((action) => action.targetId)),
     );
 
@@ -52,35 +39,7 @@ afterEach(cleanupOriginalFixture);
       output: { transactionId: "T123456" },
       proof: { transactionId: "T123456" },
     });
-    assert.deepEqual(bound.map(({ role, targetId }) => [role, targetId]), [
-      ["prepare", "ucpath.write-fixture.eid-input"],
-      ["commit", "ucpath.write-fixture.save-submit"],
-    ]);
-    assert.ok(bound.every(({ physicalSessionId }) => physicalSessionId !== undefined));
-    assert.equal(bound[0]?.physicalSessionId, bound[1]?.physicalSessionId);
     assert.deepEqual(drained, ["ucpath.write-fixture.eid-input", "ucpath.write-fixture.save-submit"]);
-  });
-
-  it("binds probe and verifier from their parsed task inputs and drains only after settlement", async () => {
-    const h = await harness();
-    const { run, claim } = claimRunning(h.database, h.clock);
-    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
-    const roles: string[] = [];
-    const states: string[] = [];
-    let drained = false;
-    await withBrowserActionNotes(h.clock, () => h.execute({ ...contextFor(run, claim, writeFixtureSaveDescriptor),
-      operationReadBinder: (role, taskId, parsedInput) => {
-        assert.deepEqual(parsedInput, { eid: WRITE_FIXTURE_EID });
-        assert.equal(taskId, `ucpath/read-write-fixture-${role}`);
-        roles.push(role);
-        return (action) => { assert.equal(drained, false); states.push(`${role}:${action.state}`); return action; };
-      },
-    }), () => { drained = true; });
-    assert.deepEqual(roles, ["probe", "verify"]);
-    assert.deepEqual(states, ["probe:started", "probe:completed", "verify:started", "verify:completed"]);
-    assert.equal(drained, true);
-    assert.equal(intentByKey(h.database)?.status, "committed");
   });
 });
 }

@@ -456,7 +456,6 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runtime/scheduling/deadline-scheduler.ts",
       "src/backend/runtime/gates/duo-ceremony-gate.ts",
       "src/backend/runtime/gates/gate-source-runtime.ts",
-      "src/backend/runtime/writes/operation-action-binding.ts",
       "src/backend/runtime/writes/receipt-derivation-binding.ts",
       "src/backend/runtime/gates/repeat-proof.ts",
       "src/backend/storage/sqlite/run-continuation.ts",

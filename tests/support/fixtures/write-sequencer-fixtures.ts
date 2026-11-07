@@ -1,5 +1,4 @@
 import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
-import { UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
@@ -39,7 +38,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presenta
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { WorkerSessionManager, type WorkerSessionManagerOptions } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/backend/runtime/writes/write-sequencer.js";
-import { recordBrowserAction, runDeclaredAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
+import { recordBrowserAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
 import { CONFIG_SNAPSHOT, HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
@@ -347,7 +346,7 @@ export interface WriteFixtureRegistry {
 
 export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContract: Omit<typeof WriteFixtureCommit, "input"> & {
   readonly input: z.ZodType<{ eid: z.output<typeof EidSchema>; memo?: string | undefined }>;
-} = WriteFixtureCommit, options: Readonly<{ completeActions?: boolean }> = {}): TaskStoreRegistry {
+} = WriteFixtureCommit): TaskStoreRegistry {
   const probe = defineTask(writeFixtureDriverDeclaration, WriteFixtureProbe, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
@@ -358,8 +357,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContra
         throw new Error("write fixture probe was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      const verdict = await runDeclaredAction({ id: "probe-state", kind: "read", targetId: "ucpath.write-fixture.probe-state" },
-        async () => ProbeOutputSchema.parse(next), (value) => value.state);
+      const verdict = ProbeOutputSchema.parse(next);
       ctx.recordData([
         { direction: "read", field: "state", value: verdict.state },
         { direction: "read", field: "eid", value: input.eid },
@@ -374,12 +372,10 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContra
   });
   const prepare = defineTask(writeFixtureDriverDeclaration, WriteFixturePrepare, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
-    async run({ input, ctx }) {
+    async run({ ctx }) {
       world.events.push("prepare");
       world.onPrepare?.();
-      if (options.completeActions === true) await runDeclaredAction({ id: "fill-eid", kind: "typed", targetId: "ucpath.write-fixture.eid-input" },
-        async () => { await ctx.driver.prepare("ucpath.write-fixture.eid-input"); return input.eid; }, value => value);
-      else await ctx.driver.prepare("ucpath.write-fixture.eid-input");
+      await ctx.driver.prepare("ucpath.write-fixture.eid-input");
       await world.prepareSteps?.(ctx.captureScreenshot);
       const staged = { staged: true as const, stagedPageState: WRITE_FIXTURE_STAGED_STATE };
       ctx.recordData([
@@ -413,9 +409,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContra
       if (world.commitRecordsBeforeClick) {
         ctx.recordData({ direction: "read", field: "preClickPageState", value: "ready-to-submit" });
       }
-      if (options.completeActions === true) await runDeclaredAction({ id: "save", kind: "clicked", targetId: UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON },
-        () => ctx.driver.commit(UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON, ctx.mutation));
-      else await ctx.driver.commit("ucpath.write-fixture.save", ctx.mutation);
+      await ctx.driver.commit("ucpath.write-fixture.save", ctx.mutation);
       await world.afterCommitClickBeforeTaskSettlement?.();
       const proof = WriteFixtureProofSchema.parse(world.commitOutput);
       ctx.recordData({ direction: "write", field: "transactionId", value: proof.transactionId });
@@ -434,16 +428,11 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContra
         throw new Error("write fixture verify was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      const verdict = await runDeclaredAction({ id: "verify-state", kind: "read", targetId: "ucpath.write-fixture.verify-state" },
-        async () => ProbeOutputSchema.parse(next), (value) => value.state);
+      const verdict = ProbeOutputSchema.parse(next);
       ctx.recordData([
         { direction: "read", field: "state", value: verdict.state },
         { direction: "read", field: "eid", value: input.eid },
       ]);
-      if (options.completeActions === true) return await runDeclaredAction({ id: "verify-saved", kind: "verified", targetId: "verify-saved" }, async () => {
-        if (verdict.state !== "present") throw new Error("write fixture saved transaction was not verified present");
-        return verdict;
-      });
       return verdict;
     },
   });

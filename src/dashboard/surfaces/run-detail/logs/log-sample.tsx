@@ -36,8 +36,6 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const resource = useRunWiring(client, selection, binding, confirm);
   const logsReadFailedTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_READ_FAILED_TITLE", {})).text;
   const logsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
-  const confirmedActionsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text;
-  const incompleteActionEvidenceText = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE", {})).text;
   const projection = useMemo<ReturnType<typeof projectRunLogs>>(() => {
     if (resource.snapshot === undefined) return { steps: [], timeline: [] };
     const logs = projectRunLogs(resource.snapshot, client);
@@ -52,7 +50,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const retryEnabled = resource.state === "loaded" && binding?.authority.dayState.day.state === "loaded"
     && (resource.command === undefined || resource.command.state === "refused") && onAction !== undefined;
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description={resource.error} /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
-  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Notice tone="danger" title={logsUnavailableTitle} description={resource.error} /> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Notice tone="warning" title={confirmedActionsUnavailableTitle} description={incompleteActionEvidenceText} /> : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error, projection.steps.length, confirmedActionsUnavailableTitle, incompleteActionEvidenceText]);
+  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Notice tone="danger" title={logsUnavailableTitle} description={resource.error} /> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;
     const showFindings = findings?.stepId === id;

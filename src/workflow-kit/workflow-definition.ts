@@ -1,8 +1,6 @@
-import { WorkflowExplorerPreviewSchema, type WorkflowExplorerPreview } from "../models/workflow/explorer-preview.js";
 import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
-import type { JsonValue } from "../rules/validation/canonical-json.js";
 /** The ONE workflow-authoring seam. A `WorkflowDefinition` is ordered `[group, entries[]]` tuples whose order is presentation only; execution edges come from typed references the compiler resolves. */
 import { z } from "zod";
 import type { IntakeProjection } from "../models/intake/projection.js";
@@ -12,7 +10,6 @@ import type {
   AnyPrepareTaskContract,
   AnyReadTaskContract,
 } from "../models/task/task-contract.js";
-import { assertFactorySealedTaskContract } from "../models/task/task-contract.js";
 import type { CompletionProgram } from "../models/workflow/completion.js";
 import type { ChildVisibility, DelegationPolicy } from "../models/workflow/delegation-policy.js";
 import { DelegationPolicySchema } from "../models/workflow/delegation-policy.js";
@@ -25,13 +22,6 @@ import type {
   TypedTransactionOutcome,
 } from "../models/workflow/graph.js";
 import type { NodeConditionSpec } from "../models/workflow/node-condition.js";
-import {
-  compileWorkflowOperationDisplay,
-  type WorkflowOperationDisplay,
-  type WorkflowOperationDisplayDeclaration,
-  type WorkflowOperationEntryProjection,
-  type WorkflowResultSourceBinding,
-} from "../models/workflow/operation-display.js";
 import {
   TimelineCategoryKeySchema,
   type WorkflowOperatorField,
@@ -67,6 +57,8 @@ export interface WorkflowTimelineGroup {
   readonly selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
   readonly [GROUP_OWNER]?: WorkflowTimelineGroup;
 }
+
+export type WorkflowGroupOptions = Readonly<Partial<Pick<WorkflowTimelineGroup, "omission" | "description" | "system" | "operatorFields">>>;
 
 /** One timeline-tuple entry: a typed reusable value over an existing contract (or gate/transaction/parallel/delegate declaration), in exactly one tuple. */
 export interface WorkflowEntry<
@@ -104,7 +96,6 @@ export interface WorkflowEntryScope<
   readonly dryRun?: DryRunScope;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: EntryOutputs<References>;
-  readonly configuration?: Readonly<Record<string, JsonValue>>;
 }
 
 /* ── entry identities — what an author (or a shared step identity value) writes ── */
@@ -289,7 +280,6 @@ export interface WorkflowResultDeclaration<
   ResultSchema extends z.ZodType = z.ZodType,
 > {
   readonly schema: ResultSchema;
-  readonly sources?: readonly WorkflowResultSourceBinding[];
   readonly references: readonly AnyWorkflowEntry[];
   readonly derive: (scope: unknown) => z.input<ResultSchema>;
   /** Type witness binding the derive scope to this definition's input. */
@@ -299,11 +289,11 @@ export interface WorkflowResultDeclaration<
 /* ── the author ──────────────────────────────────────────────────────────── */
 
 export interface WorkflowAuthor<InputSchema extends z.ZodType> {
-  /** Declare a group omittable, beside its own entries. */
+  /** Add a composition's own group facts (omission, operator text and fields) to a step, beside its own entries. */
   group(
     this: void,
     step: WorkflowTimelineGroup,
-    options: Readonly<{ omission: StepOmissionDeclaration }>,
+    options: WorkflowGroupOptions,
   ): WorkflowTimelineGroup;
 
   branch<
@@ -383,7 +373,6 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
     schema: ResultSchema,
     references: References,
     derive: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<ResultSchema>,
-    sources?: readonly WorkflowResultSourceBinding[],
   ): WorkflowResultDeclaration<InputSchema, ResultSchema>;
 }
 
@@ -395,16 +384,8 @@ function withStep(identity: StepOwned): { step?: WorkflowTimelineGroup } {
 
 function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildVisibility = "inline"): WorkflowAuthor<InputSchema> {
   const author = {
-    group(
-      step: WorkflowTimelineGroup,
-      options: Readonly<{ omission: StepOmissionDeclaration }>,
-    ) {
-      return Object.freeze({
-        key: step.key,
-        label: step.label,
-        omission: options.omission,
-        [GROUP_OWNER]: step,
-      });
+    group(step: WorkflowTimelineGroup, options: WorkflowGroupOptions) {
+      return Object.freeze({ ...step, ...options, key: step.key, label: step.label, [GROUP_OWNER]: step });
     },
     branch(
       identity: BranchEntryIdentity,
@@ -605,11 +586,9 @@ function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildV
       schema: z.ZodType,
       references: readonly AnyWorkflowEntry[],
       derive: (scope: never) => unknown,
-      sources?: readonly WorkflowResultSourceBinding[],
     ) {
       return Object.freeze({
         schema,
-        ...(sources === undefined ? {} : { sources: Object.freeze([...sources]) }),
         references,
         derive: (scope: unknown) => derive(scope as never),
       });
@@ -795,7 +774,6 @@ export type WorkflowDefinitionPresentation<
     readonly string[]
   >,
   "flow" | "timeline" | "contractFingerprint"
-  | "operationDisplay"
 >;
 
 export interface WorkflowDefinitionSpec<
@@ -808,9 +786,6 @@ export interface WorkflowDefinitionSpec<
   readonly role: WorkflowModuleRole;
   /** Ref data-intake-and-edit-data — the spreadsheet-capable declaration, when one exists. */
   readonly intake?: IntakeProjection;
-  /** Optional v1 action display declaration; omitted definitions remain legacy. */
-  readonly operationDisplay?: WorkflowOperationDisplayDeclaration;
-  readonly explorerPreview?: WorkflowExplorerPreview;
     /** The graph, authored through the typed author so each entry's input/output binds to THIS
      *  input schema; returns the ordered timeline tuples and the terminal result declaration. */
   readonly steps: (author: WorkflowAuthor<InputSchema>) => Readonly<{
@@ -829,8 +804,6 @@ export interface WorkflowDefinition<
   readonly input: InputSchema;
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
-  readonly operationDisplay?: WorkflowOperationDisplayDeclaration;
-  readonly explorerPreview?: WorkflowExplorerPreview;
   readonly steps: readonly WorkflowTimelineTuple[];
   readonly result: WorkflowResultDeclaration<InputSchema, ResultSchema>;
 }
@@ -916,17 +889,10 @@ export function defineWorkflow<
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
   const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
-  const { steps: authorSteps, input, role, intake, operationDisplay, explorerPreview, ...presentation } = spec;
+  const { steps: authorSteps, input, role, intake, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay));
   validateSteps(id, authored.steps, authored.result.references);
-  if (explorerPreview !== undefined) {
-    WorkflowExplorerPreviewSchema.parse(explorerPreview);
-    const nodes = new Set(flattenEntries(authored.steps).flatMap(entryNodeIds));
-    const declared = new Set(explorerPreview.steps.flatMap(step => step.nodes));
-    if ([...nodes].some(node => !declared.has(node)) || [...declared].some(node => !nodes.has(node))) {
-      throw new Error(`workflow ${id} Explorer preview does not cover its registered nodes`);
-    }
-  }
+
   for (const entry of flattenEntries(authored.steps)) Object.freeze(entry.references);
   Object.freeze(authored.result.references);
   return Object.freeze({
@@ -936,8 +902,6 @@ export function defineWorkflow<
     input,
     role,
     ...(intake === undefined ? {} : { intake }),
-    ...(operationDisplay === undefined ? {} : { operationDisplay }),
-    ...(explorerPreview === undefined ? {} : { explorerPreview }),
     steps: Object.freeze(authored.steps.map(([group, entries]) => Object.freeze([
       Object.freeze(Object.defineProperty({ ...group }, GROUP_OWNER, {
         value: group[GROUP_OWNER] ?? group, enumerable: false,
@@ -1139,8 +1103,6 @@ export interface CompiledWorkflow<
   readonly definition: WorkflowDefinition<InputSchema, ResultSchema, Completion>;
   readonly descriptor: CompiledWorkflowDescriptor<InputSchema, ResultSchema, Completion>;
   readonly contracts: readonly (AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract)[];
-  /** Complete v1 projection or explicit legacy capability for existing definitions. */
-  readonly operationDisplay: WorkflowOperationDisplay;
   /** Task-store namespaces the definition's contracts belong to, first-use order. */
   readonly storeNamespaces: readonly string[];
 }
@@ -1166,81 +1128,6 @@ function defaultEntryLabel(entry: RuntimeEntry): string | undefined {
   }
 }
 
-/** Projects the entry graph read-only: it validates identities and field references but never
- *  builds an edge or gives presentation children scheduler meaning. */
-function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly WorkflowOperationEntryProjection[] {
-  const entries = flattenEntries(definition.steps) as readonly RuntimeEntry[];
-  return Object.freeze(entries.map((entry) => {
-    const base = {
-      id: entry.id,
-      kind: entry.kind,
-      ...(entry.label === undefined ? {} : { label: entry.label }),
-      dependsOn: Object.freeze(entry.references.map(({ id }) => id)),
-    } as const;
-    if (entry.kind === "task") {
-      return Object.freeze({
-        ...base,
-        kind: "task" as const,
-        contracts: Object.freeze([{ role: "task" as const, contract: entry.contract }]),
-        output: entry.contract.output,
-      });
-    }
-    if (entry.kind === "transaction") {
-      const reads = definition.operationDisplay?.transactionReads?.filter((read) => read.entryId === entry.id) ?? [];
-      const completion = entry.commitContract.writeSafety.completion;
-      const required = [
-        { role: "probe" as const, taskId: entry.commitContract.writeSafety.idempotency.probe.taskId },
-        ...(completion.kind === "receipt" ? [] : [{ role: "verify" as const, taskId: completion.verify.taskId }]),
-      ];
-      if (definition.operationDisplay !== undefined) {
-        for (const reference of required) {
-          const matching = reads.filter((read) => read.role === reference.role);
-          if (matching.length !== 1) throw new Error(`complete operation display requires one ${reference.role} contract for transaction ${entry.id}`);
-          const read = matching[0];
-          assertFactorySealedTaskContract(read.contract);
-          if (read.contract.effect !== "read" || read.contract.id !== reference.taskId) {
-            throw new Error(`operation display ${reference.role} contract does not match transaction ${entry.id} writeSafety`);
-          }
-        }
-        if (reads.some((read) => !required.some((reference) => read.role === reference.role))) {
-          throw new Error(`operation display declares an unavailable read role for transaction ${entry.id}`);
-        }
-      }
-      return Object.freeze({
-        ...base,
-        kind: "transaction" as const,
-        contracts: Object.freeze([
-          { role: "prepare" as const, contract: entry.prepareContract },
-          { role: "commit" as const, contract: entry.commitContract },
-          ...reads.map((read) => ({ role: read.role, contract: read.contract })),
-        ]),
-        output: entry.commitContract.output,
-      });
-    }
-    if (entry.kind === "delegate") {
-      return Object.freeze({
-        ...base,
-        kind: "delegate" as const,
-        contracts: Object.freeze([]),
-        child: Object.freeze({ workflowId: String(entry.target.id), result: entry.target.result }),
-      });
-    }
-    if (entry.kind === "gate") {
-      return Object.freeze({
-        ...base,
-        kind: "gate" as const,
-        contracts: Object.freeze([]),
-        output: entry.result,
-      });
-    }
-    return Object.freeze({
-      ...base,
-      kind: entry.kind,
-      contracts: Object.freeze([]),
-    });
-  }));
-}
-
 /** Compile a definition through the descriptor factory and runtime; memoized per definition object, so the composition root, the descriptor tuple and every test read the same object. */
 export function compileWorkflow<
   InputSchema extends z.ZodType,
@@ -1254,26 +1141,12 @@ export function compileWorkflow<
   if (definition.kind !== "workflow-definition") {
     throw new Error("compileWorkflow requires a value produced by defineWorkflow");
   }
-  const { kind, input, role, intake, operationDisplay: operationDisplayDeclaration, explorerPreview: _explorerPreview, steps, result, ...presentation } = definition;
+  const { kind, input, role, intake, steps, result, ...presentation } = definition;
   void kind;
   void input;
   void role;
   void intake;
-  void operationDisplayDeclaration;
   void result;
-  for (const read of definition.operationDisplay?.transactionReads ?? []) {
-    if (!flattenEntries(definition.steps).some((entry) => entry.kind === "transaction" && entry.id === read.entryId)) {
-      throw new Error(`operation display read references unavailable transaction ${read.entryId}`);
-    }
-  }
-  const entries = operationDisplayEntries(definition);
-  const operationDisplay = compileWorkflowOperationDisplay({
-    workflowId: String(definition.id),
-    input: definition.input,
-    entries,
-    result: { schema: definition.result.schema, dependsOn: definition.result.references.map((entry) => entry.id), ...(definition.result.sources === undefined ? {} : { sources: definition.result.sources }) },
-    ...(definition.operationDisplay === undefined ? {} : { declaration: definition.operationDisplay }),
-  });
   const timeline = steps.map(([group, entries]) => ({
     key: group.key,
     label: group.label,
@@ -1299,19 +1172,17 @@ export function compileWorkflow<
       input: definition.input,
       canonicalInput: definition.canonicalInput,
       result: definition.result.schema,
-      graph: entries,
+      graph: (flattenEntries(steps) as readonly RuntimeEntry[]).map((entry) => ({ id: entry.id, kind: entry.kind, dependsOn: entry.references.map(({ id }) => id) })),
       contracts,
     }),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),
-    ...(operationDisplay.capability === "complete" ? { operationDisplay } : {}),
   });
   const compiled: CompiledWorkflow<InputSchema, ResultSchema, Completion> = Object.freeze({
     kind: "compiled-workflow",
     definition,
     descriptor,
     contracts,
-    operationDisplay,
     storeNamespaces: Object.freeze([...new Set(contracts.map(storeNamespace))]),
   });
   COMPILED.set(definition, compiled);
@@ -1328,7 +1199,6 @@ export interface WorkflowModule<
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
   readonly definition: AnyWorkflowDefinition;
-  readonly operationDisplay: WorkflowOperationDisplay;
 }
 
 // Select only contract-owned stores; unused inventory drops and mismatches refuse.
@@ -1371,7 +1241,6 @@ export function composeWorkflowModule<
     role: definition.role,
     ...(definition.intake === undefined ? {} : { intake: definition.intake }),
     definition,
-    operationDisplay: compiled.operationDisplay,
   });
 }
 

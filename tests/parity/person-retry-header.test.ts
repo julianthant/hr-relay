@@ -28,7 +28,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]
     const detail = RunDetailWireSchema.parse({ ...f.DETAIL, runId: selected.runId, rowRevision: selected.rowRevision, timeline: { steps: [], events: [] },
       header: { runId: selected.runId, workflowId: selected.workflowId, traceId: selected.traceId, title: selected.title, status: selected.status, attempt: selected.attempt },
       gate: { state: "absent", reason: "fixture" }, outcome: { state: "absent", reason: "fixture" }, availableSections: ["logs"] });
-    const logs = RunDetailSectionResponseSchema.parse({ section: "logs", payload: { runId: selected.runId, rows: [], notes: [], confirmedActions: [], confirmedActionBindings: [], nextCursor: { state: "absent", reason: "end-of-page" } } });
+    const logs = RunDetailSectionResponseSchema.parse({ section: "logs", payload: { runId: selected.runId, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } } });
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dayWire: day });
     const requests: unknown[] = [];
     let release: (() => void) | undefined;

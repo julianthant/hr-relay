@@ -116,8 +116,9 @@ workflows. Remove a pending entry when its implementation exists. Pending record
 ### 4.1 Definition fields
 
 Use the current `WorkflowDefinitionSpec` in `src/workflow-kit/workflow-definition.ts`. It combines
-`WorkflowDescriptorSpec` presentation fields with `input`, `role`, optional `intake`, optional
-`operationDisplay`, optional read-only `explorerPreview`, and `steps`. Explorer walkthroughs use existing components, reference registered nodes, and must cover the registered graph. Their choices and fictional examples confer no execution authority. Do not supply compiler-owned `flow`, `timeline` or
+`WorkflowDescriptorSpec` presentation fields with `input`, `role`, optional `intake` and `steps`. Explorer is generated from the registered definition: give each
+timeline group a `description` and `operatorFields` with fictional examples, and declare
+`nodePurposes` only for nodes in groups without a description. Do not supply compiler-owned `flow`, `timeline` or
 `contractFingerprint`.
 
 - Apply defaults in the ingress `input` schema. Use `defineCanonicalInput` from
@@ -143,10 +144,10 @@ of `[group, entries[]]`. Tuple order controls presentation. References control e
 | `branch({ id, cases }, references, choose)` | Select one named case through the existing graph branch; each case lists nonempty downstream targets. Unselected targets are skipped, including transactions. Branch selections are control flow, not terminal evidence. |
 | `parallel(identity, branches)` | Explicit branches with task or delegate leaves; see §8. |
 | `delegate(identity, references, { bind, deriveChildItemId })` | Typed child-run target and policy; see §8. |
-| `result(schema, references, derive, sources?)` | Terminal result schema, references and pure derivation; optional operation-display source bindings. |
-| `group(step, { omission })` | Whole-step omission declaration; see §7. |
+| `result(schema, references, derive)` | Terminal result schema, references and pure derivation. |
+| `group(step, { omission, description, system, operatorFields })` | Whole-step omission declaration (see §7), plus the step's description, system and operator fields (see §4.1). |
 
-Binds receive `input`, referenced `outputs`, optional `protectedInputBindings` and `configuration`.
+Binds receive `input`, referenced `outputs`, optional `protectedInputBindings` and optional `dryRun`.
 Declare all dependencies. For required nullable facts, use `requireFact(value, nodeId, path)` from
 `src/workflow-kit/workflow.ts`; handle valid absent/conditional arms explicitly.
 
@@ -172,16 +173,10 @@ for a kit semantics change); bump it whenever task semantics change without a sc
 always refuse across app builds. `composeWorkflowModule` refuses missing/duplicate stores and mismatched
 contract objects. Fix the named owner rather than copying a declaration.
 
-### 4.4 Operation display and Explorer
-
-`operationDisplay` is optional. The compiler uses task-owned operations, action trees and source
-slots, then validates occurrence bindings, transaction read roles and result sources. A declared
-complete display must name the exact contracts from the transaction's write-safety declaration.
-Omitting the declaration leaves a `legacy` capability; it does not infer a complete display.
+### 4.4 Explorer
 
 `workflowExplorerDeclaration` projects the definition; the backend checks graph and timeline
-coverage. Keep stable entry/leaf IDs and exact contracts. Source jumps require one displayed
-producer; missing or ambiguous sources remain unavailable. Branch choices are hypothetical.
+coverage. Keep stable entry/leaf IDs and exact contracts. Branch choices are hypothetical.
 
 ## 5 · Person Lookup: reuse and a pure fold
 

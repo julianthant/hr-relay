@@ -1,7 +1,14 @@
-import { OperationChildResultReferenceSchema } from "../../models/workflow/operation-action-identity.js";
 import { DelegationTerminalEvidenceSchema, RunResultRecordSchema } from "../../models/run/result.js";
-import { SnapshotWorkflowValueReferenceSchema } from "../../models/workflow/operation-display-snapshot.js";
-import { OperationInputLineageSchema, OperationChildResultIdentitySchema, DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
+import {
+  ConfigurationReferenceKeySchema,
+  DeclaredActionIdentitySchema,
+  OperationChildResultIdentitySchema,
+  OperationChildResultReferenceSchema,
+  OperationInputLineageSchema,
+  OperationTransformIdSchema,
+  OperationValueIdSchema,
+  SnapshotWorkflowValueReferenceSchema,
+} from "../../models/workflow/operation-action-identity.js";
 export { DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 export type { DeclaredActionIdentity } from "../../models/workflow/operation-action-identity.js";
 /** Finalize reads only when declared provenance covers the complete output. */
@@ -11,11 +18,6 @@ import { GateIdSchema } from "../identity/ids.js";
 import { JsonValueSchema } from "../validation/canonical-json.js";
 import { ContractFieldPathSchema } from "../../models/task/task-contract.js";
 import { ProtectedInputBindingSchema } from "../../models/write-safety/protected-input.js";
-import {
-  ConfigurationReferenceKeySchema,
-  OperationTransformIdSchema,
-  OperationValueIdSchema,
-} from "../../models/workflow/operation-display.js";
 import {
   FingerprintSchema,
   IsoInstantSchema,

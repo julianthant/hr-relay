@@ -230,7 +230,7 @@ const native = (order: number, nodeId = "first") => NativeRunEventWireSchema.par
 const logs = () => RunDetailSectionResponseSchema.parse({ section: "logs", payload: NotePageSchema.parse({ runId: RUN,
   rows: [{ kind: "note", native: native(1), logId: NOTE, sequence: 0, note: { native: native(1), noteId: NOTE, runId: RUN, sequence: 0, at: AT, level: "info", message: "Read the document" } }],
   notes: [{ native: native(1), noteId: NOTE, runId: RUN, sequence: 0, at: AT, level: "info", message: "Read the document" }],
-  confirmedActions: [], confirmedActionBindings: [], nextCursor: { state: "absent", reason: "end-of-page" } }) });
+  nextCursor: { state: "absent", reason: "end-of-page" } }) });
 function detailAt(selected: LogSelection, revision: number, extra: Record<string, unknown> = {}) {
   const row = selected.row;
   return RunDetailWireSchema.parse({ runId: row.runId, rowRevision: revision, panelKind: "run",

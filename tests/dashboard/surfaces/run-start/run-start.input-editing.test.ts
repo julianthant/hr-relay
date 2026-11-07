@@ -6,7 +6,7 @@ import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
-import { PersonLookupInput, parsePersonLookupRequest } from "../../../../src/models/workflows/person-lookup/input.js";
+import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -37,7 +37,8 @@ it("normalizes Search people, removes a duplicate identity from the textbox and 
   await dialog.press("Continue");
   await dialog.press("Continue");
   const submissions = StartPlanRequestSchema.parse(request).submissions;
-  assert.deepEqual(submissions, parsePersonLookupRequest(box.value));
+  const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: false };
+  assert.deepEqual(submissions, [{ ...search, emplId: "10000001" }, { ...search, emplId: "10000002" }, { ...search, name: "Other, Person" }]);
   for (const submission of submissions) assert.deepEqual(PersonLookupInput.parse(submission), submission);
 });
 

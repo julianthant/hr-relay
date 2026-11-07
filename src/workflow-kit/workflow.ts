@@ -6,12 +6,7 @@ import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboa
 import type { RunContinuation } from "../models/run/continuation.js";
 import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
 import { delegationInvocationCommandId } from "../rules/commands/lifecycle-command-id.js";
-import { sha256Hex } from "../rules/validation/sha256.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
-import {
-  assertCompiledWorkflowOperationDisplay,
-  type WorkflowOperationDisplay,
-} from "../models/workflow/operation-display.js";
 import { validateRerunValueMappings } from "../models/validation/rerun-values.js";
 import { retainedRunProtectedBindings } from "../models/write-safety/protected-input.js";
 import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../models/write-safety/protected-input.js";
@@ -32,7 +27,7 @@ import type { Fingerprint, NodeId, ScenarioId, WorkflowId } from "../rules/ident
 import {
   RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunPreviewStepSchema,
   isRunPreviewSchemaHash, readRunPreviewResult, resolveDelegationEvidenceOutput, type RunPreviewStep,
-  terminalDelegationDependencyRecord, singleDelegationResult, terminalGateDependencyRecord,
+  terminalDelegationDependencyRecord, terminalGateDependencyRecord,
   RunResultRecordSchema,
   TerminalDependencyEvidenceSchema,
   deriveCheckpointOutputDigest,
@@ -261,8 +256,6 @@ export interface WorkflowDescriptor<
   readonly completionConsumes?: readonly CompletionConsumptionSpec[];
   readonly scenarios: readonly [ScenarioId, ...ScenarioId[]];
   readonly artifactProjections?: readonly DurableArtifactProjectionSpec<S>[];
-  /** Present only for complete format v1; absence is the explicit legacy capability. */
-  readonly operationDisplay?: WorkflowOperationDisplay;
 }
 
 // Runtime reader view; the exact descriptor assigns to it.
@@ -328,7 +321,6 @@ export interface AnyWorkflowDescriptor {
     sink: ArtifactSinkId;
     blocking: true;
   }>[];
-  readonly operationDisplay?: WorkflowOperationDisplay;
 }
 
 export interface WorkflowDescriptorSpec<
@@ -1058,7 +1050,6 @@ export function defineWorkflowDescriptor<
   if (spec.coordinator !== undefined) CoordinatorPolicySchema.parse(spec.coordinator);
   if (typeof spec.inputSubject === "string") InputSubjectSchema.parse(spec.inputSubject);
   assertAuditedCanonicalInput(spec.canonicalInput);
-  if (spec.operationDisplay !== undefined) assertCompiledWorkflowOperationDisplay(spec.operationDisplay);
 
   const nodes = runtimeNodes(spec.flow.nodes);
   assertContractPlacement(id, nodes);
@@ -1652,57 +1643,6 @@ export function defineWorkflowDescriptor<
       const resultValue = { schemaHash, value: parsedResult,
         ...(retainedRunProtectedBindings(currentRun).length === 0 ? {} :
           { protectedBindings: retainedRunProtectedBindings(currentRun) }) };
-      const sourceBindings = spec.operationDisplay?.capability === "complete" ? spec.operationDisplay.resultSources : undefined;
-      const retainedSources: NonNullable<z.input<typeof RunResultRecordSchema>["operationSources"]> = [];
-      const retainedLineage: NonNullable<z.input<typeof RunResultRecordSchema>["operationLineage"]> = [];
-      const readPath = (value: unknown, path: string): unknown => {
-        let current = value;
-        for (const segment of path.split(".")) current = current !== null && typeof current === "object" ? Reflect.get(current, segment) : undefined;
-        return current;
-      };
-      const sourceEvidence = z.array(TerminalDependencyEvidenceSchema).parse(evidenceInput);
-      for (const binding of sourceBindings ?? []) {
-        const source = binding.source;
-        if (source.kind === "derived") {
-          if (readPath(parsedResult, binding.path) === undefined) throw new Error("workflow-result-lineage-output-unavailable");
-          const inputs = source.inputs.map((input) => {
-            const dependency = sourceEvidence.find((entry) => entry.nodeId === input.source.entryId);
-            const sources = dependency?.state === "resolved" ? dependency.checkpoint.operationSources
-              : dependency?.state === "child-resolved" || dependency?.state === "delegation-resolved" ? singleDelegationResult(dependency)?.operationSources : undefined;
-            const dependencyOutput = outputs[input.source.entryId];
-            const output: unknown = input.source.kind === "child-output" ? Reflect.get(Object(dependencyOutput), "output") : dependencyOutput;
-            if (readPath(output, input.source.path) === undefined) throw new Error("workflow-result-lineage-input-unavailable");
-
-            const childResult = dependency?.state === "child-resolved" || dependency?.state === "delegation-resolved"
-              ? singleDelegationResult(dependency) : undefined;
-            if (childResult !== undefined) {
-              const lineage = childResult.operationLineage?.find((lineage) => lineage.path === input.source.path);
-              const identities = lineage?.inputs.flatMap((input) => input.identity === undefined ? input.identities ?? [] : [input.identity]) ?? [];
-              if (lineage?.inputs.some((input) => input.state === "unavailable")) return { inputId: input.id, source: input.source, state: "unavailable" as const, reason: "exact-input-occurrence-not-retained" as const };
-              if (identities.length > 0) return { inputId: input.id, source: input.source, state: "retained" as const, identities,
-                result: { runId: childResult.runId, definitionFingerprint: childResult.contractFingerprint, resultSchemaHash: childResult.resultSchemaHash, resultDigest: childResult.resultDigest, dependencyDigest: childResult.dependencyDigest } };
-            }
-            const candidates = sources?.filter((source) => source.path === input.source.path) ?? [];
-            if (candidates.length > 1) throw new Error("workflow-result-source-ambiguous");
-            return { inputId: input.id, source: input.source, ...(candidates[0] === undefined
-              ? { state: "unavailable" as const, reason: "exact-input-occurrence-not-retained" as const }
-              : { state: "retained" as const, identity: candidates[0].identity }) };
-          });
-          retainedLineage.push({ path: binding.path, inputs });
-          continue;
-        }
-
-        const dependencyOutput = outputs[source.entryId];
-        const output = readPath(source.kind === "child-output" ? Reflect.get(Object(dependencyOutput), "output") : dependencyOutput, source.path);
-        const resultOutput = readPath(parsedResult, binding.path);
-        if (output === undefined || resultOutput === undefined || canonicalJsonStringify(output) !== canonicalJsonStringify(resultOutput)) throw new Error("workflow-result-source-value-mismatch");
-        const dependency = sourceEvidence.find((entry) => entry.nodeId === source.entryId);
-        const sources = dependency?.state === "resolved" ? dependency.checkpoint.operationSources
-          : dependency?.state === "child-resolved" || dependency?.state === "delegation-resolved" ? singleDelegationResult(dependency)?.operationSources : undefined;
-        const candidates = sources?.filter((candidate) => candidate.path === source.path) ?? [];
-        if (candidates.length > 1) throw new Error("workflow-result-source-ambiguous");
-        if (candidates[0] !== undefined) retainedSources.push({ path: binding.path, identity: candidates[0].identity });
-      }
       const result = RunResultRecordSchema.parse({
         runId: currentRun.envelope.runId,
         attempt: currentRun.envelope.attempt,
@@ -1714,8 +1654,6 @@ export function defineWorkflowDescriptor<
         resultSchemaHash: schemaHash,
         result: resultValue,
         resultDigest: deriveRunResultDigest(resultValue),
-        ...(sourceBindings === undefined ? {} : { operationSources: retainedSources, operationSourceDigest: sha256Hex(`hrauto:result-operation-sources:v1\0${canonicalJsonStringify(retainedSources)}`) }),
-        ...(sourceBindings === undefined ? {} : { operationLineage: retainedLineage, operationLineageDigest: sha256Hex(`hrauto:result-operation-lineage:v1\0${canonicalJsonStringify(retainedLineage)}`) }),
         ...(currentRun.envelope.continuation === undefined ? {} : { continuation: currentRun.envelope.continuation }),
         dependencies,
         dependencyDigest: deriveTerminalDependencyDigest(dependencies),

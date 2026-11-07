@@ -1,4 +1,3 @@
-import { WorkflowExplorerPreviewSchema } from "../workflow/explorer-preview.js";
 /** The read-only Workflow Explorer wire: a projection of registration state derived at the server from the one composition root, never a second authority. */
 import { z } from "zod";
 import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
@@ -25,7 +24,6 @@ import {
   WorkflowCodeSchema,
 } from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
-import { ExplorerOperationStructureWireSchema } from "./operation-structure.js";
 
 /** A repository-relative source path, anchored and slash-separated with no `..` segment and no leading slash: it is rendered as "the file that owns this fact". */
 export const SourcePathSchema = z
@@ -319,10 +317,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   role: WorkflowModuleRoleSchema,
   version: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
-  /** One declared operation tree, or explicit legacy absence. */
-  operationStructure: ExplorerOperationStructureWireSchema,
   /** Authored tuple order, kept apart from the graph's typed execution edges. */
-  walkthrough: WorkflowExplorerPreviewSchema.optional(),
   definitionPreview: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
     z.strictObject({

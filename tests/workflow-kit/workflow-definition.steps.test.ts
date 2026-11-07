@@ -29,7 +29,7 @@ describe("step proof derivation", () => {
     expect(definition.steps.map(([group, entries]) => [group.key, entries.map(entry => entry.id)]))
       .toEqual([["searching", ["searching", "matching", "search-identity"]]]);
     expect(definition.result.references.map(entry => entry.id)).toEqual(["search-identity"]);
-    expect(definition.nodePurposes?.map(purpose => purpose.nodeId)).toEqual(["searching", "matching", "search-identity"]);
+    expect(definition.nodePurposes).toBeUndefined();
     expect(compileWorkflow(definition).contracts.map(contract => contract.id)).toEqual([
       "ucpath/search-person-org", "ucpath/search-person-match", "workflow:person-lookup/read-resolved-identity",
     ]);

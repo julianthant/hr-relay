@@ -1,4 +1,3 @@
-import { createOperationDisplayFixtures } from "../../support/helpers/operation-display-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { describe } from "vitest";
 import { it } from "vitest";
@@ -7,7 +6,6 @@ import { ContractFieldPathSchema } from "../../../src/models/task/task-contract.
 import { assertTaskContractReferences } from "../../../src/models/task/task-contract.js";
 import { auditContractBoundarySchema } from "../../../src/models/task/task-contract.js";
 import { defineTaskContract } from "../../../src/models/task/task-contract.js";
-import type { TaskOperationDeclaration } from "../../../src/models/workflow/operation-display.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { ObservationIdSchema } from "../../../src/rules/identity/ids.js";
 import { ScenarioIdSchema } from "../../../src/rules/identity/ids.js";
@@ -15,14 +13,6 @@ import { TaskIdSchema } from "../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../src/workflow-kit/errors.js";
 import { wrapUnhandledTaskError } from "../../../src/workflow-kit/errors.js";
 import { taskFailer } from "../../../src/workflow-kit/task.js";
-import { expect } from "vitest";
-import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
-import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
-import { defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
-import { WriteFixtureCommit } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { WriteFixturePrepare } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { WriteFixtureProbe } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { WriteFixtureVerify } from "../../support/fixtures/write-sequencer-fixtures.js";
 
 {
 const INPUT = z.strictObject({ eid: EidSchema });
@@ -137,26 +127,6 @@ describe("sealed task contracts", () => {
     }
   });
 
-  it("seals a reusable operation declaration and refuses a cross-system one", () => {
-    const operation = {
-      version: 1,
-      id: "search-person",
-      system: "ucpath",
-      session: { kind: "browser", id: "ucpath-browser", system: "ucpath" },
-      page: { screen: "ucpath.person-org.search", form: "person-org" },
-      values: [
-        { id: "eid", source: { kind: "contract-input", path: "eid" } },
-        { id: "found", source: { kind: "contract-output", path: "found" } },
-      ],
-      actions: [{ id: "open", kind: "open-page" }],
-    } satisfies TaskOperationDeclaration;
-    const contract = defineTaskContract({ ...readDefinition(), operation });
-    assert.equal(contract.operation?.id, "search-person");
-    assert.throws(() => defineTaskContract({
-      ...readDefinition(),
-      operation: { ...operation, system: "crm" } as unknown as TaskOperationDeclaration,
-    }), /belongs to "ucpath"/);
-  });
 
   it("seals and freezes all three effect contracts", () => {
     for (const contract of [readContract(), prepareContract(), commitContract()]) {
@@ -470,39 +440,5 @@ describe("sealed task contracts", () => {
     assert.equal(wrappedNonError.cause, nonError);
     assert.equal(wrappedNonError.message, `[${contract.id}] unhandled: task threw a non-Error value`);
   });
-});
-}
-
-{
-
-const { DISPLAY_FORWARD_ID, outerWorkflow } = createOperationDisplayFixtures();
-
-
-const operation = SearchPersonOrg.operation;
-if (operation === undefined) throw new Error("SearchPersonOrg must declare its reusable display operation");
-
-it("compiles a sealed transaction probe role and refuses missing, mismatched, duplicate or unavailable read contracts", () => {
-  const declaration = (id: string) => ({ version: 1 as const, id, system: "ucpath" as const, session: { kind: "browser" as const, id: "role-browser", system: "ucpath" as const }, actions: [{ id: "verify", kind: "verify" as const }] });
-  const { __sealed: _prepareSeal, ...prepareSpec } = WriteFixturePrepare;
-  const { __sealed: _commitSeal, ...commitSpec } = WriteFixtureCommit;
-  const { __sealed: _probeSeal, ...probeSpec } = WriteFixtureProbe;
-  const { __sealed: _wrongSeal, ...wrongSpec } = WriteFixtureVerify;
-  const prepare = defineTaskContract({ ...prepareSpec, operation: declaration("prepare-operation") });
-  const commit = defineTaskContract({ ...commitSpec, operation: declaration("commit-operation") });
-  const probe = defineTaskContract({ ...probeSpec, operation: declaration("probe-operation") });
-  const wrong = defineTaskContract({ ...wrongSpec, operation: declaration("wrong-operation") });
-  const reads = [{ entryId: "write", role: "probe" as const, contract: probe }];
-  const build = (transactionReads: { entryId: string; role: "probe"; contract: typeof probe | typeof wrong }[]) => compileWorkflow(defineWorkflow({ ...outerWorkflow(DISPLAY_FORWARD_ID, undefined), operationDisplay: { capability: "complete", version: 1, transactionReads,
-    invocations: (["probe", "prepare", "commit"] as const).map((contractRole) => ({ id: `${contractRole}-invocation`, entryId: "write", contractRole, occurrencePath: ["write", contractRole] })),
-    presentation: (["probe", "prepare", "commit"] as const).map((role) => ({ id: `${role}-node`, kind: "operation" as const, invocationId: `${role}-invocation` })) },
-    steps: ({ transaction, result }) => {
-      const write = transaction({ id: "write", prepare, commit, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 1000 }, [], { prepareBind: ({ input }) => ({ eid: input.firstEid }), commitBind: ({ input }) => ({ eid: input.firstEid }) });
-      return { steps: [[{ key: "write", label: "Write" }, [write]]], result: result(z.strictObject({ done: z.boolean() }), [], () => ({ done: true })) };
-    } }));
-  expect(build(reads).descriptor.operationDisplay?.capability).toBe("complete");
-  expect(() => build([])).toThrow(/requires one probe contract/u);
-  expect(() => build([...reads, ...reads])).toThrow(/requires one probe contract/u);
-  expect(() => build([{ ...reads[0], contract: wrong }])).toThrow(/does not match.*writeSafety/u);
-  expect(() => build([{ ...reads[0], entryId: "missing" }])).toThrow(/unavailable transaction/u);
 });
 }

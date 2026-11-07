@@ -156,10 +156,6 @@ not force a reconnect or discard another row's patch.
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
 exclusive startup; workers do not reclaim each other's runs or leases.
-`runWorkerLoop` creates one confirmed-action publisher with a fresh stream id and capacity 256.
-It assigns sequence numbers within that incarnation. On exit it closes the publisher before
-browser teardown and warns about pending events. Publication health does not settle a run or an
-external write.
 
 An uncertain browser launch throws `WorkerLaunchUncertainError` with a strict report containing
 `state: "launch-uncertain"`, `custody: "held"`, worker and workflow identity. It retains root and

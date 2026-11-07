@@ -23,7 +23,6 @@ type StartRequestShape,
 type StepOmissionStepView,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { StepOmissionFormSchema,type StepOmissionForm } from "../../../../src/models/workflow/step-omission.js";
-import { parsePersonLookupRequest } from "../../../../src/models/workflows/person-lookup/input.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 describe("canonical Person Lookup launch input", () => {
@@ -47,18 +46,18 @@ describe("canonical Person Lookup launch input", () => {
     assert.match(rejected.problem ?? "", /Match requires/u);
     assert.deepEqual(rejected.submissions, []);
   });
-  it("matches canonical parsing for the declared grammar and duplicate identities", () => {
-    for (const [mode, text] of [
-      ["search", " 10000001 ; 10000001\nExample,  Person;example, person"],
-      ["match", "Example, Person, Middle, 01/15/2000, x; Example, Person, Middle, 01/15/2000, x"],
-      ["match", "Person Example, x, 902481357"],
-      ["match", "Example, Person, 01/15/2000, 902481357"],
+  it("parses the declared grammar and merges duplicate identities", () => {
+    const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: false } as const;
+    const match = { mode: "match", lastName: "Example", crmCheck: false, includeCrmDates: false } as const;
+    for (const [mode, text, expected] of [
+      ["search", " 10000001 ; 10000001\nExample,  Person;example, person", [{ ...search, emplId: "10000001" }, { ...search, name: "Example, Person" }]],
+      ["match", "Example, Person, Middle, 01/15/2000, x; Example, Person, Middle, 01/15/2000, x", [{ ...match, firstName: "Person, Middle", dob: "01/15/2000" }]],
+      ["match", "Person Example, x, 902481357", [{ ...match, firstName: "Person", ssn: "902481357" }]],
+      ["match", "Example, Person, 01/15/2000, 902481357", [{ ...match, firstName: "Person", dob: "01/15/2000", ssn: "902481357" }]],
     ] as const) {
-      const options = { mode, crmCheck: mode === "search", includeCrmDates: false };
-      assert.deepEqual(previewRunInput(surface, text, options).submissions, parsePersonLookupRequest(text, options));
+      assert.deepEqual(previewRunInput(surface, text, { mode, crmCheck: mode === "search", includeCrmDates: false }).submissions, expected);
     }
     for (const text of ["Example, Person, x, 902-48-1357", "Example, Person, x, 902 48 1357", "Example, , x, 902481357", "Example, Person, x, x"]) {
-      assert.throws(() => parsePersonLookupRequest(text, { mode: "match" }));
       assert.ok(previewRunInput(surface, text, { mode: "match" }).problem);
     }
   });
