@@ -5,7 +5,7 @@ import { syntheticDatabasePath } from "../../../support/helpers/synthetic-databa
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-import type { RunRecord } from "../../../../src/models/run/record.js";
+import { runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -24,7 +24,7 @@ import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/l
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
+import { RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { childContinuationModules, childContinuationRoot, childPolicyModules, childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores, plan1Contract, plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -390,7 +390,10 @@ for (const policy of ["cascade", "independent"] as const) {
     assert.ok(retained);
     terminal(f.currentRoot(), "failed");
     assert.equal(f.currentRoot().claimGeneration, retained.claimGeneration);
-    assert.equal(f.database.authority.runResults.get(f.root.envelope.runId), undefined);
+    // Only the exit settlement terminalizes the parent: its failed evidence binds the retained claim, never a fresh one.
+    const evidence = terminalEvidenceResult(RunResultRecordSchema.parse(f.database.authority.runResults.get(f.root.envelope.runId)));
+    assert.equal(evidence?.kind, "failed-evidence");
+    assert.deepEqual(evidence.authorization.claim, runClaim(retained));
     assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
     assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
     assert.equal(f.database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
