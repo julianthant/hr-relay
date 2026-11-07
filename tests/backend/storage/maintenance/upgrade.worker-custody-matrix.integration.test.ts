@@ -75,7 +75,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
       result: run.lifecycle.outcome === "cancelled" ? "cancelled" : "failed" });
   };
 
-  const kept = execution.start(compiled.descriptor, { emplId: "10800009", text: "kept", mode: "ok" }, { dryRun: false });
+  const kept = execution.start(compiled.descriptor, { emplId: "10800001", text: "kept", mode: "ok" }, { dryRun: false });
   assert.equal(execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
     requestedAt: clock.now().toISOString(), target: { runId: kept.envelope.runId, expectedVersion: kept.version } })).state, "applied");
   receipt(current(kept.envelope.runId));
