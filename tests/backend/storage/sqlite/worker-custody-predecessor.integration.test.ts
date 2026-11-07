@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveEvidenceReceiptId } from "../../../../src/models/trust/evidence-identity.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -13,7 +13,6 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { restorePredecessorCustodySchema, rewritePredecessorCommand, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
 import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-custody-migration.js";
 
@@ -56,8 +55,10 @@ async function predecessorStore(version: SourceVersion, write?: "attempting") {
   const recovered = requireLifecycleApplied(f.service.recoverCrash({ ...f.recoveryRequest, expectedVersion: requested.run.version }, f.lock));
   for (const run of write === "attempting" ? [f.database.authority.runs.get(kept.envelope.runId)] : [recovered, f.database.authority.runs.get(kept.envelope.runId)]) {
     assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
-    const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
-    f.database.authority.evidenceReceipts.insert(deriveRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, result, checkpoints: [], writes: [], gateResults: [] }).receipt);
+    f.database.authority.evidenceReceipts.insert({ composition: 5, receiptId: deriveEvidenceReceiptId(run.envelope.runId, run.envelope.attempt),
+      runId: run.envelope.runId, traceId: run.envelope.traceId, workflowId: run.envelope.workflow, attempt: run.envelope.attempt, generatedAt: run.lifecycle.endedAt,
+      descriptorFingerprint: run.envelope.contractFingerprint, configFingerprint: run.envelope.configFingerprint, retryOf: { state: "absent" }, failure: { state: "absent" },
+      input: [], observations: [], decisions: [], actions: [], verification: [], output: [], reuse: [], warnings: [], confidence: "unknown", result: "cancelled" });
   }
   const path = join(f.root, "state.db");
   await f.closeController();

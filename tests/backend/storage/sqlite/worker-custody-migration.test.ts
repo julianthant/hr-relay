@@ -41,11 +41,14 @@ function store(): DatabaseSync {
 function run(envelope: object = {}, rest: object = {}): RunRecord {
   return RunRecordSchema.parse({ ...QUEUED_RUN, ...rest, envelope: { ...QUEUED_RUN.envelope, ...envelope } });
 }
-const claimed = (envelope: object = {}) => run(envelope, { lifecycle: { state: "claimed", workerId: WORKER, workerLifetime: LIFETIME, claimedAt: NOW, heartbeatAt: NOW }, claimGeneration: 1, version: 2 });
+const claimed = (envelope: object = {}) => run(envelope, { lifecycle: { state: "claimed", workerId: WORKER, claimedAt: NOW, heartbeatAt: NOW }, claimGeneration: 1, version: 2 });
 const unrelated = () => run({ runId: UUID_6, itemId: UUID_7, traceId: "pl-170001-6666" });
 
 function insertRun(database: DatabaseSync, record: RunRecord): void {
-  const columns = runRecordColumns(record, RunRecordSchema);
+  const stored = runRecordColumns(record, RunRecordSchema);
+  // Schema 22 stored a claim's worker lifetime on its lifecycle; the current run grammar has none.
+  const lifecycle = JSON.parse(String(stored.lifecycle_json)) as { lifecycle: Record<string, unknown> };
+  const columns = record.lifecycle.state === "claimed" ? { ...stored, lifecycle_json: canonicalJsonStringify({ ...lifecycle, lifecycle: { ...lifecycle.lifecycle, workerLifetime: LIFETIME } }) } : stored;
   database.prepare(`INSERT INTO runs(${Object.keys(columns).join(",")}) VALUES(${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
 }
 

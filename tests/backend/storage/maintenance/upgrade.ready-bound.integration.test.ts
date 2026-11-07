@@ -36,7 +36,7 @@ import { backupStoppedAuthority,upgradeProfileAtStartup,upgradeReadyProfileStora
 import { AuthorityDatabase,inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,isWorkerCustodyDroppedTable,migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
@@ -184,7 +184,7 @@ function rawEight(path: string, version = 8) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const present = new Set(raw.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
-    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && present.has(table)).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && !isWorkerCustodyDroppedTable(table) && present.has(table)).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
