@@ -17,7 +17,7 @@ import { backupFlatStorage } from "../../../../src/backend/storage/maintenance/e
 import { SourceRecordSchema, StorageBackupSchema, retainedStorageBackup, hash } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { readNative6RunRecord } from "../../../support/fixtures/storage/historical-run-schema.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -192,20 +192,15 @@ it("archives genuinely never-initialized native6 settings without creating setti
   } finally { await f.close(); }
 });
 
-it.each(["server", "workers", "geocode"] as const)("refuses active %s process custody before backup admission", async name => {
+it.each(["server", "workers", "geocode"] as const)("refuses an old-build %s process record before backup admission", async name => {
   const f = await createHistoricalFlatProfileFixture();
-  const lock = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name, pid: process.pid,
-    ...(name === "workers" ? { admission: { kind: "unbound-worker" as const, authorityPath: f.databasePath } } : {}) });
   try {
+    plantOldBuildArtifact(f.processLockRoot, name);
     const before = oldArtifactSnapshot(f.processLockRoot);
     await assert.rejects(acquireFlatArchiveFixture(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(oldArtifactSnapshot(f.processLockRoot), before);
-    lock.release();
-    const released = oldArtifactSnapshot(f.processLockRoot);
-    await assert.rejects(acquireFlatArchiveFixture(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
-    assert.deepEqual(oldArtifactSnapshot(f.processLockRoot), released);
     assert.equal(existsSync(join(f.stateRoot, "backups")), false); untouched(f);
-  } finally { lock.release(); await f.close(); }
+  } finally { await f.close(); }
 });
 
 for (const change of ["schema", "claim-prefix", "credential-mode", "symlink", "hardlink"] as const) {

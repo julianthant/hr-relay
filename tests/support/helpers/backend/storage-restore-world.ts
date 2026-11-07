@@ -4,7 +4,6 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 import { randomUUID } from "node:crypto";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
-import { WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/models/run/worker.js";
 import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { spawn, spawnSync } from 'node:child_process';
@@ -98,7 +97,6 @@ export function createStorageRestoreTestWorld() {
   }>, accounting?: Readonly<{ backupAfterCommit: boolean }>, options: Readonly<{ crashedHolder?: true }> = {}): Promise<{
     paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void; manifestPath: string; beforeManifestPath: string;
     originalChild: { pid: number; signal: "SIGKILL" };
-    workerLease: WorkerLeaseRecord;
   }> {
     if (options.crashedHolder === true) assert.equal(heldRoot, undefined);
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
@@ -140,7 +138,7 @@ export function createStorageRestoreTestWorld() {
         keychain: z.array(z.tuple([z.string().min(1), z.string().min(1)])).length(1), manifestPath: z.string().min(1), beforeManifestPath: z.string().min(1),
         pid: z.number().int().positive(),
         claimGeneration: z.number().int().positive(), runId: z.string().min(1),
-        databaseClosed: z.literal(true), retained: z.literal(true), workerLease: WorkerLeaseRecordSchema }).parse(message);
+        databaseClosed: z.literal(true), retained: z.literal(true) }).parse(message);
       assert.equal(receipt.pid, child.pid);
       assert.equal(realpathSync(receipt.workspace), receipt.workspace);
       assert.equal(dirname(receipt.workspace), scratch);
@@ -171,9 +169,6 @@ export function createStorageRestoreTestWorld() {
           assert.deepEqual((await closed)[0], { state: "inherited-closed" });
         }
       }
-      assert.equal(receipt.workerLease.workerId, receipt.workerId);
-      assert.equal(receipt.workerLease.processId, receipt.pid);
-      assert.notEqual(receipt.workerLease.lifecycle.state, "stopped");
       assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
       process.kill(-receipt.pid, 0);
       assert.equal(child.kill('SIGKILL'), true);
@@ -234,13 +229,12 @@ export function createStorageRestoreTestWorld() {
         }
       } });
       assert.equal(child.signalCode, 'SIGKILL');
-      assert.deepEqual(database.authority.workerLeases.get(receipt.workerId), receipt.workerLease);
       const run = database.authority.runs.get(receipt.runId);
       assert.ok(run);
       assert.equal(run.claimGeneration, receipt.claimGeneration);
       assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, accounting === undefined ? 'attempting' : 'committed');
       return { paths, database, closeDatabase, manifestPath: receipt.manifestPath, beforeManifestPath: receipt.beforeManifestPath,
-        originalChild: { pid: receipt.pid, signal: "SIGKILL" }, workerLease: receipt.workerLease };
+        originalChild: { pid: receipt.pid, signal: "SIGKILL" } };
     } catch (error) {
       writeFileSync(join(scratch, 'child.stdout'), Buffer.concat(stdout), { mode: 0o600 });
       writeFileSync(join(scratch, 'child.stderr'), Buffer.concat(stderr), { mode: 0o600 });
@@ -267,7 +261,7 @@ export function createStorageRestoreTestWorld() {
   }
 
   async function renewConfirmedInSuccessor(paths: DrillPaths, input: Readonly<{
-    runId: string; member: WorkerPoolMember; oldLeaseGeneration: number; oldProcessId: number; oldLeaseStartedAt: string;
+    runId: string; member: WorkerPoolMember;
     oldClaimGeneration: number; oldAttempt: number;
     expectedPoolVersion: number; now: string;
   }>) {
@@ -294,20 +288,11 @@ export function createStorageRestoreTestWorld() {
       successorPermitsIssued++;
       successor.send({ nonce, ...input });
       const receipt = z.strictObject({ state: z.literal("successor-renewed"), nonce: z.uuid(),
-        run: RunRecordSchema, member: WorkerPoolMemberSchema, lease: WorkerLeaseRecordSchema,
-        previousLifetime: z.strictObject({ workerId: z.string().min(1), processId: z.number().int().positive(),
-          leaseGeneration: z.number().int().positive(), startedAt: z.string().min(1) }) }).parse((await renewed)[0]);
+        run: RunRecordSchema, member: WorkerPoolMemberSchema }).parse((await renewed)[0]);
       assert.equal(receipt.nonce, nonce); assert.deepEqual(receipt.member, input.member);
-      assert.deepEqual(receipt.previousLifetime, { workerId: input.member.workerId, processId: input.oldProcessId,
-        leaseGeneration: input.oldLeaseGeneration, startedAt: input.oldLeaseStartedAt });
       assert.equal(receipt.run.envelope.runId, input.runId); assert.equal(receipt.run.envelope.attempt, input.oldAttempt);
       assert.equal(receipt.run.claimGeneration, input.oldClaimGeneration + 1);
       const claim = runClaim(receipt.run); assert.ok(claim); assert.equal(claim.workerId, input.member.workerId);
-      assert.equal(receipt.lease.workerId, input.member.workerId); assert.equal(receipt.lease.processId, successor.pid);
-      assert.equal(receipt.lease.leaseGeneration, input.oldLeaseGeneration + 1);
-      assert.ok("workerLifetime" in receipt.run.lifecycle);
-      assert.deepEqual(receipt.run.lifecycle.workerLifetime, { membershipRevision: input.member.membershipRevision,
-        leaseGeneration: receipt.lease.leaseGeneration });
       for (const closed of await ending) {
         if (closed.status !== "fulfilled") throw closed.reason;
         assert.deepEqual(closed.value, [0, null]);

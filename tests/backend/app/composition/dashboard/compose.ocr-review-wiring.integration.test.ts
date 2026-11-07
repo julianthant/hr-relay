@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync } from "node:fs";
@@ -51,9 +52,7 @@ it("composes served OCR with readable gate authority while public starts remain 
     const kernel = createCommandKernel({ authority: f.database, lifecycle: f.canonical.lifecycle, clock: f.clock,
       ids: { uuid: randomUUID }, appVersion: "0.1.0", descriptors: production.descriptors, readableDescriptors: readable,
       configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-      writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: {
-        planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
-        stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+      writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: unusedWorkerPool(unused) } });
     const originalStart = authenticateRootRun(f.database.authority, f.run).command;
     const refused = kernel.execute({ ...originalStart, commandId: randomUUID() });
     assert.ok(refused.state === "rejected" && refused.code === "target-not-found");

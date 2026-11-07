@@ -10,18 +10,21 @@ export const BrowserRootHandleSchema = Generation;
 const Digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const RelativePath = z.string().min(1).max(4096).refine(value => !isAbsolute(value)
   && !value.includes("\\") && value.split("/").every(part => part !== "" && part !== "." && part !== ".."));
-const WorkerOwner = z.strictObject({ kind: z.literal("worker"), workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
-  ordinal: Generation, membershipRevision: Generation, leaseGeneration: Generation });
+const WorkerOwner = z.strictObject({ kind: z.literal("worker"), workerId: WorkerIdSchema, workflowId: WorkflowIdSchema, ordinal: Generation });
+const PriorWorkerOwner = WorkerOwner.extend({ membershipRevision: Generation, leaseGeneration: Generation });
 const SignupOwner = z.strictObject({ kind: z.literal("signup"), operationId: z.uuid(), accountId: z.uuid(), providerGeneration: Generation });
 const CommandOwner = z.strictObject({ kind: z.literal('command'), commandId: z.uuid(), requestDigest: Digest, system: z.literal('sharepoint') });
 export const BrowserRootOwnerSchema = z.discriminatedUnion("kind", [WorkerOwner, SignupOwner, CommandOwner]);
+const PriorOwnerSchema = z.discriminatedUnion("kind", [PriorWorkerOwner, SignupOwner, CommandOwner]);
 const Launch = z.strictObject({ launchId: z.uuid(), generation: Generation,
   state: z.enum(["launching", "open", "closing", "closed", "unknown"]) });
 const NativeAction = z.strictObject({ operationId: z.uuid(), launchId: z.uuid(), generation: Generation,
   source: z.strictObject({ device: z.union([Integer, z.string().regex(/^(0|[1-9][0-9]*)$/u)]), inode: z.union([Integer, z.string().regex(/^(0|[1-9][0-9]*)$/u)]) }), priorLaunchDigest: Digest, phase: z.enum(["probing", "observed", "deleting"]) });
-export const BrowserRootSchema = z.strictObject({ handle: BrowserRootHandleSchema, profileId: z.uuid(), profileRoot: RelativePath, directory: RelativePath,
-  owner: BrowserRootOwnerSchema, sessionGeneration: Integer, credentialFingerprint: Digest.nullable(), launch: Launch,
-  native: NativeAction.optional() }).superRefine((row, context) => {
+const rootShape = { handle: BrowserRootHandleSchema, profileId: z.uuid(), profileRoot: RelativePath, directory: RelativePath,
+  sessionGeneration: Integer, credentialFingerprint: Digest.nullable(), launch: Launch, native: NativeAction.optional() };
+type RootFacts = Readonly<{ handle: number; profileId: string; profileRoot: string; directory: string; launch: z.infer<typeof Launch>;
+  native?: z.infer<typeof NativeAction> | undefined; owner: Readonly<{ kind: "worker"; workerId: string; workflowId: string; ordinal: number } | { kind: "signup" | "command" }> }>;
+function validRoot(row: RootFacts, context: z.RefinementCtx): void {
   const prefix = `profiles/${row.profileId}/`;
   const valid = row.owner.kind === "worker" ? row.profileRoot.startsWith(prefix)
     && row.directory.startsWith(`${row.profileRoot}/w${row.owner.ordinal}/`)
@@ -32,9 +35,8 @@ export const BrowserRootSchema = z.strictObject({ handle: BrowserRootHandleSchem
   if (!valid) {
     context.addIssue({ code: "custom", message: "browser root escapes its person" });
   }
-});
-export const BrowserRootsSchema = z.strictObject({ schemaVersion: z.literal(2), installationId: z.uuid(), revision: Integer,
-  nextHandle: BrowserRootHandleSchema, nextGeneration: Generation, roots: z.array(BrowserRootSchema).max(64) }).superRefine((document, context) => {
+}
+function validRegistry(document: Readonly<{ nextHandle: number; nextGeneration: number; roots: readonly (RootFacts & { owner: unknown })[] }>, context: z.RefinementCtx): void {
   const paths = document.roots.map(row => row.directory), generations = document.roots.flatMap(row => [row.launch.generation,
     ...(row.native === undefined ? [] : [row.native.generation])]);
   const launches = document.roots.flatMap(row => [row.launch.launchId, ...(row.native === undefined ? [] : [row.native.launchId])]);
@@ -48,18 +50,24 @@ export const BrowserRootsSchema = z.strictObject({ schemaVersion: z.literal(2), 
     || paths.some(path => paths.some(other => other !== path && path.startsWith(`${other}/`)))) {
     context.addIssue({ code: "custom", message: "browser root membership diverges" });
   }
-});
+}
+const registryShape = { installationId: z.uuid(), revision: Integer, nextHandle: BrowserRootHandleSchema, nextGeneration: Generation };
+export const BrowserRootSchema = z.strictObject({ ...rootShape, owner: BrowserRootOwnerSchema }).superRefine(validRoot);
+export const BrowserRootsSchema = z.strictObject({ schemaVersion: z.literal(3), ...registryShape, roots: z.array(BrowserRootSchema).max(64) }).superRefine(validRegistry);
+const PriorRootSchema = z.strictObject({ ...rootShape, owner: PriorOwnerSchema }).superRefine(validRoot);
+/** The registry before worker owners lost their lease and membership fields; only the stopped upgrade reads it. */
+export const StoppedBrowserRootsV2Schema = z.strictObject({ schemaVersion: z.literal(2), ...registryShape, roots: z.array(PriorRootSchema).max(64) }).superRefine(validRegistry);
 export type BrowserRootsDocument = z.infer<typeof BrowserRootsSchema>;
 export type BrowserRoot = z.infer<typeof BrowserRootSchema>;
 export type BrowserRootOwner = z.infer<typeof BrowserRootOwnerSchema>;
 
-const PriorRoot = z.strictObject({ profileId: BrowserRootSchema.shape.profileId, profileRoot: BrowserRootSchema.shape.profileRoot,
-  directory: BrowserRootSchema.shape.directory, owner: BrowserRootSchema.shape.owner, sessionGeneration: BrowserRootSchema.shape.sessionGeneration,
-  credentialFingerprint: BrowserRootSchema.shape.credentialFingerprint, launch: BrowserRootSchema.shape.launch,
-  native: BrowserRootSchema.shape.native }).superRefine((row, context) => {
+const PriorRoot = z.strictObject({ profileId: z.uuid(), profileRoot: RelativePath,
+  directory: RelativePath, owner: PriorOwnerSchema, sessionGeneration: Integer,
+  credentialFingerprint: Digest.nullable(), launch: Launch,
+  native: NativeAction.optional() }).superRefine((row, context) => {
   const valid = row.owner.kind === "signup"
     ? row.profileRoot === "browsers/onboarding" && row.directory === `${row.profileRoot}/onboarding-${row.owner.operationId}-${row.profileId}-${row.owner.accountId}-g${row.owner.providerGeneration}`
-    : BrowserRootSchema.safeParse({ ...row, handle: 1 }).success;
+    : PriorRootSchema.safeParse({ ...row, handle: 1 }).success;
   if (!valid) context.addIssue({ code: "custom", message: "prior browser root binding is invalid" });
 });
 export const StoppedBrowserRootsV1Schema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), revision: Integer,
@@ -75,7 +83,7 @@ export const StoppedBrowserRootsV1Schema = z.strictObject({ schemaVersion: z.lit
 });
 
 export function parseStoppedBrowserRootUpgradeSource(value: unknown) {
-  return z.union([StoppedBrowserRootsV1Schema, BrowserRootsSchema]).parse(value);
+  return z.union([StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema, BrowserRootsSchema]).parse(value);
 }
 
 export type StoppedBrowserRootsDocument = ReturnType<typeof parseStoppedBrowserRootUpgradeSource>;

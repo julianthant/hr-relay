@@ -48,7 +48,7 @@ export function sessionTimelineSummary(nodes: readonly SessionNode[]): { complet
 }
 
 export function sessionWorkerLifetimeKey(card: WorkerCardWire): string {
-  return JSON.stringify([card.member, card.controls?.basis.state === "present" ? card.controls.basis.value.leaseGeneration : undefined,
+  return JSON.stringify([card.member, card.controls?.basis.state === "present" ? card.controls.basis.value.lifetimeId : undefined,
     card.browsers.map(browser => [browser.sessionId, browser.observation?.state === "present" ? [browser.observation.instance, browser.observation.configFingerprint, browser.observation.browserMode] : undefined]).sort()]);
 }
 export function sessionWorkerAuthorityKey(card: WorkerCardWire): string {
@@ -72,7 +72,7 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
     const problem = card.stopReason === undefined ? browserView.unavailableReason : WORKER_STOP_REASON_LABEL[card.stopReason];
-    const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
+    const state = card.state === "failed" && card.stopReason === "operator" ? "stopped" : card.state;
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state,
       ...(row === undefined ? {} : { subject: row.title }),

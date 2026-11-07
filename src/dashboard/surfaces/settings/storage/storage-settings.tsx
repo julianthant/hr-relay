@@ -60,7 +60,6 @@ function CheckGroup({ title, subtitle, children }: { title: string; subtitle: st
 const COUNT_CHECKS = [
   { key: "pendingCommands", name: "Pending actions", description: "Accepted actions that have not finished." },
   { key: "unresolvedWriteIntents", name: "Changes awaiting confirmation", description: "Changes still waiting for their final outcome." },
-  { key: "leases", name: "Assigned work", description: "Tasks currently held by a worker." },
   { key: "providerReservations", name: "Provider tasks", description: "Tasks reserved with an external provider." },
   { key: "artifactOutbox", name: "Pending outputs", description: "Outputs waiting to be published." },
 ] as const;

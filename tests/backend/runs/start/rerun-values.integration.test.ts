@@ -588,7 +588,7 @@ describe("source-bound Rerun value read", () => {
     assert.equal(h.proposal(done).rerun?.source.runId, done.envelope.runId);
     const next = h.start(h.proposal()), owner = testWorkerLifetime(h.database, h.descriptor.id, 1);
     const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId: owner.workerId,
-      workerLifetime: owner.workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) }));
+      runtimeConfig: selectRunRuntime(h.database.authority) }));
     assert.equal(claimed.envelope.runId, next.envelope.runId);
     assert.equal(h.database.authority.runs.transition({ ...request(claimed), now: h.clock.now().toISOString(),
       claim: { workerId: owner.workerId, claimGeneration: claimed.claimGeneration }, lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() } }).state, "applied");
@@ -647,9 +647,9 @@ describe("source-bound Rerun value read", () => {
     const queued = h.start(h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", documentNumber: "PRIVATE987" }],
       dryRun: false, selectedStepKeys: h.descriptor.timeline.map(({ key }) => key) }));
     const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
-    const { workerId, workerLifetime } = testWorkerLifetime(h.database, h.descriptor.id, 1);
+    const { workerId } = testWorkerLifetime(h.database, h.descriptor.id, 1);
     const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id,
-      workerId, workerLifetime, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+      workerId, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.equal(claimed.envelope.runId, queued.envelope.runId);
     const node = descriptorRuntimeNodes(h.descriptor).find(({ id }) => id === "read"); assert.ok(node?.kind === "task");
@@ -665,7 +665,7 @@ describe("source-bound Rerun value read", () => {
     let running = claimed;
     for (const state of ["validating", "running"] as const) running = requireLifecycleApplied(h.lifecycle.workerTransition({
       commandId: h.ids.uuid(), runId: running.envelope.runId, expectedVersion: running.version,
-      claim: { workerId, claimGeneration: running.claimGeneration }, lifecycle: { state, workerId, workerLifetime,
+      claim: { workerId, claimGeneration: running.claimGeneration }, lifecycle: { state, workerId,
         claimedAt: now, heartbeatAt: now, ...(state === "running" ? { currentNodeId: "later" } : {}) } }));
     const failure = buildNodeFailureRecord({ run: running, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse("later"),
       taskId: later.uses.id, error: new Error("fixture later read failed"), occurredAt: now });

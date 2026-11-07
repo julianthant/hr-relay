@@ -13,7 +13,6 @@ import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfilePro
 import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { detachBoundFixtureWorkers, registerBoundFixtureWorker, stopSyntheticDatabaseWorkers } from "../../support/helpers/synthetic-database-admission.js";
 import { boundProfileCredentials, createBoundProfileFixture, withOfflineMaintenance } from "../../support/helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../../support/helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../../support/fixtures/run-lifecycle-fixtures.js";
@@ -270,7 +269,7 @@ for (const phase of ["publishing", "abort"] as const)
 
 
 for (const state of ["launching", "open", "closed"] as const)
-  it(`requires the prior ${state} launch to close before a newer real worker lease can probe and take ownership`, async () => {
+  it(`requires the prior ${state} launch to close before a later probe for the same worker can take ownership`, async () => {
     const w = await fixture();
     try {
       const old = w.roots.beginLaunch(w.input);
@@ -280,16 +279,6 @@ for (const state of ["launching", "open", "closed"] as const)
       assert.equal(w.input.owner.kind, "worker");
       if (w.input.owner.kind !== "worker") assert.fail("worker fixture required");
       const workerId = w.input.owner.workerId;
-      const prior = w.database.authority.workerLeases.get(workerId); assert.ok(prior);
-      stopSyntheticDatabaseWorkers({ database: w.database, path: w.f.path });
-      detachBoundFixtureWorkers(w.database);
-      const started = w.database.authority.workerLeases.start({ workerId, workflow: "person-lookup", browserSystems: ["crm"],
-        processId: process.pid, requestedBy: "local-operator", now: clock.now().toISOString() });
-      assert.equal(started.state, "started");
-      const successor = w.database.authority.workerLeases.get(workerId); assert.ok(successor);
-      assert.ok(successor.leaseGeneration > prior.leaseGeneration);
-      registerBoundFixtureWorker({ database: w.database, path: w.f.path, workerId,
-        generation: successor.leaseGeneration, processId: process.pid, clock });
       const native = browser.fakeLauncher(), before = readFileSync(w.path);
       if (state !== "closed") {
         await assert.rejects(w.roots.withUnused(w.input.profileDirectory, w.options(native.launcher), async () => assert.fail("live predecessor cannot be adopted"), w.input));
@@ -299,7 +288,7 @@ for (const state of ["launching", "open", "closed"] as const)
       await w.roots.withUnused(w.input.profileDirectory, w.options(native.launcher), async () => undefined, w.input);
       assert.equal(native.launches().length, 1);
       const row = w.roots.inventory().roots[0]; assert.ok(row && row.owner.kind === "worker");
-      assert.equal(row.owner.leaseGeneration, successor.leaseGeneration);
+      assert.equal(row.owner.workerId, workerId);
       assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
       const settled = readFileSync(w.path); assert.throws(() => old.closed()); assert.deepEqual(readFileSync(w.path), settled);
     } finally { await w.close(); }

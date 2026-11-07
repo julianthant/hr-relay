@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -155,15 +156,7 @@ async function harness(sessionOverrides: Record<string, unknown> = {}, preReserv
       recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("unused worker plan"); },
-      spawnPoolWorker: async () => { throw new Error("unused worker spawn"); },
-      refreshPoolBrowser: async () => { throw new Error("unused browser refresh"); },
-      reopenPoolBrowser: async () => { throw new Error("unused browser reopen"); },
-      stopPoolWorker: async () => { throw new Error("unused worker stop"); },
-      pausePoolWorker: async () => { throw new Error("unused worker pause"); },
-      resumePoolWorker: async () => { throw new Error("unused worker resume"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     intakeParser: fixtureParser,
     intakeProjections: {
       resolve: (workflowId) =>

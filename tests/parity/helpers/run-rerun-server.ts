@@ -63,7 +63,6 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(), getWorkerLease: (id) => database.authority.workerLeases.get(id),
       listWorkerPools: () => database.authority.workerPools.list(), listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id), getFailure: (id) => database.authority.failures.get(id),
       getReceipt: (id) => database.authority.evidenceReceipts.findByRun(id), canonicalPerson: (id) => database.canonicalPerson(id),

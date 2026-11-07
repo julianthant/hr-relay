@@ -26,8 +26,7 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
       catch { backupFailed = true; }
     }
   }
-  const expiredWorker = input.database.authority.workerLeases.listLive().some(worker => "heartbeatAt" in worker.lifecycle && clock.nowMs() - Date.parse(worker.lifecycle.heartbeatAt) > 60_000);
-  const leaseExpired = expiredWorker || listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000);
+  const leaseExpired = listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000);
   return { freeBytes: Number(filesystem.bavail * filesystem.bsize), walBytes: existsSync(wal) ? statSync(wal).size : 0, integrityFailed, backupFailed, leaseExpired };
 }
 

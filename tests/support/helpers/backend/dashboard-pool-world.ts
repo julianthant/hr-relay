@@ -1,224 +1,98 @@
-import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
-import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-
-import type { AuthorityDatabase as PoolAuthorityDatabase } from "../admission-fixture.js";
-import { type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
-import { type Clock } from "../../../../src/rules/time/clock.js";
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
+import { composeWorkerPool } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import type { WorkerCliLaunchSpec, WorkerProcessSpawner, WorkerSpawnRequest } from "../../../../src/backend/app/composition/dashboard/worker-process.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { createCommandKernel, type CommandKernel, type WorkerPoolRuntimeSeam } from "../../../../src/backend/runs/commands/command-kernel.js";
-import { type SpawnedWorkerHandle, type WorkerProcessSpawnRequest } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
-import { derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
-import { workerPoolMember, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
-import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
-import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { ManualScheduler } from "../phase1f-executor-harness.js";
-import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { createCommandKernel, type CommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
 import { createRunWorkerCapacity } from "../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
+import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import type { WorkerMemberView } from "../../../../src/backend/runtime/workers/worker-pool.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
+import { WorkerPoolMemberSchema, workerPoolMember, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
+import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
+import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
+import { ManualScheduler } from "../phase1f-executor-harness.js";
+import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { scriptedWorkerSpawner, type ScriptedWorkerBehavior, type ScriptedWorkerChild } from "./fake-worker-port.js";
 
 export interface ControlHarness {
-  readonly lifetime: RuntimeLifetimeLock;
-  readonly root: string;
-  readonly authorityPath: string;
-  readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
+  readonly admission: Awaited<ReturnType<typeof createBoundProfileFixture>>["admission"];
+  readonly profileRoot: string;
   readonly clock: TestClock;
   readonly scheduler: ManualScheduler;
   readonly kernel: CommandKernel;
-  readonly control: ReturnType<typeof composeWorkerProcessControl>;
-  readonly children: FakeWorkerChild[];
-  readonly spawnRequests: WorkerProcessSpawnRequest[];
+  readonly workers: ReturnType<typeof composeWorkerPool>;
+  readonly children: ScriptedWorkerChild[];
+  readonly spawnRequests: WorkerSpawnRequest[];
   readonly faults: Error[];
-  readonly auditFault: { enabled: boolean };
+  readonly settled: string[];
+  readonly changes: WorkerMemberView[];
 }
 
-interface ControlHarnessOptions {
-
-  readonly interceptPool?: (
-    pool: WorkerPoolRuntimeSeam,
-    edges: Readonly<{ database: AuthorityDatabase; clock: TestClock }>,
-  ) => WorkerPoolRuntimeSeam;
-}
-
-export class FakeWorkerChild implements SpawnedWorkerHandle {
-  readonly pid: number | undefined;
-  readonly signalsSent: string[] = [];
-  #exitListeners: ((code: number | null, signal: string | null) => void)[] = [];
-
-  constructor(pid: number | undefined) {
-    this.pid = pid;
-  }
-
-  kill(signal: "SIGTERM" | "SIGKILL"): boolean {
-    this.signalsSent.push(signal);
-    return true;
-  }
-
-  onExit(listener: (code: number | null, signal: string | null) => void): void {
-    this.#exitListeners.push(listener);
-  }
-
-  onError(): void {
-    // No fake process errors in this suite.
-  }
-
-  emitExit(code: number | null, signal: string | null): void {
-    for (const listener of this.#exitListeners) listener(code, signal);
-  }
-}
-
+/** The composed pool over scripted children, the real kernel and real exit settlement against real SQLite. */
 export function createDashboardPoolTestWorld() {
-  function servedControlBasis(database: AuthorityDatabase, workerId: string) {
-    const lease = database.authority.workerLeases.get(workerId);
-    assert.ok(lease?.controlRevision, "the fixture must serve a real control basis");
-    return { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision };
-  }
-
   const NOW = "2026-08-26T09:00:00.000Z";
-
   const WORKFLOW = WorkflowIdSchema.parse("person-lookup");
-
-  const BROWSER_SYSTEMS = ["crm", "ucpath"] as const;
-
-  const POOL_INDEX_1 = PositiveIntSchema.parse(1);
-
   const WORKER_1 = WorkerIdSchema.parse("person-lookup-worker-1");
-
-  const MEMBER_1 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_1, ordinal: POOL_INDEX_1, membershipRevision: PositiveIntSchema.parse(1), workerId: WORKER_1 } as const;
-
-  const WORKER_2 = WorkerIdSchema.parse("person-lookup-worker-2");
-
-  const roots: string[] = [];
-
-  const openDatabases: AuthorityDatabase[] = [];
-  const profiles = new Map<AuthorityDatabase, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
-
+  const MEMBER_1: WorkerPoolMember = WorkerPoolMemberSchema.parse({ workflowId: WORKFLOW, poolIndex: 1, ordinal: 1, workerId: WORKER_1 });
   const cleanups: (() => Promise<void> | void)[] = [];
 
-  async function openControlHarness(options?: ControlHarnessOptions): Promise<ControlHarness> {
-    const profile = await createBoundProfileFixture(), root = profile.stateRoot;
-    const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
+  /** `real` swaps the scripted children for real processes from the given launch and spawner. */
+  async function openControlHarness(behavior: Partial<ScriptedWorkerBehavior> = {},
+    real?: (lifetime: RuntimeLifetimeLock) => Readonly<{ launch: WorkerCliLaunchSpec; spawn: WorkerProcessSpawner }>): Promise<ControlHarness> {
+    const profile = await createBoundProfileFixture(real === undefined ? {} : { sharedMachine: true }), root = profile.stateRoot;
     const clock = manualClock(new Date(NOW));
-    let database: AuthorityDatabase;
-    try {
-      database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
-        undefined, undefined, undefined, boundProfileCredentials(profile.admission));
-    } catch (error) {
-      const failures: unknown[] = [error];
-      try { await profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
-      if (failures.length > 1) throw new AggregateError(failures, "fixture opening and cleanup failed", { cause: error });
-      throw error;
-    }
-    profiles.set(database, profile);
+    const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+    cleanups.push(async () => { database.close(); await profile.close(); });
     seedSyntheticRuntimeConfig(database);
-    openDatabases.push(database);
     const scheduler = new ManualScheduler(clock, 0);
-    const children: FakeWorkerChild[] = [];
-    const spawnRequests: WorkerProcessSpawnRequest[] = [];
-    const faults: Error[] = [];
-    let nextPid = 6000;
-    const control = composeWorkerProcessControl({
-    admission: profile.admission,
-    onExit: () => undefined,
-      profileRoot: join(root, "browsers"),
-      database,
-      clock,
-      scheduler,
-      launch: {
-        environment: {},
-        command: "/usr/bin/fake-worker-node",
-        prefixArgs: Object.freeze(["--import", "tsx", "src/cli.ts"]),
-        cwd: root,
+    const children: ScriptedWorkerChild[] = [], spawnRequests: WorkerSpawnRequest[] = [], faults: Error[] = [], settled: string[] = [];
+    const changes: WorkerMemberView[] = [];
+    const spawnChild = scriptedWorkerSpawner(children, behavior);
+    const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} });
+    const lock = profile.lifetime;
+    assert.ok(lock instanceof RuntimeLifetimeLock);
+    const realProcess = real?.(lock);
+    const workers = composeWorkerPool({
+      admission: profile.admission, sessionGeneration: 1, profileRoot: join(root, "browsers"), database, clock, scheduler,
+      ids: sequentialIdFactory("a"),
+      launch: realProcess?.launch ?? { environment: {}, command: "/usr/bin/fake-worker-node", prefixArgs: Object.freeze(["--import", "tsx", "src/cli.ts"]), cwd: root },
+      spawn: request => { spawnRequests.push(request); return realProcess === undefined ? spawnChild(request) : realProcess.spawn(request); },
+      settleExit: member => {
+        settled.push(member.workerId);
+        reconcileExitedWorker({ machine: profile.machine, admission: profile.admission, database, lifecycle, clock, workerId: member.workerId, lock });
       },
-      spawn: (request) => {
-        spawnRequests.push(request);
-        const child = new FakeWorkerChild(nextPid += 1);
-        children.push(child);
-        return child;
-      },
-      birth: { pollMs: 250, timeoutMs: 10_000 },
-      onFault: (error) => {
-        faults.push(error);
-      },
+      onChange: view => { changes.push(view); },
+      onFault: error => { faults.push(error); },
     });
-    // Advance the wall clock inside effects to catch timestamps recomputed after dispatch.
-    const aliasBrokenPool: WorkerPoolRuntimeSeam = {
-      ...control.workerRuntime.pool,
-      stopPoolWorker: async (context) => {
-        clock.advanceWall(7);
-        return control.workerRuntime.pool.stopPoolWorker(context);
-      },
-      pausePoolWorker: async (context) => {
-        clock.advanceWall(7);
-        return control.workerRuntime.pool.pausePoolWorker(context);
-      },
-      resumePoolWorker: async (context) => {
-        clock.advanceWall(7);
-        return control.workerRuntime.pool.resumePoolWorker(context);
-      },
-    };
-    const pool = options?.interceptPool === undefined
-      ? aliasBrokenPool
-      : options.interceptPool(aliasBrokenPool, { database, clock });
-    const auditFault = { enabled: false };
+    cleanups.push(async () => { await workers.pool.stopAll("shutdown"); });
     const kernel = createCommandKernel({
-      lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
-      appVersion: "0.1.0",
-      configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return {configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId}; })(),
-      intakeParser: UNWIRED_INTAKE_PARSER,
-      intakeProjections: NO_INTAKE_PROJECTIONS,
-      authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => work({ ...repositories,
-        commandAudits: { ...repositories.commandAudits, insert: input => {
-          if (auditFault.enabled) throw new Error("injected-command-audit-failure");
-          return repositories.commandAudits.insert(input);
-        } },
-      })) },
-      clock,
-      ids: sequentialIdFactory("b"),
-      descriptors: {
-        resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
-      },
-      writeResolution: {
-        recheck: () => {
-          throw new Error("unused in this suite");
-        },
-        resolveAbsent: () => {
-          throw new Error("unused in this suite");
-        },
-      },
-
-      workerRuntime: { pool },
-      settings: {
-        validateRequest: () => undefined,
-        commitPrivate: () => undefined,
-        reconcileReplay: () => {
-          throw new Error("worker-pool fixture has no persisted settings replay authority");
-        },
-        applyOrdinary: (command) => ({
-          state: "applied",
-          revision: command.target.expectedRevision + 1,
-          settingsFingerprint: derivePersistedSettingsFingerprint({}),
-          settings: {},
-        }),
-      },
+      lifecycle, appVersion: "0.1.0",
+      configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return { configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId }; })(),
+      intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+      authority: { withAuthorityTransaction: work => database.withAuthorityTransaction(work) },
+      clock, ids: sequentialIdFactory("b"),
+      descriptors: { resolve: workflowId => DESCRIPTORS.find(descriptor => String(descriptor.id) === workflowId) },
+      writeResolution: { recheck: () => { throw new Error("unused in this suite"); }, resolveAbsent: () => { throw new Error("unused in this suite"); } },
+      workerRuntime: { pool: workers.seam },
+      settings: { validateRequest: () => undefined, commitPrivate: () => undefined,
+        reconcileReplay: () => { throw new Error("worker-pool fixture has no persisted settings replay authority"); },
+        applyOrdinary: command => ({ state: "applied", revision: command.target.expectedRevision + 1, settingsFingerprint: derivePersistedSettingsFingerprint({}), settings: {} }) },
     });
-    return { root, lifetime: profile.lifetime, authorityPath: profile.path, processLockRoot, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
+    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), clock, scheduler, kernel, workers, children, spawnRequests, faults, settled, changes };
   }
 
   let commandSequence = 0;
-
   function nextCommandId(): string {
     commandSequence += 1;
     const tail = String(commandSequence).padStart(4, "0");
@@ -226,83 +100,39 @@ export function createDashboardPoolTestWorld() {
   }
 
   function envelope(harness: ControlHarness, commandId = nextCommandId()) {
-    return {
-      commandId,
-      requestedAt: harness.clock.now().toISOString(),
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "worker-browser",
-    } as const;
+    return { commandId, requestedAt: harness.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser" } as const;
   }
 
-  const settleMicrotasks = async (): Promise<void> => {
-    // Two macrotask turns: the birth promise's first poll and the scheduler's
-    // queueMicrotask auto-fire both run before assertions look at the world.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  /** Lets scripted children answer: spawn → ready, stop → exit and the settlement that follows. */
+  const settleMicrotasks = async (turns = 4): Promise<void> => {
+    for (let turn = 0; turn < turns; turn += 1) await new Promise(resolve => { setImmediate(resolve); });
   };
 
-  function fireBirthPoll(harness: ControlHarness): void {
-    for (const entry of harness.scheduler.pending()) entry.fire();
+  function view(harness: ControlHarness, workerId: string = WORKER_1): WorkerMemberView {
+    const found = harness.workers.pool.snapshot().find(entry => entry.member.workerId === workerId);
+    assert.ok(found, `no pool member ${workerId}`);
+    return found;
   }
 
-  async function admitPoolSlot(harness: ControlHarness, poolIndex = 1) {
-    const version = harness.database.authority.workerPools.get(WORKFLOW)?.version ?? 0;
-    const active = harness.database.authority.workerSlots.list(WORKFLOW).filter(slot => slot.retiredAt === null);
-    if (!active.some(slot => slot.poolIndex === poolIndex)) {
-      const planned = await harness.kernel.executeWorkerPool({ ...envelope(harness), type: "plan-worker-count",
-        target: { workflowId: WORKFLOW, expectedVersion: version },
-        payload: { desiredWorkers: Math.max(active.length, poolIndex) } });
-      assert.equal(planned.state, "applied");
-    }
-    const slot = harness.database.authority.workerSlots.list(WORKFLOW).find(slot => slot.poolIndex === poolIndex && slot.retiredAt === null);
-    assert.ok(slot);
-    return workerPoolMember(slot);
+  function memberTarget(harness: ControlHarness, workerId: string = WORKER_1) {
+    const current = view(harness, workerId);
+    return { workflowId: WORKFLOW, workerId, lifetimeId: current.lifetimeId, expectedVersion: current.version };
   }
 
-  async function spawnPoolWorker(
-    harness: ControlHarness,
-    member: WorkerPoolMember = MEMBER_1,
-  ): Promise<{ commandId: string; result: unknown }> {
-    member = await admitPoolSlot(harness, member.poolIndex);
-    const commandId = nextCommandId();
-    const pending = harness.kernel.executeWorkerPool({
-      ...envelope(harness, commandId),
-      type: "spawn-worker",
-      target: { workflowId: member.workflowId, expectedVersion: harness.database.authority.workerPools.get(member.workflowId)?.version },
-      payload: { workerId: member.workerId },
-    });
-    await settleMicrotasks();
-    const child = harness.children.at(-1);
-    if (child?.pid === undefined) throw new Error("the fake spawner produced no child");
-    assert.equal(harness.database.authority.workerLeases.start({
-      workerId: member.workerId,
-      workflow: member.workflowId,
-      browserSystems: BROWSER_SYSTEMS,
-      processId: child.pid,
-      requestedBy: "local-operator",
-      now: harness.clock.now().toISOString(),
-    }).state, "started");
-    fireBirthPoll(harness);
-    return { commandId, result: await pending };
-  }
-
-  function admitExternalSlot(harness: ControlHarness, poolIndex = 1) {
-    return harness.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
-      { commandId: nextCommandId(), workflow: WORKFLOW, poolIndex,
-        expectedPoolVersion: repositories.workerPools.get(WORKFLOW)?.version ?? 0,
-        processId: process.pid, now: harness.clock.now().toISOString() }, nextCommandId()).workerId);
+  async function planWorkers(harness: ControlHarness, desiredWorkers: number) {
+    const result = await harness.kernel.executeWorkerPool({ ...envelope(harness), type: "plan-worker-count",
+      target: { workflowId: WORKFLOW, expectedVersion: harness.database.authority.workerPools.get(WORKFLOW)?.version ?? 0 }, payload: { desiredWorkers } });
+    assert.equal(result.state, "applied", JSON.stringify(result));
+    return harness.database.authority.workerSlots.active(WORKFLOW).map(workerPoolMember);
   }
 
   function dashboardLaunch(harness: ControlHarness, eid = "10873698", options: { items?: number } = {}) {
-    if (harness.database.authority.runtimeConfig.get() === undefined) seedSyntheticRuntimeConfig(harness.database);
     const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
     const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
       descriptors: { resolve: workflowId => DESCRIPTORS.find(descriptor => descriptor.id === workflowId) }, clock: harness.clock,
       ids: { uuid: nextCommandId }, planTtlMs: 600_000, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
     const plan = planner.plan({ workflowId: WORKFLOW, submissions: Array.from({ length: options.items ?? 1 }, (_, index) => ({ emplId: String(Number(eid) + index) })), dryRun: false });
     assert.deepEqual(plan.refused, []);
-    assert.equal(plan.planned.length, options.items ?? 1);
     const request = { commandId: nextCommandId(), requestedAt: harness.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
       family: "start", type: "start-run", target: { workflowId: WORKFLOW, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints };
     return { plan, request };
@@ -310,114 +140,13 @@ export function createDashboardPoolTestWorld() {
 
   function launchCommands(harness: ControlHarness) {
     return createDashboardCommandService({ kernel: harness.kernel, projection: { ingestFromTimeline: () => {}, refreshRun: () => {} },
-      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority,
-        reconcileWorker: workerId => {
-          const lease = harness.database.authority.workerLeases.get(workerId);
-          return lease !== undefined && lease.lifecycle.state !== "stopped";
-        } }) });
+      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority, ensureRunning: harness.workers.ensureRunning }) });
   }
 
-  async function proveLaunchBirth(harness: ControlHarness) {
-    await settleMicrotasks();
-    const child = harness.children.at(-1);
-    const member = harness.spawnRequests.at(-1)?.member;
-    assert.ok(child?.pid !== undefined && member !== undefined);
-    assert.equal(harness.database.authority.workerLeases.start({ workerId: member.workerId, workflow: WORKFLOW,
-      browserSystems: BROWSER_SYSTEMS, processId: child.pid, requestedBy: "local-operator", now: harness.clock.now().toISOString() }).state, "started");
-    fireBirthPoll(harness);
-  }
-
-  function occupyMember(harness: ControlHarness, index: number, directive: "run" | "pause" | "stop") {
-    const workerId = admitExternalSlot(harness, index);
-    harness.database.authority.workerLeases.start({ workerId, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
-      processId: process.pid, requestedBy: "local-operator", now: NOW });
-    if (directive !== "run") harness.database.authority.workerLeases.control({ workerId, expectedVersion: 1,
-      control: { directive, requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
-    return workerId;
-  }
   const cleanup = async () => {
-    for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
     const failures: unknown[] = [];
-    for (const database of openDatabases.splice(0)) {
-      try { database.close(); } catch (error) { failures.push(error); continue; }
-      const profile = profiles.get(database);
-      assert.ok(profile);
-      try { await profile.close(); profiles.delete(database); } catch (error) { failures.push(error); }
-    }
+    for (const step of cleanups.splice(0).reverse()) { try { await step(); } catch (error) { failures.push(error); } }
     if (failures.length > 0) throw new AggregateError(failures, "pool fixture cleanup failed");
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   };
-  return { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, WORKER_2, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, spawnPoolWorker, admitExternalSlot, admitPoolSlot, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember, settleMicrotasks, fireBirthPoll, cleanup };
-}
-
-export interface PoolEffectEvent {
-  readonly commandId: string;
-  readonly type: string;
-  readonly phase: "enter" | "exit";
-  readonly seq: number;
-  readonly atMonotonicMs: number;
-}
-
-export function instrumentPool(
-  pool: WorkerPoolRuntimeSeam,
-  clock: Clock,
-  events: PoolEffectEvent[],
-): WorkerPoolRuntimeSeam {
-  let seq = 0;
-  const record = (commandId: string, type: string, phase: "enter" | "exit"): void => {
-    seq += 1;
-    events.push({ commandId, type, phase, seq, atMonotonicMs: clock.monotonicMs() });
-  };
-  const wrap = <Method extends Exclude<keyof WorkerPoolRuntimeSeam, "assertResetOwner" | "assertLifecycleOwner" | "beginLifecycle" | "checkParkedWrite">>(method: Method): WorkerPoolRuntimeSeam[Method] =>
-    async (context: Parameters<WorkerPoolRuntimeSeam[Method]>[0]) => {
-      record(context.command.commandId, context.command.type, "enter");
-      try {
-        return await pool[method](context);
-      } finally {
-        record(context.command.commandId, context.command.type, "exit");
-      }
-    };
-  return {
-    assertResetOwner: pool.assertResetOwner?.bind(pool),
-    assertLifecycleOwner: pool.assertLifecycleOwner?.bind(pool),
-    beginLifecycle: pool.beginLifecycle?.bind(pool),
-    checkParkedWrite: pool.checkParkedWrite?.bind(pool),
-    planPoolWorkerCount: wrap("planPoolWorkerCount"),
-    spawnPoolWorker: wrap("spawnPoolWorker"),
-    stopPoolWorker: wrap("stopPoolWorker"),
-    pausePoolWorker: wrap("pausePoolWorker"),
-    resumePoolWorker: wrap("resumePoolWorker"),
-    refreshPoolBrowser: wrap("refreshPoolBrowser"),
-    reopenPoolBrowser: wrap("reopenPoolBrowser"),
-  };
-}
-
-export function kernelOver(
-  database: PoolAuthorityDatabase,
-  clock: Clock,
-  pool: WorkerPoolRuntimeSeam,
-): CommandKernel {
-  const dependencies: CommandKernelDependencies = {
-    lifecycle: new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
-    appVersion: "0.1.0",
-    configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return {configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId}; })(),
-    intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-    clock,
-    ids: sequentialIdFactory("f"),
-    descriptors: {
-      resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
-    },
-    writeResolution: {
-      recheck: () => {
-        throw new Error("unused in this suite");
-      },
-      resolveAbsent: () => {
-        throw new Error("unused in this suite");
-      },
-    },
-    workerRuntime: { pool },
-  };
-  return createCommandKernel(dependencies);
+  return { NOW, WORKFLOW, WORKER_1, MEMBER_1, openControlHarness, nextCommandId, envelope, settleMicrotasks, view, memberTarget, planWorkers, dashboardLaunch, launchCommands, cleanup };
 }

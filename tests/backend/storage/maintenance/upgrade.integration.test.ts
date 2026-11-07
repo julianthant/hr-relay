@@ -15,12 +15,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it,vi } from "vitest";
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { verifyStoppedBackupManifestAtPath, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { createWorkerSlotRepository } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { createWorkerControlRepository } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { WorkerBrowserCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { commandFromRow, insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
+import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
@@ -32,7 +28,7 @@ import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/auth
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 import { StorageDoctorWireSchema } from "../../../../src/models/dashboard/storage.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -163,7 +159,7 @@ describe("stopped native upgrade admission",()=>{
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]:[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]);
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]:[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]);
    assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}
@@ -203,15 +199,14 @@ describe("stopped native upgrade admission",()=>{
    const pool=WorkerPoolRecordSchema.parse({workflow:"person-lookup",desiredWorkers:1,version:4,plannedBy:"local-operator",plannedAt:now,createdAt:now,updatedAt:now});
    raw.prepare("INSERT INTO worker_pools VALUES(?,?,?,?,?,?)").run(pool.workflow,pool.desiredWorkers,pool.version,canonicalJsonStringify(pool),now,now);
    insertNativeCommand(raw,{commandId,requestedAt:now,requestedBy:"local-operator",source:"dashboard",family:"worker-browser",type:"plan-worker-count",target:{workflowId:"person-lookup",expectedVersion:3},payload:{desiredWorkers:1}});
-   const slots=createWorkerSlotRepository({database:raw,admission:f.admission,mutate:work=>work().result});
-   const retired=slots.allocate({workflow:"person-lookup",poolIndex:1,commandId,now});
-   const lease=WorkerLeaseRecordSchema.parse({workerId:retired.workerId,workflow:"person-lookup",browserSystems:[],processId:4100,leaseGeneration:1,controlRevision:2,version:3,control:{directive:"stop",requestedAt:now,requestedBy:"local-operator"},lifecycle:{state:"stopped",startedAt:now,stoppedAt:now,reason:"operator"},createdAt:now,updatedAt:now});
+   // Schema-2 worker rows as that schema stored them: a retired first member, its stopped lease and the active replacement.
+   const slot=(workerId:string,ordinal:number,retiredAt:string|null)=>({workerId,workflow:"person-lookup",ordinal,poolIndex:1,membershipRevision:retiredAt===null?1:2,
+    phase:"failed",retiredAt,retirementCommandId:retiredAt===null?null:commandId,reservationCommandId:commandId,createdAt:now,updatedAt:now});
+   for(const row of [slot("person-lookup-worker-1",1,now),slot("person-lookup-worker-2",2,null)])raw.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+    .run(row.workerId,row.workflow,row.ordinal,row.membershipRevision,row.phase,row.retiredAt,row.retirementCommandId,row.reservationCommandId,canonicalJsonStringify(row),now,now);
+   const lease={workerId:"person-lookup-worker-1",workflow:"person-lookup",browserSystems:[],processId:4100,leaseGeneration:1,controlRevision:2,version:3,control:{directive:"stop",requestedAt:now,requestedBy:"local-operator"},lifecycle:{state:"stopped",startedAt:now,stoppedAt:now,reason:"operator"},createdAt:now,updatedAt:now};
    raw.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId,lease.workerId,lease.workflow,1,2,"stopped","stop",null,3,canonicalJsonStringify(lease),now,now);
-   slots.retire({workerId:retired.workerId,commandId,expectedRevision:1,now});
-   const active=slots.allocate({workflow:"person-lookup",poolIndex:1,commandId,now});
-   const request=WorkerBrowserCommandRequestSchema.parse(commandFromRow(raw.prepare("SELECT * FROM commands WHERE id=?").get(commandId)));
-   createWorkerControlRepository({database:raw,mutate:(_table,work)=>work().result}).admit({commandId,request,scope:"worker-pool:person-lookup",executorId:randomUUID(),admittedAt:now,expiresAt:now,basisVersion:3,phase:{state:"admitted"},roster:{selected:[active],excess:[],beforeVersion:3,admittedVersion:4,afterVersion:4}});
-   return { ...f, retained:Object.fromEntries(["worker_pools","worker_slots","worker_leases","worker_controls","commands"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])) };
+   return { ...f, now, retained:Object.fromEntries(["worker_pools"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])) };
   }finally{raw.close();}
  }
  it("upgrades schema 3 only after verifying its exact backup and retains every unrelated source table",async()=>{
@@ -219,7 +214,7 @@ describe("stopped native upgrade admission",()=>{
   const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
   const raw=new DatabaseSync(f.path,{readOnly:true});
   let retained:Record<string,Record<string,unknown>[]>;
-  try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades"&&table.name!=="explorer_overrides")
+  try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades"&&table.name!=="explorer_overrides"&&!isWorkerCustodyDroppedTable(table.name))
    .map(table=>[table.name,raw.prepare(`SELECT * FROM ${table.name} ORDER BY rowid`).all()]));}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   assert.deepEqual(readFileSync(f.path),before);
@@ -265,7 +260,7 @@ describe("stopped native upgrade admission",()=>{
   await assert.rejects(f.run(),/injected-workbook-migration-failure/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
- it("upgrades populated schema 2 with an exact verified backup and retained roster history",async()=>{
+ it("upgrades populated schema 2 with an exact verified backup and retained worker slots",async()=>{
   const f=await populatedV2();
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:2,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
@@ -273,6 +268,10 @@ describe("stopped native upgrade admission",()=>{
   const raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   try {
    for(const [table,rows] of Object.entries(f.retained))assert.deepEqual(raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
+   assert.deepEqual(raw.prepare("SELECT id,ordinal,pool_index,retired_at FROM worker_slots ORDER BY ordinal").all().map(row=>({...row})),
+    [{id:"person-lookup-worker-1",ordinal:1,pool_index:1,retired_at:f.now},{id:"person-lookup-worker-2",ordinal:2,pool_index:1,retired_at:null}]);
+   assert.deepEqual(raw.prepare("SELECT id FROM commands WHERE family='worker-browser'").all(),[]);
+   for(const table of ["worker_leases","worker_controls","browser_sessions"])assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name=?").get(table),undefined);
    assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(),[]);
    assert.equal(raw.prepare("PRAGMA foreign_keys").get()?.foreign_keys,1);
    assert.throws(()=>raw.exec("DELETE FROM worker_pools"),/worker-pools-retained/u);
@@ -296,7 +295,7 @@ describe("stopped native upgrade admission",()=>{
     Reflect.apply(exec,this,["PRAGMA defer_foreign_keys=ON; DROP TRIGGER worker_pools_retained; DELETE FROM worker_pools; CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END; PRAGMA defer_foreign_keys=OFF;"]);
    }
   });
-  await assert.rejects(f.run(),/foreign-key validation failed/u);
+  await assert.rejects(f.run(),/FOREIGN KEY constraint failed/u);
   assert.equal(injected,true);
   vi.restoreAllMocks();
   assert.deepEqual(readFileSync(f.path),before);
@@ -560,7 +559,7 @@ describe("stopped native upgrade admission",()=>{
  it("refuses schema-valid journal column corruption during read-only preflight without effects",async()=>{
   const f=await liveFixture();const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"journal-corruption-fixture"},clock,undefined,undefined,undefined,boundProfileCredentials(f.admission));
   const commandId=randomUUID();
-  try{database.authority.commands.insert({commandId,family:"worker-browser",type:"refresh-browser",target:{workerId:"person-lookup-worker-1",browserSessionId:randomUUID(),expectedVersion:1,controlBasis:{leaseGeneration:1,controlRevision:1}},source:"dashboard",requestedBy:"local-operator",requestedAt:clock.now().toISOString()});}finally{database.close();}
+  try{database.authority.commands.insert({commandId,family:"worker-browser",type:"refresh-browser",target:{workerId:"person-lookup-worker-1",browserSessionId:randomUUID(),lifetimeId:randomUUID(),expectedVersion:1},source:"dashboard",requestedBy:"local-operator",requestedAt:clock.now().toISOString()});}finally{database.close();}
   const raw=new DatabaseSync(f.path);
   try{
    const triggers=raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='commands'").all();
@@ -590,13 +589,12 @@ describe("stopped native upgrade admission",()=>{
   const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);try{raw.exec("CREATE TABLE divergent_authority(id TEXT PRIMARY KEY) STRICT");}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/schema/u);assert.deepEqual(storageTree(f.root),before);
  });
- it("refuses an active runtime lock before backup or upgrade effects",async()=>{
-  const f=await liveFixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
-  try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+ it("refuses an old-build process record before backup or upgrade effects",async()=>{
+  const f=await liveFixture();initialize(f);plantOldBuildArtifact(f.input.processLockRoot);
+  const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
    assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
    assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.upgradeStopped(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
    await assert.rejects(withOfflineMaintenance(f.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, clock, f.input.processLockRoot, operation))),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });assert.deepEqual(storageTree(f.root),before);
-  }finally{server.release();}
  });
  it("verifies an explicit native backup without changing authority or credentials",async()=>{
   const f=await liveFixture();initialize(f);const bytes=readFileSync(f.path);

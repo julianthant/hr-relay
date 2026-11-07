@@ -1,5 +1,3 @@
-import { WorkerSlotRecordSchema } from "../../../../src/models/run/worker-slot.js";
-import { createWorkerLeaseFixtures } from "../../../support/helpers/backend/worker-lease-fixtures.js";
 
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
@@ -28,7 +26,6 @@ import { WorkflowCountWireSchema as WorkflowCountWireSchema_m1 } from "../../../
 
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
-import { workerCardOf as workerCardOf_m2 } from "../../../../src/backend/runs/projections/worker-cards.js";
 import {
 WORKER_STOP_REASON_LABEL as WORKER_STOP_REASON_LABEL_m2,
 WORKER_TONE as WORKER_TONE_m2
@@ -318,21 +315,7 @@ describe_m1("totalCount — the `All` segment", () => {
 {
 
 
-const STARTED = "2026-08-20T16:00:00.000Z";
-
-const { leaseOf } = createWorkerLeaseFixtures(STARTED);
-
-const NO_TRACE = (): undefined => undefined;
-
 describe_m2("the words the card carries", () => {
-  const _live = workerCardOf_m2({
-    lease: leaseOf(),
-    fold: undefined,
-    resolveRun: NO_TRACE,
-    member: WorkerSlotRecordSchema.parse(FIXTURE_DAY_WIRE_m0.workerAuthority.members[0]),
-    ownerAlive: true,
-  });
-
   it_m2("has a word for every state and every recorded stop reason", () => {
 
     const labels = Object.values(WORKER_TONE_m2).map(({ label }) => label);

@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
-import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
+import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { descriptorRuntimeNodes, authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/registry.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -102,7 +103,7 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
   assert.ok(active);
   const beforeClaim = f.database.getMeta().authorityGeneration;
   const next = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.run.envelope.workflow, workerId: owner.workerId,
-    workerLifetime: owner.workerLifetime, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+    runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
       settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } });
   assert.deepEqual(next, { state: "refused", refusal: { reason: "none-eligible" } });
   assert.equal(f.database.getMeta().authorityGeneration, beforeClaim);
@@ -131,7 +132,7 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
       resolveDescriptor: workflow => workflow === root.descriptor.id ? root.descriptor : workflow === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined,
       publishQueued: () => { throw new Error("reopen must not publish a replacement"); } });
     assert.deepEqual(lifecycle.claimNext({ commandId: randomUUID(), workflow: f.run.envelope.workflow, workerId: owner.workerId,
-      workerLifetime: owner.workerLifetime, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+      runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }),
     { state: "refused", refusal: { reason: "none-eligible" } });
     assert.equal(reopened.getMeta().authorityGeneration, generation);
@@ -183,24 +184,17 @@ it("preserves a completed parallel branch while its differently typed sibling pa
   } finally { reopened.close(); }
 });
 
-for (const unrelatedReset of [false, true]) {
-it(`authenticates task and transaction prerequisites through child resume with unrelated reset ${String(unrelatedReset)}`, async () => {
+for (const unrelatedExit of [false, true]) {
+it(`authenticates task and transaction prerequisites through child resume with unrelated worker exit ${String(unrelatedExit)}`, async () => {
   const f = await fixture("prerequisites");
-  let control: ReturnType<typeof admitWorkerReset> | undefined;
-  if (unrelatedReset) {
-    const home = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.run.envelope.workflow,
+  if (unrelatedExit) {
+    testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.run.envelope.workflow,
       poolIndex: 1, browserSystems: workflowProjections(childPrerequisiteRoot.descriptor).systems });
     const other = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.run.envelope.workflow,
       poolIndex: 2, browserSystems: workflowProjections(childPrerequisiteRoot.descriptor).systems });
-    control = f.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-      commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
-      requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
-        workerId: other.workerId, membershipRevision: other.member.membershipRevision,
-        controlBasis: { leaseGeneration: other.lease.leaseGeneration, controlRevision: other.lease.controlRevision },
-      },
-    }, randomUUID(), f.clock.now().toISOString()));
-    assert.ok(control.reset);
-    assert.equal(f.database.authority.workerControls.resetForWorker(home.workerId), undefined);
+    const lock = f.profile.machine.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
+    reconcileExitedWorker({ machine: f.profile.machine, admission: f.profile.admission, database: f.database, clock: f.clock,
+      lifecycle: f.execution.lifecycle, lock, workerId: other.workerId });
   }
   f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
   const first = await f.execution.step(f.run, world.SIGNAL);
@@ -232,12 +226,6 @@ it(`authenticates task and transaction prerequisites through child resume with u
   assert.equal(f.driver.events.filter(event => event.startsWith("commit-click:")).length, 1);
   const writes = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.equal(writes.length, 1); assert.equal(writes[0]?.status, "committed");
-  if (control !== undefined) {
-    assert.ok(control.reset);
-    assert.equal(f.database.authority.workerControls.get(control.commandId)?.phase.state, "admitted");
-    f.database.authority.workerControls.transition(control.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
-    f.execution.lifecycle.settleResetWork(control.reset);
-  }
 });
 }
 it("runs nested read-only delegated children with dryRun true and consumes their normal typed observations in a parent preview", async () => {

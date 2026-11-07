@@ -2,13 +2,9 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { auditSurfaceOrigins, decidableLeaves, REDACTION_SURFACES, SURFACE_LEAF_ORIGINS } from "./helpers/redaction-surface-audit.js";
 
-it("pins every worker startup text origin across the four command-result surfaces", () => {
+it("pins every worker startup text origin across the two command-result surfaces", () => {
   const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.path.includes("workerStartup"));
   assert.deepEqual(origins.map(entry => `${entry.surface}|${entry.path}|${entry.origin}`).sort(), [
-    "wire/dashboard-day|workerOperations[].phase.application.result.workerStartup.message|repository-authored",
-    "wire/dashboard-day|workerOperations[].phase.application.result.workerStartup.detail|external-text",
-    "wire/stream-envelope|payload.workerOperations[].phase.application.result.workerStartup.message|repository-authored",
-    "wire/stream-envelope|payload.workerOperations[].phase.application.result.workerStartup.detail|external-text",
     "wire/intake-command-result|result.workerStartup.message|repository-authored",
     "wire/intake-command-result|result.workerStartup.detail|external-text",
     "wire/ocr-command-result|result.workerStartup.message|repository-authored",
@@ -17,8 +13,6 @@ it("pins every worker startup text origin across the four command-result surface
 });
 
 for (const [id, prefix] of [
-  ["wire/dashboard-day", "workerOperations[].phase.application.result.workerStartup"],
-  ["wire/stream-envelope", "payload.workerOperations[].phase.application.result.workerStartup"],
   ["wire/intake-command-result", "result.workerStartup"],
   ["wire/ocr-command-result", "result.workerStartup"],
 ] as const) it(`refuses missing startup origins and forbids dynamic detail outside loopback (${id})`, () => {

@@ -1,10 +1,11 @@
 import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
-import { randomUUID } from "node:crypto";
 
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
-import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
+import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { runningWorkerView } from "../../../../support/helpers/backend/fake-worker-port.js";
+import type { WorkerMemberView } from "../../../../../src/backend/runtime/workers/worker-pool.js";
 
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 
@@ -14,6 +15,7 @@ import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../..
 import { applyDashboardDayPatch, createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
+import { WorkerBrowserObservationSchema } from "../../../../../src/models/run/worker-control.js";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import type { DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
@@ -33,7 +35,7 @@ afterAll(() => profileFixtures.close());
 
 const worlds: DashboardWorld[] = [];
 const hubs: DashboardStreamHub[] = [];
-const workers = new Map<DashboardWorld["database"], Set<string>>();
+const workers = new Map<DashboardWorld["database"], Map<string, WorkerMemberView>>();
 
 const VALIDATING_BACKFILL_GAPS = {
   detected: (input: unknown) => Promise.resolve({
@@ -51,11 +53,7 @@ async function harness(nativeWorkers = false): Promise<{ w: DashboardWorld; hub:
     authority: { ...original.authority,
       listWorkerSlots: () => original.database.authority.workerSlots.list(),
       listWorkerRuns: workerId => original.database.authority.runs.listByWorker(workerId),
-      workerOwnerAlive: lease => workers.get(original.database)?.has(lease.workerId) === true && lease.processId === process.pid && lease.lifecycle.state !== "stopped",
-      workerControls: () => original.database.authority.workerControls.list(),
-      workerBrowsers: workerId => original.database.authority.workerControls.browsers(workerId),
-      getWorkerLease: workerId => original.database.authority.workerLeases.get(workerId),
-      listLiveWorkerLeases: () => original.database.authority.workerLeases.listLive(),
+      workerMembers: () => [...workers.get(original.database)?.values() ?? []],
       listWorkerPools: () => original.database.authority.workerPools.list(),
     }, descriptors: { resolve: workflow => workflow === personLookupDescriptor.id ? personLookupDescriptor : undefined },
   }) : original.projection;
@@ -79,18 +77,10 @@ afterEach(async () => {
 });
 
 function admitOwnedWorker(w: DashboardWorld) {
-  const slot = w.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
-    expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0,
-    processId: process.pid, now: w.clock.now().toISOString(),
-  }, randomUUID()));
-  const owned = workers.get(w.database) ?? new Set<string>();
-  owned.add(slot.workerId); workers.set(w.database, owned);
-  const started = w.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: personLookupDescriptor.id,
-    browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: w.clock.now().toISOString() });
-  assert.equal(started.state, "started");
-  if (started.state !== "started") throw new Error("worker fixture did not start");
-  return started.lease;
+  const slot = w.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, personLookupDescriptor.id, 1, w.clock.now().toISOString()));
+  const owned = workers.get(w.database) ?? new Map<string, WorkerMemberView>();
+  owned.set(slot.workerId, runningWorkerView(slot)); workers.set(w.database, owned);
+  return { slot, owned };
 }
 
 /** Pull every envelope the hub has queued for this connection, in order. */
@@ -225,7 +215,7 @@ describe("dashboard stream hub", () => {
 
   it("resnapshots worker cards when a browser session opens", async () => {
     const { w, hub } = await harness(true);
-    const lease = admitOwnedWorker(w);
+    const { slot, owned } = admitOwnedWorker(w);
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
     const workerPath = "worker/person-lookup/person-lookup-worker-1";
@@ -240,10 +230,10 @@ describe("dashboard stream hub", () => {
       name: "person-lookup",
     });
     const runtime = w.database.authority.runtimeConfig.get(); assert.ok(runtime);
-    w.database.authority.workerControls.observe({ workerId: lease.workerId, leaseGeneration: lease.leaseGeneration,
+    owned.set(slot.workerId, runningWorkerView(slot, { version: 1, browsers: [WorkerBrowserObservationSchema.parse({ workerId: slot.workerId,
       sessionId: uuidOf(50), system: "ucpath", instance: "prod", configFingerprint: runtime.configFingerprint,
       signInFingerprint: runtime.configFingerprint, browserMode: "headless", acceptDownloads: false, exclusive: false,
-      health: "unknown", openedAt: w.clock.now().toISOString(), observedAt: w.clock.now().toISOString(), profileRevision: 1 });
+      health: "unknown", openedAt: w.clock.now().toISOString(), observedAt: w.clock.now().toISOString(), profileRevision: 1 })] }));
     w.writer.emit({
       t: "span.started",
       kind: "browser",
@@ -268,7 +258,7 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
-  it("resnapshots worker cards when a lease moves without any span", async () => {
+  it("resnapshots worker cards when a pool member changes without any span", async () => {
     const { w, hub } = await harness(true);
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
@@ -276,7 +266,7 @@ describe("dashboard stream hub", () => {
     if (initial?.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.deepEqual(initial.payload.workerCards, []);
 
-    // A worker process wrote its lease and has not emitted its first span yet.
+    // A pool member started and has not emitted its first span yet.
     admitOwnedWorker(w);
     w.projection.reconcileWorkerAuthority();
 
@@ -285,11 +275,7 @@ describe("dashboard stream hub", () => {
     assert.ok(latest);
     if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.equal(latest.payload.workerCards.length, 1);
-    assert.equal(latest.payload.workerCards[0]?.state, "starting");
-    assert.deepEqual(latest.payload.workerCards[0]?.browserRequirements, {
-      state: "present",
-      systems: ["crm", "ucpath"],
-    });
+    assert.equal(latest.payload.workerCards[0]?.state, "idle");
     assert.deepEqual(latest.payload.workerCards[0]?.browsers, []);
     connection.close();
   });

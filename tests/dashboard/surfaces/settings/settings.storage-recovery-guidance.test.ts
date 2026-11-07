@@ -187,8 +187,8 @@ for (const state of ["current", "stale", "missing", "invalid"] as const) it(`kee
 it("shows every useful check before running and keeps Preflight separate", async () => {
   let doctorCalls = 0;
   const dom = await mountDoctor(HEALTHY, () => {doctorCalls++; return Promise.resolve(HEALTHY);}, false);
-  assert.equal(dom.querySelectorAll('.diagnostic-check-entry').length, 11);
-  assert.equal([...dom.querySelectorAll('.diagnostic-check-entry')].filter((row) => row.textContent?.includes("Not checked")).length, 11);
+  assert.equal(dom.querySelectorAll('.diagnostic-check-entry').length, 10);
+  assert.equal([...dom.querySelectorAll('.diagnostic-check-entry')].filter((row) => row.textContent?.includes("Not checked")).length, 10);
   assert.doesNotMatch(dom.textContent ?? "", /Timekeeper name|Historical Activity pseudonym/u);
   assert.match(dom.textContent ?? "", /Storage updates/u);
   assert.match(dom.textContent ?? "", /Work in progress/u);
@@ -211,12 +211,12 @@ it("loads a fresh last completed report on revisit without running the doctor, w
 
 it("keeps nonzero work counts visible without classifying normal work as a failure", async () => {
   const report = StorageDoctorWireSchema.parse({...HEALTHY, counts: {state: "available", values: {
-    pendingCommands: 3, unresolvedWriteIntents: 2, leases: 4, providerReservations: 1, artifactOutbox: 5,
+    pendingCommands: 3, unresolvedWriteIntents: 2, providerReservations: 1, artifactOutbox: 5,
   }}});
   const dom = await mountDoctor(report);
   const group = dom.querySelector('[aria-label="Work in progress"]');
   assert.ok(group);
-  for (const [label, count] of [["Pending actions", "3"], ["Changes awaiting confirmation", "2"], ["Assigned work", "4"], ["Provider tasks", "1"], ["Pending outputs", "5"]] as const) {
+  for (const [label, count] of [["Pending actions", "3"], ["Changes awaiting confirmation", "2"], ["Provider tasks", "1"], ["Pending outputs", "5"]] as const) {
     const row: Element | undefined = [...group.querySelectorAll('.diagnostic-check-entry')].find(candidate => candidate.textContent?.includes(label));
     assert.ok(row);
     assert.equal(row.querySelector('.ds-result-row-side')?.textContent, count);

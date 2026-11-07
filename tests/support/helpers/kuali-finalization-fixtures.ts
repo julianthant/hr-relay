@@ -7,7 +7,7 @@ import { ProtectedInputBindingSchema } from "../../../src/models/write-safety/pr
 import { protectedSecretSource } from "./protected-secret-source.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
-import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
 import { duoCeremonyGatesOver } from "./duo-ceremony-fixtures.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
@@ -527,18 +527,14 @@ export function finalizationClaimRunning(
   const enqueued = database.authority.runs.enqueue(runInput);
   if (enqueued.state !== "inserted")
     throw new Error(`enqueue outcome was ${enqueued.state}`);
-  const claimMember1 = database.authority.workerSlots.get(workerId);
-  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, FINALIZATION_WORKFLOW_ID, claimMember1.poolIndex).workerLifetime,
-    workflow: FINALIZATION_WORKFLOW_ID,
+  const claimed = database.authority.runs.claimNext({ workflow: FINALIZATION_WORKFLOW_ID,
     workerId,
     now,
   });
   if (claimed.state !== "claimed")
     throw new Error(`claim outcome was ${claimed.state}`);
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  const workerLifetime = testWorkerLifetime(database, FINALIZATION_WORKFLOW_ID, claimMember1.poolIndex).workerLifetime;
-  const base = { workerId, workerLifetime, claimedAt: now, heartbeatAt: now };
+  const base = { workerId, claimedAt: now, heartbeatAt: now };
   const validating = database.authority.runs.transition({
     runId: claimed.run.envelope.runId,
     expectedVersion: claimed.run.version,

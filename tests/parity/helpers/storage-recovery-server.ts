@@ -50,7 +50,6 @@ export async function storageRecoveryTarget() {
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/offline-restore.ts"))});
     const { profileBrowserClosure } = await import(${JSON.stringify(sourceUrl("src/backend/runtime/browser/profile-browser-closure.ts"))});
     const { createCredentialStore } = await import(${JSON.stringify(sourceUrl("src/backend/storage/configuration/credential-store.ts"))});
-    const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/runtime-process-locks.ts"))});
         const { RuntimeLifetimeLock } = await import(${JSON.stringify(sourceUrl('src/backend/storage/admission/lifetime-lock.ts'))});
     const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[3]));
     const workspace = process.argv[1], machine = RuntimeAdmission.acquireMachine(workspace, 'exclusive', lifetime);

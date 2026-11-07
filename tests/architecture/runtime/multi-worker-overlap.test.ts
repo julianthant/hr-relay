@@ -53,12 +53,9 @@ function claimForWorker(authority: AuthorityHarness, poolIndex: number) {
   testWorkerPorts(database, clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex });
   const member = database.authority.workerSlots.list().find((slot) => slot.poolIndex === poolIndex);
   assert.ok(member);
-  const lease = database.authority.workerLeases.get(member.workerId);
-  assert.ok(lease);
   return database.authority.runs.claimNext({
     workflow: WORKFLOW_ID,
     workerId: member.workerId,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
     now: clock.now().toISOString(),
   });
 }

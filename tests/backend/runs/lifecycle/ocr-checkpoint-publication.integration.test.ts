@@ -23,6 +23,5 @@ for (const actorId of ["local-operator", "foreign-operator"]) {
       assert.ok(child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
     }
     assert.equal(f.database.readProfileResourceCustody().writeIntents.length, 0);
-    assert.equal(f.database.readProfileResourceCustody().browsers.length, 0);
   });
 }

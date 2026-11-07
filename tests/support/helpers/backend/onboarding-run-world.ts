@@ -115,7 +115,6 @@ export function createOnboardingRunWorld() {
       const parked = service.workerTransition({ commandId: randomUUID(), runId: run.envelope.runId, claim,
         lifecycle: { state: "parked-gate", gateId: ONBOARDING_ROSTER_GATE_ID, parkedAt: now, resumeAt: ONBOARDING_ROSTER_GATE_ID } });
       assert.equal(parked.state, "applied"); if (parked.state !== "applied") throw new Error("park refused");
-      h.database.assertWorkerLifecycleRelease(worker.workerId);
       return parked.run;
     }
     const section = (run: RunRecord) => {

@@ -15,7 +15,6 @@ function isUnitTest(path: string): boolean {
 }
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
-  "tests/support/helpers/backend/never-born-worker-world.ts",
   "tests/support/helpers/predecessor-profile-credentials.ts",
   "tests/support/helpers/exclusive-session-leases.ts",
   "tests/support/helpers/backend/storage-restore-world.ts",
@@ -37,6 +36,7 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/fixtures/storage/historical-flat-profile-fixture.ts",
   "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts",
   "tests/support/fixtures/storage/retained-historical-data.ts",
+  "tests/support/fixtures/storage/historical-run-schema.ts",
 ]);
 const SHARED_ROOTS = ["tests/support/fixtures", "tests/support/helpers"];
 const CROSS_TIER_ROOTS = ["tests", "scripts", "src"];
@@ -67,7 +67,6 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
-  { importer: "tests/support/helpers/backend/never-born-worker-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/predecessor-profile-credentials.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
   { importer: "tests/support/helpers/exclusive-session-leases.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/storage-restore-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
@@ -86,6 +85,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
   { importer: "tests/support/helpers/backend/http-route-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/storage/historical-run-schema.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-flat-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/retained-historical-data.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
@@ -95,7 +95,6 @@ const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retent
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
   { file: "ec-member-retry-controller.ts", consumers: ["tests/workflows/emergency-contact/workflow.member-retry.crash.integration.test.ts"] },
-  { file: "never-born-worker-controller.ts", consumers: ["tests/backend/app/composition/dashboard/compose.never-born-worker.integration.test.ts"] },
   { file: "relay-launcher-parent.ts", consumers: ["tests/scripts/dev/relay.windows-native.integration.test.ts"] },
   { file: "relay-drain-child.ts", consumers: ["tests/scripts/dev/relay.integration.test.ts"] },
   { file: "debug-event-child.ts", consumers: ["tests/backend/logs/debug-events.integration.test.ts"] },
@@ -108,15 +107,12 @@ const PROCESS_ENTRYPOINTS = [
   { file: 'duo-credential-store-worker.ts', consumers: ['tests/backend/storage/configuration/duo-signing.integration.test.ts'] },
   { file: 'storage-restore-attempt-worker.ts', consumers: ['tests/support/helpers/backend/storage-restore-world.ts'] },
   { file: "worker-composition-child.ts", consumers: ["tests/support/helpers/backend/worker-composition-world.ts"] },
-  { file: "verification-reservation-owner.ts", consumers: ["tests/backend/runs/lifecycle/startup-crash-recovery.browser-login-recovery.integration.test.ts"] },
   { file: "onboarding-native-orphan-owner.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
   { file: "onboarding-closure-hold-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
   { file: "profile-onboarding-abort-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
-  { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts", "tests/backend/app/composition/storage-compose.profile-activity.integration.test.ts"] },
-  { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts", 'tests/backend/app/composition/dashboard/compose.worker-pool-capacity.integration.test.ts'] },
+  { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
   { file: "write-fence-owner.ts", consumers: ["tests/support/helpers/backend/worker-lifetime-world.ts"] },
   { file: "run-record-race-worker.ts", consumers: ["tests/support/helpers/backend/run-record-service-world.ts"] },
-  { file: "runtime-lock-contender.ts", consumers: ["tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts"] },
   { file: "workbook-queue-peer.ts", consumers: ["tests/backend/workbooks/workbook-library-service.master.integration.test.ts"] },
 ] as const;
 

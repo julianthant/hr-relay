@@ -12,7 +12,7 @@ import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-gen
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
 import { runClaim,RunRecordSchema,runTransitionViolation,type RunRecord } from "../../../models/run/record.js";
-import { WorkerControlRefusal,WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
+import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import type { DelegationPlan } from "../../../models/workflow/delegation.js";
 import type { AnyWorkflowRef } from "../../../models/workflow/graph.js";
@@ -27,7 +27,6 @@ import { deriveItemId,deriveTraceId,lifecycleCommandId,type IdFactory } from "..
 import {
 CommandIdSchema,
 FingerprintSchema,
-IsoInstantSchema,
 NodeIdSchema,
 RunIdSchema,
 type Fingerprint,
@@ -46,7 +45,7 @@ import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import type { AuthorityDatabase,AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { assertResetCancellationAdmission,authenticateCancellationSource,authenticateDelegationResume,captureDelegationResume,prepareDelegationRetry,assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateCancellationSource,authenticateDelegationResume,captureDelegationResume,prepareDelegationRetry,assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
 import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
@@ -71,7 +70,6 @@ CanonicalTransitionRequestSchema,
 CanonicalWorkerTransitionRequestSchema,
 CanonicalWriteResolutionTransitionRequestSchema,
 } from "../../storage/sqlite/run-store-contracts.js";
-import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
 import { runSettingsAvailable,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { assertRunRecoveryCommandScope,planDelegatedRetry,planRunRecovery } from "../start/recovery-plan.js";
@@ -250,8 +248,8 @@ export class RunRecordService {
     });
   }
 
-  assertCurrentExecution(input: unknown, allowAdmittedReset = false): void {
-    try { this.dependencies.database.assertCurrentExecution(input, allowAdmittedReset); }
+  assertCurrentExecution(input: unknown): void {
+    try { this.dependencies.database.assertCurrentExecution(input); }
     catch (error) {
       if (error instanceof WorkerControlRefusal && error.message === "worker-execution-lost") throw new RunLifecycleRefusedError(refused({ reason: "lost" }));
       throw error;
@@ -379,32 +377,18 @@ export class RunRecordService {
       const journal = this.inspectJournal(repositories, "claim-next", request, { kind: "none" });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (!this.runtimeMatches(runtimeConfig)) return refused({ reason: "runtime-stale" });
-      if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(control => control.request.type === "plan-worker-count")) {
-        return refused({ reason: "none-eligible" });
-      }
-      if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(record => record.request.type === "stop-worker" && record.reset === undefined)) throw new Error("worker-reset-authority-unavailable");
-      const slot = repositories.workerSlots.get(workerId), lease = repositories.workerLeases.get(workerId);
-      if (repositories.workerControls.lifecycleForWorker(workerId) !== undefined
-        || lease !== undefined && repositories.workerControls.initializingForWorker(workerId, lease.leaseGeneration) !== undefined) return refused({ reason: "none-eligible" });
-      if (repositories.workerControls.resetForWorker(workerId) !== undefined) return refused({ reason: "none-eligible" });
-      if (repositories.workerSlots.recovery(workerId) !== undefined || repositories.workerSlots.verification(workerId) !== undefined) return refused({ reason: "none-eligible" });
-      if (slot === undefined || slot.retiredAt !== null || slot.workflow !== workflow
-        || request.workerLifetime !== undefined && (slot.membershipRevision !== request.workerLifetime.membershipRevision
-          || lease?.leaseGeneration !== request.workerLifetime.leaseGeneration || lease.lifecycle.state === "stopped")) return refused({ reason: "none-eligible" });
-      if (request.workerLifetime === undefined) return refused({ reason: "none-eligible" });
+      const slot = repositories.workerSlots.get(workerId);
+      if (slot === undefined || slot.retiredAt !== null || slot.workflow !== workflow || slot.paused) return refused({ reason: "none-eligible" });
       if (journal.state === "replay") {
         const replayed = this.replayRun(journal.result);
-        if (replayed.state !== "refused" && "run" in replayed && "workerId" in replayed.run.lifecycle) {
-          const owner = replayed.run.lifecycle.workerLifetime;
-          if (owner === undefined || lease === undefined || owner.leaseGeneration !== lease.leaseGeneration
-            || owner.membershipRevision !== slot.membershipRevision || replayed.run.lifecycle.workerId !== workerId) return refused({ reason: "none-eligible" });
-        }
+        if (replayed.state !== "refused" && "run" in replayed && "workerId" in replayed.run.lifecycle
+          && replayed.run.lifecycle.workerId !== workerId) return refused({ reason: "none-eligible" });
         return replayed;
       }
       const held = repositories.runs.listByWorker(workerId).find((run) => runClaim(run) !== undefined);
       if (held !== undefined) return refused({ reason: "worker-busy", runId: held.envelope.runId });
       const outcome = repositories.runs.claimEligible({
-        workflow, workerId, ...(request.workerLifetime === undefined ? {} : { workerLifetime: request.workerLifetime }), runtimeConfig, configFingerprint: runtimeConfig.configFingerprint,
+        workflow, workerId, runtimeConfig, configFingerprint: runtimeConfig.configFingerprint,
         now: this.dependencies.clock.now().toISOString(),
       }, admit, run => delegatedCandidateEligible(repositories, run, workflow, this.dependencies.resolveDescriptor));
       if (outcome.state === "refused") return outcome;
@@ -430,7 +414,6 @@ export class RunRecordService {
         return refused({ reason: "conflict", currentVersion: current.run.version });
       }
       if ("ocrReviewRevision" in request) {
-        if (repositories.workerControls.resetForRun(request.runId) !== undefined) return refused({ reason: "policy-refused" });
         const source = repositories.commands.get(request.sourceCommandId);
         const revision = repositories.ocrReviews.latest(request.runId);
         if (source?.family !== "ocr-review" || source.requestedBy !== "local-operator" || source.source !== "dashboard"
@@ -450,12 +433,10 @@ export class RunRecordService {
         return { state: "applied" as const, run: result.run };
       }
       const cancellationSource = "cancellationSource" in request ? request.cancellationSource : undefined;
-      if (repositories.workerControls.resetForRun(request.runId) !== undefined && (cancellationSource === undefined || !("kind" in cancellationSource))) return refused({ reason: "policy-refused" });
       if (cancellationSource !== undefined) {
         if (!("lifecycle" in request) || request.lifecycle.state !== "terminal" || request.lifecycle.outcome !== "cancelled"
-          || !("kind" in cancellationSource) && request.commandId !== lifecycleCommandId("operator-cancel", { commandId: cancellationSource.commandId, runId: request.runId })) throw new Error("delegation-cancellation-request-mismatch");
+          || request.commandId !== lifecycleCommandId("operator-cancel", { commandId: cancellationSource.commandId, runId: request.runId })) throw new Error("delegation-cancellation-request-mismatch");
         const source = authenticateCancellationSource(repositories, current.run, cancellationSource);
-        if ("kind" in cancellationSource) assertResetCancellationAdmission(repositories, current.run, cancellationSource, request);
         if (source.family === "run" && current.run.envelope.runId === cancellationSource.rootRunId && source.target.expectedVersion !== request.expectedVersion) throw new Error("delegation-cancellation-version-mismatch");
       }
       if (cancellationSource !== undefined && "lifecycle" in request && current.run.lifecycle.state === "queued"
@@ -662,8 +643,7 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const current = this.read(request.runId);
       if (current.state !== "present") return refused({ reason: "lost" });
-      // Renewal retains callback custody while reset fences new work.
-      try { this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, true); }
+      try { this.assertCurrentExecution({ runId: request.runId, claim: request.claim }); }
       catch (error) {
         if (error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") return error.outcome;
         throw error;
@@ -764,15 +744,12 @@ export class RunRecordService {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: violation === undefined ? "worker transition cannot replace ownership or settle" : violation });
       }
-      this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, request.lifecycle.state === "parked-write");
+      this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
       if (request.lifecycle.state === "validating" || request.lifecycle.state === "running") {
         authenticateWorkbookReferenceExecution(repositories, current.run);
       }
-      const retainedLifetime = "workerLifetime" in current.run.lifecycle ? current.run.lifecycle.workerLifetime : undefined;
-      const lifecycle = "workerId" in request.lifecycle && request.lifecycle.workerLifetime === undefined && retainedLifetime !== undefined
-        ? { ...request.lifecycle, workerLifetime: retainedLifetime } : request.lifecycle;
       const result = repositories.runs.transition({ runId: request.runId, claim: request.claim,
-        expectedVersion: current.run.version, lifecycle,
+        expectedVersion: current.run.version, lifecycle: request.lifecycle,
         now: this.dependencies.clock.now().toISOString() });
       if (result.state === "conflict") return refused({ reason: "lost" });
       this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
@@ -798,10 +775,6 @@ export class RunRecordService {
       }
       if (previous.run.cancelRequested === true && repositories.writeIntents.listByRun(request.runId)
         .every(intent => intent.status === "committed" || intent.status === "observed-present")) {
-        const identity = this.dependencies.database.crashRunRecoveryIdentity(request.runId);
-        if (canonicalJsonStringify(identity.workerLifetime) !== canonicalJsonStringify(request.workerLifetime)) {
-          throw new Error("crash-recovery-lifetime-changed");
-        }
         const cancelled = this.cancelClaim(repositories, { kind: "cancelled", commandId: request.commandId,
           runId: request.runId, expectedVersion: request.expectedVersion, claim: request.claim, endedAt: request.now });
         if (cancelled.state !== "applied") return cancelled;
@@ -831,55 +804,6 @@ export class RunRecordService {
     }
   }
 
-  settleResetWork(input: unknown): void {
-    const reset = WorkerResetBindingSchema.parse(input);
-    this.dependencies.database.withAuthorityTransaction(repositories => {
-      repositories.workerControls.assertResetGraph(reset);
-      const record = repositories.workerControls.get(reset.commandId);
-      if (record?.reset === undefined || canonicalJsonStringify(record.reset) !== canonicalJsonStringify(reset)
-        || !["executing", "uncertain"].includes(record.phase.state)) throw new Error("worker-reset-settlement-owner-unavailable");
-      const slot = repositories.workerSlots.get(reset.member.workerId), lease = repositories.workerLeases.get(reset.member.workerId);
-      if (slot === undefined || slot.retiredAt !== null || slot.membershipRevision !== reset.member.membershipRevision || slot.workflow !== reset.member.workflowId
-        || lease === undefined || lease.leaseGeneration !== reset.lifetime.leaseGeneration || lease.processId !== reset.lifetime.processId
-        || lease.lifecycle.startedAt !== reset.lifetime.startedAt || lease.controlRevision !== reset.reservedControlRevision || lease.controlCommandId !== reset.commandId) throw new Error("worker-reset-settlement-lifetime-conflict");
-      const members = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
-      for (const member of members) {
-        const run = repositories.runs.get(member.runId);
-        if (run === undefined || run.envelope.attempt !== member.attempt) throw new Error("worker-reset-settlement-run-conflict");
-        if (repositories.writeIntents.listByRun(member.runId).some(intent => intent.status === "attempting")) throw new Error("worker-reset-write-callback-unresolved");
-        if (member.state === "claimed" && run.lifecycle.state !== "terminal" && run.lifecycle.state !== "parked-write") {
-          const claim = runClaim(run);
-          if (claim?.workerId !== member.workerId || claim.claimGeneration !== member.claimGeneration) throw new Error("worker-reset-settlement-claim-conflict");
-        }
-      }
-      for (const member of [...members].reverse()) {
-        const run = repositories.runs.get(member.runId);
-        if (run === undefined) throw new Error("worker-reset-settlement-run-conflict");
-        const writes = repositories.writeIntents.listByRun(member.runId);
-        if (run.lifecycle.state === "terminal") continue;
-        if (run.lifecycle.state === "parked-write") {
-          assertWorkerResetParkedWrite(repositories, run);
-          continue;
-        }
-        if (writes.some(intent => intent.status === "parked")) throw new Error("worker-reset-write-release-unproved");
-        if (member.state === "queued") {
-          if (run.lifecycle.state !== "queued" || run.version !== member.version) throw new Error("worker-reset-cascade-changed");
-          const outcome = this.transition({ commandId: lifecycleCommandId("reset-cascade-cancel", { commandId: reset.commandId, runId: member.runId }),
-            runId: member.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: this.dependencies.clock.now().toISOString() },
-            cancellationSource: { kind: "worker-reset", commandId: reset.commandId, rootRunId: reset.work.kind === "current" ? reset.work.current.runId : member.runId } });
-          if (outcome.state !== "applied") throw new Error("worker-reset-cascade-cancel-refused");
-        } else {
-          const requested = repositories.runs.requestCancellation({ runId: member.runId, expectedVersion: run.version, now: this.dependencies.clock.now().toISOString() });
-          if (requested.state !== "applied") throw new Error("worker-reset-cancel-request-refused");
-          const outcome = this.terminalizeCancellation({ kind: "cancelled", commandId: lifecycleCommandId("reset-current-cancel", { commandId: reset.commandId, runId: member.runId }),
-            runId: member.runId, expectedVersion: requested.run.version, claim: { workerId: member.workerId, claimGeneration: member.claimGeneration }, endedAt: IsoInstantSchema.parse(this.dependencies.clock.now().toISOString()),
-            cancellationSource: { kind: "worker-reset", commandId: reset.commandId, rootRunId: reset.work.kind === "current" ? reset.work.current.runId : member.runId } });
-          if (outcome.state !== "applied") throw new Error("worker-reset-cancel-refused");
-        }
-      }
-    });
-  }
-
   private terminalizeCancellation(request: z.infer<typeof CanonicalCancellationTerminalizeRequestSchema>): RunMutationOutcome {
     return this.dependencies.database.withAuthorityTransaction((repositories) => {
       const journal = this.inspectJournal(repositories, "terminalize", request, {
@@ -905,10 +829,6 @@ export class RunRecordService {
     if (held === undefined || held.workerId !== request.claim.workerId
       || held.claimGeneration !== request.claim.claimGeneration || current.run.version !== request.expectedVersion) {
       return refused({ reason: "lost" });
-    }
-    if (request.cancellationSource !== undefined) {
-      if (!("kind" in request.cancellationSource)) throw new Error("delegation-cancellation-request-mismatch");
-      assertResetCancellationAdmission(repositories, current.run, request.cancellationSource, request);
     }
     if (current.run.cancelRequested !== true
       || !["claimed", "validating", "running"].includes(current.run.lifecycle.state)
@@ -1124,7 +1044,6 @@ export class RunRecordService {
       if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
       if (repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
       if (source.disposition !== "live" || run.lifecycle.state !== "terminal") return refused({ reason: "invalid-state" });
-      if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       assertOcrChildRetryCurrent(repositories, this, run);
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, { ...request, refreshAuthorization: this.parentRefreshAuthorization(repositories, run) });
       if (delegation !== undefined && (repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
@@ -1193,7 +1112,6 @@ export class RunRecordService {
       if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
       if (repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
       if (source.disposition !== "live" || run.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(run.lifecycle.outcome)) return refused({ reason: "invalid-state" });
-      if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       if (run.envelope.parent !== undefined && run.lifecycle.outcome === "interrupted")
         throw new RunContinuationRefusedError("run-recovery-interrupted-child-terminal-proof-unavailable");
       assertOcrChildRetryCurrent(repositories, this, run, request.continuationOwner);

@@ -11,12 +11,11 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
+const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
 
 export const AuthorityPendingCountsSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
   unresolvedWriteIntents: NonNegativeIntSchema,
-  leases: NonNegativeIntSchema,
   providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,
 });
@@ -95,7 +94,7 @@ function requireObservedBackupIdentity(
 /** DB-only current writer shape. Credentials have no backup representation. */
 export const AuthorityBackupManifestV4Schema = AuthorityBackupManifestBaseSchema.extend({
   manifestVersion: z.literal(4),
-  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   installationId: z.uuid(),
   profileId: z.uuid(),
   verification: BackupVerificationSchema.extend({ installationId: z.uuid(), profileId: z.uuid() }),
@@ -399,25 +398,6 @@ export const StorageDoctorReportSchema = z.strictObject({
   previousLocationBackups: z.array(PreviousLocationBackupSchema).optional(),
 });
 
-export const RecoveryProcessLockStateSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("stopped"), generation: PositiveIntSchema }),
-  z.strictObject({ state: z.literal("active"), generation: PositiveIntSchema, pid: PositiveIntSchema }),
-]);
-
-export const RecoveryRuntimeLockSnapshotSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  runtimeNamespace: z.literal("hrauto-rebuild"),
-  runtimeGeneration: PositiveIntSchema,
-  sourceDatabaseIdentity: FingerprintSchema,
-  recordedAt: IsoInstantSchema,
-  processLocks: z.strictObject({
-    server: RecoveryProcessLockStateSchema,
-    workers: RecoveryProcessLockStateSchema,
-    geocode: RecoveryProcessLockStateSchema,
-    "live-smoke": RecoveryProcessLockStateSchema,
-  }),
-});
-
 export const OfflineRestoreRequestSchema = z.strictObject({
   manifestPath: z.string().min(1),
 });
@@ -449,5 +429,4 @@ export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconcilia
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
-export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

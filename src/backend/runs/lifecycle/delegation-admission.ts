@@ -30,7 +30,6 @@ import type { CreateRunRequest, RunQueuedPublication, RunRecordServiceDependenci
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { canonicalDelegationChild, planCanonicalDelegation } from "./delegation-planning.js";
-import { isLiveWorker } from "../../../models/run/worker.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { delegatedCandidateEligible } from "./run-claim-admission.js";
 import { CheckpointExpectationSchema, loadCheckpoint, resolveFreshnessBound } from "../../../models/workflow/checkpoint.js";
@@ -74,17 +73,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         || parent.version !== context.run.version || parent.cancelRequested === true
         || canonicalJsonStringify(parent) !== canonicalJsonStringify(context.run)
         || held?.workerId !== context.claim.workerId || held.claimGeneration !== context.claim.claimGeneration) throw new Error("delegation-parent-claim-stale");
-      const slot = repositories.workerSlots.get(held.workerId), lease = repositories.workerLeases.get(held.workerId);
-      const owner = parent.lifecycle.workerLifetime;
-      if (slot === undefined || slot.retiredAt !== null || lease === undefined || !isLiveWorker(lease)
-        || lease.lifecycle.state === "stopping"
-        || owner === undefined || owner.membershipRevision !== slot.membershipRevision || owner.leaseGeneration !== lease.leaseGeneration
-        || repositories.workerControls.resetForWorker(held.workerId) !== undefined
-        || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
-        || repositories.workerControls.lifecycleForWorker(held.workerId) !== undefined
-        || repositories.workerSlots.recovery(held.workerId) !== undefined
-        || repositories.workerSlots.verification(held.workerId) !== undefined
-        || repositories.workerControls.initializingForWorker(held.workerId, lease.leaseGeneration) !== undefined) throw new Error("delegation-worker-authority-stale");
+      const slot = repositories.workerSlots.get(held.workerId);
+      if (slot === undefined || slot.retiredAt !== null) throw new Error("delegation-worker-authority-stale");
       const descriptor = dependencies.resolveDescriptor?.(parent.envelope.workflow);
       const target = dependencies.resolveDescriptor?.(context.node.target.id);
       if (parent.envelope.parent === undefined) authenticateRootRun(repositories, parent);

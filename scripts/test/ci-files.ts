@@ -18,7 +18,6 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/profile-local-databases.windows-native.integration.test.ts",
   "tests/backend/storage/maintenance/account-deletion.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
-  "tests/backend/app/composition/dashboard/compose.never-born-worker.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
   "tests/backend/app/composition/worker/artifact-output.integration.test.ts",
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
@@ -33,9 +32,11 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/admission/bootstrap-admission.flat-start-clean.integration.test.ts",
   "tests/backend/storage/admission/bootstrap-admission.integration.test.ts",
   "tests/backend/storage/admission/installation.logical-publication.integration.test.ts",
+  "tests/backend/storage/admission/lifetime-lock.handle-proof.integration.test.ts",
   "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
   "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
   "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/process-identity.integration.test.ts",
   "tests/backend/storage/maintenance/existing-data-backup.flat-storage.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
@@ -51,7 +52,6 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/offline-restore.profile-continuity.integration.test.ts",
   "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
   "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
-  "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
   "tests/backend/app/composition/storage-compose.fixed-layout.integration.test.ts",
   "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];
@@ -60,9 +60,7 @@ export const NATIVE_FILES: readonly string[] = [
 export const SERIAL_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/cancel-queued-runs.integration.test.ts",
   "tests/backend/storage/browser-roots.native.integration.test.ts",
-  "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts",
   "tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts",
-  "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
   "tests/backend/transports/http/native-path-picker.windows-native.integration.test.ts",
 ];
 

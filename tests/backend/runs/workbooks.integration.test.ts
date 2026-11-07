@@ -110,12 +110,10 @@ async function fixture(duplicate = false, full = false) {
       const owner = runClaim(current); assert.ok(owner);
       assert.equal(owner.workerId, claim.workerId); assert.equal(owner.claimGeneration, claim.claimGeneration);
       assert.deepEqual(h.database.authority.writeIntents.listByRun(current.envelope.runId), []);
-      assert.throws(() => h.database.assertWorkerLifecycleRelease(worker.workerId), /worker-lifecycle-release-unproved/u);
       assert.equal(service.requeue({ commandId: randomUUID(), runId: current.envelope.runId,
         expectedVersion: current.version, claim, cause: "recovery" }).state, "applied");
       const released = h.database.authority.runs.get(current.envelope.runId); assert.ok(released);
       assert.equal(runClaim(released), undefined); assert.equal(released.lifecycle.state, "queued");
-      h.database.assertWorkerLifecycleRelease(worker.workerId);
     });
     const validating = service.workerTransition({ commandId: randomUUID(), runId: run.envelope.runId, claim,
       lifecycle: { state: "validating", workerId: worker.workerId, claimedAt: NOW, heartbeatAt: NOW } });

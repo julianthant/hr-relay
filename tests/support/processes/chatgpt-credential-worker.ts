@@ -24,11 +24,13 @@ function send(value: Readonly<Record<string, string | number | null>>): void {
 function close(): Promise<void> {
   return closing ??= (async () => {
     remote.resolve(); await operation;
-    admission.release(); machine.release(); await lifetime.close();
+    admission.release(); machine.release();
     if (process.connected) {
       if (process.disconnect === undefined) throw new Error("fixture-worker-ipc-required");
       process.disconnect();
     }
+    // A worker never closes its lifetime listener; exiting releases it.
+    process.exit();
   })();
 }
 async function command(input: unknown): Promise<void> {

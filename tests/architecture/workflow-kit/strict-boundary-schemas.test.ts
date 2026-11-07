@@ -64,7 +64,7 @@ import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/prefligh
 import { ScenarioManifestSchema } from "../../../src/models/trust/scenario.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
 import { AbsentEvidenceSchema, IdempotencyKeySchema, NegativeSettlementDecisionSchema, NegativeSettlementEvaluationInputSchema, NegativeSettlementPolicySchema, PresentProofReferenceSchema, RecoveryProbeVerdictSchema, SubjectEvidenceSchema, SubjectProofSchema, TransactionOutcomeSchema, UNSCOPED_COMMIT_REASON_REGISTRY, UnscopedBindingProofSchema, UnscopedCommitReasonSpecSchema, WriteAttemptRecordSchema, WriteBindingProofSchema, WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
-import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, PermanentWriteResolutionSchema, RecoveryProcessLockStateSchema, RecoveryRuntimeLockSnapshotSchema, RestoreCandidateSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
+import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, PermanentWriteResolutionSchema, RestoreCandidateSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { CRM_UI_REGISTRY } from "../../../src/backend/systems/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
@@ -284,7 +284,7 @@ const BOOTSTRAP = {
 };
 const DAY = {
   day: "2026-07-31", descriptorHash: HASH_A, projectionGeneration: 1, snapshotCursor: "pc:1",
-  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [], workerPools: [], notifications: [],
+  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerAuthority: { state: "present", members: [] }, workerPools: [], notifications: [],
 };
 const DETAIL = {
   runId: UUID_1, rowRevision: 1, panelKind: "run",
@@ -430,7 +430,6 @@ const SQLITE_ARTIFACT_OUTBOX = {
 const AUTHORITY_PENDING_COUNTS = {
   pendingCommands: 1,
   unresolvedWriteIntents: 1,
-  leases: 1,
   providerReservations: 1,
   artifactOutbox: 1,
 };
@@ -495,19 +494,6 @@ const RESTORE_CANDIDATE = {
   generationGap: { state: "known", value: 0 },
 };
 
-const RECOVERY_RUNTIME_LOCK_SNAPSHOT = {
-  schemaVersion: 1,
-  runtimeNamespace: "hrauto-rebuild",
-  runtimeGeneration: 7,
-  sourceDatabaseIdentity: HASH_B,
-  recordedAt: NOW,
-  processLocks: {
-    server: { state: "stopped", generation: 11 },
-    workers: { state: "stopped", generation: 13 },
-    geocode: { state: "stopped", generation: 17 },
-    "live-smoke": { state: "stopped", generation: 19 },
-  },
-};
 const STORAGE_DOCTOR_REPORT = {
   recovery: { state: "clear" },
   authorityUpgrades: { state: "absent", reason: "journal-empty" },
@@ -599,8 +585,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
   { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRootTrustAnchor: "/tmp", stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
   { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks"}] },
-  { name: "RecoveryProcessLockState", schema: RecoveryProcessLockStateSchema, fixtures: [{ state: "stopped", generation: 11 }, { state: "active", generation: 12, pid: 1234 }] },
-  { name: "RecoveryRuntimeLockSnapshot", schema: RecoveryRuntimeLockSnapshotSchema, fixtures: [RECOVERY_RUNTIME_LOCK_SNAPSHOT] },
   { name: "AuthorityPendingCounts", schema: AuthorityPendingCountsSchema, fixtures: [AUTHORITY_PENDING_COUNTS] },
   { name: "AuthorityInvariantResult", schema: AuthorityInvariantResultSchema, fixtures: [{ state: "valid", violations: [] }] },
   { name: "AuthorityCopyInspection", schema: AuthorityCopyInspectionSchema, fixtures: [AUTHORITY_COPY_INSPECTION] },
