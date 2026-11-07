@@ -8,7 +8,7 @@ import { createSettingsActivationRepositories } from "../../../../src/backend/st
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
-import { CONFIG_SNAPSHOT, HASH_B, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, HASH_B, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING, UUID_4, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, TRACE_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-custody-migration.js";
 
@@ -21,7 +21,8 @@ function store(): DatabaseSync {
   for (const migration of SQLITE_MIGRATIONS.filter(item => item.version < WORKER_CUSTODY_SCHEMA_VERSION)) for (const statement of migration.statements) database.exec(statement);
   const predecessor = WORKER_CUSTODY_SCHEMA_VERSION - 1;
   database.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=${String(predecessor)}`);
-  database.prepare("INSERT INTO database_states VALUES(1,?,0,?,NULL,'unbuilt',?,?)").run(predecessor, NOW, UUID_2, UUID_3);
+  // Its ids differ from every run id, so the retained-reference check sees no closure run here.
+  database.prepare("INSERT INTO database_states VALUES(1,?,0,?,NULL,'unbuilt',?,?)").run(predecessor, NOW, "99999999-9999-4999-8999-999999999999", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   createSettingsActivationRepositories({ database,
     mutate: work => work().result,
     readRecord(table, key, schema) {
@@ -60,6 +61,7 @@ function insertCommand(database: DatabaseSync, id: string, family: string, reque
 
 const migrate = (database: DatabaseSync) => migrateWorkerCustody(database, NOW);
 
+const UNKNOWN_REASON = { version: 1, code: "post-click-verifier-unknown", evidence: { kind: "probe", digest: HASH_B } };
 const PROOF = { schemaHash: HASH_B, value: "T123456" };
 type WriteShape = { intentId: string; attemptId: string; runId: string; key: string; status: "committed" | "observed-present" | "attempting" | "parked";
   attempt?: "committed" | "attempting" | "parked" | "none"; resolution?: string };
@@ -73,14 +75,14 @@ function insertWrite(database: DatabaseSync, write: WriteShape): void {
     runId: write.runId, runAttempt: 1, expectedRunVersion: 1, decision: "present", resolvedAt: NOW } };
   const intent = WriteIntentRecordSchema.parse(write.status === "observed-present" ? { ...observed, status: "observed-present", observedProof: PROOF, observedAt: NOW }
     : write.status === "committed" ? { ...WRITE_INTENT_ATTEMPTING, ...identity, status: "committed", completionProof: PROOF, confirmedAt: NOW, ...resolution }
-    : write.status === "parked" ? { ...WRITE_INTENT_ATTEMPTING, ...identity, status: "parked", parkedCode: "unknown", message: "Outcome unknown.", authorityReason: "outcome-unknown" }
+    : write.status === "parked" ? { ...WRITE_INTENT_ATTEMPTING, ...identity, status: "parked", parkedCode: "unknown", message: "Outcome unknown.", authorityReason: UNKNOWN_REASON }
     : { ...WRITE_INTENT_ATTEMPTING, ...identity });
   database.prepare("INSERT INTO write_intents VALUES(?,?,?,?,?,?,?,?,NULL,?,?)").run(write.intentId, "ucpath", write.key, identity.idempotencyKeyDigest,
     intent.status, 1, intent.status === "observed-present" ? null : write.runId, canonicalJsonStringify(intent), NOW, NOW);
   const state = write.attempt ?? (write.status === "observed-present" ? "none" : write.status === "committed" ? "committed" : write.status);
   if (state === "none") return;
   const outcome = state === "committed" ? { state, completionProof: PROOF, confirmedAt: NOW }
-    : state === "parked" ? { state, code: "outcome-unknown", message: "Outcome unknown.", authorityReason: "outcome-unknown" } : { state };
+    : state === "parked" ? { state, code: "outcome-unknown", message: "Outcome unknown.", authorityReason: UNKNOWN_REASON } : { state };
   const attempt = WriteAttemptRecordSchema.parse({ ...WRITE_ATTEMPT, writeAttemptId: write.attemptId, writeIntentId: write.intentId, runId: write.runId, outcome });
   database.prepare("INSERT INTO write_attempts VALUES(?,?,1,?,?,?)").run(write.attemptId, write.intentId, write.runId, canonicalJsonStringify(attempt), NOW);
 }
