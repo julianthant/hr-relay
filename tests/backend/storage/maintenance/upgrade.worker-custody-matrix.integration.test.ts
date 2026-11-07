@@ -184,6 +184,7 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   const digest = s.childDigest; assert.ok(digest !== undefined);
   const linked = before.everyRow().filter(row => row.table !== "run_results" && row.json.includes(digest)).map(row => row.table);
   assert.ok(linked.length > 0, "the join and retry embed the cancelled member's resultDigest");
+  assert.fail(JSON.stringify(before.everyRow().filter(row => row.json.includes(digest)).map(row => ({ table: row.table, row: row.json.slice(0, 1500) }))));
   assert.equal((await upgrade(s)).state, "upgraded");
 
   const backups = join(s.stateRoot, "backups", "authority");
