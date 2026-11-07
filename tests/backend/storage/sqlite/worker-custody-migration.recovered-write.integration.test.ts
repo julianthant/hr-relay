@@ -27,15 +27,16 @@ async function recovered() {
   assert.equal((await h.resume()).outcomes[0]?.state, "done");
   const settled = h.database.authority.writeIntents.get(intent.writeIntentId);
   assert.ok(settled?.status === "committed" && settled.resolution !== undefined);
-  const fence = h.database.authority.timelineEvents.page({ runId: WRITE_FIXTURE_RUN_ID, limit: 100 })
-    .flatMap(event => event.payload.kind === "span" && event.payload.event.t === "transaction.fenced" ? [event.payload.event] : [])[0];
+  const fence = h.spans().flatMap(event => event.t === "transaction.fenced" ? [event] : [])[0];
   assert.ok(fence);
+  const emit = (event: unknown) => createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(ExecutorSpanEventSchema.parse(event));
+  // The worker's span sink persists the fence; the conversion reads it from the timeline.
+  emit(fence);
   const raw = new DatabaseSync(h.profile.path);
   raw.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000");
   assert.notEqual(writePredecessorWorkerLifetimes(raw, WRITE_FIXTURE_RUN_ID).length, 0, "the run must be claimed with a worker lifetime");
   raw.exec("BEGIN EXCLUSIVE"); restorePredecessorCustodySchema(raw);
   raw.exec("UPDATE database_states SET schema_version=22; PRAGMA user_version=22; COMMIT");
-  const emit = (event: unknown) => createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(ExecutorSpanEventSchema.parse(event));
   const migrate = () => migrateWorkerCustody(raw, WRITE_FIXTURE_NOW, ref => inspectArtifactDeletionFile(h.profile.admission, ref));
   return { h, raw, resolution: settled.resolution, fence, emit, migrate };
 }
