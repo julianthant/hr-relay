@@ -80,8 +80,8 @@ export function mockQueueSurfaces(runs: readonly MockRun[], anchorIso: string, a
 function decisionGroupSurfaces(sample: QueueSurfaceWire, group: MockGroup): readonly QueueSurfaceWire[] {
   const id = (key: string, selected: boolean) => selected ? sample.runId : mockQueueId(`${sample.runId}:${key}`);
   const parentId = id("pdf", group.selected === "parent");
-  const firstFailed = group.members.findIndex(member => member.failed);
-  const memberIds = group.members.map((_, index) => id(String(index), group.selected === "member" && index === firstFailed));
+  const selected = group.selected;
+  const memberIds = group.members.map((member, index) => id(String(index), selected !== "parent" && member.name === selected.member));
   const ended = { state: "present", value: sample.updatedAt } as const;
   const parent = QueueSurfaceWireSchema.parse({ ...sample, surfaceKind: "operation", runId: parentId, itemId: parentId, title: group.title,
     subtitle: { state: "present", value: group.subtitle }, status: "failed", endedAt: ended, liveMessage: { state: "absent", reason: "Members carry their own status" }, panelKind: "group",

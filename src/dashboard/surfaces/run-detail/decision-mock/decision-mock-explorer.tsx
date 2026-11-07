@@ -3,7 +3,8 @@ import { ArrowUpRight, CheckCheck, CircleStop, Eye, LockKeyhole, Monitor, MouseP
 import { PageHeading, Select, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { DataTable, PageCard } from "./decision-mock-logs.js";
-import { MOCK_SCENES, type MockDecision } from "./decision-mock-model.js";
+import { MOCK_SCENES } from "./decision-mock-model.js";
+import { DecisionCard } from "../logs/decision-card.js";
 
 type Outcome = Readonly<{ value: string; label: string; then: string; stops?: boolean }>;
 const SEARCH: readonly Outcome[] = [
@@ -74,7 +75,9 @@ export function DecisionExplorer() {
   const searchOutcomes = choices.by === "eid" ? SEARCH.filter(item => item.value !== "several") : SEARCH;
   const searchOutcome = searchOutcomes.find(item => item.value === search) ?? searchOutcomes[0];
   const crmOutcome = CRM.find(item => item.value === crm) ?? CRM[0];
-  const people = (MOCK_SCENES.d2.decision as Extract<MockDecision, { kind: "pick" }>).table;
+  const pick = MOCK_SCENES.d2.decision?.kind === "card" ? MOCK_SCENES.d2.decision.control : undefined;
+  if (pick?.kind !== "pick") throw new Error("DECISION_MOCK_D2_PICK_MISSING");
+  const people = pick.table;
   const decision = (key: "search" | "crm") => key === "search"
     ? <Decision label="Search result" outcomes={searchOutcomes} value={searchOutcome.value} onChange={setSearch} />
     : <Decision label="CRM cross-check result" outcomes={CRM} value={crmOutcome.value} onChange={setCrm} />;
@@ -84,7 +87,7 @@ export function DecisionExplorer() {
     <Check>Keeps HDH departments only</Check>
     <Card title="Person Organizational Summary" mode="Fill">{choices.by === "eid" ? <FillRow label="Employee ID" value="10000001" /> : <><FillRow label="Last name" value="Morrow" /><FillRow label="First name" value="Bea" /></>}</Card>
     <Click>Search</Click>
-    {searchOutcome.value === "several" ? <DataTable table={{ ...people, label: "Sample search results" }} /> : <Card title="Search results" mode="Read">{searchOutcome.value === "one" ? <><ReadRow label="Employee ID" value="10000001" /><ReadRow label="Name" value="Morrow, Bea A." /><ReadRow label="Department" value="Campus Dining Operations" /></> : <ReadRow label="Results" value={searchOutcome.value === "none" ? "No people found" : "Not read"} />}</Card>}
+    {searchOutcome.value === "several" ? <DecisionCard preview title="Which Bea Morrow is this run about?" context="Logs asks you to pick one, or to type the employee ID."><DataTable table={{ ...people, label: "Sample search results" }} pick={{ choose: () => undefined }} /></DecisionCard> : <Card title="Search results" mode="Read">{searchOutcome.value === "one" ? <><ReadRow label="Employee ID" value="10000001" /><ReadRow label="Name" value="Morrow, Bea A." /><ReadRow label="Department" value="Campus Dining Operations" /></> : <ReadRow label="Results" value={searchOutcome.value === "none" ? "No people found" : "Not read"} />}</Card>}
     {decision("search")}
   </> });
   if (!searchOutcome.stops) {

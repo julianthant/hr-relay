@@ -48,7 +48,7 @@ const ortegaDryRun = sep("a-dry", "Dry run stopped", "Ortega, Lin", "done", "Dry
 ], [stage("request", "Read request", "completed", { durationLabel: "13s" }), stage("employee", "Verify employee", "completed", { durationLabel: "11s" }), stage("timecard", "Read timecard", "completed", { durationLabel: "16s" }), stage("file", "File termination", "completed", { durationLabel: "38s" }), stage("finalize", "Finalize document", "completed", { durationLabel: "4s" })]);
 
 const ecThree = ["Ortega, Lin", "Park, Joon", "Haddad, Rami"];
-const ecThreeGroup: MockGroup = { title: "Scan_0412.pdf", subtitle: "12 people", selected: "member", members: EC_PEOPLE.map(name => ({ name, failed: ecThree.includes(name) })) };
+const ecThreeGroup: MockGroup = { title: "Scan_0412.pdf", subtitle: "12 people", selected: { member: "Ortega, Lin" }, members: EC_PEOPLE.map(name => ({ name, failed: ecThree.includes(name) })) };
 const ecFailures: MockSceneData = { ...MOCK_SCENES.d9, id: "a-ec3", group: ecThreeGroup };
 const renamedParent: MockSceneData = { ...MOCK_SCENES.d9p, id: "a-rename", subject: "April contacts scan", group: { ...MOCK_SCENES.d9p.group!, title: "April contacts scan" } };
 

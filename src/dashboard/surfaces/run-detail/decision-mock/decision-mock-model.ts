@@ -1,8 +1,9 @@
 import type { LogScreenshot } from "../logs/log-feed-model.js";
 import type { LogTimelineStage } from "../logs/log-timeline-model.js";
+import type { DecisionChoiceOption, DecisionSuggestion } from "../logs/decision-card.js";
 
 /** Design mock for the run-decision rules; read only from the URL (`decisionMock=d1`…`d16`, or `decisionMock=explorer`). */
-export const DECISION_IDS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d9p", "d10", "d11", "d12", "d13", "d14", "d15", "d16"] as const;
+export const DECISION_IDS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d8s", "d9", "d9b", "d9p", "d10", "d11", "d12", "d13", "d14", "d15", "d16"] as const;
 export type DecisionId = (typeof DECISION_IDS)[number];
 
 export function decisionMock(): { scene?: MockSceneData } | undefined {
@@ -15,14 +16,7 @@ export function decisionMock(): { scene?: MockSceneData } | undefined {
 
 export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "fill"; unread?: boolean }>;
 
-/** Workflow rail comparison (v6 item 6): `railVariant=6a|6b|6c` with fixed running counts. */
-export const RAIL_VARIANTS = ["6a", "6b", "6c"] as const;
-export type RailVariant = (typeof RAIL_VARIANTS)[number];
-export function railVariant(): RailVariant | undefined {
-  if (typeof window === "undefined") return undefined;
-  const value = new URLSearchParams(window.location.search).get("railVariant");
-  return RAIL_VARIANTS.find(item => item === value);
-}
+/** Running counts the design mock shows in the workflow rail. */
 export const MOCK_RAIL_RUNNING: Readonly<Record<string, number>> = { separations: 2, "emergency-contact": 1 };
 export type MockTableRow = Readonly<{ id: string; cells: readonly string[]; name: string; tone?: "danger" }>;
 export type MockTable = Readonly<{ title: string; label: string; columns: readonly string[]; rows: readonly MockTableRow[] }>;
@@ -36,15 +30,21 @@ export type MockBlock =
 export type MockStep = Readonly<{ id: string; time: string; title: string; system?: string; blocks: readonly MockBlock[]; outcome?: string; current?: boolean }>;
 
 /** "None of these": the last pick option, with an input for the operator's own value. */
-export type MockOther = Readonly<{ label: string; placeholder: string; sample: string; valid: (value: string) => boolean; name: (value: string) => string }>;
-const otherEmployeeId: MockOther = { label: "Enter employee ID", placeholder: "8 digits", sample: "10000123", valid: value => /^\d{8}$/u.test(value), name: value => value };
-const otherRow: MockOther = { label: "Enter row number", placeholder: "Row", sample: "120", valid: value => /^[1-9]\d{0,4}$/u.test(value), name: value => `row ${value}` };
+export type MockOther = Readonly<{ label: string; placeholder: string; sample: string; valid: (value: string) => boolean }>;
+const otherEmployeeId: MockOther = { label: "Enter employee ID", placeholder: "8 digits", sample: "10000123", valid: value => /^\d{8}$/u.test(value) };
+const otherRow: MockOther = { label: "Enter row number", placeholder: "Row", sample: "120", valid: value => /^[1-9]\d{0,4}$/u.test(value) };
 
-/** The anatomy every decision shares: question, at most one note line, the evidence or input, then the actions. */
+export type MockInput = Readonly<{ label: string; value?: string; placeholder?: string; valid?: (value: string) => boolean }>;
+export type MockChoiceOption = DecisionChoiceOption & Readonly<{ input?: MockInput }>;
+/** The card's control: the candidate list stays a table; short choice lists are a dropdown; a typed value is an input. */
+export type MockControl =
+  | Readonly<{ kind: "pick"; table: MockTable; other: MockOther; extras?: readonly Readonly<{ id: string; label: string }>[] }>
+  | Readonly<{ kind: "compare"; title: string; rows: readonly Readonly<{ label: string; requested: string; found: string }>[] }>
+  | Readonly<{ kind: "choice"; label: string; value: string; options: readonly MockChoiceOption[] }>
+  | Readonly<{ kind: "input"; input: MockInput }>;
+/** Every manual choice is one card; `confirm` names the action only when no control holds the answer. */
 export type MockDecision =
-  | Readonly<{ kind: "pick"; question: string; table: MockTable; continueLabel: (name: string) => string; secondary: readonly string[]; other: MockOther }>
-  | Readonly<{ kind: "compare"; question: string; note?: string; title: string; rows: readonly Readonly<{ label: string; requested: string; found: string }>[]; primary: string; secondary: readonly string[] }>
-  | Readonly<{ kind: "answer"; question: string; note?: string; tone?: "danger"; caution?: string; field?: Readonly<{ label: string; value?: string }>; primary?: string; secondary: readonly string[] }>
+  | Readonly<{ kind: "card"; title: string; context?: string; tone?: "danger"; confirm?: string; control?: MockControl; suggestion?: DecisionSuggestion; applyAll?: number }>
   | Readonly<{ kind: "line"; text: string; icon: "cancelling" | "paused" }>;
 
 export type MockState = "review" | "parked" | "failed" | "paused" | "stalled" | "cancelling" | "running" | "done";
@@ -54,7 +54,7 @@ export type MockSceneData = Readonly<{
   headerRetry?: string; group?: MockGroup;
 }>;
 /** One parent run (the PDF) with one member run per person; `selected` is the run the Logs panel shows. */
-export type MockGroup = Readonly<{ title: string; subtitle: string; selected: "parent" | "member"; members: readonly Readonly<{ name: string; failed?: boolean }>[] }>;
+export type MockGroup = Readonly<{ title: string; subtitle: string; selected: "parent" | Readonly<{ member: string }>; members: readonly Readonly<{ name: string; failed?: boolean }>[] }>;
 
 const svg = (label: string, rows: readonly string[]) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450"><rect width="800" height="450" fill="#f4f6f8"/><rect width="800" height="64" fill="#1f4e79"/><text x="32" y="42" font-family="Arial,sans-serif" font-size="26" fill="#fff">${label}</text>${rows.map((row, index) => `<rect x="32" y="${100 + index * 80}" width="736" height="60" rx="4" fill="#fff" stroke="#c9d1d9"/><text x="52" y="${139 + index * 80}" font-family="Arial,sans-serif" font-size="24" fill="#2b3640">${row}</text>`).join("")}</svg>`)}`;
 export const shot = (logId: string, label: string, time: string, system: string, title: string, rows: readonly string[], boundary?: LogScreenshot["boundary"]): LogScreenshot => ({
@@ -106,52 +106,75 @@ export const sepTimeline = (fileState: LogTimelineStage["state"], label?: string
   stage("timecard", "Read timecard", "completed", { durationLabel: "44s" }), stage("file", "File termination", fileState, { statusLabel: label, durationLabel: fileState === "completed" ? "1m 24s" : undefined }),
   stage("finalize", "Finalize document", later, { statusLabel: laterLabel }),
 ];
-const parkedAnswer: MockDecision = { kind: "answer", question: "Did the termination save in UCPath?", note: "Submit did not confirm. Check Smart HR Transactions for 10431187.", field: { label: "Transaction number" }, primary: "Confirm saved", secondary: ["Not saved, file it again"] };
+const parkedAnswer: MockDecision = { kind: "card", title: "Did the termination save in UCPath?", context: "Submit did not confirm. Check Smart HR Transactions for 10431187.", control: { kind: "choice", label: "Answer", value: "saved", options: [
+  { value: "saved", label: "Saved in UCPath", hint: "Enter its transaction number; the run continues", input: { label: "Transaction number", placeholder: "T00000000", valid: value => /^T\d{8}$/u.test(value) } },
+  { value: "again", label: "Not saved, file it again", hint: "Relay files the termination once more" },
+] } };
+const readBackFailed: MockDecision = { kind: "card", tone: "danger", title: "Termination saved, but the read-back failed", context: "UCPath accepted T00042871, but Relay could not read its status in Smart HR Transactions.", control: { kind: "choice", label: "Next step", value: "check", options: [
+  { value: "check", label: "Check again", hint: "Reads Smart HR Transactions again; files nothing" },
+  { value: "by-hand", label: "Checked by hand, continue", hint: "You saw T00042871 in UCPath; the run finishes" },
+  { value: "withdrawn", label: "Withdrawn in UCPath, file again", hint: "Relay proves T00042871 is gone, then files once" },
+  { value: "failed", label: "Mark as failed", hint: "Ends this person's run as failed; files nothing" },
+] } };
 
 export const EC_PEOPLE = ["Ali, Samir", "Ortega, Lin", "Park, Joon", "Nguyen, Thao", "Brooks, Dana", "Haddad, Rami", "Silva, Ines", "Kowalski, Eva", "Mensah, Kofi", "Tanaka, Yui", "Reyes, Marco", "Okafor, Chinedu"];
-const ecGroup = (selected: MockGroup["selected"]): MockGroup => ({ title: "Scan_0412.pdf", subtitle: "12 people", selected, members: EC_PEOPLE.map(name => ({ name, failed: name === "Ortega, Lin" })) });
+const ecGroup = (selected: MockGroup["selected"], failed: readonly string[] = ["Ortega, Lin"]): MockGroup => ({ title: "Scan_0412.pdf", subtitle: "12 people", selected, members: EC_PEOPLE.map(name => ({ name, failed: failed.includes(name) })) });
+const ecMemberSteps = (name: string, eid: string, phone: string, result: readonly string[], time = "13:20"): readonly MockStep[] => [
+  { id: "navigation", time: `${time}:11`, title: "Read existing contacts", system: "UCPath", outcome: "No matching contact", blocks: [page("Emergency Contacts", "Read", [read("Employee", name), read("Employee ID", eid), read("Existing contacts", "1")])] },
+  { id: "fill-form", time: `${time}:24`, title: "Fill emergency contact", system: "UCPath", outcome: "Contact filled", blocks: [page("Emergency Contact", "Fill", [fill("Contact", `${name.split(",")[0]}, Maya`), fill("Relationship", "Parent"), fill("Phone", phone)])] },
+  { id: "save", time: `${time}:40`, title: "Save emergency contact", system: "UCPath", current: true, blocks: [{ kind: "click", label: "Save" },
+    { kind: "capture", shots: [shot("save", "After save", `${time}:42`, "UCPath", "Emergency Contact", result, "after-submit")] }, decision] },
+];
+const ecMemberTimeline = [stage("navigation", "Read existing contacts", "completed", { durationLabel: "13s" }), stage("fill-form", "Fill emergency contact", "completed", { durationLabel: "16s" }), stage("save", "Save emergency contact", "failed", { statusLabel: "Failed" })];
 
 const scenes: readonly MockSceneData[] = [
   { id: "d1", name: "Identity mismatch", workflow: "separations", subject: "Nakamura, Rei", state: "review", waited: "6 min", queueMessage: "Waiting on identity review",
     steps: [sepRequest, sepVerify(true)], timeline: [stage("request", "Read request", "completed", { durationLabel: "14s" }), stage("employee", "Verify employee", "waiting", { statusLabel: "Waiting for you" }), stage("timecard", "Read timecard", "pending"), stage("file", "File termination", "pending"), stage("finalize", "Finalize document", "pending")],
-    decision: { kind: "compare", question: "Is this the right person?", note: "The name and department in UCPath differ from the request.", title: "Request and UCPath", rows: [{ label: "Name", requested: "Nakamura, Rei", found: "Nakamura, Rei J." }, { label: "Employee ID", requested: "10431187", found: "10431187" }, { label: "Department", requested: "Housing Operations", found: "Student Housing" }], primary: "Approve match", secondary: ["Reject and stop"] } },
+    decision: { kind: "card", title: "Is this the right person?", context: "The name and department in UCPath differ from the request.", confirm: "Approve match", control: { kind: "compare", title: "Request and UCPath", rows: [{ label: "Name", requested: "Nakamura, Rei", found: "Nakamura, Rei J." }, { label: "Employee ID", requested: "10431187", found: "10431187" }, { label: "Department", requested: "Housing Operations", found: "Student Housing" }] } } },
   { id: "d2", name: "Pick one of N people", workflow: "person-lookup", subject: "Morrow, Bea", state: "review", waited: "4 min", queueMessage: "Waiting for you to pick the person",
     steps: [lookupSearch(true)], timeline: lookupTimeline(["waiting", "pending", "pending"], "Waiting for you"),
-    decision: { kind: "pick", question: "Which Bea Morrow is this run about?", table: PEOPLE, continueLabel: name => `Continue with ${name}`, secondary: ["Cancel run"], other: otherEmployeeId } },
+    decision: { kind: "card", title: "Which Bea Morrow is this run about?", context: "UCPath found 3 people with this name.", control: { kind: "pick", table: PEOPLE, other: otherEmployeeId } } },
   { id: "d3", name: "Pick a record row", workflow: "onboarding", subject: "Ortega, Lin", state: "review", waited: "2 min", queueMessage: "Waiting for you to choose the roster row",
     steps: [{ id: "crm", time: "11:02:40", title: "Read CRM roster", system: "CRM", current: true, blocks: [page("Onboarding roster", "Read", [read("Rows read", "212"), read("Rows for Ortega, Lin", "2")]), decision] }],
     timeline: [stage("crm", "Read CRM roster", "waiting", { statusLabel: "Waiting for you" }), stage("hire", "Prepare hire", "pending"), stage("submit", "Submit hire", "pending")],
-    decision: { kind: "pick", question: "Which roster row is Lin Ortega's hire?", table: { title: "Onboarding roster", label: "Roster rows", columns: ["Row", "Department", "Start date", "Position"], rows: [
+    decision: { kind: "card", title: "Which roster row is Lin Ortega's hire?", context: "The roster has 2 rows for Lin Ortega.", control: { kind: "pick", table: { title: "Onboarding roster", label: "Roster rows", columns: ["Row", "Department", "Start date", "Position"], rows: [
       { id: "14", name: "row 14", cells: ["14", "Housing Operations", "08/02/2031", "Student assistant"] },
       { id: "87", name: "row 87", cells: ["87", "Campus Dining", "09/01/2031", "Food service worker"] },
-    ] }, continueLabel: name => `Continue with ${name}`, secondary: ["Cancel run"], other: otherRow } },
+    ] }, other: otherRow } } },
   { id: "d4", name: "Review before write", workflow: "onboarding", subject: "Ortega, Lin", state: "review", waited: "3 min", queueMessage: "Waiting for you to approve the hire",
     steps: [{ id: "crm", time: "11:02:40", title: "Read CRM roster", system: "CRM", outcome: "Row 14 chosen", blocks: [page("Onboarding roster", "Read", [read("Row", "14"), read("Start date", "08/02/2031")])] },
       { id: "hire", time: "11:04:05", title: "Prepare hire", system: "UCPath", current: true, blocks: [page("Hire template", "Fill", [fill("Employee", "Ortega, Lin"), fill("Effective date", "08/02/2031"), fill("Job code", "004722"), fill("Department", "Housing Operations")]), decision] }],
     timeline: [stage("crm", "Read CRM roster", "completed", { durationLabel: "22s" }), stage("hire", "Prepare hire", "waiting", { statusLabel: "Waiting for you" }), stage("submit", "Submit hire", "pending")],
-    decision: { kind: "answer", question: "Submit this hire?", note: "Nothing is sent to UCPath until you approve.", primary: "Approve and submit", secondary: ["Reject"] } },
+    decision: { kind: "card", title: "Submit this hire?", context: "Nothing is sent to UCPath until you approve.", confirm: "Approve and submit" } },
   { id: "d5", name: "Write parked", workflow: "separations", subject: "Nakamura, Rei", state: "parked", waited: "12 min", queueMessage: "The termination submit did not confirm",
     steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(true, [decision])], timeline: sepTimeline("parked"), decision: parkedAnswer },
   { id: "d6", name: "Uncertain submit after a crash", workflow: "separations", subject: "Nakamura, Rei", state: "parked", waited: "9 min", queueMessage: "The Kuali save may have gone through",
     steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { id: "finalize", time: "09:34:02", title: "Finalize Kuali document", system: "Kuali", current: true, blocks: [page("RRSS Separation Request", "Fill", [fill("Final pay", "Workflow routed"), fill("Comments", "Termination filed on UCPath as T00042871")]), { kind: "click", label: "Save" }, decision] }],
     timeline: sepTimeline("completed", undefined, "parked"),
-    decision: { kind: "answer", question: "Did the separation document save in Kuali?", note: "Save did not confirm. Check document SIM-48216 in Kuali.", primary: "Confirm saved", secondary: ["Not saved, save it again"] } },
+    decision: { kind: "card", title: "Did the separation document save in Kuali?", context: "Save did not confirm. Check document SIM-48216 in Kuali.", control: { kind: "choice", label: "Answer", value: "saved", options: [
+      { value: "saved", label: "Saved in Kuali", hint: "The run continues to the next step" },
+      { value: "again", label: "Not saved, save it again", hint: "Relay saves the document once more" },
+    ] } } },
   { id: "d7", name: "Failed, safe to retry", workflow: "person-lookup", subject: "Morrow, Bea", state: "failed", queueMessage: "CRM search could not be completed",
     steps: [lookupSearch(false), lookupCrm(true, [decision])], timeline: lookupTimeline(["completed", "failed", "pending"], "Failed"),
-    decision: { kind: "answer", tone: "danger", question: "CRM search could not be completed", note: "The CRM search page did not load after one retry. Nothing was written.", primary: "Retry step", secondary: [] } },
+    decision: { kind: "card", tone: "danger", title: "CRM search could not be completed", context: "The CRM search page did not load after one retry. Nothing was written.", confirm: "Retry step" } },
   { id: "d8", name: "Failed after a confirmed write", workflow: "separations", subject: "Nakamura, Rei", state: "failed", queueMessage: "Termination saved, read-back failed",
     steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", current: true, blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), { label: "Status", value: "Couldn't read", kind: "read", unread: true }]), decision] }],
     timeline: sepTimeline("failed", "Failed"),
-    decision: { kind: "answer", tone: "danger", question: "Termination saved, but the read-back failed", note: "UCPath accepted T00042871, but Relay could not read its status in Smart HR Transactions.", primary: "Check again", secondary: ["Checked by hand, continue", "Withdrawn in UCPath, file again", "Mark as failed"] } },
-  { id: "d9", name: "Emergency Contact member failed", workflow: "emergency-contact", subject: "Ortega, Lin", state: "failed", queueMessage: "Phone number rejected", headerRetry: "Retry Ortega, Lin", group: ecGroup("member"),
-    steps: [
-      { id: "navigation", time: "13:20:11", title: "Read existing contacts", system: "UCPath", outcome: "No matching contact", blocks: [page("Emergency Contacts", "Read", [read("Employee", "Ortega, Lin"), read("Employee ID", "10031877"), read("Existing contacts", "1")])] },
-      { id: "fill-form", time: "13:20:24", title: "Fill emergency contact", system: "UCPath", outcome: "Contact filled", blocks: [page("Emergency Contact", "Fill", [fill("Contact", "Ortega, Maya"), fill("Relationship", "Parent"), fill("Phone", "(619) 555-014")])] },
-      { id: "save", time: "13:20:40", title: "Save emergency contact", system: "UCPath", current: true, blocks: [{ kind: "click", label: "Save" },
-        { kind: "capture", shots: [shot("save", "After save", "13:20:42", "UCPath", "Emergency Contact", ["Phone: (619) 555-014", "Invalid phone number format"], "after-submit")] }, decision] },
-    ],
-    timeline: [stage("navigation", "Read existing contacts", "completed", { durationLabel: "13s" }), stage("fill-form", "Fill emergency contact", "completed", { durationLabel: "16s" }), stage("save", "Save emergency contact", "failed", { statusLabel: "Failed" })],
-    decision: { kind: "answer", tone: "danger", question: "Emergency contact could not be saved", note: "UCPath rejected the phone number format. Nothing was saved.", field: { label: "Phone", value: "(619) 555-014" }, primary: "Retry with this number", secondary: [] } },
+    decision: readBackFailed },
+  { id: "d8s", name: "Read-back failed, assistant suggests", workflow: "separations", subject: "Nakamura, Rei", state: "failed", queueMessage: "Termination saved, read-back failed",
+    steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", current: true, blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), { label: "Status", value: "Couldn't read", kind: "read", unread: true }]), decision] }],
+    timeline: sepTimeline("failed", "Failed"),
+    decision: { ...readBackFailed, suggestion: { option: "Check again", evidence: "The read timed out at 09:33:52; Smart HR Transactions loaded normally a minute later." } } },
+  { id: "d9", name: "Emergency Contact member failed", workflow: "emergency-contact", subject: "Ortega, Lin", state: "failed", queueMessage: "Phone number rejected", headerRetry: "Retry Ortega, Lin", group: ecGroup({ member: "Ortega, Lin" }),
+    steps: ecMemberSteps("Ortega, Lin", "10031877", "(619) 555-014", ["Phone: (619) 555-014", "Invalid phone number format"]), timeline: ecMemberTimeline,
+    decision: { kind: "card", tone: "danger", title: "Emergency contact could not be saved", context: "UCPath rejected the phone number format. Nothing was saved.", control: { kind: "input", input: { label: "Phone to retry with", value: "(619) 555-014" } } } },
+  { id: "d9b", name: "Emergency Contact several failed", workflow: "emergency-contact", subject: "Brooks, Dana", state: "failed", queueMessage: "UCPath did not respond", headerRetry: "Retry Brooks, Dana", group: ecGroup({ member: "Brooks, Dana" }, ["Brooks, Dana", "Silva, Ines", "Tanaka, Yui"]),
+    steps: ecMemberSteps("Brooks, Dana", "10027802", "(619) 555-0148", ["Saving, please wait", "The server did not respond"], "13:22"), timeline: ecMemberTimeline,
+    decision: { kind: "card", tone: "danger", title: "Emergency contact could not be saved", context: "UCPath did not respond to Save. Nothing was saved.", applyAll: 3, control: { kind: "choice", label: "Next step", value: "retry", options: [
+      { value: "retry", label: "Retry", hint: "Saves the contact again" },
+      { value: "skip", label: "Skip this person", hint: "Leaves this contact unsaved; the others are done" },
+    ] } } },
   { id: "d9p", name: "Emergency Contact PDF parent", workflow: "emergency-contact", subject: "Scan_0412.pdf", state: "failed", queueMessage: "Member runs finished", group: ecGroup("parent"),
     steps: [
       { id: "read", time: "13:02:05", title: "Read document", system: "OCR", outcome: "12 records read", blocks: [page("Scan_0412.pdf", "Read", [read("Pages", "14"), read("Records found", "12")])] },
@@ -163,23 +186,23 @@ const scenes: readonly MockSceneData[] = [
   { id: "d10", name: "Correct a value", workflow: "emergency-contact", subject: "Ortega, Lin", state: "review", waited: "1 min", queueMessage: "Waiting for you to correct a value",
     steps: [{ id: "read", time: "13:04:33", title: "Read scanned form", system: "OCR", current: true, blocks: [page("Scanned page 3", "Read", [read("Employee name", "Ortega, Lin"), read("Employee ID", "1003187"), read("Contact", "Ortega, Maya")]), { kind: "capture", shots: [shot("scan", "Page 3", "13:04:35", "OCR", "Emergency contact form", ["Employee ID: 1003187?", "Contact: Ortega, Maya"])] }, decision] }],
     timeline: [stage("read", "Read forms", "waiting", { statusLabel: "Waiting for you" }), stage("members", "Update contacts", "pending"), stage("report", "Report", "pending")],
-    decision: { kind: "answer", question: "What is Lin Ortega's employee ID?", note: "The scan shows 7 digits; employee IDs have 8.", field: { label: "Employee ID", value: "1003187" }, primary: "Save and continue", secondary: ["Discard record"] } },
+    decision: { kind: "card", title: "What is Lin Ortega's employee ID?", context: "The scan shows 7 digits; employee IDs have 8.", control: { kind: "input", input: { label: "Employee ID", value: "1003187", valid: value => /^\d{8}$/u.test(value) } } } },
   { id: "d11", name: "Workbook row ambiguous", workflow: "separations", subject: "Nakamura, Rei", state: "review", waited: "2 min", queueMessage: "Waiting for you to choose the workbook row",
     steps: [sepRequest, { id: "workbook", time: "09:35:10", title: "Write results to workbook", system: "SharePoint", current: true, blocks: [page("Separations tracker", "Read", [read("Sheet", "Fall 2031"), read("Rows for 10431187", "2")]), decision] }],
     timeline: [stage("request", "Read request", "completed", { durationLabel: "14s" }), stage("workbook", "Write workbook", "waiting", { statusLabel: "Waiting for you" }), stage("finalize", "Finalize document", "pending")],
-    decision: { kind: "pick", question: "Which row should Relay update?", table: { title: "Separations tracker", label: "Workbook rows", columns: ["Row", "Name", "Last updated"], rows: [
+    decision: { kind: "card", title: "Which row should Relay update?", context: "The tracker has 2 rows for 10431187.", control: { kind: "pick", table: { title: "Separations tracker", label: "Workbook rows", columns: ["Row", "Name", "Last updated"], rows: [
       { id: "12", name: "row 12", cells: ["12", "Nakamura, Rei", "04/01/2031"] },
       { id: "65", name: "row 65", cells: ["65", "Nakamura, Rei J.", "04/20/2031"] },
-    ] }, continueLabel: name => `Update ${name}`, secondary: ["Add a new row"], other: otherRow } },
+    ] }, extras: [{ id: "new", label: "Add a new row" }], other: otherRow } } },
   { id: "d12", name: "Sign-in or Duo needed", workflow: "person-lookup", subject: "Morrow, Bea", state: "review", waited: "1 min", queueMessage: "Waiting for you to sign in to CRM",
     steps: [lookupSearch(false), lookupCrm(true, [decision])], timeline: lookupTimeline(["completed", "waiting", "pending"], "Sign in"),
-    decision: { kind: "answer", question: "Sign in to CRM to continue", note: "The CRM session expired. The run continues after you approve Duo.", primary: "Open CRM sign-in", secondary: ["Cancel run"] } },
+    decision: { kind: "card", title: "Sign in to CRM to continue", context: "The CRM session expired. The run continues after you approve Duo.", confirm: "Open CRM sign-in" } },
   { id: "d13", name: "Run paused", workflow: "person-lookup", subject: "Morrow, Bea", state: "paused", queueMessage: "Paused after Cross-check identity",
     steps: [lookupSearch(false), { ...lookupCrm(false, [decision]), current: true }], timeline: lookupTimeline(["completed", "completed", "pending"]),
-    decision: { kind: "answer", question: "Paused after Cross-check identity", note: "Read employment status starts when you resume.", primary: "Resume", secondary: ["Cancel run"] } },
+    decision: { kind: "card", title: "Paused after Cross-check identity", context: "Read employment status starts when you resume.", confirm: "Resume" } },
   { id: "d14", name: "Run stalled", workflow: "person-lookup", subject: "Morrow, Bea", state: "stalled", waited: "6 min", queueMessage: "No progress for 6 minutes",
     steps: [lookupSearch(false), lookupCrm(false), { id: "status", time: "10:14:20", title: "Read employment status", system: "UCPath", current: true, blocks: [decision] }], timeline: lookupTimeline(["completed", "completed", "failed"], "No progress"),
-    decision: { kind: "answer", tone: "danger", question: "The worker stopped answering", note: "Recover restarts from Read employment status. Nothing was written.", primary: "Recover", secondary: ["Cancel run"] } },
+    decision: { kind: "card", tone: "danger", title: "The worker stopped answering", context: "Recover restarts from Read employment status. Nothing was written.", confirm: "Recover" } },
   { id: "d15", name: "Command refused", workflow: "separations", subject: "Nakamura, Rei", state: "parked", waited: "13 min", queueMessage: "The termination submit did not confirm",
     steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(true, [decision])], timeline: sepTimeline("parked"), decision: parkedAnswer,
     toast: { title: "Rerun refused", description: "Answer the parked termination first." } },

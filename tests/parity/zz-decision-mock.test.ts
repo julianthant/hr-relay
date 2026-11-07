@@ -4,11 +4,11 @@ import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { DECISION_IDS, MOCK_SCENES, RAIL_VARIANTS, type DecisionId } from "../../src/dashboard/surfaces/run-detail/decision-mock/decision-mock-model.js";
+import { DECISION_IDS, MOCK_SCENES, type DecisionId } from "../../src/dashboard/surfaces/run-detail/decision-mock/decision-mock-model.js";
 
 // Design mock renders for the run-decision rules; output goes to the gitignored .work folder.
 const OUT = process.env.DECISION_MOCK_OUT ?? join(import.meta.dirname, "../../.work/decision-mock");
-// Comma list of frames to render (scene ids, "rename", "rail", "explorer"); all when unset.
+// Comma list of frames to render (scene ids, "rename", "explorer"); all when unset.
 const ONLY = process.env.DECISION_MOCK_ONLY?.split(",");
 const wanted = (key: string) => ONLY === undefined || ONLY.includes(key);
 
@@ -40,12 +40,6 @@ for (const theme of ["light", "dark"] as const) test(`decision mock @ ${theme}`,
     await expect(panel.getByRole("heading", { level: 2 })).toHaveText(scene.subject);
     return panel;
   };
-  for (const variant of wanted("rail") ? RAIL_VARIANTS : []) {
-    await open("d9", `&railVariant=${variant}`);
-    await page.mouse.move(1, 1);
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: join(OUT, `${variant}-rail-running-count-${theme}.png`) });
-  }
   if (wanted("rename")) {
     await open("d9p");
     await page.locator("[data-demo-row-title]", { hasText: "Scan_0412.pdf" }).dblclick();
@@ -54,19 +48,34 @@ for (const theme of ["light", "dark"] as const) test(`decision mock @ ${theme}`,
     await page.mouse.move(1, 1);
     await page.waitForTimeout(400);
     await page.screenshot({ path: join(OUT, `d9-rename-queue-title-${theme}.png`) });
+    await name.press("Enter");
+    const header = page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("heading", { level: 2 });
+    await expect(header).toHaveText("April contacts scan");
+    await expect(page.locator("[data-demo-row-title]", { hasText: "April contacts scan" })).toBeVisible();
+    await header.dblclick();
+    await expect(page.getByRole("textbox", { name: "Run name", exact: true })).toHaveValue("April contacts scan");
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: join(OUT, `d9-rename-logs-header-${theme}.png`) });
   }
   for (const id of DECISION_IDS.filter(wanted)) {
     const scene = MOCK_SCENES[id];
     const panel = await open(id);
     const logs = panel.getByRole("region", { name: "Run logs", exact: true });
     const file = `${id}-${scene.name.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/-$/u, "")}`;
-    if (scene.decision?.kind === "pick") await panel.getByRole("radio").first().check();
+    const control = scene.decision?.kind === "card" ? scene.decision.control : undefined;
+    if (control?.kind === "pick") await panel.getByRole("radio").first().check();
     await grow(page, logs);
     await page.screenshot({ path: join(OUT, `${file}-${theme}.png`) });
-    if (scene.decision?.kind !== "pick") continue;
+    if (id === "d8") {
+      await panel.getByRole("button", { name: "Confirm", exact: true }).click();
+      await expect(panel.getByText("Answered: Check again", { exact: false })).toBeVisible();
+      await grow(page, logs);
+      await page.screenshot({ path: join(OUT, `d8-answered-${theme}.png`) });
+    }
+    if (control?.kind !== "pick") continue;
     await panel.getByRole("radio", { name: "None of these", exact: true }).check();
-    await panel.getByRole("textbox", { name: scene.decision.other.label, exact: true }).fill(scene.decision.other.sample);
-    await expect(panel.getByRole("button", { name: scene.decision.continueLabel(scene.decision.other.name(scene.decision.other.sample)), exact: true })).toBeEnabled();
+    await panel.getByRole("textbox", { name: control.other.label, exact: true }).fill(control.other.sample);
+    await expect(panel.getByRole("button", { name: "Confirm", exact: true })).toBeEnabled();
     await grow(page, logs);
     await page.screenshot({ path: join(OUT, `${file}-none-of-these-${theme}.png`) });
   }
