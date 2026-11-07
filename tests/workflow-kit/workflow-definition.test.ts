@@ -1,5 +1,4 @@
 import { createSearchWorkflowDefinitionFixtures } from "../support/helpers/search-workflow-definition-fixtures.js";
-import { createOperationDisplayFixtures } from "../support/helpers/operation-display-fixtures.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
@@ -15,18 +14,14 @@ import assert from "node:assert/strict";
 import { UcpathDeletePendingTerminations } from "../../src/models/systems/ucpath/delete-pending-terminations.js";
 import { UcpathReadPendingTerminationSet } from "../../src/models/systems/ucpath/read-pending-termination-set.js";
 import { UcpathStagePendingTerminationSweep } from "../../src/models/systems/ucpath/stage-pending-termination-sweep.js";
-import { ItemIdSchema, WorkflowIdSchema, EidSchema, FingerprintSchema } from "../../src/rules/identity/ids.js";
+import { ItemIdSchema, WorkflowIdSchema, EidSchema} from "../../src/rules/identity/ids.js";
 import { compileFixtureWorkflow, everyEntryKindWorkflow } from "../support/fixtures/workflow-definition-fixtures.js";
 import { projectStartSteps } from "../../src/backend/runs/start/step-selection.js";
 import { CANONICAL_FIELDS } from "../../src/models/fields/registry.js";
 import { CrmReadOnboardingRecord } from "../../src/models/systems/crm/read-onboarding-record.js";
 import { defineCanonicalInput } from "../../src/models/workflow/canonical-input.js";
-import { manualClock } from "../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../support/fixtures/phase1f-run-fixtures.js";
-import { buildWorkflowExplorer } from "../../src/backend/runs/queries/explorer.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../src/models/workflow/operation-display-snapshot.js";
 
-import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
 
 const { lookupInput, fixtureWorkflow } = createSearchWorkflowDefinitionFixtures();
 
@@ -565,35 +560,5 @@ describe("canonical awaited child terminal evidence", () => {
           result: result(z.strictObject({ state: z.literal("done") }), [child], ({ outputs }) => z.object({ state: z.literal("done") }).parse(outputs.child)) };
       },
     })), /owns no output schema/);
-  });
-});
-
-const { DISPLAY_FORWARD_ID, outerWorkflow } = createOperationDisplayFixtures();
-
-
-const operation = SearchPersonOrg.operation;
-if (operation === undefined) throw new Error("SearchPersonOrg must declare its reusable display operation");
-
-const forwardWorkflow = outerWorkflow(DISPLAY_FORWARD_ID, "forward");
-
-describe("workflow operation display declarations", () => {
-
-  it("serves the exact compiled complete structure through the real Explorer projection", () => {
-    const compiled = compileWorkflow(forwardWorkflow);
-    const module = composeWorkflowModule(compiled, taskStoreRegistry.stores);
-    const explorer = buildWorkflowExplorer({
-      ...explorerQueryDeps(manualClock(new Date("2026-09-27T12:00:00.000Z")), FingerprintSchema.parse("c".repeat(64))),
-      modules: [module],
-    });
-    const workflow = explorer.workflows[0];
-    if (workflow === undefined || workflow.operationStructure.state !== "declared") {
-      throw new Error("Explorer did not serve the complete operation declaration");
-    }
-    const expected = freezeWorkflowOperationDisplaySnapshot({
-      workflowId: compiled.descriptor.id,
-      definitionFingerprint: compiled.descriptor.contractFingerprint,
-      display: compiled.descriptor.operationDisplay,
-    });
-    expect(workflow.operationStructure.definition).toEqual(expected);
   });
 });

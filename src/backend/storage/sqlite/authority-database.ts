@@ -27,7 +27,6 @@ import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
-import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
 import { TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
@@ -53,7 +52,6 @@ import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "
 import { WorkerSlotRecordSchema,workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { CanonicalCrashRecoveryRequestSchema,LIVE_WORKER_STATES,RunClaimTokenSchema,WorkerControlBasisSchema,WorkerLeaseRecordSchema,isLiveWorker,type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
-import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -61,7 +59,6 @@ import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationManifest,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
-import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { authenticateAuditedParkedWriteResolution,authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -432,7 +429,6 @@ type FailureRepository = Readonly<{
 
 
 type DiagnosticBundleRepository = Readonly<{
-  validateOperation(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<DiagnosticBundle>;
   insertPrepared(input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>): ImmutableInsertResult<DiagnosticBundle>;
   get(bundleId: string): DiagnosticBundle | undefined;
@@ -4918,38 +4914,8 @@ export class AuthorityDatabase implements Disposable {
       const rows = this.#database.prepare(sql).all(parameter);
       return Object.freeze(rows.map((row) => this.#parseNativeRow("diagnostic_files",row,DiagnosticAttachmentStorageRecordSchema)));
     };
-    const validateOperation = (input: unknown): void => {
-      const identity = DeclaredActionIdentitySchema.parse(input);
-      const run = readTimelineRun(this.#database, identity.runId);
-      if (run === undefined || identity.attempt !== run.envelope.attempt
-        || Number(identity.claimGeneration) !== Number(run.claimGeneration)
-        || identity.definitionFingerprint !== run.envelope.contractFingerprint) throw new Error("diagnostic-operation-owner-execution-mismatch");
-      const definition = requireWorkflowOperationDisplaySnapshot(run.envelope.operationDisplaySnapshot, { workflowId: run.envelope.workflow, definitionFingerprint: run.envelope.contractFingerprint });
-      requireOperationSourceDeclaration(definition, identity);
-      if (run.envelope.parent === undefined ? identity.childInvocation !== undefined : identity.childInvocation?.parentRunId !== run.envelope.parent.runId || identity.childInvocation.edgeId !== run.envelope.parent.edgeId) throw new Error("diagnostic-operation-child-identity-mismatch");
-      const expected = canonicalJsonStringify(identity);
-      let cursor = 0;
-      for (;;) {
-        const rows = this.#database.prepare("SELECT * FROM timeline_events WHERE run_id=? AND cursor>? ORDER BY cursor LIMIT 500").all(identity.runId, cursor);
-        for (const raw of rows) {
-          const record = timelineEventFromRow(raw);
-          cursor = record.cursor;
-          if (record.payload.kind !== "note") continue;
-          const note = record.payload.note;
-          const occurrence = note.action?.operation;
-          if (occurrence === undefined) continue;
-          const { value: _value, ...retained } = occurrence;
-          if (canonicalJsonStringify(retained) !== expected) continue;
-          if (!("runId" in note) || note.runId !== identity.runId || note.workflow !== run.envelope.workflow || note.attempt !== identity.attempt || note.traceId !== run.envelope.traceId) throw new Error("diagnostic-operation-note-owner-mismatch");
-          return;
-        }
-        if (rows.length < 500) break;
-      }
-      throw new Error("diagnostic-operation-exact-occurrence-not-retained");
-    };
     const insert = (input: unknown, publication?: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => {
         let record = DiagnosticBundleSchema.parse(input);
-        if (record.operation !== undefined) validateOperation(record.operation);
         let json = canonicalJsonStringify(record);
         return this.#authorityWrite("diagnostic_snapshots", () => {
           const existing = this.#readRecord("diagnostic_snapshots", record.bundleId, DiagnosticBundleSchema);
@@ -5028,7 +4994,6 @@ export class AuthorityDatabase implements Disposable {
         });
       };
     return Object.freeze({
-      validateOperation,
       insert: (input: unknown) => insert(input),
       insertPrepared: (input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => insert(input, publication),
       get: (bundleId: string) => this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema),

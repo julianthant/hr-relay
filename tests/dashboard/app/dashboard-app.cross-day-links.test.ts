@@ -159,7 +159,7 @@ async function relatedFixture(options: Readonly<{ failure?: 'missing' | 'wrong-p
     }
     if (path.includes('/runs/')) {
       const id = path.split('/runs/')[1].split('/')[0];reads.push(`run:${id}`);
-      if (path.endsWith('/logs')) return Response.json({ section: 'logs',payload: NotePageSchema.parse({ runId: id,rows: [],notes: [],confirmedActions: [],confirmedActionBindings: [],nextCursor: { state: 'absent',reason: 'end-of-page' } }) });
+      if (path.endsWith('/logs')) return Response.json({ section: 'logs',payload: NotePageSchema.parse({ runId: id,rows: [],notes: [],nextCursor: { state: 'absent',reason: 'end-of-page' } }) });
       const response = detail(id === parent.runId ? parent : child);
       return Response.json(options.failure === 'owner-trace' && id === parent.runId ? { ...response,header: { ...response.header,traceId: 'ec-000000-ffff' } } : response);
     }

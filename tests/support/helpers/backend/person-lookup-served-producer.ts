@@ -36,8 +36,7 @@ export async function personLookupServedProducer(person?: SearchPersonOrgOutput)
     const deps=createOperatorRunDetail({database,stateRoot,projection,runReader});
     const detail=buildRunDetail(deps,run.envelope.runId);
     const section=buildRunLogsSection(deps,run.envelope.runId,projection.runFold(run.envelope.runId),run);if(section.section!=="logs")throw Error("synthetic producer Logs missing");
-    const snapshot:RunLogSnapshot={detail,logs:section.payload,sections:[],confirmedActionBindings:section.payload.confirmedActionBindings,
-      actionEvidence:{state:"available",events:section.payload.confirmedActions ?? [],missingPages:[]},unavailableEvidence:[]};
+    const snapshot:RunLogSnapshot={detail,logs:section.payload,sections:[],unavailableEvidence:[]};
     return{harness,run,projection,deps,snapshot,dispose:world.cleanup};
   }catch(error){await world.cleanup();throw error;}
 }

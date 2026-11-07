@@ -51,7 +51,7 @@ export function workbookReferenceLogs(state: 'unavailable' | 'available' | 'reso
   });
   const logs = RunDetailSectionResponseSchema.parse({ section: 'logs', payload: { runId: choice.native.runId, notes,
     rows: notes.map(note => ({ kind: 'note', native: note.native, logId: note.noteId, sequence: note.sequence, note })),
-    confirmedActions: [], confirmedActionBindings: [], nextCursor: { state: 'absent', reason: 'end-of-page' } } });
+    nextCursor: { state: 'absent', reason: 'end-of-page' } } });
   const workbooks = RunDetailSectionResponseSchema.parse({ section: 'workbook-writes', payload: { runId: choice.native.runId, operations: [], referenceChoices: [choice] } });
   return { ...f, choice, detail, logs, workbooks };
 }

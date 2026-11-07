@@ -174,7 +174,7 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
   authenticateRunPriority(repositories, run, request.priority, command.requestedBy);
   authenticateRunGateResume(repositories, run, command.requestedBy);
   if (request.priority !== plan.priority) throw new Error("delegation-root-create-binding-mismatch");
-  const fields = ["workflow", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
+  const fields = ["workflow", "descriptorVersion", "contractFingerprint",
     "requestedInstance", "resolvedInstance", "configFingerprint", "configSnapshotId", "shape", "dryRun",
     "recovery", "browserMode", "captureBrowserScreenshots", "stepOmissions", "sourceBound", "parent", "retryOf"] as const;
   if (fields.some(field => !same(request[field], envelope[field]))) throw new Error("delegation-root-create-binding-mismatch");
@@ -221,7 +221,7 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
     validateRunContinuation(repositories, run.envelope);
     if (!same(settled.result.continuation, origin.operation === "recover" ? captureRunContinuation(repositories, previous) : undefined)) throw new Error("delegation-root-continuation-binding-mismatch");
     authenticateRunPriority(repositories, run, previous.envelope.priority, source.requestedBy);
-    const fields = ["workflow", "itemId", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
+    const fields = ["workflow", "itemId", "descriptorVersion", "contractFingerprint",
       "requestedInstance", "resolvedInstance", "shape", "dryRun",
       "browserMode", "captureBrowserScreenshots", "stepOmissions"] as const;
     const snapshot = repositories.configSnapshots.get(run.envelope.configSnapshotId);

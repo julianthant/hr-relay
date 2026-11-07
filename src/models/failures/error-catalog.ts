@@ -426,14 +426,6 @@ export const ERROR_CATALOG = Object.freeze({
     "Logs unavailable",
     EmptyParametersSchema,
   ),
-  LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: catalogEntry(
-    "Confirmed actions unavailable",
-    EmptyParametersSchema,
-  ),
-  LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: catalogEntry(
-    "The response did not supply complete confirmed-action evidence.",
-    EmptyParametersSchema,
-  ),
   EXPLORER_TASK_BINDING_UNAVAILABLE: catalogEntry(
     "This workflow definition is unavailable because a task implementation is not registered.",
     EmptyParametersSchema,

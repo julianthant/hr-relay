@@ -1,6 +1,5 @@
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { UcpathContactSaveError } from "../../../../models/ui/ucpath-emergency-contact.js";
-import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { UcpathSaveEmergencyContact } from "../../../../models/systems/ucpath/save-emergency-contact.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { ucpathDriver } from "../driver-declaration.js";
@@ -15,8 +14,6 @@ export const saveEmergencyContactTask = defineTask(ucpathDriver, UcpathSaveEmerg
     });
     const verdict = emergencyContactVerdict(input, contacts);
     if (verdict.state !== "present") return ctx.fail("saved-effect-mismatch", "The complete persisted contact set does not match the approved plan.");
-    await ctx.confirmed?.verify({ action: { id: "verify-contact-observation", targetId: "verify-contact-observation" }, purpose: "read-validation",
-      observe: async () => verdict, matches: observed => canonicalJsonStringify(observed) === canonicalJsonStringify(verdict) });
     ctx.recordData({ direction: "read", field: "proof", value: verdict.proof });
     return { proof: verdict.proof };
   },

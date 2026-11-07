@@ -82,7 +82,7 @@ export function pickedRunWorld(state: PickedRunState) {
   const failureNote = { native: native(5), noteId: uuidOf(1005), runId: row.runId, sequence: 5, at: FIXTURE_NOW, level: "warning", message: "Screenshot capture unavailable.",
     fields: [{ key: "code", kind: "text", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" }, { key: "boundary", kind: "text", value: state === "pre-submit-failed" ? "before-submit" : "after-submit" }] };
   const notes = [...captures.map(capture => capture.note), note, ...(failed ? [failureNote] : [])].sort((left, right) => left.sequence - right.sequence);
-  const logs = RunDetailSectionResponseSchema.parse({ section: "logs", payload: { runId: row.runId, confirmedActions: [], confirmedActionBindings: [], notes,
+  const logs = RunDetailSectionResponseSchema.parse({ section: "logs", payload: { runId: row.runId, notes,
     rows: notes.map(note => ({ kind: "note", native: note.native, logId: note.noteId, sequence: note.sequence, note })), nextCursor: { state: "absent", reason: "end-of-page" },
     ...(state === "dry-run" ? { dryRunPreview: { state: "available", coverage: "full", stages: [
       { id: "searching", label: "Search for employee", state: "exercised", detail: "Read and verified the sample employee.", sample: { label: "dry-run sample", value: "Sample employee" } },

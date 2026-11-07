@@ -1,8 +1,8 @@
 
 import { Hono as Hono_m3 } from "hono";
-import { default as assert_m0,default as assert_m1,default as assert_m2,default as assert_m3,default as assert_m4,default as assert_m5 } from "node:assert/strict";
+import { default as assert_m0,default as assert_m1,default as assert_m2,default as assert_m3,default as assert_m5 } from "node:assert/strict";
 import { createHash as createHash_m1 } from "node:crypto";
-import { afterAll as afterAll_m4,afterEach as afterEach_m3,beforeAll as beforeAll_m4,describe as describe_m0,describe as describe_m1,describe as describe_m2,describe as describe_m3,describe as describe_m4,describe as describe_m5,it as it_m0,it as it_m1,it as it_m2,it as it_m3,it as it_m4,it as it_m5 } from "vitest";
+import { afterEach as afterEach_m3,describe as describe_m0,describe as describe_m1,describe as describe_m2,describe as describe_m3,describe as describe_m5,it as it_m0,it as it_m1,it as it_m2,it as it_m3,it as it_m5 } from "vitest";
 import { z as z_m5 } from "zod";
 import { composeDataQueries as composeDataQueries_m3 } from "../../../src/backend/app/composition/dashboard/data.js";
 import { readRerunValues as readRerunValues_m3 } from "../../../src/backend/runs/start/rerun-values.js";
@@ -10,12 +10,11 @@ import type { DashboardApp as DashboardApp_m3 } from "../../../src/backend/trans
 import { registerDataRoutes as registerDataRoutes_m3 } from "../../../src/backend/transports/http/routes/data.js";
 import { failureStatus as failureStatus_m3 } from "../../../src/backend/transports/http/routes/failure-status.js";
 import { registerQueueRoutes as registerQueueRoutes_m3 } from "../../../src/backend/transports/http/routes/queue.js";
-import { createDashboardClient as createDashboardClient_m0,createDashboardClient as createDashboardClient_m1,createDashboardClient as createDashboardClient_m2,createDashboardClient as createDashboardClient_m3,createDashboardClient as createDashboardClient_m4,createDashboardClient as createDashboardClient_m5,DashboardClientError as DashboardClientError_m0,StartPlanRefusalError as StartPlanRefusalError_m3 } from "../../../src/dashboard/client/index.js";
+import { createDashboardClient as createDashboardClient_m0,createDashboardClient as createDashboardClient_m1,createDashboardClient as createDashboardClient_m2,createDashboardClient as createDashboardClient_m3,createDashboardClient as createDashboardClient_m5,DashboardClientError as DashboardClientError_m0,StartPlanRefusalError as StartPlanRefusalError_m3 } from "../../../src/dashboard/client/index.js";
 import { appendLogPage as appendLogPage_m5 } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { createRunLaunchService as createRunLaunchService_m3 } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { DiagnosticBundleWireSchema as DiagnosticBundleWireSchema_m0 } from "../../../src/models/dashboard/diagnostic-bundle.js";
-import { OperationSourceResponseSchema as OperationSourceResponseSchema_m4 } from "../../../src/models/dashboard/operation-structure.js";
-import { RunDetailSectionResponseSchema as RunDetailSectionResponseSchema_m4,RunDetailSectionResponseSchema as RunDetailSectionResponseSchema_m5 } from "../../../src/models/dashboard/run-detail.js";
+import { RunDetailSectionResponseSchema as RunDetailSectionResponseSchema_m5 } from "../../../src/models/dashboard/run-detail.js";
 import { deriveDiagnosticContentDigest as deriveDiagnosticContentDigest_m1 } from "../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema as DiagnosticBundleSchema_m1 } from "../../../src/models/trust/diagnostic.js";
 import { canonicalJsonStringify as canonicalJsonStringify_m0,canonicalJsonStringify as canonicalJsonStringify_m1,canonicalJsonStringify as canonicalJsonStringify_m2 } from "../../../src/rules/validation/canonical-json.js";
@@ -29,7 +28,7 @@ FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST as FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST_m2,
 FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES as FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES_m1,
 FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES as FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES_m2
 } from "../../support/fixtures/dashboard/fixture-day.js";
-import { startOperationAuthorityServer as startOperationAuthorityServer_m4,startOperationAuthorityServer as startOperationAuthorityServer_m5 } from "../../support/fixtures/dashboard/fixture-operation-authority.js";
+import { startOperationAuthorityServer as startOperationAuthorityServer_m5 } from "../../support/fixtures/dashboard/fixture-operation-authority.js";
 import { BASELINE_JPEG_BASE64 as BASELINE_JPEG_BASE64_m1 } from "../../support/fixtures/diagnostic-image-fixtures.js";
 import { readImageGeometry as readImageGeometry_m1 } from "../../support/fixtures/image-geometry.js";
 import { fictionalSeparationDocument as fictionalSeparationDocument_m5,reconcileFictionalSeparation as reconcileFictionalSeparation_m5 } from "../../support/fixtures/plan1-separation-operation.js";
@@ -445,75 +444,14 @@ afterEach_m3(_afterEachFixture0);
 {
 
 
-let server: Awaited<ReturnType<typeof startOperationAuthorityServer_m4>>;
-const _beforeAllFixture0 = async () => { server = await startOperationAuthorityServer_m4(); };
-const _afterAllFixture1 = async () => { if (server !== undefined) await server.close(); };
-
-async function logs() {
-  const response = await fetch(`${server.baseUrl}/api/v1/runs/${server.runId}/logs`);
-  assert_m4.equal(response.status, 200);
-  const section = RunDetailSectionResponseSchema_m4.parse(await response.json());
-  assert_m4.equal(section.section, "logs");
-  if (section.section !== "logs" || section.payload.operationStructure?.state !== "observed") throw new Error("operation-app-fixture-missing-frozen-logs");
-  return section.payload.operationStructure;
-}
-
-describe_m4("executable operation app authority", () => {
-beforeAll_m4(_beforeAllFixture0);
-afterAll_m4(_afterAllFixture1);
-
-  it_m4("serves real frozen executor lifecycle and values through the Logs route", async () => {
-    const structure = await logs();
-    assert_m4.equal(structure.runId, server.runId);
-    const confirmed = structure.observations.filter((observation) => observation.occurrence.state === "confirmed");
-    assert_m4.equal(confirmed.length, 4);
-    for (const observation of confirmed) {
-      const proof = observation.occurrence.confirmation;
-      assert_m4.ok(proof !== undefined);
-      assert_m4.ok(structure.observations.some((verification) => verification.occurrence.logicalActionId === proof.verificationActionId && verification.occurrence.occurrence === proof.verificationOccurrence && verification.occurrence.state === "completed" && verification.at === proof.verifiedAt));
-    }
-    assert_m4.ok(structure.observations.some((observation) => observation.occurrence.state === "started"));
-    assert_m4.ok(structure.observations.some((observation) => observation.occurrence.state === "not-run"));
-    assert_m4.ok(structure.observations.some((observation) => observation.occurrence.value?.state === "observed" && typeof observation.occurrence.value.value === "string" && observation.occurrence.value.value.includes("Fixture operator")));
-  });
-  it_m4("authorizes the exact nested-child source under the current parent and refuses a foreign edge", async () => {
-    const structure = await logs();
-    const value = structure.observations.find((observation) => observation.occurrence.value?.producer.kind === "transformation")?.occurrence.value;
-    assert_m4.ok(value?.producer.kind === "transformation");
-    const identity = value.producer.inputs?.[0]?.identities[0];
-    assert_m4.ok(identity);
-    assert_m4.notEqual(identity.runId, server.runId);
-    const url = (input: unknown) => `${server.baseUrl}/api/v1/runs/${server.runId}/operation-source?request=${encodeURIComponent(JSON.stringify({ identity: input }))}`;
-    const client = createDashboardClient_m4({ baseUrl: server.baseUrl });
-    assert_m4.equal((await client.operationSource(server.runId, { identity })).state, "found");
-    const response = await fetch(url(identity));
-    assert_m4.equal(response.status, 200);
-    const source = OperationSourceResponseSchema_m4.parse(await response.json());
-    assert_m4.equal(source.state, "found");
-    if (source.state === "found") {
-      assert_m4.equal(source.structure.runId, identity.runId);
-      const forged = createDashboardClient_m4({ baseUrl: server.baseUrl, fetchImpl: async () => new Response(JSON.stringify({ ...source,
-        structure: { ...source.structure, observations: source.structure.observations.map((observation) => ({ ...observation, occurrence: { ...observation.occurrence, occurrence: observation.occurrence.occurrence + 100 } })) } }), { headers: { "content-type": "application/json" } }) });
-      await assert_m4.rejects(forged.operationSource(server.runId, { identity }), /OPERATION_SOURCE_IDENTITY_MISMATCH/u);
-    }
-    const denied = await fetch(url({ ...identity, childInvocation: { ...identity.childInvocation, edgeId: "foreign-edge" } }));
-    assert_m4.notEqual(denied.status, 200);
-    assert_m4.match(await denied.text(), /child-identity-mismatch/u);
-  });
-});
-}
-
-{
-
-
 describe_m5("fictional separation run through production authority", () => {
-  it_m5("retains complete computed and staged comments while withholding unregistered browser observations", async () => {
+  it_m5("retains complete staged comments through paginated Logs", async () => {
     const server = await startOperationAuthorityServer_m5("separation");
     try {
       const response = await fetch(`${server.baseUrl}/api/v1/runs/${server.runId}/logs`);
       assert_m5.equal(response.status, 200);
       const section = RunDetailSectionResponseSchema_m5.parse(await response.json());
-      if (section.section !== "logs" || section.payload.operationStructure?.state !== "observed") throw new Error("separation-frozen-logs-missing");
+      if (section.section !== "logs") throw new Error("separation-logs-missing");
       let page = section.payload;
       const client = createDashboardClient_m5({ baseUrl: server.baseUrl });
       const cursors = new Set<string>();
@@ -526,20 +464,7 @@ describe_m5("fictional separation run through production authority", () => {
         if (next.section !== "logs") throw new Error("separation-pagination-section-mismatch");
         page = appendLogPage_m5(page, cursor, next.payload);
       }
-      assert_m5.ok(page.operationStructure?.state === "observed");
-      const structure = page.operationStructure;
-      const confirmed = structure.observations.filter((item) => item.occurrence.state === "confirmed");
-      assert_m5.equal(confirmed.length, 37);
-      assert_m5.deepEqual(confirmed.filter((item) => item.action === "computed" && !item.occurrence.logicalActionId.includes("comments")).map((item) => item.occurrence.value?.value), ["09/25/2026", "09/25/2026", "09/26/2026"]);
-      const comments = confirmed.filter((item) => item.occurrence.logicalActionId === "fill-comments" || item.occurrence.logicalActionId === "fill-managercomments");
-      assert_m5.equal(comments.length, 3);
       const exactComments = reconcileFictionalSeparation_m5(fictionalSeparationDocument_m5).comments;
-      const computedComments = confirmed.filter((item) => item.action === "computed"
-        && ["compute-comments", "compute-managercomments"].includes(item.occurrence.logicalActionId));
-      assert_m5.equal(computedComments.length, 2);
-      assert_m5.deepEqual(computedComments.map((item) => item.occurrence.value?.state === "observed" ? item.occurrence.value.value : item.occurrence.value?.state), [exactComments, exactComments]);
-      assert_m5.deepEqual(comments.map((item) => item.occurrence.value?.state), ["withheld", "withheld", "withheld"]);
-      for (const item of comments) assert_m5.equal("value" in (item.occurrence.value ?? {}), false);
       const run = server.database.authority.runs.get(server.runId);
       assert_m5.ok(run);
       const staged = z_m5.object({ fictional: z_m5.object({ comments: z_m5.string(), managerComments: z_m5.string() }) });
@@ -550,7 +475,6 @@ describe_m5("fictional separation run through production authority", () => {
         assert_m5.equal(output.fictional.comments, exactComments);
         assert_m5.equal(output.fictional.managerComments, exactComments);
       }
-      assert_m5.ok(structure.definition.invocations.some((invocation) => invocation.operation.actions.some((action) => action.kind === "resume-page")));
       const lifecycle = server.database.authority.runs.get(server.runId)?.lifecycle;
       assert_m5.ok(lifecycle?.state === "terminal" && lifecycle.outcome === "done");
     } finally { await server.close(); }

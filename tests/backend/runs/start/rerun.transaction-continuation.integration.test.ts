@@ -1,4 +1,3 @@
-import { UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { validateCompletedTransactionContinuations } from "../../../../src/backend/runs/start/recovery-plan.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -6,10 +5,7 @@ import { afterEach, it } from "vitest";
 import { z } from "zod";
 import { defineTaskContract } from "../../../../src/models/task/task-contract.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
-import { defineWorkflowDescriptor, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { compileWorkflowOperationDisplay, OPERATION_DISPLAY_FORMAT_VERSION, type TaskOperationDeclaration, type WorkflowOperationEntryProjection } from "../../../../src/models/workflow/operation-display.js";
-import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
-import type { ConfirmedActionEvent } from "../../../../src/models/events/confirmed-action.js";
+import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { DelegationEdgeIdSchema, EidSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -21,7 +17,7 @@ import { AuthenticatedRunContinuation } from "../../../../src/backend/storage/sq
 import { previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { sourceBoundReadContract, sourceBoundReadDescriptor, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
-import { absentProbeEvidence, buildWriteFixtureRegistry, WriteFixtureCommit, WriteFixturePrepare, WriteFixtureProbe, WriteFixtureSaveCommit, WriteFixtureVerify, WriteFixtureProofSchema,
+import { absentProbeEvidence, buildWriteFixtureRegistry, WriteFixtureCommit, WriteFixturePrepare, WriteFixtureProofSchema,
   writeFixtureMemoDescriptor, WRITE_FIXTURE_EID, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });
@@ -88,58 +84,18 @@ function partialChildDescriptor(mapFailedMember: boolean) {
     .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
 }
 
-function completeDescriptor() {
-  const completeGraph = flow(Input)
-    .step("before", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
-    .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: [], prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
-      commit: { uses: WriteFixtureSaveCommit, bind: ({ input }) => ({ eid: input.eid }) },
-      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
-    .step("finish", sourceBoundReadContract, { dependsOn: [WRITE_FIXTURE_NODE_ID], replay: "checkpoint", bind: ({ input }) => input })
-    .build({ schema: WriteFixtureSaveCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output });
-  const completeBase = defineWorkflowDescriptor({ ...metadata, flow: completeGraph });
-  const entries: WorkflowOperationEntryProjection[] = descriptorRuntimeNodes(completeBase).map(node => {
-    if (node.kind !== "task" && node.kind !== "transaction") throw new Error("unexpected display fixture node");
-    const contracts = node.kind === "task" ? [{ role: "task" as const, contract: node.uses }]
-      : [{ role: "probe" as const, contract: WriteFixtureProbe }, { role: "prepare" as const, contract: WriteFixturePrepare },
-        { role: "commit" as const, contract: WriteFixtureSaveCommit }, { role: "verify" as const, contract: WriteFixtureVerify }];
-    return { id: String(node.id), kind: node.kind, dependsOn: node.dependsOn.map(String), contracts: contracts.map(({ role, contract }) => {
-      const operation: TaskOperationDeclaration = { version: OPERATION_DISPLAY_FORMAT_VERSION, id: `fixture-${role}`,
-        system: role === "task" ? "local" : "ucpath", session: role === "task" ? { kind: "local", id: "fixture-local" }
-          : { kind: "browser", id: "fixture-browser", system: "ucpath" },
-        ...(role === "task" ? {} : { page: { screen: "ucpath.write-fixture.screen" } }),
-        values: role === "prepare" ? [{ id: "eid", source: { kind: "contract-input", path: "eid" } }]
-          : role === "probe" || role === "verify" ? [{ id: "state", source: { kind: "contract-output", path: "state" } }] : [],
-        actions: role === "prepare" ? [{ id: "fill-eid", kind: "fill-field", target: "ucpath.write-fixture.eid-input", valueSlot: "eid" }]
-          : role === "commit" ? [{ id: "save", kind: "click", target: UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON }]
-          : role === "probe" ? [{ id: "probe-state", kind: "read-field", target: "ucpath.write-fixture.probe-state", valueSlot: "state" }]
-          : role === "verify" ? [{ id: "verify-state", kind: "read-field", target: "ucpath.write-fixture.verify-state", valueSlot: "state" },
-            { id: "verify-saved", kind: "verify" }] : [{ id: "observe", kind: "compute" }],
-      };
-      return { role, contract: { ...contract, operation } };
-    }) };
-  });
-  const invocations = entries.flatMap(entry => entry.contracts.map(contract => ({ id: `${entry.id}-${contract.role}`, entryId: entry.id,
-    contractRole: contract.role, occurrencePath: [entry.id, contract.role], bindings: contract.role === "prepare"
-      ? [{ slot: "eid", value: { kind: "run-input" as const, path: "eid" } }] : [] })));
-  return defineWorkflowDescriptor({ ...metadata, flow: completeGraph, operationDisplay: compileWorkflowOperationDisplay({ workflowId: descriptor.id, input: Input, entries,
-    declaration: { capability: "complete", version: OPERATION_DISPLAY_FORMAT_VERSION, invocations,
-      presentation: invocations.map(invocation => ({ id: `${invocation.id}-node`, kind: "operation", invocationId: invocation.id })) } }) });
-}
-const publisherDescriptor = completeDescriptor();
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
 async function fixture(failOn: readonly number[] = [2], selected: AnyWorkflowDescriptor = descriptor,
-  publisherFactory?: Parameters<typeof sourceBoundHarness>[5], children: readonly AnyWorkflowDescriptor[] = [], pauseAtCommit = false) {
+  children: readonly AnyWorkflowDescriptor[] = [], pauseAtCommit = false) {
   const h = await sourceBoundHarness(selected, world => {
-    const reads = sourceBoundReadStores(world, failOn), writes = buildWriteFixtureRegistry(world, selected === commitMemoDescriptor ? memoCommit : WriteFixtureCommit,
-      { completeActions: selected === publisherDescriptor });
+    const reads = sourceBoundReadStores(world, failOn), writes = buildWriteFixtureRegistry(world, selected === commitMemoDescriptor ? memoCommit : WriteFixtureCommit);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  }, undefined, undefined, undefined, publisherFactory, children);
+  }, undefined, undefined, undefined, children);
   cleanups.push(h.dispose);
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
-  if (selected === publisherDescriptor) h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
   const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID,
     selected === commitMemoDescriptor ? undefined : WRITE_FIXTURE_EID));
   if (pauseAtCommit) h.world.onCommitClick = () => {
@@ -203,7 +159,7 @@ for (const door of ["first-delivery", "lost-acknowledgement"] as const) it(`${do
 });
 
 for (const door of ["first-delivery", "lost-acknowledgement"] as const) it(`${door} reuses authenticated child-dependent transaction and receipt without relaunching the child`, async () => {
-  const h = await fixture([3], childReceiptDescriptor, undefined, [sourceBoundReadDescriptor]), before = effects(h);
+  const h = await fixture([3], childReceiptDescriptor, [sourceBoundReadDescriptor]), before = effects(h);
   const children = h.database.authority.runs.listChildren(h.failed.envelope.runId); assert.equal(children.length, 1);
   const next = operatorRecover(h, h.failed, door === "lost-acknowledgement");
   assert.equal((await h.execute(next)).state, "done");
@@ -214,7 +170,7 @@ for (const door of ["first-delivery", "lost-acknowledgement"] as const) it(`${do
 });
 
 for (const changed of [false, true]) it(`authenticates original all-settled members after a post-terminal replacement with ${changed ? "changed" : "unchanged"} mappings`, async () => {
-  const h = await fixture([2, 4], partialChildDescriptor(changed), undefined, [sourceBoundReadDescriptor]);
+  const h = await fixture([2, 4], partialChildDescriptor(changed), [sourceBoundReadDescriptor]);
   const originals = h.database.authority.runs.listChildren(h.failed.envelope.runId), before = effects(h);
   assert.equal(originals.length, 2);
   const done = originals.find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "done"); assert.ok(done);
@@ -233,7 +189,7 @@ for (const changed of [false, true]) it(`authenticates original all-settled memb
 });
 
 it("refuses own-run transaction reuse after an in-flight child replacement without immutable original member authority", async () => {
-  const h = await fixture([2], partialChildDescriptor(true), undefined, [sourceBoundReadDescriptor], true), before = effects(h);
+  const h = await fixture([2], partialChildDescriptor(true), [sourceBoundReadDescriptor], true), before = effects(h);
   const failedChild = h.database.authority.runs.listChildren(h.failed.envelope.runId)
     .find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(failedChild);
   const replacement = operatorRecover(h, failedChild);
@@ -248,7 +204,7 @@ it("refuses own-run transaction reuse after an in-flight child replacement witho
 });
 
 it("refuses missing or foreign native child receipt authority before transaction continuation admission", async () => {
-  const h = await fixture([3], childReceiptDescriptor, undefined, [sourceBoundReadDescriptor]), before = effects(h);
+  const h = await fixture([3], childReceiptDescriptor, [sourceBoundReadDescriptor]), before = effects(h);
   const repositories = h.database.authority;
   assert.throws(() => validateCompletedTransactionContinuations({ ...repositories,
     runResults: { ...repositories.runResults, get: () => undefined, getInitialSettlement: () => undefined, getSettlement: () => undefined } }, h.descriptor, h.failed));
@@ -256,20 +212,6 @@ it("refuses missing or foreign native child receipt authority before transaction
   assert.throws(() => validateCompletedTransactionContinuations({ ...repositories,
     dependencies: { ...repositories.dependencies, evidence: () => ({ ...actual, parentRunId: RunIdSchema.parse(randomUUID()) }) } }, h.descriptor, h.failed),
   /delegation-owner-mismatch/u);
-  assert.deepEqual(effects(h), before);
-});
-
-it("keeps a real publisher healthy when complete-display continuation reuses a transaction without a new submit", async () => {
-  const events: ConfirmedActionEvent[] = [];
-  const h = await fixture([2], publisherDescriptor, (clock, workerId) => createConfirmedActionPublisher({ clock, workerId,
-    streamId: "transaction-continuation", capacity: 32, append: event => { events.push(event); } }));
-  assert.equal(h.publisher?.health().state, "healthy");
-  assert.ok(events.some(event => event.kind === "fact" && event.meaning === "submit"), "the source genuinely published its saved transaction");
-  const before = effects(h), confirmations = [...events];
-  const next = operatorRecover(h); assert.equal(next.envelope.operationDisplayCapability, "complete"); assert.ok(next.envelope.operationDisplaySnapshot);
-  assert.equal((await h.execute(next)).state, "done");
-  assert.equal(h.publisher?.health().state, "healthy");
-  assert.deepEqual(events, confirmations);
   assert.deepEqual(effects(h), before);
 });
 

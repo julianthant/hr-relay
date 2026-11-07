@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
-import { WriteFixturePrepare, WriteFixtureCommit, WriteFixtureProbe, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureSessions, WRITE_FIXTURE_EID } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { WriteFixturePrepare, WriteFixtureCommit, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureSessions, WRITE_FIXTURE_EID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { defineTaskContract } from "../../../../src/models/task/task-contract.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
@@ -17,24 +17,14 @@ const profiles = createProfileFixtureSet(), world = createRunExecutorTestWorld(p
 afterAll(() => profiles.close());
 afterEach(world.cleanup);
 const input = z.strictObject({ eid: EidSchema });
-const operation = { version: 1, id: "refused-write", system: "ucpath", session: { kind: "browser", id: "contact", system: "ucpath" },
-  actions: [{ id: "verify", kind: "verify", label: "Resolve declared contact plan" }] } as const;
-const { __sealed: _prepareSeal, ...prepareDefinition } = WriteFixturePrepare;
 const { __sealed: _commitSeal, ...commitDefinition } = WriteFixtureCommit;
-const { __sealed: _probeSeal, ...probeDefinition } = WriteFixtureProbe;
-const probe = defineTaskContract({ ...probeDefinition, operation });
-const prepare = defineTaskContract({ ...prepareDefinition, operation });
-const commit = defineTaskContract({ ...commitDefinition, errorCodes: ["CONTACT_SAVE_UNAVAILABLE"], operation });
+const prepare = WriteFixturePrepare;
+const commit = defineTaskContract({ ...commitDefinition, errorCodes: ["CONTACT_SAVE_UNAVAILABLE"] });
 const compiled = compileWorkflow(defineWorkflow({ id: "fixture-transaction-bind-refusal", version: 1, code: "fbr", label: "Transaction bind refusal",
   icon: "Users", category: "operations", input, canonicalInput: defineCanonicalInput(input, input, [{ eid: WRITE_FIXTURE_EID }]),
   requiredWorkbookTypeIds: [], inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {}, details: [], scenarios: ["fixture-transaction-bind-refusal/happy"], identity: { matchKey: value => value.eid },
   presentation: { title: value => value.eid }, role: defineWorkflowRole({ kind: "standalone" }),
-  operationDisplay: { capability: "complete", version: 1, transactionReads: [{ entryId: "contact", role: "probe", contract: probe }], invocations: [
-    { id: "probe", entryId: "contact", contractRole: "probe", occurrencePath: ["contact", "probe"], bindings: [] },
-    { id: "prepare", entryId: "contact", contractRole: "prepare", occurrencePath: ["contact", "prepare"], bindings: [] },
-    { id: "commit", entryId: "contact", contractRole: "commit", occurrencePath: ["contact", "commit"], bindings: [] },
-  ], presentation: [{ id: "probe", kind: "operation", invocationId: "probe" }, { id: "prepare", kind: "operation", invocationId: "prepare" }, { id: "commit", kind: "operation", invocationId: "commit" }] },
   steps: author => {
     const contact = author.transaction({ id: "contact", prepare, commit, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 45_000 }, [], {
       prepareBind: ({ input }) => input,
@@ -44,7 +34,7 @@ const compiled = compileWorkflow(defineWorkflow({ id: "fixture-transaction-bind-
   },
 }));
 
-it("terminalizes a named real transaction bind refusal with complete display before sequencer, probe or browser acquisition", async () => {
+it("terminalizes a named real transaction bind refusal before sequencer, probe or browser acquisition", async () => {
   const driver = createWriteFixtureWorld(), stores = buildWriteFixtureRegistry(driver), sessions = writeFixtureSessions(driver);
   const h = await world.executorHarness({ descriptor: compiled.descriptor, stores, sessions });
   let calls = 0;

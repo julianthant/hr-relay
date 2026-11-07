@@ -3,8 +3,6 @@ import { describe, it } from "vitest";
 import { projectRunLogs, type RunLogSnapshot } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { NativeRunEventWireSchema, NotePageSchema, RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/models/workflow/operation-display-snapshot.js";
-import { plan1Leaf } from "../../support/fixtures/plan1-operation-workflows.js";
 import { browserActionMessage } from "../../../src/models/events/types.js";
 import { PERSON_LOOKUP_LOG_SCENARIOS, personLookupLogSnapshot } from "../../support/fixtures/person-lookup-log-snapshots.js";
 
@@ -27,7 +25,7 @@ function snapshot(): RunLogSnapshot {
     note(3, browserActionMessage({ kind: "clicked", targetId: "ucpath.person-org.search-button" })),
     observed(4, "read", "name", "Quillan, Petra A."),
     note(5, browserActionMessage({ kind: "screenshot", targetId: "ucpath.task-capture", value: `${association.bundleId}:${association.artifactId}` }), association)];
-  const logs = NotePageSchema.parse({ runId: RUN, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []), confirmedActions: [], confirmedActionBindings: [], nextCursor: { state: "absent", reason: "end-of-page" } });
+  const logs = NotePageSchema.parse({ runId: RUN, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []), nextCursor: { state: "absent", reason: "end-of-page" } });
   const detail = RunDetailWireSchema.parse({ runId: RUN, rowRevision: 1, panelKind: "run", header: { runId: RUN, traceId: TRACE, workflowId: "person-lookup", title: "Quillan, Petra A.", status: "done", attempt: 1 },
     timeline: { steps: [{ key: "searching", label: "Search for person", state: "done", members: [{ nodeId: "searching", categoryKey: "searching", label: "Search for person", state: "done" }] }],
       events: [{ native: native(1), categoryKey: "searching", noteId: id(101), sequence: 0, at: AT, label: "Search for person", state: "done", notRun: { state: "absent", reason: "ran" } }] },
@@ -36,7 +34,7 @@ function snapshot(): RunLogSnapshot {
     artifact: { mediaKind: "image", mediaType: "image/png", artifactId: association.artifactId, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
     origins: [{ bundleId: association.bundleId, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "searching", attempt: 1, sessionId: association.sessionId } }],
   }] } });
-  return { detail, logs, sections: [captures], actionEvidence: { state: "available", events: [], missingPages: [] }, confirmedActionBindings: [], unavailableEvidence: [] };
+  return { detail, logs, sections: [captures], unavailableEvidence: [] };
 }
 const client = { artifactUrl: (artifactId: string) => `/artifacts/${artifactId}` };
 describe("served Person Lookup Logs operator presentation", () => {
@@ -98,40 +96,6 @@ describe("served Person Lookup Logs operator presentation", () => {
       ? entry.fields.filter(field => field.label === "Name").map(field => field.value) : [])]),
       [["Search for person", ["Quillan, Petra A.", "Fable, Rowan B."]], ["Cross-check identity", ["Quillan, Petra A."]]]);
   });
-  it.each([false, true])("retains exact screenshot attribution when a repeated observation is an explicit alias=%s", alias => {
-    const original = snapshot();
-    const nativeSource = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
-    assert.ok(nativeSource?.kind === "observed");
-    const source = alias ? { ...nativeSource, displayFields: nativeSource.displayFields?.map(field => ({ ...field, causal: { declaration: "fixture/name", origin: { runId: RUN, attempt: 1, spanPath: `${TRACE}/searching#1`, nodeId: "searching", taskId: "ucpath/search-person-org", field: "name", path: [] } } })) } : nativeSource;
-    const definition = freezeWorkflowOperationDisplaySnapshot({ display: plan1Leaf.descriptor.operationDisplay,
-      workflowId: plan1Leaf.descriptor.id, definitionFingerprint: plan1Leaf.descriptor.contractFingerprint });
-    assert.ok(definition);
-    const occurrence = { runId: RUN, attempt: 1, claimGeneration: 1, taskAttempt: 1, definitionFingerprint: definition.definitionFingerprint,
-      invocationId: "first-operation", occurrencePath: ["first"], nodeId: "first", taskId: "ocr/extract-form-page",
-      logicalActionId: "consume-text", logicalSessionId: "plan1-local", occurrence: 1, state: "completed" };
-    const repeated = { ...source, native: native(6, "first"), logId: id(106), sequence: 6, at: "2026-08-03T17:01:00.000Z", spanPath: `${TRACE}/first#1`,
-      producer: { ...source.producer, nodeId: "first", taskId: "ocr/extract-form-page" } };
-    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []).map(row => row.logId === source.logId ? source : row), repeated],
-      operationStructure: { state: "observed", runId: RUN, definition,
-        observations: [{ logId: repeated.logId, at: AT, action: "read", targetId: "consume-text", occurrence: { ...occurrence, value: { slot: "text", fieldPath: "text",
-          producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } } }] } });
-    const category = original.detail.timeline.steps?.[0]; assert.ok(category);
-    const detail = RunDetailWireSchema.parse({ ...original.detail, timeline: { ...original.detail.timeline,
-      steps: [{ ...category, members: [...category.members, { nodeId: "first", categoryKey: "searching", label: "Read", state: "done" }] }] } });
-    const capture = original.sections[0]; assert.ok(capture.section === "captures");
-    const captures = RunDetailSectionResponseSchema.parse({ ...capture, payload: { ...capture.payload,
-      artifacts: capture.payload.artifacts.map(artifact => ({ ...artifact,
-        origins: artifact.origins.map(origin => ({ ...origin, operation: occurrence })) })) } });
-    const projected = projectRunLogs({ ...original, detail, logs, sections: [captures] }, client);
-    const entries = projected.steps.flatMap(step => step.entries);
-    assert.equal(entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []).filter(field => field.label === "Name").length, alias ? 1 : 2);
-    const screenshot = entries.find(entry => entry.id === (alias ? `${repeated.logId}:captures` : repeated.logId));
-    assert.ok(screenshot?.kind === "fields" || screenshot?.kind === "decision");
-    assert.equal(screenshot.kind === "fields" ? screenshot.fields[0].time : screenshot.time, "10:01:00");
-    assert.deepEqual((screenshot.kind === "fields" ? screenshot.screenshots : screenshot.decision.screenshots)?.map(shot => [shot.src, shot.time, shot.width, shot.height]),
-      [[`/artifacts/${id(501)}`, "10:00:00", 1280, 720]]);
-    assert.equal(entries.filter(entry => entry.kind === "click").length, 1);
-  });
   it("keeps an unassociated screenshot explicitly unavailable", () => {
     const original = snapshot();
     const rows = original.logs.rows?.flatMap(row => row.kind === "note" && row.note.screenshot !== undefined
@@ -174,17 +138,13 @@ it("collapses only explicit same-cause aliases across Run notes while retaining 
   const captured=result.steps.flatMap(step=>step.entries).find(entry=>entry.id===`${id(105)}:captures`);assert.ok(captured?.kind==='decision');assert.deepEqual(captured.decision.screenshots?.map(shot=>[shot.src,shot.width,shot.height]),[[`/artifacts/${id(501)}`,1280,720]]);
 });
 
-it("pairs exact before/after capture events under the sole declared submit without dropping their identities", () => {
+it("shows before- and after-submit captures as their own screenshot entries", () => {
   const base = snapshot();
   const captureRow = base.logs.rows?.find(row => row.kind === "note" && row.note.screenshot !== undefined);
   assert.ok(captureRow?.kind === "note" && captureRow.note.screenshot);
-  const sessionId = captureRow.note.screenshot.sessionId;
   const after = { ...captureRow, native: native(7), logId: id(107), sequence: 7,
     note: { ...captureRow.note, native: native(7), noteId: id(107), sequence: 7,
       screenshot: { ...captureRow.note.screenshot, bundleId: id(600), artifactId: id(601) } } };
-  const submit = { ...captureRow, native: native(6), logId: id(106), sequence: 6,
-    note: { ...captureRow.note, native: native(6), noteId: id(106), sequence: 6, screenshot: undefined,
-      operatorAction: { kind: "click" as const, label: "Save and Submit", submit: true, sessionId } } };
   const captureSection = base.sections[0]; assert.ok(captureSection.section === "captures");
   const original = captureSection.payload.artifacts[0];
   const sections = [RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId: RUN, artifacts: [
@@ -192,32 +152,10 @@ it("pairs exact before/after capture events under the sole declared submit witho
     { ...original, artifact: { ...original.artifact, artifactId: id(601) }, origins: original.origins.map(origin => ({ ...origin,
       bundleId: id(600), browserCapture: { ...origin.browserCapture, boundary: "after-submit" } })) },
   ] } })];
-  const rows = [...(base.logs.rows ?? []), submit, after];
-  const project = (input = rows, detail = base.detail) => projectRunLogs({ ...base, detail, sections, logs: NotePageSchema.parse({ ...base.logs, rows: input,
-    notes: input.flatMap(row => row.kind === "note" ? [row.note] : []) }) }, client).steps.flatMap(step => step.entries);
-  const entries = project();
-  const clicked = entries.find(entry => entry.id === submit.logId); assert.ok(clicked?.kind === "click");
-  assert.deepEqual(clicked.screenshots?.map(shot => [shot.logId, shot.label]), [[captureRow.logId, "Before submit"], [after.logId, "After submit"]]);
-  assert.equal(entries.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 0);
-  const secondSubmit = { ...submit, native: native(8), logId: id(108), sequence: 8,
-    note: { ...submit.note, native: native(8), noteId: id(108), sequence: 8 } };
-  const ambiguous = project([...rows, secondSubmit]);
-  assert.ok(ambiguous.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
-  assert.equal(ambiguous.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 2);
-  const startedSubmit = { ...secondSubmit, note: { ...secondSubmit.note,
-    operatorAction: { ...submit.note.operatorAction, state: "started" as const } } };
-  const completedWithStart = project([...rows, startedSubmit]).find(entry => entry.id === submit.logId);
-  assert.ok(completedWithStart?.kind === "click");
-  assert.equal(completedWithStart.screenshots?.length, 2);
-  const missingAfter = project(rows.filter(row => row.logId !== after.logId));
-  assert.ok(missingAfter.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
-  const laterNative = NativeRunEventWireSchema.parse({ ...submit.native, attempt: 2 });
-  const laterSubmit = { ...submit, native: laterNative, note: { ...submit.note, native: laterNative } };
-  const nextAttempt = RunDetailWireSchema.parse({ ...base.detail, header: { ...base.detail.header, attempt: 2 } });
-  const earlierCaptures = project(rows.map(row => row.logId === submit.logId ? laterSubmit : row), nextAttempt);
-  assert.ok(earlierCaptures.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
-  assert.equal(earlierCaptures.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 2);
-  assert.equal(missingAfter.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 1);
+  const rows = [...(base.logs.rows ?? []), after];
+  const entries = projectRunLogs({ ...base, sections, logs: NotePageSchema.parse({ ...base.logs, rows,
+    notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []) }) }, client).steps.flatMap(step => step.entries);
+  assert.equal(entries.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 2);
 });
 
 it("renders capture failure from structured boundary facts and preserves independently proved write outcomes", () => {

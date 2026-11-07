@@ -372,16 +372,6 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/activity-population-export|csv",
       "durable/failure-record|debug.stack",
       "durable/failure-record|debug.causes[]",
-      "wire/operation-source|structure.definition.invocations[].label",
-      "wire/run-detail-section|payload.confirmedActions[].action.value.consumed.value",
-      "wire/run-detail-section|payload.confirmedActions[].durableProof.checkpointNodeId",
-      "wire/run-detail-section|payload.confirmedActions[].durableProof.writeIntentId",
-      "wire/run-detail-section|payload.confirmedActions[].eventId",
-      "wire/run-detail-section|payload.confirmedActions[].proof.verifier.value.consumed.value",
-      "wire/run-detail-section|payload.confirmedActions[].reason",
-      "wire/run-detail-section|payload.confirmedActions[].stepOccurrence",
-      "wire/run-detail-section|payload.confirmedActions[].workerStreamId",
-      "wire/run-detail-section|payload.operationStructure.definition.invocations[].label",
       "wire/run-detail-section|payload.value.display.observation",
       "wire/run-detail-section|payload.value.display.title",
       "wire/dashboard-day|notifications[].context.subject",
@@ -391,7 +381,6 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].key",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].label",
       "wire/workflow-explorer|workflows[].definitionPreview.reason",
-      "wire/workflow-explorer|workflows[].operationStructure.definition.invocations[].label",
     ];
     assert.equal(new Set(currentLeaves).size, currentLeaves.length);
     for (const identity of currentLeaves) {

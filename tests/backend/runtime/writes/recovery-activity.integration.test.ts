@@ -10,9 +10,7 @@ import { recordBrowserAction, withBrowserActionSession } from "../../../../src/b
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../../src/models/run/recovery-activity.js";
 import { assertNoteWithinRunScope } from "../../../../src/models/run/note-scope.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { WorkflowOperationDisplaySnapshotSchema } from "../../../../src/models/workflow/operation-display-snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { localDatePart } from "../../../../src/rules/time/clock.js";
@@ -38,10 +36,9 @@ function queuedWithSnapshot() {
       taskId: WriteFixtureProbe.id, contractRole: "probe", occurrencePath: [WRITE_FIXTURE_NODE_ID, "probe"], bindings: [], outcomes: [],
       operation: { version: 1, id: "recovery-probe", system: "ucpath", session: { kind: "browser", id: "ucpath", system: "ucpath" },
         values: [], templates: [], transforms: [], actions: [{ id: "probe-state", kind: "read-field", target: "ucpath.write-fixture.probe-state" }] } }] };
-  const snapshot = WorkflowOperationDisplaySnapshotSchema.parse({ ...payload,
-    contentDigest: sha256Hex(`hrauto:operation-display-snapshot:v2\0${canonicalJsonStringify(payload)}`) });
+  const snapshot = { ...payload, contentDigest: "0".repeat(64) };
   const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
-  return RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope, operationDisplaySnapshot: snapshot } });
+  return RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope, operationDisplayCapability: "complete", operationDisplaySnapshot: snapshot } });
 }
 
 async function fixture(snapshot = false) {
@@ -78,7 +75,7 @@ async function fixture(snapshot = false) {
 }
 
 describe("durable recovery activity authority", () => {
-  for (const snapshot of [false, true]) it(`files actions and a required capture on an old run with snapshot=${snapshot}`, async () => {
+  for (const snapshot of [false, true]) it(`files actions and a required capture on an old run with recorded snapshot=${snapshot}`, async () => {
     const f = await fixture(snapshot);
     const before = canonicalJsonStringify([f.input.run, f.input.intent]);
     const openedAt = f.h.clock.now().toISOString();
@@ -86,18 +83,10 @@ describe("durable recovery activity authority", () => {
     assert.equal((await executeRecoveryProbe(f.input)).state, "unknown");
     const records = readTimelineRecords(f.h.database.authority.timelineEvents, 0, WRITE_FIXTURE_RUN_ID).records;
     const notes = records.flatMap(record => record.payload.kind === "note" ? [record] : []);
-    assert.deepEqual(records.map(record => record.payload.kind), snapshot
-      ? ["recovery-activity-started", "note", "note", "note", "recovery-activity-ended"]
-      : ["recovery-activity-started", "note", "recovery-activity-ended"]);
-    assert.deepEqual(notes.map(record => record.occurredAt), snapshot
-      ? [openedAt, openedAt, f.h.clock.now().toISOString()] : [f.h.clock.now().toISOString()]);
+    assert.deepEqual(records.map(record => record.payload.kind), ["recovery-activity-started", "note", "recovery-activity-ended"]);
+    assert.deepEqual(notes.map(record => record.occurredAt), [f.h.clock.now().toISOString()]);
     assert.ok(notes.every(record => record.recordedAt === f.h.clock.now().toISOString()));
-    if (snapshot) {
-      assert.ok(notes.slice(0, 2).every(record => record.payload.kind === "note" && record.payload.note.action?.operation?.runId === WRITE_FIXTURE_RUN_ID));
-      assert.ok(notes.slice(0, 2).every(record => record.payload.kind === "note" && record.payload.note.action?.operation?.taskId === WriteFixtureProbe.id));
-    } else {
-      assert.ok(notes.every(record => record.payload.kind === "note" && record.payload.note.action?.operation === undefined));
-    }
+    assert.ok(notes.every(record => record.payload.kind === "note" && record.payload.note.action?.operation === undefined));
     const screenshot = notes.at(-1)?.payload;
     assert.ok(screenshot?.kind === "note" && screenshot.note.action?.value === `${UUID_5}:${UUID_7}`);
     assert.equal(canonicalJsonStringify([f.input.run, f.input.intent]), before);

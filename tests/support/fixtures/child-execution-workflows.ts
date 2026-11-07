@@ -22,11 +22,7 @@ export const childExecutionNested = compileWorkflow(defineWorkflow({ ...common, 
     return { steps: [[{ key: "nested", label: "Nested" }, [nested]]], result: result(Plan1Output, [nested], ({ outputs }) => {
       if (outputs.nested.state !== "done") throw new Error("child-not-done");
       return outputs.nested.output;
-    }, [
-      { path: "eid", source: { kind: "child-output", entryId: "nested", path: "eid" } },
-      { path: "providerState", source: { kind: "child-output", entryId: "nested", path: "providerState" } },
-      { path: "disposition", source: { kind: "child-output", entryId: "nested", path: "disposition" } },
-    ]) };
+    }) };
   } }));
 export const childExecutionRoot = compileWorkflow(defineWorkflow({ ...common, id: ids[1], code: "fcr",
   steps: ({ delegate, result }) => {
@@ -40,14 +36,7 @@ export const childExecutionRoot = compileWorkflow(defineWorkflow({ ...common, id
         if (outputs.left.state !== "done" || outputs.right.state !== "done") throw new Error("child-not-done");
         return { eid: outputs.left.output.eid, disposition: `${outputs.left.output.disposition}/${outputs.right.output.disposition}`,
           providerState: outputs.right.output.providerState };
-      }, [
-        { path: "eid", source: { kind: "child-output", entryId: "left", path: "eid" } },
-        { path: "providerState", source: { kind: "child-output", entryId: "right", path: "providerState" } },
-        { path: "disposition", source: { kind: "derived", inputs: [
-          { id: "left", source: { kind: "child-output", entryId: "left", path: "disposition" } },
-          { id: "right", source: { kind: "child-output", entryId: "right", path: "disposition" } },
-        ] } },
-      ]) };
+      }) };
   } }));
 export const childExecutionModules = [plan1Leaf, childExecutionNested, childExecutionRoot]
   .map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
@@ -103,11 +92,7 @@ export function childPolicyModules(cascadeCancel: "cascade" | "independent", vis
       return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Output, [child], ({ outputs }) => {
         if (outputs.child.state !== "done") throw new Error("child-not-done");
         return outputs.child.output;
-      }, [
-        { path: "eid", source: { kind: "child-output", entryId: "child", path: "eid" } },
-        { path: "providerState", source: { kind: "child-output", entryId: "child", path: "providerState" } },
-        { path: "disposition", source: { kind: "child-output", entryId: "child", path: "disposition" } },
-      ]) };
+      }) };
     } }));
   return { root: compiled, modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(compiled, plan1Stores.stores)] };
 }

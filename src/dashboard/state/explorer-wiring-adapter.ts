@@ -5,8 +5,6 @@ import type { ExplorerWorkflowWire, ExplorerNodeWire, ExplorerTaskWire, SourceLi
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import type { BrowserSystemId } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import type { OperationActionKind } from "../../models/workflow/operation-display.js";
-import { requireWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotError, type WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
 import type { ExplorerQueries } from "../client/queries/explorer-queries.js";
 import { useSettingsRead } from "./settings-read-model.js";
 
@@ -18,9 +16,6 @@ export type ExplorerWiringState =
   | Readonly<{ state: "refused"; failure: ErrorCatalogFailure; evidence: unknown; previous?: ExplorerProjection }>;
 
 const systems: Readonly<Record<BrowserSystemId | "local", NonNullable<FlowStep["system"]>>> = { ucpath: "UCPath", crm: "CRM", kuali: "Kuali", "new-kronos": "Kronos", "old-kronos": "Kronos", i9: "I-9", onbase: "OnBase", servicenow: "ServiceNow", sharepoint: "SharePoint", local: "Local" };
-const actionIcons: Readonly<Record<OperationActionKind, Extract<FlowPart, { kind: "action" }>["icon"]>> = {
-  "open-page": "click", "resume-page": "rejoin", click: "click", keypress: "key", "read-field": "read", "fill-field": "key", "select-field": "key", "check-field": "key", compute: "compute", verify: "verify", branch: "compute", join: "rejoin", "operator-gate": "verify", delegate: "compute", "session-lifecycle": "click",
-};
 function taskSystem(task: ExplorerTaskWire): FlowStep["system"] {
   if (task.binding.state === "pending") return undefined;
   if (task.binding.driverSystem) return systems[task.binding.driverSystem];
@@ -42,19 +37,6 @@ function structuralParts(node: ExplorerNodeWire): FlowPart[] {
     case "child-run": return [{ kind: "note", text: node.shape.await === "terminal" ? "Run the linked workflow and wait for its result." : "Start the linked workflow and continue without waiting for its result." }];
     case "task": return [];
   }
-}
-
-function declaredActions(items: readonly WorkflowOperationDisplaySnapshot["invocations"][number]["operation"]["actions"][number][]): FlowPart[] {
-  const labels: Readonly<Record<OperationActionKind, string>> = {
-    "open-page": "Open the page", "resume-page": "Return to the page", click: "Select the control", keypress: "Use the keyboard",
-    "read-field": "Read the field", "fill-field": "Fill the field", "select-field": "Select a value", "check-field": "Check the value",
-    compute: "Calculate the result", verify: "Verify the result", branch: "Follow the applicable path", join: "Continue after the preceding activities",
-    "operator-gate": "Wait for operator review", delegate: "Run the linked workflow", "session-lifecycle": "Use the system session",
-  };
-  return items.flatMap(action => [
-    { kind: "action" as const, text: action.label ?? labels[action.kind], icon: actionIcons[action.kind] },
-    ...declaredActions(action.children ?? []),
-  ]);
 }
 
 export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): ExplorerWiringState {
@@ -84,46 +66,9 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
       for (const task of tasks) if (task.binding.state === "bound" && task.binding.driverSystem && !usedSystems.includes(task.binding.driverSystem)) usedSystems.push(task.binding.driverSystem);
     }
     equal(preview.systemsFirstUse, usedSystems, "systems first use");
-    const definition = workflow.operationStructure.state === "declared" ? requireWorkflowOperationDisplaySnapshot(workflow.operationStructure.definition, { workflowId: workflow.id, definitionFingerprint: workflow.contractFingerprint }) : undefined;
-    if (definition) {
-      const invocationIds: string[] = [];
-      const presentation = (items: readonly typeof definition.presentation[number][]): void => {
-        for (const item of items) {
-          if (item.kind === "operation") {
-            const invocation = definition.invocations.find(invocation => invocation.id === item.invocationId);
-            if (!invocation || item.entryId !== undefined && item.entryId !== invocation.entryId) mismatch(`presentation ${item.id}`);
-            invocationIds.push(invocation.id);
-          } else if (item.entryId !== undefined && !nodes.has(item.entryId)) mismatch(`presentation entry ${item.id}`);
-          if (item.children) presentation(item.children);
-        }
-      };
-      presentation(definition.presentation);
-      equal(invocationIds, definition.invocations.map(invocation => invocation.id), "ordered operation presentation");
-      equal(definition.execution, workflow.nodes.map(node => ({ entryId: node.id, dependsOn: node.dependsOn })), "operation execution");
-      for (const invocation of definition.invocations) {
-        const node = nodes.get(invocation.entryId);
-        const task = node?.tasks.find(task => task.taskId === invocation.taskId);
-        if (!task) {
-          const safety = node?.tasks.flatMap(task => task.writeSafety ? [task.writeSafety] : []) ?? [];
-          const unavailableRead = node?.shape.kind === "transaction" && safety.some(safety => invocation.contractRole === "probe" && safety.probeTaskId === invocation.taskId || invocation.contractRole === "verify" && safety.verifyTaskId === invocation.taskId);
-          if (unavailableRead) return { state: "unavailable", reason: "Required transaction safety details are unavailable in this definition preview." };
-          mismatch(`invocation ${invocation.id}`);
-        }
-        equal(invocation.contractRole, task.arm, `contract role ${invocation.id}`);
-        for (const slot of invocation.operation.values) {
-          const side = slot.source.kind === "contract-output" ? "output" : "input";
-          if (!task.fields.some(field => field.side === side && (field.path === slot.source.path || field.path.startsWith(`${slot.source.path}.`)))) mismatch(`contract ${side} slot ${invocation.id}:${slot.id}:${slot.source.path}`);
-        }
-        if (task.binding.state === "bound") {
-          const system = task.binding.driverSystem ?? (task.binding.storeKind === "headless" ? "local" : undefined);
-          if (system !== undefined && invocation.operation.system !== system) mismatch(`operation system ${invocation.id}`);
-        }
-      }
-    }
     const sources = new Map<string, FieldSource>();
     const steps: FlowStep[] = [];
     const stepsByGroup = new Map<string, FlowStep[]>();
-    const anchors = new Map<string, { step: number; fieldId: string; system: string; page: string }[]>();
     for (const group of preview.groups) for (const entry of group.entries) for (const nodeId of entry.nodeIds) {
       const node = nodes.get(nodeId);
       if (!node) mismatch(`node ${nodeId}`);
@@ -139,15 +84,10 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
       for (const { system, tasks } of taskGroups) {
         const number = steps.length + 1;
         const parts: FlowPart[] = [{ kind: "note", text: `${group.label} · ${node.purpose.state === "authored" ? node.purpose.text : "Definition preview. No run values are available."}` }, ...structuralParts(node)];
-        if (definition) for (const invocation of definition.invocations.filter(invocation => invocation.entryId === nodeId)) {
-          parts.push(...declaredActions(invocation.operation.actions));
-        }
         for (const task of tasks) {
           const systemText = system ?? mismatch(`task system ${task.taskId}`);
           for (const field of task.fields) {
             const id = `${node.id}:${task.arm}:${task.taskId}:${field.side}:${field.path}`;
-            const anchorKey = `${node.id}:${field.side}:${field.path}`;
-            anchors.set(anchorKey, [...(anchors.get(anchorKey) ?? []), { step: number, fieldId: id, system: systemText, page: task.title }]);
             sources.set(id, { origin: sourceText(task.contractSource), detail: `Contract ${task.taskId} · ${field.side}.${field.path}. Implementation: ${sourceText(task.implSource)}. System: ${systemText}. No run value is available.` });
           }
           parts.push({ kind: "note", text: `${task.title} · ${systemText}.` });
@@ -157,32 +97,6 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
         steps.push(step);
         stepsByGroup.set(group.key, [...(stepsByGroup.get(group.key) ?? []), step]);
       }
-    }
-    if (definition) for (const invocation of definition.invocations) for (const slot of invocation.operation.values) {
-      if (slot.source.kind !== "contract-input") continue;
-      const destinations = anchors.get(`${invocation.entryId}:input:${slot.source.path}`) ?? [];
-      if (destinations.length !== 1) mismatch(`destination anchor ${invocation.id}:${slot.id}`);
-      const binding = invocation.bindings.find(binding => binding.slot === slot.id);
-      if (!binding) mismatch(`source binding ${invocation.id}:${slot.id}`);
-      const reads: NonNullable<FieldSource["reads"]>[number][] = [];
-      const chain: NonNullable<FieldSource["chain"]>[number][] = [];
-      const details: string[] = [];
-      const visit = (reference: typeof binding.value, visited: readonly string[]): void => {
-        if (reference.kind === "task-output") {
-          const matches = anchors.get(`${reference.entryId}:output:${reference.path}`) ?? [];
-          if (matches.length !== 1) { details.push(`Unresolved source anchor: ${reference.entryId}.${reference.path}`); return; }
-          reads.push({ ...matches[0], field: reference.path });
-        } else if (reference.kind === "transformation") {
-          const transform = definition.transforms.find(transform => transform.id === reference.transformId);
-          if (!transform || visited.includes(reference.transformId)) mismatch(`transformation ${reference.transformId}`);
-          chain.push({ step: destinations[0].step, title: transform.id, detail: `Declared transformation · ${reference.path}. No computed value is available.` });
-          for (const input of transform.inputs) visit(input.value, [...visited, transform.id]);
-        } else details.push(reference.kind === "run-input" ? `Run input · ${reference.path}` : reference.kind === "configuration" ? `Configuration · ${reference.key}` : reference.kind === "child-output" ? `Unresolved child-output anchor: ${reference.entryId}.${reference.path}` : `Static constant digest · ${reference.valueDigest}`);
-      };
-      visit(binding.value, []);
-      const source = sources.get(destinations[0].fieldId);
-      if (!source) mismatch(`destination source ${invocation.id}:${slot.id}`);
-      sources.set(destinations[0].fieldId, { ...source, detail: `${source.detail}${details.length ? ` ${details.join("; ")}.` : ""}`, ...(reads.length ? { reads } : {}), ...(chain.length ? { chain } : {}) });
     }
     const operatorSteps: FlowStep[] = [];
     for (const group of preview.groups) {
@@ -206,7 +120,7 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
     }
     return { state: "ready", projection: { steps: operatorSteps, sources, completion: "No run values are available." } };
   } catch (evidence) {
-    if (!(evidence instanceof ExplorerDefinitionDivergenceError || evidence instanceof WorkflowOperationDisplaySnapshotError)) throw evidence;
+    if (!(evidence instanceof ExplorerDefinitionDivergenceError)) throw evidence;
     return { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence };
   }
 }

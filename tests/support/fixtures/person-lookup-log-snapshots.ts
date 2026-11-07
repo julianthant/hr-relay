@@ -86,7 +86,7 @@ export function personLookupLogSnapshot(scenario: PersonLookupLogScenario): RunL
     return { kind: "note" as const, native: n, logId, sequence: index, note: { ...base, level: "info",
       message: browserActionMessage({ kind: "screenshot", targetId: "ucpath.task-capture", value: `${association.bundleId}:${association.artifactId}` }), screenshot: association } };
   });
-  const logs = NotePageSchema.parse({ runId: RUN, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []), confirmedActions: [], confirmedActionBindings: [], nextCursor: { state: "absent", reason: "end-of-page" } });
+  const logs = NotePageSchema.parse({ runId: RUN, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []), nextCursor: { state: "absent", reason: "end-of-page" } });
   const states = STATES[scenario];
   const steps = CATEGORIES.map(([key, label, system, nodes], index) => ({ key, label, system, state: timelineStateOf(states[index]),
     members: nodes.map(nodeId => ({ nodeId, categoryKey: key, label, state: timelineStateOf(states[index]) })) }));
@@ -114,5 +114,5 @@ export function personLookupLogSnapshot(scenario: PersonLookupLogScenario): RunL
     action: { operation: "read", sequence: 3 }, causeChain: [{ code: "PERSON_LOOKUP_CRM_CHECK_FAILED", summary, role: "primary", transient: false }],
     remediation: [{ kind: "operator-action", message: "Confirm which EID is correct at the source before re-running; nothing was written." }],
     sameFingerprintSeen: 1, diagnosticBundle: { state: "absent", reason: "fixture" }, occurredAt: clock(40) } } });
-  return { detail, logs, sections: failed ? [captures, failure] : [captures], actionEvidence: { state: "available", events: [], missingPages: [] }, confirmedActionBindings: [], unavailableEvidence: [] };
+  return { detail, logs, sections: failed ? [captures, failure] : [captures], unavailableEvidence: [] };
 }

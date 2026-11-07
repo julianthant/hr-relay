@@ -14,7 +14,6 @@ import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } fro
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
 import { z } from "zod";
 import { DataObservationOriginSchema } from "../events/data-observation-origin.js";
-import { ConfirmedActionEventSchema } from "../events/confirmed-action.js";
 import {
   ActorIdSchema,
   ArtifactIdSchema,
@@ -64,7 +63,6 @@ import {
   wireResourceSchema,
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
-import { RunOperationStructureWireSchema } from "./operation-structure.js";
 import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/types.js";
 
 export const RunIdentityWireSchema = z.strictObject({
@@ -111,13 +109,6 @@ export const NativeRunEventWireSchema = z.strictObject({
   message: "a native event must name its node or span",
 });
 export type NativeRunEventWire = z.infer<typeof NativeRunEventWireSchema>;
-
-export const ConfirmedActionBindingWireSchema = z.strictObject({
-  eventId: z.string().min(1),
-  logId: NoteIdSchema,
-  native: NativeRunEventWireSchema,
-});
-export type ConfirmedActionBindingWire = z.infer<typeof ConfirmedActionBindingWireSchema>;
 
 export const TimelineEventWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
@@ -333,7 +324,6 @@ export const NoteWireSchema = z.strictObject({
     kind: z.enum(["click", "fill", "read", "action", "screenshot"]),
     value: z.string().optional(),
     label: z.string().min(1),
-    submit: z.boolean().optional(),
     registryLabel: z.literal(true).optional(),
     sessionId: BrowserSessionIdSchema.optional(),
     system: BrowserSystemIdSchema.optional(),
@@ -415,10 +405,6 @@ export const DryRunPreviewWireSchema = z.discriminatedUnion("state", [
 
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
-  confirmedActions: z.array(ConfirmedActionEventSchema).optional(),
-  confirmedActionBindings: z.array(ConfirmedActionBindingWireSchema).optional(),
-  /** Live Logs always send this; older frozen archive pages predate it. */
-  operationStructure: RunOperationStructureWireSchema.optional(),
   dryRunPreview: DryRunPreviewWireSchema.optional(),
     /* The one combined page; optional only so a frozen archive written before observed-log rows existed remains readable, and `notes` stays as an exact compatibility mirror. */
   rows: z.array(LogRowWireSchema).optional(),

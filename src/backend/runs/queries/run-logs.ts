@@ -1,7 +1,6 @@
 import { containsDryRunSample } from "../../../models/workflow/dry-run.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import { readRunPreviewResult } from "../../../models/run/result.js";
-import { isLocalActionValueEligible } from "../../storage/events/note-timeline-writer.js";
 import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
 import { LogDisplayRefusedError, LogIdentityRefusedError } from "../commands/refusals.js";
 import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/timeline-reader.js";
@@ -15,12 +14,7 @@ import {
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
 } from "../../../models/dashboard/run-detail.js";
-import {
-  RunOperationStructureWireSchema,
-  type RunOperationStructureWire,
-} from "../../../models/dashboard/operation-structure.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
@@ -30,8 +24,6 @@ import {
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-provenance.js";
-import { DeclaredActionIdentitySchema } from "../../../models/workflow/operation-action-identity.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView, RunDetailDataOriginView } from "./run-detail-types.js";
 
@@ -344,44 +336,18 @@ function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>)
 
 }
 
-function operatorActionOf(note: RunAtRestNote, authority: RunRecord | undefined, descriptor: RunDetailDescriptorView | undefined) {
+function operatorActionOf(note: RunAtRestNote) {
   const action = note.action;
   if (action === undefined) return undefined;
   const registered = UI_LABELS.get(action.targetId);
   const occurrence = action.operation;
-  const definition = authority?.envelope.operationDisplaySnapshot;
-  const invocation = occurrence === undefined ? undefined : definition?.invocations.find(candidate =>
-    candidate.id === occurrence.invocationId && candidate.entryId === occurrence.nodeId && candidate.taskId === occurrence.taskId
-    && canonicalJsonStringify(candidate.occurrencePath) === canonicalJsonStringify(occurrence.occurrencePath));
-  type Action = NonNullable<typeof invocation>["operation"]["actions"][number];
-  const find = (actions: readonly Action[]): Action | undefined => {
-    for (const candidate of actions) {
-      if (candidate.id === occurrence?.logicalActionId) return candidate;
-      const nested = find(candidate.children ?? []);
-      if (nested !== undefined) return nested;
-    }
-    return undefined;
-  };
-  const declared = invocation === undefined ? undefined : find(invocation.operation.actions);
   const kind = action.kind === "screenshot" ? "screenshot" as const
     : ["typed", "selected", "set", "cleared"].includes(action.kind) ? "fill" as const
       : ["read", "checked", "verified"].includes(action.kind) ? "read" as const
         : ["clicked", "pressed", "opened"].includes(action.kind) ? "click" as const : "action" as const;
-  const slot = invocation?.operation.values.find(slot => slot.id === declared?.valueSlot);
-  const field = occurrence === undefined || slot === undefined ? undefined : descriptor?.dataOrigins?.find(origin =>
-    origin.nodeId === occurrence.nodeId && origin.taskId === occurrence.taskId)?.operatorFields?.find(field =>
-      field.fieldPath === slot.source.path && (field.kind === "input" ? slot.source.kind === "contract-input" : slot.source.kind === "contract-output"));
-  const source = invocation?.operation.session.kind === "browser" && invocation.operation.session.system !== undefined
-    ? { kind: "browser" as const, system: invocation.operation.session.system }
-    : { kind: "headless" as const, system: "workflow" as const };
-  const retained = field !== undefined && occurrence !== undefined && authority !== undefined && slot?.presentation === "local-operator"
-    && isLocalActionValueEligible(DeclaredActionOccurrenceSchema.parse(occurrence), authority, source) && occurrence.value?.consumed.state === "observed"
-    ? occurrence.value.consumed.value : undefined;
-  return { kind, label: kind === "screenshot" ? "Screenshot" : field?.label ?? declared?.label ?? registered?.label ?? "Action label unavailable",
-    ...(kind !== "click" || invocation?.contractRole !== "commit" ? {} : { submit: true }),
-    ...(kind === "screenshot" || field !== undefined || declared !== undefined ? {} : { registryLabel: true as const }),
+  return { kind, label: kind === "screenshot" ? "Screenshot" : registered?.label ?? "Action label unavailable",
+    ...(kind === "screenshot" ? {} : { registryLabel: true as const }),
     ...(action.physicalSessionId === undefined ? {} : { sessionId: action.physicalSessionId }),
-    ...(["string", "number", "boolean"].includes(typeof retained) ? { value: String(retained) } : {}),
     ...(registered === undefined ? {} : { system: registered.system }),
     ...(occurrence?.state === undefined ? {} : { state: occurrence.state }),
     ...(occurrence?.reason === undefined ? {} : { reason: occurrence.reason }),
@@ -393,7 +359,6 @@ function logRowOf(
   sequence: number,
   authority?: RunRecord,
   operatorOnly = false,
-  descriptor?: RunDetailDescriptorView,
 ): unknown {
   const logId = logIdOf(entry);
   const identity = entry.kind === "note" ? entry.note : entry.event;
@@ -404,7 +369,7 @@ function logRowOf(
     runId: identity.runId, attempt: identity.attempt, traceId: identity.traceId, spanPath: identity.spanPath,
     ...(nodeId === undefined ? {} : { nodeId }) };
   if (entry.kind === "note") {
-    const operatorAction = operatorActionOf(entry.note, authority, descriptor);
+    const operatorAction = operatorActionOf(entry.note);
     let screenshot;
     if (entry.note.action?.kind === "screenshot" && entry.note.action.targetId.endsWith(".task-capture")) {
       const association = z.templateLiteral([z.uuid(), ":", z.uuid()]).safeParse(entry.note.action.value);
@@ -465,75 +430,6 @@ function logRowOf(
   };
 }
 
-function projectActionOccurrence(
-  definition: NonNullable<RunRecord["envelope"]["operationDisplaySnapshot"]>,
-  occurrence: NonNullable<RunAtRestNote["action"]>["operation"] extends infer Value
-    ? Exclude<Value, undefined>
-    : never,
-) {
-  const { value, ...identity } = occurrence;
-  const invocation = definition.invocations.find((candidate) => candidate.id === occurrence.invocationId);
-  const slot = invocation?.operation.values.find((candidate) => candidate.id === value?.slot);
-  return {
-    ...identity,
-    ...(value === undefined ? {} : {
-      value: {
-        slot: value.slot,
-        fieldPath: value.fieldPath,
-        producer: value.producer,
-        ...(value.consumed.state === "withheld"
-          ? { state: "withheld" as const, reason: value.consumed.reason }
-          : value.consumed.state === "redacted"
-          ? { state: "redacted" as const, binding: value.consumed.binding }
-          : slot?.presentation === "local-operator"
-            ? { state: "observed" as const, classification: "local-operator" as const, value: value.consumed.value }
-            : {
-            state: "withheld" as const,
-            reason: "raw action value has no approved Logs presentation classification",
-          }),
-      },
-    }),
-  };
-}
-
-// Only the run envelope supplies frozen definition authority for declared-action notes.
-export function operationStructureForRun(
-  authority: RunRecord,
-  runId: string,
-  entries: readonly RunLogScanEntry[],
-): RunOperationStructureWire {
-  const stored = authority.envelope.operationDisplaySnapshot;
-  if (stored === undefined) {
-    if (authority.envelope.operationDisplayCapability === "complete") {
-      throw new Error(`complete run ${authority.envelope.workflow} is missing its frozen operation display snapshot`);
-    }
-    return RunOperationStructureWireSchema.parse({
-      state: "legacy",
-      reason: "this historical run has no frozen complete operation structure",
-    });
-  }
-  const definition = requireWorkflowOperationDisplaySnapshot(stored, {
-    workflowId: authority.envelope.workflow,
-    definitionFingerprint: authority.envelope.contractFingerprint,
-  });
-  const observations = entries.flatMap((entry) => {
-    if (entry.kind !== "note" || entry.note.action?.operation === undefined) return [];
-    return [{
-      logId: logIdOf(entry),
-      at: entry.note.ts,
-      action: entry.note.action.kind,
-      targetId: entry.note.action.targetId,
-      occurrence: projectActionOccurrence(definition, entry.note.action.operation),
-    }];
-  });
-  return RunOperationStructureWireSchema.parse({
-    state: "observed",
-    runId,
-    definition,
-    observations,
-  });
-}
-
 function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
   if (!authority.envelope.dryRun) return undefined;
   if (deps.canonical === undefined) return DryRunPreviewWireSchema.parse({ state: "unavailable", reason: "preview-authority-unavailable" });
@@ -588,46 +484,19 @@ export function buildRunLogsSection(
   }
   const all = snapshot.entries;
   const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
-  const actionIdentity = (action: NonNullable<RunAtRestNote["action"]>["operation"] | NonNullable<RunAtRestNote["confirmedAction"]>["action"]) => {
-    if (action === undefined) throw new LogIdentityRefusedError("RUN_LOG_ACTION_IDENTITY_MISSING");
-    const { value: _value, ...identity } = action;
-    return canonicalJsonStringify(DeclaredActionIdentitySchema.parse(identity));
-  };
-  const bindings = page.flatMap((entry) => {
-    if (entry.kind !== "note" || entry.note.confirmedAction === undefined) return [];
-    const event = entry.note.confirmedAction;
-    const identity = actionIdentity(event.action);
-    const matches = all.filter((candidate) => candidate.kind === "note" && candidate.note.action?.operation !== undefined
-      && actionIdentity(candidate.note.action.operation) === identity);
-    if (matches.length !== 1) throw new LogIdentityRefusedError("RUN_LOG_ACTION_TARGET_IDENTITY_MISMATCH");
-    const target = matches[0];
-    if (target === undefined) throw new LogIdentityRefusedError("RUN_LOG_ACTION_TARGET_IDENTITY_MISMATCH");
-    if (target.kind !== "note" || target.note.runId !== entry.note.runId || target.note.attempt !== entry.note.attempt
-      || target.note.traceId !== entry.note.traceId) throw new LogIdentityRefusedError("RUN_LOG_ACTION_TARGET_OWNER_MISMATCH");
-    return [{ eventId: event.eventId, logId: logIdOf(target), native: {
-      eventId: entry.line.file.path.replace(/^timeline:/u, ""), order: entry.line.lineNumber,
-      runId: entry.note.runId, attempt: entry.note.attempt, traceId: entry.note.traceId,
-      spanPath: entry.note.spanPath, nodeId: event.action.nodeId,
-    } }];
-  });
   const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
     entry,
     offset + index,
     authority,
     true,
-    deps.descriptors.resolve(authority.envelope.workflow),
   )));
   return RunDetailSectionResponseSchema.parse({
     section,
     payload: {
       runId,
-      operationStructure: operationStructureForRun(authority, runId, page),
       ...(authority.envelope.dryRun ? { dryRunPreview: dryRunPreviewForLogs(deps, authority) } : {}),
       rows,
-      confirmedActionBindings: bindings,
       notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
-      confirmedActions: page.flatMap((entry) => entry.kind === "note" && entry.note.confirmedAction !== undefined
-        ? [entry.note.confirmedAction] : []),
       nextCursor: offset + LOGS_PAGE_SIZE < all.length
         ? { state: "present", value: `lc:${snapshot.id}:${String(offset + LOGS_PAGE_SIZE)}` }
         : { state: "absent", reason: "end-of-page" },

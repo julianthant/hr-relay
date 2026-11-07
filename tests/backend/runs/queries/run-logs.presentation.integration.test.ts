@@ -69,8 +69,7 @@ it("groups the normal registered Person Lookup helper nodes into four walkthroug
     descriptors: { resolve: () => ({ ...personLookupModule.descriptor, dataOrigins: dataOriginViewsOf(personLookupModule) }) } };
   const detail = buildRunDetail(deps, run.envelope.runId);
   const section = buildRunLogsSection(deps, run.envelope.runId, w.projection.runFold(run.envelope.runId), run); assert.ok(section.section === "logs");
-  const projected = projectRunLogs({ detail, logs: section.payload, sections: [], confirmedActionBindings: [],
-    actionEvidence: { state: "available", events: [], missingPages: [] }, unavailableEvidence: [] }, { artifactUrl: () => "unused" });
+  const projected = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
   assert.deepEqual(projected.steps.map(step => [step.title, step.system]), [["Search for person", "UCPath"], ["Cross-check identity", "CRM"],
     ["Read employment status", undefined], ["Read CRM dates", "CRM"]]);
   assert.equal(projected.timeline[3].state, "skipped");
@@ -103,8 +102,7 @@ it("lists retained M1b hits and each dropped candidate with its reason through s
     ...hits.flatMap(hit => [["Employee ID", hit.emplId], ["Name", hit.name]]),
     ...dropped.flatMap(hit => [["Employee ID", hit.emplId], ["Name", hit.name], ["Drop reason", hit.reason]]),
   ]);
-  const projected = projectRunLogs({ detail, logs: section.payload, sections: [], confirmedActionBindings: [],
-    actionEvidence: { state: "available", events: [], missingPages: [] }, unavailableEvidence: [] }, { artifactUrl: () => "unused" });
+  const projected = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
   const text = logPlainText(projected.steps);
   for (const hit of dropped) {
     assert.match(text, new RegExp(`${hit.emplId}[\\s\\S]*${hit.name.replace(".", "\\.")}[\\s\\S]*${hit.reason}`, "u"));

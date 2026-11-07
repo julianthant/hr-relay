@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach,it } from "vitest";
-import { createOperatorProjection } from "../../../src/backend/app/composition/dashboard/queue.js";
-import { dataOriginViewsOf } from "../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
-import { createConfirmedActionPublisher } from "../../../src/backend/logs/confirmed-action-publisher.js";
 import { readApprovedOcrRecordTask } from "../../../src/backend/processing/ocr/tasks/read-approved-record.js";
-import { buildRunLogsSection } from "../../../src/backend/runs/queries/run-logs.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
@@ -26,9 +22,8 @@ import type { UcpathContactPageSnapshot } from "../../../src/models/ui/ucpath-em
 import { UcpathContactPageSnapshotSchema } from "../../../src/models/ui/ucpath-emergency-contact.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { EMERGENCY_CONTACT_MEMBER_EXAMPLE } from "../../../src/models/workflows/emergency-contact-member/input.js";
-import { FingerprintSchema,IsoInstantSchema } from "../../../src/rules/identity/ids.js";
+import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { approvedEmergencyContact,contactEffect,planEmergencyContact } from "../../../src/rules/ucpath/emergency-contact.js";
-import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { defineBrowserStore,defineServiceStore,defineTaskStoreRegistry,type RegisteredTaskStore } from "../../../src/workflow-kit/task-registry.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { emergencyContactMemberStore } from "../../../src/workflows/emergency-contact-member/task-registry.js";
@@ -76,9 +71,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
     operator: "local-operator", log: h.deps.log });
   const taskNotes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
-  const publisher = createConfirmedActionPublisher({ workerId: "fixture-worker-1", streamId: randomUUID(), clock, capacity: 256,
-    append: event => { const authority = database.authority.runs.get(event.action.runId); assert.ok(authority); taskNotes.emitConfirmedAction(event, authority); } });
-  const execution = canonicalChildExecution({ ...h.deps, taskNotes, confirmedActionPublisher: publisher, writeSequencer: sequencer, providers: {
+  const execution = canonicalChildExecution({ ...h.deps, taskNotes, writeSequencer: sequencer, providers: {
     configSnapshots: database.authority.configSnapshots, idFactory: { next: () => randomUUID() }, adapters: {
       "ocr.approved-snapshot": { capability: "ocr.approved-snapshot", async invoke(_request, options) {
         providerCalls++;
@@ -173,27 +166,3 @@ for (const status of ["attempting", "parked"] as const) it(`refuses a persisted 
   f.assertNoWrites();
 });
 
-it("projects ordered primary-plan scalar actions only through declared local-operator Logs fields", async () => {
-  const f = await memberFixture(); assert.deepEqual(f.failures, []);
-  const current = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(current);
-  assert.ok(current.appVersion);
-  const projection = createOperatorProjection({ database: f.database, reader: f.execution.lifecycle, stateRoot: f.authority.stateRoot,
-    clock: f.authority.clock, appVersion: current.appVersion, descriptorSetHash: FingerprintSchema.parse(sha256Hex(compiled.descriptor.contractFingerprint)),
-    ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: id => id === compiled.descriptor.id ? compiled.descriptor : undefined } });
-  projection.ingestFromTimeline();
-  const view = { ...compiled.descriptor, dataOrigins: dataOriginViewsOf({ descriptor: compiled.descriptor, stores: f.stores.stores }) };
-  const deps = { stateRoot: f.authority.stateRoot, timeline: f.database.authority.timelineEvents, projection,
-    runReader: f.execution.lifecycle, canonical: { database: f.database, reader: f.execution.lifecycle, descriptors: { resolve: () => compiled.descriptor } },
-    authority: { getRun: (id: string) => f.database.authority.runs.get(id),
-      latestCheckpoint: f.database.authority.runCheckpoints.latest, listCheckpoints: f.database.authority.runCheckpoints.listByItem,
-      getWriteIntent: f.database.authority.writeIntents.get, listGateResults: f.database.authority.gateResults.listByRun },
-    descriptors: { resolve: () => view } };
-  const logs = buildRunLogsSection(deps, current.envelope.runId, undefined, current); assert.ok(logs.section === "logs");
-  const values = (logs.payload.rows ?? []).flatMap(row => row.kind === "note" && row.note.operatorAction?.state === "confirmed" && row.note.operatorAction.value !== undefined ? [row.note.operatorAction.value] : []);
-  assert.deepEqual(values, ["Uncheck Primary on row 1 (Taylor Sample)", "Add Example Contact as Primary"]);
-  const restricted = buildRunLogsSection({ ...deps, descriptors: { resolve: () => ({ ...view, dataOrigins: view.dataOrigins.map(origin => ({ ...origin, operatorFields: [] })) }) } }, current.envelope.runId, undefined, current);
-  assert.ok(restricted.section === "logs");
-  assert.doesNotMatch(JSON.stringify(restricted.payload.rows), /Uncheck Primary on row 1|Add Example Contact as Primary/u);
-
-  f.assertNoWrites();
-});

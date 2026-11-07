@@ -37,13 +37,11 @@ import {
   type SourceLinkWire,
   type WorkflowExplorerWire,
 } from "../../../models/dashboard/explorer.js";
-import type { ExplorerOperationStructureWire } from "../../../models/dashboard/operation-structure.js";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import type { UiTaskLink } from "../../systems/ui-task-links.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { currentBuildId } from "../../runtime/build-id.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import {
@@ -538,20 +536,6 @@ function proseWire(
     : { state: "authored", text };
 }
 
-function operationStructureWire(descriptor: AnyWorkflowDescriptor): ExplorerOperationStructureWire {
-  const definition = freezeWorkflowOperationDisplaySnapshot({
-    workflowId: descriptor.id,
-    definitionFingerprint: descriptor.contractFingerprint,
-    display: descriptor.operationDisplay,
-  });
-  return definition === undefined
-    ? {
-      state: "legacy",
-      reason: "this workflow has no complete versioned operation declaration",
-    }
-    : { state: "declared", definition };
-}
-
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
@@ -624,7 +608,6 @@ function workflowWire(
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
-    operationStructure: operationStructureWire(descriptor),
     definitionPreview: declaration === undefined
       ? { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" }
       : { state: "compiled", groups: declaration, systemsFirstUse },

@@ -5,7 +5,6 @@ import { readRunCheckpoint, continuationEvidenceDigest, RunContinuationRefusedEr
 import { authenticateWorkbookReferenceChoice, authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData, valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
@@ -28,7 +27,6 @@ import { resolveInstances } from "../start/plan.js";
 import { selectRunRuntime } from "../settings/run-settings.js";
 import type { CreateRunRequest, RunQueuedPublication, RunRecordServiceDependencies, RunRecoveryOutcome } from "./run-record-service.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
-import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { canonicalDelegationChild, planCanonicalDelegation } from "./delegation-planning.js";
 import { isLiveWorker } from "../../../models/run/worker.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
@@ -111,12 +109,6 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       const canonicalInput = parseCanonicalInputSnapshot(descriptor.canonicalInput, parent.input.parsed, { owner: { kind: "run-input", id: parent.envelope.runId }, source: parent.input, schemaReader });
       if (canonicalJsonStringify(canonicalInput) !== canonicalJsonStringify(context.scope.input)
         || canonicalJsonStringify(retainedRunProtectedBindings(parent)) !== canonicalJsonStringify(context.scope.protectedInputBindings ?? [])) throw new Error("delegation-scope-input-mismatch");
-      for (const [key, configured] of Object.entries(context.scope.configuration ?? {})) {
-        if (!SETTINGS_CATALOG.some(row => row.key === key && row.sensitivity === "ordinary")) throw new Error("delegation-scope-configuration-unavailable");
-        let value: unknown = snapshot.config;
-        for (const segment of key.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
-        if (value === undefined || canonicalJsonStringify(value) !== canonicalJsonStringify(configured)) throw new Error("delegation-scope-configuration-mismatch");
-      }
       const approvals = context.node.dependsOn.map(nodeId => {
         const value = context.scope.outputs[nodeId];
         const source = descriptorRuntimeNodes(descriptor).find(node => node.id === nodeId);
@@ -276,7 +268,6 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         const systems = workflowProjections(target).systems;
         const inherited = Object.fromEntries(Object.entries(parent.envelope.requestedInstance ?? {}).filter(([system]) => systems.includes(system)));
         const resolvedInstance = resolveInstances(target, inherited);
-        const display = freezeWorkflowOperationDisplaySnapshot({ workflowId: target.id, definitionFingerprint: target.contractFingerprint, display: target.operationDisplay });
         const children = plan.children.map((planned, index) => {
           const { input, bindings, matchKey, canonicalItemId } = canonicalDelegationChild(context, target, planned.input, schemaReader);
           for (const approval of approvals) {
@@ -302,7 +293,6 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
           if (activeChildren.length > 0 && target.enqueue !== "allow-parallel") throw new Error("delegation-target-item-active");
           const child = lifecycle.create({ commandId: lifecycleCommandId("delegation-child-create", { invocationCommandId, index }),
             code: target.code, workflow: target.id, matchKey, descriptorVersion: target.version, contractFingerprint: target.contractFingerprint,
-            operationDisplayCapability: display === undefined ? "legacy" : "complete", ...(display === undefined ? {} : { operationDisplaySnapshot: display }),
             configSnapshotId: parent.envelope.configSnapshotId, configFingerprint: parent.envelope.configFingerprint, resolvedInstance,
             ...(Object.keys(inherited).length === 0 ? {} : { requestedInstance: inherited }),
             priority: parent.envelope.priority, shape: "operation-member", dryRun: parent.envelope.dryRun,

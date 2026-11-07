@@ -136,7 +136,7 @@ function authenticateOriginalGroup(repositories: AuthorityRepositories, manifest
     const requested = CanonicalCreateRunRequestSchema.parse(create.request);
     if (manifest.revision !== undefined && requested.recovery !== "restart-from-start") throw new Error("delegation-revision-fresh-read-required");
     authenticateRunPriority(repositories, child, requested.priority, LOCAL_OPERATOR_ACTOR_ID);
-    const creationFields = ["workflow", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
+    const creationFields = ["workflow", "descriptorVersion", "contractFingerprint",
       "configSnapshotId", "configFingerprint", "requestedInstance", "resolvedInstance", "shape", "dryRun", "browserMode",
       "captureBrowserScreenshots", "recovery", "stepOmissions", "sourceBound", "parent", "retryOf"] as const;
     if (creationFields.some(field => canonicalJsonStringify(requested[field] ?? null) !== canonicalJsonStringify(child.envelope[field] ?? null))
@@ -638,7 +638,7 @@ export function delegationRetryWriteRefusal(repositories: AuthorityRepositories,
     }
     if (node.dependsOn.some(id => !Object.hasOwn(outputs, id))) continue;
     const mapped = node.commit.uses.input.parse(node.commit.bind({ input: run.input.parsed.value, outputs,
-      configuration: {}, protectedInputBindings: retainedRunProtectedBindings(run) }));
+      protectedInputBindings: retainedRunProtectedBindings(run) }));
     const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
     const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [mapped]));
     if (repositories.writeIntents.listByBusinessKey(system, deriveIdempotencyKeyDigest(system, key))
@@ -1037,7 +1037,7 @@ export function assertDelegationReplacement(repositories: AuthorityRepositories,
     throw new Error("delegation-retry-continuation-binding-mismatch");
   }
   authenticateRunPriority(repositories, next, previous.envelope.priority, LOCAL_OPERATOR_ACTOR_ID);
-  const fields = ["browserMode", "captureBrowserScreenshots", "operationDisplayCapability", "operationDisplaySnapshot", "stepOmissions"] as const;
+  const fields = ["browserMode", "captureBrowserScreenshots", "stepOmissions"] as const;
   if (fields.some(field => canonicalJsonStringify(next.envelope[field] ?? null) !== canonicalJsonStringify(original.envelope[field] ?? null))
     || next.sessionId !== previous.sessionId || next.envelope.recovery !== undefined || next.envelope.sourceBound !== undefined
     || next.envelope.startAt !== undefined || next.envelope.injected !== undefined || next.envelope.freshnessOverride !== undefined) throw new Error("delegation-retry-options-mismatch");
