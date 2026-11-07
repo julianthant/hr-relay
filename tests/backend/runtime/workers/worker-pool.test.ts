@@ -88,11 +88,11 @@ describe("worker pool", () => {
   });
 
   it("stops a child that never reports ready and holds it when no exit is observed", async () => {
-    const w = world(), started = w.pool.start(member); await flush();
+    const w = world(), started = assert.rejects(w.pool.start(member), { code: "WORKER_EXIT_UNOBSERVED" }); await flush();
     await w.advance(1_000);
     assert.deepEqual(w.ports[0]?.kills, ["SIGKILL"]);
     await w.advance(500);
-    await assert.rejects(started, { code: "WORKER_EXIT_UNOBSERVED" });
+    await started;
     await assert.rejects(w.pool.start(member), { code: "WORKER_EXIT_UNOBSERVED" });
     assert.equal(w.settled.length, 0);
   });
@@ -124,9 +124,9 @@ describe("worker pool", () => {
   it("holds a member whose kill cannot be delivered", async () => {
     const w = world(), { port, target } = await running(w);
     port.state.killResult = false;
-    const stopped = w.pool.stop(target, "operator");
+    const stopped = assert.rejects(w.pool.stop(target, "operator"), { code: "WORKER_EXIT_UNOBSERVED" });
     await w.advance(2_000); await w.advance(3_000); await w.advance(500);
-    await assert.rejects(stopped, { code: "WORKER_EXIT_UNOBSERVED" });
+    await stopped;
     assert.ok(w.pool.snapshot()[0]?.held !== undefined);
     await assert.rejects(w.pool.start(member), { code: "WORKER_EXIT_UNOBSERVED" });
   });
@@ -173,10 +173,10 @@ describe("worker pool", () => {
     const second = port.sent.at(-1); assert.ok(second?.kind === "worker-request");
     port.message({ kind: "worker-reply", requestId: second.requestId, outcome: { state: "refused", code: "WORKER_BUSY", message: "busy" } });
     await assert.rejects(refused, { code: "WORKER_BUSY" });
-    const late = w.pool.request(target, { type: "close-for-removal" }, 1_000); await flush();
+    const late = assert.rejects(w.pool.request(target, { type: "close-for-removal" }, 1_000), { code: "WORKER_REQUEST_TIMED_OUT" }); await flush();
     const third = port.sent.at(-1); assert.ok(third?.kind === "worker-request");
     await w.advance(1_000);
-    await assert.rejects(late, { code: "WORKER_REQUEST_TIMED_OUT" });
+    await late;
     port.message({ kind: "worker-reply", requestId: third.requestId, outcome: { state: "done", result: null } });
     assert.equal(w.faults.some(error => error instanceof Error && "code" in error && error.code === "WORKER_REQUEST_TIMED_OUT"), true);
     assert.equal(w.pool.snapshot()[0]?.state, "running");
