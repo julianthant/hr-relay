@@ -32,6 +32,7 @@ import { admitWorkerReset, admitWorkerLifecycle } from "../../../../src/backend/
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
+import { assertStoppedProfileResourcesClosed } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
@@ -599,6 +600,37 @@ describe("exact lifecycle reservation", () => {
     expect(h.database.authority.workerControls.get(command.commandId)?.phase.state).toBe("uncertain");
     expect(h.database.authority.commandAudits.findByCommand(command.commandId)).toBeUndefined();
     expect(await kernel.executeWorkerPool(command)).toMatchObject({ state: "pending" });
+  });
+
+  it("refuses an unborn uncertain Retry at startup and leaves a clean stop", async () => {
+    const h = await fixture();
+    stopped(h, h.deps.workerId);
+    const record = admit(h, h.deps.workerId, "retry-worker"); if (record.lifecycle === undefined) throw new Error("missing retry");
+    h.database.authority.workerControls.transition(record.commandId, "executing", { state: "uncertain", startedAt: record.admittedAt,
+      observedAt: h.authority.clock.now().toISOString(), message: "worker-lifecycle-effect-or-settlement-unproved" });
+    expect(h.database.authority.workerLeases.get(h.deps.workerId)?.controlCommandId).toBe(record.commandId);
+    expect(() => assertStoppedProfileResourcesClosed(h.database.readProfileResourceCustody())).toThrow("credential-maintenance-custody-unproved");
+    h.database.settleUnbornWorkerRetries(h.authority.clock.now().toISOString());
+    expect(h.database.authority.workerControls.get(record.commandId)).toMatchObject({ phase: { state: "refused", message: "worker-retry-never-started" } });
+    expect(h.database.authority.workerControls.get(record.commandId)?.auditedAt).toBeDefined();
+    expect(h.database.authority.commandAudits.findByCommand(record.commandId)?.result).toMatchObject({ state: "rejected" });
+    const lease = h.database.authority.workerLeases.get(h.deps.workerId);
+    expect(lease).toMatchObject({ leaseGeneration: record.lifecycle.lifetime.leaseGeneration, lifecycle: { state: "stopped" } });
+    expect(lease?.controlCommandId).toBeUndefined();
+    expect(() => assertStoppedProfileResourcesClosed(h.database.readProfileResourceCustody())).not.toThrow();
+  });
+
+  it("keeps an uncertain Retry whose replacement was born", async () => {
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
+    stopped(h, h.deps.workerId); owner.children.at(-1)?.emitExit(1, null);
+    const record = admit(h, h.deps.workerId, "retry-worker"); if (record.lifecycle === undefined) throw new Error("missing retry");
+    await owner.retryWorker(record.lifecycle);
+    h.database.authority.workerControls.transition(record.commandId, "executing", { state: "uncertain", startedAt: record.admittedAt,
+      observedAt: h.authority.clock.now().toISOString(), message: "worker-lifecycle-effect-or-settlement-unproved" });
+    expect(h.database.authority.workerLeases.get(h.deps.workerId)?.leaseGeneration).toBe(record.lifecycle.lifetime.leaseGeneration + 1);
+    h.database.settleUnbornWorkerRetries(h.authority.clock.now().toISOString());
+    expect(h.database.authority.workerControls.get(record.commandId)?.phase.state).toBe("uncertain");
+    expect(h.database.authority.workerControls.get(record.commandId)?.auditedAt).toBeUndefined();
   });
 
   it("lets an existing drain own shutdown when Remove closure resumes", async () => {

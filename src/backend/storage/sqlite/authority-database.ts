@@ -7120,6 +7120,34 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
+  /** Startup only: a Retry whose reserved old lifetime is still exact never birthed; refuse it and release the reservation. */
+  settleUnbornWorkerRetries(now: string): void {
+    // A bound supervisor may own an unregistered child; before it, the held lifetime lock excludes every prior child.
+    if (this.#nonBirthOwner !== undefined) throw new Error("worker-retry-startup-settlement-refused");
+    for (const record of this.authority.workerControls.list()) {
+      const binding = record.lifecycle;
+      if (record.auditedAt !== undefined || record.request.type !== "retry-worker" || record.phase.state !== "uncertain"
+        || record.effect !== undefined || binding?.operation.kind !== "retry") continue;
+      try {
+        this.withAuthorityTransaction(repositories => {
+          const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
+          if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
+            || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
+            || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
+          this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
+          const message = "worker-retry-never-started";
+          this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+          const { controlCommandId: _released, ...rest } = lease;
+          this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
+          repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+            result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.startsWith("worker-")) throw error;
+      }
+    }
+  }
+
   #assertRetainedWorkerLifecycleEffect(record: z.infer<typeof WorkerControlRecordSchema>): void {
     const binding = record.lifecycle, effect = record.effect;
     if (binding === undefined || effect === undefined) throw new Error("worker-lifecycle-recovery-effect-unavailable");

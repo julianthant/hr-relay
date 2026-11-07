@@ -111,6 +111,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   };
   profile.runtime.beginSupervisorConstruction(profile.token);
   const nominatim = createNominatimGeocodeAdapter({clock});
+  database.reconcileWorkerControlMilestones(clock.now().toISOString());
+  database.settleUnbornWorkerRetries(clock.now().toISOString());
   const workerControl = composeWorkerProcessControl({
     admission,
     onExit: (member, pid, valid) => profile.runtime.workerExited(admission, member, pid, valid),
