@@ -6,8 +6,8 @@ import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/ch
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
 import type { AssistantReceipt, AssistantResult } from '../../../models/dashboard/assistant.js';
-import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel } from "../../../models/config/assistant-model-preference.js";
-import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from "../../../models/config/assistant-model-preference.js";
+import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelCatalog, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
@@ -17,7 +17,6 @@ import { AssistantActionDecisionSchema, type AssistantActionProposal } from '../
 export const ASSISTANT_CONFIRM_HOLD = 'Confirmation is unavailable until the server can verify this proposal before preparation. No run has started.';
 type Binding = Readonly<{ authority: unknown; subjectRef?: string;
   commands?: Pick<DashboardCommandBinding, 'executor' | 'scope' | 'feedback'>;
-  refreshAccount?: () => Promise<void>;
   preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void;
 }>;
 /** SHA-256 hex of the canonical JSON of the exact proposal the card rendered; the server compares it before approval. */
@@ -81,10 +80,36 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   const listeners = new Set<() => void>();
   function publish(next: AssistantState) { if (retired) return; state = next; history?.retain(state); for (const listener of listeners) listener(); }
   function abort() {
-    if (outstanding !== undefined) publish(assistantReducer(state, assistantSetupCommand(outstanding.prompt) === 'verify' ? { type: 'cancel' } : { type: 'uncertain', requestId: outstanding.requestId }));
+    if (outstanding !== undefined) publish(assistantReducer(state, { type: 'uncertain', requestId: outstanding.requestId }));
     outstanding?.abort.abort(); outstanding = undefined;
   }
   const preferenceText = (view: AssistantModelPreferenceView) => `Assistant model: ${assistantModelLabel(view.preference.slug)} (${ASSISTANT_EFFORT_LABELS[view.preference.effort]}).`;
+  /** Saves a model and effort through the shared executor; the same path for the chat command and the pickers. */
+  async function savePreference(preference: AssistantModelPreference, owner: Binding, signal: AbortSignal, current: () => boolean):
+    Promise<{ kind: "saved"; view: AssistantModelPreferenceView } | { kind: "uncertain" } | { kind: "refused"; text: string }> {
+    if (client.assistantModelPreference === undefined) return { kind: "refused", text: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE };
+    const view = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(signal));
+    const commands = owner.commands;
+    if (!current() || commands === undefined || commands.scope.actorId !== LOCAL_OPERATOR_ACTOR_ID || !Object.is(commands.scope.client, client)) {
+      return { kind: "refused", text: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE };
+    }
+    const command = AssistantModelPreferenceCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(),
+      requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
+      target: { profileId: view.profileId, epoch: view.epoch, expectedRevision: view.revision }, payload: preference });
+    const outcome = await commands.executor.execute(command, { scope: commands.scope, publish: commands.feedback,
+      readback: async () => {
+        if (!current() || client.assistantModelPreference === undefined) return { state: "mismatch", evidence: 'authority-changed' };
+        const actual = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(signal));
+        if (!current() || actual.profileId !== view.profileId || actual.epoch !== view.epoch) return { state: "mismatch", evidence: actual };
+        return { state: actual.revision === view.revision + 1 && actual.preference.slug === preference.slug
+          && actual.preference.effort === preference.effort ? "matched" : "mismatch", evidence: actual };
+      } });
+    if (outcome.kind === "uncertain") return { kind: "uncertain" };
+    if (outcome.kind !== "confirmed") return { kind: "refused", text: outcome.feedback.text };
+    const actual = AssistantModelPreferenceViewSchema.parse(outcome.readback);
+    if (current()) owner.preferenceChanged?.(actual, true);
+    return { kind: "saved", view: actual };
+  }
   async function respond(requestId: number, prompt: string) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
@@ -110,35 +135,21 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         if (parts.length !== 1 && (parts.length !== 3 || preference?.success !== true)) {
           complete('Use ' + ASSISTANT_MODEL_COMMAND + ' or ' + ASSISTANT_MODEL_COMMAND + ' SLUG EFFORT.'); return;
         }
-        if (client.assistantModelPreference === undefined) { complete(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE); return; }
-        const view = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(request.abort.signal));
-        if (!current()) return;
-        if (parts.length === 1) { request.binding.preferenceChanged?.(view, false); complete(preferenceText(view)); return; }
-        if (preference?.success !== true) return;
-        const commands = request.binding.commands;
-        if (commands === undefined || commands.scope.actorId !== LOCAL_OPERATOR_ACTOR_ID || !Object.is(commands.scope.client, client)) {
-          complete(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE); return;
+        if (parts.length === 1) {
+          if (client.assistantModelPreference === undefined) { complete(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE); return; }
+          const view = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(request.abort.signal));
+          if (!current()) return;
+          request.binding.preferenceChanged?.(view, false); complete(preferenceText(view)); return;
         }
-        const command = AssistantModelPreferenceCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(),
-          requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
-          target: { profileId: view.profileId, epoch: view.epoch, expectedRevision: view.revision }, payload: preference.data });
-        const outcome = await commands.executor.execute(command, { scope: commands.scope, publish: commands.feedback,
-          readback: async () => {
-            if (!current() || client.assistantModelPreference === undefined) return { state: "mismatch", evidence: 'authority-changed' };
-            const actual = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(request.abort.signal));
-            if (!current() || actual.profileId !== view.profileId || actual.epoch !== view.epoch) return { state: "mismatch", evidence: actual };
-            return { state: actual.revision === view.revision + 1 && actual.preference.slug === preference.data.slug
-              && actual.preference.effort === preference.data.effort ? "matched" : "mismatch", evidence: actual };
-          } });
+        if (preference?.success !== true) return;
+        const saved = await savePreference(preference.data, request.binding, request.abort.signal, current);
         if (!current()) return;
-        if (outcome.kind === "uncertain") { publish(assistantReducer(state, { type: "uncertain", requestId })); return; }
-        if (outcome.kind === "confirmed") { const actual = AssistantModelPreferenceViewSchema.parse(outcome.readback); request.binding.preferenceChanged?.(actual, true); complete(preferenceText(actual)); }
-        else complete(outcome.feedback.text);
+        if (saved.kind === "uncertain") { publish(assistantReducer(state, { type: "uncertain", requestId })); return; }
+        complete(saved.kind === "saved" ? preferenceText(saved.view) : saved.text);
         return;
       }
-      const verify = assistantSetupCommand(prompt) === 'verify';
       const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId,
-        message: verify ? ASSISTANT_VERIFY_COMMAND : prompt, ...(verify || binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
+        message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
       if (envelope.receipt !== undefined) history?.receipt(envelope.receipt);
       if (!current()) return;
       if (envelope.kind === 'delivery') {
@@ -146,27 +157,13 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         return;
       }
       const result = envelope.result, presented = presentResult(result, requestId, prompt);
-      const settled = assistantReducer(state, { type: "settle", requestId, ...presented });
-      publish(verify ? { ...settled, verification: result.state === 'answered' ? { state: 'passed' }
-        : { state: 'failed', code: result.state === 'refused' ? result.code : 'ASSISTANT_VERIFICATION_FAILED' } } : settled);
-      if (verify) void history?.local(presented.message.text);
+      publish(assistantReducer(state, { type: "settle", requestId, ...presented }));
     } catch {
       if (current()) {
-        if (assistantSetupCommand(prompt) === 'verify') publish({ ...assistantReducer(state, { type: 'settle', requestId,
-          message: { id: 'assistant-' + requestId, role: 'assistant', text: ASSISTANT_FAILURES.ASSISTANT_VERIFICATION_FAILED, code: 'ASSISTANT_VERIFICATION_FAILED' } }),
-          verification: { state: 'failed', code: 'ASSISTANT_VERIFICATION_FAILED' } });
-        else await readBack({ type: "uncertain", requestId });
+        await readBack({ type: "uncertain", requestId });
       }
     } finally {
-      if (outstanding === request) {
-        outstanding = undefined;
-        if (assistantSetupCommand(prompt) === 'verify' && !request.abort.signal.aborted && binding === request.binding) {
-          const settledState = state;
-          try { await request.binding.refreshAccount?.(); }
-          catch { if (binding === request.binding && state === settledState) publish({ ...state, messages: [...state.messages,
-            { id: 'account-refresh-' + requestId, role: 'assistant', text: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE }] }); }
-        }
-      }
+      if (outstanding === request) outstanding = undefined;
     }
   }
   async function decide(decision: 'confirm' | 'cancel') {
@@ -215,10 +212,16 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       pendingDecision = undefined; retired = true;
       decision?.abort.abort(); listeners.clear();
     },
+    /** A picker choice: saved without a chat turn; the executor's feedback reports a refusal or unknown result. */
+    async choose(preference: AssistantModelPreference) {
+      if (retired) return;
+      const owner = binding, signal = new AbortController().signal;
+      await savePreference(preference, owner, signal, () => !retired && binding === owner);
+    },
     bind(next: Binding) {
       if (retired) return;
       if (next.authority === binding.authority && next.subjectRef === binding.subjectRef && next.commands?.scope === binding.commands?.scope && next.commands?.executor === binding.commands?.executor
-        && next.commands?.feedback === binding.commands?.feedback && next.refreshAccount === binding.refreshAccount && next.preferenceChanged === binding.preferenceChanged) return;
+        && next.commands?.feedback === binding.commands?.feedback && next.preferenceChanged === binding.preferenceChanged) return;
       binding = next; abort();
       if (state.turn.state === 'proposal') publish(state.turn.disposition === 'confirming' ? assistantReducer(state, lostDecision(state.turn.proposal))
         : state.turn.disposition === 'unknown' ? state : { ...state, turn: { ...state.turn, disposition: 'stale' } });
@@ -239,7 +242,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (action.type === 'edit' || action.type === 'new-chat' || action.type === 'cancel') abort();
       const previous = state;
       publish(assistantReducer(state, action));
-      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry' || action.type === 'verify')) void respond(state.turn.requestId, state.turn.prompt);
+      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt);
     },
   });
 }
@@ -273,19 +276,28 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     return current;
   }, [controllers, sessions, chatId, history]);
   useLayoutEffect(() => {
-    for (const current of controllers.values()) current.bind({ authority: bindingAuthority, ...(subjectRef === undefined ? {} : { subjectRef }), commands, refreshAccount: accountPort.mode === 'live' ? accountPort.refresh : undefined, preferenceChanged });
+    for (const current of controllers.values()) current.bind({ authority: bindingAuthority, ...(subjectRef === undefined ? {} : { subjectRef }), commands, preferenceChanged });
   }, [controller, controllers, bindingAuthority, subjectRef, commands, accountPort, preferenceChanged]);
   useEffect(() => () => { if (controller.snapshot().turn.state === 'waiting') controller.action({ type: 'cancel' }); else controller.abort(); }, [controller]);
   useEffect(() => () => { for (const current of controllers.values()) current.abort(); }, [controllers]);
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
-  const accountAvailable = accountPort.mode === 'live' && account.state === 'connected' && account.planUsage === 'enabled';
   const resource = accountPort.mode === 'live' ? accountPort.getResource?.() : undefined;
-  const unverified = resource !== undefined && 'code' in resource && resource.code === 'CHATGPT_USAGE_UNAVAILABLE';
+  // An unreadable usage meter is not a sign-in failure; a turn that gets no reply is the failure signal.
+  const usageUnread = resource !== undefined && 'code' in resource && resource.code === 'CHATGPT_USAGE_UNAVAILABLE';
+  const accountAvailable = accountPort.mode === 'live' && (account.state === 'connected' && account.planUsage === 'enabled' || usageUnread);
   const accountFailure = resource !== undefined && 'code' in resource ? ERROR_CATALOG[resource.code].text : undefined;
-  return { state, canCompose: accountAvailable || unverified, unverified, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  const [models, setModels] = useState<AssistantModelCatalog['models']>();
+  useEffect(() => {
+    const client = sessions.client;
+    if (!accountAvailable || client.assistantModels === undefined) return;
+    const request = new AbortController();
+    client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
+    return () => request.abort();
+  }, [accountAvailable, sessions.client]);
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => { void controller.choose(preference); }, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
-    accountAction: (unverified ? 'preflight' : account.state === 'loading' ? undefined : account.state === 'connected' || account.state === 'unavailable' ? 'settings' : 'sign-in'),
-    accountHeading: unverified ? "Verify assistant capability" : (account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable'),
-    accountNotice: unverified ? ASSISTANT_FAILURES.ASSISTANT_MODEL_UNVERIFIED : accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish ChatGPT sign-in in Settings.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
+    accountAction: (account.state === 'loading' ? undefined : account.state === 'connected' || account.state === 'unavailable' ? 'settings' : 'sign-in'),
+    accountHeading: account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable',
+    accountNotice: accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish ChatGPT sign-in in Settings.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
     statusText: 'Read and propose', footnote: 'Review the exact action before confirming. Workflow starts require a confirmed plan.' };
 }

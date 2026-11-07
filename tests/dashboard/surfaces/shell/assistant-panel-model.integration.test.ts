@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_MODEL_COMMAND, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -76,7 +76,7 @@ it('blocks every setup attachment before panel registration and both local file 
   function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer, accountClient, ports, served: controller }); return null; }
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(Harness)));
-  for (const text of [ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND]) {
+  for (const text of [ASSISTANT_MODEL_COMMAND]) {
     await act(async () => controller.onAction({ type: "edit", value: text }));
     await act(async () => {
       expect(await model.attachFile(new File(['fixture'], 'fixture.txt'))).toBeNull();

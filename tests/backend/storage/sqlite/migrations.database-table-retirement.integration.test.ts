@@ -9,6 +9,7 @@ import { foundationFixture } from "../../../support/helpers/database-foundation/
 const CURRENT_TABLES = [
   "artifacts",
   "assistant_actions",
+  "assistant_attachments",
   "assistant_chats",
   "assistant_conversations",
   "assistant_messages",

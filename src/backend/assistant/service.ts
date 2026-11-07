@@ -3,7 +3,7 @@ import type { DebugEventSchema } from "../../models/events/timeline.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
-import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
+import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, AssistantModelCatalogSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES, type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia,
   type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem } from "../../models/dashboard/assistant.js";
 import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
@@ -17,23 +17,10 @@ import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/regis
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
 import { AssistantHistoryRefusal, type AssistantHistoryRepository, type AssistantSettlement } from "../storage/sqlite/assistant-history.js";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
-import { ASSISTANT_PROVIDER_EFFORTS, AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
+import { ASSISTANT_PROVIDER_EFFORTS, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
 
-export interface AssistantModelPolicy {
-  readonly model?: string;
-  readonly effort?: AssistantModelPreference["effort"];
-  readonly eligible: true;
-  readonly consented: true;
-  readonly billing: "chatgpt-plan";
-  readonly verifiedUntil: string;
-}
-export interface AssistantModelPolicySnapshot {
-  readonly policy: AssistantModelPolicy;
-  isCurrent(): boolean;
-}
 export interface AssistantServiceOptions {
   readonly debugEvents?: { emit(event: Omit<z.input<typeof DebugEventSchema>, "build" | "pid">): void };
-  readonly verifySelectedModel?: (signal: AbortSignal) => Promise<void>;
   readonly readModelPreference?: () => AssistantModelPreferenceView;
   readonly account: Pick<ChatGptAccountService, "inferAssistant" | "listAssistantModels" | "readAuthority" | "revalidateAuthority">;
   /** Trusted composition currentness (selected profile and runtime); runs before and after every await. */
@@ -43,17 +30,15 @@ export interface AssistantServiceOptions {
   readonly plugins?: () => readonly AssistantPlugin[];
   /** Hash-pinned workflow facts; a failed pin refuses the turn. */
   readonly facts: () => AssistantWorkflowFacts;
-  readonly modelPolicy: () => AssistantModelPolicySnapshot | undefined;
+  /** The person's saved model and effort; `assertCurrent` throws once either changes. */
+  readonly selectedModel: () => Readonly<{ preference: AssistantModelPreference; assertCurrent(): void }>;
   readonly clock: Clock;
   readonly decideAction?: (input: AssistantActionDecision, signal: AbortSignal) => AssistantActionResult | Promise<AssistantActionResult>;
   /** The profile's history repository; every turn is accepted, replayed and settled through it. */
   readonly history: () => AssistantHistoryRepository;
 }
-class AssistantModelPolicyError extends Error {}
+class AssistantModelChangedError extends Error {}
 class AssistantProtocolError extends Error {}
-const PolicySchema = z.strictObject({ model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u).default(ASSISTANT_DEFAULT_MODEL),
-  effort: AssistantModelPreferenceSchema.shape.effort.default(ASSISTANT_DEFAULT_EFFORT), eligible: z.literal(true), consented: z.literal(true),
-  billing: z.literal("chatgpt-plan"), verifiedUntil: z.string().datetime() });
 const refused = (code: AssistantFailureCode): AssistantResult => ({ state: "refused", code, message: ASSISTANT_FAILURES[code] });
 const MAX_MODEL_CALLS = 8, MAX_HISTORY_BYTES = 80_000, MAX_TOOL_OUTPUT_BYTES = 16_000;
 const closure = (error: unknown) => error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError;
@@ -75,33 +60,20 @@ export function createAssistantService(options: AssistantServiceOptions) {
   const live = new Map<string, AbortController>();
   const now = () => options.clock.now().toISOString();
   let staging = false;
-  // Policy is installed by trusted composition, never by a request or model.
-  function captureModelPolicy() {
-    let snapshot: AssistantModelPolicySnapshot | undefined;
-    try { snapshot = options.modelPolicy(); }
-    catch (error) { if (closure(error)) throw error; throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED"); }
-    const policy = PolicySchema.safeParse(snapshot?.policy);
-    const isCurrent = snapshot?.isCurrent?.bind(snapshot);
-    function modelPolicyCurrent(): boolean {
-      if (!policy.success || Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return false;
-      try {
-        const current: unknown = isCurrent?.();
-        if (current instanceof Promise) {
-          // Async checks are refused; drain rejection without logging.
-          void current.catch(() => {}); return false;
-        }
-        return current === true;
-      } catch (error) { if (closure(error)) throw error; throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED"); }
-    }
-    return { policy, modelPolicyCurrent };
-  }
   const actionRefused = () => {
     options.debugEvents?.emit({ category: "http", phase: "failed", correlationId: randomUUID(), area: "assistant-proposal", reason: "action-decision",
       code: "ASSISTANT_PROPOSAL_REFUSED" });
   };
   return Object.freeze({
+    /** The signed-in account's model catalog, for the composer's model picker. */
+    async models(signal: AbortSignal) {
+      options.assertComposition?.();
+      const { catalog } = await options.account.listAssistantModels(signal);
+      options.assertComposition?.();
+      return AssistantModelCatalogSchema.parse(catalog);
+    },
     modelPreference() {
-      if (options.readModelPreference === undefined) throw new AssistantModelPolicyError('assistant-model-preference-unavailable');
+      if (options.readModelPreference === undefined) throw new Error("assistant-model-preference-unavailable");
       return AssistantModelPreferenceViewSchema.parse(options.readModelPreference());
     },
     async decide(input: unknown, signal: AbortSignal): Promise<AssistantActionResult> {
@@ -109,8 +81,6 @@ export function createAssistantService(options: AssistantServiceOptions) {
       if (!parsed.success) return { state: "refused", code: "ASSISTANT_INVALID" };
       try {
         signal.throwIfAborted();
-        const { policy, modelPolicyCurrent } = captureModelPolicy();
-        if (!policy.success || !modelPolicyCurrent()) return { state: "refused", code: "ASSISTANT_MODEL_UNVERIFIED" };
         if (options.decideAction === undefined) return { state: "refused", code: "ASSISTANT_UNAVAILABLE" };
         return AssistantActionResultSchema.parse(await options.decideAction(parsed.data, signal));
       } catch (error) {
@@ -189,23 +159,16 @@ export function createAssistantService(options: AssistantServiceOptions) {
   type Turn = Readonly<{ repeat: AssistantReceipt }> | Readonly<{ uncertain: true }> | Readonly<{ result: AssistantResult; modelText?: string }>;
   async function runTurn(request: AssistantRequest, signal: AbortSignal, history: AssistantHistoryRepository,
     onAccepted: (value: Accepted) => void): Promise<Turn> {
-      let verifying = false;
       let current: Accepted | undefined;
       try {
-        if (request.message.trim() === ASSISTANT_VERIFY_COMMAND) {
-          verifying = true;
-          if (options.verifySelectedModel === undefined) return stop('ASSISTANT_UNAVAILABLE');
-          signal.throwIfAborted();
-          await options.verifySelectedModel(signal);
-          signal.throwIfAborted();
-          return { result: AssistantResultSchema.parse({ state: 'answered', text: 'Assistant verification completed. You can now send an assistant request.' }) };
-        }
-        const { policy, modelPolicyCurrent } = captureModelPolicy();
-        if (!policy.success || !modelPolicyCurrent()) return stop("ASSISTANT_MODEL_UNVERIFIED");
+        let selected: ReturnType<AssistantServiceOptions["selectedModel"]>;
+        try { selected = options.selectedModel(); } catch (error) { if (closure(error)) throw error; return stop("ASSISTANT_UNAVAILABLE"); }
+        const { slug: model, effort } = selected.preference;
+        const modelCurrent = () => { try { selected.assertCurrent(); } catch (error) { if (closure(error)) throw error; throw new AssistantModelChangedError(); } };
         const assertCurrent = () => {
           if (signal.aborted) throw new ChatGptAccountError("CHATGPT_OCR_CANCELLED");
           options.assertComposition?.();
-          if (!modelPolicyCurrent()) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
+          modelCurrent();
           if (current !== undefined && !history.sending(request.conversationId, current.createdAt, request.messageId, now())) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
         };
         assertCurrent();
@@ -224,11 +187,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const registry = assistantToolRegistry(options.plugins());
         const { catalog, authority } = await options.account.listAssistantModels(signal);
         assertCurrent();
-        if (!options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
-        if (!catalog.models.some(model => model.slug === policy.data.model)) return stop("ASSISTANT_MODEL_UNAVAILABLE");
+        if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError();
+        if (!catalog.models.some(entry => entry.slug === model)) return stop("ASSISTANT_MODEL_UNAVAILABLE");
         const assertAuthority = () => {
           assertCurrent();
-          if (!options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
+          if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError();
         };
         let textBytes = 0;
         const files = <T extends AssistantAttachmentRecord>(rows: readonly T[]) => {
@@ -248,16 +211,17 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const unrecovered = new Map<string, AssistantFailureCode>(), outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>();
         const assertRetainedCurrent = () => {
           options.assertComposition?.();
-          if (!modelPolicyCurrent() || !options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
+          modelCurrent();
+          if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError();
         };
         const context = { signal, references: table, actorId: options.actorId, conversationId: request.conversationId, operatorText: masked, assertCurrent: assertAuthority, assertRetainedCurrent };
         for (let step = 0; step < MAX_MODEL_CALLS; step++) {
           assertAuthority();
           if (structureBytes(input) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_LIMIT") };
-          const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model: policy.data.model,
-            reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[policy.data.effort] }, input, tools: [registry.namespace] }, signal, assertAuthority));
+          const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model,
+            reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[effort] }, input, tools: [registry.namespace] }, signal, assertAuthority));
           assertAuthority();
-          if (turn.model !== policy.data.model) return stop("ASSISTANT_INVALID");
+          if (turn.model !== model) return stop("ASSISTANT_INVALID");
           input.push(...turn.output);
           const calls = turn.output.filter(item => item.type === "function_call"), messages = turn.output.filter(item => item.type === "message");
           if (calls.length === 0) {
@@ -306,12 +270,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
         if (current !== undefined && error instanceof ChatGptDeliveryUncertainError) return { uncertain: true };
         if (signal.aborted) return stop("ASSISTANT_CANCELLED");
         if (error instanceof AssistantHistoryRefusal) return stop(error.code);
-        if (error instanceof AssistantModelPolicyError) return stop("ASSISTANT_MODEL_UNVERIFIED");
+        if (error instanceof AssistantModelChangedError) return stop("ASSISTANT_MODEL_CHANGED");
         if (error instanceof ChatGptAccountError) {
           if (error.code === "CHATGPT_USAGE_LIMIT") return stop("ASSISTANT_USAGE_LIMIT");
           if (error.code === "CHATGPT_PLAN_DISABLED") return stop("ASSISTANT_PLAN_DISABLED");
           if (error.code === "CHATGPT_ACCOUNT_EXPIRED") return stop("ASSISTANT_ACCOUNT_EXPIRED");
-          if (error.code === "CHATGPT_ASSISTANT_REFUSED") return stop(verifying ? "ASSISTANT_CAPABILITY_FAILED" : "ASSISTANT_RESPONSE_REFUSED");
+          if (error.code === "CHATGPT_ASSISTANT_REFUSED") return stop("ASSISTANT_RESPONSE_REFUSED");
           if (error.code === "CHATGPT_OCR_CANCELLED") return stop("ASSISTANT_CANCELLED");
           if (error.code === "CHATGPT_OCR_INCOMPLETE") return stop("ASSISTANT_RESPONSE_INCOMPLETE");
           if (error.code === "CHATGPT_OCR_FAILED") return stop("ASSISTANT_RESPONSE_FAILED");
@@ -320,7 +284,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (code.success) return stop(code.data);
         }
         if (error instanceof AssistantProtocolError || error instanceof z.ZodError || error instanceof SyntaxError) return stop("ASSISTANT_INVALID");
-        return stop(verifying ? "ASSISTANT_VERIFICATION_FAILED" : "ASSISTANT_UNAVAILABLE");
+        return stop("ASSISTANT_UNAVAILABLE");
       }
   }
 }
@@ -381,4 +345,4 @@ function selectedRunReference(subjectRef: string): { runId: string; revision: nu
   if (match === null || !z.uuid().safeParse(match[1]).success || !Number.isSafeInteger(revision)) throw new AssistantProtocolError("assistant-selected-run-invalid");
   return { runId: match[1], revision };
 }
-export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'stage' | 'modelPreference' | 'historyView' | 'conversation' | 'history'>>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'stage' | 'models' | 'modelPreference' | 'historyView' | 'conversation' | 'history'>>;

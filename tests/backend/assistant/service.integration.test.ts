@@ -11,7 +11,7 @@ import { createAssistantService, type AssistantServiceOptions } from "../../../s
 import { AssistantToolRefusal, type AssistantPlugin, type AssistantTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { AssistantAuthorizationError } from "../../../src/backend/assistant/authorization.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
-import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 
 const profiles = createProfileFixtureSet();
@@ -29,7 +29,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
   const f = { ...owned, async cleanup() { await owned.cleanup(); await db.close(); } };
   await f.connected();
   const bodies: z.infer<typeof AssistantInferenceRequestSchema>[] = [], script: Step[] = [];
-  let policyCurrent = true, onPost: (() => void) | undefined;
+  let preferenceCurrent = true, onPost: (() => void) | undefined;
   f.setResponse(init => {
     onPost?.();
     if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
@@ -46,7 +46,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
   const plugin: AssistantPlugin = { domain: "test", tools: input.tools ?? [echo] };
   const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => FACTS,
     owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), plugins: () => [plugin],
-    modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2026-10-13T00:00:00Z" }, isCurrent: () => policyCurrent }),
+    selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent: () => { if (!preferenceCurrent) throw new Error("assistant-model-preference-changed"); } }),
     history: () => db.database.authority.assistantHistory, ...input.options });
   const revision = (conversationId: string) => {
     if (service.conversation(conversationId) === undefined) assert.equal(service.history({ operation: "create", conversationId, title: "Chat" }).state, "saved");
@@ -59,7 +59,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
     return envelope.result;
   };
   const posts = () => f.calls.filter(call => call.url.endsWith("/responses")).length;
-  return { f, db, service, bodies, script, invoked, ask, send, revision, posts, invalidatePolicy() { policyCurrent = false; }, onPost(hook: () => void) { onPost = hook; } };
+  return { f, db, service, bodies, script, invoked, ask, send, revision, posts, changePreference() { preferenceCurrent = false; }, onPost(hook: () => void) { onPost = hook; } };
 }
 const call = (name: string, args: unknown) => completedAssistantStream({ action: name, ...z.record(z.string(), z.unknown()).parse(args) }, "gpt-6.1-sol", "relay");
 const lastOutput = (body: z.infer<typeof AssistantInferenceRequestSchema>) => {
@@ -206,12 +206,12 @@ it("stops at eight model calls and refuses an oversized tool output for recovery
   } finally { await w.f.cleanup(); }
 });
 
-it("fences the provider POST: invalidated policy or abort during the turn sends no further request", async () => {
+it("fences the provider POST: a changed model preference or abort during the turn sends no further request", async () => {
   const w = await world();
   try {
     w.script.push(call("echo", { value: "a" }));
-    w.onPost(() => { if (w.posts() === 1) w.invalidatePolicy(); });
-    assert.deepEqual(await w.ask("Go"), { state: "refused", code: "ASSISTANT_MODEL_UNVERIFIED", message: ASSISTANT_FAILURES.ASSISTANT_MODEL_UNVERIFIED });
+    w.onPost(() => { if (w.posts() === 1) w.changePreference(); });
+    assert.deepEqual(await w.ask("Go"), { state: "refused", code: "ASSISTANT_MODEL_CHANGED", message: ASSISTANT_FAILURES.ASSISTANT_MODEL_CHANGED });
     assert.equal(w.posts(), 1);
     assert.deepEqual(w.invoked, []);
   } finally { await w.f.cleanup(); }
@@ -230,7 +230,7 @@ it("fences the provider POST: invalidated policy or abort during the turn sends 
 it("refuses before inference without plugins, with a failed facts pin or a model outside the catalog", async () => {
   const cases: readonly (readonly [Partial<AssistantServiceOptions>, AssistantFailureCode])[] = [[{ plugins: undefined }, "ASSISTANT_UNAVAILABLE"],
     [{ facts: () => { throw new Error("assistant-workflow-facts-stale"); } }, "ASSISTANT_CONTEXT_UNAVAILABLE"],
-    [{ modelPolicy: () => ({ policy: { model: "gpt-unlisted", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2026-10-13T00:00:00Z" }, isCurrent: () => true }) }, "ASSISTANT_MODEL_UNAVAILABLE"]];
+    [{ selectedModel: () => ({ preference: { slug: "gpt-unlisted", effort: "medium" }, assertCurrent: () => {} }) }, "ASSISTANT_MODEL_UNAVAILABLE"]];
   for (const [options, code] of cases) {
     const w = await world({ options });
     try {
@@ -240,12 +240,9 @@ it("refuses before inference without plugins, with a failed facts pin or a model
   }
 });
 
-it("keeps explicit verification separate from the tool loop and refuses an invalid selected run", async () => {
-  let verified = 0;
-  const w = await world({ options: { verifySelectedModel: async () => { verified++; } } });
+it("refuses an invalid selected run before inference", async () => {
+  const w = await world();
   try {
-    assert.equal((await w.ask(`  ${ASSISTANT_VERIFY_COMMAND} `)).state, "answered");
-    assert.equal(verified, 1); assert.equal(w.posts(), 0);
     for (const subjectRef of ["not-a-run", `run_${randomUUID()}_99999999999999999999`]) assert.deepEqual(await w.ask("Explain", undefined, undefined, { subjectRef }),
       { state: "refused", code: "ASSISTANT_INVALID", message: ASSISTANT_FAILURES.ASSISTANT_INVALID });
     assert.equal(w.posts(), 0);
@@ -371,8 +368,7 @@ it("keeps a complete but invalid provider response a definite refusal", async ()
 it("sends nothing and stores nothing new once the chat expires while the credentials are awaited or the stream is held", async () => {
   for (const moment of ["credentials", "stream"] as const) {
     const historyClock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
-    const w = await world({ options: { clock: historyClock,
-      modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2099-01-01T00:00:00Z" }, isCurrent: () => true }) } });
+    const w = await world({ options: { clock: historyClock } });
     try {
       const id = randomUUID(), messageId = randomUUID();
       let refreshed = 0;

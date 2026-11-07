@@ -33,11 +33,11 @@ describe("assistant model preference additive schema", () => {
     assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 8), historical);
     assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint), historical);
     assert.equal(deriveAuthorityUpgradePlanDigest(8, fingerprint), deriveAuthorityUpgradePlanDigest(8, fingerprint, CURRENT_AUTHORITY_SCHEMA_VERSION));
-    assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 25), deriveAuthorityUpgradePlanDigest(7, fingerprint));
+    assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 26), deriveAuthorityUpgradePlanDigest(7, fingerprint));
     assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint, 18), deriveAuthorityUpgradePlanDigest(7, fingerprint));
   });
 
-  it.each([[7, 8], [7, 9], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17], [17, 18], [18, 19], [19, 20], [20, 21], [21, 22], [22, 23], [23, 24]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
+  it.each([[7, 8], [7, 9], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17], [17, 18], [18, 19], [19, 20], [20, 21], [21, 22], [22, 23], [23, 24], [24, 25]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
     const fingerprint = "1".repeat(64);
     const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > from && migration.version <= to).flatMap(migration => migration.statements);
     const expected = createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: from, toSchemaVersion: to, sourceContentFingerprint: fingerprint, statements })).digest("hex");

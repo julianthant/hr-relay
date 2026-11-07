@@ -216,7 +216,7 @@ and `configFingerprint`. Activation advances `generation`; credential edits do n
 identity with the authenticated active identity. The latter state reports a saved-versus-active
 mismatch, not a requirement on every ordinary save.
 
-### Assistant choice and private verification
+### Assistant model choice
 
 The `assistant_model_preference` singleton is separate from Settings, grants and account
 credentials. Its repository authenticates the current row against command/audit history. Only a
@@ -230,13 +230,10 @@ availability only and issues no inference proof. Same-command replay returns its
 without reapplying or rewinding a newer choice. A committed result followed by lost currentness stays
 unknown; it is not rolled back or reported as a zero-effect refusal.
 
-`chatgpt-account-service.ts` owns the private verification witness. Only an explicit composer
-`/verify-assistant` request performs the fixed public two-turn probe and fresh catalog read. The witness
-is issued after response/resource settlement, lasts at most 15 minutes and rechecks the actual account,
-selected context/profile/epoch and complete saved preference identity. A changed choice, foreign
-credential revision, an aborted verification binding, revocation, expiry or uncertain resource closure
-cannot preserve inference authority. Settings, grants, sign-in, OCR and catalog availability do not substitute for it.
-The production composition captures this account witness; it accepts no constructor policy override.
+Each assistant turn uses the selected person's saved model and effort as read at its start, rechecks
+that saved choice and the account authority before every provider request, and refuses with
+`ASSISTANT_MODEL_CHANGED` once either changes. There is no capability probe or verification witness; a
+turn that gets no reply is the failure signal.
 
 Before an effect, an actual account/source closure failure keeps its named failure rather than being
 masked by cancellation. An already-entered canonical action retains UNKNOWN priority. Account closure

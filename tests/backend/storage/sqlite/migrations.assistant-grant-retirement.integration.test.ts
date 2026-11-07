@@ -25,10 +25,10 @@ it("drops the grant table from a store that holds no grant history", () => {
 });
 
 it.each([
-  ["a grant", "INSERT INTO assistant_grants VALUES ('current','profile',1,'command','{}','created')"],
+  ["a grant", "INSERT INTO assistant_grants VALUES ('current','profile',1,'plain','{}','created')"],
   ["an assistant action", "INSERT INTO assistant_actions VALUES ('action','chat','command',1,'cancelled','{}','created','expires')"],
-  ["a permission command", `INSERT INTO commands VALUES ('command','settings','operator',NULL,NULL,'digest','{"payload":{"assistantPermission":{"mode":"every-action"}}}','succeeded','{}','created','created')`],
-  ["a permission audit", `INSERT INTO command_audits VALUES ('audit','command',NULL,'{"request":{"payload":{"assistantPermission":{"mode":"every-action"}}}}','created')`],
+  ["a permission command", `INSERT INTO commands VALUES ('permission','settings','operator',NULL,NULL,'digest','{"payload":{"assistantPermission":{"mode":"every-action"}}}','succeeded','{}','created','created')`],
+  ["a permission audit", `INSERT INTO command_audits VALUES ('audit','plain',NULL,'{"request":{"payload":{"assistantPermission":{"mode":"every-action"}}}}','created')`],
 ])("refuses the upgrade when the store holds %s", (_label, insert) => {
   const database = predecessor();
   try {

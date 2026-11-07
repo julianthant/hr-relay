@@ -1,5 +1,4 @@
-import { z } from 'zod';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
@@ -17,8 +16,6 @@ function pending() {
   const promise = new Promise<AssistantResult>(resolve => { settle = resolve; });
   return { promise, settle };
 }
-/** A request without its per-send conversation, revision and message identities. */
-const withoutIdentity = (request: unknown) => { const { conversationId: _conversation, expectedRevision: _revision, messageId: _message, ...rest } = z.object({ conversationId: z.uuid(), expectedRevision: z.number(), messageId: z.uuid() }).passthrough().parse(request); return rest; };
 
 it('keeps monotonic identity across New Chat and ignores late replies after cancellation, edits and authority changes', async () => {
   for (const action of ['new-chat', 'cancel', 'edit', 'binding'] as const) {
@@ -108,7 +105,7 @@ function preferenceControls() {
   let view = AssistantModelPreferenceViewSchema.parse({ profileId: crypto.randomUUID(), epoch: 2, revision: 3,
     preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
   const sent: unknown[] = [], replies: AssistantRequest[] = [], signals: (AbortSignal | undefined)[] = [], feedback: CommandOutcome[] = [];
-  let reads = 0, refreshes = 0, lostResponse = false, gate: Promise<void> | undefined, answer = 'Done';
+  let reads = 0, lostResponse = false, gate: Promise<void> | undefined, answer = 'Done';
   let reader: (signal?: AbortSignal) => Promise<AssistantModelPreferenceView> = async () => view;
   const client = {
     async assistantRespond(input: AssistantRequest): Promise<AssistantRespondEnvelope> { replies.push(input); return { kind: 'result', result: { state: 'answered', text: answer } }; },
@@ -127,11 +124,10 @@ function preferenceControls() {
   let currentScope = scope;
   const executor = new CommandExecutor(() => currentScope);
   const commands = { executor, scope, feedback: (value: CommandOutcome) => { feedback.push(value); } };
-  const binding = { authority: 'selected', subjectRef: 'fixture-subject', commands,
-    refreshAccount: async () => { refreshes++; } };
+  const binding = { authority: 'selected', subjectRef: 'fixture-subject', commands };
   const c = createAssistantController(client, binding);
   return { c, binding, commands, executor, sent, replies, signals, feedback, scope,
-    get view() { return view; }, get reads() { return reads; }, get refreshes() { return refreshes; },
+    get view() { return view; }, get reads() { return reads; },
     setReader(value: typeof reader) { reader = value; }, setGate(value: Promise<void>) { gate = value; },
     loseResponse() { lostResponse = true; }, changeScope() { currentScope = { ...scope, authority: {} }; },
     answer(value: string) { answer = value; },
@@ -140,19 +136,6 @@ function preferenceControls() {
 function sendControl(c: ReturnType<typeof createAssistantController>, text: string) {
   c.action({ type: "edit", value: text }); c.action({ type: "send" });
 }
-it('verifies only on explicit send, omits subject context and refreshes the actual account once', async () => {
-  const f = preferenceControls(); await Promise.resolve();
-  assert.equal(f.replies.length, 0); assert.equal(f.refreshes, 0);
-  f.c.action({ type: "edit", value: ASSISTANT_VERIFY_COMMAND }); await Promise.resolve();
-  assert.equal(f.replies.length, 0);
-  f.c.action({ type: "send" });
-  await vi.waitFor(() => assert.equal(f.refreshes, 1));
-  assert.deepEqual(f.replies.map(withoutIdentity), [{ message: ASSISTANT_VERIFY_COMMAND }]);
-  assert.equal(f.sent.length, 0); assert.equal(f.reads, 0);
-  sendControl(f.c, 'ordinary request');
-  await vi.waitFor(() => assert.equal(f.replies.length, 2));
-  assert.equal(f.refreshes, 1);
-});
 it('shows the served preference and dispatches the explicit choice through the shared executor', async () => {
   const f = preferenceControls(), initial = f.view;
   sendControl(f.c, ASSISTANT_MODEL_COMMAND);
@@ -168,6 +151,15 @@ it('shows the served preference and dispatches the explicit choice through the s
   assert.equal(f.feedback[0]?.kind, "confirmed"); assert.equal(f.reads, 3);
   assert.ok(f.c.snapshot().messages.at(-1)?.text.includes(assistantModelLabel(f.view.preference.slug)));
   assert.equal(f.executor.retainedAttempts()[0]?.scope.client, f.scope.client);
+});
+it('saves a picker choice through the shared executor without a chat turn', async () => {
+  const f = preferenceControls(), initial = f.view;
+  await f.c.choose({ slug: initial.preference.slug, effort: 'max' });
+  const command = AssistantModelPreferenceCommandRequestSchema.parse(f.sent[0]);
+  assert.deepEqual(command.target, { profileId: initial.profileId, epoch: initial.epoch, expectedRevision: initial.revision });
+  assert.deepEqual(command.payload, { slug: initial.preference.slug, effort: 'max' });
+  assert.equal(f.feedback[0]?.kind, "confirmed"); assert.equal(f.view.preference.effort, 'max');
+  assert.deepEqual(f.c.snapshot().messages, []); assert.equal(f.replies.length, 0);
 });
 it('rejects malformed setup arguments without an inference call or command', async () => {
   for (const text of [ASSISTANT_MODEL_COMMAND + ' fixture-selected', ASSISTANT_MODEL_COMMAND + ' fixture-selected unsupported', ASSISTANT_MODEL_COMMAND + ' fixture-selected ' + ASSISTANT_DEFAULT_EFFORT + ' extra']) {
@@ -227,15 +219,6 @@ it('does not infer or choose a local default when the preference query is not wi
   await vi.waitFor(() => assert.notEqual(c.snapshot().turn.state, "waiting"));
   assert.equal(inferences, 0); assert.equal(c.snapshot().messages.length, 2);
 });
-it('does not refresh or publish a superseded explicit verification settlement', async () => {
-  const held = Promise.withResolvers<AssistantResult>(); let refreshes = 0;
-  const c = createAssistantController(resultClient({ assistantRespond: () => held.promise }), { authority: 'first', refreshAccount: async () => { refreshes++; } });
-  sendControl(c, ASSISTANT_VERIFY_COMMAND);
-  c.bind({ authority: 'second' }); held.resolve({ state: 'answered', text: 'Stale verification' });
-  await held.promise; await Promise.resolve(); await Promise.resolve();
-  assert.equal(refreshes, 0); assert.equal(c.snapshot().messages.some(message => message.text === 'Stale verification'), false);
-});
-
 it('binds selected-run workflow proposals to the current selection and confirms only through the typed action client', async () => {
   let confirms = 0;
   const proposal = ASSISTANT_START_PROPOSAL;
@@ -261,40 +244,3 @@ it('binds selected-run workflow proposals to the current selection and confirms 
   c.action({ type: 'confirm' }); assert.equal(confirms, 1);
 });
 
-it('tests explicitly without overwriting the draft, shows the named failure and permits another public test', async () => {
-  const calls: AssistantRequest[] = [];
-  let failTransport = false;
-  const c = createAssistantController(resultClient({ async assistantRespond(request) { calls.push(request); if (failTransport) throw Error('private transport details');
-    return { state: 'refused', code: 'ASSISTANT_CAPABILITY_FAILED', message: 'ignored server prose' }; } }), { authority: 'current', subjectRef: 'private-selection' });
-  c.action({ type: 'edit', value: 'unsent draft' }); c.action({ type: 'verify' });
-  await vi.waitFor(() => assert.equal(c.snapshot().verification?.state, 'failed'));
-  assert.deepEqual(calls.map(withoutIdentity), [{ message: ASSISTANT_VERIFY_COMMAND }]); assert.equal(c.snapshot().draft, 'unsent draft');
-  assert.equal(c.snapshot().messages.at(-1)?.code, 'ASSISTANT_CAPABILITY_FAILED');
-  failTransport = true; c.action({ type: 'verify' });
-  await vi.waitFor(() => assert.equal(c.snapshot().messages.at(-1)?.code, 'ASSISTANT_VERIFICATION_FAILED'));
-  assert.equal(c.snapshot().turn.state, 'idle'); assert.equal(JSON.stringify(c.snapshot()).includes('private transport'), false);
-});
-
-it('normalizes pasted verification whitespace and cancels the public test without creating an unknown action', async () => {
-  const reply = pending(), calls: AssistantRequest[] = [];
-  const c = createAssistantController(resultClient({ async assistantRespond(request) { calls.push(request); return reply.promise; } }), { authority: 'current', subjectRef: 'private' });
-  c.action({ type: 'edit', value: '  /verify-assistant\n' }); c.action({ type: 'send' });
-  assert.deepEqual(calls.map(withoutIdentity), [{ message: ASSISTANT_VERIFY_COMMAND }]);
-  c.action({ type: 'cancel' }); assert.equal(c.snapshot().turn.state, 'cancelled');
-  reply.settle({ state: 'answered', text: 'Late test result' }); await Promise.resolve(); await Promise.resolve();
-  assert.equal(c.snapshot().messages.some(message => message.text === 'Late test result'), false);
-  c.action({ type: 'verify' }); assert.equal(calls.length, 2);
-});
-
-it('allows Test assistant again after the operator cancels a proposal', async () => {
-  let requests = 0;
-  const c = createAssistantController(resultClient({ async assistantRespond(request) { requests++; return request.message === ASSISTANT_VERIFY_COMMAND ? { state: 'answered', text: 'Verified' } : actionProposal; },
-    async assistantDecide(input) { return { state: 'cancelled', actionId: input.actionId }; } }), { authority: 'current' });
-  c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' });
-  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'proposal'));
-  c.action({ type: 'cancel' });
-  await vi.waitFor(() => { const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal'); if (turn.state === 'proposal') assert.equal(turn.disposition, 'cancelled'); });
-  c.action({ type: 'verify' });
-  await vi.waitFor(() => assert.equal(c.snapshot().verification?.state, 'passed'));
-  assert.equal(requests, 2);
-});

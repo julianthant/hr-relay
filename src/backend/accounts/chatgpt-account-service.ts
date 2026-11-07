@@ -1,4 +1,4 @@
-import { ASSISTANT_PROVIDER_EFFORTS, AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
+import { AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
 import { ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_REQUEST_MAX_BYTES, AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, assistantInputMedia, assistantUserParts, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
 import { type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
 import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "node:crypto";
@@ -831,70 +831,6 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     assertPreparedCurrent();
     return assertPreparedCurrent;
   }
-  let capabilityGeneration = 0;
-  let assistantVerification: Readonly<{
-    generation: number; preference: AssistantModelPreference; authority: ChatGptAccountAuthority;
-    issuedAt: number; expiresAt: number; assertCurrent(): void;
-  }> | undefined;
-  async function verifyAssistantCapability(input: AssistantModelPreference, assertCurrent: () => true, signal?: AbortSignal): Promise<void> {
-    const generation = ++capabilityGeneration;
-    assistantVerification = undefined;
-    active();
-    if (closureFailures.size !== 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], 'chatgpt-account-response-closure-unproved'));
-    const preference = Object.freeze(AssistantModelPreferenceSchema.parse(input));
-    const assertVerificationCurrent = () => {
-      assertAssistantCurrent(assertCurrent);
-      if (generation !== capabilityGeneration || signal?.aborted === true) throw fault('CHATGPT_ASSISTANT_REFUSED');
-    };
-    const operation = await beginInference(signal, assertVerificationCurrent, "assistant");
-    let authority: ChatGptAccountAuthority;
-    try {
-      const tools: AssistantInferenceRequest['tools'] = [{ type: 'namespace', name: 'relay_capability', description: 'Public capability verification only.',
-        tools: [{ type: 'function', name: 'echo', description: 'Return the fixed public verification value.', strict: true,
-          parameters: { type: 'object', properties: { value: { type: 'string', enum: ['relay-public-capability'] } },
-            required: ['value'], additionalProperties: false } }] }];
-      const history: AssistantInferenceRequest['input'] = [{ role: 'developer',
-        content: 'Call relay_capability.echo once with value relay-public-capability. After its public output, answer Relay public capability verified. Do nothing else.' },
-        { role: 'user', content: 'Verify this model using the fixed public function only.' }];
-      const first = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[preference.effort] }, input: history, tools }, signal, operation);
-      operation.assertCurrent();
-      const calls = first.output.filter(item => item.type === 'function_call'), call = calls[0];
-      if (calls.length !== 1 || call?.namespace !== 'relay_capability' || call.name !== 'echo') throw fault('CHATGPT_ASSISTANT_REFUSED');
-      let argumentsValue: unknown;
-      try { argumentsValue = JSON.parse(call.arguments); } catch { throw fault('CHATGPT_ASSISTANT_REFUSED'); }
-      if (!z.strictObject({ value: z.literal('relay-public-capability') }).safeParse(argumentsValue).success) throw fault('CHATGPT_ASSISTANT_REFUSED');
-      const terminal = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[preference.effort] }, tools,
-        input: [...history, ...first.output, { type: 'function_call_output', call_id: call.call_id, namespace: call.namespace, name: call.name,
-          ...(call.caller === undefined ? {} : { caller: call.caller }), output: JSON.stringify({ value: 'relay-public-capability' }) }] }, signal, operation);
-      operation.assertCurrent();
-      if (terminal.output.some(item => item.type === 'function_call') || !terminal.output.some(item => item.type === 'message')) throw fault('CHATGPT_ASSISTANT_REFUSED');
-      const catalog = await listAssistantModels(signal);
-      operation.assertCurrent();
-      if (!revalidateAuthority(catalog.authority) || !catalog.catalog.models.some(model => model.slug === preference.slug)) throw fault('CHATGPT_ASSISTANT_REFUSED');
-      authority = catalog.authority;
-    } finally { operation.close(); }
-    assertVerificationCurrent();
-    if (!revalidateAuthority(authority)) throw fault('CHATGPT_ASSISTANT_REFUSED');
-    if (closureFailures.size !== 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], 'chatgpt-account-response-closure-unproved'));
-    const issuedAt = clock.nowMs();
-    assistantVerification = Object.freeze({ generation, preference, authority, issuedAt, expiresAt: issuedAt + 15 * 60_000, assertCurrent: assertVerificationCurrent });
-  }
-  function captureAssistantModelPolicy() {
-    const verified = assistantVerification;
-    if (verified === undefined) return undefined;
-    const isCurrent = () => {
-      active();
-      if (closureFailures.size !== 0) return false;
-      if (assistantVerification !== verified || verified.generation !== capabilityGeneration
-        || clock.nowMs() < verified.issuedAt || clock.nowMs() >= verified.expiresAt) return false;
-      verified.assertCurrent();
-      return revalidateAuthority(verified.authority);
-    };
-    if (!isCurrent()) return undefined;
-    return Object.freeze({ policy: Object.freeze({ model: verified.preference.slug, effort: verified.preference.effort,
-      eligible: true as const, consented: true as const, billing: "chatgpt-plan" as const,
-      verifiedUntil: new Date(verified.expiresAt).toISOString() }), isCurrent });
-  }
   async function responseText<T>(model: string, input: readonly unknown[], accept: (result: { readonly text: string; readonly model: string; readonly responseId: string }) => T,
     signal?: AbortSignal, streamLimit = 4_000_000, operation?: InferenceOperation): Promise<T> {
     return responseStream(model, input, (terminal, output, textOutputIndex, argumentDeltas) => {
@@ -1168,7 +1104,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (signOutFailure instanceof Error) throw signOutFailure;
     if (signOutFailure !== undefined) throw new Error("ChatGPT sign-out failed", { cause: signOutFailure });
   }
-  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
+  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;
 

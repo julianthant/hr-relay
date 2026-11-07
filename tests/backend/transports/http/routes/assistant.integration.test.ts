@@ -13,6 +13,18 @@ it("serves no assistant permission route", async () => {
   for (const method of ["GET", "POST"]) assert.equal((await app.request("http://127.0.0.1:4310/api/v1/assistant/permission", { method })).status, 404);
 });
 
+it("serves the account model catalog uncached and refuses without the service", async () => {
+  const catalog = { models: [{ slug: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" }] };
+  const app: DashboardApp = new Hono();
+  registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); }, async models() { return catalog; } });
+  const response = await app.request("http://127.0.0.1:4310/api/v1/assistant/models");
+  assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), catalog);
+  const bare: DashboardApp = new Hono();
+  registerAssistantRoutes(bare, { async respond() { throw new Error("unexpected inference"); } });
+  assert.equal((await bare.request("http://127.0.0.1:4310/api/v1/assistant/models")).status, 503);
+});
+
 it("guards loopback/origin/media before body or inference and bounds request bytes", async () => {
   const app: DashboardApp = new Hono(); let calls = 0;
   registerAssistantRoutes(app, { async respond() { calls++; return { kind: "result", result: { state: "answered", text: "Synthetic" } }; } });

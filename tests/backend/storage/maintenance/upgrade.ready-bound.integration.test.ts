@@ -174,10 +174,15 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     acquireRestore: () => profile.machine.acquireOfflineMaintenance() };
 }
 
+function assertGrantTableRetired(path: string) {
+  const raw = new DatabaseSync(path, { readOnly: true });
+  try { assert.equal(raw.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name='assistant_grants'").get()?.count, 0); } finally { raw.close(); }
+}
 function rawEight(path: string, version = 8) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
-    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    // The empty grant table is dropped by schema 26; `assertGrantTableRetired` checks that separately.
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
@@ -193,6 +198,7 @@ it("upgrades a genuinely READY bound profile with exact preference conversion, r
     assert.deepEqual(rawEight(f.path), before);
     const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
     assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 8, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
+    assertGrantTableRetired(f.path);
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
@@ -311,7 +317,7 @@ it("automatically upgrades schema 22 with queued work intact", async () => {
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
     const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_conversations", "assistant_messages"].sort());
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages"].sort());
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
@@ -545,6 +551,7 @@ it.each([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const)("upgrades supporte
       assert.ok(upgraded.prepare("PRAGMA table_info(runs)").all().some(column => column.name === "pause_state"));
       assert.equal(upgraded.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='trigger' AND name IN ('run_pause_insert','run_pause_update')").get()?.count, 2);
     } finally { upgraded.close(); }
+    assertGrantTableRetired(f.path);
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
