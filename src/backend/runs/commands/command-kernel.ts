@@ -1966,7 +1966,8 @@ async function executeWorkerPoolCommand(
       if (request.type === "spawn-worker") requireActiveSlot(repositories, request, request.payload.workerId, request.target.workflowId);
     } else requireActiveSlot(repositories, request, request.target.workerId, "workflowId" in request.target ? request.target.workflowId : undefined);
   });
-  const preflight = request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker" || request.type === "stop-worker";
+  // A plan's member starts are refused per member before spawn; the plan itself applies.
+  const preflight = request.type === "spawn-worker" || request.type === "retry-worker" || request.type === "stop-worker";
   try { await pool.admit(request.commandId, { preflight }); }
   catch (error) {
     const refusal = workerEffectRefusal(request, error);
