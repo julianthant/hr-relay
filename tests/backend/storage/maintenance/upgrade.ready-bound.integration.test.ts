@@ -1,4 +1,9 @@
-import { assertUpgradedRunSettlementRows, restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { z } from "zod";
+import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
+import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
+import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { PredecessorRunRecordSchema } from "../../../../src/models/run/record.js";
+import { assertUpgradedRunSettlementRows, restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -60,7 +65,7 @@ const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 });
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 = 8, extractionEvidence = false,
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 = 8, extractionEvidence = false,
   workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
@@ -132,7 +137,9 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
+    restoreSchema22WorkerCustodyFixture(raw);
+    if (sourceVersion >= 21) raw.exec(`UPDATE database_states SET schema_version=${String(sourceVersion)}; PRAGMA user_version=${String(sourceVersion)}`);
+    else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
     else if (sourceVersion === 19) restoreSchema19RunSettlementFixture(raw);
     else restoreSchema18WorkbookReferenceFixture(raw);
     if (sourceVersion < 18) removeEmptySchema18WorkbookCatalog(raw);
@@ -695,4 +702,71 @@ it.each(([17, 18] as const).flatMap(version => (["run", "terminal-run", "plan", 
         assert.equal(raw.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name='workbook_reference_upgrade_guard'").get()?.count, 0);
       } finally { raw.close(); }
     } finally { await f.close(); }
+});
+
+/** Writes worker custody rows as schemas 20-22 stored them: old slots, leases with a pause, worker history and a claimed run with its worker lifetime. */
+function plantPredecessorWorkerCustody(path: string) {
+  const raw = new DatabaseSync(path, { enableForeignKeyConstraints: true }), now = systemClock.now().toISOString();
+  try {
+    const pool = WorkerPoolRecordSchema.parse({ workflow: "person-lookup", desiredWorkers: 1, version: 2, plannedBy: LOCAL_OPERATOR_ACTOR_ID, plannedAt: now, createdAt: now, updatedAt: now });
+    raw.prepare("INSERT INTO worker_pools VALUES(?,?,?,?,?,?)").run(pool.workflow, pool.desiredWorkers, pool.version, canonicalJsonStringify(pool), now, now);
+    const planId = randomUUID();
+    insertNativeCommand(raw, { commandId: planId, requestedAt: now, requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "dashboard", family: "worker-browser",
+      type: "plan-worker-count", target: { workflowId: "person-lookup", expectedVersion: 1 }, payload: { desiredWorkers: 1 } });
+    const slot = (workerId: string, ordinal: number, retiredAt: string | null) => ({ workerId, workflow: "person-lookup", ordinal, poolIndex: 1,
+      membershipRevision: 1, phase: "idle", retiredAt, retirementCommandId: retiredAt === null ? null : planId, reservationCommandId: planId, createdAt: now, updatedAt: now });
+    for (const row of [slot("person-lookup-worker-1", 1, now), slot("person-lookup-worker-2", 2, null)]) {
+      raw.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+        .run(row.workerId, row.workflow, row.ordinal, row.membershipRevision, row.phase, row.retiredAt, row.retirementCommandId, row.reservationCommandId, canonicalJsonStringify(row), now, now);
+    }
+    for (const [generation, directive] of [[1, "run"], [2, "pause"]] as const) {
+      raw.prepare("INSERT INTO worker_leases VALUES(?,?,'person-lookup',?,1,'idle',?,NULL,1,'{}',?,?)").run(`lease-${String(generation)}`, "person-lookup-worker-2", generation, directive, now, now);
+    }
+    const lifetime = { membershipRevision: 1, leaseGeneration: 2 };
+    const queued = predecessorRunRecordFromRow(raw.prepare("SELECT * FROM runs ORDER BY id LIMIT 1").get());
+    const claimed = PredecessorRunRecordSchema.parse({ ...queued, version: queued.version + 1, claimGeneration: 1,
+      lifecycle: { state: "claimed", workerId: "person-lookup-worker-2", claimedAt: now, heartbeatAt: now } });
+    const columns = runRecordColumns(claimed, PredecessorRunRecordSchema);
+    const lifecycle = z.record(z.string(), z.unknown()).parse(JSON.parse(String(columns.lifecycle_json)));
+    const stored = { ...columns, lifecycle_json: canonicalJsonStringify({ ...lifecycle, lifecycle: { ...z.record(z.string(), z.unknown()).parse(lifecycle.lifecycle), workerLifetime: lifetime } }) };
+    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='runs'").all();
+    for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
+    try {
+      raw.prepare(`UPDATE runs SET ${Object.keys(stored).map(key => `${key}=?`).join(",")} WHERE id=?`).run(...Object.values(stored), queued.envelope.runId);
+    } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
+    const claimId = randomUUID(), request = { kind: "run-lifecycle", operation: "claim-next", request: { workflow: "person-lookup", workerId: "person-lookup-worker-2", workerLifetime: lifetime } };
+    raw.prepare("INSERT INTO commands VALUES(?,'run-lifecycle','local-operator',NULL,?,?,?,'succeeded',?,?,?)")
+      .run(claimId, queued.envelope.runId, "a".repeat(64), canonicalJsonStringify(request), canonicalJsonStringify(request), now, now);
+    raw.prepare("INSERT INTO command_audits VALUES(?,?,NULL,?,?)").run(claimId, claimId, canonicalJsonStringify({ request }), now);
+    return { runId: queued.envelope.runId };
+  } finally { raw.close(); }
+}
+
+it.each([20, 21, 22] as const)("converts populated schema %s worker custody through backup and upgrade and reads it back strictly", async sourceVersion => {
+  const f = await readyBoundEight("queued", sourceVersion);
+  try {
+    const { runId } = plantPredecessorWorkerCustody(f.path);
+    assert.equal(inspectNativeAuthority(new DatabaseSync(f.path, { readOnly: true }), sourceVersion).schemaVersion, sourceVersion);
+    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    const backupDirectory = join(f.stateRoot, "backups", "authority");
+    assert.ok(readdirSync(backupDirectory).filter(name => name.endsWith(".manifest.json"))
+      .some(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backupDirectory, name), "utf8"))).schemaVersion === sourceVersion));
+    const fresh = f.machine.admitProfile(f.binding.profileId);
+    try {
+      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, createCredentialStore({ admission: fresh, stateRoot: f.stateRoot }));
+      try {
+        assert.deepEqual(database.authority.workerSlots.list("person-lookup").map(slot => [slot.workerId, slot.poolIndex, slot.paused, slot.retiredAt === null]),
+          [["person-lookup-worker-1", 1, false, false], ["person-lookup-worker-2", 1, true, true]]);
+      } finally { database.close(); }
+    } finally { fresh.release(); }
+    const raw = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      assert.equal(inspectNativeAuthority(raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM runs WHERE id=?").get(runId)?.count, 0);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?").get(runId)?.count, 1);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM commands WHERE family='worker-browser' OR request_json LIKE '%workerLifetime%'").get()?.count, 0);
+      for (const table of ["worker_leases", "worker_controls", "browser_sessions"]) assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name=?").get(table), undefined);
+    } finally { raw.close(); }
+  } finally { await f.close(); }
 });

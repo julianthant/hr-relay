@@ -13,7 +13,7 @@ import { confirmationPublicationFromRow } from "../../../models/events/confirmed
 import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
-import { predecessorRunRecordFromRow } from "./run-record-row.js";
+import { predecessorCustodyRunFromRow } from "./worker-custody-predecessor.js";
 
 const SLIM_WORKER_SLOTS = [
   `CREATE TABLE worker_slots (
@@ -187,7 +187,7 @@ function mentions(values: Iterable<unknown>, ids: ReadonlySet<string>): boolean 
 }
 
 /** Worker history and every journal naming a closure run; kept rows that still need them refuse the upgrade. */
-function deleteJournals(database: DatabaseSync, closure: ReadonlySet<string>, seeds: ReadonlySet<string>, kept: ReadonlySet<string>): void {
+function doomedJournals(database: DatabaseSync, closure: ReadonlySet<string>, seeds: ReadonlySet<string>, kept: ReadonlySet<string>): Set<string> {
   const history = new Set(seeds), named = new Set<string>();
   for (const row of rows(database, "SELECT * FROM commands")) {
     const request = json(row.request_json);
@@ -205,6 +205,17 @@ function deleteJournals(database: DatabaseSync, closure: ReadonlySet<string>, se
   for (const row of rows(database, "SELECT * FROM commands WHERE parent_id IS NOT NULL")) {
     if (doomed.has(z.string().parse(row.parent_id)) !== doomed.has(text(row, "id"))) throw new Error("authority-upgrade-retained-run-reference");
   }
+  return doomed;
+}
+
+/** The predecessor commands the conversion deletes; the stopped validator reads every other command strictly. */
+export function workerCustodyDoomedCommands(database: DatabaseSync): ReadonlySet<string> {
+  const { runs, seeds } = workerLifetimeClosure(database);
+  return doomedJournals(database, runs, seeds, writeResolutionCommands(database));
+}
+
+function deleteJournals(database: DatabaseSync, closure: ReadonlySet<string>, seeds: ReadonlySet<string>, kept: ReadonlySet<string>): void {
+  const doomed = doomedJournals(database, closure, seeds, kept);
   const assistantActions = rows(database, "SELECT id, command_id, payload_json FROM assistant_actions")
     .filter(row => doomed.has(text(row, "command_id")) || hasWorkerCommand(json(row.payload_json))).map(row => text(row, "id"));
   for (const id of assistantActions) database.prepare("DELETE FROM assistant_actions WHERE id=?").run(id);
@@ -233,7 +244,7 @@ function hasWorkerCommand(value: unknown): boolean {
 }
 
 function readRun(database: DatabaseSync, id: string): PredecessorRunRecord {
-  return predecessorRunRecordFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(id));
+  return predecessorCustodyRunFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(id));
 }
 
 /** Deletes each closure tree through native run deletion; a tree whose checkpoints another tree still references waits for it. */

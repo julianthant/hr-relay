@@ -91,7 +91,8 @@ import { createNotificationMetadataRepositories,validateNotificationMetadata } f
 import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
-import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "./worker-custody-migration.js";
+import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement, workerCustodyDoomedCommands } from "./worker-custody-migration.js";
+import { predecessorCustodyRunRow, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
@@ -124,7 +125,7 @@ import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegation
 import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
-import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -1250,7 +1251,8 @@ export function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunR
 
 /** Reads runs at a stopped store's own schema; envelopes before 22 carry no build id and are never given one. */
 function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => PredecessorRunRecord {
-  const read = expectedSchemaVersion >= BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runRecordFromRow : predecessorRunRecordFromRow;
+  const strict = expectedSchemaVersion >= BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runRecordFromRow : predecessorRunRecordFromRow;
+  const read = expectedSchemaVersion >= WORKER_CUSTODY_SCHEMA_VERSION ? strict : (raw: unknown) => strict(predecessorCustodyRunRow(raw));
   return expectedSchemaVersion >= 15 ? read : (raw: unknown) => {
     const row = z.record(z.string(), z.unknown()).parse(raw);
     if (Object.hasOwn(row, "pause_state")) throw new Error("stopped-run-schema-columns-mismatch");
@@ -1264,6 +1266,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     return expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
   };
   let validated = 0;
+  const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
+  const doomed = predecessorCustody ? workerCustodyDoomedCommands(database) : new Set<string>();
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
     // The custody conversion validates the tables it drops.
@@ -1272,6 +1276,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
     for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
+      // The custody conversion deletes these predecessor journals; they carry the removed worker grammar.
+      if ((table === "commands" && doomed.has(String(raw.id))) || (table === "command_audits" && doomed.has(String(raw.command_id)))) continue;
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
@@ -1288,7 +1294,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
         }
         else if (table === "deleted_runs") deletedRunFromRow(raw);
         else if (table === "settings") readAppSettings(database, convertPreferences);
-        else if (table === "worker_slots") workerSlotFromRow(raw);
+        else if (table === "worker_slots") (predecessorCustody ? predecessorWorkerSlotFromRow : workerSlotFromRow)(raw);
         else if (table === "exclusive_session_leases") exclusiveSessionLeaseFromRow(raw);
         else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw),false,readRun);
         else if (table === "artifacts") {
@@ -1554,7 +1560,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   }
   const currentTables = AuthorityCopyInspectionSchema.shape.tables;
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
-    z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
+    z.strictObject({ name: z.enum(["explorer_overrides", ...WORKER_CUSTODY_DROPPED_TABLES]), classification: z.literal("authority") }),
   ])) : currentTables;
   return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
@@ -1568,7 +1574,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
-    tables: names.map((name) => ({ name, classification: expectedSchemaVersion < 10 && name === "explorer_overrides"
+    tables: names.map((name) => ({ name, classification: expectedSchemaVersion < 10 && name === "explorer_overrides" || isWorkerCustodyDroppedTable(name)
       ? "authority" : tableClassification(AuthorityTableNameSchema.parse(name)) })),
     counts: pendingCounts(database),
   });
@@ -1678,7 +1684,8 @@ function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion:
     : Object.freeze({ state: "initialized" as const, record: settings });
   const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
     .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convert("settings_snapshots", row))));
-  const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
+  const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all()
+    .map(inspectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION ? predecessorWorkerSlotFromRow : workerSlotFromRow);
   return { settingsAuthority, configSnapshots, slots };
 }
 

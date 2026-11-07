@@ -1,11 +1,32 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
-import type { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
+
+/** Rebuilds the schema-22 worker custody DDL on a current store with no worker rows; the schema version is left to the caller. */
+export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM worker_slots").get()?.count, 0);
+  const reference = new DatabaseSync(":memory:");
+  const objects = (source: DatabaseSync) => new Map(source.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid").all()
+    .map(row => [`${String(row.type)}:${String(row.name)}`, { type: String(row.type), name: String(row.name), sql: String(row.sql) }]));
+  let prior: ReturnType<typeof objects>;
+  try {
+    for (const migration of SQLITE_MIGRATIONS.filter(item => item.version < WORKER_CUSTODY_SCHEMA_VERSION)) for (const statement of migration.statements) reference.exec(statement);
+    prior = objects(reference);
+  } finally { reference.close(); }
+  const current = objects(database);
+  const changed = (key: string) => current.get(key)?.sql !== prior.get(key)?.sql;
+  for (const [key, object] of current) if (changed(key) && object.type === "table") database.exec(`DROP TABLE ${object.name}`);
+  for (const [key, object] of objects(database)) if (changed(key)) database.exec(`DROP ${object.type.toUpperCase()} ${object.name}`);
+  for (const type of ["table", "index", "trigger"]) {
+    for (const [key, object] of prior) if (object.type === type && !objects(database).has(key)) database.exec(object.sql);
+  }
+}
 
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
