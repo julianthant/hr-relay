@@ -9,14 +9,14 @@ export type DecisionChoiceOption = Readonly<{ value: string; label: string; hint
 
 /**
  * The one card for every manual choice or input in Logs: title, one context line, an optional assistant
- * suggestion, the control, then Confirm and Stop run. Enter submits; Escape is left to the open control.
+ * suggestion, the control, then Confirm and Cancel run. Enter submits; Escape is left to the open control.
  * Answered, it collapses to one line that stays in the log. `preview` (Explorer) shows the card without actions.
  */
-export function DecisionCard({ title, context, tone, suggestion, applyAll, confirmLabel = "Confirm", confirmDisabled = false, answered, preview = false, onConfirm, onStop, children }: {
+export function DecisionCard({ title, context, tone, suggestion, applyAll, confirmLabel = "Confirm", confirmDisabled = false, answered, preview = false, onConfirm, onCancel, children }: {
   title: string; context?: string; tone?: "danger"; suggestion?: DecisionSuggestion;
   applyAll?: Readonly<{ count: number; checked: boolean; onChange: (checked: boolean) => void }>;
   confirmLabel?: string; confirmDisabled?: boolean; answered?: DecisionAnswered; preview?: boolean;
-  onConfirm?: () => void; onStop?: () => void; children?: ReactNode;
+  onConfirm?: () => void; onCancel?: () => void; children?: ReactNode;
 }) {
   if (answered) return <p className="m-0 flex items-center gap-2.5 text-body text-ui-secondary">
     <Check aria-hidden className="size-3.5 shrink-0 text-ui-positive" />
@@ -36,7 +36,7 @@ export function DecisionCard({ title, context, tone, suggestion, applyAll, confi
     {applyAll && <Checkbox label={`Use for all ${applyAll.count} similar`} checked={applyAll.checked} onCheckedChange={value => applyAll.onChange(value === true)} disabled={preview} />}
     {!preview && <div className="flex flex-wrap gap-2">
       <Button type="submit" variant="primary" disabled={confirmDisabled}>{confirmLabel}</Button>
-      <Button type="button" onClick={onStop}>Stop run</Button>
+      <Button type="button" onClick={onCancel}>Cancel run</Button>
     </div>}
   </form>;
 }

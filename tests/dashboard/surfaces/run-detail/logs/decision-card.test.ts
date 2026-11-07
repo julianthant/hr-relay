@@ -18,9 +18,9 @@ async function draw(props: Parameters<typeof DecisionCard>[0]) {
 }
 
 describe("DecisionCard", () => {
-  it("confirms on Enter, refuses while disabled, stops only from Stop run, and ignores Escape", async () => {
+  it("confirms on Enter, refuses while disabled, cancels only from Cancel run, and ignores Escape", async () => {
     const calls: string[] = [];
-    const props = { title: "Did the termination save in UCPath?", onConfirm: () => calls.push("confirm"), onStop: () => calls.push("stop"),
+    const props = { title: "Did the termination save in UCPath?", onConfirm: () => calls.push("confirm"), onCancel: () => calls.push("stop"),
       children: createElement("input", { "aria-label": "Transaction number" }) };
     const view = await draw({ ...props, confirmDisabled: true });
     const input = view.querySelector("input")!;
@@ -30,7 +30,7 @@ describe("DecisionCard", () => {
     await draw({ ...props, confirmDisabled: false });
     await enter();
     await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-    const stop = [...view.querySelectorAll("button")].find(button => button.textContent === "Stop run")!;
+    const stop = [...view.querySelectorAll("button")].find(button => button.textContent === "Cancel run")!;
     await act(async () => stop.click());
     assert.deepEqual(calls, ["confirm", "stop"]);
   });
