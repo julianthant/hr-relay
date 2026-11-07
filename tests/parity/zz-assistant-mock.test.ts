@@ -15,8 +15,9 @@ let server: FixtureServer;
 test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
-// Dark only until the operator approves the design.
-for (const theme of ["dark"] as const) test(`assistant mock @ ${theme}`, async ({ page }) => {
+// Comma list of themes; dark unless asked.
+const THEMES = (process.env.ASSISTANT_MOCK_THEMES ?? "dark").split(",");
+for (const theme of THEMES) test(`assistant mock @ ${theme}`, async ({ page }) => {
   test.setTimeout(300_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
