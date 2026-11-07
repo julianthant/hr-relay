@@ -122,6 +122,8 @@ interface AcquisitionEnvelope {
   readonly deadlineMonotonicMs: number;
   readonly cancel: (reason: Error) => void;
   readonly claimStaleRequestRecovery: () => boolean;
+  /** An idle Reopen names the retained session it replaces; that worker's own released lease admits the exclusive replacement. */
+  readonly replacesSessionId?: string;
 }
 
 function browserStoreFor(
@@ -468,7 +470,7 @@ export class WorkerSessionManager {
       this.#acquireDeadlineMs = retained.acquireMs;
       this.#duoCeremony = retained.duo;
       this.#defaultBrowserMode = retained.defaultMode;
-      const replacement = await this.#acquireBounded(SessionNeedSchema.parse({ system: resource.system, session: "reuse-worker", access: "read", ...(resource.acceptDownloads ? { acceptDownloads: true } : {}), ...(resource.exclusive ? { exclusive: true } : {}) }), resource.instance, resource.configFingerprint, BrowserPresentationModeSchema.parse(resource.browserMode), signal);
+      const replacement = await this.#acquireBounded(SessionNeedSchema.parse({ system: resource.system, session: "reuse-worker", access: "read", ...(resource.acceptDownloads ? { acceptDownloads: true } : {}), ...(resource.exclusive ? { exclusive: true } : {}) }), resource.instance, resource.configFingerprint, BrowserPresentationModeSchema.parse(resource.browserMode), signal, resource.sessionId);
       if (replacement.sessionId === resource.sessionId || replacement.profileDirectory !== resource.profileDirectory) {
         await this.#closeSystem(replacement.system, "poisoned");
         throw new Error("worker-browser-replacement-identity-mismatch");
@@ -785,6 +787,7 @@ export class WorkerSessionManager {
     configFingerprint: Fingerprint,
     browserMode: BrowserPresentationMode,
     signal: AbortSignal,
+    replacesSessionId?: string,
   ): Promise<WorkerBrowserResource> {
     const acquisition = new AbortController();
     const forwardAbort = (): void => {
@@ -812,6 +815,7 @@ export class WorkerSessionManager {
         staleRequestRecovered = true;
         return true;
       },
+      ...(replacesSessionId === undefined ? {} : { replacesSessionId }),
     });
     try {
       return await waitForAcquisition(started, acquisition.signal, need.system);
@@ -1002,6 +1006,7 @@ export class WorkerSessionManager {
       signal,
       duoCeremony: gate,
       claimStaleRequestRecovery: envelope.claimStaleRequestRecovery,
+      ...(envelope.replacesSessionId === undefined ? {} : { replacesSessionId: envelope.replacesSessionId }),
       acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs - this.#clock.monotonicMs()),
     });
     } finally { acquired?.(); }

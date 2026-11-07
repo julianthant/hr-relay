@@ -49,15 +49,23 @@ export function createExclusiveSessionLeaseRepository(ports: Ports) {
     heldByWorker: (workerId: string) => ports.read(() => database.prepare("SELECT * FROM exclusive_session_leases WHERE worker_id=? AND released_at IS NULL ORDER BY id")
       .all(WorkerIdSchema.parse(workerId)).map(exclusiveSessionLeaseFromRow)),
     held: () => ports.read(() => database.prepare("SELECT * FROM exclusive_session_leases WHERE released_at IS NULL ORDER BY id").all().map(exclusiveSessionLeaseFromRow)),
-    acquire(input: Readonly<{ identityKey: string; workerId: string; sessionId: string; now: string }>) {
-      const request = z.strictObject({ identityKey: FingerprintSchema, workerId: WorkerIdSchema, sessionId: BrowserSessionIdSchema, now: IsoInstantSchema }).parse(input);
+    acquire(input: Readonly<{ identityKey: string; workerId: string; sessionId: string; now: string; replacesSessionId?: string }>) {
+      const request = z.strictObject({ identityKey: FingerprintSchema, workerId: WorkerIdSchema, sessionId: BrowserSessionIdSchema, now: IsoInstantSchema,
+        replacesSessionId: BrowserSessionIdSchema.optional() }).parse(input);
       return ports.mutate((): { result: Readonly<{ state: "acquired" | "held"; lease: ExclusiveSessionLease }>; changes: number } => {
         const before = get(request.identityKey);
         if (before?.releasedAt === null) return { result: { state: "held", lease: before }, changes: 0 };
-        // The holder's fence is the claim generation of the run it holds.
-        const owner = z.strictObject({ claim_generation: z.number().int().positive() }).parse(database.prepare(
+        // The holder's fence is the claim generation of the run it holds; an idle Reopen keeps the generation of the
+        // exact released lease it replaces, which only that unretired worker's retained session can name.
+        const claimed = z.strictObject({ claim_generation: z.number().int().positive() }).optional().parse(database.prepare(
           "SELECT r.claim_generation FROM runs r JOIN worker_slots s ON s.id=r.owner_worker_id WHERE r.owner_worker_id=? AND s.retired_at IS NULL AND r.state IN ('claimed','validating','running')"
         ).get(request.workerId));
+        const retained = claimed === undefined && request.replacesSessionId !== undefined && before !== undefined && before.releasedAt !== null
+          && before.workerId === request.workerId && before.sessionId === request.replacesSessionId
+          && database.prepare("SELECT 1 FROM worker_slots WHERE id=? AND retired_at IS NULL").get(request.workerId) !== undefined
+          ? before.workerLeaseGeneration : undefined;
+        const owner = { claim_generation: claimed?.claim_generation ?? retained };
+        if (owner.claim_generation === undefined) throw new Error("exclusive-session-lease-owner-unproved");
         if (before !== undefined && request.now < (before.releasedAt ?? before.acquiredAt)) throw new Error("exclusive-session-lease-clock-regressed");
         const lease = ExclusiveSessionLeaseSchema.parse({ identityKey: request.identityKey, generation: (before?.generation ?? 0) + 1,
           workerId: request.workerId, workerLeaseGeneration: owner.claim_generation, sessionId: request.sessionId, acquiredAt: request.now, releasedAt: null });

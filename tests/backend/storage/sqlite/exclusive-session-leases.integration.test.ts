@@ -33,7 +33,7 @@ describe("durable exclusive identity-session leases", () => {
       const a = exclusiveLeaseFixture(path), owned = a.repository.acquire(first);
       const other = exclusiveLeaseFixture(path, false);
       try { assert.equal(other.repository.acquire(second).state, "held"); } finally { other.database.close(); }
-      a.database.prepare("UPDATE worker_leases SET state='stopped' WHERE worker_id=?").run(first.workerId);
+      a.database.prepare("UPDATE runs SET state='terminal' WHERE owner_worker_id=?").run(first.workerId);
       a.database.prepare("UPDATE worker_slots SET retired_at=? WHERE id=?").run(first.now, first.workerId);
       a.database.close();
       const reopened = exclusiveLeaseFixture(path, false);
@@ -46,17 +46,35 @@ describe("durable exclusive identity-session leases", () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
-  it("allows independent identities but refuses a new lease for a stopped or missing worker", () => {
+  it("allows independent identities but refuses a new lease for a worker with no claim or a missing worker", () => {
     const { database, repository } = exclusiveLeaseFixture();
     try {
       assert.equal(repository.acquire(first).state, "acquired");
-      assert.equal(repository.acquire({ ...second, identityKey: "b".repeat(64) }).state, "acquired");
-      database.prepare("UPDATE worker_leases SET state='stopped' WHERE worker_id=?").run(second.workerId);
-      assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64) }));
-      assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64), workerId: "unknown-worker" }));
-      database.prepare("UPDATE worker_leases SET state='idle' WHERE worker_id=?").run(second.workerId);
-      database.prepare("INSERT INTO worker_leases VALUES(?,2,'stopped')").run(second.workerId);
-      assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64) }), "a stopped current lifetime cannot fall back to an older live generation");
+      const other = repository.acquire({ ...second, identityKey: "b".repeat(64) });
+      assert.equal(other.state, "acquired"); assert.equal(other.lease.workerLeaseGeneration, 2, "the fence is the held run's claim generation");
+      database.prepare("UPDATE runs SET state='terminal' WHERE owner_worker_id=?").run(second.workerId);
+      assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64) }), /owner-unproved/u);
+      assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64), workerId: "unknown-worker" }), /owner-unproved/u);
+    } finally { database.close(); }
+  });
+
+  it("admits an idle Reopen only for the same unretired worker replacing its own released session, keeping its claim generation", () => {
+    const { database, repository } = exclusiveLeaseFixture();
+    try {
+      const owned = repository.acquire(first); assert.equal(owned.state, "acquired");
+      database.prepare("UPDATE runs SET state='terminal' WHERE owner_worker_id=?").run(first.workerId);
+      const replacement = { ...first, sessionId: "33333333-3333-4333-8333-333333333333", replacesSessionId: first.sessionId };
+      assert.equal(repository.acquire(replacement).state, "held", "a held lease is never replaced");
+      repository.release(owned.lease, first.now);
+      assert.throws(() => repository.acquire({ ...replacement, replacesSessionId: undefined }), /owner-unproved/u);
+      assert.throws(() => repository.acquire({ ...replacement, replacesSessionId: second.sessionId }), /owner-unproved/u, "only the released session's id authenticates");
+      assert.throws(() => repository.acquire({ ...replacement, workerId: second.workerId, sessionId: second.sessionId }), /owner-unproved/u, "another worker cannot inherit it");
+      database.prepare("UPDATE worker_slots SET retired_at=? WHERE id=?").run(first.now, first.workerId);
+      assert.throws(() => repository.acquire(replacement), /owner-unproved/u, "a retired slot cannot reopen");
+      database.prepare("UPDATE worker_slots SET retired_at=NULL WHERE id=?").run(first.workerId);
+      const reopened = repository.acquire(replacement);
+      assert.equal(reopened.state, "acquired");
+      assert.deepEqual([reopened.lease.generation, reopened.lease.workerLeaseGeneration, reopened.lease.sessionId], [2, owned.lease.workerLeaseGeneration, replacement.sessionId]);
     } finally { database.close(); }
   });
 
