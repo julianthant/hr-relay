@@ -97,7 +97,12 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
       lifecycle: { state: "running", workerId: owner.workerId, claimedAt: clock.now().toISOString(), heartbeatAt: clock.now().toISOString(), currentNodeId: "crm-dates" } }));
     await attemptingOwnedWrite({ database, fence: async input => database.authority.writeIntents.fenceAttempt(input) }, running);
   }
-  assert.equal(database.authority.runs.requestCancellation({ runId: childId, expectedVersion: current(childId).version, now: clock.now().toISOString() }).state, "applied");
+  // The operator's cancel of the claimed member only requests it; the worker exit settles it cancelled. A fenced write refuses the cancel.
+  if (variant !== "attempting-write") {
+    assert.equal(execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
+      requestedAt: clock.now().toISOString(), reason: "Synthetic member cancel", target: { runId: childId, expectedVersion: current(childId).version } })).state, "applied");
+    assert.equal(current(childId).cancelRequested, true);
+  }
   const lock = profile.machine.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
   reconcileExitedWorker({ machine: profile.machine, admission: profile.admission, database, clock, lifecycle: execution.lifecycle, lock, workerId: owner.workerId });
   const closure = [root.envelope.runId, childId];
@@ -108,9 +113,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const evidence = database.authority.runResults.get(childId); assert.ok(evidence);
     assert.equal(terminalEvidenceResult(evidence)?.kind, "lifecycle-evidence");
     receipt(cancelled);
-    const diag = JSON.stringify({ slots: database.authority.workerSlots.list?.() ?? null, parent: (({ lifecycle, pause, cancelRequested, version, claimGeneration }) => ({ lifecycle, pause, cancelRequested, version, claimGeneration }))(current(root.envelope.runId)),
-      readiness: database.authority.dependencies.readiness(root.envelope.runId, "cancel"), join: database.authority.dependencies.readiness(root.envelope.runId, "join") });
-    const joined = await execution.step(root, world.SIGNAL).catch(() => assert.fail(diag));
+    const joined = await execution.step(root, world.SIGNAL);
     const parent = current(root.envelope.runId);
     assert.ok(parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "failed", JSON.stringify({ outcome: joined.outcome, lifecycle: parent.lifecycle }));
     retryCommandId = randomUUID();
