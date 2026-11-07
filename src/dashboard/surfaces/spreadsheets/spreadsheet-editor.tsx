@@ -133,7 +133,7 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
       {onMapping && <DropdownMenu><DropdownMenuTrigger asChild><IconButton variant="ghost" label="Workbook actions" disabled={busy} icon={<MoreHorizontal className="size-4" />} /></DropdownMenuTrigger><DropdownMenuContent aria-label="Workbook actions" align="end"><DropdownMenuItem onSelect={onMapping}>Edit column mappings</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
     </>} />
     {save?.document === document && (save.result.state === 'pending' ? <p role="status" className="text-body text-ui-secondary">Saving… · Draft kept</p> : save.result.state === 'confirmed' ? <p role="status" className="text-body text-ui-secondary">Saved · version {save.result.version}</p> : <Notice tone="warning" title={save.result.state === 'conflict' ? 'Save version conflict' : save.result.state === 'uncertain' ? 'Save uncertain' : 'Save refused'} description={`${save.result.reason} Draft kept.`} />)}
-    {!sheet && <Notice sticky tone="danger" title="Sheet unavailable" description="No longer in the workbook." action={{ label: "Open first sheet", onAction: () => { setSheetId(''); setPage(0); } }} />}
+    {!sheet && <Notice sticky tone="danger" title="Sheet unavailable" description="No longer in the workbook. Pick another sheet." />}
     {error && <Notice tone="danger" title="Spreadsheet unavailable" description={error} />}
     {sheet && <>
       <div className="spreadsheet-editor-toolbar">

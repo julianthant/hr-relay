@@ -163,7 +163,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=${scenario}&view=${encodeURIComponent(JSON.stringify({ notifications: true }))}`);
         await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
         if (scenario === "ping") {
-          await expect(page.getByRole("button", { name: "Open notifications", exact: true })).toBeVisible();
+          await expect(page.locator('[data-slot="toast"]')).toBeVisible();
 
         }
         await expect(page.getByRole("button", { name: /^Notifications/u })).toHaveAttribute("aria-pressed", "true");

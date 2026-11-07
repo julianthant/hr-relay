@@ -18,23 +18,22 @@ function storage(authority: "healthy" | "unavailable") {
 describe("the app-wide storage notice", () => {
   it("renders only when authority storage is unavailable", () => {
     const healthy = renderToStaticMarkup(createElement(StorageNotice, {
-      storage: storage("healthy"),
-      onOpenSettings: () => undefined,
+      storage: storage("healthy")
     }));
     const unavailable = renderToStaticMarkup(createElement(StorageNotice, {
-      storage: storage("unavailable"),
-      onOpenSettings: () => undefined,
+      storage: storage("unavailable")
     }));
 
     assert.equal(healthy, "");
     assert.match(unavailable, /Storage unavailable/u);
-    assert.match(unavailable, /Storage checks/u);
+    assert.match(unavailable, /Open Settings &gt; Storage/u);
+    assert.doesNotMatch(unavailable, /<button/u);
   });
 });
 
 for (const authority of ["healthy", "unavailable"] as const) {
   for (const backup of ["current", "stale", "missing"] as const) it(`keeps ${authority}/${backup} summary claims independent`, () => {
-    const markup = renderToStaticMarkup(createElement(StorageNotice, {storage: {...storage(authority), backup}, onOpenSettings: () => undefined}));
+    const markup = renderToStaticMarkup(createElement(StorageNotice, {storage: {...storage(authority), backup}}));
     if (authority === "healthy") assert.equal(markup, "");
     else assert.match(markup, /Storage unavailable/u);
     assert.doesNotMatch(markup, /backup|restore/iu);

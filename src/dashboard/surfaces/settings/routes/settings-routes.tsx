@@ -19,7 +19,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="routes" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Routes unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Routes unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "routes");
   if (section === undefined) return <Notice tone="danger" title="Routes unavailable" />;
@@ -32,7 +32,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
     <PageHeading title="Routes" description="Production destinations, organized by system." />
     <form className="routes-page-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved routes apply after Relay restarts." />}
-      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current routes unavailable" description={editor.readProblem} action={{ label: "Refresh", onAction: editor.reload }} />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current routes unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <SearchInput className="routes-page-search" aria-label="Find a system or route" placeholder="Search systems or routes" value={query} onClear={() => setQuery("")} onChange={event => setQuery(event.target.value)} />
       <div className="routes-page-list">
@@ -64,7 +64,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
             </div>;
           return <BodySection key={leaf.path} className="routes-page-system" title={<span className="routes-section-heading"><span>{presentation.name}</span><span>{meta}</span></span>}>
             {leaf.path === "urls.sharepoint.prod" && (document.protectedSettings.state === "unknown" || credentialWarning) && <div className="mb-[var(--ds-space-heading-content)] flex flex-col gap-[var(--ds-space-heading-content)]">
-              {document.protectedSettings.state === "unknown" && <Notice sticky tone="warning" title="Roster URL unavailable" action={{ label: "Retry", onAction: editor.reload }} />}
+              {document.protectedSettings.state === "unknown" && <Notice sticky tone="warning" title="Roster URL unavailable" description="Reopen Settings to try again." />}
               {credentialWarning && <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />}
             </div>}
             <FormGroup label={presentation.name}>{content}</FormGroup>

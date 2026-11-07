@@ -1,6 +1,6 @@
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import "../run-start/launch-presentation.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, FileSpreadsheet } from "lucide-react";
 import { Banner, Button, ChoicePicker, Dialog, DialogBody, DialogContent, DialogFooter, Input, SearchInput, dsIcon, useToasts } from "../../ds/ui.js";
 import { SpreadsheetTable } from "./spreadsheet-table.js";
@@ -10,7 +10,6 @@ import { initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, spreadsh
 export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegistered }: {
   open: boolean; onOpenChange: (open: boolean) => void; existing?: RegisteredSpreadsheet; onRegistered: (file: RegisteredSpreadsheet) => void;
 }) {
-  const retry = useRef(false);
   const { types } = useSpreadsheetMocks();
   const { toast } = useToasts();
   const [name, setName] = useState("26–27 Student applicants.xlsx");
@@ -25,7 +24,6 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
   if (!type || !sheet) throw new Error("SPREADSHEET_IMPORT_SELECTION_INVALID");
   useEffect(() => {
     if (!open) return;
-    if (retry.current) { retry.current = false; return; }
     const first = types[0];
     const next = existing?.sheets ?? initialSpreadsheetSheets(first);
     setName(existing?.name ?? "26–27 Student applicants.xlsx"); setTypeId(existing?.typeId ?? first.id);
@@ -43,7 +41,7 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
       onRegistered(file);
       toast({ tone: "success", title: existing ? "Column mappings saved" : `${type.name} imported`, description: `${file.name} · ${file.sheets.length} sheets` });
     } catch (error) {
-      toast({ tone: "danger", title: `${type.name} couldn’t be imported`, description: error instanceof Error ? error.message : String(error), action: { label: "Try again", onAction: () => { retry.current = true; onOpenChange(true); } } });
+      toast({ tone: "danger", title: `${type.name} couldn’t be imported`, description: error instanceof Error ? error.message : String(error) });
     }
   };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="xl" title={existing ? "Column mappings" : "Import spreadsheet"} description="Match columns to named fields once." className="launch-design spreadsheet-dialog">
