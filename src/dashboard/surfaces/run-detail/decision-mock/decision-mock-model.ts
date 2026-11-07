@@ -13,7 +13,17 @@ export function decisionMock(): { scene?: MockSceneData } | undefined {
   return id ? { scene: MOCK_SCENES[id] } : undefined;
 }
 
-export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "fill" }>;
+export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "fill"; unread?: boolean }>;
+
+/** Workflow rail comparison (v6 item 6): `railVariant=6a|6b|6c` with fixed running counts. */
+export const RAIL_VARIANTS = ["6a", "6b", "6c"] as const;
+export type RailVariant = (typeof RAIL_VARIANTS)[number];
+export function railVariant(): RailVariant | undefined {
+  if (typeof window === "undefined") return undefined;
+  const value = new URLSearchParams(window.location.search).get("railVariant");
+  return RAIL_VARIANTS.find(item => item === value);
+}
+export const MOCK_RAIL_RUNNING: Readonly<Record<string, number>> = { separations: 2, "emergency-contact": 1 };
 export type MockTableRow = Readonly<{ id: string; cells: readonly string[]; name: string; tone?: "danger" }>;
 export type MockTable = Readonly<{ title: string; label: string; columns: readonly string[]; rows: readonly MockTableRow[] }>;
 export type MockBlock =
@@ -129,9 +139,9 @@ const scenes: readonly MockSceneData[] = [
     steps: [lookupSearch(false), lookupCrm(true, [decision])], timeline: lookupTimeline(["completed", "failed", "pending"], "Failed"),
     decision: { kind: "answer", tone: "danger", question: "CRM search could not be completed", note: "The CRM search page did not load after one retry. Nothing was written.", primary: "Retry step", secondary: [] } },
   { id: "d8", name: "Failed after a confirmed write", workflow: "separations", subject: "Nakamura, Rei", state: "failed", queueMessage: "Termination saved, read-back failed",
-    steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", current: true, blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), read("Status", "Not read")]), decision] }],
+    steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", current: true, blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), { label: "Status", value: "Couldn't read", kind: "read", unread: true }]), decision] }],
     timeline: sepTimeline("failed", "Failed"),
-    decision: { kind: "answer", tone: "danger", question: "Termination saved, but the read-back failed", note: "UCPath accepted T00042871. Check it in Smart HR Transactions; Relay will not file it again.", primary: "Checked by hand, continue", secondary: [] } },
+    decision: { kind: "answer", tone: "danger", question: "Termination saved, but the read-back failed", note: "UCPath accepted T00042871, but Relay could not read its status in Smart HR Transactions.", primary: "Check again", secondary: ["Checked by hand, continue", "Withdrawn in UCPath, file again", "Mark as failed"] } },
   { id: "d9", name: "Emergency Contact member failed", workflow: "emergency-contact", subject: "Ortega, Lin", state: "failed", queueMessage: "Phone number rejected", headerRetry: "Retry Ortega, Lin", group: ecGroup("member"),
     steps: [
       { id: "navigation", time: "13:20:11", title: "Read existing contacts", system: "UCPath", outcome: "No matching contact", blocks: [page("Emergency Contacts", "Read", [read("Employee", "Ortega, Lin"), read("Employee ID", "10031877"), read("Existing contacts", "1")])] },
@@ -140,7 +150,7 @@ const scenes: readonly MockSceneData[] = [
         { kind: "capture", shots: [shot("save", "After save", "13:20:42", "UCPath", "Emergency Contact", ["Phone: (619) 555-014", "Invalid phone number format"], "after-submit")] }, decision] },
     ],
     timeline: [stage("navigation", "Read existing contacts", "completed", { durationLabel: "13s" }), stage("fill-form", "Fill emergency contact", "completed", { durationLabel: "16s" }), stage("save", "Save emergency contact", "failed", { statusLabel: "Failed" })],
-    decision: { kind: "answer", tone: "danger", question: "Emergency contact could not be saved", note: "UCPath rejected the phone number (619) 555-014. Nothing was saved.", secondary: [] } },
+    decision: { kind: "answer", tone: "danger", question: "Emergency contact could not be saved", note: "UCPath rejected the phone number format. Nothing was saved.", field: { label: "Phone", value: "(619) 555-014" }, primary: "Retry with this number", secondary: [] } },
   { id: "d9p", name: "Emergency Contact PDF parent", workflow: "emergency-contact", subject: "Scan_0412.pdf", state: "failed", queueMessage: "Member runs finished", group: ecGroup("parent"),
     steps: [
       { id: "read", time: "13:02:05", title: "Read document", system: "OCR", outcome: "12 records read", blocks: [page("Scan_0412.pdf", "Read", [read("Pages", "14"), read("Records found", "12")])] },

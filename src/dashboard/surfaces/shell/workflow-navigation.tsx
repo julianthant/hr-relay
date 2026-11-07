@@ -26,10 +26,11 @@ function WorkflowNavigationEntries({ nodes, active, onSelect, metadata, unavaila
   </li>)}</ul>;
 }
 
-export const WorkflowNavigation = memo(function WorkflowNavigation({ groups, active, onSelect, label, metadata, unavailable }: {
+export const WorkflowNavigation = memo(function WorkflowNavigation({ groups, active, onSelect, label, metadata, unavailable, variant }: {
+  variant?: string;
   groups: readonly WorkflowCategoryGroup<WorkflowNavigationEntry>[]; active: string; onSelect: (id: string) => void; label: string; metadata?: (id: string) => ReactNode; unavailable?: (id: string) => string | undefined;
 }) {
-  return <nav aria-label={label} className="workflow-rail"><div className="workflow-rail-groups">{groups.map(group => {
+  return <nav aria-label={label} className="workflow-rail" data-variant={variant}><div className="workflow-rail-groups">{groups.map(group => {
     const Icon = categoryIcons[group.label as keyof typeof categoryIcons] ?? Folder;
     return <section key={group.label} className="workflow-rail-group"><h3><Icon aria-hidden className="size-3.5 shrink-0" />{group.label}</h3>
       <WorkflowNavigationEntries nodes={group.entries} active={active} onSelect={onSelect} metadata={metadata} unavailable={unavailable} />

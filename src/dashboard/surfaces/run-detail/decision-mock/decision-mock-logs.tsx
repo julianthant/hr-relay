@@ -18,7 +18,7 @@ function Rows({ rows }: { rows: readonly MockRow[] }) {
     return <div key={row.label} className="grid grid-cols-[1rem_minmax(8rem,.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0">
       <Icon aria-hidden className={cn("size-3.5 translate-y-0.5 self-start", row.kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
       <dt className="text-body font-medium">{row.label}</dt>
-      <dd className={cn("m-0 text-right text-body tabular-nums", row.kind === "fill" ? "font-medium text-ui-info" : "text-ui-secondary")}>{row.value}</dd>
+      <dd className={cn("m-0 text-right text-body tabular-nums", row.kind === "fill" ? "font-medium text-ui-info" : row.unread ? "text-ui-danger/75" : "text-ui-secondary")}>{row.value}</dd>
     </div>;
   })}</dl>;
 }
@@ -27,10 +27,11 @@ export const OTHER_ID = "none-of-these";
 
 /** A page's rows as one table; `pick` adds the radio column that makes the evidence the choice, ending with "None of these". */
 export function DataTable({ table, pick }: { table: MockTable; pick?: { chosen?: string; choose: (id: string) => void } }) {
-  const cell = (row: MockTableRow, index: number) => <td key={index} className={cn("py-2.5 tabular-nums", pick && index === 0 ? "pr-3" : "px-3", index === 0 ? "font-medium" : row.tone === "danger" && index === row.cells.length - 1 ? "text-ui-danger" : "text-ui-secondary")}>{row.cells[index]}</td>;
+  const last = table.columns.length - 1;
+  const cell = (row: MockTableRow, index: number) => <td key={index} className={cn("py-2.5 tabular-nums", pick && index === 0 ? "pr-3" : "px-3", index === last && "text-right", index === 0 ? "font-medium" : row.tone === "danger" && index === row.cells.length - 1 ? "text-ui-danger" : "text-ui-secondary")}>{row.cells[index]}</td>;
   return <PageCard title={table.title} mode={`${table.rows.length} rows · Read`}>
     <table aria-label={table.label} className="w-full border-collapse text-left text-body">
-      <thead><tr className="text-caption text-ui-muted">{pick && <th className="w-10 px-3 py-2 font-normal"><span className="sr-only">Choose</span></th>}{table.columns.map((column, index) => <th key={column} className={cn("py-2 font-normal", pick && index === 0 ? "pr-3" : "px-3")}>{column}</th>)}</tr></thead>
+      <thead><tr className="text-caption text-ui-muted">{pick && <th className="w-10 px-3 py-2 font-normal"><span className="sr-only">Choose</span></th>}{table.columns.map((column, index) => <th key={column} className={cn("py-2 font-normal", pick && index === 0 ? "pr-3" : "px-3", index === last && "text-right")}>{column}</th>)}</tr></thead>
       <tbody>{table.rows.map(row => {
         const selected = pick?.chosen === row.id;
         return <tr key={row.id} onClick={pick ? () => pick.choose(row.id) : undefined} className={cn("border-t border-ui-stroke", pick && "cursor-pointer hover:bg-ui-hover", selected && "bg-ui-hover")}>
@@ -73,9 +74,9 @@ function Decision({ decision }: { decision: MockDecision }) {
     }
     case "compare": return <div className="flex flex-col gap-3"><Question text={decision.question} note={decision.note} />
       <PageCard title={decision.title} mode="Read"><table aria-label={decision.title} className="w-full border-collapse text-left text-body">
-        <thead><tr className="text-caption text-ui-muted"><th className="px-3 py-2 font-normal"><span className="sr-only">Field</span></th><th className="px-3 py-2 font-normal">Request</th><th className="px-3 py-2 font-normal">UCPath</th></tr></thead>
+        <thead><tr className="text-caption text-ui-muted"><th className="px-3 py-2 font-normal"><span className="sr-only">Field</span></th><th className="px-3 py-2 font-normal">Request</th><th className="px-3 py-2 text-right font-normal">UCPath</th></tr></thead>
         <tbody>{decision.rows.map(row => <tr key={row.label} className="border-t border-ui-stroke"><th scope="row" className="px-3 py-2.5 text-left font-medium">{row.label}</th><td className="px-3 py-2.5 tabular-nums text-ui-secondary">{row.requested}</td>
-          <td className={cn("px-3 py-2.5 tabular-nums", row.requested === row.found ? "text-ui-secondary" : "font-semibold text-ui-warning")}>{row.found}{row.requested !== row.found && <span className="sr-only"> (differs)</span>}</td></tr>)}</tbody>
+          <td className={cn("px-3 py-2.5 text-right tabular-nums", row.requested === row.found ? "text-ui-secondary" : "font-semibold text-ui-warning")}>{row.found}{row.requested !== row.found && <span className="sr-only"> (differs)</span>}</td></tr>)}</tbody>
       </table></PageCard>
       <div className="flex flex-wrap gap-2"><Actions primary={decision.primary} secondary={decision.secondary} /></div></div>;
     case "answer": return <div className="flex flex-col gap-3"><Question text={decision.question} note={decision.note} danger={decision.tone === "danger"} />
