@@ -1406,11 +1406,8 @@ export class RunQueueProjection {
       workerAuthority = members !== undefined && views !== undefined ? { state: "present", members: [...members] }
         : { state: "unavailable", members: [...(members ?? [])], reason: "Worker membership is unavailable." };
       for (const member of members ?? []) {
-        const view = views?.find(candidate => candidate.member.workerId === member.workerId);
-        if (view === undefined) {
-          workerAuthority = { state: "unavailable", members: [...members ?? []], reason: `Worker ${member.workerId} has not started.` };
-          continue;
-        }
+        if (views === undefined) continue;
+        const view = views.find(candidate => candidate.member.workerId === member.workerId);
         workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
           resolveRun: runId => {
             const read = this.#deps.reader.read(runId);

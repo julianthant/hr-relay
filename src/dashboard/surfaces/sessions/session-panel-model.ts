@@ -358,6 +358,7 @@ export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle",
 export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
   operator: "stopped by you",
   crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
+  "not-started": "did not start",
 };
 
 
@@ -378,7 +379,7 @@ export function canStopWorker(card: WorkerCardWire): boolean {
 
 /** Settled worker duration uses its recorded end; elapsed-to-now would grow after death. */
 export function workerElapsedSeconds(card: WorkerCardWire, nowIso: string): number {
-  return elapsedSecondsBetween(card.startedAt, card.endedAt ?? nowIso);
+  return elapsedSecondsBetween(card.startedAt, card.endedAt ?? (card.state === "failed" ? card.startedAt : nowIso));
 }
 
 

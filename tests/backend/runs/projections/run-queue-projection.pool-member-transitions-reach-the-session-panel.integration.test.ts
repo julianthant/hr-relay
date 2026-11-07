@@ -39,13 +39,16 @@ describe("pool member transitions reach the Session Panel without a span", () =>
     });
   }
 
-  it("keeps the member refs and serves no card for a slot whose member has not started", async () => {
+  it("serves a not-started card with the null-lifetime fence for a slot whose member has no process", async () => {
     const w = await world();
     declareProjectionWorker(w.authority, workerId, 1);
     const day = w.projection.buildDashboardDayWire(DAY);
-    assert.equal(day.workerAuthority.state, "unavailable");
+    assert.equal(day.workerAuthority.state, "present");
     assert.equal(day.workerAuthority.members.length, 1);
-    assert.deepEqual(day.workerCards, []);
+    assert.equal(day.workerCards.length, 1);
+    assert.equal(day.workerCards[0]?.state, "failed");
+    assert.equal(day.workerCards[0]?.stopReason, "not-started");
+    assert.deepEqual(day.workerCards[0]?.controls?.basis, { state: "present", value: { lifetimeId: null, version: 0 } });
   });
 
   it("serves no current run for a run another worker claimed", async () => {

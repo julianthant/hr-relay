@@ -417,11 +417,12 @@ export const WorkerCardWireSchema = z.strictObject({
   controls: WorkerControlWireSchema.optional(),
   /** What the operator last ASKED of this worker; `run` is the un-directed state. */
   directive: z.enum(["run", "pause"]),
+  /** The spawn instant; for a member that never started, when its slot was planned. */
   startedAt: IsoInstantSchema,
   /** Present iff the member exited — the observed exit instant, never `now`. */
   endedAt: IsoInstantSchema.optional(),
-  /** Present iff the member exited — requested stop or crash, never inferred. */
-  stopReason: z.enum(["operator", "crashed"]).optional(),
+  /** Present iff the card is failed — requested stop, crash, or a planned member with no process this boot; never inferred. */
+  stopReason: z.enum(["operator", "crashed", "not-started"]).optional(),
   currentRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),
@@ -432,11 +433,12 @@ export const WorkerCardWireSchema = z.strictObject({
   revision: RowRevisionSchema,
 }).superRefine((card, context) => {
   const terminal = card.state === "failed";
-  if (terminal !== (card.endedAt !== undefined)) {
+  const exited = terminal && card.stopReason !== "not-started";
+  if (exited !== (card.endedAt !== undefined)) {
     context.addIssue({
       code: "custom",
       path: ["endedAt"],
-      message: `a ${card.state} worker card must ${terminal ? "carry" : "carry no"} endedAt`,
+      message: `a ${card.stopReason ?? card.state} worker card must ${exited ? "carry" : "carry no"} endedAt`,
     });
   }
   if (terminal !== (card.stopReason !== undefined)) {

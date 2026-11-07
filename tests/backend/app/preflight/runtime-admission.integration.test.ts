@@ -42,6 +42,12 @@ import { populatedProtectedRecord, runtimeFixture } from "../../../support/fixtu
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { sessionsFromDay } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
+import { sessionCommandEffect } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
@@ -648,6 +654,66 @@ try {
   renameSync(h.f.executable,`${h.f.executable}.parked`); const probes = h.probes;
   assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(children.length, 1); assert.equal(h.probes, probes);
   renameSync(`${h.f.executable}.parked`,h.f.executable);
+  await workers.pool.stopAll("shutdown");
+
+} finally {
+await _afterEachFixture0();
+}
+});
+
+it("a planned member whose start preflight refuses serves a not-started card beside its live peer, and the card's Retry starts it", async () => {
+try {
+
+  const h = await harness(); const children: ScriptedWorkerChild[] = [];
+  const workers = composeWorkerPool({
+    admission: h.f.admission, sessionGeneration: 1, profileRoot: h.f.input.config.paths.browserProfileRoot, database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: scriptedWorkerSpawner(children), settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
+  const projection = createOperatorProjection({ database: h.database, reader: h.lifecycle, workerMembers: () => workers.pool.snapshot(),
+    descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined },
+    stateRoot: h.f.input.config.paths.stateRoot, clock: h.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+    ledger: { foldActivityRange: () => { throw new Error("unrequested activity"); } } });
+  const catalog = buildWorkflowCatalog([], true, servedFixtureSources([]));
+  const served = () => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(h.clock.now().toISOString().slice(0, 10)); };
+  const envelope = (commandId: string) => ({ commandId, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser" });
+  const plan = (commandId: string, desiredWorkers: number) => kernel.executeWorkerPool({ ...envelope(commandId), type: "plan-worker-count",
+    target: { workflowId: personLookupDescriptor.id, expectedVersion: h.database.authority.workerPools.get(personLookupDescriptor.id)?.version ?? 0 }, payload: { desiredWorkers } });
+
+  assert.equal((await plan("44444444-4444-4444-8444-444444444441", 1)).state, "applied"); assert.equal(children.length, 1);
+  renameSync(h.f.executable, `${h.f.executable}.parked`);
+  assert.equal((await plan("44444444-4444-4444-8444-444444444442", 2)).state, "applied", "the plan stays applied when its start is refused");
+  assert.equal(children.length, 1, "the refused member never spawns");
+
+  const day = served();
+  assert.equal(day.workerAuthority.state, "present");
+  const [peer, added] = [1, 2].map(ordinal => day.workerCards.find(card => card.member.ordinal === ordinal));
+  assert.ok(peer && added);
+  assert.equal(peer.state, "idle"); assert.equal(peer.controls?.basis.state, "present");
+  const peerBasis = peer.controls?.basis.state === "present" ? peer.controls.basis.value : undefined; assert.notEqual(peerBasis?.lifetimeId, null);
+  assert.equal(added.state, "failed"); assert.equal(added.stopReason, "not-started"); assert.equal(added.endedAt, undefined);
+  assert.deepEqual(added.controls, { basis: { state: "present", value: { lifetimeId: null, version: 0 } } });
+  const view = sessionsFromDay(day, catalog, h.clock.now().toISOString());
+  assert.equal(view.state, "ready");
+  assert.deepEqual(view.state === "ready" ? view.workers.map(worker => [worker.id, worker.state]) : [], [[peer.workerId, "idle"], [added.workerId, "failed"]]);
+
+  // The card's own fence, exactly as the Sessions Retry sends it.
+  const retry = (commandId: string) => CommandRequestSchema.parse({ ...envelope(commandId), type: "retry-worker",
+    target: { workerId: added.workerId, workflowId: added.workflowId, lifetimeId: null, expectedVersion: 0 } });
+  assert.equal((await kernel.executeWorkerPool(retry("55555555-5555-4555-8555-555555555551"))).state, "rejected", "Retry preflights again");
+  assert.equal(children.length, 1);
+  renameSync(`${h.f.executable}.parked`, h.f.executable);
+  const corrected = retry("55555555-5555-4555-8555-555555555552");
+  assert.equal((await kernel.executeWorkerPool(corrected)).state, "applied"); assert.equal(children.length, 2);
+
+  const after = served();
+  assert.equal(after.workerAuthority.state, "present");
+  assert.ok(sessionCommandEffect(after, corrected), "the served card shows the Retry's effect");
+  const restarted = after.workerCards.find(card => card.workerId === added.workerId);
+  assert.ok(restarted && restarted.state !== "failed" && restarted.stopReason === undefined);
+  const peerAfter = after.workerCards.find(card => card.workerId === peer.workerId);
+  assert.deepEqual(peerAfter?.controls, peer.controls, "the live peer keeps its member and fence");
   await workers.pool.stopAll("shutdown");
 
 } finally {

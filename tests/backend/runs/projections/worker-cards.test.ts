@@ -19,14 +19,14 @@ const running = RunRecordSchema.parse({ ...QUEUED_RUN, claimGeneration: 1, lifec
   claimedAt: STARTED, heartbeatAt: STARTED, currentNodeId: "lookup" } });
 const observation = WorkerBrowserObservationSchema.parse({ workerId: slot.workerId, sessionId: "00000000-0000-4000-8000-000000009991", system: "crm",
   configFingerprint: "a".repeat(64), signInFingerprint: "b".repeat(64), browserMode: "headless", acceptDownloads: false, exclusive: false,
-  health: "ready", observedAt: STARTED, openedAt: STARTED, profileRevision: 1 });
+  health: "authenticated", observedAt: STARTED, openedAt: STARTED, profileRevision: 1 });
 
 function memberView(input: Partial<WorkerMemberView> = {}): WorkerMemberView {
   return { member: workerPoolMember(slot), lifetimeId: LIFETIME, version: 0, state: "running", directive: "run", pid: 4242, startedAt: STARTED,
     activity: { state: "idle" }, browsers: [], exit: undefined, held: undefined, ...input };
 }
-function card(input: Readonly<{ view?: WorkerMemberView; slot?: typeof slot; foldRevision?: number; resolveRun?: (runId: string) => typeof running | undefined }> = {}) {
-  return workerCardOf({ slot: input.slot ?? slot, view: input.view ?? memberView(), foldRevision: input.foldRevision ?? 0, resolveRun: input.resolveRun ?? (() => undefined) });
+function card(input: Readonly<{ view?: WorkerMemberView | undefined; slot?: typeof slot; foldRevision?: number; resolveRun?: (runId: string) => typeof running | undefined }> = {}) {
+  return workerCardOf({ slot: input.slot ?? slot, view: "view" in input ? input.view : memberView(), foldRevision: input.foldRevision ?? 0, resolveRun: input.resolveRun ?? (() => undefined) });
 }
 
 describe("the worker card from the pool member and its slot", () => {
@@ -80,6 +80,21 @@ describe("the worker card from the pool member and its slot", () => {
       assert.equal(workerDirectiveNote(value), undefined);
     }
     assert.equal(canStopWorker(card()), true);
+  });
+
+  it("serves a slot with no process this boot as not started, with the null-lifetime fence Retry cites", () => {
+    const value = card({ view: undefined, slot: { ...slot, paused: true }, foldRevision: 4 });
+    assert.equal(value.state, "failed");
+    assert.equal(value.stopReason, "not-started");
+    assert.equal(value.endedAt, undefined);
+    assert.equal(value.startedAt, slot.createdAt);
+    assert.equal(value.directive, "pause");
+    assert.deepEqual(value.controls, { basis: { state: "present", value: { lifetimeId: null, version: 0 } } });
+    assert.deepEqual(value.currentRun, { state: "absent", reason: "no current claimed run" });
+    assert.deepEqual(value.browsers, []);
+    assert.equal(value.revision, 5);
+    assert.equal(canStopWorker(value), false);
+    assert.equal(workerElapsedSeconds(value, "2026-08-20T18:00:00.000Z"), 0);
   });
 
   it("counts ended uptime to the observed exit and live uptime to the current time", () => {

@@ -28,21 +28,27 @@ function workerCardState(view: WorkerMemberView): WorkerCardWire["state"] {
 /** A card is the pool's in-memory member joined with its durable slot; the fence it serves is the member's lifetime and version. */
 export function workerCardOf(input: Readonly<{
   slot: WorkerSlotRecord;
-  view: WorkerMemberView;
+  /** Absent when the slot has no process this boot (its start was refused or never attempted); the card then offers Retry. */
+  view: WorkerMemberView | undefined;
   /** Span events folded for this worker; a patch cursor, never a CAS token. */
   foldRevision: number;
   resolveRun: (runId: string) => RunRecord | undefined;
 }>): WorkerCardWire {
   const { slot, view } = input;
-  if (slot.retiredAt !== null || view.member.workerId !== slot.workerId || view.member.workflowId !== slot.workflow) throw new Error("worker-member-authority-unavailable");
+  if (slot.retiredAt !== null || (view !== undefined && (view.member.workerId !== slot.workerId || view.member.workflowId !== slot.workflow))) {
+    throw new Error("worker-member-authority-unavailable");
+  }
+  const base = { member: workerPoolMember(slot), workerId: slot.workerId, workflowId: slot.workflow, directive: slot.paused ? "pause" : "run" } as const;
+  if (view === undefined) {
+    return WorkerCardWireSchema.parse({ ...base, state: "failed", stopReason: "not-started", startedAt: slot.createdAt,
+      controls: { basis: { state: "present", value: { lifetimeId: null, version: 0 } } },
+      currentRun: { state: "absent", reason: "no current claimed run" }, browsers: [], revision: input.foldRevision + 1 });
+  }
   const runId = view.activity?.runId, run = runId === undefined ? undefined : input.resolveRun(runId);
   const exit = view.state === "exited" ? view.exit : undefined;
   return WorkerCardWireSchema.parse({
-    member: workerPoolMember(slot),
-    workerId: slot.workerId,
-    workflowId: slot.workflow,
+    ...base,
     state: workerCardState(view),
-    directive: slot.paused ? "pause" : "run",
     controls: { basis: { state: "present", value: { lifetimeId: view.lifetimeId, version: view.version } } },
     startedAt: view.startedAt,
     ...(view.state === "exited"
