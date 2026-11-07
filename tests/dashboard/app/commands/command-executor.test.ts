@@ -379,7 +379,7 @@ for (const code of ["OPERATOR_MUTATION_ORIGIN_REFUSED", "OPERATOR_MUTATION_MEDIA
 it("retains admitted worker pending without readback or a terminal result", async () => {
   const h = harness();
   const request = CommandRequestSchema.parse({ ...command(), family: "worker-browser", type: "stop-worker",
-    target: { workerId: "person-lookup-worker-1", membershipRevision: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } });
+    target: { workerId: "person-lookup-worker-1", workflowId: "person-lookup", lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", expectedVersion: 1 } });
   h.setReply(() => ({ state: "pending", commandId: request.commandId }));
   const options = h.options();
   const outcome = await h.executor.execute(request, { ...options, readback: async () => { assert.fail("pending cannot confirm from readback"); } });

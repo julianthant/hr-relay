@@ -93,7 +93,7 @@ describe("the panel's copy of the pool contract is pinned to the kernel's", () =
     for (let index = 1; index <= 4; index += 1) {
       assert.equal(
         poolMemberWorkerId(String(workflowId), index),
-        String(workerPoolMember(WorkerSlotRecordSchema.parse({ workflow: workflowId, workerId: `person-lookup-worker-${String(index)}`, ordinal: index, poolIndex: index, membershipRevision: 1, phase: "idle", retiredAt: null, retirementCommandId: null, reservationCommandId: null, createdAt: "2026-08-03T16:00:00.000Z", updatedAt: "2026-08-03T16:00:00.000Z" })).workerId),
+        String(workerPoolMember(WorkerSlotRecordSchema.parse({ workflow: workflowId, workerId: `person-lookup-worker-${String(index)}`, ordinal: index, poolIndex: index, paused: false, retiredAt: null, createdAt: "2026-08-03T16:00:00.000Z", updatedAt: "2026-08-03T16:00:00.000Z" })).workerId),
       );
     }
   });

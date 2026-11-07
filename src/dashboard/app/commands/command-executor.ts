@@ -56,6 +56,9 @@ interface Attempt {
   readonly scope: CommandExecutionScope;
   state: "pending" | "settled";
   outcome?: CommandOutcome;
+  /** Resolves when the current pending dispatch or check settles. */
+  settling?: Promise<void>;
+  release?: () => void;
 }
 interface Reservation { readonly attempt: Attempt; readonly token: object }
 
@@ -103,7 +106,13 @@ export class CommandExecutor {
   constructor(private readonly currentScope: () => CommandExecutionScope | undefined) {}
 
   retainedAttempts(): readonly RetainedCommandAttempt[] {
-    return Object.freeze([...new Set(this.attempts.values())].map(attempt => Object.freeze({ ...attempt })));
+    return Object.freeze([...new Set(this.attempts.values())].map(({ request, body, scope, state, outcome }) => Object.freeze({ request, body, scope, state, ...(outcome === undefined ? {} : { outcome }) })));
+  }
+
+  /** Resolves once the attempt's in-flight dispatch or check has settled; at once when none is in flight. */
+  async whenSettled(commandId: string): Promise<void> {
+    const attempt = this.attempts.get(commandId);
+    if (attempt?.state === "pending") await attempt.settling;
   }
 
   async execute(input: unknown, options: CommandExecutionOptions): Promise<CommandOutcome> {
@@ -135,7 +144,7 @@ export class CommandExecutor {
     const key = lockKey(request);
     const held = this.reservations.get(key);
     if (held?.attempt !== attempt) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
-    attempt.state = "pending";
+    attempt.state = "pending"; attempt.settling = new Promise(resolve => { attempt.release = resolve; });
     let outcome: CommandOutcome;
     try {
       const observed = await options.observe(request);
@@ -145,7 +154,7 @@ export class CommandExecutor {
     } catch (cause) { outcome = uncertain(commandId, cause); }
     if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
     if (outcome.kind !== "confirmed") outcome = uncertain(commandId, outcome, outcome.reply);
-    attempt.state = "settled";
+    attempt.state = "settled"; attempt.release?.();
     attempt.outcome = Object.freeze(outcome);
     if (outcome.kind === "confirmed" && this.reservations.get(key) === held) this.reservations.delete(key);
     return this.publish(outcome, options);
@@ -209,7 +218,7 @@ export class CommandExecutor {
       this.attempts.set(request.bulkCommandId, attempt);
       for (const command of commands) this.attempts.set(command.commandId, attempt);
     }
-    attempt.state = "pending";
+    attempt.state = "pending"; attempt.settling = new Promise(resolve => { attempt.release = resolve; });
     let outcome: CommandOutcome;
     try {
       if ("targets" in request) {
@@ -235,7 +244,7 @@ export class CommandExecutor {
         ? { kind: "refused", commandId: request.commandId, feedback: feedback("COMMAND_REFUSED"), cause }
         : uncertain(request.commandId, cause);
     }
-    attempt.state = "settled";
+    attempt.state = "settled"; attempt.release?.();
     attempt.outcome = Object.freeze(outcome);
     for (const [index, key] of keys.entries()) {
       const held = this.reservations.get(key);

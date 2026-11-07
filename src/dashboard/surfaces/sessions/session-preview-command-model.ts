@@ -17,6 +17,10 @@ export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest;
 export interface SessionPreviewCommandPort {
   send(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
   check(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
+  /** Member controls the shared executor still holds in flight or uncertain for this scope, so a remounted panel keeps them locked and checkable. */
+  retained?(): readonly SessionPreviewOperation[];
+  /** The operation once its in-flight attempt settles; undefined when the attempt is gone or belongs to another scope. */
+  afterSettled?(request: SessionPreviewRequest): Promise<SessionPreviewOperation | undefined>;
 }
 
 export interface SessionCommandBinding {
@@ -60,6 +64,19 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     if (binding === undefined) throw new Error("SESSION_AUTHORITY_UNAVAILABLE");
     return binding;
   };
+  const retainedOperation = (binding: SessionCommandBinding, retained: ReturnType<CommandExecutor["retainedAttempts"]>[number], settled = false): SessionPreviewOperation | undefined => {
+    const command = retained.request;
+    const open = retained.state === "pending" || retained.outcome?.kind === "uncertain";
+    if (!open && !settled || "targets" in command || command.family !== "worker-browser"
+      || !["pause-worker", "resume-worker", "retry-worker", "stop-worker", "remove-worker"].includes(command.type) || !("workerId" in command.target)
+      || retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return undefined;
+    const request: SessionPreviewRequest = { id: command.commandId, target: command.target.workerId, action: command.type.replace(/-worker$/u, "") as SessionControl };
+    if (!attempts.has(request.id)) attempts.set(request.id, { body: JSON.stringify(request), actor: binding.scope.actorId, client: binding.client, authority: binding.scope.authority, commands: [command], expected: 1 });
+    const outcome = retained.outcome;
+    if (retained.state === "pending" || outcome === undefined) return { request, state: "pending", message: `${label(request)} requested…` };
+    if (outcome.kind === "confirmed") return { request, state: "confirmed", message: `${label(request)} confirmed` };
+    return { request, state: outcome.kind === "uncertain" ? "uncertain" : "refused", message: outcome.feedback.text };
+  };
   const valid = (attempt: NativeAttempt, binding: SessionCommandBinding) => {
     const next = requireBinding();
     return attempt.actor === binding.scope.actorId && attempt.client === binding.client && attempt.authority === binding.scope.authority
@@ -95,6 +112,16 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN"), data };
   };
   return {
+    retained() {
+      const binding = current().binding;
+      return binding === undefined ? [] : binding.executor.retainedAttempts().flatMap(retained => retainedOperation(binding, retained) ?? []);
+    },
+    async afterSettled(request) {
+      const binding = requireBinding();
+      await binding.executor.whenSettled(request.id);
+      const retained = requireBinding().executor.retainedAttempts().find(attempt => attempt.request.commandId === request.id);
+      return retained === undefined ? undefined : retainedOperation(requireBinding(), retained, true);
+    },
     async send(request) {
       if (attempts.has(request.id)) throw new Error("SESSION_COMMAND_ALREADY_SUBMITTED");
       const binding = requireBinding();
@@ -147,7 +174,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       const attempt = attempts.get(request.id);
       if (attempt === undefined || attempt.body !== JSON.stringify(request) || !valid(attempt, binding)) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
       try {
-        const day = await read(attempt, binding);
+        await read(attempt, binding);
         for (const command of attempt.commands) {
           const retained = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === command.commandId);
           if (retained !== undefined) {
@@ -155,7 +182,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
             if (retained.outcome?.kind === "uncertain") {
               const reply = CommandResultSchema.safeParse(retained.outcome.reply);
               const outcome = await binding.executor.check(command.commandId, { ...options(attempt, binding),
-                observe: async () => reply.success && sessionCommandEffect(day, command) ? reply.data : undefined });
+                observe: async () => reply.success ? reply.data : undefined });
               if (outcome.kind !== "confirmed") return { id: request.id, state: "uncertain", message: outcome.feedback.text };
             } else if (retained.outcome?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
           }
@@ -180,8 +207,8 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const identity = useRef(source?.scope ?? port);
   if (identity.current !== (source?.scope ?? port)) { identity.current = source?.scope ?? port; epoch.current = {}; }
   const latestSource = useRef(sourceKey); latestSource.current = sourceKey;
-  const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>({});
-  const operationsRef = useRef<Record<string, SessionPreviewOperation>>({});
+  const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>(() => Object.fromEntries((port.retained?.() ?? []).map(operation => [operation.request.target, operation])));
+  const operationsRef = useRef<Record<string, SessionPreviewOperation>>(operations);
   const live = useRef(true);
   const ordinal = useRef(5);
   const idle = useRef<((request: SessionPreviewRequest, data?: SessionsViewState) => void) | undefined>(undefined);
@@ -190,6 +217,18 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     operationsRef.current = { ...operationsRef.current, [operation.request.target]: operation };
     setOperations(operationsRef.current);
   }, []);
+  // A control another mount sent is still in flight: follow it to its settled outcome instead of resending.
+  useEffect(() => {
+    for (const operation of Object.values(operationsRef.current)) {
+      if (operation.state !== 'pending') continue;
+      void port.afterSettled?.(operation.request).then(next => {
+        if (!live.current || operationsRef.current[operation.request.target]?.request.id !== operation.request.id) return;
+        retain(next ?? { request: operation.request, state: 'uncertain', message: commandFeedback('COMMAND_OUTCOME_UNCERTAIN') });
+      }, (diagnostic: unknown) => {
+        if (live.current) retain({ request: operation.request, state: 'uncertain', diagnostic, message: commandFeedback('COMMAND_OUTCOME_UNCERTAIN') });
+      });
+    }
+  }, [port, retain]);
     const perform = useCallback(async (request: SessionPreviewRequest, checking = false) => {
     const current = operationsRef.current[request.target];
     if (current && ['pending', 'checking'].includes(current.state) || !checking && current?.state === 'uncertain') return;
