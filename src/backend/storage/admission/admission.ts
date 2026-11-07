@@ -1251,6 +1251,19 @@ export class RuntimeAdmission {
   }
   assertStateRoot(path: string): void {
     this.assertLive();
+    this.#assertStatePath(path);
+  }
+  /** Proves liveness before and after a synchronous walk, checking each walked path without re-reading the authority. */
+  withStatePaths<T>(walk: (assertPath: (path: string) => void) => T): T {
+    this.assertLive();
+    let open = true;
+    try {
+      const result = walk(path => { if (!open) throw new Error("runtime-admission: state path walk closed"); this.#assertStatePath(path); });
+      this.assertLive();
+      return result;
+    } finally { open = false; }
+  }
+  #assertStatePath(path: string): void {
     if (this.#stoppedControlBackupPath(path)) return;
     if (this.#readyUpgrade !== undefined) {
       if (this.#readyUpgrade.copyPath !== undefined && path !== this.#readyUpgrade.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
