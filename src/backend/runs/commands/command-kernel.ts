@@ -1966,7 +1966,7 @@ async function executeWorkerPoolCommand(
       if (request.type === "spawn-worker") requireActiveSlot(repositories, request, request.payload.workerId, request.target.workflowId);
     } else requireActiveSlot(repositories, request, request.target.workerId, "workflowId" in request.target ? request.target.workflowId : undefined);
   });
-  // A plan's member starts are refused per member before spawn; the plan itself applies.
+  // A plan preflights its member starts after it applies.
   const preflight = request.type === "spawn-worker" || request.type === "retry-worker" || request.type === "stop-worker";
   try { await pool.admit(request.commandId, { preflight }); }
   catch (error) {
@@ -2006,8 +2006,12 @@ async function executeWorkerPoolCommand(
           throw error;
         }
       });
-      // A member that fails to start shows as Failed on its card with Retry; the plan itself is applied.
-      await Promise.allSettled(members.map(member => pool.ensure(member)));
+      // The plan applies even when preflight refuses its starts; a member that does not start keeps Retry on its card.
+      const startable = await pool.admit(request.commandId, { preflight: true }).then(() => true, (error: unknown) => {
+        if (workerEffectRefusal(request, error) === undefined) throw error;
+        return false;
+      });
+      if (startable) await Promise.allSettled(members.map(member => pool.ensure(member)));
       return result;
     }
     case "spawn-worker": {
