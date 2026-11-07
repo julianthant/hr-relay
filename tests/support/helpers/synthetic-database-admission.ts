@@ -92,10 +92,10 @@ export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ pat
   entry.workers.add(worker);
   if (workerDatabases.has(input.database)) return;
   workerDatabases.add(input.database);
-  // A fixture worker owns no process; releasing it only requires that it holds no claimed run.
+  // A fixture worker owns no process; releasing it requires that it holds no claimed run in validated current authority.
   syntheticWorkerStops.set(input.database, { path: input.path, stop: () => {
-    const claimed = [...entry.workers].filter(owner => owner.database === input.database)
-      .filter(owner => owner.database.authority.runs.listByWorker(owner.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state)));
+    const claimed = input.database.withAuthorityTransaction(repositories => [...entry.workers].filter(owner => owner.database === input.database)
+      .filter(owner => repositories.runs.listByWorker(owner.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))));
     if (claimed.length !== 0) throw new Error("fixture-worker-claim-retained");
   } });
   const close = input.database.close.bind(input.database);

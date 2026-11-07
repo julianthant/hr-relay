@@ -355,7 +355,7 @@ it("freshly claims an independent queued child after its other physical parent's
   });
   const failure = outcome.state === "failed" ? f.database.authority.failures.get(outcome.failureId) : undefined;
   const code = ErrorCatalogCodeSchema.safeParse(failure?.code);
-  assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "run lifecycle lost" },
+  assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "lost original execution claim" },
     new Error(failure === undefined ? undefined : JSON.stringify({ code: code.success ? code.data : "UNCLASSIFIED", codeSha256: sha256Hex(failure.code) })));
   assert.ok(childClaim);
   terminal(f.currentRoot(), "failed");
@@ -386,7 +386,7 @@ for (const policy of ["cascade", "independent"] as const) {
       assert.ok(childResult);
       exitWorker(f, testWorkerLifetime(f.database, f.root.envelope.workflow, 1).workerId);
     });
-    assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "run lifecycle lost" });
+    assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "lost original execution claim" });
     assert.ok(retained);
     terminal(f.currentRoot(), "failed");
     assert.equal(f.currentRoot().claimGeneration, retained.claimGeneration);

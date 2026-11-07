@@ -169,15 +169,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       requestedBy: "local-operator", source: "dashboard", family: "worker-browser" });
     const planned = await client.executeCommand(WorkerBrowserCommandRequestSchema.parse({ ...envelope(), type: "plan-worker-count",
       target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } }));
+    // The plan is the pool-fence publish: it applies the count and starts its one member.
     assert.equal(planned.state, "applied");
-    const spawnCommandId = randomUUID();
-    const spawning = client.executeCommand(WorkerBrowserCommandRequestSchema.parse({ ...envelope(), commandId: spawnCommandId, type: "spawn-worker",
-      target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 }, payload: { workerId: "person-lookup-worker-1" } }))
-      .then(result => ({ result }), (error: unknown) => ({ error }));
-
-    const outcome = await spawning;
-    if ("error" in outcome) throw outcome.error;
-    assert.equal(outcome.result.state, "applied");
     assert.equal(records.length, 1);
     assert.ok(records[0]?.pid !== undefined);
     const database = profile.openDatabase({ path: join(profile.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
