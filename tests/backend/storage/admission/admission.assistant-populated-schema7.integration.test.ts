@@ -97,7 +97,7 @@ it("upgrades actual populated prior Settings rows with exact preference conversi
     try {
       const retained = Object.fromEntries(Object.keys(prior.tables).map(table => [table, upgraded.prepare(`SELECT * FROM ${table} ORDER BY id`).all().map(row => prePreferencesSettingsRow(table, row))]));
       assert.deepEqual(retained, prior.tables); assert.equal(sha(canonicalJsonStringify(retained)), prior.tablesSha256);
-      assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM assistant_grants").get()?.count, 0);
+      assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name='assistant_grants'").get()?.count, 0);
       assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM assistant_chats").get()?.count, 0);
       assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM assistant_actions").get()?.count, 0);
     } finally { upgraded.close(); }
@@ -108,7 +108,6 @@ it("upgrades actual populated prior Settings rows with exact preference conversi
       assert.deepEqual({ revision: settings.saved.revision, settingsSchemaHash: PRE_PREFERENCES_SETTINGS_SCHEMA_HASH,
         settingsFingerprint: settings.saved.settingsFingerprint, settings: settings.saved.settings }, prior.settings);
       assert.equal(inspection.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
-      assert.equal(inspection.prepare("SELECT COUNT(*) AS count FROM assistant_grants").get()?.count, 0);
     } finally { inspection.close(); }
     const beforeRuntime = storageTree(f.root);
     assert.throws(() => f.admission.assertProfileRuntime(), /profile-bound-authority-required/u);

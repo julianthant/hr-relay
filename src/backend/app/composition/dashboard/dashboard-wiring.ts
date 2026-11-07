@@ -260,14 +260,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
     decideAction: (decision, signal) => assistantProposals.decideAction(decision, signal),
     history: () => { assertCurrent(); return database.authority.assistantHistory; },
-    modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
+    selectedModel: () => { const captured = captureSelectedModel(); return { preference: captured.view.preference, assertCurrent: captured.assertPreferenceCurrent }; },
     readModelPreference: () => captureSelectedModel().view,
-    readPermission: () => assistantAuthorization.permission(),
-    verifySelectedModel: async signal => {
-      const captured = captureSelectedModel();
-      await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
-      captured.assertPreferenceCurrent();
-    },
     clock,
   });
 

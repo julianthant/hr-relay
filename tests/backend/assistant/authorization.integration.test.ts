@@ -1,7 +1,6 @@
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
-import { createAssistantAuthorization } from "../../../src/backend/assistant/authorization.js";
 
 
 
@@ -60,81 +59,33 @@ async function fixture() {
   const kernel = { ...actualKernel };
   const authorization = composeProfileAssistantAuthorization(runtime, active.token, kernel, clock);
   cleanups.push(async () => { await context.account.close(); database.close(); context.admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); });
-  const permissionCommand = (mode: "every-action", expectedRevision: number = context.settings.read().record.revision,
-    expectedPolicyRevision: number = database.authority.assistantAuthorization.grant()?.policy.revision ?? 0) => CommandRequestSchema.parse({
-    commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-    family: "settings", type: "apply-settings", target: { expectedRevision },
-    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision, mode } },
-  });
-  const execute = (request: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings, authorityProfileId: active.profileId }, request);
-  const grant = (mode: "every-action", expectedRevision: number = context.settings.read().record.revision,
-    expectedPolicyRevision: number = database.authority.assistantAuthorization.grant()?.policy.revision ?? 0) => execute(permissionCommand(mode, expectedRevision, expectedPolicyRevision));
+  const execute = (request: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, request);
   const command = () => {
     const patch = { "browser.headless": { set: false } };
     return CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
       family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
       payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
   };
-  return { workspace, machine, runtime, active, context, database, clock, kernel, authorization, grant, command, permissionCommand, execute };
+  return { workspace, machine, runtime, active, context, database, clock, kernel, authorization, command, execute };
 }
 
-it("does not turn the displayed default into a grant, and requires genuine token/chat ownership", async () => {
+it("prepares on the operator's Confirm alone, and requires genuine token/chat ownership", async () => {
   const f = await fixture(), chat = f.authorization.createChat();
-  assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
-  assert.throws(() => f.authorization.prepare(chat, f.command()), /assistant-grant-required/u);
+  assert.equal(f.authorization.prepare(chat, f.command()).state, "prepared");
   assert.throws(() => composeProfileAssistantAuthorization(f.runtime, randomUUID(), f.kernel, f.clock));
-  assert.equal(f.grant("every-action").state, "applied");
   assert.throws(() => f.authorization.prepare({ ...chat }, f.command()), /assistant-chat-not-issued/u);
-  assert.equal(f.grant("every-action", 1).state, "conflict");
-  assert.equal(f.database.authority.assistantAuthorization.grant()?.policy.mode, "every-action");
-  const permission = f.permissionCommand("every-action");
-  assert.equal(permission.type, "apply-settings"); if (permission.type !== "apply-settings") throw new Error("settings required");
-  const before = f.database.getMeta().authorityGeneration;
-  assert.throws(() => f.execute({ ...permission, payload: { ...permission.payload, assistantPermission: { clear: true } } }));
-  assert.equal(f.database.getMeta().authorityGeneration, before);
 });
 
-it("reads the exact person grant and Settings revisions without granting or dispatching", async () => {
-  const f = await fixture(), before = f.database.getMeta().authorityGeneration;
-  const initial = f.authorization.permission();
-  assert.deepEqual(initial, { profileId: f.active.profileId, epoch: f.context.profileEpoch, mode: "every-action",
-    state: "grant-required", policyRevision: 0, settingsRevision: 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH });
+it("rejects a Settings command that carries the retired assistant permission", async () => {
+  const f = await fixture(), request = f.command(), before = f.database.getMeta().authorityGeneration;
+  assert.equal(request.type, "apply-settings"); if (request.type !== "apply-settings") throw new Error("settings required");
+  assert.throws(() => f.execute({ ...request, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {},
+    assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } }));
   assert.equal(f.database.getMeta().authorityGeneration, before);
-  assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
-  assert.equal(f.grant("every-action").state, "applied");
-  const granted = f.database.getMeta().authorityGeneration;
-  assert.deepEqual(f.authorization.permission(), { ...initial, state: "granted", policyRevision: 1, settingsRevision: 2 });
-  assert.equal(f.database.getMeta().authorityGeneration, granted);
-  const foreign = createAssistantAuthorization({ database: f.database, kernel: f.kernel, clock: f.clock,
-    current: () => ({ profileId: randomUUID(), epoch: f.context.profileEpoch }) });
-  assert.throws(() => foreign.permission(), /assistant-permission-authority-invalid/u);
-  createProfileRegistry(f.machine).advanceSession(null);
-  assert.throws(() => f.authorization.permission());
-});
-
-it("refuses permission readback when its captured session epoch changes", async () => {
-  const f = await fixture(); let reads = 0;
-  const authorization = createAssistantAuthorization({ database: f.database, kernel: f.kernel, clock: f.clock,
-    current: () => ({ profileId: f.active.profileId, epoch: f.context.profileEpoch + reads++ }) });
-  const before = f.database.getMeta().authorityGeneration;
-  assert.throws(() => authorization.permission(), /assistant-permission-owner-changed/u);
-  assert.equal(f.database.getMeta().authorityGeneration, before);
-});
-
-it.each(["before-submits", "without-asking"])("refuses an operator attempt to recreate retired %s authority", async mode => {
-  const f = await fixture();
-  const request = f.permissionCommand("every-action");
-  assert.equal(request.type, "apply-settings");
-  if (request.type !== "apply-settings") throw new Error("settings required");
-  const before = f.database.getMeta().authorityGeneration;
-  const result = f.execute({ ...request, payload: { ...request.payload, assistantPermission: { expectedPolicyRevision: 0, mode } } });
-  assert.equal(result.state, "rejected");
-  assert.equal(f.database.getMeta().authorityGeneration, before);
-  assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
 });
 
 it("claims once and commits the real canonical Settings result in one authority generation", async () => {
-  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const f = await fixture();
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);
   assert.equal(proposal.state, "prepared");
   assert.throws(() => f.authorization.consume(chat, proposal.id), /not-consumable/u);
@@ -151,13 +102,11 @@ it("claims once and commits the real canonical Settings result in one authority 
   assert.throws(() => f.authorization.approve(chat, proposal.id, 1), /state-conflict/u);
 });
 
-it("refuses another chat, changed grant, expiry and profile revocation without command effects", async () => {
-  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+it("refuses another chat, expiry and profile revocation without command effects", async () => {
+  const f = await fixture();
   const chat = f.authorization.createChat(), other = f.authorization.createChat(), command = f.command();
   const proposal = f.authorization.prepare(chat, command);
   assert.throws(() => f.authorization.consume(other, proposal.id), /stale/u);
-  assert.equal(f.grant("every-action").state, "applied");
-  assert.throws(() => f.authorization.consume(chat, proposal.id), /BINDING_STALE/u);
   assert.equal(f.database.authority.commands.get(command.commandId), undefined);
   const next = f.authorization.prepare(chat, f.command());
   f.clock.advanceWall(60_001);
@@ -167,18 +116,17 @@ it("refuses another chat, changed grant, expiry and profile revocation without c
   assert.throws(() => f.authorization.consume(chat, next.id));
 });
 
-it("refuses private or self-granting commands before storing an action", async () => {
-  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+it("refuses private commands before storing an action", async () => {
+  const f = await fixture();
   const chat = f.authorization.createChat(), command = f.command(); assert.equal(command.type, "apply-settings");
   if (command.type !== "apply-settings") throw new Error("settings required");
   const patch = { "actor.label": { set: "Synthetic Person" } };
   assert.throws(() => f.authorization.prepare(chat, { ...command, payload: { ...command.payload, patch, patchFingerprint: deriveSettingsPatchFingerprint(patch) } }));
-  assert.throws(() => f.authorization.prepare(chat, f.permissionCommand("every-action")));
   assert.equal(f.database.authority.assistantAuthorization.actionByCommand(command.commandId), undefined);
 });
 
 it("refuses cancellation, changed manifest and reissued service capability without resurrecting durable approval", async () => {
-  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const f = await fixture();
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);
   f.authorization.cancel(chat, proposal.id, proposal.revision);
   assert.throws(() => f.authorization.consume(chat, proposal.id), /not-consumable/u);
@@ -195,7 +143,7 @@ it("refuses cancellation, changed manifest and reissued service capability witho
 });
 
 it("does not resurrect an approval copied back by the real stopped restore", async () => {
-  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const f = await fixture();
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);
   const approved = f.authorization.approve(chat, proposal.id, proposal.revision);
   const directory = join(f.context.admission.stateRoot, "backups", "authority");
@@ -225,36 +173,8 @@ it("does not resurrect an approval copied back by the real stopped restore", asy
   assert.equal(context.database.authority.commands.get(command.commandId), undefined);
 });
 
-it("requires both grant and Settings CAS and keeps exact permission replay idempotent", async () => {
-  const f = await fixture(), first = f.permissionCommand("every-action");
-  assert.equal(first.type, "apply-settings"); if (first.type !== "apply-settings") throw new Error("settings required");
-  const initial = f.context.settings.read().record, generation = f.database.getMeta().authorityGeneration;
-  assert.equal(f.grant("every-action", initial.revision, 1).state, "conflict");
-  assert.equal(f.database.getMeta().authorityGeneration, generation);
-  assert.deepEqual(f.context.settings.read().record, initial);
-  assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
-  assert.equal(f.execute(first).state, "applied");
-  const granted = f.database.authority.assistantAuthorization.grant(), after = f.database.getMeta().authorityGeneration;
-  assert.ok(granted);
-  assert.deepEqual(f.context.settings.read().record.settings, initial.settings);
-  assert.equal(f.context.settings.read().record.revision, initial.revision + 1);
-  assert.equal(f.execute(first).state, "already-applied");
-  assert.deepEqual(f.database.authority.assistantAuthorization.grant(), granted);
-  assert.equal(f.database.getMeta().authorityGeneration, after);
-  assert.equal(f.execute({ ...first, payload: { ...first.payload, assistantPermission: { expectedPolicyRevision: 1, mode: "every-action" } } }).state, "rejected");
-  assert.equal(f.grant("every-action", f.context.settings.read().record.revision, 0).state, "conflict");
-  assert.equal(f.database.getMeta().authorityGeneration, after);
-  assert.deepEqual(f.database.authority.assistantAuthorization.grant(), granted);
-  const saved = f.context.settings.read().record;
-  assert.equal(f.grant("every-action", initial.revision, granted.policy.revision).state, "conflict");
-  assert.equal(f.database.getMeta().authorityGeneration, after);
-  assert.deepEqual(f.context.settings.read().record, saved);
-  assert.deepEqual(f.database.authority.assistantAuthorization.grant(), granted);
-});
-
 it("keeps checkpoint recovery operator-only even when a manifest classifies the command", async () => {
   const f = await fixture();
-  assert.equal(f.grant("every-action").state, "applied");
   const chat = f.authorization.createChat();
   const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(),
     requestedBy: "local-operator", source: "dashboard", family: "run", type: "recover-run",

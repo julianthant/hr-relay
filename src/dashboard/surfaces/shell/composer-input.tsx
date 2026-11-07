@@ -6,11 +6,11 @@ import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, Drop
 import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODELS, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
 import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import './composer-input.css';
-import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
-import { ASSISTANT_EFFORT_LABELS, assistantModelLabel } from '../../../models/config/assistant-model-preference.js';
+import type { AssistantModelCatalog, AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from '../../../models/config/assistant-model-preference.js';
 
-export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference }: AssistantPorts & {
-  modelPreference?: AssistantModelPreferenceView['preference']; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
+export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference, models, onModelChoice }: AssistantPorts & {
+  modelPreference?: AssistantModelPreferenceView['preference']; models?: AssistantModelCatalog['models']; onModelChoice?: (preference: AssistantModelPreference) => void; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
   const id = useId();
@@ -27,9 +27,10 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
     finally { setAttaching(false); composer.textarea.current?.focus(); }
   }
   const approvalIcon = <Hand />;
+  const servedChoice = !preview && modelPreference !== undefined && onModelChoice !== undefined;
   function menu(kind: ComposerMenu, label: string, trigger: React.ReactNode, children: React.ReactNode, size: 'sm' | 'icon-sm' = 'icon-sm') {
     return <DropdownMenu open={composer.menu === kind} onOpenChange={open => { if (open) focusMessageOnClose.current = false; composer.setMenu(open ? kind : null); }}>
-      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach'}>{trigger}</InputGroupButton></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach' && !(kind === 'model' && servedChoice && models !== undefined) && !(kind === 'effort' && servedChoice)}>{trigger}</InputGroupButton></DropdownMenuTrigger>
       <DropdownMenuContent ref={composer.popup} finalFocus={() => kind === 'voice' && focusMessageOnClose.current ? composer.textarea.current : true} side="top" align="start" sideOffset={8} collisionAvoidance={{ side: 'none', align: 'shift' }} collisionPadding={8} className="hub-assistant-menu hub-menu" data-menu={kind}>
         <DropdownMenuGroup>{children}</DropdownMenuGroup>
       </DropdownMenuContent>
@@ -39,7 +40,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
     <InputGroup aria-label="Message composer" onSubmit={event => { event.preventDefault(); void composer.send(); }}>
       {composer.files.map(file => <div key={file.id} className="hub-attachment"><Paperclip aria-hidden /><span>{file.name}</span><button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
       <label className="hub-sr-only" htmlFor={id}>Message Relay</label>
-      <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={2} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
+      <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={1} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
         onChange={event => { composer.setText(event.target.value); onEdit?.(event.target.value); }} onKeyDown={event => {
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void composer.send(); }
         }} />
@@ -49,10 +50,14 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
         {menu('approval', composer.approval, approvalIcon, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.approval} onValueChange={composer.setApproval}>
           {ASSISTANT_APPROVALS.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>)}
-        {menu('model', `Model: ${displayedModel}`, <><span>{displayedModel}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.model} onValueChange={composer.setModel}>
+        {menu('model', `Model: ${displayedModel}`, <><span>{displayedModel}</span><ChevronDown aria-hidden /></>, servedChoice ? <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={modelPreference.slug} onValueChange={slug => { if (slug !== modelPreference.slug) onModelChoice({ slug, effort: modelPreference.effort }); }}>
+          {(models ?? []).map(model => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={model.slug} value={model.slug}><span className="hub-option-copy">{assistantModelLabel(model.slug)}</span></DropdownMenuRadioItem>)}
+        </DropdownMenuRadioGroup></> : <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.model} onValueChange={composer.setModel}>
           {ASSISTANT_MODELS.map((value, index) => <DropdownMenuGroup key={value}>{index === 1 ? <DropdownMenuSeparator className="hub-menu-separator" /> : null}<DropdownMenuRadioItem closeOnClick className="hub-menu-option" value={value}><span className="hub-option-copy"><span>{value}</span>{index === 0 ? <small>Recommended set of models</small> : null}</span></DropdownMenuRadioItem></DropdownMenuGroup>)}
         </DropdownMenuRadioGroup></>, 'sm')}
-        {displayedEffort !== undefined && menu('effort', `Thinking effort: ${displayedEffort}`, <><span>{displayedEffort}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
+        {displayedEffort !== undefined && menu('effort', `Thinking effort: ${displayedEffort}`, <><span>{displayedEffort}</span><ChevronDown aria-hidden /></>, servedChoice ? <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={modelPreference.effort} onValueChange={effort => { const parsed = AssistantModelPreferenceSchema.shape.effort.safeParse(effort); if (parsed.success && parsed.data !== modelPreference.effort) onModelChoice({ slug: modelPreference.slug, effort: parsed.data }); }}>
+          {Object.entries(ASSISTANT_EFFORT_LABELS).map(([value, label]) => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={value} value={value}><span className="hub-option-copy">{label}</span></DropdownMenuRadioItem>)}
+        </DropdownMenuRadioGroup></> : <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
           {ASSISTANT_EFFORTS.map(value => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={value} value={value}><span className="hub-option-copy">{value}</span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>, 'sm')}
         {menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}

@@ -3,7 +3,7 @@ import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/ass
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantRequest, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantRequest, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
 import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
@@ -162,36 +162,29 @@ it.each(['run-action', 'workflow'] as const)('renders the existing served %s car
 });
 
 function setupAccount() {
-  let verified = false, reads = 0;
+  let reads = 0;
   const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: 'CHATGPT_USAGE_UNAVAILABLE',
     message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text });
-  const signedIn = ChatGptAccountStateSchema.parse({ state: "connected", name: 'Fixture Operator', email: 'operator@example.test',
-    expiresAt: new Date(Date.now() + 60000).toISOString(), planUsage: "enabled" });
-  const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async () => {
-    reads++; return Response.json(verified ? signedIn : unavailable);
-  } });
+  const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async () => { reads++; return Response.json(unavailable); } });
   const port = createServedChatGptAccountPort(client);
-  return { port, verify: () => { verified = true; }, get reads() { return reads; } };
+  return { port, get reads() { return reads; } };
 }
-it('opens only the composer for the actual unverified account resource, then refreshes once after explicit verification', async () => {
+it('treats an unreadable usage meter as a working sign-in with no test gate', async () => {
   const account = setupAccount(); let calls = 0, current!: ReturnType<typeof useAssistantController>;
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; account.verify(); return { state: 'answered', text: 'Verified' }; } });
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; return { state: 'answered', text: 'Answered' }; } });
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   try {
     await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account.port, children: createElement(Harness) })));
-    await vi.waitFor(() => { assert.equal(current.canCompose, true); assert.equal(current.accountAvailable, false); });
-    assert.equal(account.reads, 1); assert.equal(calls, 0);
+    await vi.waitFor(() => { assert.equal(current.canCompose, true); assert.equal(current.accountAvailable, true); });
     const resource = account.port.getResource(); assert.ok('code' in resource); assert.equal(resource.code, 'CHATGPT_USAGE_UNAVAILABLE');
-    assert.equal(current.accountNotice, ERROR_CATALOG.ASSISTANT_MODEL_UNVERIFIED.text);
-    await act(async () => { current.onAction({ type: "edit", value: ASSISTANT_VERIFY_COMMAND }); current.onAction({ type: "send" }); });
-    await vi.waitFor(() => assert.equal(current.accountAvailable, true));
-    assert.equal(current.canCompose, true); assert.equal(account.reads, 2); assert.equal(calls, 1);
-    await act(async () => { await Promise.resolve(); }); assert.equal(account.reads, 2);
+    await act(async () => { current.onAction({ type: "edit", value: 'Who ran today?' }); current.onAction({ type: "send" }); });
+    await vi.waitFor(() => assert.equal(calls, 1));
+    assert.equal(account.reads, 1);
   } finally { account.port.dispose(); }
 });
 it('refuses setup attachments before send callbacks, file readers and registration through the existing composer', async () => {
-  for (const text of [ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_MODEL_COMMAND + ' fixture-selected ' + ASSISTANT_DEFAULT_EFFORT]) {
+  for (const text of [ASSISTANT_MODEL_COMMAND, ASSISTANT_MODEL_COMMAND + ' fixture-selected ' + ASSISTANT_DEFAULT_EFFORT]) {
     const account = setupAccount(); let requests = 0, sends = 0, registrations = 0, reads = 0, attachments = 0;
     let current!: ReturnType<typeof useAssistantController>;
     const file: AssistantFile = { id: 'fixture-file', name: 'fixture.txt', status: "Attached" };
@@ -305,7 +298,7 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
   let current!: ReturnType<typeof useAssistantController>, decisions = 0;
   const proposal = ASSISTANT_PAUSE_PROPOSAL;
   const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
-    async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_VERIFICATION_FAILED' as const }; } });
+    async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_UNAVAILABLE' as const }; } });
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
     return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });

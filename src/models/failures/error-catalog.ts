@@ -121,13 +121,11 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_RESPONSE_REFUSED: catalogEntry("The model refused this assistant request.", EmptyParametersSchema),
   ASSISTANT_RESPONSE_INCOMPLETE: catalogEntry("ChatGPT returned an incomplete assistant response. Test again; if it repeats, review the model and connection.", EmptyParametersSchema),
   ASSISTANT_RESPONSE_FAILED: catalogEntry("ChatGPT could not complete the assistant response. Review the connection and test again.", EmptyParametersSchema),
-  ASSISTANT_MODEL_UNVERIFIED: catalogEntry("Test the assistant before chatting.", EmptyParametersSchema),
+  ASSISTANT_MODEL_CHANGED: catalogEntry("The model, effort or ChatGPT account changed during the reply. Send the message again.", EmptyParametersSchema),
   ASSISTANT_USAGE_LIMIT: catalogEntry("ChatGPT usage limit reached. Try again later.", EmptyParametersSchema),
   ASSISTANT_PLAN_DISABLED: catalogEntry("Your ChatGPT plan can't be used here.", EmptyParametersSchema),
   ASSISTANT_ACCOUNT_EXPIRED: catalogEntry("Reconnect ChatGPT to use the assistant.", EmptyParametersSchema),
   ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is unavailable.", EmptyParametersSchema),
-  ASSISTANT_VERIFICATION_FAILED: catalogEntry("Assistant verification failed. Test again.", EmptyParametersSchema),
-  ASSISTANT_CAPABILITY_FAILED: catalogEntry("This model failed the assistant test. Pick another model.", EmptyParametersSchema),
   ASSISTANT_READ_UNAVAILABLE: catalogEntry("Run details are unavailable. Check the run in Logs.", EmptyParametersSchema),
   ASSISTANT_READ_STALE: catalogEntry("The run changed. Ask again.", EmptyParametersSchema),
   ASSISTANT_HISTORY_UNAVAILABLE: catalogEntry("Chat history didn't load. Refresh to try again.", EmptyParametersSchema),
@@ -834,10 +832,6 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   ASSISTANT_AUTHORITY_INVALID: catalogEntry(
     "The assistant permission could not be read. No action was taken.",
-    EmptyParametersSchema,
-  ),
-  ASSISTANT_GRANT_REQUIRED: catalogEntry(
-    "The assistant has no operator grant. No action was taken.",
     EmptyParametersSchema,
   ),
   ASSISTANT_MODEL_PROPOSAL_REFUSED: catalogEntry(

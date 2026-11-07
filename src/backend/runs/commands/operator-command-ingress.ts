@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { AssistantPermissionChangeSchema, LiveWorkerResetRequestSchema, CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
+import { LiveWorkerResetRequestSchema, CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
@@ -35,7 +35,7 @@ type CommandJournalRead = Readonly<{
 
 const OrdinarySettingsIngressRequestSchema = SettingsCommandRequestSchema.extend({
   payload: z.strictObject({ settingsSchemaHash: FingerprintSchema, patchFingerprint: FingerprintSchema,
-    patch: z.unknown(), assistantPermission: AssistantPermissionChangeSchema.optional() }),
+    patch: z.unknown() }),
 });
 const ProtectedSettingsIngressRequestSchema = ProtectedSettingsCommandRequestSchema.extend({
   payload: ProtectedSettingsCommandRequestSchema.shape.payload.extend({ entries: z.unknown() }),

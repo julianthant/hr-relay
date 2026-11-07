@@ -16,9 +16,8 @@ import { createBoundProfileFixture } from "../../support/helpers/admission-fixtu
 import { healthyRuntimePreflightRunners } from "../../support/fixtures/preflight-seams.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
-import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 
-it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s authority at the genuine supervisor after awaited preflight and never redispatches a failed effect", async change => {
+it.each(["unchanged", "expired", "manifest"] as const)("checks %s authority at the genuine supervisor after awaited preflight and never redispatches a failed effect", async change => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
   const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
@@ -61,14 +60,6 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
       const response = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify(request) });
       return CommandResultSchema.parse(await response.json());
     };
-    const grant = async (mode: "every-action") => {
-      const patch = {};
-      return post({ ...envelope(), family: "settings", type: "apply-settings", target: { expectedRevision: currentContext.settings.read().record.revision },
-        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint(patch), patch,
-          assistantPermission: { expectedPolicyRevision: currentContext.database.authority.assistantAuthorization.grant()?.policy.revision ?? 0, mode } } });
-    };
-    assert.equal(currentContext.database.withAuthorityReadSnapshot(() => currentContext.database.authority.assistantAuthorization.grant()), undefined);
-    assert.equal((await grant("every-action")).state, "applied");
     assert.equal((await post({ ...envelope(), family: "worker-browser", type: "plan-worker-count", target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
     const slot = currentContext.database.authority.workerSlots.list("person-lookup")[0]; assert.ok(slot);
     const command = CommandRequestSchema.parse({ ...envelope(), family: "worker-browser", type: "spawn-worker",
@@ -86,7 +77,6 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
       body: JSON.stringify({ ...command, payload: { workerId: "person-lookup-worker-2" } }) });
     assert.equal(foreign.status, 409);
     assert.equal(currentContext.database.authority.assistantAuthorization.action(proposal.id)?.state, "claimed");
-    if (change === "revoked") assert.equal((await grant("every-action")).state, "applied");
     if (change === "expired") clock.advanceWall(60_001);
     if (change === "manifest") { assert.ok(reviseManifest); reviseManifest(); }
     release();

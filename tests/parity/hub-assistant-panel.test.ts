@@ -168,8 +168,8 @@ test('served automatic unknown and lost respond have no Retry or new Send', asyn
 const CONNECTED = { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' };
 const SERVED_SCENES = {
   'signed-out': { account: { state: 'signed-out' }, strip: 'Reconnect ChatGPT to use the assistant.' },
-  unverified: { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/ },
-  'unverified-narrow': { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/, width: 300 },
+  'usage-unread': { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, respond: { state: 'answered', text: 'Two runs need attention.' }, answer: 'Two runs need attention.' },
+  'usage-unread-narrow': { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, respond: { state: 'answered', text: 'Two runs need attention.' }, answer: 'Two runs need attention.', width: 300 },
   disabled: { account: { ...CONNECTED, planUsage: 'disabled' }, strip: /Open Settings/ },
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
   'local-change': { account: CONNECTED, respond: { state: 'answered', text: 'Marked 2 notifications read.' }, answer: 'Marked 2 notifications read.' },
@@ -184,7 +184,7 @@ const SERVED_SCENES = {
 for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Object.entries(SERVED_SCENES)) {
   test(`assistant served ${scene} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-served-${scene}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
     await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: spec.account }));
-    if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => route.fulfill({ json: { kind: 'result', result: spec.respond === 'fail' ? { state: 'refused', code: 'ASSISTANT_VERIFICATION_FAILED', message: 'x' } : spec.respond } }));
+    if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => route.fulfill({ json: { kind: 'result', result: spec.respond === 'fail' ? { state: 'refused', code: 'ASSISTANT_UNAVAILABLE', message: 'x' } : spec.respond } }));
     await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: ASSISTANT_PAUSE_PROPOSAL.actionId } }));
     await page.goto(`${baseUrl}/?served=1&transport=1&theme=${theme}`);
     const panel = page.locator('#hub-panel-assistant'), input = panel.getByRole('textbox', { name: 'Message Relay' });
@@ -196,7 +196,7 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
     } else {
       await expect(input).toBeEnabled(); await input.fill('do it'); await input.press('Enter');
       if ('confirm' in spec) { await panel.getByRole('button', { name: 'Confirm', exact: true }).click(); if (spec.confirm === 'lost') { await expect(panel.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1); await expect(panel.getByRole('article')).toHaveCount(0); } else await expect(panel.getByLabel('Resolved proposal')).toBeVisible(); }
-      else if (spec.respond === 'fail') await expect(panel.getByText(/Assistant verification failed/)).toBeVisible();
+      else if (spec.respond === 'fail') await expect(panel.getByText(ERROR_CATALOG.ASSISTANT_UNAVAILABLE.text, { exact: true })).toBeVisible();
       else if ('answer' in spec) { await expect(panel.getByText(spec.answer, { exact: true })).toBeVisible(); await expect(panel.getByRole('article')).toHaveCount(0); }
       else await expect(panel.getByRole('article')).toBeVisible();
       if ('facts' in spec) expect(await panel.locator('.hub-facts dt').evaluateAll(terms => terms.map(term => [term.textContent, term.nextElementSibling?.textContent]))).toEqual(spec.facts);

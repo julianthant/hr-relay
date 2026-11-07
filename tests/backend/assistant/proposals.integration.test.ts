@@ -14,7 +14,7 @@ import { readSettings } from "../../../src/backend/runtime/settings/settings-run
 import { ASSISTANT_MESSAGES_MAX, AssistantActionDecisionSchema, type AssistantActionProposal } from "../../../src/models/dashboard/assistant.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
-import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint, deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import { parseInputRunText, toRawSubmission } from "../../../src/models/workflow/ingress.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
@@ -47,12 +47,11 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   cleanups.push(() => h.dispose(), () => w.dispose());
   const { database, clock } = h, profileId = h.profile.admission.profileBinding.profileId;
   const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), { apply: () => { throw new Error("ordinary settings use no credentials"); } } as never);
-  const executeSettings = (patch: Record<string, unknown>, assistantPermission?: { expectedPolicyRevision: number; mode: "every-action" }) => executeSettingsCommand(
-    { authority: database, clock, ids: { uuid: randomUUID }, settings, authorityProfileId: profileId }, CommandRequestSchema.parse({ commandId: randomUUID(),
+  const executeSettings = (patch: Record<string, unknown>) => executeSettingsCommand(
+    { authority: database, clock, ids: { uuid: randomUUID }, settings }, CommandRequestSchema.parse({ commandId: randomUUID(),
       requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-settings",
       target: { expectedRevision: readSettings(database.authority).revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: assistantPermission === undefined ? deriveSettingsPatchFingerprint(patch) : deriveRawSettingsPatchFingerprint({}), patch, ...(assistantPermission === undefined ? {} : { assistantPermission }) } }));
-  assert.equal(executeSettings({}, { expectedPolicyRevision: 0, mode: "every-action" }).state, "applied");
+        patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }));
   const unused = () => { throw new Error("unrequested runtime operation"); };
   const owner: { authorization?: ReturnType<typeof createAssistantAuthorization> } = {};
   let factsSha = "a".repeat(64);
@@ -201,7 +200,7 @@ it("binds Confirm to the exact rendered multi-row card and lets one of a concurr
 });
 
 it("refuses every held-start invalidation after the claim with UNKNOWN, zero stale effects and no retry", async () => {
-  for (const change of ["abort", "settings", "grant", "manifest", "model", "plan"] as const) {
+  for (const change of ["abort", "settings", "manifest", "model", "plan"] as const) {
     const o = await owners(), card = await rerunCard(o, await o.done()), command = o.commandOf(card), controller = new AbortController();
     assert.ok(command?.family === "start");
     o.submitMode("hold-before");
@@ -210,7 +209,6 @@ it("refuses every held-start invalidation after the claim with UNKNOWN, zero sta
     const before = o.runCount();
     if (change === "abort") controller.abort();
     if (change === "settings") assert.equal(o.executeSettings({ "browser.headless": { set: false } }).state, "applied");
-    if (change === "grant") assert.equal(o.executeSettings({}, { expectedPolicyRevision: 1, mode: "every-action" }).state, "applied");
     if (change === "manifest") o.changeManifest();
     if (change === "model") o.expireModel();
     if (change === "plan") assert.equal(o.kernel.execute({ ...command, commandId: randomUUID(), source: "run-start" }).state, "applied");

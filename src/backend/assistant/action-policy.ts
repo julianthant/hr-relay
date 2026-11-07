@@ -85,7 +85,7 @@ function optionIdentity(command: CommandRequest): OptionIdentity {
   // markProtectedSettingsPatch replaces every set value with "<set>", so that fingerprint cannot tell two passwords apart.
   if (command.type === "apply-protected-settings") return { kind: "unbound" };
   if (command.type === "apply-settings") {
-    if (command.payload.assistantPermission !== undefined || safeJson(command.payload.patch) === undefined) return { kind: "unbound" };
+    if (safeJson(command.payload.patch) === undefined) return { kind: "unbound" };
     return { kind: "existing-fingerprint", fingerprint: FingerprintSchema.parse(deriveSettingsCommandFingerprint(command)) };
   }
   if (!("payload" in command)) return { kind: "none" };
@@ -114,8 +114,6 @@ function configDescriptor(command: CommandRequest): z.infer<typeof AssistantConf
 function staleField(required: AssistantApprovalBinding, presented: AssistantApprovalBinding): AssistantStaleField | undefined {
   if (presented.profileId !== required.profileId) return "profile";
   if (presented.accountSessionEpoch !== required.accountSessionEpoch) return "epoch";
-  if (presented.grantId !== required.grantId) return "grant";
-  if (presented.policyRevision !== required.policyRevision || presented.mode !== required.mode) return "policy";
   if (presented.manifestRevision !== required.manifestRevision || presented.classification !== required.classification) return "manifest";
   if (presented.commandId !== required.commandId || presented.family !== required.family || presented.action !== required.action) return "command";
   if (!sameJson(presented.target, required.target)) return "target";
@@ -188,9 +186,6 @@ export function checkAssistantAction(input: unknown): AssistantDecision {
   const binding = AssistantApprovalBindingSchema.parse({
     profileId: authority.authority.profileId,
     accountSessionEpoch: authority.authority.accountSessionEpoch,
-    policyRevision: authority.authority.policy.revision,
-    mode: authority.authority.policy.mode,
-    grantId: authority.authority.policy.grant.grantId,
     manifestRevision: authority.authority.manifest.revision,
     family: command.family,
     action: command.type,

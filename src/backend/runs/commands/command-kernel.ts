@@ -2645,7 +2645,7 @@ function replay(
 
 /** The same settings command path is used by the BFF and stopped migration. */
 export function executeSettingsCommand(
-  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings" | "authorityProfileId">,
+  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings">,
   input: unknown,
 ): CommandResult {
   const request = CommandRequestSchema.parse(input);
@@ -2672,11 +2672,6 @@ export function executeSettingsCommand(
       // Replays use their existing journal and do not need a new read snapshot.
       const ordinarySnapshot = request.type === "apply-settings" && repositories.commands.get(request.commandId) === undefined
         ? readSettings(repositories) : undefined;
-      if (request.type === "apply-settings" && request.payload.assistantPermission !== undefined
-        && repositories.commands.get(request.commandId) === undefined) {
-        const actualRevision = repositories.assistantAuthorization.grant()?.policy.revision ?? 0;
-        if (actualRevision !== request.payload.assistantPermission.expectedPolicyRevision) conflict(request, actualRevision, "assistant policy revision conflict");
-      }
       if (request.type === "apply-protected-settings") {
         // BEGIN IMMEDIATE holds identity admission, private commit and audit; SQL rollback cannot undo the private commit.
         const protectedRefusal = executor.commitPrivate(request);
@@ -2696,16 +2691,6 @@ export function executeSettingsCommand(
       if (application.settingsCurrent !== undefined) repositories.settingsCurrent.advance({
         ...application.settingsCurrent, commandId: request.commandId, auditId, committedAt: now,
       });
-      if (request.type === "apply-settings" && application.result.state === "applied") {
-        const change = request.payload.assistantPermission;
-        if (change !== undefined) {
-          const profileId = dependencies.authorityProfileId;
-          if (profileId === undefined) throw new Error("assistant-grant-profile-owner-required");
-          const revision = change.expectedPolicyRevision + 1;
-          repositories.assistantAuthorization.grantBySettings({ id: "current", profileId, commandId: request.commandId, updatedAt: now,
-            policy: { revision, mode: change.mode, grant: { grantId: dependencies.ids.uuid(), profileId, policyRevision: revision, mode: change.mode, grantedAt: now } } });
-        }
-      }
       return application.result;
     });
     return result;

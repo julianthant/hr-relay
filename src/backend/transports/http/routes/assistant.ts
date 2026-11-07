@@ -1,5 +1,5 @@
 import { wireError } from "./failure-status.js";
-import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantPermissionViewSchema, AssistantModelPreferenceViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
+import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantModelPreferenceViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
 import type { AssistantService } from "../../../assistant/service.js";
 import type { DashboardApp } from "./api-types.js";
@@ -45,11 +45,11 @@ async function readUpload(request: Request, maxBytes: number, signal: AbortSigna
 const uploadName = (value: string | undefined) => decodeURIComponent(value ?? "");
 
 export function registerAssistantRoutes(app: DashboardApp, service: AssistantService | undefined): void {
-  app.get("/api/v1/assistant/permission", c => {
+  app.get("/api/v1/assistant/models", async c => {
     c.header("Cache-Control", "no-store");
     try {
-      if (service?.permission === undefined) return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503);
-      return c.json(AssistantPermissionViewSchema.parse(service.permission()));
+      if (service?.models === undefined) return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503);
+      return c.json(await service.models(c.req.raw.signal));
     } catch { return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503); }
   });
   app.get("/api/v1/assistant/model-preference", c => {

@@ -11,7 +11,7 @@
   - button "Chats" [disabled]
   - button "New chat"
   - button "Close assistant" [disabled]
-  - log "Assistant conversation": do it Assistant verification failed. Test again.
+  - log "Assistant conversation": do it The assistant is unavailable.
   - group "Message composer":
     - text: Message Relay
     - textbox "Message Relay":

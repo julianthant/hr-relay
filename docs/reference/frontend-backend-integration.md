@@ -45,12 +45,8 @@ selected `profileId`, `epoch`, `revision` and canonical preference. The response
 missing, corrupt or refused authority returns a coded unavailable response rather than a browser
 default. The authenticated selected-profile composition owns the view.
 
-`GET /api/v1/assistant/permission` uses the same typed client and selected-person authorization.
-Its strict view binds the person, session epoch, policy revision, and current Settings revision/schema.
-It distinguishes `grant-required` from `granted` and exposes only `every-action`. The read creates
-no grant or action, uses `no-store`, and refuses revoked, changed or invalid authority. Permission
-grants still require the existing explicit operator Settings command; workflow proposals still
-require their separate confirmation. General has no permission control; removing that row does not create a grant or relax the confirmation policy.
+The assistant has no permission route or grant. Each proposal card needs the operator's Confirm;
+General has no permission control.
 
 The composer recognizes the canonical setup command constants from `models/dashboard/assistant.ts`.
 A model read uses that served view. A model set goes through the existing `CommandExecutor` and
@@ -60,15 +56,15 @@ revision. It is never an inference tool or a model-produced action. Normal comma
 validation, matching readback, refusal and UNKNOWN handling apply; a lost response does not cause an
 automatic retry or invented success.
 
-Test assistant and the explicit verification command use the normal assistant respond route without `subjectRef`. Surrounding pasted whitespace is normalized. The button preserves the current draft and reports success or the named failure in the thread.
+The model-preference setup command uses the normal assistant respond route without `subjectRef`. Surrounding pasted whitespace is normalized.
 The backend recognizes the exact command before inference policy, private input projection, context,
 subjects or tools. Recognized setup commands reject attachments before local file I/O or registration.
-The separate composer `canCompose` input may admit the served unverified account resource, while
+The composer is usable as soon as ChatGPT sign-in works; an unreadable plan-usage meter does not block it, while
 Confirm keeps the real `accountAvailable` requirement. An explicit verification settlement refreshes
 the current served account binding once, without a polling or activation loop.
 
 [Dashboard surfaces](dashboard-surfaces.md#assistant) owns operator setup behavior;
-[Clock, configuration, and secrets](clock-config-secrets.md#assistant-choice-and-private-verification)
+[Clock, configuration, and secrets](clock-config-secrets.md#assistant-model-choice)
 owns durable preference and private account authority. Neither a mounted control nor source wiring
 establishes live model or operator acceptance.
 

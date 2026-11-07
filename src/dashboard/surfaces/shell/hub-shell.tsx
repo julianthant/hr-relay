@@ -1,7 +1,6 @@
 import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { PreflightAssistantContext } from "../settings/preflight/preflight-assistant-model.js";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, History, LogOut, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
@@ -40,15 +39,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const localChats = useMemo(() => history?.chats ?? createMockHubChatsPort(source === "mock"), [source, history]);
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
-  const assistantTest = useContext(PreflightAssistantContext);
-  const seenRevision = useRef<string | undefined>(undefined);
-  const modelChanged = useCallback((view: AssistantModelPreferenceView, saved: boolean) => {
-    const revision = `${view.profileId}:${String(view.epoch)}:${String(view.revision)}`, prior = seenRevision.current; seenRevision.current = revision;
-    // Every accepted save bumps the revision, even for the same choice; a read only reveals a change when it differs from the last seen revision.
-    if (saved || prior !== undefined && prior !== revision) assistantTest.invalidate?.();
-    preferenceChanged?.(view);
-  }, [assistantTest, preferenceChanged]);
-  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged: modelChanged });
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
   const served = historyPending ? { ...servedController, canCompose: false } : servedController;
   const current = model.chats.find(chat => chat.id === model.currentId);
   const currentSession = current ? assistant.session(current.id, current.title) : undefined;

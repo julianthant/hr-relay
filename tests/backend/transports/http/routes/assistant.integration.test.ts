@@ -1,4 +1,4 @@
-import { AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantModelPreferenceViewSchema, AssistantPermissionViewSchema } from '../../../../../src/models/dashboard/assistant.js';
+import { AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import { AssistantActionDecisionSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import { ASSISTANT_PAUSE_PROPOSAL } from "../../../../support/fixtures/dashboard/assistant-start.js";
@@ -7,27 +7,22 @@ import { it } from "vitest";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerAssistantRoutes } from "../../../../../src/backend/transports/http/routes/assistant.js";
 
-it("serves fixed confirmation policy without inference or a mutation route", async () => {
-  const view = AssistantPermissionViewSchema.parse({ profileId: "22222222-2222-4222-8222-222222222222", epoch: 3,
-    state: "grant-required", mode: "every-action", policyRevision: 0, settingsRevision: 1, settingsSchemaHash: "a".repeat(64) });
-  const app: DashboardApp = new Hono(); let reads = 0;
-  registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); }, permission() { reads++; return view; } });
-  const response = await app.request("http://127.0.0.1:4310/api/v1/assistant/permission");
-  assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await response.json(), view); assert.equal(reads, 1);
-  assert.equal((await app.request("http://127.0.0.1:4310/api/v1/assistant/permission", { method: "POST" })).status, 404);
-  assert.equal(reads, 1);
+it("serves no assistant permission route", async () => {
+  const app: DashboardApp = new Hono();
+  registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); } });
+  for (const method of ["GET", "POST"]) assert.equal((await app.request("http://127.0.0.1:4310/api/v1/assistant/permission", { method })).status, 404);
 });
 
-it("refuses missing or failed permission authority without serializing private details", async () => {
-  for (const permission of [undefined, () => { throw new Error("private permission failure"); }]) {
-    const app: DashboardApp = new Hono();
-    registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); }, ...(permission === undefined ? {} : { permission }) });
-    const response = await app.request("http://127.0.0.1:4310/api/v1/assistant/permission");
-    assert.equal(response.status, 503); assert.equal(response.headers.get("cache-control"), "no-store");
-    const body = await response.text(); assert.equal(body.includes("ASSISTANT_UNAVAILABLE"), true);
-    assert.equal(body.includes("private permission failure"), false);
-  }
+it("serves the account model catalog uncached and refuses without the service", async () => {
+  const catalog = { models: [{ slug: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" }] };
+  const app: DashboardApp = new Hono();
+  registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); }, async models() { return catalog; } });
+  const response = await app.request("http://127.0.0.1:4310/api/v1/assistant/models");
+  assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), catalog);
+  const bare: DashboardApp = new Hono();
+  registerAssistantRoutes(bare, { async respond() { throw new Error("unexpected inference"); } });
+  assert.equal((await bare.request("http://127.0.0.1:4310/api/v1/assistant/models")).status, 503);
 });
 
 it("guards loopback/origin/media before body or inference and bounds request bytes", async () => {

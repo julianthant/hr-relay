@@ -7,7 +7,6 @@ import type { AssistantApprovalBinding,AssistantDecision } from "../../../src/mo
 
 const PROFILE = "11111111-1111-4111-8111-111111111111";
 const OTHER_PROFILE = "99999999-9999-4999-8999-999999999999";
-const GRANT = "22222222-2222-4222-8222-222222222222";
 const COMMAND = "33333333-3333-4333-8333-333333333333";
 const INTAKE = "44444444-4444-4444-8444-444444444444";
 const RUN = "55555555-5555-4555-8555-555555555555";
@@ -31,15 +30,10 @@ const ENTRIES = [
   { family: "gate", action: "resolve-gate", classification: "external-submit", subject: "none" },
 ] as const;
 
-function authority(mode = "every-action", revision = 1, epoch = 1) {
+function authority(epoch = 1) {
   return {
     profileId: PROFILE,
     accountSessionEpoch: epoch,
-    policy: {
-      revision,
-      mode,
-      grant: { grantId: GRANT, profileId: PROFILE, policyRevision: revision, mode, grantedAt: NOW },
-    },
     manifest: { revision: 1, entries: ENTRIES },
   };
 }
@@ -159,15 +153,11 @@ describe("assistant action policy", () => {
     const sample = commands();
     const table = [sample.read, sample.local, sample.write, sample.destructive].map(command => ["every-action", command, "approval-required"] as const);
     for (const [mode, command, expected] of table) {
-      const decision = decide(command, { authority: authority(mode) });
+      const decision = decide(command, { authority: authority() });
       assert.equal(decision.state, expected, `${mode} ${command.type}`);
       assert.equal(decision.existingAppGates, "unchanged");
       assert.equal("allow" in decision, false);
     }
-  });
-
-  it.each(["before-submits", "without-asking"])("refuses retired %s authority", mode => {
-    assert.equal(decide(commands().local, { authority: authority(mode) }).state, "refused");
   });
 
   it("requires fresh approval even when an identical earlier check was clear", () => {
@@ -203,11 +193,9 @@ describe("assistant action policy", () => {
     const bare = decide(sample.read, { authority: { mode: "every-action" } });
     assert.equal(bare.state, "refused");
     if (bare.state === "refused") assert.notEqual(bare.code, undefined);
-    for (const mode of ["every-action"]) {
-      const decision = decide(sample.start, { authority: authority(mode) });
-      assert.equal(decision.state, "refused");
-      if (decision.state === "refused") assert.equal(decision.code, "ASSISTANT_UNCLASSIFIED");
-    }
+    const decision = decide(sample.start, { authority: authority() });
+    assert.equal(decision.state, "refused");
+    if (decision.state === "refused") assert.equal(decision.code, "ASSISTANT_UNCLASSIFIED");
   });
 
   it("refuses unbound freeform options and does not copy a protected value into the binding", () => {
@@ -270,7 +258,7 @@ describe("assistant action policy", () => {
     const sample = commands();
     const prepared = checkAssistantAction({
       phase: "prepare",
-      authority: authority("every-action"),
+      authority: authority(),
       proposal: { ...proposalOf(sample.read), commandId: RUN },
       resolved: resolved(sample.read),
     });
@@ -279,10 +267,10 @@ describe("assistant action policy", () => {
       assert.equal(prepared.code, "ASSISTANT_PROPOSAL_MISMATCH");
       assert.equal(prepared.phase, "prepare");
     }
-    const binding = bindingOf(decide(sample.read, { authority: authority("every-action") }));
+    const binding = bindingOf(decide(sample.read, { authority: authority() }));
     const dispatched = checkAssistantAction({
       phase: "dispatch",
-      authority: authority("every-action", 1, 2),
+      authority: authority(2),
       proposal: proposalOf(sample.read),
       resolved: resolved(sample.read, { accountSessionEpoch: 2 }),
       approval: binding,
@@ -294,14 +282,12 @@ describe("assistant action policy", () => {
     }
   });
 
-  it("stales an approval when profile, policy, manifest, target, subject, options, or config changes", () => {
+  it("stales an approval when profile, manifest, target, subject, options, or config changes", () => {
     const sample = commands();
-    const readBinding = bindingOf(decide(sample.read, { authority: authority("every-action") }));
+    const readBinding = bindingOf(decide(sample.read, { authority: authority() }));
     const cases: Array<[Record<string, unknown>, string]> = [
       [{ approval: { ...readBinding, profileId: OTHER_PROFILE } }, "profile"],
       [{ approval: { ...readBinding, accountSessionEpoch: 2 } }, "epoch"],
-      [{ authority: authority("every-action", 2), approval: readBinding }, "policy"],
-      [{ approval: { ...readBinding, grantId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" } }, "grant"],
       [{ approval: { ...readBinding, manifestRevision: 2 } }, "manifest"],
       [{ approval: { ...readBinding, classification: "destructive" } }, "manifest"],
       [{ approval: { ...readBinding, commandId: RUN } }, "command"],
@@ -310,7 +296,7 @@ describe("assistant action policy", () => {
       [{ approval: { ...readBinding, configDescriptor: { kind: "present", descriptorFingerprint: HASH_B } } }, "configDescriptor"],
     ];
     for (const [overrides, field] of cases) {
-      const decision = decide(sample.read, { authority: authority("every-action"), ...overrides });
+      const decision = decide(sample.read, { authority: authority(), ...overrides });
       assert.equal(decision.state, "refused", field);
       if (decision.state === "refused") assert.equal(decision.field, field, field);
     }
@@ -323,12 +309,12 @@ describe("assistant action policy", () => {
     assert.equal(missingSubject.state, "refused");
     if (missingSubject.state === "refused") assert.equal(missingSubject.code, "ASSISTANT_SUBJECT_MISMATCH");
     const classified = decide(sample.classifiedRead, {
-      authority: authority("every-action"),
+      authority: authority(),
       resolved: resolved(sample.classifiedRead, { subject }),
     });
     const classifiedBinding = bindingOf(classified);
     const staleSubject = decide(sample.classifiedRead, {
-      authority: authority("every-action"),
+      authority: authority(),
       resolved: resolved(sample.classifiedRead, { subject }),
       approval: { ...classifiedBinding, subject: { kind: "none" } },
     });
@@ -341,15 +327,15 @@ describe("assistant action policy", () => {
         patch: { "browser.headless": { set: true } },
       },
     };
-    const stored = bindingOf(decide(sample.write, { authority: authority("every-action") }));
-    const staleOptions = decide(moved, { authority: authority("every-action"), approval: stored });
+    const stored = bindingOf(decide(sample.write, { authority: authority() }));
+    const staleOptions = decide(moved, { authority: authority(), approval: stored });
     assert.equal(staleOptions.state, "refused");
     if (staleOptions.state === "refused") assert.equal(staleOptions.field, "options");
   });
 
   it("invalidates a pending approval when the profile or the action is cancelled", () => {
     const sample = commands();
-    const binding = bindingOf(decide(sample.destructive, { authority: authority("every-action") }));
+    const binding = bindingOf(decide(sample.destructive, { authority: authority() }));
     const otherProfile = decide(sample.destructive, {
       resolved: resolved(sample.destructive, { profileId: OTHER_PROFILE }),
       approval: binding,
@@ -357,7 +343,7 @@ describe("assistant action policy", () => {
     assert.equal(otherProfile.state, "refused");
     if (otherProfile.state === "refused") assert.equal(otherProfile.field, "profile");
     const cancelled = decide(sample.read, {
-      authority: authority("every-action"),
+      authority: authority(),
       resolved: resolved(sample.read, { cancelled: true }),
     });
     assert.equal(cancelled.state, "refused");
@@ -368,8 +354,8 @@ describe("assistant action policy", () => {
     const sample = commands();
     const start = { family: "start", action: "start-run", classification: "external-submit", subject: "none" };
     const enqueue = { family: "intake", action: "enqueue-intake-manifest", classification: "external-submit", subject: "none" };
-    const manifest = (mode: string, extra: readonly object[]) => ({
-      ...authority(mode),
+    const manifest = (extra: readonly object[]) => ({
+      ...authority(),
       manifest: { revision: 1, entries: [...ENTRIES, ...extra] },
     });
     const live = {
@@ -377,26 +363,26 @@ describe("assistant action policy", () => {
       target: { intakeSessionId: INTAKE, expectedVersion: 1 }, payload: { dryRun: false },
     };
     const dry = { ...live, payload: { dryRun: true } };
-    assert.equal(decide(sample.start, { authority: manifest("every-action", [start]) }).state, "approval-required");
-    assert.equal(decide(sample.start, { authority: manifest("every-action", [start]) }).state, "approval-required");
-    assert.equal(decide(sample.start, { authority: manifest("every-action", [start]) }).state, "approval-required");
-    assert.equal(decide(live, { authority: manifest("every-action", [enqueue]) }).state, "approval-required");
-    assert.equal(decide(dry, { authority: manifest("every-action", [enqueue]) }).state, "approval-required");
-    const dryAuthority = manifest("every-action", [{ ...enqueue, classification: "local-write" }]);
+    assert.equal(decide(sample.start, { authority: manifest([start]) }).state, "approval-required");
+    assert.equal(decide(sample.start, { authority: manifest([start]) }).state, "approval-required");
+    assert.equal(decide(sample.start, { authority: manifest([start]) }).state, "approval-required");
+    assert.equal(decide(live, { authority: manifest([enqueue]) }).state, "approval-required");
+    assert.equal(decide(dry, { authority: manifest([enqueue]) }).state, "approval-required");
+    const dryAuthority = manifest([{ ...enqueue, classification: "local-write" }]);
     const dryClearance = decide(dry, { authority: dryAuthority });
     assert.equal(dryClearance.state, "approval-required");
     const liveReplay = decide(live, {
-      authority: manifest("every-action", [enqueue]),
+      authority: manifest([enqueue]),
       resolved: resolved(live, { checkOutcome: { state: "retained", outcome: "assistant-clear", binding: bindingOf(dryClearance) } }),
     });
     assert.equal(liveReplay.state, "approval-required");
     const labelledLocal = decide(live, {
-      authority: manifest("every-action", [{ ...enqueue, classification: "local-write" }]),
+      authority: manifest([{ ...enqueue, classification: "local-write" }]),
     });
     assert.equal(labelledLocal.state, "refused");
     if (labelledLocal.state === "refused") assert.equal(labelledLocal.code, "ASSISTANT_EFFECT_UNDERSTATED");
     const labelledDestructive = decide(sample.start, {
-      authority: manifest("every-action", [{ ...start, classification: "destructive" }]),
+      authority: manifest([{ ...start, classification: "destructive" }]),
     });
     assert.equal(labelledDestructive.state, "approval-required");
     if (labelledDestructive.state === "approval-required") assert.equal(labelledDestructive.existingAppGates, "unchanged");
@@ -420,7 +406,7 @@ describe("assistant action policy", () => {
             ...ENTRIES.filter((entry) => entry.action !== command.type),
             { family: command.family, action: command.type, classification, subject: "none" },
           ];
-          const decision = decide(command, { authority: { ...authority(mode), manifest: { revision: 1, entries } } });
+          const decision = decide(command, { authority: { ...authority(), manifest: { revision: 1, entries } } });
           const understated = classification === "local-write" || classification === "read";
           assert.equal(decision.state, understated ? "refused" : expected, `${command.type} ${mode} ${classification}`);
           if (decision.state === "refused") assert.equal(decision.code, "ASSISTANT_EFFECT_UNDERSTATED");
@@ -437,7 +423,7 @@ describe("assistant action policy", () => {
       : entry);
     for (const mode of ["every-action"] as const) {
       const decision = decide(sample.destructive, {
-        authority: { ...authority(mode), manifest: { revision: 1, entries } },
+        authority: { ...authority(), manifest: { revision: 1, entries } },
       });
       assert.equal(decision.state, "refused", mode);
       if (decision.state === "refused") {
@@ -500,7 +486,7 @@ it("refuses assistant consent envelopes independently of stored command admissio
   assert.equal(command.type, "apply-settings");
   const permission = { ...command, payload: { ...command.payload, patch: {}, patchFingerprint: deriveRawSettingsPatchFingerprint({}),
     assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } };
-  const decision = decide(permission, { authority: authority("every-action") });
+  const decision = decide(permission, { authority: authority() });
   assert.equal(decision.state, "refused");
-  assert.equal(decision.code, "ASSISTANT_OPTIONS_UNBOUND");
+  assert.equal(decision.code, "ASSISTANT_AUTHORITY_INVALID");
 });
