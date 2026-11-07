@@ -1,6 +1,6 @@
-# hub-assistant-served-unverified--dark--1280x720
+# hub-assistant-served-usage-unread--dark--1280x720
 # adapter: component-fixture
-# fixture: hub-assistant-served-unverified
+# fixture: hub-assistant-served-usage-unread
 # descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: dark  variant: default
@@ -11,12 +11,7 @@
   - button "Chats" [disabled]
   - button "New chat"
   - button "Close assistant" [disabled]
-  - log "Assistant conversation":
-    - strong: How can I help?
-    - text: Ask about a record or describe what you want to do.
-  - status:
-    - text: Test the assistant before chatting.
-    - button "Open Preflight"
+  - log "Assistant conversation": do it Two runs need attention.
   - group "Message composer":
     - text: Message Relay
     - textbox "Message Relay":

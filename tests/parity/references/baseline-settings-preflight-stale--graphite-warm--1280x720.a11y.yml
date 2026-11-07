@@ -48,8 +48,7 @@
       - heading "Status" [level=2]
       - button "Run preflight"
       - button "Test OCR" [disabled]
-      - button "Test assistant"
-      - paragraph: OCR test unavailable ChatGPT plan use is not enabled or permitted for this connection. Review app permissions and plan eligibility in ChatGPT.
+      - paragraph: OCR test unavailable Your ChatGPT plan can't be used here.
       - group "Readiness summary":
         - img "Queued"
         - text: Previous check Last checked
