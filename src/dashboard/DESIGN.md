@@ -183,7 +183,7 @@ status fill changes without changing the information's position.
 - Preserve complete accessible names, copy, search, and selection when clipping paint or deferring offscreen layout.
 - Do not duplicate a visible reason in a tooltip that makes assistive technology announce it twice.
 - Use live regions for changes, not every standing fact rendered on mount.
-- Keep focus rings on interactive controls; programmatic takeover focus does not draw an extra default browser ring.
+- Keyboard focus fills the control with one light tint (`--hub-focus-fill`, one step stronger than hover) and ink (`--hub-focus-ink`) on every control, in both themes; pointer focus draws nothing, and programmatic takeover focus draws no extra default browser ring.
 
 Read [PARITY.md](PARITY.md) before judging a visual difference and
 [the wiring contract](../../docs/reference/frontend-backend-integration.md) before replacing a producer.
