@@ -43,14 +43,16 @@ for (const theme of ["light", "dark"] as const) test(`decision mock @ ${theme}`,
   for (const variant of wanted("rail") ? RAIL_VARIANTS : []) {
     await open("d9", `&railVariant=${variant}`);
     await page.mouse.move(1, 1);
+    await page.waitForTimeout(400);
     await page.screenshot({ path: join(OUT, `${variant}-rail-running-count-${theme}.png`) });
   }
   if (wanted("rename")) {
-    await open("d9");
+    await open("d9p");
     await page.locator("[data-demo-row-title]", { hasText: "Scan_0412.pdf" }).dblclick();
     const name = page.getByRole("textbox", { name: "Run name", exact: true });
     await name.fill("April contacts scan");
     await page.mouse.move(1, 1);
+    await page.waitForTimeout(400);
     await page.screenshot({ path: join(OUT, `d9-rename-queue-title-${theme}.png`) });
   }
   for (const id of DECISION_IDS.filter(wanted)) {
