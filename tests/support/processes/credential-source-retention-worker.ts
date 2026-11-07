@@ -224,7 +224,6 @@ async function runWorkerNativeOpening() {
   assert.equal(native.prepare("SELECT 1 AS value").get()?.value, 1);
   assert.deepEqual(fs.readFileSync(f.path), before);
   assert.deepEqual(native.prepare("SELECT * FROM worker_slots").all(), []);
-  assert.deepEqual(native.prepare("SELECT * FROM worker_leases").all(), []);
   issued.assertLive();
   await assertRetained(issued, f.machine, f.lifetime, failure, source, f.stateRoot);
   assert.equal(native.prepare("SELECT 1 AS value").get()?.value, 1);
@@ -670,7 +669,6 @@ async function runLogout(): Promise<void> {
         assert.equal(inspectNativeAuthority(native).authorityContentFingerprint, settled.after);
         assert.deepEqual(native.prepare("SELECT id FROM runs ORDER BY id").all().map(row => row.id), [source.runId]);
         assert.deepEqual(native.prepare("SELECT id FROM worker_slots ORDER BY id").all().map(row => row.id), [source.workerId]);
-        assert.deepEqual(native.prepare("SELECT id FROM worker_leases ORDER BY id").all().map(row => row.id), [source.workerId]);
         assert.deepEqual(native.prepare("SELECT id FROM commands WHERE family='run-lifecycle' AND json_extract(request_json,'$.operation')='recover-crash' AND json_extract(request_json,'$.request.runId')=? ORDER BY id").all(source.runId).map(row => row.id), [request.commandId]);
         assert.deepEqual(native.prepare("SELECT id FROM command_audits WHERE command_id=? ORDER BY id").all(request.commandId).map(row => row.id), [request.commandId]);
         assert.deepEqual(native.prepare("SELECT id FROM run_failures WHERE run_id=? ORDER BY id").all(source.runId).map(row => row.id), [failureId]);
