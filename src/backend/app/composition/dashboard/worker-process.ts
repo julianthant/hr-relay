@@ -170,7 +170,8 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       return view?.state ?? "absent";
     },
     async start(member) { await pool.start(member); },
-    ensure,
+    // A failed member start shows on its card and as a worker fault, whichever command asked for it.
+    ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); throw error; }),
     stop,
     async remove(member) {
       const view = viewOf(member.workerId);

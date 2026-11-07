@@ -74,7 +74,7 @@ for (const input of [
     if (replay.state !== "already-applied") throw new Error("an exact replay must retain the original enqueue");
     // A replay tries to start a worker again; the still-racing doctor refuses it the same way.
     assert.equal(replay.workerStartup?.state, "refused");
-    assert.equal(f.detectorErrors.length, 2); assert.equal(f.spawns(), 0);
+    assert.equal(f.detectorErrors.length, 2, JSON.stringify({ workerStartup: replay.workerStartup, spawns: f.spawns() })); assert.equal(f.spawns(), 0);
     assert.deepEqual(f.context.database.authority.runs.listByWorkflow(input.workflowId), runs);
   } finally {
     await f.close();
