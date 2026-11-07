@@ -155,8 +155,8 @@ li div, .intro { overflow-wrap: anywhere; }
 <h2>Dashboard ready on the Mac</h2>
 <p class="intro">Complete these in order. A workflow is ready after its live dry run and operator sign-off.</p>
 <div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
-<span class="count now">now <strong>5</strong></span>
-<span class="count next">next <strong>9</strong></span>
+<span class="count now">now <strong>6</strong></span>
+<span class="count next">next <strong>14</strong></span>
 <span class="count later">later <strong>0</strong></span></div>
 <ul><li>
 <span class="pill done">done</span>
@@ -176,11 +176,39 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">Assistant agent</strong><p class="description">replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.</p></div>
+<div><strong class="name">Assistant agent phase 0</strong><p class="description">replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, remove the grant check (Confirm is the authorization), then a model check and a live dry run.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Assistant phase 1</strong><p class="description">serve replies as conversation parts, recognise a typed yes in Relay, apply edits now and undo by asking, add the scenario test harness with token budgets, dock the panel with History and put the Orbit mark in the Sessions bar.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Assistant phase 2</strong><p class="description">serve Activity, view-only navigation, chained steps with stop and retry, and the duplicate guard with pre-flight checks.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Assistant phase 3</strong><p class="description">add the read-only Check in UCPath workflow, evidence on decisions and watcher toasts.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Assistant phase 4</strong><p class="description">add error-pattern insight, the spreadsheet versus UCPath cross-check and PDF batches into OCR.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">Warnings as toasts</strong><p class="description">show warnings and failures as short toasts, sticky with one action when they need acting on; only dialog content, field validation, empty states and the run-log failure card stay inline.</p></div>
+<div><strong class="name">Run decision UI</strong><p class="description">render every served decision through one DecisionCard with Cancel run, show a running pill on the rail, pick a person from the Search results card in Pick mode with an Enter employee ID row, rename runs from the queue row and title PDF runs by file name; ship as one feature PR after the parity refresh.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Relay app logo</strong><p class="description">use one mark that pairs with the Orbit assistant mark for the favicon, app icon and sidebar.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Store repairs</strong><p class="description">clear crash orphans at startup and read suspect backups at any supported schema, read-only.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Warnings as toasts</strong><p class="description">show warnings and failures as short toasts that only notify, with no buttons; only dialog content, field validation, empty states and the run-log failure card stay inline.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
@@ -197,10 +225,6 @@ li div, .intro { overflow-wrap: anywhere; }
 <li>
 <span class="pill next">next</span>
 <div><strong class="name">OCR and Emergency Contact sign-off</strong><p class="description">serve per-person rows, prove the first live Save with the operator present, sign off.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Catalog cleanup</strong><p class="description">remove Work-Study, Kronos Pay Rule, Oath Signature, Oath Upload, Old Kronos Reports and SharePoint Download from the catalog, preflight and docs, and regenerate parity screenshots once with the parity refresh.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
@@ -227,8 +251,8 @@ li div, .intro { overflow-wrap: anywhere; }
 <h2>Simplify the core</h2>
 <p class="intro">Each item deletes its own tests and guards. Worker custody (above) comes first.</p>
 <div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
-<span class="count now">now <strong>0</strong></span>
-<span class="count next">next <strong>9</strong></span>
+<span class="count now">now <strong>1</strong></span>
+<span class="count next">next <strong>8</strong></span>
 <span class="count later">later <strong>1</strong></span></div>
 <ul><li>
 <span class="pill done">done</span>
@@ -263,7 +287,7 @@ li div, .intro { overflow-wrap: anywhere; }
 <div><strong class="name">Install control</strong><p class="description">replace installation, admission, registry and continuity proofs with one install-control module and a person-store handle.</p></div>
 </li>
 <li>
-<span class="pill next">next</span>
+<span class="pill now">now</span>
 <div><strong class="name">Workflow facts once</strong><p class="description">declare workflow facts once in a hand-kept registry that replaces the generators; guards stop listing workflows by name.</p></div>
 </li>
 <li>
