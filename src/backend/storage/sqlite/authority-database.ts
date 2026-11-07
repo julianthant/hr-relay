@@ -1597,6 +1597,26 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
 }
 
 /** Internal stopped-upgrade barrier; never exported through the repository entrypoint. */
+/** Applies every migration after `version` with the data steps that run between its statements; the caller owns the transaction and the version stamp. */
+export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: number, input: Readonly<{ now: string;
+  binding?: Readonly<{ installationId: string; profileId: string }>; captureFile: Parameters<typeof convertWorkerCustody>[2] }>): void {
+  const settleEvidence = (record: Parameters<typeof settlePredecessorRunEvidence>[1], run: Parameters<typeof settlePredecessorRunEvidence>[2]) => settlePredecessorRunEvidence(database, record, run);
+  for (const migration of SQLITE_MIGRATIONS.filter(item => item.version > version)) {
+    for (const [index, statement] of migration.statements.entries()) {
+      if (migration.version === 7 && index === 1) {
+        if (input.binding === undefined) throw new Error("authority-migration-binding-required");
+        database.prepare("INSERT INTO database_states_bound SELECT id,schema_version,authority_generation,updated_at,search_generation,search_state,?,? FROM database_states")
+          .run(input.binding.installationId, input.binding.profileId);
+      }
+      if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) deletePreBuildRuns(database, input.now, input.captureFile, settleEvidence);
+      if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
+      execMigrationStatement(database, statement);
+      if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+      if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
+    }
+  }
+}
+
 export function inspectNormalAuthority(database: DatabaseSync): AuthorityCopyInspection {
   if (!isCurrentAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("normal-authority-schema-mismatch");
   return inspectOpenDatabase(database, false);
@@ -1652,23 +1672,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     const planDigest = deriveAuthorityUpgradePlanDigest(version, fingerprint);
     const logout = admission.stoppedUpgradeLogout();
     if (logout?.settlement !== undefined && fingerprint !== logout.settlement.before && fingerprint !== logout.settlement.after) throw new Error("profile-startup-logout-source-changed");
-    for (const migration of SQLITE_MIGRATIONS.filter(item => item.version > version)) {
-      for (const [index, statement] of migration.statements.entries()) {
-        if (migration.version === 7 && index === 1) {
-          database.prepare("INSERT INTO database_states_bound SELECT id,schema_version,authority_generation,updated_at,search_generation,search_state,?,? FROM database_states")
-            .run(binding.installationId, binding.profileId);
-        }
-        if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) {
-          deletePreBuildRuns(database, clock.now().toISOString(), ref => inspectArtifactDeletionFile(admission, ref),
-            (record, run) => settlePredecessorRunEvidence(database, record, run));
-        }
-        if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, clock.now().toISOString(),
-          ref => inspectArtifactDeletionFile(admission, ref), (record, run) => settlePredecessorRunEvidence(database, record, run));
-        execMigrationStatement(database, statement);
-        if (migration.version === 16 && index === 2) migratePersonPreferences(database);
-        if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
-      }
-    }
+    applyAuthorityMigrationsAfter(database, version, { now: clock.now().toISOString(), binding, captureFile: ref => inspectArtifactDeletionFile(admission, ref) });
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
     database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
     const record = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: fingerprint,
