@@ -5,6 +5,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
@@ -13,7 +14,7 @@ const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, n
 
 
 afterEach(async () => {
-  for (const database of openDatabases.splice(0)) database.close();
+  for (const database of openDatabases.splice(0)) { releaseSeededWriteOwners(database, NOW); database.close(); }
   for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -114,8 +115,10 @@ describe("worker-browser arms", () => {
       return;
     }
     assert.equal(reset.state, "applied", JSON.stringify(reset));
+    // A claimed run's Cancel is a request; the stopped process's exit settlement ends it.
     const cancelled = harness.database.authority.runs.get(runId);
-    assert.ok(cancelled?.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled", JSON.stringify(cancelled?.lifecycle));
+    assert.equal(cancelled?.lifecycle.state, "claimed");
+    assert.equal(cancelled?.cancelRequested, true);
     assert.equal(harness.database.authority.commands.get(cancelId)?.type, "cancel");
     assert.equal(harness.database.authority.commandAudits.findByCommand(cancelId)?.result.state, "applied");
     assert.equal(harness.database.authority.commandAudits.findByCommand(request.commandId)?.result.state, "applied");
