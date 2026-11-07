@@ -20,7 +20,7 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
   let claimsPatch: { [key: string]: unknown } = {}, grantedScopes = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
   let sse = completedOcrStream("Synthetic form");
   let models: unknown = { models: [{ slug: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", visibility: "list" }] };
-  let modelsHook: (() => Promise<Response>) | undefined;
+  let modelsHook: ((init?: RequestInit) => Promise<Response>) | undefined;
   let revocationHook: (() => Promise<void>) | undefined;
   let revocationStatus = 200, discoveryPatch: { [key: string]: unknown } = {};
   let tokenHook: (() => Promise<void>) | undefined, tokenPatch: { [key: string]: unknown } = {}, tokenStatus = 200, tokenError = "invalid_grant", tamperSignature = false;
@@ -43,7 +43,7 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
         token_type: "Bearer", expires_in: 3600, scope: grantedScopes, ...tokenPatch });
     }
     if (url.endsWith("/revoke")) { await revocationHook?.(); return new Response(revocationStatus === 200 ? "" : "synthetic-unavailable", { status: revocationStatus }); }
-    if (url.endsWith("/models")) return modelsHook === undefined ? Response.json(models) : modelsHook();
+    if (url.endsWith("/models")) return modelsHook === undefined ? Response.json(models) : modelsHook(init);
     if (url.endsWith("/responses")) return responseHook?.(init) ?? new Response(sse, { headers: { "Content-Type": "text/event-stream" } });
     throw new Error("Unexpected synthetic URL");
   };
@@ -64,7 +64,7 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
   }
   return { root, admission, clock, service, repository, transport, calls, callback, connected, cleanup,
     setClaims(patch: { [key: string]: unknown }) { claimsPatch = patch; },
-    setModels(value: unknown) { models = value; }, setModelsHook(hook: () => Promise<Response>) { modelsHook = hook; },
+    setModels(value: unknown) { models = value; }, setModelsHook(hook: (init?: RequestInit) => Promise<Response>) { modelsHook = hook; },
     setScopes(scopes: string) { grantedScopes = scopes; }, setSse(value: string) { sse = value; },
     setRevocation(status: number) { revocationStatus = status; }, setRevocationHook(hook: () => Promise<void>) { revocationHook = hook; }, setDiscovery(patch: { [key: string]: unknown }) { discoveryPatch = patch; },
     setTokenHook(hook: () => Promise<void>) { tokenHook = hook; },
