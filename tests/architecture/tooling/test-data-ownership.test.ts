@@ -111,6 +111,8 @@ const PROCESS_ENTRYPOINTS = [
   { file: "onboarding-closure-hold-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
   { file: "profile-onboarding-abort-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
   { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
+  { file: "fixture-pool-worker.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
+  { file: "dashboard-signal-child.ts", consumers: ["tests/backend/app/composition/dashboard/compose.ctrl-c-mid-run.integration.test.ts"] },
   { file: "write-fence-owner.ts", consumers: ["tests/support/helpers/backend/worker-lifetime-world.ts"] },
   { file: "run-record-race-worker.ts", consumers: ["tests/support/helpers/backend/run-record-service-world.ts"] },
   { file: "workbook-queue-peer.ts", consumers: ["tests/backend/workbooks/workbook-library-service.master.integration.test.ts"] },

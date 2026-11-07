@@ -1,9 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { testProcessImport } from "../../compiled-process.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
-import { randomUUID } from "node:crypto";
-import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
-import { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { spawn, spawnSync } from 'node:child_process';
@@ -23,12 +20,12 @@ import { seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from 'node:path';
-import { restoreNewestPersonBackup, composeStorageCommand as composeNativeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { initializeRegisteredPersonStores, restoreNewestPersonBackup, composeStorageCommand as composeNativeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
+import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 
 /** ESRCH: no such process. EPERM: the ID now belongs to another user's process, so our child is gone (CI reuses IDs quickly). */
@@ -47,6 +44,8 @@ export interface DrillPaths {
   readonly processLockRoot: string;
   readonly credentials: CredentialStore;
   renewAfterRestore(): void;
+  /** The boot's stopped startup recovery over this workspace; only attempting drills carry it. */
+  readonly recoverAtStartup?: (clock: Clock) => Promise<void>;
 }
 
 
@@ -59,9 +58,8 @@ export function createStorageRestoreTestWorld() {
   const admissions = new Map<string, Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>, 'admission' | 'close' | 'lifetime'>>();
   const attemptChildren = new Map<ReturnType<typeof spawn>, Promise<readonly PromiseSettledResult<unknown>[]>>();
   const retainedAttemptScratch = new Set<string>();
-  const attemptDatabases = new Map<string, { database: AuthorityDatabase; closeDatabase: () => void;
-    shareWithSuccessor(child: ReturnType<typeof spawn>): Promise<void> }>();
-  let successorPermitsIssued = 0;
+  const attemptDatabases = new Map<string, { database: AuthorityDatabase; closeDatabase: () => void }>();
+  let childrenSpawned = 0;
   const attemptClosureFailures = new Set<AuthoritySourceClosureUnprovedError>();
 
   async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const fixture=admissions.get(repoRoot);assert.ok(fixture);return composeNativeStorageCommand(isolation,args,clock,repoRoot,fixture.admission,boundProfileCredentials(fixture.admission));}
@@ -110,7 +108,7 @@ export function createStorageRestoreTestWorld() {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
     const ending = Promise.allSettled([once(child, 'exit'), once(child, 'close')]);
-    attemptChildren.set(child, ending);
+    attemptChildren.set(child, ending); childrenSpawned++;
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
     child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk));
     child.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk));
@@ -212,22 +210,16 @@ export function createStorageRestoreTestWorld() {
           createProfileRegistry(heldMachine).advanceSession(receipt.profileId);
           heldAdmission = heldMachine.admitProfile(receipt.profileId);
           registerBoundProfile(heldAdmission, heldMachine);
-        } };
-      database = open(paths);
-      attemptDatabases.set(receipt.workspace, { database, closeDatabase, async shareWithSuccessor(successor) {
-        try {
-          closeDatabase();
+        }, recoverAtStartup: async (clock) => {
           unregisterBoundProfile(heldAdmission); heldAdmission.release(); heldMachine.release();
-          heldMachine = acquireEntrypointAdmission(receipt.workspace, "shared", heldLifetime);
+          await initializeRegisteredPersonStores(receipt.workspace, heldLifetime, { primaryDisplay: null }, clock);
+          heldMachine = acquireEntrypointAdmission(receipt.workspace, "exclusive", heldLifetime);
+          createProfileRegistry(heldMachine).advanceSession(receipt.profileId);
           heldAdmission = heldMachine.admitProfile(receipt.profileId);
           registerBoundProfile(heldAdmission, heldMachine);
-          await heldLifetime.share(successor);
-        } catch (error) {
-          const retained = retainAuthoritySourceClosure([error], { admission: { heldMachine, heldAdmission },
-            directory: { successor, scratch, heldLifetime } });
-          attemptClosureFailures.add(retained); throw retained;
-        }
-      } });
+        } };
+      database = open(paths);
+      attemptDatabases.set(receipt.workspace, { database, closeDatabase });
       assert.equal(child.signalCode, 'SIGKILL');
       const run = database.authority.runs.get(receipt.runId);
       assert.ok(run);
@@ -257,58 +249,6 @@ export function createStorageRestoreTestWorld() {
       }
       if (workspace !== undefined) { admissions.delete(workspace); attemptDatabases.delete(workspace); }
       throw error;
-    }
-  }
-
-  async function renewConfirmedInSuccessor(paths: DrillPaths, input: Readonly<{
-    runId: string; member: WorkerPoolMember;
-    oldClaimGeneration: number; oldAttempt: number;
-    expectedPoolVersion: number; now: string;
-  }>) {
-    const owner = attemptDatabases.get(paths.repoRoot); assert.ok(owner);
-    const nonce = randomUUID(), scratch = dirname(paths.repoRoot);
-    const successor = spawn(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../support/processes/storage-restore-attempt-worker.ts", import.meta.url)),
-      "successor-renew-confirmed", String(paths.lifetime.port), paths.repoRoot, paths.admission.profileBinding.profileId], {
-      cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.."), detached: true,
-      env: credentialKeychainTestEnvironment({ ...process.env, TMPDIR: scratch }), stdio: ["ignore", "pipe", "pipe", "ipc"],
-    });
-    const ending = Promise.allSettled([once(successor, "exit"), once(successor, "close")]);
-    attemptChildren.set(successor, ending);
-    const stdout: Buffer[] = [], stderr: Buffer[] = [];
-    successor.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
-    successor.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
-    const receive = () => Promise.race([once(successor, "message"), ending.then(() => {
-      throw new Error("confirmed-successor-exited-before-receipt");
-    })]);
-    try {
-      const ready = receive();
-      await owner.shareWithSuccessor(successor);
-      assert.deepEqual((await ready)[0], { state: "successor-ready" });
-      const renewed = receive();
-      successorPermitsIssued++;
-      successor.send({ nonce, ...input });
-      const receipt = z.strictObject({ state: z.literal("successor-renewed"), nonce: z.uuid(),
-        run: RunRecordSchema, member: WorkerPoolMemberSchema }).parse((await renewed)[0]);
-      assert.equal(receipt.nonce, nonce); assert.deepEqual(receipt.member, input.member);
-      assert.equal(receipt.run.envelope.runId, input.runId); assert.equal(receipt.run.envelope.attempt, input.oldAttempt);
-      assert.equal(receipt.run.claimGeneration, input.oldClaimGeneration + 1);
-      const claim = runClaim(receipt.run); assert.ok(claim); assert.equal(claim.workerId, input.member.workerId);
-      for (const closed of await ending) {
-        if (closed.status !== "fulfilled") throw closed.reason;
-        assert.deepEqual(closed.value, [0, null]);
-      }
-      assert.ok(successor.pid !== undefined);
-      for (const pid of [successor.pid, -successor.pid]) assert.throws(() => process.kill(pid, 0), isNotOurProcess);
-      const descriptors = spawnSync("lsof", ["-nP", "-t", "+D", paths.repoRoot], { encoding: "utf8" });
-      assert.equal(descriptors.error, undefined); assert.equal(descriptors.status, 1);
-      assert.equal(descriptors.stdout, ""); assert.equal(descriptors.stderr, "");
-      attemptChildren.delete(successor);
-      return { ...receipt, ownedExit: { pid: successor.pid, code: 0, signal: null } };
-    } catch (error) {
-      writeFileSync(join(scratch, "successor.stdout"), Buffer.concat(stdout), { mode: 0o600 });
-      writeFileSync(join(scratch, "successor.stderr"), Buffer.concat(stderr), { mode: 0o600 });
-      const retained = retainAuthoritySourceClosure([error], { admission: paths.admission, directory: { owner, successor, scratch, lifetime: paths.lifetime } });
-      attemptClosureFailures.add(retained); throw retained;
     }
   }
 
@@ -404,6 +344,6 @@ export function createStorageRestoreTestWorld() {
     roots.splice(0);
     assert.equal(retainedAttemptScratch.size, 0, 'storage-restore-attempt-scratch-retained');
   };
-  return { CLOCK, roots, admissions, composeStorageCommand, repairAutomatically, drillPaths, attemptingDrillPaths, renewConfirmedInSuccessor,
-    get successorPermitsIssued() { return successorPermitsIssued; }, open, seedRealShapedAuthority, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup };
+  return { CLOCK, roots, admissions, composeStorageCommand, repairAutomatically, drillPaths, attemptingDrillPaths, 
+    get childrenSpawned() { return childrenSpawned; }, open, seedRealShapedAuthority, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup };
 }
