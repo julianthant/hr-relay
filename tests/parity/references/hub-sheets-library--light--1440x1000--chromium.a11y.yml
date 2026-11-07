@@ -1,0 +1,73 @@
+# hub-sheets-library--light--1440x1000--chromium
+# adapter: fixture
+# fixture: hub-sheets-components
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x1000  theme: light  variant: chromium
+# capturedAt: 2026-08-03
+
+- main:
+  - heading "Spreadsheets" [level=1]
+  - paragraph: Reference data and workbooks made by your workflows.
+  - heading "Your spreadsheets" [level=2]
+  - group:
+    - searchbox "Search spreadsheets"
+  - combobox "Spreadsheet type": All types
+  - button "Create type"
+  - button "Import spreadsheet"
+  - table "Your spreadsheets":
+    - rowgroup:
+      - row "Select all visible spreadsheets Spreadsheet Type Source Rows Actions":
+        - columnheader "Select all visible spreadsheets":
+          - checkbox "Select all visible spreadsheets"
+          - text: Select all visible spreadsheets
+        - columnheader "Spreadsheet"
+        - columnheader "Type"
+        - columnheader "Source"
+        - columnheader "Rows"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "Select Autumn onboarding.xlsx Open Autumn onboarding.xlsx People · Original Onboarding roster This Mac 17 Versions of Autumn onboarding.xlsx Actions for Autumn onboarding.xlsx":
+        - cell "Select Autumn onboarding.xlsx":
+          - checkbox "Select Autumn onboarding.xlsx"
+          - text: Select Autumn onboarding.xlsx
+        - cell "Open Autumn onboarding.xlsx People · Original":
+          - button "Open Autumn onboarding.xlsx": Autumn onboarding.xlsx
+          - text: People · Original
+        - cell "Onboarding roster"
+        - cell "This Mac"
+        - cell "17"
+        - cell "Versions of Autumn onboarding.xlsx Actions for Autumn onboarding.xlsx":
+          - button "Versions of Autumn onboarding.xlsx"
+          - button "Actions for Autumn onboarding.xlsx"
+      - row "Select Employment check.xlsx Open Employment check.xlsx People · Original Employment records This Mac 24 Versions of Employment check.xlsx Actions for Employment check.xlsx":
+        - cell "Select Employment check.xlsx":
+          - checkbox "Select Employment check.xlsx"
+          - text: Select Employment check.xlsx
+        - cell "Open Employment check.xlsx People · Original":
+          - button "Open Employment check.xlsx": Employment check.xlsx
+          - text: People · Original
+        - cell "Employment records"
+        - cell "This Mac"
+        - cell "24"
+        - cell "Versions of Employment check.xlsx Actions for Employment check.xlsx":
+          - button "Versions of Employment check.xlsx"
+          - button "Actions for Employment check.xlsx"
+  - heading "Workflow outputs" [level=2]
+  - table "Workflow outputs":
+    - rowgroup:
+      - row "Workbook Run Created Actions":
+        - columnheader "Workbook"
+        - columnheader "Run"
+        - columnheader "Created"
+        - columnheader "Actions"
+    - rowgroup
+  - paragraph: Workbooks made by workflows will appear here.
+  - heading "Spreadsheet types" [level=2]
+  - text: Onboarding roster Define which columns belong to this type.
+  - button "Edit Onboarding roster": Edit
+  - text: Employment records Define which columns belong to this type.
+  - button "Edit Employment records": Edit
+  - text: Local spreadsheet Define which columns belong to this type.
+  - button "Edit Local spreadsheet": Edit
+- region "Notifications"

@@ -1,0 +1,15 @@
+# hub-assistant-sign-in-popup--graphite-warm--1280x720
+# adapter: component-fixture
+# fixture: hub-assistant-sign-in-popup
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Sign in to UCPath":
+  - banner:
+    - heading "Sign in to UCPath" [level=2]
+  - paragraph: Complete sign-in in your browser, then return here.
+  - contentinfo:
+    - button "Close"
+    - button "Simulate signed in"

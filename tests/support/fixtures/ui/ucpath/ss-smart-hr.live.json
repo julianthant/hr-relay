@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "live-read-only",
+  "system": "ucpath",
+  "screens": ["ucpath.ss-smart-hr.transaction"],
+  "verifiedAt": "2026-08-04",
+  "method": "playwright-cli-duo-autopilot",
+  "assertions": [
+    {
+      "semanticId": "ucpath.ss-smart-hr.transaction",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.receipt-display",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.approval-status-display",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.approvalStatusSelect()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.transaction-ready",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.transaction-receipt",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.transactionResultRow()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "ucpath.ss-smart-hr.approval-status",
+      "screen": "ucpath.ss-smart-hr.transaction",
+      "scenarioId": "ui/ucpath-ss-smart-hr-transaction-receipt",
+      "portMapRows": [{ "system": "ucpath", "legacyKey": "ssSmartHRTransactions.approvalStatusSelect()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "rejectedCandidates": [
+    {
+      "legacyKey": "ssSmartHRTransactions.emplIdInput()",
+      "candidateDescription": "getByRole(textbox, { name: 'Empl ID', exact: true }) on the Find-an-Existing-Value form — the live accessible name is 'Empl ID begins with' because PeopleSoft folds the operator dropdown into the computed name, so the exact recipe matches nothing; the stable id is input#UC_SS_TBH_DVW_EMPLID",
+      "reason": "zero-live-matches",
+      "matchedCount": 0,
+      "replacementSemanticId": "ucpath.ss-smart-hr.receipt-display"
+    },
+    {
+      "legacyKey": "ssSmartHRTransactions.businessUnitInput()",
+      "candidateDescription": "getByRole(textbox, { name: 'Business Unit', exact: true }) — same 'begins with' suffix failure; the stable id is input#UC_SS_TBH_DVW_BUSINESS_UNIT",
+      "reason": "zero-live-matches",
+      "matchedCount": 0,
+      "replacementSemanticId": "ucpath.ss-smart-hr.receipt-display"
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

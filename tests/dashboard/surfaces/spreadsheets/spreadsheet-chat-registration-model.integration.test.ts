@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import { afterEach, it, vi } from 'vitest';
+import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
+import { createSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
+import { createSpreadsheetChatRegistrationPort } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-chat-registration-model.js';
+import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { EditableWorkbookSchema } from '../../../../src/models/dashboard/workbooks.js';
+import { disposeHttpRouteHarness, harness } from '../../../support/helpers/backend/http-route-harness.js';
+vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', async () => {
+  const { writeWorkbookCsv, writeWorkbookXlsx } = await import('../../../../src/rules/spreadsheets/workbook-io.js');
+  return { exportSheetInWorker: writeWorkbookCsv, exportSpreadsheetInWorker: writeWorkbookXlsx };
+});
+afterEach(disposeHttpRouteHarness);
+it('registers attachments and versioned updates through the existing HTTP routes and SQLite library', async () => {
+  const h = await harness(), writes: string[] = [];
+  const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {
+    if (init?.method === 'POST') writes.push(new URL(String(url)).pathname);
+    return h.app.request(String(url), { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), host: 'localhost', origin: 'http://localhost' } });
+  } });
+  const adapter = createSpreadsheetWiringAdapter(client), port = createSpreadsheetChatRegistrationPort(adapter);
+  const workbook = EditableWorkbookSchema.parse({ ...newEditableWorkbook(), name: 'Autumn onboarding.csv' });
+  workbook.sheets[0].rows[1].cells[0].value = 'Original';
+  const attached = await port.register({ operationId: 'attached', status: 'Attached', workbook });
+  assert.equal(attached.state, 'confirmed'); if (attached.state !== 'confirmed') throw new Error('missing attachment');
+  const first = await client.workbookOpen(attached.file.libraryId);
+  const changed = structuredClone(first.workbook);
+  changed.name = 'Autumn onboarding-updated.csv'; changed.sheets[0].rows[1].cells[0].value = 'Second';
+  const updateRequest = { operationId: 'updated', status: 'Updated', workbook: changed, base: { libraryId: first.libraryId, version: first.version } } as const;
+  const updated = await port.register(updateRequest);
+  assert.equal(updated.state, 'confirmed'); if (updated.state !== 'confirmed') throw new Error('missing update');
+  assert.equal(updated.file.version, 2); assert.equal((await port.open(updated.file)).name, 'Autumn onboarding-updated.csv');
+  assert.equal((await port.open(attached.file)).name, 'Autumn onboarding.csv');
+  assert.deepEqual(await client.workbookHistory(first.libraryId), []);
+  assert.equal((await port.register(updateRequest)).state, 'confirmed');
+  const later = structuredClone(changed); later.sheets[0].rows[1].cells[0].value = 'Third';
+  await client.workbookSave(first.libraryId, 2, later);
+  assert.equal((await port.open(attached.file)).sheets[0].rows[1].cells[0].value, 'Original');
+  assert.equal((await port.open(updated.file)).sheets[0].rows[1].cells[0].value, 'Second');
+  const originalDownload = await port.download(attached.file), updatedDownload = await port.download(updated.file);
+  assert.match(await originalDownload.blob.text(), /Original/); assert.doesNotMatch(await originalDownload.blob.text(), /Second|Third/);
+  assert.match(await updatedDownload.blob.text(), /Second/); assert.doesNotMatch(await updatedDownload.blob.text(), /Original|Third/);
+  assert.deepEqual(await client.workbookHistory(first.libraryId), []);
+  const generated = await port.register({ operationId: 'generated', status: 'Generated', workbook: { ...newEditableWorkbook(), name: 'Onboarding results.csv' } });
+  assert.equal(generated.state, 'confirmed');
+  assert.deepEqual(writes, ['/api/v1/workbooks', `/api/v1/workbooks/${first.libraryId}/save`, `/api/v1/workbooks/${first.libraryId}/save`, '/api/v1/workbooks']);
+  adapter.close(first.libraryId); await adapter.list();
+  assert.equal(adapter.snapshot().files.find(file => file.id === first.libraryId)?.status, 'Updated'); assert.equal(adapter.snapshot().files.find(file => file.id === first.libraryId)?.version, 3);
+});

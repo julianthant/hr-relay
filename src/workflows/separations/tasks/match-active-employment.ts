@@ -1,0 +1,34 @@
+import { defineTask } from "../../../workflow-kit/task.js";
+import {
+  MatchActiveEmploymentOutputSchema,
+  SeparationsMatchActiveEmployment,
+} from "../../../models/workflows/separations/match-active-employment.js";
+import { selectSeparationEmployment } from "../../../rules/separations/employment-selection.js";
+
+/** The employment fold's refusal, executed. The gate still shows every row (match-identity carries the classification); this node only decides single-employment existence. */
+export const matchActiveEmploymentTask = defineTask(SeparationsMatchActiveEmployment, {
+  sessions: [],
+  async run({ input, ctx }) {
+    const selection = selectSeparationEmployment(input.jobSummary.jobRows);
+    if (selection.state === "refused") {
+      return ctx.fail(
+        selection.code,
+        `Kuali document ${input.documentNumber}: ${selection.reason}`,
+      );
+    }
+    const output = MatchActiveEmploymentOutputSchema.parse(selection.employment);
+    ctx.recordData([
+      { direction: "read", field: "rowIndex", value: output.rowIndex },
+      { direction: "read", field: "emplRecord", value: output.emplRecord },
+      { direction: "read", field: "hrStatus", value: output.hrStatus },
+      { direction: "read", field: "businessUnit", value: output.businessUnit },
+      { direction: "read", field: "deptId", value: output.deptId },
+      { direction: "read", field: "department", value: output.department },
+      { direction: "read", field: "payrollTitleCode", value: output.payrollTitleCode },
+      { direction: "read", field: "payrollTitle", value: output.payrollTitle },
+      { direction: "read", field: "effectiveDate", value: output.effectiveDate },
+      { direction: "read", field: "rowCount", value: output.rowCount },
+    ]);
+    return output;
+  },
+});

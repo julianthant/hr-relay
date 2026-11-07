@@ -1,0 +1,269 @@
+# baseline-settings-spreadsheet-library-open--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Spreadsheets":
+      - button "Open XLSX or CSV"
+      - region "Spreadsheet editor":
+        - navigation "Breadcrumb":
+          - list:
+            - listitem:
+              - button "Spreadsheets"
+            - listitem: 26–27 Student applicants.xlsx
+        - heading "26–27 Student applicants.xlsx" [level=1]
+        - paragraph: 7 sheets · Saved copy
+        - button "Save"
+        - button "Export copy"
+        - button "Workbook actions"
+        - group "Sheet view":
+          - text: Sheet
+          - combobox "Workbook sheet": July 6
+          - button "Columns"
+        - group "Sheet editing":
+          - button "Insert"
+          - group "Edit history":
+            - button "Undo spreadsheet edit" [disabled]
+            - button "Redo spreadsheet edit" [disabled]
+        - group:
+          - searchbox "Search spreadsheet cells"
+        - table "July 6 cells":
+          - rowgroup:
+            - 'row "1 Sort column A Email Sort column B Legal Name Sort column C Lived Name Sort column D Phone Sort column E PID Sort column F Supervisor Email Sort column G Supervisor Name Sort column H Proposed Location Assignment Sort column I Position # Sort column J Initiator Sort column K Start Date Sort column L Offer Accepted Sort column M Campus Forms Pending Sort column N Background Check Accept Terms YN Sort column O Date Background Entered Sort column P Background Cleared Sort column Q Entered In UCPath Sort column R Transaction # Sort column S UCPath ID Sort column T Ready For Payroll Approval"':
+              - columnheader "1"
+              - columnheader "Sort column A Email":
+                - button "Sort column A": A
+                - textbox "A1": Email
+              - columnheader "Sort column B Legal Name":
+                - button "Sort column B": B
+                - textbox "B1": Legal Name
+              - columnheader "Sort column C Lived Name":
+                - button "Sort column C": C
+                - textbox "C1": Lived Name
+              - columnheader "Sort column D Phone":
+                - button "Sort column D": D
+                - textbox "D1": Phone
+              - columnheader "Sort column E PID":
+                - button "Sort column E": E
+                - textbox "E1": PID
+              - columnheader "Sort column F Supervisor Email":
+                - button "Sort column F": F
+                - textbox "F1": Supervisor Email
+              - columnheader "Sort column G Supervisor Name":
+                - button "Sort column G": G
+                - textbox "G1": Supervisor Name
+              - columnheader "Sort column H Proposed Location Assignment":
+                - button "Sort column H": H
+                - textbox "H1": Proposed Location Assignment
+              - 'columnheader "Sort column I Position #"':
+                - button "Sort column I": I
+                - textbox "I1": "Position #"
+              - columnheader "Sort column J Initiator":
+                - button "Sort column J": J
+                - textbox "J1": Initiator
+              - columnheader "Sort column K Start Date":
+                - button "Sort column K": K
+                - textbox "K1": Start Date
+              - columnheader "Sort column L Offer Accepted":
+                - button "Sort column L": L
+                - textbox "L1": Offer Accepted
+              - columnheader "Sort column M Campus Forms Pending":
+                - button "Sort column M": M
+                - textbox "M1": Campus Forms Pending
+              - columnheader "Sort column N Background Check Accept Terms YN":
+                - button "Sort column N": "N"
+                - textbox "N1": Background Check Accept Terms YN
+              - columnheader "Sort column O Date Background Entered":
+                - button "Sort column O": O
+                - textbox "O1": Date Background Entered
+              - columnheader "Sort column P Background Cleared":
+                - button "Sort column P": P
+                - textbox "P1": Background Cleared
+              - columnheader "Sort column Q Entered In UCPath":
+                - button "Sort column Q": Q
+                - textbox "Q1": Entered In UCPath
+              - 'columnheader "Sort column R Transaction #"':
+                - button "Sort column R": R
+                - textbox "R1": "Transaction #"
+              - columnheader "Sort column S UCPath ID":
+                - button "Sort column S": S
+                - textbox "S1": UCPath ID
+              - columnheader "Sort column T Ready For Payroll Approval":
+                - button "Sort column T": T
+                - textbox "T1": Ready For Payroll Approval
+          - rowgroup:
+            - row "2 jordan.lee@example.com Jordan Lee Jordan (202) 555-0101 DEMO-PID-001 manager@example.com Casey Reed Sample dining hall DEMO-POS-001 10/19/2026 Yes No Yes 09/28/2026 Yes Yes DEMO-TXN-001 DEMO-1042 Yes":
+              - rowheader "2"
+              - cell "jordan.lee@example.com":
+                - textbox "A2": jordan.lee@example.com
+              - cell "Jordan Lee":
+                - textbox "B2": Jordan Lee
+              - cell "Jordan":
+                - textbox "C2": Jordan
+              - cell "(202) 555-0101":
+                - textbox "D2": (202) 555-0101
+              - cell "DEMO-PID-001":
+                - textbox "E2": DEMO-PID-001
+              - cell "manager@example.com":
+                - textbox "F2": manager@example.com
+              - cell "Casey Reed":
+                - textbox "G2": Casey Reed
+              - cell "Sample dining hall":
+                - textbox "H2": Sample dining hall
+              - cell "DEMO-POS-001":
+                - textbox "I2": DEMO-POS-001
+              - cell:
+                - textbox "J2"
+              - cell "10/19/2026":
+                - textbox "K2": 10/19/2026
+              - cell "Yes":
+                - textbox "L2": "Yes"
+              - cell "No":
+                - textbox "M2": "No"
+              - cell "Yes":
+                - textbox "N2": "Yes"
+              - cell "09/28/2026":
+                - textbox "O2": 09/28/2026
+              - cell "Yes":
+                - textbox "P2": "Yes"
+              - cell "Yes":
+                - textbox "Q2": "Yes"
+              - cell "DEMO-TXN-001":
+                - textbox "R2": DEMO-TXN-001
+              - cell "DEMO-1042":
+                - textbox "S2" [invalid]: DEMO-1042
+              - cell "Yes":
+                - textbox "T2": "Yes"
+            - row "3 alex.morgan@example.com Alex Morgan Alex (202) 555-0102 DEMO-PID-002 manager@example.com Casey Reed Sample market DEMO-POS-002 10/19/2026 Yes No Yes 09/28/2026 Yes Yes DEMO-TXN-002 DEMO-1043 Yes":
+              - rowheader "3"
+              - cell "alex.morgan@example.com":
+                - textbox "A3": alex.morgan@example.com
+              - cell "Alex Morgan":
+                - textbox "B3": Alex Morgan
+              - cell "Alex":
+                - textbox "C3": Alex
+              - cell "(202) 555-0102":
+                - textbox "D3": (202) 555-0102
+              - cell "DEMO-PID-002":
+                - textbox "E3": DEMO-PID-002
+              - cell "manager@example.com":
+                - textbox "F3": manager@example.com
+              - cell "Casey Reed":
+                - textbox "G3": Casey Reed
+              - cell "Sample market":
+                - textbox "H3": Sample market
+              - cell "DEMO-POS-002":
+                - textbox "I3": DEMO-POS-002
+              - cell:
+                - textbox "J3"
+              - cell "10/19/2026":
+                - textbox "K3": 10/19/2026
+              - cell "Yes":
+                - textbox "L3": "Yes"
+              - cell "No":
+                - textbox "M3": "No"
+              - cell "Yes":
+                - textbox "N3": "Yes"
+              - cell "09/28/2026":
+                - textbox "O3": 09/28/2026
+              - cell "Yes":
+                - textbox "P3": "Yes"
+              - cell "Yes":
+                - textbox "Q3": "Yes"
+              - cell "DEMO-TXN-002":
+                - textbox "R3": DEMO-TXN-002
+              - cell "DEMO-1043":
+                - textbox "S3" [invalid]: DEMO-1043
+              - cell "Yes":
+                - textbox "T3": "Yes"
+            - row "4 taylor.chen@example.com Taylor Chen Taylor (202) 555-0103 DEMO-PID-003 manager@example.com Casey Reed Sample café DEMO-POS-003 10/19/2026 Yes Yes Yes 09/28/2026 Pending":
+              - rowheader "4"
+              - cell "taylor.chen@example.com":
+                - textbox "A4": taylor.chen@example.com
+              - cell "Taylor Chen":
+                - textbox "B4": Taylor Chen
+              - cell "Taylor":
+                - textbox "C4": Taylor
+              - cell "(202) 555-0103":
+                - textbox "D4": (202) 555-0103
+              - cell "DEMO-PID-003":
+                - textbox "E4": DEMO-PID-003
+              - cell "manager@example.com":
+                - textbox "F4": manager@example.com
+              - cell "Casey Reed":
+                - textbox "G4": Casey Reed
+              - cell "Sample café":
+                - textbox "H4": Sample café
+              - cell "DEMO-POS-003":
+                - textbox "I4": DEMO-POS-003
+              - cell:
+                - textbox "J4"
+              - cell "10/19/2026":
+                - textbox "K4": 10/19/2026
+              - cell "Yes":
+                - textbox "L4": "Yes"
+              - cell "Yes":
+                - textbox "M4": "Yes"
+              - cell "Yes":
+                - textbox "N4": "Yes"
+              - cell "09/28/2026":
+                - textbox "O4": 09/28/2026
+              - cell "Pending":
+                - textbox "P4": Pending
+              - cell:
+                - textbox "Q4"
+              - cell:
+                - textbox "R4"
+              - cell:
+                - textbox "S4"
+              - cell:
+                - textbox "T4"
+        - text: Rows 1–3 of 3 Columns 1–20 of 28
+        - button "Previous spreadsheet columns" [disabled]
+        - button "Next spreadsheet columns"
+- status
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+    - button "Log out"
+- region "Notifications"

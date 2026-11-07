@@ -1,0 +1,40 @@
+# baseline-shell-add-workers-menu--graphite-warm--1280x720
+# adapter: fixture
+# fixture: mounted-mock-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Add workers":
+  - banner:
+    - heading "Add workers" [level=2]
+    - paragraph: Select a workflow and worker count.
+    - button "Close"
+  - text: Workflow
+  - combobox "Workflow" [expanded]: Person Lookup
+  - listbox:
+    - group:
+      - option "Person Lookup" [selected]
+      - option "I-9 Lookup"
+      - option "Separations"
+      - option "I-9 Check"
+      - option "Onboarding"
+      - option "Oath Signature"
+      - option "Oath Upload"
+      - option "Emergency Contact"
+      - option "Work-Study"
+      - option "Kronos Pay Rule"
+      - option "OCR"
+      - option "CRM Doc Download"
+      - option "SharePoint Download"
+      - option "OnBase"
+      - option "Old Kronos Reports"
+  - text: Workers
+  - button "Remove one worker" [disabled]
+  - spinbutton "Workers": "1"
+  - button "Add one worker"
+  - contentinfo:
+    - button "Cancel"
+    - button "Add workers"

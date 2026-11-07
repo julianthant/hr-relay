@@ -1,0 +1,50 @@
+# assistant-failed--graphite-warm--1440x900
+# adapter: component-fixture
+# fixture: assistant-failed
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - region "Mock scene controls":
+    - text: Assistant design preview Scene
+    - combobox "Scene":
+      - option "proposal"
+      - option "dry-run"
+      - option "waiting"
+      - option "failed" [selected]
+      - option "unavailable"
+      - option "stale"
+      - option "empty"
+      - option "long"
+      - option "launcher-closed"
+    - button "Invalidate plan"
+    - link "Switch theme":
+      - /url: "?scene=failed&theme=light"
+    - status "Mock callback count": "Mock confirmations: 0"
+  - button "Assistant" [expanded]
+- dialog "Relay assistant":
+  - banner:
+    - heading "Relay assistant" [level=2]
+    - paragraph: Mock preview
+    - button "New chat"
+    - button "Close assistant"
+  - region "Conversation":
+    - list:
+      - listitem:
+        - paragraph: Relay
+        - paragraph: I can explain a workflow or prepare a run for you to review. You choose whether to confirm it.
+        - button "Copy reply"
+      - listitem:
+        - paragraph: Check Avery Sample and Morgan Example in Person Lookup. Read only; stop before any changes.
+    - alert:
+      - strong: Reply unavailable
+      - paragraph: Your request is kept. Try again.
+    - button "Retry reply"
+  - textbox "Message":
+    - /placeholder: Send a message…
+    - text: Check Avery Sample and Morgan Example in Person Lookup. Read only; stop before any changes.
+  - text: Enter to send · Shift+Enter for a new line
+  - button "Send"
+  - paragraph: Scripted preview · Synthetic data · No runs start

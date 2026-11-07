@@ -1,0 +1,80 @@
+name: Merge train
+
+# Merges the latest staging into every open PR so CI always tests the real combination.
+# Only operator-authored, same-repository PRs may run generators.
+# CI calls it as its final job (with the PR result); a push to staging also starts it.
+on:
+  push:
+    branches: [staging]
+    paths-ignore: ['docs/roadmap/**']
+  workflow_call:
+    inputs:
+      pr: {type: string, default: ""}
+      conclusion: {type: string, default: ""}
+    secrets:
+      TRAIN_TOKEN: {required: true}
+
+permissions: {}
+
+jobs:
+  train:
+    if: github.event_name == 'push' || (github.event.pull_request.user.login == 'julianthant' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: merge-train
+      cancel-in-progress: false
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.TRAIN_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          token: ${{ secrets.TRAIN_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: gh auth setup-git
+
+      - name: Label the PR whose CI finished
+        if: inputs.pr != ''
+        env:
+          CONCLUSION: ${{ inputs.conclusion }}
+          PR: ${{ inputs.pr }}
+        run: |
+          case "$CONCLUSION" in
+            failure) gh pr edit "$PR" --add-label train-failed ;;
+            success) gh pr edit "$PR" --remove-label train-failed || true ;;
+          esac
+
+      - name: Merge staging into every open PR that lacks it
+        run: |
+          # A new staging can change how a PR must be fixed, so every open PR re-runs on it,
+          # whatever its labels or auto-merge state. CI's per-PR supersession cancels the older run.
+          gh pr list --base staging --state open --limit 100 \
+            --json number,isDraft,headRefOid,headRepositoryOwner,isCrossRepository,author \
+            --jq '.[] | select(.isDraft == false and .isCrossRepository == false and .author.login == "julianthant" and .headRepositoryOwner.login == "${{ github.repository_owner }}") | "\(.number) \(.headRefOid)"' |
+          while read -r number head; do
+            behind=$(gh api "repos/$GH_REPO/compare/$head...staging" --jq .ahead_by) || continue
+            [ "$behind" = 0 ] && continue
+            if err=$(gh api -X PUT "repos/$GH_REPO/pulls/$number/update-branch" -f expected_head_sha="$head" 2>&1 >/dev/null); then
+              echo "Updated #$number"
+              gh pr edit "$number" --remove-label merge-conflict >/dev/null 2>&1 || true
+            elif grep -qi conflict <<<"$err"; then
+              if node_modules/.bin/tsx scripts/build/merge-generated-conflicts.ts "$number" "$head" "$GH_REPO"; then
+                gh pr edit "$number" --remove-label merge-conflict
+              elif current_head=$(gh api "repos/$GH_REPO/pulls/$number" --jq .head.sha) && [ "$current_head" != "$head" ]; then
+                echo "Skipped #$number: head moved"
+              else
+                gh pr edit "$number" --add-label merge-conflict
+              fi
+            else
+              echo "Skipped #$number: $err"
+            fi
+          done

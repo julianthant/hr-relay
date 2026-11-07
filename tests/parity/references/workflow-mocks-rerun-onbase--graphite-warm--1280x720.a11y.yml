@@ -1,0 +1,52 @@
+# workflow-mocks-rerun-onbase--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: OnBase · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values" [disabled]: Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Choose what to run again" [level=3]
+  - text: 5 / 5 included
+  - paragraph: Select steps for the new run. Statuses show the source outcome.
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - list:
+      - listitem:
+        - checkbox "Read emergency contact" [checked]
+        - text: Read emergency contact OCR Not started
+      - listitem:
+        - checkbox "Sign in to OnBase" [checked] [disabled]
+        - text: Sign in to OnBase OnBase · required Not started
+      - listitem:
+        - checkbox "Prepare person page" [checked] [disabled]
+        - text: Prepare person page Form action · required Not started
+        - checkbox "Enter reading values manually for prepare person page"
+        - text: Enter reading values manually for prepare person page
+      - listitem:
+        - checkbox "Fill document keywords" [checked] [disabled]
+        - text: Fill document keywords Form action · required Not started
+        - checkbox "Enter reading values manually for fill document keywords"
+        - text: Enter reading values manually for fill document keywords
+      - listitem:
+        - checkbox "Import document" [checked] [disabled]
+        - text: Import document Form action · required Not started
+  - contentinfo:
+    - text: Source run · new runOnBase
+    - button "Cancel"
+    - button "Continue"

@@ -1,0 +1,274 @@
+import { fileModified, fileChanged, fileStatus } from "../file-identity.js";
+import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
+import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
+import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { lstatSync, type BigIntStats } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
+import { DatabaseSync } from "node:sqlite";
+import { z } from "zod";
+import { ProfileDatabaseBindingSchema, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import { requireDatabaseSourcePath } from "./recovery-admission.js";
+import { outermostOperationProof } from "../configuration/credential-safe-file.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isSupportedStoppedAuthoritySchemaVersion } from "./migrations.js";
+export function countUcsdLoginRows(path: string): number | "unreadable" | "absent" {
+  const info = fileStatus(path, true);
+  if (info === undefined) return "absent";
+  if (!info.isFile()) return "unreadable";
+  let database: DatabaseSync | undefined;
+  let result: number | "unreadable";
+  let primary: { error: unknown } | undefined;
+  try {
+    database = new DatabaseSync(path, { readOnly: true });
+    const rows = z.array(z.object({
+      origin_url: z.string().optional(),
+      username_value: z.string().optional(),
+    })).parse(database.prepare("SELECT origin_url, username_value FROM logins").all());
+    result = rows.filter((row) => isUcsdIdentity(row.origin_url) || isUcsdIdentity(row.username_value)).length;
+  } catch (error) { primary = { error }; result = "unreadable"; }
+  try { database?.close(); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { ...(database === undefined ? {} : { database }) }); }
+  return result;
+
+}
+
+export function countProfileCredentialLoginRows(paths: readonly string[]): number | "unreadable" | "absent" {
+  if (paths.length === 0) return "absent";
+  let rows = 0;
+  let sawFile = false;
+  for (const path of paths) {
+    const count = countUcsdLoginRows(path);
+    if (count === "unreadable") return "unreadable";
+    if (count === "absent") continue;
+    sawFile = true;
+    rows += count;
+  }
+  return sawFile ? rows : "absent";
+}
+
+function isUcsdIdentity(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host === "ucsd.edu" || host.endsWith(".ucsd.edu");
+  } catch {
+    const text = value.toLowerCase();
+    return text.endsWith("@ucsd.edu") || text.endsWith(".ucsd.edu");
+  }
+}
+
+
+export function readProfileDatabaseBinding(path: string):
+  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  const snapshot = captureProfileDatabaseBinding(path);
+  const failures: unknown[] = [];
+  try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
+  if (failures.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, { snapshot });
+  try { snapshot.dispose(); }
+  catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot }); }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "profile-database-binding-read-failed", { cause: failures[0] });
+  return snapshot.binding;
+}
+
+function captureProfileDatabaseBinding(path: string) {
+  requireDatabaseSourcePath(path);
+  const before = fileStatus(path, true);
+  if (before === undefined) throw new Error("profile-database-binding-required");
+  if (!before.isFile() || (before.nlink !== 1 && before.nlink !== 1n) || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
+  const snapshot = createReadonlyAuthoritySnapshot(path);
+  const failures: unknown[] = [];
+  try {
+    const binding = readProfileDatabaseBindingCopy(snapshot.path);
+    const assertUnchanged = () => {
+      snapshot.assertUnchanged();
+      const after = fileStatus(path);
+      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || fileModified(before) !== fileModified(after)
+        || fileChanged(before) !== fileChanged(after) || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
+    };
+    assertUnchanged();
+    return Object.freeze({ binding, path: snapshot.path, assertUnchanged, dispose: snapshot.dispose });
+  } catch (error) {
+    failures.push(error);
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure(failures, { snapshot });
+    try { snapshot.assertUnchanged(); } catch (validation) { failures.push(validation); }
+    if (failures.some(failure => failure instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, { snapshot });
+    try { snapshot.dispose(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([...failures, cleanup], { snapshot }); }
+  }
+  if (failures.length === 1) throw failures[0];
+  throw new AggregateError(failures, "profile-database-binding-read-failed", { cause: failures[0] });
+}
+
+export function captureCanonicalProfileBinding(path: string, expected: ProfileDatabaseBinding) {
+  const snapshot = captureProfileDatabaseBinding(path);
+  const failures: unknown[] = [];
+  try {
+    assertProfileBindingMatches(snapshot.binding, expected);
+    return Object.freeze({ assertUnchanged: snapshot.assertUnchanged, dispose: snapshot.dispose });
+  } catch (error) {
+    failures.push(error);
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure(failures, { snapshot });
+    try { snapshot.assertUnchanged(); } catch (validation) { failures.push(validation); }
+    if (failures.some(failure => failure instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, { snapshot });
+    try { snapshot.dispose(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([...failures, cleanup], { snapshot }); }
+  }
+  if (failures.length === 1) throw failures[0];
+  throw new AggregateError(failures, "profile-database-binding-read-failed", { cause: failures[0] });
+}
+
+function readProfileDatabaseBindingCopy(path: string):
+  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  requireDatabaseSourcePath(path);
+  const before = fileStatus(path, true);
+  if (before === undefined) throw new Error("profile-database-binding-required");
+  if (!before.isFile() || (before.nlink !== 1 && before.nlink !== 1n) || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
+  const database = new DatabaseSync(path, { readOnly: true });
+  const read = (): ReturnType<typeof readProfileDatabaseBindingCopy> => {
+    const version = database.prepare("PRAGMA user_version").get();
+    const application = database.prepare("PRAGMA application_id").get();
+    if ((version?.user_version !== CURRENT_AUTHORITY_SCHEMA_VERSION && (typeof version?.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version)))
+      || application?.application_id !== AUTHORITY_APPLICATION_ID) throw new Error("profile-database-schema-mismatch");
+    const boundVersion = z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23)]).safeParse(version.user_version);
+    const binding = boundVersion.success ? ProfileDatabaseBindingSchema.parse(database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get()) : undefined;
+    const after = fileStatus(path);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || fileModified(before) !== fileModified(after)
+      || fileChanged(before) !== fileChanged(after) || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
+    if (binding === undefined) {
+      if (typeof version.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version) || version.user_version >= 7) throw new Error("profile-database-schema-mismatch");
+      return { schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).parse(version.user_version), state: "unbound" };
+    }
+    return { schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23)]).parse(version.user_version), state: "bound", binding };
+  };
+  let result: ReturnType<typeof readProfileDatabaseBindingCopy> | undefined;
+  let primary: { error: unknown } | undefined;
+  try { result = read(); } catch (error) { primary = { error }; }
+  try { database.close(); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database }); }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("profile-database-binding-result-missing");
+  return result;
+}
+
+export function assertCanonicalProfileBinding(path: string, expected: ProfileDatabaseBinding): void {
+  assertProfileBindingMatches(readProfileDatabaseBinding(path), expected);
+}
+
+function assertProfileBindingMatches(actual: ReturnType<typeof readProfileDatabaseBinding>, expected: ProfileDatabaseBinding): void {
+  if (actual.state !== "bound") throw new Error("profile-database-binding-required");
+  if (actual.binding.installationId !== expected.installationId || actual.binding.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
+}
+
+export function assertProfileRestoreDatabaseBinding(path: string, expected: ProfileDatabaseBinding): void {
+  assertCanonicalProfileBinding(path, expected);
+}
+
+// Source SQLite descriptors belong to the observer process, never a live writer process.
+const liveBindingScript = `
+const { DatabaseSync } = require("node:sqlite");
+const { constants, openSync, closeSync, lstatSync, fstatSync, readSync } = require("node:fs");
+const { dirname } = require("node:path");
+const [path, expected, schema, application] = process.argv.slice(1);
+${process.platform === "win32" ? "" : `const privatePathRejects = ${posixPrivatePathRejects.toString()};`}
+const identity = stats => [stats.dev, stats.ino, stats.mode, stats.uid, stats.nlink].join(":");
+const inspect = file => {
+  const stats = lstatSync(file, { bigint: true, throwIfNoEntry: false });
+  if (stats === undefined) return undefined;
+  if (!stats.isFile() || stats.nlink !== 1n || privatePathRejects(file, stats, "group-write")) throw new Error("profile-database-identity-invalid");
+  return stats;
+};
+const checkWalHeader = (file, stats) => {
+  if (stats.size === 0n) return;
+  const descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    if (identity(fstatSync(descriptor, { bigint: true })) !== identity(stats)) throw new Error("profile-database-identity-changed");
+    const header = Buffer.alloc(32);
+    if (readSync(descriptor, header, 0, header.length, 0) !== header.length) throw new Error("profile-database-companion-malformed");
+    const magic = header.readUInt32BE(0), version = header.readUInt32BE(4), pageSize = header.readUInt32BE(8);
+    if ((magic !== 0x377f0682 && magic !== 0x377f0683) || version !== 3007000
+      || pageSize < 512 || pageSize > 65536 || (pageSize & (pageSize - 1)) !== 0) throw new Error("profile-database-companion-malformed");
+    let first = 0, second = 0;
+    const word = offset => magic === 0x377f0682 ? header.readUInt32LE(offset) : header.readUInt32BE(offset);
+    for (let offset = 0; offset < 24; offset += 8) {
+      first = (first + word(offset) + second) >>> 0;
+      second = (second + word(offset + 4) + first) >>> 0;
+    }
+    if (header.readUInt32BE(24) !== first || header.readUInt32BE(28) !== second) throw new Error("profile-database-companion-malformed");
+    const current = inspect(file);
+    if (current === undefined || identity(current) !== identity(stats)) throw new Error("profile-database-identity-changed");
+  } finally { closeSync(descriptor); }
+};
+const check = descriptor => {
+  let ancestor = dirname(path);
+  for (;;) {
+    ${process.platform === "win32" ? 'const info = lstatSync(ancestor, { bigint: true }); if (!info.isDirectory() || privatePathRejects(ancestor, info, "ancestor"))' : "if (!lstatSync(ancestor).isDirectory())"} throw new Error("profile-database-identity-invalid");
+    const parent = dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  const main = inspect(path);
+  if (main === undefined) throw new Error("profile-database-binding-required");
+  if (identity(main) !== expected || descriptor !== undefined && identity(fstatSync(descriptor, { bigint: true })) !== expected)
+    throw new Error("profile-database-identity-changed");
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    const companion = inspect(path + suffix);
+    if (suffix === "-wal" && companion !== undefined) checkWalHeader(path + suffix, companion);
+    if (suffix === "-journal" && companion !== undefined && companion.size > 0n) throw new Error("authority-readonly-source-journal-unsettled");
+  }
+};
+let descriptor, database, result;
+try {
+  try {
+    check();
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    check(descriptor);
+    database = new DatabaseSync(path, { readOnly: true, allowExtension: false, defensive: true, timeout: 250 });
+    database.exec("PRAGMA query_only=ON; BEGIN");
+    const version = database.prepare("PRAGMA user_version").get().user_version;
+    const app = database.prepare("PRAGMA application_id").get().application_id;
+    if (version !== Number(schema) || app !== Number(application)) throw new Error("profile-database-schema-mismatch");
+    const binding = database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get();
+    database.exec("COMMIT");
+    check(descriptor);
+    result = { state: "bound", binding };
+  } finally {
+    try { database?.close(); }
+    finally { if (descriptor !== undefined) closeSync(descriptor); }
+  }
+  process.stdout.write(JSON.stringify(result));
+} catch (error) {
+  process.stdout.write(JSON.stringify({ state: "refused", message: error.message }));
+  process.exitCode = 1;
+}
+`;
+
+export function assertLiveProfileDatabaseBinding(path: string, expected: ProfileDatabaseBinding): void {
+  requireDatabaseSourcePath(path);
+  const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  if (before === undefined) throw new Error("profile-database-binding-required");
+  if (!before.isFile() || before.nlink !== 1n || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
+  const identity = (stats: BigIntStats) => [stats.dev, stats.ino, stats.mode, stats.uid, stats.nlink].join(":");
+  const witness = identity(before);
+  const proof = outermostOperationProof();
+  const proofKey = `live-binding:${path}:${expected.installationId}:${expected.profileId}`;
+  const proofWitness = `${witness}:${before.size}:${before.mtimeNs}`;
+  if (proof?.slots.get(proofKey) === proofWitness) return;
+  const observed = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("binding") + liveBindingScript : liveBindingScript, path, witness,
+    String(CURRENT_AUTHORITY_SCHEMA_VERSION), String(AUTHORITY_APPLICATION_ID)],
+  { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
+  if (observed.error !== undefined || observed.signal !== null) throw new Error("profile-database-observation-failed", {
+    cause: observed.error ?? { status: observed.status, signal: observed.signal },
+  });
+  if (observed.status !== 0) {
+    const refusal = z.strictObject({ state: z.literal("refused"), message: z.string() }).parse(JSON.parse(observed.stdout));
+    throw new Error(refusal.message);
+  }
+  const result = z.strictObject({ state: z.literal("bound"), binding: ProfileDatabaseBindingSchema }).parse(JSON.parse(observed.stdout));
+  requireDatabaseSourcePath(path);
+  const after = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  if (after === undefined || identity(after) !== witness) throw new Error("profile-database-identity-changed");
+  if (result.binding.installationId !== expected.installationId || result.binding.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
+  if (`${identity(after)}:${after.size}:${after.mtimeNs}` === proofWitness) proof?.slots.set(proofKey, proofWitness);
+}

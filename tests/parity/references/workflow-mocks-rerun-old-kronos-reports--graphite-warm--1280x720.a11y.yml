@@ -1,0 +1,48 @@
+# workflow-mocks-rerun-old-kronos-reports--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Old Kronos Reports · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values" [disabled]: Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Choose what to run again" [level=3]
+  - text: 2 / 3 included
+  - paragraph: Select steps for the new run. Statuses show the source outcome.
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - list:
+      - listitem:
+        - checkbox "Find employee"
+        - text: Find employee Old Kronos Skipped
+        - group "Manual values for Find employee":
+          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
+          - text: Found
+          - combobox "Found": "Yes"
+          - text: Matching rows
+          - textbox "Matching rows": None
+      - listitem:
+        - checkbox "Read employee name" [checked]
+        - text: Read employee name Old Kronos Completed
+      - listitem:
+        - checkbox "Download Time Detail report" [checked]
+        - text: Download Time Detail report Old Kronos Completed
+  - contentinfo:
+    - text: Source run · new runOld Kronos Reports
+    - button "Cancel"
+    - button "Continue"

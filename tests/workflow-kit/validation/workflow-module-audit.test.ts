@@ -1,0 +1,192 @@
+
+import assert from "node:assert/strict";
+import { describe,it } from "vitest";
+import { z } from "zod";
+import { defineTaskContract } from "../../../src/models/task/task-contract.js";
+import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
+import { ScenarioIdSchema,taskId } from "../../../src/rules/identity/ids.js";
+import { flow } from "../../../src/workflow-kit/flow.js";
+import {
+defineWorkflowRole
+} from "../../../src/workflow-kit/validation/module-role.js";
+import { auditWorkflowModuleRoles,type WorkflowRoleView } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
+import { defineWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
+import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
+const FixtureInput = z.strictObject({ name: z.string().min(1) });
+const FixtureCanonicalInput = defineCanonicalInput(
+  FixtureInput,
+  z.strictObject({ name: z.string().min(1) }),
+  [{ name: "Battistessa, Johnnie" }],
+);
+const SCENARIO = ScenarioIdSchema.parse("ocr/capability-wiring-happy");
+
+function fixtureContract(id: string, title: string) {
+  return defineTaskContract({
+    id: taskId(`ucpath/${id}`),
+    title,
+    effect: "read",
+    input: z.strictObject({ name: z.string().min(1) }),
+    output: z.strictObject({ value: z.string().min(1) }),
+    errorCodes: ["provider-unavailable"] as const,
+    subject: { kind: "none", reason: "workflow role fixture" },
+    scenarios: [SCENARIO],
+    freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
+    provenance: { default: "live" },
+    example: { value: "v" },
+  });
+}
+
+const READ_ONE = fixtureContract("read-role-one", "Read one");
+const READ_TWO = fixtureContract("read-role-two", "Read two");
+
+function descriptorNamed(
+  id: string,
+  code: string,
+  timeline?: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[],
+) {
+  const fixtureFlow = flow(FixtureInput)
+    .step("kuali-extraction", READ_ONE, {
+      dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }),
+    })
+    .step("identity-check", READ_TWO, {
+      dependsOn: ["kuali-extraction"], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }),
+    })
+    .build({
+      schema: z.strictObject({ done: z.boolean() }),
+      dependsOn: ["identity-check"],
+      derive: () => ({ done: true }),
+    });
+  return defineWorkflowDescriptor({
+    id,
+    version: 1,
+    contractFingerprint: HASH_A,
+    code,
+    label: "Role fixture",
+    icon: "Search",
+    category: "operations",
+    canonicalInput: FixtureCanonicalInput,
+    inputSubject: "name",
+    surface: { shape: "single" },
+    enqueue: "reject-active",
+    actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {},
+    details: [],
+    identity: { matchKey: (input: z.output<typeof FixtureInput>) => `name:${input.name}` },
+    presentation: { title: (input: z.output<typeof FixtureInput>) => input.name },
+    scenarios: ["wiring-projection/happy"],
+    ...(timeline === undefined ? {} : { timeline }),
+    flow: fixtureFlow,
+  });
+}
+
+const HARNESS = descriptorNamed("role-fixture-harness", "rfh");
+
+function views(compositionId: string, step: string, composition: WorkflowRoleView["descriptor"]): WorkflowRoleView[] {
+  return [
+    { descriptor: composition, role: defineWorkflowRole({ kind: "composition" }) },
+    {
+      descriptor: HARNESS,
+      role: defineWorkflowRole({ kind: "chunk-harness", of: compositionId, step }),
+    },
+  ];
+}
+
+describe("auditWorkflowModuleRoles — a harness's step", () => {
+  it("accepts a step its composition DECLARES", () => {
+    const composition = descriptorNamed("role-fixture-declared", "rfd", [
+      { key: "kuali-extraction", label: "Kuali extraction", nodes: ["kuali-extraction"] },
+      { key: "identity-check", label: "Identity check", nodes: ["identity-check"] },
+    ]);
+    assert.deepEqual(
+      auditWorkflowModuleRoles(views("role-fixture-declared", "kuali-extraction", composition)),
+      [],
+    );
+  });
+
+  it("refuses a step its composition does not declare, naming what it does declare", () => {
+    const composition = descriptorNamed("role-fixture-declared", "rfd", [
+      { key: "kuali-extraction", label: "Kuali extraction", nodes: ["kuali-extraction", "identity-check"] },
+    ]);
+    const violations = auditWorkflowModuleRoles(views("role-fixture-declared", "identity-check", composition));
+    assert.equal(violations.length, 1);
+    assert.match(violations[0] ?? "", /role-fixture-harness/);
+    assert.match(violations[0] ?? "", /identity-check/);
+    assert.match(violations[0] ?? "", /it declares: kuali-extraction/);
+  });
+
+  it("refuses ANY step of a composition that declared no timeline", () => {
+    const composition = descriptorNamed("role-fixture-none", "rfn");
+    for (const step of ["kuali-extraction", "identity-check"]) {
+      const violations = auditWorkflowModuleRoles(views("role-fixture-none", step, composition));
+      assert.equal(violations.length, 1, `step ${step} must be refused`);
+      assert.match(violations[0] ?? "", /role-fixture-harness/);
+      assert.match(violations[0] ?? "", /role-fixture-none/);
+      assert.match(
+        violations[0] ?? "",
+        /declares no timeline steps; a harness cannot be a step of it/,
+      );
+    }
+  });
+});
+
+describe("auditWorkflowModuleRoles — two harnesses cannot share one step", () => {
+  const composition = descriptorNamed("role-fixture-declared", "rfd", [
+    { key: "kuali-extraction", label: "Kuali extraction", nodes: ["kuali-extraction"] },
+    { key: "identity-check", label: "Identity check", nodes: ["identity-check"] },
+  ]);
+  const SECOND_HARNESS = descriptorNamed("role-fixture-harness-two", "rft");
+
+  it("refuses a duplicate (of, step), naming both harnesses", () => {
+    const violations = auditWorkflowModuleRoles([
+      { descriptor: composition, role: defineWorkflowRole({ kind: "composition" }) },
+      {
+        descriptor: HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "identity-check" }),
+      },
+      {
+        descriptor: SECOND_HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "identity-check" }),
+      },
+    ]);
+    assert.equal(violations.length, 1, violations.join("; "));
+    assert.match(violations[0] ?? "", /role-fixture-harness and role-fixture-harness-two/);
+    assert.match(violations[0] ?? "", /role-fixture-declared step identity-check/);
+    assert.match(violations[0] ?? "", /src\/workflows\/role-fixture-declared\/steps\/identity-check/);
+  });
+
+  it("accepts two harnesses of the same composition on DIFFERENT steps", () => {
+    assert.deepEqual(
+      auditWorkflowModuleRoles([
+        { descriptor: composition, role: defineWorkflowRole({ kind: "composition" }) },
+        {
+          descriptor: HARNESS,
+          role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "identity-check" }),
+        },
+        {
+          descriptor: SECOND_HARNESS,
+          role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "kuali-extraction" }),
+        },
+      ]),
+      [],
+    );
+  });
+
+  it("reports the collision even when the shared step is not declared", () => {
+    const noTimeline = descriptorNamed("role-fixture-none", "rfn");
+    const violations = auditWorkflowModuleRoles([
+      { descriptor: noTimeline, role: defineWorkflowRole({ kind: "composition" }) },
+      {
+        descriptor: HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-none", step: "identity-check" }),
+      },
+      {
+        descriptor: SECOND_HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-none", step: "identity-check" }),
+      },
+    ]);
+    assert.equal(violations.length, 3, violations.join("; "));
+    assert.match(violations.join("\n"), /role-fixture-harness and role-fixture-harness-two/);
+  });
+});

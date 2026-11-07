@@ -1,0 +1,28 @@
+# hub-shell-ready--light--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: light  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#onboarding-main"
+- text: Relay
+- main:
+  - list "Profile setup progress":
+    - listitem:
+      - button "Your details"
+    - listitem:
+      - button "Duo setup"
+    - listitem:
+      - button "Ready"
+  - heading "You’re all set" [level=1]
+  - paragraph: Your profile and sign-in methods are ready.
+  - list:
+    - listitem: Your details saved
+    - listitem: Security key confirmed
+    - listitem: Touch ID confirmed
+  - button "Go to dashboard"
+- paragraph: UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.
+- region "Notifications"

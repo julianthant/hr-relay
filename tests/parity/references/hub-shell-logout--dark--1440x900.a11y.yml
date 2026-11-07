@@ -1,0 +1,16 @@
+# hub-shell-logout--dark--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: dark  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Log out?":
+  - banner:
+    - heading "Log out?" [level=2]
+    - paragraph: End your current Relay session?
+  - contentinfo:
+    - button "Cancel"
+    - button "Log out"

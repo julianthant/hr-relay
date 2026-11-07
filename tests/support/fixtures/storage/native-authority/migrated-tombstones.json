@@ -1,0 +1,79 @@
+{
+  "generatorBase": "7f77978716319c4329392a19e7a971f18af37362",
+  "proof": "F02-tombstone-retained",
+  "proofLogSha256": "f41fdfc876df914039ac519a4dc3580364649561d51de13315bdf3d42e79a247",
+  "cases": [
+    {
+      "sourceKind": "root",
+      "sourceSchema": 29,
+      "targetSchema": 49,
+      "tombstone": {
+        "runId": "22222222-2222-4222-8222-222222222222",
+        "workflow": "person-lookup",
+        "traceId": "pl-170000-2222",
+        "itemId": "33333333-3333-4333-8333-333333333333",
+        "attempt": 7,
+        "runNumber": null,
+        "ordinalSource": "span-root-backfill",
+        "origin": "queue",
+        "commandId": "11e8e85e-5047-4625-8691-1788dd9c52af",
+        "deletedAt": "2026-09-06T12:00:00.000Z",
+        "tallyVersion": 1,
+        "removed": [
+          {
+            "table": "tasks",
+            "rows": 1
+          }
+        ]
+      }
+    },
+    {
+      "sourceKind": "reconstructed",
+      "sourceSchema": 29,
+      "targetSchema": 49,
+      "tombstone": {
+        "runId": "22222222-2222-4222-8222-222222222222",
+        "workflow": "person-lookup",
+        "traceId": "pl-170000-2222",
+        "itemId": "33333333-3333-4333-8333-333333333333",
+        "attempt": 7,
+        "runNumber": null,
+        "ordinalSource": "span-root-backfill",
+        "origin": "queue",
+        "commandId": "f2d7ccb3-12e9-41fc-8139-b8d46e9b3795",
+        "deletedAt": "2026-09-06T12:00:00.000Z",
+        "tallyVersion": 1,
+        "removed": [
+          {
+            "table": "tasks",
+            "rows": 1
+          }
+        ]
+      }
+    },
+    {
+      "sourceKind": "missing",
+      "sourceSchema": 29,
+      "targetSchema": 49,
+      "tombstone": {
+        "runId": "22222222-2222-4222-8222-222222222222",
+        "workflow": "person-lookup",
+        "traceId": "pl-170000-2222",
+        "itemId": null,
+        "attempt": null,
+        "runNumber": null,
+        "ordinalSource": "unknown",
+        "origin": "queue",
+        "commandId": "30165cb4-18e3-4020-91fa-687530a153b7",
+        "deletedAt": "2026-09-06T12:00:00.000Z",
+        "tallyVersion": 1,
+        "removed": [
+          {
+            "table": "tasks",
+            "rows": 1
+          }
+        ]
+      }
+    }
+  ]
+}

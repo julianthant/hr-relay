@@ -1,0 +1,167 @@
+# baseline-settings-spreadsheet-mock-preview--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Import spreadsheet":
+  - banner:
+    - heading "Import spreadsheet" [level=2]
+    - paragraph: Match columns to named fields once.
+    - button "Close"
+  - complementary:
+    - paragraph: SHEETS
+    - navigation "Spreadsheet sheets":
+      - button "July 6 3"
+      - button "August 2 3"
+      - button "Sept 11 3"
+      - button "Sept 28 3"
+      - button "Oct 5 3"
+      - button "Oct. 12 3"
+      - button "Oct. 19 3" [pressed]
+    - paragraph: Mappings are saved for each sheet.
+  - heading "26–27 Student applicants.xlsx" [level=3]
+  - paragraph: 7 sheets
+  - text: Change file
+  - button "Choose spreadsheet file"
+  - text: Spreadsheet type
+  - button "Roster Spreadsheet type": Roster
+  - group "Import view":
+    - button "Column mapping"
+    - button "Preview" [pressed]
+  - table "Oct. 19 roster preview":
+    - rowgroup:
+      - row "Row Email Legal name Preferred name Phone TSN PID Supervisor email Supervisor name Work location Position number Initiator Start date Offer accepted Campus forms pending Background terms accepted Background entered Background cleared Entered in UCPath Transaction number Employee ID Ready for payroll approval AD submitted AD username Ready for signing Oath added to UCPath Hired I-9 JOL and employee data form Notes":
+        - columnheader "Row"
+        - columnheader "Email"
+        - columnheader "Legal name"
+        - columnheader "Preferred name"
+        - columnheader "Phone"
+        - columnheader "TSN"
+        - columnheader "PID"
+        - columnheader "Supervisor email"
+        - columnheader "Supervisor name"
+        - columnheader "Work location"
+        - columnheader "Position number"
+        - columnheader "Initiator"
+        - columnheader "Start date"
+        - columnheader "Offer accepted"
+        - columnheader "Campus forms pending"
+        - columnheader "Background terms accepted"
+        - columnheader "Background entered"
+        - columnheader "Background cleared"
+        - columnheader "Entered in UCPath"
+        - columnheader "Transaction number"
+        - columnheader "Employee ID"
+        - columnheader "Ready for payroll approval"
+        - columnheader "AD submitted"
+        - columnheader "AD username"
+        - columnheader "Ready for signing"
+        - columnheader "Oath added to UCPath"
+        - columnheader "Hired"
+        - columnheader "I-9"
+        - columnheader "JOL and employee data form"
+        - columnheader "Notes"
+    - rowgroup:
+      - row "5 jordan.lee@example.com Jordan Lee Jordan (202) 555-0101 DEMO-TSN-001 DEMO-PID-001 manager@example.com Casey Reed Sample dining hall DEMO-POS-001 — 10/19/2026 Yes No Yes 09/28/2026 Yes Yes DEMO-TXN-001 DEMO-1042 Yes — — — — — — — —":
+        - cell "5"
+        - cell "jordan.lee@example.com"
+        - cell "Jordan Lee"
+        - cell "Jordan"
+        - cell "(202) 555-0101"
+        - cell "DEMO-TSN-001"
+        - cell "DEMO-PID-001"
+        - cell "manager@example.com"
+        - cell "Casey Reed"
+        - cell "Sample dining hall"
+        - cell "DEMO-POS-001"
+        - cell "—"
+        - cell "10/19/2026"
+        - cell "Yes"
+        - cell "No"
+        - cell "Yes"
+        - cell "09/28/2026"
+        - cell "Yes"
+        - cell "Yes"
+        - cell "DEMO-TXN-001"
+        - cell "DEMO-1042"
+        - cell "Yes"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+      - row "6 alex.morgan@example.com Alex Morgan Alex (202) 555-0102 DEMO-TSN-002 DEMO-PID-002 manager@example.com Casey Reed Sample market DEMO-POS-002 — 10/19/2026 Yes No Yes 09/28/2026 Yes Yes DEMO-TXN-002 DEMO-1043 Yes — — — — — — — —":
+        - cell "6"
+        - cell "alex.morgan@example.com"
+        - cell "Alex Morgan"
+        - cell "Alex"
+        - cell "(202) 555-0102"
+        - cell "DEMO-TSN-002"
+        - cell "DEMO-PID-002"
+        - cell "manager@example.com"
+        - cell "Casey Reed"
+        - cell "Sample market"
+        - cell "DEMO-POS-002"
+        - cell "—"
+        - cell "10/19/2026"
+        - cell "Yes"
+        - cell "No"
+        - cell "Yes"
+        - cell "09/28/2026"
+        - cell "Yes"
+        - cell "Yes"
+        - cell "DEMO-TXN-002"
+        - cell "DEMO-1043"
+        - cell "Yes"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+      - row "7 taylor.chen@example.com Taylor Chen Taylor (202) 555-0103 DEMO-TSN-003 DEMO-PID-003 manager@example.com Casey Reed Sample café DEMO-POS-003 — 10/19/2026 Yes Yes Yes 09/28/2026 Pending — — — — — — — — — — — —":
+        - cell "7"
+        - cell "taylor.chen@example.com"
+        - cell "Taylor Chen"
+        - cell "Taylor"
+        - cell "(202) 555-0103"
+        - cell "DEMO-TSN-003"
+        - cell "DEMO-PID-003"
+        - cell "manager@example.com"
+        - cell "Casey Reed"
+        - cell "Sample café"
+        - cell "DEMO-POS-003"
+        - cell "—"
+        - cell "10/19/2026"
+        - cell "Yes"
+        - cell "Yes"
+        - cell "Yes"
+        - cell "09/28/2026"
+        - cell "Pending"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+        - cell "—"
+  - text: Oct. 19 · 3 records Headers at row 4
+  - contentinfo:
+    - strong: Roster
+    - text: · 7 sheets
+    - button "Cancel"
+    - button "Import roster"

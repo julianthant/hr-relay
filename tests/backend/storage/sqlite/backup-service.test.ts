@@ -1,0 +1,339 @@
+import { createHash,randomUUID } from "node:crypto";
+import { copyFileSync,existsSync,mkdirSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach,beforeEach,describe,expect,it } from "vitest";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { acquireRecoveryRuntimeRestore } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { OldBuildRuntimeArtifactsError } from "../../../../src/backend/storage/admission/process-root.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+
+import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { AuthorityBackupService,verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { OfflineAuthorityRestoreService,resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { ProtectedSettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
+import { CONFIG_SNAPSHOT,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { scaledMs } from "../../../support/time-scale.js";
+const expectedTables = AUTHORITY_TABLE_REGISTRY.map(({name,classification})=>({name,classification}))
+  .sort((left,right)=>left.name.localeCompare(right.name));
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of [...cleanups]) { await cleanup(); cleanups.splice(cleanups.indexOf(cleanup), 1); } });
+async function fixture() {
+  const bound = await createBoundProfileFixture();
+  const { workspace, path } = bound, root = bound.stateRoot;
+  let admission = bound.admission;
+  let credentials = boundProfileCredentials(admission);
+  const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-backup" }, undefined, undefined, undefined, undefined, credentials);
+  cleanups.push(async () => { database.close(); admission.release(); await bound.close(); });
+  const directory = join(root, "backups", "authority"), clock = capturedInstantClock(NOW);
+  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, clock, admission);
+  const configSnapshot = { ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint,
+    provenance: resolved.provenance, capturedAt: clock.now().toISOString() };
+  const service = new AuthorityBackupService(admission, database, { directory }, clock);
+  return { workspace, lifetime: bound.lifetime, root, path, get admission() { return admission; }, get credentials() { return credentials; }, machine: bound.machine,
+    renewAfterRestore() {
+      admission.release();
+      admission = bound.renewAfterRestore().admission;
+      credentials = createCredentialStore({ admission, stateRoot: root,
+        });
+    }, database, directory, clock, service, configSnapshot };
+}
+describe("native authority backup", () => {
+  it("restores the genuine protected command and audit while retaining independent credential bytes and exact replay", async () => {
+    const f = await fixture(), store = f.credentials;
+    f.database.authority.runtimeConfig.initialize(f.configSnapshot);
+    const command = ProtectedSettingsCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW,
+      requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "settings-surface", family: "settings", type: "apply-protected-settings",
+      target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-native-restore-private-value" } } } });
+    const execute = (database: AuthorityDatabase) => executeSettingsCommand({ authority: database, clock: f.clock,
+      ids: { uuid: randomUUID }, settings: createSettingsApplicationExecutor(() => { throw new Error("protected command reached ordinary settings"); }, f.credentials) }, command);
+    const accepted = execute(f.database); expect(accepted.state).toBe("applied");
+    const audit = f.database.authority.commandAudits.findSettingsHistory(command.commandId);
+    expect(audit?.result).toEqual(accepted);
+    const credentialPath = join(f.root, "credentials", "protected.json"), bytes = readFileSync(credentialPath), before = statSync(credentialPath);
+    const report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
+    f.database.close(); const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const operation = f.admission.acquireOfflineMaintenance();
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
+      busyTimeoutMs: 250, processLockRoot}, async () => undefined, f.clock, undefined, f.credentials);
+    await expect(restore.restore({ manifestPath }, operation)).resolves.toMatchObject({ state: "restored" });
+    expect(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-restore-owner" })).toThrow();
+    f.renewAfterRestore();
+    const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "native-protected-restore" }, undefined, undefined, undefined, undefined, f.credentials);
+    try {
+      expect(reopened.authority.commandAudits.findSettingsHistory(command.commandId)).toEqual(audit);
+      expect(execute(reopened)).toEqual({ ...accepted, state: "already-applied" });
+      expect(reopened.authority.commandAudits.findSettingsHistory(command.commandId)).toEqual(audit);
+      expect(f.credentials.read().revision).toBe(command.target.expectedRevision + 1);
+      expect(readFileSync(credentialPath)).toEqual(bytes);
+      const after = statSync(credentialPath);
+      expect({ ino: after.ino, mtimeMs: after.mtimeMs, ctimeMs: after.ctimeMs, mode: after.mode, uid: after.uid }).toEqual({
+        ino: before.ino, mtimeMs: before.mtimeMs, ctimeMs: before.ctimeMs, mode: before.mode, uid: before.uid });
+    } finally { reopened.close(); }
+  });
+  it("restores authenticated native populated authority and preserves the suspect original and independent credential custody", async () => {
+    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
+    f.database.close();
+    const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(f.root, "files", "offline-custody.bin");
+    mkdirSync(join(f.root, "files"), { recursive: true, mode: 0o700 });
+    expect(statSync(credentials).isDirectory()).toBe(true); writeFileSync(credentialPath, "synthetic-independent-credential", { mode: 0o600 });
+    const credentialBytes = readFileSync(credentialPath), credentialStat = statSync(credentialPath), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const operation = f.admission.acquireOfflineMaintenance();
+    let rebuilds = 0;
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path,
+      suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot},
+      async staged => { rebuilds += 1; const stagedAdmission = f.admission.stoppedStagedAuthority(staged);
+        try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toEqual(expectedTables); } finally { stagedAdmission.release(); } }, f.clock, undefined, f.credentials);
+    const restored = await restore.restore({ manifestPath }, operation);
+    expect(restored.state).toBe("restored"); expect(rebuilds).toBe(1);
+    expect(readFileSync(join(f.root, "backups", "suspects", restored.suspectFileName))).toEqual(original);
+    expect(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-restore-owner" })).toThrow();
+    f.renewAfterRestore();
+    const admitted = inspectAuthorityBackupReadOnly(f.admission, f.path);
+    expect(admitted.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
+    expect(admitted.authorityGeneration).toBe(manifest.authorityGeneration);
+    expect(readFileSync(credentialPath)).toEqual(credentialBytes);
+    expect(statSync(credentialPath).ino).toBe(credentialStat.ino); expect(statSync(credentialPath).mtimeMs).toBe(credentialStat.mtimeMs);
+  });
+  it.each(["before-swap", "after-swap"] as const)("preserves authenticated suspect evidence and reports the actual authority outcome on %s failure", async phase => {
+    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
+    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), suspects = join(f.root, "backups", "suspects");
+    const operation = f.admission.acquireOfflineMaintenance();
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path, suspectDirectory: suspects,
+      busyTimeoutMs: 250, processLockRoot}, async () => undefined, f.clock,
+      { copyFile: copyFileSync, atomicReplace: (source, destination) => {
+        if (phase === "after-swap") renameSync(source, destination);
+        throw new Error("synthetic-swap-fault");
+      } }, f.credentials);
+    await expect(restore.restore({ manifestPath }, operation)).rejects.toMatchObject({
+      authorityState: phase === "after-swap" ? "replaced" : "unchanged",
+    });
+    const preserved = readdirSync(suspects).filter(name => name.endsWith(".sqlite")); expect(preserved).toHaveLength(1);
+    expect(readFileSync(join(suspects, preserved[0]))).toEqual(original);
+    const copy = f.machine.verifiedReadOnlyCopy(f.path, createHash("sha256").update(readFileSync(f.path)).digest("hex"));
+    try { expect(inspectAuthorityBackupReadOnly(copy, f.path).authorityContentFingerprint).toBe(manifest.authorityContentFingerprint); } finally { copy.release(); }
+    if (phase === "before-swap") expect(readFileSync(f.path)).toEqual(original);
+    const reacquired = f.machine.acquireOfflineMaintenance();
+    reacquired.release();
+  });
+  it.each([false,true])("keeps exact SQLite companion custody on rollback and retains an unfinished operation on rollback fault: %s", async rollbackFault => {
+    const f = await fixture(); f.database.authority.runtimeConfig.initialize(f.configSnapshot);
+    const report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
+    const companions = ["-wal","-shm"].map(suffix => ({ suffix, bytes: readFileSync(`${f.path}${suffix}`) }));
+    f.database.close();
+    for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
+    const before = companions.map(row => ({...row, inode:statSync(`${f.path}${row.suffix}`).ino}));
+    const original = readFileSync(f.path), processLockRoot = join(f.workspace,rebuildRuntimeIsolation.processLockRoot), journalPath = join(f.workspace,".tracker","control","journal.json");
+    const operation = f.admission.acquireOfflineMaintenance();
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
+      busyTimeoutMs:250,processLockRoot},async()=>undefined,f.clock,{
+      copyFile:copyFileSync,atomicReplace(){throw new Error("before-authority-replacement");},renamePath(source,destination){
+        if(rollbackFault && source.endsWith(".live-companion"))throw new Error("companion-rollback-fault");
+        renameSync(source,destination);
+      }}, f.credentials);
+    await expect(restore.restore({ manifestPath }, operation)).rejects.toMatchObject({authorityState:rollbackFault ? "companion-state-uncertain" : "unchanged"});
+    expect(readFileSync(f.path)).toEqual(original);
+    if(rollbackFault){
+      const journal = JSON.parse(readFileSync(journalPath,"utf8")) as {restore:{stagedPath:string}};
+      expect(existsSync(journal.restore.stagedPath)).toBe(true);
+      for(const row of before){expect(readFileSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`)).toEqual(row.bytes);
+        expect(statSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`).ino).toBe(row.inode);}
+      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime)).toThrow(/unfinished restoring/u);
+    }else{
+      const journal = JSON.parse(readFileSync(journalPath,"utf8")) as {restore:{stagedPath:string}};
+      expect(existsSync(journal.restore.stagedPath)).toBe(true);
+      for(const row of before){expect(readFileSync(`${f.path}${row.suffix}`)).toEqual(row.bytes);expect(statSync(`${f.path}${row.suffix}`).ino).toBe(row.inode);}
+    }
+  });
+  it("retains a durable restore barrier after ambiguous replacement and staged disappearance, then settles only the exact verified replacement", async () => {
+    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
+    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const operation = f.admission.acquireOfflineMaintenance();
+    const service = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
+      busyTimeoutMs: 250, processLockRoot}, async () => undefined, f.clock,
+      { copyFile: copyFileSync, atomicReplace(source, destination) {
+        renameSync(source, destination); copyFileSync(destination, source); throw new Error("both-paths-after-replacement");
+      } }, f.credentials);
+    await expect(service.restore({ manifestPath }, operation)).rejects.toMatchObject({ authorityState: "authority-state-uncertain" });
+    const journalPath = join(f.workspace, ".tracker", "control", "journal.json"), journalBytes = readFileSync(journalPath);
+    const journal = JSON.parse(journalBytes.toString()) as { phase: string; restore: { operationId: string; stagedPath: string; suspectPath: string } };
+    expect(journal.phase).toBe("restoring"); expect(existsSync(journal.restore.stagedPath)).toBe(true);
+    expect(readFileSync(journal.restore.suspectPath)).toEqual(original); expect(readFileSync(manifestPath)).not.toHaveLength(0);
+    f.admission.release(); f.machine.release();
+    expect(() => acquireEntrypointAdmission(f.workspace, "shared", f.lifetime)).toThrow(/unfinished restoring/u);
+    rmSync(journal.restore.stagedPath);
+    expect(() => acquireEntrypointAdmission(f.workspace, "shared", f.lifetime)).toThrow(/unfinished restoring/u);
+    const restore = f.lifetime.beginOfflineMaintenance(f.workspace);
+    let recovered: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
+    try {
+      const replacementBytes = readFileSync(f.path);
+      expect(() => acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, "ffffffff-ffff-4fff-8fff-ffffffffffff", restore)).toThrow(/^runtime-control: profile-restore-context-unavailable$/u);
+      expect(readFileSync(journalPath)).toEqual(journalBytes);
+      expect(readFileSync(f.path)).toEqual(replacementBytes);
+      recovered = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, journal.restore.operationId, restore);
+      const currentRecovery = recovered;
+      let wrongBindingVerifications = 0;
+      expect(() => currentRecovery.admission.settleAuthorityRestore({ ...currentRecovery.input, authorityGeneration: currentRecovery.input.authorityGeneration + 1 },
+        () => { wrongBindingVerifications += 1; throw new Error("wrong binding reached verifier"); }, restore)).toThrow("profile-restore-custody-mismatch");
+      expect(wrongBindingVerifications).toBe(0);
+      expect(() => currentRecovery.admission.settleAuthorityRestore(currentRecovery.input, () => ({
+        authorityGeneration: currentRecovery.input.authorityGeneration + 1, authorityContentFingerprint: currentRecovery.input.authorityContentFingerprint,
+      }), restore)).toThrow(/authority proof mismatch/u);
+      expect(readFileSync(journalPath)).toEqual(journalBytes);
+      restore.release(); currentRecovery.admission.release();
+      const nextOperation = f.lifetime.beginOfflineMaintenance(f.workspace);
+      recovered = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, journal.restore.operationId, nextOperation);
+      const settled = await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovered.admission, operationId: journal.restore.operationId,
+        processLockRoot, restoreAdmission: nextOperation });
+      expect(() => nextOperation.consume()).toThrow(/offline-maintenance-already-consumed/u);
+      nextOperation.release();
+      expect(settled).toEqual({ state: "settled", operationId: journal.restore.operationId, outcome: "replaced" });
+      expect(existsSync(journalPath)).toBe(false);
+    } finally { restore.release(); recovered?.admission.release(); }
+    const reopened = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
+    try { const copy = reopened.verifiedReadOnlyCopy(f.path, createHash("sha256").update(readFileSync(f.path)).digest("hex"));
+      try { expect(inspectAuthorityBackupReadOnly(copy, f.path).authorityContentFingerprint).toBe(manifest.authorityContentFingerprint); } finally { copy.release(); } }
+    finally { reopened.release(); }
+  });
+  it("publishes authenticated populated current bytes with the exact generation and table registry", async () => {
+    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    expect(report.manifests).toHaveLength(1);
+    const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
+    const verified = await verifyBackupManifestAtPath(f.admission, manifestPath);
+    expect(verified.manifest).toEqual(manifest);
+    expect(manifest.verification.authorityGeneration).toBe(f.database.getMeta().authorityGeneration);
+    const copy = f.admission.verifiedReadOnlyCopy(verified.backupPath, manifest.sha256);
+    try { const inspection = inspectAuthorityBackupReadOnly(copy, verified.backupPath);
+      expect(inspection.tables).toEqual(expectedTables); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
+      expect(inspection.exactTableRegistry).toBe(true); expect(inspection.invariantViolations).toEqual([]);
+    } finally { copy.release(); }
+  });
+  it("refuses changed backup bytes and altered authenticated manifest identity", async () => {
+    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: 0 });
+    const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, authorityGeneration: manifest.authorityGeneration + 1 }));
+    await expect(verifyBackupManifestAtPath(f.admission, manifestPath)).rejects.toThrow();
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const backupPath = join(f.directory, manifest.backupFileName), bytes = readFileSync(backupPath);
+    bytes[bytes.length - 1] ^= 1; writeFileSync(backupPath, bytes);
+    await expect(verifyBackupManifestAtPath(f.admission, manifestPath)).rejects.toThrow(/checksum/u);
+  });
+  it("refuses historical manifests, non-current database versions and an extra physical authority object", async () => {
+    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: 0 });
+    const manifest = report.manifests[0];
+    expect(AuthorityBackupManifestSchema.safeParse({ ...manifest, manifestVersion: 1 }).success).toBe(false);
+    expect(AuthorityBackupManifestSchema.safeParse({ ...manifest, schemaVersion: 56 }).success).toBe(false);
+    f.database.close();
+    const raw = new DatabaseSync(f.path);
+    try { raw.exec("PRAGMA user_version=56"); } finally { raw.close(); }
+    expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema/u);
+    const historical = new DatabaseSync(f.path);
+    try { historical.exec("PRAGMA user_version=6"); } finally { historical.close(); }
+    expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema/u);
+    const current = new DatabaseSync(f.path);
+    try { current.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; CREATE TABLE extra_authority(id TEXT)`); } finally { current.close(); }
+    expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema-shape/u);
+  });
+  it("backs up a stopped current source without conversion or settings side files", async () => {
+    const f = await fixture(), expected = f.database.getMeta(); f.database.close();
+    const source = openAuthorityBackupSourceReadOnly(f.admission, f.path);
+    try { expect(source.getMeta()).toEqual({ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt, installationId: expected.installationId, profileId: expected.profileId });
+      const report = await new AuthorityBackupService(f.admission, source, { directory: f.directory }, f.clock).request({ trigger: "operator", requiredGeneration: expected.authorityGeneration });
+      expect(report.finalGeneration).toBe(expected.authorityGeneration);
+    } finally { source.close(); }
+  });
+  it("refuses every old-build process record before stopped maintenance", async () => {
+    const f = await fixture(), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot); f.database.close();
+    for (const role of ["live-smoke", "workers", "geocode"] as const) {
+      plantOldBuildArtifact(processLockRoot, role);
+      const operation = f.admission.acquireOfflineMaintenance(), before = readFileSync(f.path);
+      try {
+        await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, operation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+        await expect(upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.root, processLockRoot, plan: false }, f.clock, operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+        expect(readFileSync(f.path)).toEqual(before);
+      } finally { operation.release(); }
+    }
+    const oldOperation = f.admission.acquireOfflineMaintenance();
+    try {
+      await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, oldOperation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, oldOperation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+    } finally { oldOperation.release(); }
+    const clean = await fixture(); clean.database.close();
+    const cleanRoot = join(clean.workspace, rebuildRuntimeIsolation.processLockRoot), upgrade = clean.admission.acquireOfflineMaintenance();
+    try {
+      await expect(upgradeStorage(profileBrowserClosure, clean.admission, { stateRoot: clean.root, processLockRoot: cleanRoot, plan: false }, clean.clock, upgrade)).resolves.toMatchObject({ state: "already-upgraded" });
+    } finally { upgrade.release(); }
+    const backup = clean.admission.acquireOfflineMaintenance();
+    try {
+      await expect(prepareStoppedBackupClosure(profileBrowserClosure, clean.admission, backup, clean.clock, cleanRoot).then(closure => backupStoppedAuthority(closure, clean.admission, clean.root, clean.clock, cleanRoot, backup))).resolves.toMatchObject({ state: "verified" });
+      expect(() => clean.admission.beginOfflineMaintenance()).toThrow(/offline-maintenance-busy/u);
+    } finally { backup.release(); }
+  });
+
+});
+
+describe("native authority backup", () => {
+  const faults = ["missing","changed-bytes","companion-missing","companion-bytes"] as const;
+  const prepared = new Map<typeof faults[number], Awaited<ReturnType<typeof fixture>>>();
+  beforeEach(() => { prepared.clear(); });
+  for (const fault of faults) {
+    beforeEach(async () => { prepared.set(fault, await fixture()); });
+  }
+  it.each(["replaced","unchanged"] as const)("keeps %s settlement and stopped recovery fenced when exact preserved suspect custody changes", async outcome => {
+    expect([...prepared.keys()]).toEqual(faults);
+    for(const fault of faults){
+      const f = prepared.get(fault);
+      if (f === undefined) throw new Error("backup-suspect-fixture-owner-missing");
+      f.database.authority.runtimeConfig.initialize(f.configSnapshot);
+      const report=await f.service.request({trigger:"operator",requiredGeneration:f.database.getMeta().authorityGeneration});
+      const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
+      const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
+      for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
+      const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot),suspects=join(f.root,"backups","suspects"),journalPath=join(f.workspace,".tracker","control","journal.json");
+      const fresh=()=>f.admission.acquireOfflineMaintenance();
+      const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:suspects,
+        busyTimeoutMs:250,processLockRoot},async()=>undefined,f.clock,{
+        copyFile:copyFileSync,atomicReplace(source,destination){
+          if(outcome === "replaced")renameSync(source,destination);
+          const suspect=join(suspects,readdirSync(suspects).find(name=>name.endsWith(".sqlite"))!);
+          const target=fault.startsWith("companion")?`${suspect}-wal`:suspect;
+          if(fault.endsWith("missing"))rmSync(target);
+          else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
+          if(outcome === "unchanged")throw new Error("fault-before-authority-replacement");
+        }}, f.credentials);
+      await expect(restore.restore({ manifestPath }, fresh()),fault).rejects.toMatchObject({authorityState:outcome});
+      const journalBytes=readFileSync(journalPath),journal=JSON.parse(journalBytes.toString()) as {restore:{operationId:string}};
+      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
+      const held=f.lifetime.beginOfflineMaintenance(f.workspace);
+      const recovery=acquireRecoveryRuntimeRestore(f.workspace, f.lifetime,journal.restore.operationId,held);
+      try{
+        await expect(resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure,admission:recovery.admission,operationId:journal.restore.operationId,
+          processLockRoot,restoreAdmission:held}),fault).rejects.toThrow();
+        expect(readFileSync(journalPath),fault).toEqual(journalBytes);
+      }finally{held.release();recovery.admission.release();}
+      expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
+    }
+  }, scaledMs(30_000));
+});

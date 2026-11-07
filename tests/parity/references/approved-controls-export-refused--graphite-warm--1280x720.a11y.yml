@@ -1,0 +1,117 @@
+# approved-controls-export-refused--graphite-warm--1280x720
+# adapter: component-fixture
+# fixture: approved-controls-export-refused
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - region "Analytics report":
+    - heading "Analytics" [level=1]
+    - paragraph: Run outcomes, volume and performance.
+    - combobox "Report period": Custom range
+    - group "Report date range":
+      - text: Start*
+      - group "Start*":
+        - spinbutton "month, Start*": "09"
+        - spinbutton "day, Start*": "20"
+        - spinbutton "year, Start*": "2026"
+        - button "Choose start date range Start*"
+      - text: End*
+      - group "End*":
+        - spinbutton "month, End*": "09"
+        - spinbutton "day, End*": "26"
+        - spinbutton "year, End*": "2026"
+        - button "Choose end date range End*"
+    - button "Export CSV"
+    - alert: CSV export unavailable. Try again from this report.
+    - term: Completed
+    - definition: "38"
+    - paragraph: of 44 runs in this period
+    - term: Outstanding
+    - definition: "4"
+    - paragraph: 3 running · 1 waiting
+    - term: Failed
+    - definition: "2"
+    - paragraph: 2 of 40 terminal runs · 5%
+    - term: Median duration
+    - definition: 2m 14s
+    - paragraph: 34 measured · 4 unmeasured
+    - region "Workflow outcomes":
+      - heading "Workflow outcomes" [level=2]
+      - table "Workflow outcomes":
+        - rowgroup:
+          - row "Workflow Completed Outstanding Failed Total runs":
+            - columnheader "Workflow"
+            - columnheader "Completed"
+            - columnheader "Outstanding"
+            - columnheader "Failed"
+            - columnheader "Total runs"
+        - rowgroup:
+          - row "Separations 24 3 2 29":
+            - rowheader "Separations"
+            - cell "24"
+            - cell "3"
+            - cell "2"
+            - cell "29"
+          - row "Person lookup 14 1 0 15":
+            - rowheader "Person lookup"
+            - cell "14"
+            - cell "1"
+            - cell "0"
+            - cell "15"
+    - region "Average workflow time":
+      - heading "Average workflow time" [level=2]
+      - paragraph: Elapsed time per completed run in this period.
+      - figure "Average workflow time":
+        - list:
+          - listitem: Separations 24 of 24 completed runs timed 2m 18s
+          - listitem: Person lookup 10 of 14 completed runs timed 2m 14s
+    - region "Daily volume":
+      - heading "Daily volume" [level=2]
+      - group "44 runs across 7 day intervals; [2026-09-20T00:00:00.000-07:00, 2026-09-27T00:00:00.000-07:00) in America/Los_Angeles.":
+        - text: 12 9 6 3 0
+        - 'button "Interval [2026-09-20T00:00:00.000-07:00, 2026-09-21T00:00:00.000-07:00) in America/Los_Angeles: 0 runs"'
+        - 'button "Interval [2026-09-21T00:00:00.000-07:00, 2026-09-22T00:00:00.000-07:00) in America/Los_Angeles: 5 runs"'
+        - 'button "Interval [2026-09-22T00:00:00.000-07:00, 2026-09-23T00:00:00.000-07:00) in America/Los_Angeles: 8 runs"'
+        - 'button "Interval [2026-09-23T00:00:00.000-07:00, 2026-09-24T00:00:00.000-07:00) in America/Los_Angeles: 7 runs"'
+        - 'button "Interval [2026-09-24T00:00:00.000-07:00, 2026-09-25T00:00:00.000-07:00) in America/Los_Angeles: 6 runs"'
+        - 'button "Interval [2026-09-25T00:00:00.000-07:00, 2026-09-26T00:00:00.000-07:00) in America/Los_Angeles: 9 runs"'
+        - 'button "Interval [2026-09-26T00:00:00.000-07:00, 2026-09-27T00:00:00.000-07:00) in America/Los_Angeles: 9 runs"'
+    - region "Confirmed transactions":
+      - heading "Confirmed transactions" [level=2]
+      - table "Confirmed transactions":
+        - rowgroup:
+          - row "UCPath terminations Test receipts confirmed in this period 18":
+            - rowheader "UCPath terminations Test receipts confirmed in this period"
+            - cell "18"
+          - row "Kuali finalizations Test receipts confirmed in this period 17":
+            - rowheader "Kuali finalizations Test receipts confirmed in this period"
+            - cell "17"
+    - region "Evidence coverage":
+      - heading "Evidence coverage" [level=2]
+      - table "Evidence coverage":
+        - rowgroup:
+          - row "Readback verified 35 of 38 completed":
+            - rowheader "Readback verified"
+            - cell "35 of 38 completed"
+          - row "Unread 3 completed runs":
+            - rowheader "Unread"
+            - cell "3 completed runs"
+    - region "Run performance":
+      - heading "Run performance" [level=2]
+      - table "Run performance":
+        - rowgroup:
+          - row "Completion rate 38 of 40 finished runs 95%":
+            - rowheader "Completion rate 38 of 40 finished runs"
+            - cell "95%"
+          - row "Longest run Among 34 measured runs 4m 41s":
+            - rowheader "Longest run Among 34 measured runs"
+            - cell "4m 41s"
+          - row "Total measured runtime 34 measured · 4 unmeasured 1h 17m":
+            - rowheader "Total measured runtime 34 measured · 4 unmeasured"
+            - cell "1h 17m"
+          - row "Most common failure 2 runs Document read timeout":
+            - rowheader "Most common failure 2 runs"
+            - cell "Document read timeout"

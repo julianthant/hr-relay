@@ -1,0 +1,132 @@
+import { createDashboardModelFixtures } from "../../support/helpers/dashboard-model-fixtures.js";
+import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
+import { default as assert } from "node:assert/strict";
+import { describe } from "vitest";
+import { it } from "vitest";
+import { WorkerPoolWireSchema, QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import { isTerminalQueueStatus } from "../../../src/models/dashboard/projection.js";
+
+{
+
+const { RUN_1, RUN_2, QUEUE, DAY } = createDashboardModelFixtures();
+
+describe("dashboard wire primitives", () => {
+
+  it("represents zero and uncapped worker declarations while rejecting invalid counts", () => {
+    const pool = { workflowId: "person-lookup", version: 1, plannedBy: "local-operator", plannedAt: "2026-10-01T12:00:00.000Z" };
+    for (const desiredWorkers of [0, 4, 21]) assert.equal(WorkerPoolWireSchema.parse({ ...pool, desiredWorkers }).desiredWorkers, desiredWorkers);
+    for (const desiredWorkers of [-1, 1.5]) assert.equal(WorkerPoolWireSchema.safeParse({ ...pool, desiredWorkers }).success, false);
+  });
+
+  it("accepts session origins while retaining frozen originless sessions", () => {
+    const sessionId = RUN_2;
+    const origins = [
+      { kind: "start-plan", startPlanId: RUN_1, actorId: "local-operator" },
+      { kind: "intake-manifest", intakeManifestId: RUN_1, actorId: "local-operator" },
+    ] as const;
+    for (const origin of origins) {
+      const session = { state: "present", itemScope: "session", sessionId, origin } as const;
+      assert.deepEqual(QueueSurfaceWireSchema.parse({ ...QUEUE, session }).session, session);
+    }
+    assert.deepEqual(
+      QueueSurfaceWireSchema.parse({ ...QUEUE, session: { state: "present", itemScope: "session", sessionId } }).session,
+      { state: "present", itemScope: "session", sessionId },
+    );
+  });
+
+  it("requires explicit item scope and layout facts without guessing missing or invalid values", () => {
+    for (const itemScope of ["workflow", "session"]) for (const layout of ["items", "batch"]) {
+      const session = { state: "present", sessionId: RUN_2, itemScope,
+        presentation: { layout, groupInQueue: true, version: 1, startedAt: QUEUE.startedAt } };
+      assert.deepEqual(QueueSurfaceWireSchema.parse({ ...QUEUE, session }).session, session);
+      for (const invalid of [undefined, null, "unknown"]) {
+        assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, session: { ...session, itemScope: invalid } }).success, false);
+        assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, session: { ...session, presentation: { ...session.presentation, layout: invalid } } }).success, false);
+      }
+    }
+  });
+
+  it("binds every served action to the row's own revision, once per key", () => {
+    const [cancel, hide] = QUEUE.actions;
+    assert.ok(cancel !== undefined && hide !== undefined);
+
+    assert.equal(
+      QueueSurfaceWireSchema.safeParse({
+        ...QUEUE,
+        actions: [{ ...cancel, expectedVersion: 2 }, hide],
+      }).success,
+      false,
+      "accepted an action whose expectedVersion is not the row's rowRevision",
+    );
+    assert.equal(
+      QueueSurfaceWireSchema.safeParse({ ...QUEUE, rowRevision: 2 }).success,
+      false,
+      "accepted a bumped rowRevision while every action still named the old one",
+    );
+    assert.equal(
+      QueueSurfaceWireSchema.safeParse({ ...QUEUE, actions: [cancel, { ...hide, key: "cancel" }] }).success,
+      false,
+      "accepted two served actions sharing one key",
+    );
+
+
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, actions: [] }).success, true);
+  });
+
+  it("keeps queue surfaces flat and operation-only membership coherent", () => {
+    assert.equal(QueueSurfaceWireSchema.safeParse(QUEUE).success, true);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, surfaceKind: "preview" }).success, true);
+    const member = {
+      ...QUEUE,
+      parent: queueParentFixture(RUN_2),
+    };
+    assert.equal(QueueSurfaceWireSchema.safeParse(member).success, true);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, surfaceKind: "member" }).success, false);
+
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...member, containment: "root" }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, containment: "member" }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, containment: "linked" }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, parent: undefined }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, parent: { runId: RUN_2 } }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...member, parent: { ...member.parent, visibility: "unknown" } }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...member, lineage: { state: "child", parentRunId: RUN_2 } }).success, false);
+
+    assert.equal(QueueSurfaceWireSchema.safeParse({
+      ...QUEUE, parent: queueParentFixture(RUN_2, { visibility: "linked" }),
+    }).success, true);
+
+    assert.equal(QueueSurfaceWireSchema.safeParse({
+      ...QUEUE,
+      linkedRuns: [{ runId: RUN_1, partitionDay: DAY.day, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" }],
+    }).success, false);
+    const chip = { runId: RUN_2, partitionDay: DAY.day, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" };
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, linkedRuns: [chip] }).success, true);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, linkedRuns: [chip, chip] }).success, false);
+    const operation = {
+      ...QUEUE,
+      surfaceKind: "operation",
+      panelKind: "group",
+      availableSections: ["people", "logs", "receipt"],
+      memberRunIds: [RUN_2],
+      memberRollup: { total: 1, terminal: 0, failed: 0 },
+      memberPreview: { state: "present", value: "Ada Lovelace" },
+    };
+    assert.equal(QueueSurfaceWireSchema.safeParse(operation).success, true);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, memberRunIds: [RUN_2] }).success, false);
+    assert.equal(QueueSurfaceWireSchema.safeParse({ ...operation, memberRunIds: [RUN_2, RUN_2], memberRollup: { total: 2, terminal: 0, failed: 0 } }).success, false);
+    assert.equal(JSON.stringify(operation).includes("members\":"), false);
+    assert.equal(JSON.stringify(DAY).includes("notes\":"), false);
+    assert.equal(JSON.stringify(DAY).includes("bytes\":"), false);
+  });
+});
+}
+
+{
+
+describe("queue row timing", () => {
+
+  it("refuses a status that is not part of the served queue vocabulary", () => {
+    assert.throws(() => isTerminalQueueStatus("finished"));
+  });
+});
+}

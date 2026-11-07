@@ -1,0 +1,55 @@
+# workflow-mocks-rerun-emergency-contact--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Emergency Contact · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values" [disabled]: Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Choose what to run again" [level=3]
+  - text: 3 / 4 included
+  - paragraph: Select steps for the new run. Statuses show the source outcome.
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - list:
+      - listitem:
+        - checkbox "Read emergency contact" [checked]
+        - text: Read emergency contact OCR Not started
+      - listitem:
+        - checkbox "Read existing contacts"
+        - text: Read existing contacts UCPath Not started
+        - group "Manual values for Read existing contacts":
+          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
+          - text: Employee
+          - textbox "Employee": Jordan Lee
+          - text: Employee ID
+          - textbox "Employee ID": "10000001"
+          - text: Existing contact
+          - textbox "Existing contact": None
+          - text: Existing primary
+          - textbox "Existing primary": None
+      - listitem:
+        - checkbox "Fill emergency contact" [checked] [disabled]
+        - text: Fill emergency contact Form action · required Not started
+      - listitem:
+        - checkbox "Save emergency contact" [checked] [disabled]
+        - text: Save emergency contact Form action · required Not started
+  - contentinfo:
+    - text: Source run · new runEmergency Contact
+    - button "Cancel"
+    - button "Continue"

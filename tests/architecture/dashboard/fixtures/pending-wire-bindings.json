@@ -1,0 +1,55 @@
+{
+  "reason": "Every unserved schema arm and unconsumed route declares its current owner and missing consumer.",
+  "bindings": [
+    {
+      "binding": "RunDetailSectionResponseSchema#workbook-writes",
+      "direction": "declared-unserved",
+      "note": "All production workflow workbook declarations are intentionally empty. Generic captured-reference writes, native Logs receipts and row resolution are exercised by the synthetic declared consumer in tests/backend/runs/workbooks.integration.test.ts; Onboarding phase 2 owns the first real declaration and mapping."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#review",
+      "direction": "declared-unserved",
+      "note": "Ref frontend-backend-integration \u00a73.3's Review panel kind. `availableSections` cannot return it for any lifecycle: no registered descriptor declares a review panel, and the review record store is deferred. Closes with the first workflow that declares one."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#people",
+      "direction": "declared-unserved",
+      "note": "The operation-member People page, same deferral as `review`; `sectionsCompatible` already refuses it beside `review` on one panel. Closes with the first multi-person operation workflow."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#context-evidence",
+      "direction": "declared-unserved",
+      "note": "Ref dashboard-surfaces \u00a71.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the receipt section serves the trust content that exists today."
+    },
+    {
+      "binding": "route:GET /artifacts/v1/:artifactId",
+      "direction": "served-unconsumed",
+      "note": "The route is served, but no mounted dashboard consumer invokes it."
+    },
+    {
+      "binding": "route:GET /api/v1/workbooks/:libraryId/metadata",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets workbook wiring will load the selected workbook type and SharePoint link for its library/editor state; backend-first library work leaves these served metadata unconsumed."
+    },
+    {
+      "binding": "route:GET /api/v1/workbooks/:libraryId/versions",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets Versions wiring will supply spreadsheet-versions.tsx with served manual named versions and migration provenance instead of the current history presentation producer."
+    },
+    {
+      "binding": "route:GET /api/v1/workbooks/:libraryId/changes",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets change-log wiring will read the selected master operation journal to show run and Sync source, keyed cells, old/new values and resolution state; this backend-first API has no mounted journal consumer yet."
+    },
+    {
+      "binding": "route:POST /api/v1/workbooks/:libraryId/operations",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets workbook command wiring will dispatch operator manual named-version and metadata changes through the typed dashboard client; the backend-first command has no mounted consumer yet."
+    },
+    {
+      "binding": "route:POST /api/v1/workbooks/:libraryId/sync",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets manual Sync wiring will dispatch the selected workbook SharePoint refresh through the typed dashboard client; the backend-first API has no mounted Sync consumer yet."
+    }
+  ]
+}

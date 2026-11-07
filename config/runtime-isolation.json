@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 3,
+  "legacy": {
+    "sourceRoot": "src",
+    "entrypoint": "src/cli.ts",
+    "commands": {
+      "dashboard": "tsx --env-file=.env src/cli.ts dashboard --capture-ngrok",
+      "dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
+      "dashboard:watch": "tsx watch --env-file=.env src/cli.ts dashboard --capture-ngrok"
+    },
+    "stateRoot": ".tracker",
+    "artifactRoot": ".tracker",
+    "backendPort": 3838,
+    "frontendPort": 5173,
+    "processLockRoot": ".tracker/daemons",
+    "browserProfileRoot": ".auth",
+    "browserSessionNamespace": "hrauto-legacy"
+  },
+  "rebuild": {
+    "sourceRoot": "src",
+    "entrypoint": "src/cli.ts",
+    "commands": {
+      "dashboard": "tsx scripts/dev/dashboard.ts",
+      "dashboard:prod": "tsx scripts/dev/secure-env-bootstrap.ts cli dashboard --prod",
+      "cli": "tsx scripts/dev/secure-env-bootstrap.ts cli"
+    },
+    "stateRoot": ".tracker/data",
+    "artifactRoot": ".tracker/data/artifacts",
+    "backendPort": 3938,
+    "lockPort": 3939,
+    "frontendPort": 5174,
+    "processLockRoot": ".tracker/data/locks",
+    "browserProfileRoot": ".tracker/data/browsers",
+    "browserSessionNamespace": "hrauto-rebuild",
+    "runtimeConfig": {
+      "module": "src/backend/app/config/runtime-isolation.ts",
+      "factory": "defineRuntimeIsolation",
+      "factoryModule": "src/models/config/define-runtime-isolation.ts",
+      "factoryExport": "defineRuntimeIsolation",
+      "exportName": "rebuildRuntimeIsolation"
+    },
+    "compositionRoots": [
+      {
+        "path": "src/cli.ts",
+        "factory": "startRebuildRuntime",
+        "factoryModule": "src/backend/app/composition/runtime-composition.ts",
+        "factoryExport": "startRebuildRuntime",
+        "bindingPath": "0.isolation",
+        "runnerExport": "runCli"
+      }
+    ]
+  }
+}

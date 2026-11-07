@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "deterministic-fixture",
+  "system": "kuali",
+  "screens": [
+    "kuali.action-list"
+  ],
+  "verifiedAt": "2026-08-20",
+  "method": "deterministic-driver",
+  "assertions": [
+    {
+      "semanticId": "kuali.action-list",
+      "screen": "kuali.action-list",
+      "scenarioId": "ui/kuali-action-list-resolve-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "actionList.searchInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.action-list.search-input",
+      "screen": "kuali.action-list",
+      "scenarioId": "ui/kuali-action-list-resolve-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "actionList.searchInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.action-list.search-go-button",
+      "screen": "kuali.action-list",
+      "scenarioId": "ui/kuali-action-list-resolve-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "actionList.searchGoButton()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.action-list.document-link",
+      "screen": "kuali.action-list",
+      "scenarioId": "ui/kuali-action-list-resolve-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "actionList.docLink()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 2,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.action-list.ready",
+      "screen": "kuali.action-list",
+      "scenarioId": "ui/kuali-action-list-resolve-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "actionList.searchInput()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "kuali.action-list.matched-document-number",
+      "screen": "kuali.action-list",
+      "scenarioId": "ui/kuali-action-list-resolve-surface",
+      "portMapRows": [
+        {
+          "system": "kuali",
+          "legacyKey": "actionList.docLink()"
+        }
+      ],
+      "assertion": "recipe-resolves",
+      "matchedCount": 2,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

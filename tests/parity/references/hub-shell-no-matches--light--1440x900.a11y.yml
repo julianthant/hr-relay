@@ -1,0 +1,345 @@
+# hub-shell-no-matches--light--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: light  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Person Lookup queue" [level=1]
+  - region "Queue":
+    - text: Needs you 3
+    - button "Morrow, Bea — review · 16m 0s":
+      - text: Morrow, Bea Review Waiting on identity review 9:47 AM
+      - button "Attempts for Morrow, Bea": "#1"
+      - text: PL04236388 18m 0s
+      - button "Cancel run"
+    - button "Rehire eligibility sweep — review · 43m 0s":
+      - text: Rehire eligibility sweep Review 3/4
+      - table "Members of Rehire eligibility sweep":
+        - rowgroup:
+          - row "Name Status":
+            - columnheader "Name"
+            - columnheader "Status"
+        - rowgroup:
+          - row "Tran, Bao person lookup Failed":
+            - cell "Tran, Bao person lookup":
+              - button "Tran, Bao person lookup": Tran, Bao
+            - cell "Failed"
+          - row "Morrow, Bea person lookup Review":
+            - cell "Morrow, Bea person lookup":
+              - button "Morrow, Bea person lookup": Morrow, Bea
+            - cell "Review"
+          - row "EID 10120933 person lookup Done":
+            - cell "EID 10120933 person lookup":
+              - button "EID 10120933 person lookup": EID 10120933
+            - cell "Done"
+          - row "EID 10577410 person lookup Done":
+            - cell "EID 10577410 person lookup":
+              - button "EID 10577410 person lookup": EID 10577410
+            - cell "Done"
+      - text: 9:20 AM
+      - button "Attempts for Rehire eligibility sweep": "#1"
+      - text: PL33065442 45m 0s
+      - button "Cancel group"
+    - button "EID 10777012 — write parked":
+      - text: EID 10777012 Write parked A write to UCPath is parked pending proof 9:44 AM
+      - button "Attempts for EID 10777012": "#1"
+      - text: PL89930091 21m 0s
+      - button "Cancel run"
+    - text: Active 3
+    - button "Battistessa, Johnnie — running":
+      - text: Battistessa, Johnnie Running Searching UCPath for Battistessa, Johnnie 0 / 4 steps 9:52 AM
+      - button "Attempts for Battistessa, Johnnie": "#1"
+      - text: PL42795458 13m 0s
+      - button "Cancel run"
+    - button "Weekly HDH roster check (1) — running":
+      - text: Weekly HDH roster check (1) Running 0/1
+      - table "Members of Weekly HDH roster check (1)":
+        - rowgroup:
+          - row "Name Status":
+            - columnheader "Name"
+            - columnheader "Status"
+        - rowgroup:
+          - row "EID 10611004 person lookup Running":
+            - cell "EID 10611004 person lookup":
+              - button "EID 10611004 person lookup": EID 10611004
+            - cell "Running"
+      - text: 9:30 AM
+      - button "Attempts for Weekly HDH roster check (1)": "#1"
+      - text: PL20000427 35m 0s
+      - button "Cancel group"
+    - button "New-hire lookups — batch 3 — running":
+      - text: New-hire lookups — batch 3 Running 1/3
+      - table "Members of New-hire lookups — batch 3":
+        - rowgroup:
+          - row "Name Status":
+            - columnheader "Name"
+            - columnheader "Status"
+        - rowgroup:
+          - row "EID 10480021 person lookup Running":
+            - cell "EID 10480021 person lookup":
+              - button "EID 10480021 person lookup": EID 10480021
+            - cell "Running"
+          - row "Okafor, Chinedu person lookup Queued":
+            - cell "Okafor, Chinedu person lookup":
+              - button "Okafor, Chinedu person lookup": Okafor, Chinedu
+            - cell "Queued"
+          - row "Alvarez, Maria person lookup Done":
+            - cell "Alvarez, Maria person lookup":
+              - button "Alvarez, Maria person lookup": Alvarez, Maria
+            - cell "Done"
+      - text: 9:28 AM
+      - button "Attempts for New-hire lookups — batch 3": "#1"
+      - text: PL22034266 37m 0s
+      - button "Cancel group"
+    - text: Queued 2
+    - button "EID 10873698 — queued":
+      - text: EID 10873698 dry run Queued 9:57 AM
+      - button "Attempts for EID 10873698": "#1"
+      - text: PL38097448
+      - button "Run next"
+      - button "Cancel run"
+    - button "EID 10873698 — queued":
+      - text: EID 10873698 Queued 9:55 AM
+      - button "Attempts for EID 10873698": "#1"
+      - text: PL61636475
+      - button "Run next"
+      - button "Cancel run"
+    - text: "Finished today 6 Today: 2 completed 2 with warnings 1 failed 1 cancelled"
+    - button "EID 10555001 — failed":
+      - text: EID 10555001 Failed 9:33 AM
+      - button "Attempts for EID 10555001": "#1"
+      - text: PL39484305 6m 0s
+      - button "Rerun"
+      - button "Delete run"
+    - button "EID 10333015 — done with warnings":
+      - text: EID 10333015 3 Done 9:24 AM
+      - button "Attempts for EID 10333015": "#1"
+      - text: PL41015978 5m 0s
+      - button "Rerun"
+      - button "Delete run"
+    - button "Separation audit — August — done with warnings":
+      - text: Separation audit — August 2 Done 12/13
+      - table "Members of Separation audit — August":
+        - rowgroup:
+          - row "Name Status":
+            - columnheader "Name"
+            - columnheader "Status"
+        - rowgroup:
+          - row "Castillo, Ren person lookup Failed":
+            - cell "Castillo, Ren person lookup":
+              - button "Castillo, Ren person lookup": Castillo, Ren
+            - cell "Failed"
+          - row "EID 10990031 person lookup Failed":
+            - cell "EID 10990031 person lookup":
+              - button "EID 10990031 person lookup": EID 10990031
+            - cell "Failed"
+          - row "Haddad, Lina person lookup Running":
+            - cell "Haddad, Lina person lookup":
+              - button "Haddad, Lina person lookup": Haddad, Lina
+            - cell "Running"
+          - row "EID 10990032 person lookup Cancelled":
+            - cell "EID 10990032 person lookup":
+              - button "EID 10990032 person lookup": EID 10990032
+            - cell "Cancelled"
+          - row "EID 10410200 person lookup Done":
+            - cell "EID 10410200 person lookup":
+              - button "EID 10410200 person lookup": EID 10410200
+            - cell "Done"
+          - row "EID 10410201 person lookup Done":
+            - cell "EID 10410201 person lookup":
+              - button "EID 10410201 person lookup": EID 10410201
+            - cell "Done"
+          - row "EID 10410202 person lookup Done":
+            - cell "EID 10410202 person lookup":
+              - button "EID 10410202 person lookup": EID 10410202
+            - cell "Done"
+          - row "EID 10410203 person lookup Done":
+            - cell "EID 10410203 person lookup":
+              - button "EID 10410203 person lookup": EID 10410203
+            - cell "Done"
+          - row "EID 10410204 person lookup Done":
+            - cell "EID 10410204 person lookup":
+              - button "EID 10410204 person lookup": EID 10410204
+            - cell "Done"
+          - row "EID 10410205 person lookup Done":
+            - cell "EID 10410205 person lookup":
+              - button "EID 10410205 person lookup": EID 10410205
+            - cell "Done"
+          - row "EID 10410206 person lookup Done":
+            - cell "EID 10410206 person lookup":
+              - button "EID 10410206 person lookup": EID 10410206
+            - cell "Done"
+          - row "EID 10410207 person lookup Done":
+            - cell "EID 10410207 person lookup":
+              - button "EID 10410207 person lookup": EID 10410207
+            - cell "Done"
+          - row "EID 10410208 person lookup Done":
+            - cell "EID 10410208 person lookup":
+              - button "EID 10410208 person lookup": EID 10410208
+            - cell "Done"
+      - button "Expand"
+      - text: 9:10 AM
+      - button "Attempts for Separation audit — August": "#1"
+      - text: PL44344042 2m 0s
+      - button "Rerun"
+      - button "Delete group"
+    - button "EID 10101010 — done":
+      - text: EID 10101010 Done 9:35 AM
+      - button "Attempts for EID 10101010": "#1"
+      - text: PL62100434 5m 0s
+      - button "Rerun"
+      - button "Delete run"
+    - button "Onboarding cohort — July stragglers — done":
+      - text: Onboarding cohort — July stragglers Done 12/12
+      - table "Members of Onboarding cohort — July stragglers":
+        - rowgroup:
+          - row "Name Status":
+            - columnheader "Name"
+            - columnheader "Status"
+        - rowgroup:
+          - row "EID 10300100 person lookup Done":
+            - cell "EID 10300100 person lookup":
+              - button "EID 10300100 person lookup": EID 10300100
+            - cell "Done"
+          - row "EID 10300101 person lookup Done":
+            - cell "EID 10300101 person lookup":
+              - button "EID 10300101 person lookup": EID 10300101
+            - cell "Done"
+          - row "EID 10300102 person lookup Done":
+            - cell "EID 10300102 person lookup":
+              - button "EID 10300102 person lookup": EID 10300102
+            - cell "Done"
+          - row "EID 10300103 person lookup Done":
+            - cell "EID 10300103 person lookup":
+              - button "EID 10300103 person lookup": EID 10300103
+            - cell "Done"
+          - row "EID 10300104 person lookup Done":
+            - cell "EID 10300104 person lookup":
+              - button "EID 10300104 person lookup": EID 10300104
+            - cell "Done"
+          - row "EID 10300105 person lookup Done":
+            - cell "EID 10300105 person lookup":
+              - button "EID 10300105 person lookup": EID 10300105
+            - cell "Done"
+          - row "EID 10300106 person lookup Done":
+            - cell "EID 10300106 person lookup":
+              - button "EID 10300106 person lookup": EID 10300106
+            - cell "Done"
+          - row "EID 10300107 person lookup Done":
+            - cell "EID 10300107 person lookup":
+              - button "EID 10300107 person lookup": EID 10300107
+            - cell "Done"
+          - row "EID 10300108 person lookup Done":
+            - cell "EID 10300108 person lookup":
+              - button "EID 10300108 person lookup": EID 10300108
+            - cell "Done"
+          - row "EID 10300109 person lookup Done":
+            - cell "EID 10300109 person lookup":
+              - button "EID 10300109 person lookup": EID 10300109
+            - cell "Done"
+          - row "EID 10300110 person lookup Done":
+            - cell "EID 10300110 person lookup":
+              - button "EID 10300110 person lookup": EID 10300110
+            - cell "Done"
+          - row "EID 10300111 person lookup Done":
+            - cell "EID 10300111 person lookup":
+              - button "EID 10300111 person lookup": EID 10300111
+            - cell "Done"
+      - button "Expand"
+      - text: 9:05 AM
+      - button "Attempts for Onboarding cohort — July stragglers": "#1"
+      - text: PL80637302 2m 0s
+      - button "Rerun"
+      - button "Delete group"
+    - button "EID 10222009 — cancelled":
+      - text: EID 10222009 Cancelled 9:26 AM
+      - button "Attempts for EID 10222009": "#1"
+      - text: PL21077430 4m 0s
+      - button "Delete run"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - text: No run open Select a run from the queue to open its logs.
+- region "Relay assistant":
+  - text: Chats
+  - button "Chats"
+  - button "New chat"
+  - button "Close assistant"
+  - textbox "Search chats": no matching title
+  - text: No matching chats.
+- button "Assistant" [expanded]
+- status: Chat deleted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+    - button "Log out"
+- region "Notifications"

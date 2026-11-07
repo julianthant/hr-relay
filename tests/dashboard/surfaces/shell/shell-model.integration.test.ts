@@ -1,0 +1,269 @@
+
+import assert from "node:assert/strict";
+import { describe,it } from "vitest";
+import {
+composePlanWorkerCountCommand,
+composeSpawnWorkerCommand
+} from "../../../../src/dashboard/app/commands/command-dispatch.js";
+import {
+
+buildSessionPoolGroups,
+planPoolIntent,
+poolIndexOfWorkerId,
+poolMemberWorkerId,
+poolSlotIsUnmet,
+type SessionPoolGroup,
+type WorkerCardWire,
+} from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { WorkerCardWireSchema, DashboardDayWireSchema,type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
+import { WorkerSlotRecordSchema,workerPoolMember } from "../../../../src/models/run/worker-slot.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { FIXTURE_DAY_WIRE } from "../../../support/fixtures/dashboard/fixture-day.js";
+
+const ACTOR = { actorId: "local-operator", source: "session-panel" } as const;
+
+/** Every fixture card is what the STRICT day schema produced, never a hand-built object. */
+function parsedCard(source: WorkerCardWire, overrides: Readonly<Record<string, unknown>>): WorkerCardWire {
+  const workflowId = WorkflowIdSchema.parse(overrides.workflowId ?? source.workflowId), workerId = WorkerIdSchema.parse(overrides.workerId ?? source.workerId);
+  const ordinal = poolIndexOfWorkerId(workflowId, workerId);
+  if (ordinal === undefined) throw new Error("worker card requires an exact canonical member");
+  return WorkerCardWireSchema.parse({ ...source, ...overrides,
+    member: { ...source.member, workflowId, workerId, ordinal, poolIndex: ordinal } });
+}
+
+/** One live card, cloned off the real wire fixture so no case can express a card authority refuses. */
+function cardOf(overrides: Readonly<Record<string, unknown>>): WorkerCardWire {
+  const live = FIXTURE_DAY_WIRE.workerCards.find((card) => card.state !== "failed");
+  if (live === undefined) throw new Error("the wire fixture needs one non-terminal worker card");
+  return parsedCard(live, overrides);
+}
+
+function retainedCardOf(overrides: Readonly<Record<string, unknown>>): WorkerCardWire {
+  const failed = FIXTURE_DAY_WIRE.workerCards.find((card) => card.state === "failed");
+  if (failed === undefined) throw new Error("the wire fixture needs one retained failed worker card");
+  return parsedCard(failed, overrides);
+}
+
+function slotAt(group: SessionPoolGroup, poolIndex: number) {
+  const slot = group.slots.find((entry) => entry.poolIndex === poolIndex);
+  if (slot === undefined) throw new Error(`pool group ${group.workflowId} has no slot at index ${String(poolIndex)}`);
+  return slot;
+}
+
+function dayOf(
+  workerCards: readonly WorkerCardWire[],
+  workerPools: DashboardDayWire["workerPools"],
+): DashboardDayWire {
+  const template = FIXTURE_DAY_WIRE.workerAuthority.members[0];
+  if (template === undefined) throw new Error("missing exact member fixture template");
+  const members = workerCards.map(card => ({ ...template, workerId: card.member.workerId, workflow: card.member.workflowId,
+    ordinal: card.member.ordinal, poolIndex: card.member.poolIndex }));
+  return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards, workerPools, workerAuthority: { state: "present", members } });
+}
+
+function poolRow(workflowId: string, desiredWorkers: number, version: number): DashboardDayWire["workerPools"][number] {
+  return DashboardDayWireSchema.parse({
+    ...FIXTURE_DAY_WIRE,
+    workerPools: [{
+      workflowId,
+      desiredWorkers,
+      version,
+      plannedBy: "local-operator",
+      plannedAt: "2026-08-03T09:00:00.000-07:00",
+    }],
+  }).workerPools[0];
+}
+
+function groupFor(day: DashboardDayWire, workflowId: string): SessionPoolGroup {
+  const group = buildSessionPoolGroups(day.workerCards, day.workerPools)
+    .find((entry) => entry.workflowId === workflowId);
+  if (group === undefined) throw new Error(`no pool group folded for ${workflowId}`);
+  return group;
+}
+
+describe("the panel's copy of the pool contract is pinned to the kernel's", () => {
+  it("accepts declarations beyond the former cap and zero", () => {
+    assert.equal(planPoolIntent(groupFor(dayOf([], [poolRow("person-lookup", 0, 1)]), "person-lookup"), 4).kind, "ready");
+    assert.equal(planPoolIntent(groupFor(dayOf([], [poolRow("person-lookup", 4, 1)]), "person-lookup"), 0).kind, "ready");
+  });
+
+  it("derives the same canonical identity the supervisor requires", () => {
+    const workflowId = WorkflowIdSchema.parse("person-lookup");
+    for (let index = 1; index <= 4; index += 1) {
+      assert.equal(
+        poolMemberWorkerId(String(workflowId), index),
+        String(workerPoolMember(WorkerSlotRecordSchema.parse({ workflow: workflowId, workerId: `person-lookup-worker-${String(index)}`, ordinal: index, poolIndex: index, membershipRevision: 1, phase: "idle", retiredAt: null, retirementCommandId: null, reservationCommandId: null, createdAt: "2026-08-03T16:00:00.000Z", updatedAt: "2026-08-03T16:00:00.000Z" })).workerId),
+      );
+    }
+  });
+
+  it("refuses to mint an identity outside the pool's index range", () => {
+    assert.throws(() => poolMemberWorkerId("person-lookup", 0), /positive integer/u);
+    assert.throws(() => poolMemberWorkerId("person-lookup", Number.MAX_SAFE_INTEGER + 1), /positive integer/u);
+    assert.throws(() => poolMemberWorkerId("person-lookup", 1.5), /positive integer/u);
+  });
+
+  it("reads an index back only from a canonical, unpadded identity", () => {
+    assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-2"), 2);
+    assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-01"), undefined);
+    assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-0"), undefined);
+    assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-9"), 9);
+    assert.equal(poolIndexOfWorkerId("person-lookup", "separations-worker-1"), undefined);
+    assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-daemon"), undefined);
+  });
+});
+
+describe("the pool roster is folded from served facts only", () => {
+  it("gives a declared index with no served lease an unmet slot, and never a reason nobody served", () => {
+    const day = dayOf(
+      [cardOf({ workerId: "person-lookup-worker-1", workflowId: "person-lookup" })],
+      [poolRow("person-lookup", 2, 4)],
+    );
+    const group = groupFor(day, "person-lookup");
+
+    assert.equal(group.expectedVersion, 4);
+    assert.deepEqual(group.slots.map((slot) => slot.poolIndex), [1, 2]);
+    assert.equal(slotAt(group, 1).membership.state, "live");
+    assert.equal(slotAt(group, 2).membership.state, "not-served");
+    assert.equal(poolSlotIsUnmet(slotAt(group, 1)), false);
+    assert.equal(poolSlotIsUnmet(slotAt(group, 2)), true);
+    assert.equal(slotAt(group, 2).workerId, "person-lookup-worker-2");
+  });
+
+  it("keeps a retained terminal card on its declared index as a visibly unmet member", () => {
+    const day = dayOf(
+      [retainedCardOf({ workerId: "person-lookup-worker-1", workflowId: "person-lookup", stopReason: "crashed" })],
+      [poolRow("person-lookup", 1, 2)],
+    );
+    const group = groupFor(day, "person-lookup");
+
+    assert.equal(slotAt(group, 1).membership.state, "retained");
+    assert.equal(poolSlotIsUnmet(slotAt(group, 1)), true);
+    assert.equal(group.facts.activeWorkers, 0);
+  });
+
+  it("reads a workflow with no pool row as no declaration at basis 0, never as one worker", () => {
+    const day = dayOf([cardOf({ workerId: "separations-worker-2", workflowId: "separations" })], []);
+    const group = groupFor(day, "separations");
+
+    assert.equal(group.facts.state, "absent");
+    assert.equal(group.declaration, undefined);
+    assert.equal(group.expectedVersion, 0);
+
+    assert.deepEqual(group.slots.map((slot) => slot.poolIndex), [2]);
+    assert.equal(slotAt(group, 2).declared, false);
+  });
+
+  it("refuses a served worker card without exact canonical membership", () => {
+    const source = FIXTURE_DAY_WIRE.workerCards[0];
+    if (source === undefined) throw new Error("missing strict worker card fixture");
+    assert.throws(() => WorkerCardWireSchema.parse({ ...source, workerId: "person-lookup-daemon",
+      member: { ...source.member, workerId: "person-lookup-daemon" } }));
+  });
+});
+
+describe("a plan names the exact members it will stop", () => {
+  const plannedTwo = (): SessionPoolGroup => groupFor(
+    dayOf(
+      [
+        cardOf({ workerId: "person-lookup-worker-1", workflowId: "person-lookup" }),
+        cardOf({ workerId: "person-lookup-worker-2", workflowId: "person-lookup" }),
+      ],
+      [poolRow("person-lookup", 2, 4)],
+    ),
+    "person-lookup",
+  );
+
+  it("refuses a count outside the worker range without composing anything", () => {
+    for (const count of [-1, Number.MAX_SAFE_INTEGER + 1, 2.5]) {
+      const intent = planPoolIntent(plannedTwo(), count);
+      assert.equal(intent.kind, "refused");
+      if (intent.kind === "refused") assert.match(intent.reason, /nonnegative integer/u);
+    }
+  });
+
+  it("refuses a plan that changes nothing", () => {
+    const intent = planPoolIntent(plannedTwo(), 2);
+    assert.equal(intent.kind, "refused");
+    if (intent.kind === "refused") assert.match(intent.reason, /already declares 2 workers at pool version 4/u);
+  });
+
+  it("names only served excess members", () => {
+    const intent = planPoolIntent(plannedTwo(), 1);
+    assert.equal(intent.kind, "ready");
+    if (intent.kind !== "ready") return;
+
+    assert.equal(intent.expectedVersion, 4);
+    assert.deepEqual(intent.excess.map((member) => member.workerId), [
+      "person-lookup-worker-2",
+    ]);
+    // The running flag comes from the served member.
+    assert.deepEqual(intent.excess.map((member) => member.running), [true]);
+  });
+
+  it("calls a first plan over a running CLI worker a scale-down, because it stops one", () => {
+    const group = groupFor(
+      dayOf([cardOf({ workerId: "separations-worker-2", workflowId: "separations" })], []),
+      "separations",
+    );
+    const intent = planPoolIntent(group, 1);
+
+    assert.equal(intent.kind, "ready");
+    if (intent.kind !== "ready") return;
+    assert.equal(intent.expectedVersion, 0);
+    assert.deepEqual(
+      intent.excess.filter((member) => member.running).map((member) => member.workerId),
+      ["separations-worker-2"],
+    );
+  });
+
+  it("stops nothing when the count rises: there is no index above it", () => {
+    const intent = planPoolIntent(
+      groupFor(dayOf([cardOf({ workerId: "person-lookup-worker-1", workflowId: "person-lookup" })], [poolRow("person-lookup", 1, 3)]), "person-lookup"),
+      3,
+    );
+
+    assert.equal(intent.kind, "ready");
+    if (intent.kind !== "ready") return;
+    assert.deepEqual(intent.excess, []);
+  });
+});
+
+describe("the controls post the arms the wire declares", () => {
+  it("plans against the POOL version the view was drawn from", () => {
+    const group = groupFor(
+      dayOf([cardOf({ workerId: "person-lookup-worker-1", workflowId: "person-lookup" })], [poolRow("person-lookup", 1, 7)]),
+      "person-lookup",
+    );
+    const intent = planPoolIntent(group, 2);
+    assert.equal(intent.kind, "ready");
+    if (intent.kind !== "ready") return;
+
+    const request = CommandRequestSchema.parse(composePlanWorkerCountCommand(
+      { workflowId: intent.workflowId, desiredWorkers: intent.desiredWorkers, expectedVersion: intent.expectedVersion },
+      ACTOR,
+    ));
+
+    assert.equal(request.family, "worker-browser");
+    assert.equal(request.type, "plan-worker-count");
+    assert.deepEqual(request.target, { workflowId: "person-lookup", expectedVersion: 7 });
+    assert.deepEqual(request.type === "plan-worker-count" ? request.payload : undefined, { desiredWorkers: 2 });
+    assert.equal(request.source, "session-panel");
+    assert.equal(request.requestedBy, "local-operator");
+  });
+
+  it("spawns the EXACT member the operator pressed, against the pool version", () => {
+    const request = CommandRequestSchema.parse(composeSpawnWorkerCommand(
+      { workflowId: "person-lookup", workerId: poolMemberWorkerId("person-lookup", 2), expectedVersion: 4 },
+      ACTOR,
+    ));
+
+    assert.equal(request.type, "spawn-worker");
+    assert.deepEqual(request.target, { workflowId: "person-lookup", expectedVersion: 4 });
+    assert.deepEqual(
+      request.type === "spawn-worker" ? request.payload : undefined,
+      { workerId: "person-lookup-worker-2" },
+    );
+  });
+});

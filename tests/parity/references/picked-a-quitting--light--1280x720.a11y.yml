@@ -1,0 +1,123 @@
+# picked-a-quitting--light--1280x720
+# adapter: fixture
+# fixture: picked-dashboard-a
+# descriptorHash: bb4e6205beffa33f37bd41e635894074c0bc49937b14d51119ae2e411e89e30f
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: light  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 1 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 1 · 1
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 0
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 0
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - status: Relay quits after runs pause Each run finishes its current step first. A submit in progress is never interrupted.
+  - region "Commands awaiting recovery":
+    - text: Command outcome unknown. Review the original request to recover its result.
+    - button "Review Quit requested (1 run)"
+  - heading "Person Lookup queue" [level=1]
+  - region "Queue":
+    - text: Active 1
+    - button "Battistessa, Johnnie — pausing" [pressed]:
+      - text: Battistessa, Johnnie Pausing Pauses after this step finishes 0 / 4 steps 9:52 AM
+      - button "Attempts for Battistessa, Johnnie": "#1"
+      - text: PL42795458 13m 0s
+      - button "Cancel run"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+      - button "Pause all runs" [disabled]
+      - status: Finishing current steps; pauses and shutdown are not yet confirmed.
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "Battistessa, Johnnie" [level=2]
+    - text: Pausing
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Search for employee · Pauses after this step · 10:05:00": Search for employee Pauses after this step
+    - region "Run logs":
+      - region "Search for employee":
+        - time: 10:05:00
+        - heading "Search for employee" [level=3]
+        - time: 10:05:00
+        - paragraph: In progress
+        - time: 10:05:00
+        - paragraph: Read employee search
+    - group:
+      - searchbox "Search logs"
+    - status: 2 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- button "Assistant"
+- status
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+    - button "Log out"
+- region "Notifications":
+  - status "Command result":
+    - heading "Command result" [level=2]
+    - paragraph: The command outcome is uncertain. Check its result before taking further action.
