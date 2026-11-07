@@ -194,6 +194,44 @@ it("refresh confirms only while the member keeps the lifetime it was sent to", a
   assert.equal(h.sent.length, 1);
 });
 
+it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome without resending", async outcome => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
+  h.effect(command => { original = command; return new Promise((resolve, reject) => { release = value => { if (value instanceof Error) reject(value); else resolve(value); }; }); });
+  const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const text = () => document.body.textContent ?? "";
+  try {
+    await act(async () => render());
+    const remove = [...document.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Remove worker"); assert(remove);
+    await act(async () => remove.click()); assert.equal(h.sent.length, 1); assert(original);
+    await act(async () => root.unmount()); root = createRoot(host);
+    await act(async () => render());
+    assert.match(text(), /Remove requested/u, "the remounted panel holds the in-flight Remove");
+    assert.doesNotMatch(text(), /Check outcome/u);
+    await act(async () => { release(outcome === "pending" ? { state: "pending", commandId: original!.commandId } : outcome === "lost" ? new Error("connection reset") : applied(original!)); await Promise.resolve(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.match(text(), /Check outcome/u, "the settled unknown outcome is checkable on the new mount");
+    assert.equal(document.querySelectorAll("article").length, 1);
+    h.setDay(effectOf(h.day(), original));
+    const check = [...document.querySelectorAll("button")].find(button => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === "Check outcome"); assert(check);
+    await act(async () => check.click());
+    assert.equal(document.querySelectorAll("article").length, outcome === "applied" ? 0 : 1, outcome === "applied" ? "its own applied reply confirms once served" : "a served removal is no proof for a command with no applied reply");
+    assert.equal(h.sent.length, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("hydrates no retained control for another scope", async () => {
+  const h = harness(); let release!: (value: unknown) => void;
+  h.effect(() => new Promise(resolve => { release = resolve; }));
+  const request: SessionPreviewRequest = { id: uuidOf(8900), target: h.day().workerCards[0].workerId, action: "remove" };
+  const sent = h.port.send(request); await Promise.resolve();
+  assert.deepEqual(h.port.retained?.().map(operation => [operation.request.id, operation.state]), [[uuidOf(8900), "pending"]]);
+  const other = createSessionPreviewPort(() => ({ binding: { ...h.binding(), scope: { ...h.scope(), actorId: "other" } }, catalog }));
+  assert.deepEqual(other.retained?.(), []);
+  release({ state: "pending", commandId: request.id }); await sent;
+});
+
 it("hydrates mounted Remove after remount, retains it through outage and a failed phase, and removes only on readback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let original: CommandRequest | undefined;
