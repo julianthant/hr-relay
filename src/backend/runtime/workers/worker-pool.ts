@@ -331,8 +331,12 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
 
     /** Stops every member that has not exited, waits for any first exit settlement, and waits only within each member's bounded escalation. */
     async stopAll(reason: WorkerStopReason): Promise<readonly WorkerMemberView[]> {
-      await Promise.all([...records.values()].map(record => record.state !== "exited" ? escalate(record, reason, false)
-        : record.exit === undefined ? record.exited : Promise.resolve()));
+      // Sweep until quiet: a Start that was waiting on a first settlement may publish a member mid-shutdown.
+      for (;;) {
+        const open = [...records.values()].filter(record => record.state === "exited" ? record.exit === undefined : record.held === undefined);
+        if (open.length === 0) break;
+        await Promise.all(open.map(record => record.state === "exited" ? record.exited : escalate(record, reason, false)));
+      }
       return Object.freeze([...records.values()].map(view));
     },
   });

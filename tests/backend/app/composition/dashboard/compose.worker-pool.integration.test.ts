@@ -24,7 +24,7 @@ describe("the composed worker pool through the kernel", () => {
     assert.equal(view(h).state, "running");
   });
 
-  it("settles a crashed worker's claimed run as interrupted and the next Start spawns a fresh process", async () => {
+  it("settles a crashed worker's claimed run as failed by the crash and the next Start spawns a fresh process", async () => {
     const h = await openControlHarness(), commands = launchCommands(h);
     assert.equal((await commands.submit(dashboardLaunch(h).request)).state, "applied");
     await settleMicrotasks();
@@ -38,7 +38,7 @@ describe("the composed worker pool through the kernel", () => {
     assert.equal(view(h).state, "exited");
     assert.equal(view(h).exit?.outcome, "crashed");
     const settled = h.database.authority.runs.get(claimed.run.envelope.runId)?.lifecycle;
-    assert.ok(settled?.state === "terminal" && settled.outcome === "interrupted", JSON.stringify(settled));
+    assert.ok(settled?.state === "terminal" && settled.outcome === "failed", JSON.stringify(settled));
 
     assert.equal((await commands.submit(dashboardLaunch(h, "10203373").request)).state, "applied");
     await settleMicrotasks();

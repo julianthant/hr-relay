@@ -61,7 +61,7 @@ describe("real worker processes under the composed pool", () => {
     crashed.opened(); peerLaunch.opened();
     const peerRow = () => roots.inventory().roots.find(row => row.launch.launchId === peerLaunch.launchId);
     const peerBefore = peerRow();
-    assert.equal(peerBefore?.launch.state, "opened");
+    assert.equal(peerBefore?.launch.state, "open");
 
     first.child.kill("SIGKILL");
     await children.waitFor(() => h.settled.length === 1, "the killed child's exit settlement", output);
