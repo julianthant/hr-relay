@@ -44,7 +44,7 @@ type SourceVersion = 20 | 21 | 22;
 type Variant = "converted" | "attempting-write" | "kept-reference";
 const hostFacts = { primaryDisplay: null };
 // Tables the conversion (and on 20/21 the pre-build run deletion) rewrites; every other table must come through byte for byte.
-const CHANGED_TABLES = new Set(["runs", "deleted_runs", "run_failures", "run_batches", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts",
+const CHANGED_TABLES = new Set(["runs", "deleted_runs", "run_failures", "run_batches", "database_upgrades", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts",
   "run_checkpoints", "run_delegations", "delegation_dependencies", "run_requests", "worker_slots", "notifications", "write_intents", "write_attempts",
   "artifact_outbox", "database_states"]);
 
@@ -132,8 +132,10 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const saved = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync }).create({
       name: "Custody.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "people", width: 1, hidden: [], headerRow: 1,
         columnBindings: [{ id: "col-0", sourceColumn: 0, sourceHeader: "eid", fieldId: "eid", basis: "manual" }], rows: [{ id: "people-header", cells: [{ value: "EID" }] }] }] });
-    assert.equal(database.authority.workbooks.operation(saved.libraryId, { operationId: "closure-output", source: { kind: "run", runId: closure.at(-1) ?? childId },
-      at: clock.now().toISOString(), change: { kind: "add", sheetId: "people", rowId: "closure-row", key: "10800000", values: { eid: "10800000" } } }).state, "applied");
+    const writer = closure.at(-1) ?? childId;
+    database.authority.workbooks.operation(saved.libraryId, { operationId: "closure-output", source: { kind: "run", runId: writer },
+      at: clock.now().toISOString(), change: { kind: "add", sheetId: "people", rowId: "closure-row", key: "10800000", values: { eid: "10800000" } } });
+    assert.equal(database.authority.workbooks.runOperations(writer).length, 1);
   }
 
   h.authority.closeDatabase();
@@ -166,6 +168,7 @@ function read(path: string) {
     run: (runId: string) => query(raw => ["runs", "run_results", "run_receipts"].map(table => raw.prepare(`SELECT * FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"}=? ORDER BY rowid`).all(runId))),
     everyRow: () => query(raw => tables.flatMap(table => raw.prepare(`SELECT * FROM ${table}`).all().map(row => ({ table, json: JSON.stringify(row) })))),
     count: (sql: string, ...parameters: string[]) => query(raw => Number(raw.prepare(sql).get(...parameters)?.count)),
+    upgrades: query(raw => raw.prepare("SELECT * FROM database_upgrades ORDER BY rowid").all()),
     foreignKeys: query(raw => raw.prepare("PRAGMA foreign_key_check").all()),
   };
 }
@@ -188,6 +191,8 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
     .some(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backups, name), "utf8"))).schemaVersion === version));
   const after = read(s.path);
   assert.deepEqual(after.kept, before.kept);
+  assert.deepEqual(after.upgrades.slice(0, before.upgrades.length), before.upgrades);
+  assert.ok(after.upgrades.length > before.upgrades.length);
   assert.deepEqual(after.triggers, before.triggers);
   assert.deepEqual(after.foreignKeys, []);
   for (const runId of s.closure) {
@@ -230,6 +235,7 @@ it.each(([20, 21, 22] as const).flatMap(version => (["attempting-write", "kept-r
     assert.deepEqual(readFileSync(s.path), bytes);
     const after = read(s.path);
     assert.deepEqual(after.kept, before.kept);
+    assert.deepEqual(after.upgrades, before.upgrades);
     assert.deepEqual(after.triggers, before.triggers);
     const raw = new DatabaseSync(s.path, { readOnly: true });
     try { assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version); } finally { raw.close(); }
