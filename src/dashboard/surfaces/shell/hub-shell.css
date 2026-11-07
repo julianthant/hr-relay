@@ -16,7 +16,9 @@
 .hub-chat-title > span { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .hub-header-actions { display:flex;gap:2px;flex:none; }
 .hub-assistant-slot { flex:1;min-height:0; }
-.hub-assistant-launcher { position:fixed;right:32px;bottom:calc(var(--ds-space-section) + var(--ds-toast-inset-bottom,52px));width:48px;height:48px;display:grid;place-items:center;padding:0;border:1px solid var(--ui-stroke-control);border-radius:999px;background:var(--ui-panel);color:var(--ui-primary);box-shadow:var(--hub-launcher-shadow);z-index:var(--hub-panel-layer); }
+/* Docked in the Logs footer's reserved right corner: Sessions bar (44px + border), column padding, footer inset. */
+.dashboard-shell .logs-footer { padding-right:calc(32px + 48px + 8px - var(--ds-space-cozy) - 1px); }
+.hub-assistant-launcher { position:fixed;right:32px;bottom:calc(2.75rem + 1px + var(--ds-space-cozy) + 4px);width:48px;height:48px;display:grid;place-items:center;padding:0;border:1px solid var(--ui-stroke-control);border-radius:999px;background:var(--ui-panel);color:var(--ui-primary);box-shadow:var(--hub-launcher-shadow);z-index:var(--hub-panel-layer); }
 .hub-assistant-launcher:hover { background:var(--ui-table); }
 .hub-assistant-launcher svg { width:22px;height:22px; }
 .hub-transcript { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 16px;scrollbar-width:thin;font-size:13px;line-height:1.65; }

@@ -202,7 +202,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     <PersonPreferencesContext.Provider value={preferences}><div
       data-app-root=""
       data-demo-theme={theme}
-      style={{ "--ds-toast-inset-bottom": "calc(2 * (var(--ds-h-bar) + var(--ds-space-loose)))" } as CSSProperties}
+      style={{ "--ds-toast-inset-bottom": "calc(2 * (var(--ds-h-bar) + var(--ds-space-loose)) + var(--ds-space-loose))" } as CSSProperties}
       className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
