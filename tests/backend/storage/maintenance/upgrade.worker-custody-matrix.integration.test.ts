@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { z } from "zod";
 import { afterEach, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -24,13 +25,14 @@ import type { RunRecord } from "../../../../src/models/run/record.js";
 import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { deriveEvidenceReceiptId } from "../../../../src/models/trust/evidence-identity.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { lifecycleCommandId } from "../../../../src/rules/commands/lifecycle-command-id.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
 import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
-import { restorePredecessorCustodySchema, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
+import { rebindPredecessorResultDigest, restorePredecessorCustodySchema, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
@@ -108,7 +110,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
   const lock = profile.machine.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
   reconcileExitedWorker({ machine: profile.machine, admission: profile.admission, database, clock, lifecycle: execution.lifecycle, lock, workerId: owner.workerId });
   const closure = [root.envelope.runId, childId];
-  let childDigest: string | undefined;
+  let previousDigest: string | undefined, childDigest: string | undefined;
   if (variant !== "attempting-write") {
     const cancelled = current(childId);
     assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled", JSON.stringify(cancelled.lifecycle));
@@ -121,10 +123,14 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
       requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: parent.version } }));
     assert.equal(retried.state, "applied", JSON.stringify(retried));
+    const member = current(childId);
+    const memberRetry = execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard",
+      requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: childId, expectedVersion: member.version } }));
+    assert.equal(memberRetry.state, "applied", JSON.stringify(memberRetry));
     for (const run of [cancelled, parent].flatMap(run => database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }))) {
       if (!closure.includes(run.envelope.runId)) closure.push(run.envelope.runId);
     }
-    childDigest = evidence.resultDigest;
+    previousDigest = evidence.resultDigest;
   }
 
   database.authority.workbooks.putType({ id: "custody-roster", name: "Custody roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
@@ -144,15 +150,21 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
   const raw = new DatabaseSync(path);
   try {
     raw.exec("PRAGMA foreign_keys=ON");
+    raw.exec("BEGIN EXCLUSIVE; PRAGMA defer_foreign_keys=ON");
     assert.notEqual(writePredecessorWorkerLifetimes(raw, childId).length, 0);
-    raw.exec("BEGIN EXCLUSIVE");
+    if (previousDigest !== undefined) {
+      // The member's lifetime changes its recover-crash fingerprint and so its result digest; the join and retry follow it.
+      childDigest = String(raw.prepare("SELECT result_digest FROM run_results WHERE run_id=?").get(childId)?.result_digest);
+      assert.notEqual(childDigest, previousDigest);
+      assert.equal(rebindPredecessorResultDigest(raw, previousDigest, childDigest).length, 2);
+    }
     restorePredecessorCustodySchema(raw);
     if (version === 20) restoreSchema20CompletionFixture(raw);
     else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
     raw.exec("COMMIT");
     assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version);
   } finally { raw.close(); }
-  return { profile, path, stateRoot, profileId, closure, keptRunId: kept.envelope.runId, childDigest };
+  return { profile, path, stateRoot, profileId, closure, keptRunId: kept.envelope.runId, childId, previousDigest, childDigest };
 }
 
 function read(path: string) {
@@ -167,6 +179,7 @@ function read(path: string) {
     triggers: query(raw => raw.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND name NOT LIKE 'worker_%' AND name NOT LIKE 'browser_%' ORDER BY name").all()),
     run: (runId: string) => query(raw => ["runs", "run_results", "run_receipts"].map(table => raw.prepare(`SELECT * FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"}=? ORDER BY rowid`).all(runId))),
     everyRow: () => query(raw => tables.flatMap(table => raw.prepare(`SELECT * FROM ${table}`).all().map(row => ({ table, json: JSON.stringify(row) })))),
+    rows: (sql: string, ...parameters: string[]) => query(raw => raw.prepare(sql).all(...parameters)),
     count: (sql: string, ...parameters: string[]) => query(raw => Number(raw.prepare(sql).get(...parameters)?.count)),
     upgrades: query(raw => raw.prepare("SELECT * FROM database_upgrades ORDER BY rowid").all()),
     foreignKeys: query(raw => raw.prepare("PRAGMA foreign_key_check").all()),
@@ -181,10 +194,19 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   assert.equal(keptRun[2]?.length, 1, "the kept run carries its receipt");
   assert.equal(before.count("SELECT count(*) AS count FROM run_delegations WHERE parent_run_id=?", s.closure[0] ?? ""), 1);
   assert.ok(before.count("SELECT count(*) AS count FROM delegation_dependencies") >= 1);
-  const digest = s.childDigest; assert.ok(digest !== undefined);
-  const linked = before.everyRow().filter(row => row.table !== "run_results" && row.json.includes(digest)).map(row => row.table);
-  assert.ok(linked.length > 0, "the join and retry embed the cancelled member's resultDigest");
-  assert.fail(JSON.stringify(before.everyRow().filter(row => row.json.includes(digest)).map(row => ({ table: row.table, row: row.json.slice(0, 1500) }))));
+  const digest = s.childDigest, previous = s.previousDigest; assert.ok(digest !== undefined && previous !== undefined);
+  assert.equal(before.rows("SELECT result_digest FROM run_results WHERE run_id=?", s.childId)[0]?.result_digest, digest);
+  assert.deepEqual(before.everyRow().filter(row => row.json.includes(previous)).map(row => row.table), []);
+  const journals = before.rows("SELECT id, request_json FROM commands WHERE instr(request_json, ?) > 0", digest)
+    .map(row => ({ id: String(row.id), ...z.object({ operation: z.string(), request: z.record(z.string(), z.unknown()) }).parse(JSON.parse(String(row.request_json))) }));
+  const settlement = journals.find(journal => journal.operation === "delegation-settlement"), retry = journals.find(journal => journal.operation === "delegation-retry");
+  assert.equal(journals.length, 2);
+  assert.ok(settlement !== undefined && retry !== undefined);
+  assert.equal(settlement.id, lifecycleCommandId("delegation-settlement", { dependencyId: settlement.request.dependencyId, childRunId: s.childId,
+    childAttempt: settlement.request.childAttempt, resultDigest: digest }));
+  assert.deepEqual([settlement.request.runId, settlement.request.resultDigest, settlement.request.state], [s.childId, digest, "cancelled"]);
+  assert.deepEqual([retry.request.previousRunId, retry.request.resultDigest, retry.request.dependencyId], [s.childId, digest, settlement.request.dependencyId]);
+  for (const journal of journals) assert.equal(before.count("SELECT count(*) AS count FROM command_audits WHERE command_id=? AND json_extract(payload_json,'$.request.request.resultDigest')=?", journal.id, digest), 1, journal.operation);
   assert.equal((await upgrade(s)).state, "upgraded");
 
   const backups = join(s.stateRoot, "backups", "authority");
@@ -221,7 +243,8 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
     const database = ProfileAuthorityDatabase.open(admission, { path: s.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
       undefined, undefined, undefined, createProfileCredentialStore({ admission, stateRoot: s.stateRoot }));
     try {
-      assert.equal(inspectNativeAuthority(new DatabaseSync(s.path, { readOnly: true })).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      const raw = new DatabaseSync(s.path, { readOnly: true });
+      try { assert.equal(inspectNativeAuthority(raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { raw.close(); }
       if (version === 22) {
         const run = database.authority.runs.get(s.keptRunId);
         assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");

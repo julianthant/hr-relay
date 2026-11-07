@@ -7,6 +7,7 @@ import { runLifecycleRequestFingerprint } from "../../../../src/backend/storage/
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 import { runSettlementColumns, runSettlementContext } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { lifecycleCommandId } from "../../../../src/rules/commands/lifecycle-command-id.js";
 import { restoreSchema22WorkerCustodyFixture } from "./historical-run-schema.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -64,6 +65,37 @@ export function writePredecessorWorkerLifetimes(raw: DatabaseSync, runId: string
     ? { ...request, lifecycle: { ...Json.parse(request.lifecycle), workerLifetime: lifetime } }
     : { ...request, workerLifetime: lifetime });
   return ids;
+}
+
+/**
+ * Rebinds the delegation settlement and retry journals a parent derived from a member's result to that result's predecessor digest,
+ * as the predecessor itself derived them: the settlement id, each request fingerprint and each audit follow the new digest.
+ * The caller holds the transaction with deferred foreign keys.
+ */
+export function rebindPredecessorResultDigest(raw: DatabaseSync, previous: string, next: string): readonly string[] {
+  const rebound: string[] = [];
+  withTriggersDropped(raw, ["commands", "command_audits"], () => {
+    for (const row of raw.prepare("SELECT id, request_json, outcome_json FROM commands WHERE family='run-lifecycle' AND instr(request_json, ?) > 0").all(previous)) {
+      const id = String(row.id), stored = z.object({ operation: z.string(), request: Json }).passthrough().parse(JSON.parse(String(row.request_json)));
+      if (stored.operation !== "delegation-settlement" && stored.operation !== "delegation-retry") throw new Error(`predecessor-digest-unexpected-journal:${stored.operation}`);
+      let request = Json.parse(JSON.parse(JSON.stringify(stored.request).replaceAll(previous, next)));
+      let commandId = id;
+      if (stored.operation === "delegation-settlement") {
+        commandId = lifecycleCommandId("delegation-settlement", { dependencyId: request.dependencyId, childRunId: request.runId, childAttempt: request.childAttempt,
+          resultDigest: next, ...(request.settlement === undefined ? {} : { settlement: request.settlement }) });
+        request = { ...request, commandId };
+      }
+      const renamed = Json.parse(JSON.parse(JSON.stringify({ ...stored, request }).replaceAll(id, commandId)));
+      const command = { ...renamed, requestFingerprint: runLifecycleRequestFingerprint(stored.operation, request) };
+      const json = canonicalJsonStringify(command);
+      const audit = row.outcome_json === null ? null
+        : canonicalJsonStringify({ ...Json.parse(JSON.parse(String(row.outcome_json).replaceAll(id, commandId)) as unknown), request: command });
+      raw.prepare("UPDATE commands SET id=?, request_json=?, request_digest=?, outcome_json=? WHERE id=?").run(commandId, json, sha256Hex(json), audit, id);
+      raw.prepare("UPDATE command_audits SET id=CASE WHEN id=? THEN ? ELSE id END, command_id=?, payload_json=COALESCE(?, payload_json) WHERE command_id=?").run(id, commandId, commandId, audit, id);
+      rebound.push(commandId);
+    }
+  });
+  return rebound;
 }
 
 /**
