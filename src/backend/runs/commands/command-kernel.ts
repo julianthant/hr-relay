@@ -1953,6 +1953,13 @@ async function executeWorkerPoolCommand(
     return repositories.commandAudits.findByCommand(request.commandId) === undefined ? undefined : replay(dependencies, repositories, request, now);
   });
   if (prior !== undefined) return prior;
+  // A stale or missing durable target is refused before admission reaches the process seam (preflight, assistant grant).
+  transact(repositories => {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+      checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
+      if (request.type === "spawn-worker") requireActiveSlot(repositories, request, request.payload.workerId, request.target.workflowId);
+    } else requireActiveSlot(repositories, request, request.target.workerId, "workflowId" in request.target ? request.target.workflowId : undefined);
+  });
   if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker" || request.type === "stop-worker") {
     await pool.admit(request.commandId, { preflight: true });
   } else await pool.admit(request.commandId, { preflight: false });
