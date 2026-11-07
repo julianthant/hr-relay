@@ -15,6 +15,7 @@ import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/ba
 import { writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-custody-migration.js";
+import { detachBoundFixtureWorkers, stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 
 const { cleanup, roundTrip, parkedIntent, resolutionCommand } = createParkedWriteRoundTripTestWorld();
 afterEach(cleanup);
@@ -38,6 +39,9 @@ async function recovered(extra: (fence: FenceSpan) => readonly unknown[] = () =>
   const timeline = createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock });
   // The worker's span sink persists the fence; the conversion reads it from the timeline.
   for (const event of [fence, ...extra(fence)]) timeline.emit(ExecutorSpanEventSchema.parse(event));
+  // The fixture worker's release is proved on current authority before the file moves to schema 22.
+  stopSyntheticDatabaseWorkers({ database: h.database, path: h.profile.path });
+  detachBoundFixtureWorkers(h.database);
   const raw = new DatabaseSync(h.profile.path);
   raw.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000");
   assert.notEqual(writePredecessorWorkerLifetimes(raw, WRITE_FIXTURE_RUN_ID).length, 0, "the run must be claimed with a worker lifetime");
