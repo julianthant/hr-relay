@@ -42,7 +42,7 @@ async function readUpload(request: Request, maxBytes: number, signal: AbortSigna
     try { await reader.cancel(); } finally { reader.releaseLock(); }
   }
 }
-const uploadName = (value: string | undefined) => { try { return decodeURIComponent(value ?? ""); } catch { return ""; } };
+const uploadName = (value: string | undefined) => decodeURIComponent(value ?? "");
 
 export function registerAssistantRoutes(app: DashboardApp, service: AssistantService | undefined): void {
   app.get("/api/v1/assistant/permission", c => {

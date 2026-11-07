@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { ASSISTANT_HISTORY_MIGRATION, AssistantHistoryRefusal, createAssistantHistoryRepository } from "../../../../src/backend/storage/sqlite/assistant-history.js";
+import { ASSISTANT_ATTACHMENTS_MIGRATION } from "../../../../src/backend/storage/sqlite/assistant-attachments.js";
 import type { AssistantQueries } from "../../../../src/dashboard/client/index.js";
 import {
   AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema,
@@ -10,7 +11,7 @@ import {
 export function assistantHistoryServer(profileId: string = randomUUID(), now: () => string = () => new Date().toISOString()) {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
-  for (const statement of ASSISTANT_HISTORY_MIGRATION.statements) database.exec(statement);
+  for (const statement of [...ASSISTANT_HISTORY_MIGRATION.statements, ...ASSISTANT_ATTACHMENTS_MIGRATION.statements]) database.exec(statement);
   const repository = createAssistantHistoryRepository({ database, profileId: () => profileId, read: work => work(),
     mutate: (_table, work) => {
       database.exec("BEGIN IMMEDIATE");
