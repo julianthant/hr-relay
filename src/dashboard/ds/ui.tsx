@@ -100,11 +100,11 @@ export {
  * one place the shared arrival lives. Never wrap it in a `Panel` — the card */
   TakeoverFrame,
   Banner,
+  Refusal,
   Disclosure,
   MetaLine,
   /** A wrapping row of PEER facts. */
   ChipRow,
-  Refusal,
   BulletList,
   EmptyState,
   Tabs,
@@ -171,6 +171,7 @@ export {
   Tooltip,
   TooltipProvider,
   ToastProvider,
+  Notice,
   useToasts,
   useDsModalPresence,
   useDsModalOpen,

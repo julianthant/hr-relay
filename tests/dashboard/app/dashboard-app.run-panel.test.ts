@@ -154,7 +154,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
   const text = host.querySelector('.dashboard-log-column')?.textContent ?? '';
   const refusal = formatErrorCatalogFailure(createErrorCatalogFailure('LOGS_IDENTITY_REFUSED', {})).text;
   assert.equal(subscriptions.length, 2, 'a persistent lag must not start another refresh');
-  assert.equal(text.includes(refusal), !catchesUp, text);
+  assert.equal((host.textContent ?? '').includes(refusal), !catchesUp, text); // the refusal is a toast, outside the log column
   assert.equal(approve.disabled, !catchesUp);
   assert.equal(sent.length, 0);
 });

@@ -17,9 +17,6 @@
         - searchbox "Search settings": zz-unmatched-setting
         - button "Clear search"
       - status: Settings fields unavailable
-    - alert:
-      - text: Routes could not be read Settings could not be read. Try again.
-      - button "Try again"
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -28,4 +25,8 @@
     - button "Add workers"
     - button "Settings" [pressed]
     - button "Log out"
-- region "Notifications"
+- region "Notifications":
+  - alert "Routes unavailable":
+    - heading "Routes unavailable" [level=2]
+    - paragraph: Settings could not be read.
+    - button "Try again"

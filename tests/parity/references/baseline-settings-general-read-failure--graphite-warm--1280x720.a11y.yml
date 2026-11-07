@@ -26,17 +26,14 @@
       - button "Connect ChatGPT"
     - heading "Appearance" [level=2]
     - group "Appearance":
-      - switch "Dark theme Saved for Jordan Lee on this Mac." [checked]
-      - text: Dark theme Saved for Jordan Lee on this Mac.
-      - switch "Animations Saved for Jordan Lee. Your reduced-motion preference takes priority." [checked]
-      - text: Animations Saved for Jordan Lee. Your reduced-motion preference takes priority.
+      - text: Theme
+      - button "Switch to light theme": Dark
+      - switch "Animations" [checked]
+      - text: Animations
     - heading "Account" [level=2]
     - group "Account":
       - text: Delete account Account deletion is unavailable. Try again when connected.
       - button "Delete account" [disabled]
-    - alert:
-      - text: Editable settings could not be read Settings could not be read. Try again.
-      - button "Try again"
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -45,4 +42,8 @@
     - button "Add workers"
     - button "Settings" [pressed]
     - button "Log out"
-- region "Notifications"
+- region "Notifications":
+  - alert "Settings unavailable":
+    - heading "Settings unavailable" [level=2]
+    - paragraph: Settings could not be read.
+    - button "Try again"

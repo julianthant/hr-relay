@@ -110,7 +110,7 @@ test("real doctor serves corrupt authority and invalid recovery evidence togethe
     expect(wire.counts.state).toBe("unavailable");
     await expect(page.locator(".diagnostic-check-entry").filter({hasText: "Recovery"})).toContainText("Unavailable");
     await expect(page.locator(".diagnostic-check-entry").filter({hasText: "Pending actions"})).toContainText("Unavailable");
-    await expect(page.getByText("Data store unavailable", {exact: true})).toBeVisible();
+    await expect(page.getByText(/^(Data store|Storage) unavailable$/u).first()).toBeVisible();
     expect(readFileSync(authorityPath)).not.toEqual(original);
     expect(readFileSync(authorityPath, "utf8")).toBe("synthetic corrupt authority");
     expect(target.requests.filter(row => row.method !== "GET")).toEqual([]);

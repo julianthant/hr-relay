@@ -12,43 +12,17 @@ const servers = registerReferenceServers(["server","storageServer"]);
 
 
 
-async function assertStorageBandGeometry(
-  page: import("@playwright/test").Page,
-  viewportWidth: number,
-): Promise<void> {
-  const band = page.getByRole("alert").filter({ hasText: "Authority storage is unavailable" });
-  await expect(band).toBeVisible();
-  const geometry = await band.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return {
-      x: rect.x,
-      width: rect.width,
-      borderTop: style.borderTopWidth,
-      borderRight: style.borderRightWidth,
-      borderBottom: style.borderBottomWidth,
-      borderLeft: style.borderLeftWidth,
-      borderRadius: style.borderRadius,
-    };
-  });
-  const takeover = await page.locator('.dashboard-shell[data-settings-takeover="true"]').count();
-  const rail = takeover ? 0 : Math.max(208, Math.min(264, viewportWidth / 4 - 96));
-  expect(geometry).toEqual({
-    x: rail,
-    width: viewportWidth - rail,
-    borderTop: "0px",
-    borderRight: "0px",
-    borderBottom: "1px",
-    borderLeft: "0px",
-    borderRadius: "0px",
-  });
+async function assertStorageNotice(page: import("@playwright/test").Page): Promise<void> {
+  const notice = page.getByRole("alert").filter({ hasText: "Storage unavailable" });
+  await expect(notice).toHaveCount(1);
+  await expect(notice.getByRole("button", { name: "Storage checks", exact: true })).toBeVisible();
 }
 
 
 const STORAGE_DOCTOR_VIEWPORTS = PARITY_VIEWPORTS;
 
 
-test.describe("storage band", () => {
+test.describe("storage notice", () => {
   const STORAGE_STATES: readonly { id: string; route: AppRoute }[] = [
     { id: "storage-queue", route: { day: FIXTURE_DAY } },
     { id: "storage-settings", route: { day: FIXTURE_DAY, settings: "storage" } },
@@ -68,7 +42,7 @@ test.describe("storage band", () => {
             await dismissWorkflowWindow(page);
           }
           await assertThemeApplied(page, theme satisfies ParityTheme);
-          await assertStorageBandGeometry(page, viewport.width);
+          await assertStorageNotice(page);
 
           await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);

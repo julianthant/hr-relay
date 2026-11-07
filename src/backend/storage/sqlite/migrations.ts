@@ -24,6 +24,11 @@ export function isSupportedStoppedAuthoritySchemaVersion(version: number): versi
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
 
+/** Stopped versions a database may be upgraded from; every version list derives from these, so they cannot drift. */
+export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.filter(version => version >= 8);
+/** Versions startup, restore and admission open: every upgradeable version plus the current one. */
+export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = [...UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS, CURRENT_AUTHORITY_SCHEMA_VERSION];
+
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
 }
