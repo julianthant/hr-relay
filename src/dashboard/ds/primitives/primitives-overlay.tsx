@@ -712,8 +712,8 @@ export interface DsToast {
   tone: DsToastTone;
   title: string;
   description?: string;
-  /** a single recovery action — "Retry", "Undo", "Open the run"; with `icon` it is an icon button beside close, named by `label` */
-  action?: { label: string; onAction: () => void; icon?: ReactNode };
+  /** a single recovery action — "Retry", "Undo", "Open the run" */
+  action?: { label: string; onAction: () => void };
   /** ms before auto-dismiss; default 3000. `danger` never auto-dismisses unless a duration is given. */
   duration?: number;
   /** stays until its owner dismisses it; its action does not close it */
@@ -744,8 +744,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       manager.add({ id, title: input.title, description: input.description,
         type: input.tone === "danger" ? "error" : input.tone,
         timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 0 : 3000),
-        actionProps: input.action ? { children: input.action.icon ?? input.action.label, onClick: () => { input.action?.onAction(); if (!input.sticky) manager.close(id); } } : undefined,
-        data: input.action?.icon ? { actionLabel: input.action.label } : undefined,
+        actionProps: input.action ? { children: input.action.label, onClick: () => { input.action?.onAction(); if (!input.sticky) manager.close(id); } } : undefined,
       });
       return id;
     },
@@ -776,13 +775,12 @@ function ToastViewport() {
   const { toasts } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
-    {toasts.map(item => { const iconAction = item.data as { actionLabel: string } | undefined; return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success" && !item.actionProps) && "pointer-events-none")}>
+    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success" && !item.actionProps) && "pointer-events-none")}>
       <BaseToastContent><BaseToastIcon type={item.type} />
         <div className="flex min-w-0 flex-1 flex-col items-start gap-[var(--ds-space-snug)]"><div><BaseToastTitle /><BaseToastDescription /></div>
-          {item.actionProps && !iconAction && <BaseToastAction disabled={inert} />}</div>
-        {item.actionProps && iconAction && <BaseToastAction disabled={inert} aria-label={iconAction.actionLabel} title={iconAction.actionLabel} render={<Button variant="ghost" size="sm" />} className="text-muted-foreground hover:text-foreground" />}
+          {item.actionProps && <BaseToastAction disabled={inert} />}</div>
         <BaseToastClose disabled={inert} className={!inert && item.type === "success" && !item.actionProps ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
       </BaseToastContent>
-    </BaseToast>; })}
+    </BaseToast>)}
   </BaseToastViewport>;
 }
