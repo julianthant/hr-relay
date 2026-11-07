@@ -17,7 +17,7 @@ describe("hireReviewDecision", () => {
   });
 
   it("serves Use existing employee with only the independently confirmed matches, and no new hire", () => {
-    const other = { emplId: "10005678", name: "Dropped Person" };
+    const other = { emplId: "10000002", name: "Dropped Person" };
     const decision = hireReviewDecision(SearchPersonMatchOutputSchema.parse({ hits: [PERSON, other], confirmed: [PERSON, other], dropped: [{ ...other, reason: "dob" }] }), ARMS, "hire-review", 7);
     assert.deepEqual(decision?.options.map(({ id }) => id), ["existing-person"]);
     const input = decision?.options[0]?.input;
