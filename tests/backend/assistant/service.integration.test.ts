@@ -144,6 +144,22 @@ it("ends the turn with a proposal card and keeps a refused proposal recoverable"
   } finally { await w.f.cleanup(); }
 });
 
+it("answers an expired card with its own message and logs each decision refusal with its cause", async () => {
+  const events: Record<string, unknown>[] = [];
+  let failure: Error = new AssistantToolRefusal("ASSISTANT_PROPOSAL_EXPIRED");
+  const w = await world({ options: { decideAction: () => Promise.reject(failure), debugEvents: { emit(event) { events.push(event); } } } });
+  try {
+    const decision = { chatId: randomUUID(), actionId: randomUUID(), revision: 1, decision: "cancel" };
+    assert.deepEqual(await w.service.decide(decision, new AbortController().signal), { state: "refused", code: "ASSISTANT_PROPOSAL_EXPIRED" });
+    assert.equal(ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_EXPIRED, "This card expired. Ask again for a new one.");
+    failure = new Error("assistant-action-not-current PRIVATE_CANARY");
+    assert.deepEqual(await w.service.decide(decision, new AbortController().signal), { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" });
+    assert.deepEqual(events.map(event => [event.code, event.reason, event.message]), [
+      ["ASSISTANT_PROPOSAL_REFUSED", "action-decision", undefined], ["ASSISTANT_PROPOSAL_EXPIRED", "cause-unavailable", "AssistantToolRefusal"],
+      ["ASSISTANT_PROPOSAL_REFUSED", "action-decision", undefined], ["INTERNAL_FAILURE", "cause-unavailable", "Error"]]);
+    assert.equal(JSON.stringify(events).includes("CANARY"), false);
+  } finally { await w.f.cleanup(); }
+});
 it("hands the model an authorization refusal under its own code", async () => {
   const proposal: AssistantTool = { kind: "proposal", name: "propose", description: "Prepare a card.", parameters: Echo,
     async propose() { throw new AssistantAuthorizationError("assistant-binding-stale", "ASSISTANT_BINDING_STALE"); } };

@@ -118,6 +118,14 @@ const rerunCard = async (o: Owners, sourceRun: Awaited<ReturnType<Owners["done"]
   o.tool("propose_rerun").propose({ run: o.references.issue("R", sourceRun.envelope.runId, "run", sourceRun.envelope.runId) }, o.context);
 const refusedWith = (code: string) => (error: unknown) => error instanceof AssistantToolRefusal && error.code === code;
 
+it("refuses Confirm on an expired card as expired, without dispatch", async () => {
+  const o = await owners(), source = await o.done(), before = o.runCount();
+  const card = await rerunCard(o, source);
+  o.clock.advanceWall(Date.parse(card.expiresAt) - o.clock.nowMs() + 1);
+  await assert.rejects(o.decide(card, "confirm"), refusedWith("ASSISTANT_PROPOSAL_EXPIRED"));
+  assert.equal(o.runCount(), before);
+});
+
 it("issues and confirms an eligible rerun once and refuses its replay", async () => {
   const o = await owners(), source = await o.done(), before = o.runCount();
   const card = await o.tool("propose_rerun").propose({ run: o.references.issue("R", source.envelope.runId, "run", source.envelope.runId, source.version) }, o.context);

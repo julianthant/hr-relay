@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DebugEventSchema } from "../../models/events/timeline.js";
+import { emitFaultWithCauses } from "../logs/debug-events.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
@@ -60,9 +61,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
   const live = new Map<string, AbortController>();
   const now = () => options.clock.now().toISOString();
   let staging = false;
-  const actionRefused = () => {
-    options.debugEvents?.emit({ category: "http", phase: "failed", correlationId: randomUUID(), area: "assistant-proposal", reason: "action-decision",
-      code: "ASSISTANT_PROPOSAL_REFUSED" });
+  const actionRefused = (error: unknown) => {
+    if (options.debugEvents !== undefined) emitFaultWithCauses(options.debugEvents, undefined, error,
+      { category: "http", area: "assistant-proposal", reason: "action-decision", code: "ASSISTANT_PROPOSAL_REFUSED" });
   };
   return Object.freeze({
     /** The signed-in account's model catalog, for the composer's model picker. */
@@ -85,8 +86,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
         return AssistantActionResultSchema.parse(await options.decideAction(parsed.data, signal));
       } catch (error) {
         if (closure(error)) return { state: "refused", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" };
-        actionRefused();
-        return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
+        actionRefused(error);
+        return { state: "refused", code: error instanceof AssistantToolRefusal && error.code === "ASSISTANT_PROPOSAL_EXPIRED" ? error.code : "ASSISTANT_PROPOSAL_REFUSED" };
       }
     },
     historyView() { return options.history().list(now()); },
