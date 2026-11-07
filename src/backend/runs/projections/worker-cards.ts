@@ -30,7 +30,7 @@ export function workerCardOf(input: Readonly<{
   slot: WorkerSlotRecord;
   view: WorkerMemberView;
   /** Span events folded for this worker; a patch cursor, never a CAS token. */
-  foldRevision: number | undefined;
+  foldRevision: number;
   resolveRun: (runId: string) => RunRecord | undefined;
 }>): WorkerCardWire {
   const { slot, view } = input;
@@ -55,6 +55,6 @@ export function workerCardOf(input: Readonly<{
       sessionId: browser.sessionId, system: browser.system, openedAt: browser.openedAt,
       observation: { state: "present", health: browser.health, observedAt: browser.observedAt, instance: browser.instance,
         browserMode: browser.browserMode, configFingerprint: browser.configFingerprint } })),
-    revision: (input.foldRevision ?? 0) + view.version + 1,
+    revision: input.foldRevision + view.version + 1,
   });
 }

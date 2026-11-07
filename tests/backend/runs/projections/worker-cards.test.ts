@@ -26,7 +26,7 @@ function memberView(input: Partial<WorkerMemberView> = {}): WorkerMemberView {
     activity: { state: "idle" }, browsers: [], exit: undefined, held: undefined, ...input };
 }
 function card(input: Readonly<{ view?: WorkerMemberView; slot?: typeof slot; foldRevision?: number; resolveRun?: (runId: string) => typeof running | undefined }> = {}) {
-  return workerCardOf({ slot: input.slot ?? slot, view: input.view ?? memberView(), foldRevision: input.foldRevision, resolveRun: input.resolveRun ?? (() => undefined) });
+  return workerCardOf({ slot: input.slot ?? slot, view: input.view ?? memberView(), foldRevision: input.foldRevision ?? 0, resolveRun: input.resolveRun ?? (() => undefined) });
 }
 
 describe("the worker card from the pool member and its slot", () => {

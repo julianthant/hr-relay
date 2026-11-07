@@ -1411,7 +1411,7 @@ export class RunQueueProjection {
           workerAuthority = { state: "unavailable", members: [...members ?? []], reason: `Worker ${member.workerId} has not started.` };
           continue;
         }
-        workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount,
+        workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
           resolveRun: runId => {
             const read = this.#deps.reader.read(runId);
             return read.state === "present" && read.disposition === "live" ? read.run : undefined;

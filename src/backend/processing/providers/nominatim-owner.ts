@@ -1,5 +1,4 @@
 import type { ChildProcess } from "node:child_process";
-import type { IpcRouter } from "../../runtime/workers/worker-ipc-router.js";
 import { z } from "zod";
 import { systemClock, machineMonotonicMs, type Clock } from "../../../rules/time/clock.js";
 import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, type ProviderAdapterOutcome } from "../../../models/providers/providers.js";
@@ -13,6 +12,9 @@ function unavailable(clock: Clock, code: "aborted" | "timeout" | "adapter-unavai
   const messages = { aborted: "Nominatim request was cancelled.", timeout: "Nominatim request deadline elapsed.", "adapter-unavailable": "Nominatim parent is unavailable; the request was not retried." };
   return ProviderAdapterOutcomeSchema.parse({ response: { state: "unavailable", reason: { code, message: messages[code] } }, evidence: { summary: messages[code], capturedAt: clock.now().toISOString() } });
 }
+
+/** The pipe router's registration port; the router itself lives in the worker runtime. */
+type IpcFamilyRegistry = Readonly<{ register(family: string, handler: (message: Readonly<{ kind: string }>, handle: unknown) => void): void }>;
 
 export function createNominatimService(input: Readonly<{
   adapter: (fetchFn: typeof fetch) => ProviderAdapter<"geocode.nominatim">;
@@ -75,7 +77,7 @@ export function createNominatimService(input: Readonly<{
   }
 
   /** The child pipe's router owns the `message` listener; this family answers `nominatim-request` and `nominatim-cancel`. */
-  function attach(child: ChildProcess, router: Pick<IpcRouter, "register">): void {
+  function attach(child: ChildProcess, router: IpcFamilyRegistry): void {
     if (stopped || !child.connected) throw new Error("nominatim-parent-channel-unavailable");
     const requests = new Map<string, AbortController>();
     const receive = (value: unknown) => {
@@ -135,7 +137,7 @@ export function createNominatimWorkerAdapter(clock: Clock = systemClock) {
   let listening = false;
   return Object.freeze({ capability: "geocode.nominatim" as const,
     /** Registers the reply family on the child's router; without it every request is unavailable. */
-    attach(router: Pick<IpcRouter, "register">): void { router.register("nominatim-", receive); routed = true; },
+    attach(router: IpcFamilyRegistry): void { router.register("nominatim-", receive); routed = true; },
     async invoke(requestInput: unknown, options: ProviderCallOptions): Promise<ProviderAdapterOutcome> {
       const request = ProviderRequestEnvelopeSchema.parse(requestInput);
       if (request.capability !== "geocode.nominatim") throw new Error("nominatim-capability-mismatch");
