@@ -1,3 +1,5 @@
+import { MOCK_QUEUE_STATUS } from "./workflow-queue-model.js";
+import { mockLogsScene } from "../../assistant/assistant-mock-frames.js";
 import type { TypedInputDraft } from "../../../../models/workflow/ingress.js";
 import { typedInputDefaults, changeTypedInput } from "../../run-start/run-start-model.js";
 import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
@@ -335,7 +337,10 @@ export function mockOathDuplicate(runs: readonly MockRun[], draft: MockDraft): s
 }
 
 export function mockQueueView(runs: readonly MockRun[], filters: readonly StatusBucket[], sort: QueueSortKey): readonly MockRun[] {
-  const visible = runs.filter(run => filters.length === 0 || filters.includes("all") || filters.includes(mockQueueStatus(run)) || (mockNeedsReview(run) && filters.includes("needsYou")));
+  const scene = mockLogsScene();
+  // A design-mock scene restates its sample run's status; the filter reads that status.
+  const status = (run: MockRun) => scene && run.id === `mock:${scene.workflow}:sample` ? MOCK_QUEUE_STATUS[scene.state] : mockQueueStatus(run);
+  const visible = runs.filter(run => filters.length === 0 || filters.includes("all") || filters.includes(status(run)) || (mockNeedsReview(run) && filters.includes("needsYou")));
   if (sort === "oldest") return [...visible].reverse();
   if (sort === "longest") return [...visible].sort((left, right) => mockPipeline(right.workflowId, right.draft).length - mockPipeline(left.workflowId, left.draft).length);
   if (sort === "attention") return [...visible].sort((left, right) => Number(mockNeedsReview(right)) - Number(mockNeedsReview(left)));

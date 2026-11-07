@@ -20,7 +20,7 @@ export function mockRunDisplayId(run: Pick<MockRun, "id" | "workflowId">): strin
   return runDisplayId(mockQueueId(run.id), workflowDisplayCode(mockWorkflow(run.workflowId).label));
 }
 
-const MOCK_QUEUE_STATUS: Readonly<Record<MockState, "awaiting-approval" | "blocked" | "failed" | "queued" | "cancelling" | "running" | "done">> = {
+export const MOCK_QUEUE_STATUS: Readonly<Record<MockState, "awaiting-approval" | "blocked" | "failed" | "queued" | "cancelling" | "running" | "done">> = {
   review: "awaiting-approval", parked: "blocked", failed: "failed", paused: "queued", stalled: "failed", cancelling: "cancelling", running: "running", done: "done",
 };
 export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockRun): QueueSurfaceWire {
