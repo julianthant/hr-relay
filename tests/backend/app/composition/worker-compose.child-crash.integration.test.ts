@@ -1,3 +1,4 @@
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
@@ -101,6 +102,7 @@ async function prepare(arm: "read" | "write" | "preview" = "read") {
     const rootRunId = singleAppliedRunId(kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
       requestedBy: LOCAL_OPERATOR_ACTOR_ID, requestedAt: systemClock.now().toISOString(), target: { workflowId: root.descriptor.id,
         startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints }));
+    database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, root.descriptor.id, 1, systemClock.now().toISOString()));
     database.close();
     return { profile, open, rootRunId, descriptors };
   } catch (error) {

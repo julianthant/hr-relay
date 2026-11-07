@@ -10,8 +10,8 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
-import { restorePredecessorCustodySchema, rewritePredecessorCommand, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
+import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { rewritePredecessorCommand, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
 import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-custody-migration.js";
@@ -23,7 +23,7 @@ type SourceVersion = 20 | 21 | 22;
 
 function toSourceVersion(raw: DatabaseSync, version: SourceVersion): void {
   raw.exec("BEGIN EXCLUSIVE");
-  restorePredecessorCustodySchema(raw);
+  restoreSchema22WorkerCustodyFixture(raw);
   if (version === 20) restoreSchema20CompletionFixture(raw);
   else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
   raw.exec("COMMIT");

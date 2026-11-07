@@ -22,6 +22,7 @@ export function runCapacityCommandId(parentId: string, type: "plan-worker-count"
 export function createRunWorkerCapacity(deps: {
   kernel: CommandKernel;
   authority: Pick<AuthorityRepositories, "startPlans" | "workerPools" | "workerSlots">;
+  running(workflowId: string): boolean;
   ensureRunning(workflowId: string): Promise<void>;
 }): RunWorkerCapacity {
   return Object.freeze({
@@ -39,6 +40,9 @@ export function createRunWorkerCapacity(deps: {
           requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source, family: "worker-browser", type: "plan-worker-count",
           target: { workflowId, expectedVersion: deps.authority.workerPools.get(workflowId)?.version ?? 0 }, payload: { desiredWorkers: 1 } });
         if (outcome.state !== "applied" && outcome.state !== "already-applied") return fail(`worker plan did not apply: ${JSON.stringify(outcome)}`, "refused");
+        // The plan already preflighted and started its member; a refused or failed start leaves the workflow without a live member.
+        if (!deps.running(workflowId)) fail("the planned worker did not start", "refused");
+        return;
       }
       try { await deps.ensureRunning(workflowId); }
       catch (error) { fail(error instanceof Error ? error.message : String(error), "refused"); }

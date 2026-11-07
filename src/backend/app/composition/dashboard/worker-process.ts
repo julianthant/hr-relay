@@ -78,6 +78,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   pool: WorkerPool;
   seam: WorkerPoolRuntimeSeam;
   /** Starts every active member of the workflow that has no live process. */
+  running(workflowId: string): boolean;
   ensureRunning(workflowId: string): Promise<void>;
   /** Boot: starts every active member of every pool; each failure shows on its card. */
   startActive(): Promise<void>;
@@ -141,19 +142,25 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     children.delete(member.workerId);
   };
 
+  const preflight = async (): Promise<void> => {
+    if (input.preflight === undefined) return;
+    try {
+      await input.preflight.admission.prepare(input.preflight.currentScope(), new AbortController().signal);
+      input.preflight.admission.assertReady(input.preflight.currentScope());
+    } catch (error) {
+      if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error });
+      throw error;
+    }
+  };
   const seam: WorkerPoolRuntimeSeam = {
     async admit(commandId: string, options: Readonly<{ preflight: boolean }>): Promise<void> {
-      if (options.preflight && input.preflight !== undefined) {
-        try {
-          await input.preflight.admission.prepare(input.preflight.currentScope(), new AbortController().signal);
-          input.preflight.admission.assertReady(input.preflight.currentScope());
-        } catch (error) {
-          if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error });
-          throw error;
-        }
+      let preflightFailure: { readonly error: unknown } | undefined;
+      if (options.preflight) {
+        try { await preflight(); } catch (error) { preflightFailure = { error }; }
       }
-      // After the awaited preflight: a grant revoked or expired meanwhile stops the effect.
+      // After the awaited preflight, whatever it decided: a grant revoked or expired meanwhile fails the effect before any refusal is audited.
       input.assertAssistantEffect?.(commandId);
+      if (preflightFailure !== undefined) throw preflightFailure.error;
     },
     assertMember(target): WorkerMemberState {
       const view = viewOf(target.workerId);
@@ -163,7 +170,8 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       return view?.state ?? "absent";
     },
     async start(member) { await pool.start(member); },
-    ensure,
+    // A failed member start shows on its card and as a worker fault, whichever command asked for it.
+    ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); throw error; }),
     stop,
     async remove(member) {
       const view = viewOf(member.workerId);
@@ -194,7 +202,15 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   };
   return Object.freeze({
     pool, seam: Object.freeze(seam),
-    ensureRunning: (workflowId: string) => startAll(activeMembers(workflowId)),
+    running: (workflowId: string) => activeMembers(workflowId).some(member => live(viewOf(member.workerId))),
+    /** Preflights once, then starts every member that is not live; throws when the workflow still has no live member. */
+    ensureRunning: async (workflowId: string) => {
+      const members = activeMembers(workflowId);
+      if (members.every(member => live(viewOf(member.workerId)))) return;
+      await preflight();
+      await startAll(members);
+      if (!members.some(member => live(viewOf(member.workerId)))) throw new WorkerControlRefusal("worker-start-failed");
+    },
     startActive: () => startAll(activeMembers()),
   });
 }

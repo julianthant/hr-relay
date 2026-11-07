@@ -31,8 +31,8 @@ import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/work
 import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
-import { rebindPredecessorResultDigest, restorePredecessorCustodySchema, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
+import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { rebindPredecessorResultDigest, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
@@ -155,7 +155,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
       assert.notEqual(childDigest, previousDigest);
       assert.equal(rebindPredecessorResultDigest(raw, previousDigest, childDigest).length, 2);
     }
-    restorePredecessorCustodySchema(raw);
+    restoreSchema22WorkerCustodyFixture(raw);
     if (version === 20) restoreSchema20CompletionFixture(raw);
     else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
     raw.exec("COMMIT");

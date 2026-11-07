@@ -1,3 +1,4 @@
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, readFileSync } from "node:fs";
@@ -44,6 +45,7 @@ for (const { mode: failure, name } of [
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
+  context.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, "person-lookup", 1, clock.now().toISOString()));
   let report: workerLoop.WorkerLoopReport | undefined, issued: RuntimeAdmission | undefined;
   const lifetimeLock = f.lifetime;
   const managers: WorkerSessionManager[] = [];
@@ -192,6 +194,7 @@ it("retains database, child and process custody when its actual OCR account cann
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
+  context.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, "person-lookup", 1, clock.now().toISOString()));
   const createAccount = accounts.createChatGptAccountService, run = workerLoop.runWorkerLoop;
   const lifetimeLock = f.lifetime;
   let workerDatabase: AuthorityDatabase | undefined, credentials: ReturnType<typeof credentialStores.createCredentialStore> | undefined;

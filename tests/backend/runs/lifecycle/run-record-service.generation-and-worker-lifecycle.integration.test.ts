@@ -33,9 +33,10 @@ describe("canonical run-record service", () => {
     const { service, request, runtimeConfig, database, published } = await fixture();
     const run = created(service, { ...request, descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: personLookupDescriptor.contractFingerprint });
-    const commandId = "99000000-0000-4000-8000-000000000099";
+    const commandId = "99000000-0000-4000-8000-000000000099", unadmitted = "person-lookup-worker-9";
+    assert.equal(database.authority.workerSlots.get(unadmitted), undefined);
     const before = database.getMeta().authorityGeneration, publications = published.length;
-    assert.deepEqual(service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig }),
+    assert.deepEqual(service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: unadmitted, runtimeConfig }),
       { state: "refused", refusal: { reason: "none-eligible" } });
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.equal(database.authority.lifecycleJournal.getCommand(commandId), undefined);
@@ -43,7 +44,7 @@ describe("canonical run-record service", () => {
     assert.equal(published.length, publications);
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
     assert.equal(runClaim(run), undefined);
-    assert.throws(() => database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
+    assert.throws(() => database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: unadmitted, now: NOW }),
       /worker-claim-membership-unavailable/);
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);

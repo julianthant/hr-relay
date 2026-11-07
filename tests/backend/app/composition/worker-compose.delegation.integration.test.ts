@@ -1,3 +1,4 @@
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
@@ -124,6 +125,7 @@ it("executes two real children and a nested child with one actual home process a
     rootRunId = singleAppliedRunId(kernel.execute({ commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
       requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
       target: { workflowId: childExecutionRoot.descriptor.id, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints }));
+    database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, childExecutionRoot.descriptor.id, 1, systemClock.now().toISOString()));
   } finally { database.close(); }
 
   const actualDoctor = await vi.importActual<typeof storageDoctor>("../../../../src/backend/storage/sqlite/storage-doctor.js");

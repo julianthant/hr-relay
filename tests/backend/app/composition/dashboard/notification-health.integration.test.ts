@@ -6,6 +6,7 @@ import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js
 import { describe, expect, it } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
+import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld();
 
@@ -33,7 +34,7 @@ describe("canonical notification producers", () => {
       const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
       f.clock.advanceWall(60_000); expect((await read()).leaseExpired).toBe(false);
       f.clock.advanceWall(1); expect((await read()).leaseExpired).toBe(true);
-    } finally { await f.close(); }
+    } finally { releaseSeededWriteOwners(f.db, f.clock.now().toISOString()); await f.close(); }
   });
   it("persists health thresholds and clear/re-enter without treating absent backups or retired outbox as failures", async () => {
     const f = await fixture();

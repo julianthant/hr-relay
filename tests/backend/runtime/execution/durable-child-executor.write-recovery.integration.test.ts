@@ -113,13 +113,11 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
   assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
   const dependencies = f.database.authority.dependencies.listByParentRun(f.run.envelope.runId);
   const invocations = f.database.authority.lifecycleJournal.listDelegationInvocations(f.run.envelope.runId);
-  const beforeOwnedWorkerStop = f.database.getMeta().authorityGeneration;
-  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
-  assert.ok(f.database.getMeta().authorityGeneration > beforeOwnedWorkerStop);
-  const afterOwnedWorkerStop = f.database.getMeta().authorityGeneration;
-  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
-  assert.equal(f.database.getMeta().authorityGeneration, afterOwnedWorkerStop);
+  // Worker custody is in memory: stopping a worker that holds no claim commits nothing, however often it runs.
   const generation = f.database.getMeta().authorityGeneration;
+  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
+  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
   f.closeDatabase();
   const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "child-write-reopen-test" }, f.clock);
   try {

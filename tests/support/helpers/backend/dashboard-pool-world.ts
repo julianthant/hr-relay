@@ -140,7 +140,7 @@ export function createDashboardPoolTestWorld() {
 
   function launchCommands(harness: ControlHarness) {
     return createDashboardCommandService({ kernel: harness.kernel, projection: { ingestFromTimeline: () => {}, refreshRun: () => {} },
-      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority, ensureRunning: harness.workers.ensureRunning }) });
+      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority, running: harness.workers.running, ensureRunning: harness.workers.ensureRunning }) });
   }
 
   const cleanup = async () => {

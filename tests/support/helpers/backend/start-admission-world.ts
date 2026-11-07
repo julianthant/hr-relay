@@ -28,7 +28,7 @@ export async function startAdmissionFixture(realDoctor = false) {
       preflightRunnerFactory: input => healthyRuntimePreflightRunners(input).map(runner => !realDoctor || runner.check !== "authority.health" ? runner : {
         ...runner, async run(check) {
           const checking = input.dashboard.authorityHealth.run(check);
-          if (doctorRace) context.database.authority.notifications.create({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "e".repeat(64),
+          if (doctorRace) context.database.authority.notifications.create({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: randomUUID().replaceAll("-", "").padEnd(64, "0"),
             trigger: "failed", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Fixture notice", summary: "Concurrent fixture write",
             links: [{ kind: "run", runId: "00010001-0001-4001-8001-000100010001" }], count: 1, lastSeenAt: clock.now().toISOString(), version: 1,
             createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() });

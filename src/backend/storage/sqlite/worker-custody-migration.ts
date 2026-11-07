@@ -5,7 +5,7 @@ import { RunDeleteInputSchema } from "../../../models/run/deleted-run.js";
 import type { PredecessorRunRecord } from "../../../models/run/record.js";
 import { CanonicalDeleteRequestSchema } from "./run-store-contracts.js";
 import { insertNativeCommand } from "./command-record-row.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, WORKER_CUSTODY_SLOT_REBUILD_ID } from "./migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
 import { executeNativeRunDeletion, prepareNativeRunDeletion, RunDeletionRefusedError } from "./native-run-deletion.js";
 import { childrenFirst, lifecycleCommand, recordAudit, requireSettledPreBuildRun } from "./pre-build-run-deletion.js";
 import { readRestoreWriteFences } from "./restore-write-fences.js";
@@ -14,30 +14,6 @@ import { authenticateParkedWriteResolution } from "../../../rules/write-safety/p
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow } from "./worker-custody-predecessor.js";
-
-const SLIM_WORKER_SLOTS = [
-  `CREATE TABLE worker_slots (
- id TEXT PRIMARY KEY, workflow TEXT NOT NULL REFERENCES worker_pools(workflow), ordinal INTEGER NOT NULL UNIQUE CHECK(ordinal>0),
- pool_index INTEGER NOT NULL CHECK(pool_index>0), paused INTEGER NOT NULL CHECK(paused IN (0,1)),
- retired_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-) STRICT`,
-  `INSERT INTO worker_slots SELECT slot.id, slot.workflow, slot.ordinal, json_extract(slot.payload_json,'$.poolIndex'),
-    COALESCE(pause.paused,0), slot.retired_at, slot.created_at, slot.updated_at
-    FROM worker_slots_prior slot LEFT JOIN worker_pause_capture pause ON pause.worker_id=slot.id`,
-] as const;
-const SLIM_WORKER_SLOT_TRIGGERS = [
-  `CREATE TRIGGER worker_slots_retained BEFORE DELETE ON worker_slots
-BEGIN SELECT RAISE(ABORT,'worker-slot-retirement-retained'); END`,
-  `CREATE TRIGGER worker_slots_identity BEFORE UPDATE ON worker_slots
-WHEN NEW.id IS NOT OLD.id OR NEW.workflow IS NOT OLD.workflow OR NEW.ordinal IS NOT OLD.ordinal OR NEW.pool_index IS NOT OLD.pool_index
- OR NEW.created_at IS NOT OLD.created_at OR (OLD.retired_at IS NOT NULL AND NEW.retired_at IS NOT OLD.retired_at)
-BEGIN SELECT RAISE(ABORT,'worker-slot-identity-immutable'); END`,
-  `CREATE TRIGGER worker_slots_no_replace BEFORE INSERT ON worker_slots
-WHEN EXISTS(SELECT 1 FROM worker_slots WHERE id=NEW.id OR ordinal=NEW.ordinal)
-BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
-] as const;
-/** Tables whose foreign keys name worker_slots; a rename rewrites those keys, so each is rebuilt from its own stored DDL. */
-const WORKER_SLOT_CHILDREN = ["auth_leases", "exclusive_session_leases"] as const;
 
 const REMOVED_KEYS = new Set(["workerLifetime", "membershipRevision", "leaseGeneration", "controlBasis"]);
 const DELETE_BLOCKING_TRIGGERS = ["command_audits_retained", "commands_bulk_retained", "run_batches_retained", "ocr_review_revisions_retained", "ocr_approved_snapshots_retained"];
@@ -298,25 +274,6 @@ function assertNoRetainedReference(database: DatabaseSync, closure: ReadonlySet<
   }
 }
 
-function schemaSql(database: DatabaseSync, type: "table" | "trigger", table: string): string[] {
-  return rows(database, "SELECT sql FROM sqlite_schema WHERE type=? AND tbl_name=? ORDER BY name", type, table).map(row => text(row, "sql"));
-}
-
-/** Runs at the slot rebuild marker, after the pause capture and the drops of every other table that references slots. */
-export function rebuildWorkerSlots(database: DatabaseSync): void {
-  const children = WORKER_SLOT_CHILDREN.map(table => ({ table, ddl: schemaSql(database, "table", table), triggers: schemaSql(database, "trigger", table) }));
-  for (const { table } of children) database.exec(`ALTER TABLE ${table} RENAME TO ${table}_prior`);
-  database.exec("ALTER TABLE worker_slots RENAME TO worker_slots_prior");
-  for (const sql of SLIM_WORKER_SLOTS) database.exec(sql);
-  for (const { table, ddl } of children) {
-    for (const sql of ddl) database.exec(sql);
-    database.exec(`INSERT INTO ${table} SELECT * FROM ${table}_prior`);
-    database.exec(`DROP TABLE ${table}_prior`);
-  }
-  database.exec("DROP TABLE worker_slots_prior");
-  for (const sql of [...SLIM_WORKER_SLOT_TRIGGERS, ...children.flatMap(child => child.triggers)]) database.exec(sql);
-}
-
 /** Runs at the conversion marker inside the stopped upgrade transaction; any refusal rolls the whole upgrade back. */
 export function convertWorkerCustody(database: DatabaseSync, now: string, captureFile: CaptureFile, settleEvidence: SettleEvidence): void {
   const { runs: closure, seeds } = workerLifetimeClosure(database);
@@ -363,9 +320,8 @@ function refuseUnprovedRetryBirths(database: DatabaseSync): void {
   }
 }
 
-/** Runs one migration statement. The custody slot rebuild is DDL, so it runs on every path: fresh, expected layout and upgrade. */
+/** Runs one migration statement; dropping worker controls first refuses an unproved retry birth. */
 export function execMigrationStatement(database: DatabaseSync, statement: string): void {
   if (statement === "DROP TABLE worker_controls") refuseUnprovedRetryBirths(database);
-  if (statement === `SELECT '${WORKER_CUSTODY_SLOT_REBUILD_ID}'`) rebuildWorkerSlots(database);
   database.exec(statement);
 }

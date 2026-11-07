@@ -7,10 +7,11 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Rebuilds the schema-22 worker custody DDL on a current store with no worker rows; the schema version is left to the caller. */
+/** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
-  assert.equal(database.prepare("SELECT count(*) AS count FROM worker_slots").get()?.count, 0);
+  const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),
+    created_at: z.string(), updated_at: z.string() })).parse(database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all());
   const reference = new DatabaseSync(":memory:");
   const objects = (source: DatabaseSync) => new Map(source.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid").all()
     .map(row => [`${String(row.type)}:${String(row.name)}`, { type: String(row.type), name: String(row.name), sql: String(row.sql) }]));
@@ -26,10 +27,17 @@ export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): voi
   for (const type of ["table", "index", "trigger"]) {
     for (const [key, object] of prior) if (object.type === type && !objects(database).has(key)) database.exec(object.sql);
   }
+  for (const slot of slots) {
+    const row = { workerId: slot.id, workflow: slot.workflow, ordinal: slot.ordinal, poolIndex: slot.pool_index, membershipRevision: 1, phase: "idle",
+      retiredAt: slot.retired_at, retirementCommandId: null, reservationCommandId: null, createdAt: slot.created_at, updatedAt: slot.updated_at };
+    database.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,1,'idle',?,NULL,NULL,?,?,?)")
+      .run(row.workerId, row.workflow, row.ordinal, row.retiredAt, canonicalJsonStringify(row), row.createdAt, row.updatedAt);
+  }
 }
 
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  if (database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='worker_leases'").get() === undefined) restoreSchema22WorkerCustodyFixture(database);
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));
   assert.ok(trigger);
