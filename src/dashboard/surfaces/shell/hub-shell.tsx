@@ -1,13 +1,13 @@
 import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PreflightAssistantContext } from "../settings/preflight/preflight-assistant-model.js";
 import { createPortal } from "react-dom";
 import { ChevronDown, History, LogOut, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { Button, Dialog, DialogContent, DialogFooter, EmptyState, Tab, TabList, TabPanel, Tabs } from "../../ds/ui.js";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockActivity } from "./assistant-mock-thread.js";
-import { AssistantMark, assistantLogo, assistantLogoState } from "./assistant-mark.js";
+import { AssistantMark, assistantLauncher, assistantLogo, assistantLogoState } from "./assistant-mark.js";
 import { chatAge, createMockHubChatsPort, useHubChats, useHubPanelPosition, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
 import type { AssistantPorts } from "./assistant-panel-model.js";
@@ -29,7 +29,23 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const launcherPosition = useHubPanelPosition(8, true);
   const [logout, setLogout] = useState(false);
   const [opened, setOpened] = useState(source === "mock");
-  const frame = assistantFrame(), logo = assistantLogo();
+  const frame = assistantFrame(), logo = assistantLogo(), placement = assistantLauncher();
+  const [placementHost, setPlacementHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (placement === undefined) return;
+    const selector = { p1: '[aria-label="Session actions"] > span:last-child', p2: '[aria-label="Action panel controls"]', p3: ".workspace-rail-header > div" }[placement];
+    // Mock only: the hosts mount after the shell, so look until they exist.
+    const timer = window.setInterval(() => { const host = document.querySelector<HTMLElement>(selector); if (host) { setPlacementHost(host); window.clearInterval(timer); } }, 100);
+    return () => window.clearInterval(timer);
+  }, [placement]);
+  useEffect(() => {
+    const toggle = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j" || event.altKey || event.shiftKey || settingsOpen) return;
+      event.preventDefault(); panelPosition.reset(); setOpened(value => !value);
+    };
+    document.addEventListener("keydown", toggle);
+    return () => document.removeEventListener("keydown", toggle);
+  }, [settingsOpen, panelPosition]);
   const [list, setList] = useState(frame?.view === "activity");
   const [tab, setTab] = useState(frame?.view === "activity" ? "activity" : "chats");
   const [query, setQuery] = useState("");
@@ -65,6 +81,9 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   };
   const icon = (label: string, glyph: ReactNode, onClick: () => void) => <button tabIndex={0} className="hub-icon" type="button" aria-label={label} title={label} onClick={onClick}>{glyph}</button>;
   return <>
+    {placementHost && placement && createPortal(placement === "p2"
+      ? <Button tabIndex={0} size="sm" variant="secondary" className="ml-1 gap-1.5" aria-expanded={opened} aria-controls="hub-shell-assistant" title="Ask Relay (⌘J)" onClick={() => setOpened(value => !value)} icon={<AssistantMark direction={logo ?? "relay"} state={assistantLogoState()} size={16} />}>Ask Relay</Button>
+      : <Button tabIndex={0} size="sm" variant="ghost" className="size-8 p-0" style={placement === "p1" ? { order: -1 } : undefined} aria-label="Ask Relay" aria-expanded={opened} aria-controls="hub-shell-assistant" title="Ask Relay (⌘J)" onClick={() => setOpened(value => !value)} icon={<AssistantMark direction={logo ?? "relay"} state={assistantLogoState()} size={16} />} />, placementHost)}
     {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout size-8 p-0" aria-label="Log out" title="Log out" onClick={() => setLogout(true)} icon={<LogOut aria-hidden className="size-4" />} />, footer)}
       <section ref={panelPosition.element} id="hub-shell-assistant" className="hub-slot" aria-label={list ? "Relay assistant" : "Assistant panel"} data-source={model.source} hidden={settingsOpen || !opened} inert={settingsOpen || !opened} aria-hidden={settingsOpen || !opened} onKeyDown={event => {
         if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { setOpened(false); panelPosition.reset(); launcher.current?.focus(); } }
@@ -96,7 +115,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
             onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)} ></AssistantPanel>}
         </div>
       </section>
-      <button tabIndex={0} ref={element => { launcher.current = element; launcherPosition.element.current = element; }} className="hub-assistant-launcher" hidden={settingsOpen} type="button" aria-label="Assistant" aria-description="Drag to move. Alt and arrow keys also move the launcher." aria-controls="hub-shell-assistant" aria-expanded={opened} onPointerDown={launcherPosition.onPointerDown} onPointerMove={launcherPosition.onPointerMove} onPointerUp={launcherPosition.onPointerUp} onPointerCancel={launcherPosition.onPointerCancel} onLostPointerCapture={launcherPosition.onPointerUp} onKeyDown={launcherPosition.onKeyDown} onClick={() => { if (launcherPosition.moved.current) { launcherPosition.moved.current = false; return; } panelPosition.reset(); setOpened(value => !value); }}>{opened ? <ChevronDown aria-hidden /> : logo ? <AssistantMark direction={logo} state={assistantLogoState()} size={22} /> : <Sparkles aria-hidden />}</button>
+      <button tabIndex={0} ref={element => { launcher.current = element; launcherPosition.element.current = element; }} className="hub-assistant-launcher" hidden={settingsOpen || placement !== undefined} type="button" aria-label="Assistant" aria-description="Drag to move. Alt and arrow keys also move the launcher." aria-controls="hub-shell-assistant" aria-expanded={opened} onPointerDown={launcherPosition.onPointerDown} onPointerMove={launcherPosition.onPointerMove} onPointerUp={launcherPosition.onPointerUp} onPointerCancel={launcherPosition.onPointerCancel} onLostPointerCapture={launcherPosition.onPointerUp} onKeyDown={launcherPosition.onKeyDown} onClick={() => { if (launcherPosition.moved.current) { launcherPosition.moved.current = false; return; } panelPosition.reset(); setOpened(value => !value); }}>{opened ? <ChevronDown aria-hidden /> : logo ? <AssistantMark direction={logo} state={assistantLogoState()} size={22} /> : <Sparkles aria-hidden />}</button>
     <span ref={anchor} role="status" className="sr-only">{announcement}</span>
     <Dialog open={logout} onOpenChange={setLogout}><DialogContent hideClose className="hub-modal" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><button tabIndex={0} className="hub-btn" onClick={() => setLogout(false)}>Cancel</button><button tabIndex={0} className="hub-btn primary" onClick={() => { setLogout(false); onLogout(); }}>Log out</button></DialogFooter></DialogContent></Dialog>
     <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose className="hub-modal" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}

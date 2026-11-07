@@ -13,6 +13,15 @@ export function assistantLogoState(): MarkState {
   return MARK_STATES.find(item => item === value) ?? "idle";
 }
 
+/** Launcher placement mock (`assistantLauncher=p1|p2|p3`): footer bar icon, Logs toolbar button, app header icon. */
+export const LAUNCHER_PLACEMENTS = ["p1", "p2", "p3"] as const;
+export type LauncherPlacement = (typeof LAUNCHER_PLACEMENTS)[number];
+export function assistantLauncher(): LauncherPlacement | undefined {
+  if (typeof window === "undefined") return undefined;
+  const value = new URLSearchParams(window.location.search).get("assistantLauncher");
+  return LAUNCHER_PLACEMENTS.find(item => item === value);
+}
+
 export function assistantLogo(): MarkDirection | undefined {
   if (typeof window === "undefined") return undefined;
   const value = new URLSearchParams(window.location.search).get("assistantLogo");
