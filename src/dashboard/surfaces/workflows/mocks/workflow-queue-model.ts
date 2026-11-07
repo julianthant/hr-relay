@@ -88,7 +88,7 @@ function decisionGroupSurfaces(sample: QueueSurfaceWire, group: MockGroup): read
     memberPreview: { state: "present", value: `${group.members[0].name} +${group.members.length - 1} more` } });
   return [parent, ...group.members.map((member, index) => QueueSurfaceWireSchema.parse({ ...sample, runId: memberIds[index], itemId: memberIds[index], title: member.name,
     subtitle: { state: "absent", reason: "The member title names the person" }, status: member.failed ? "failed" : "done", endedAt: ended,
-    liveMessage: { state: "absent", reason: "Run is terminal" }, parent: { runId: parentId, visibility: "inline" }, panelKind: "member" }))];
+    liveMessage: { state: "absent", reason: "Run is terminal" }, parent: { runId: parentId, visibility: "inline", partitionDay: localDatePart(new Date(sample.startedAt)), workflowId: sample.workflowId, label: "Emergency Contact", title: group.title, panelKind: "group", status: "failed" }, panelKind: "member" }))];
 }
 
 export function mockQueueOutcomes(runs: readonly MockRun[]): ReadonlyMap<string, QueueBusinessOutcome> {

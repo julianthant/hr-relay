@@ -141,7 +141,7 @@ const scenes: readonly MockSceneData[] = [
     ],
     timeline: [stage("navigation", "Read existing contacts", "completed", { durationLabel: "13s" }), stage("fill-form", "Fill emergency contact", "completed", { durationLabel: "16s" }), stage("save", "Save emergency contact", "failed", { statusLabel: "Failed" })],
     decision: { kind: "answer", tone: "danger", question: "Emergency contact could not be saved", note: "UCPath rejected the phone number (619) 555-014. Nothing was saved.", secondary: [] } },
-  { id: "d9p", name: "Emergency Contact PDF parent", workflow: "emergency-contact", subject: "Scan_0412.pdf", state: "failed", queueMessage: "", group: ecGroup("parent"),
+  { id: "d9p", name: "Emergency Contact PDF parent", workflow: "emergency-contact", subject: "Scan_0412.pdf", state: "failed", queueMessage: "Member runs finished", group: ecGroup("parent"),
     steps: [
       { id: "read", time: "13:02:05", title: "Read document", system: "OCR", outcome: "12 records read", blocks: [page("Scan_0412.pdf", "Read", [read("Pages", "14"), read("Records found", "12")])] },
       { id: "review", time: "13:06:30", title: "Review records", outcome: "12 records approved", blocks: [] },
