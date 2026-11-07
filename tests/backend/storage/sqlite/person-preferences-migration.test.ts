@@ -68,7 +68,9 @@ it("converts accepted snapshots and exact initialization links without changing 
     database.exec("BEGIN EXCLUSIVE"); convert(database); database.exec("COMMIT");
     assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const after = readAppSettings(database); assert.ok(after);
-    assert.deepEqual(database.prepare("SELECT * FROM runs ORDER BY id").all(), before[4].rows);
+    // The build-id step deletes the pre-build queued run through its cancel door.
+    assert.deepEqual(database.prepare("SELECT * FROM runs").all(), []);
+    assert.deepEqual(database.prepare("SELECT run_id, cleanup_state FROM deleted_runs").all().map(row => ({ ...row })), before[4].rows.map(row => ({ run_id: row.id, cleanup_state: "pending" })));
     assert.equal(after.initialization.configSnapshotId, CONFIG_SNAPSHOT.configSnapshotId);
     assert.equal(after.initialization.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
     assert.equal(after.initialization.commandId, z.object({ initialization: z.object({ commandId: z.string() }) }).parse(JSON.parse(String(before[1].rows[0].payload_json))).initialization.commandId);
