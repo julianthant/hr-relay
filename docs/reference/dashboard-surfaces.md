@@ -703,7 +703,7 @@ pending until the download settles and reports refusal without starting another 
 
 ## Explorer
 
-Every registered workflow's Explorer timeline is generated from its definition. A timeline group with operator fields is one step: its description and the fields' fictional examples. Other groups show one step per node with its label, purpose (or the group description), structure and declared actions. The renderer validates graph, operation and source lineage before projecting. No run values are inferred.
+Every registered workflow's Explorer timeline is generated from its definition. A timeline group with operator fields is one step: its description and the fields' fictional examples. Other groups show one step per node with its label, purpose (or the group description) and structure. The renderer validates the graph before projecting. No run values are inferred.
 
 Explorer mounts in Settings and describes itself as fictional preview data. Its workflow picker
 uses stable fixture IDs and the shared catalog. Local scenario/choice controls alter the preview's

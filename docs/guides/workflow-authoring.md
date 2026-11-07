@@ -145,9 +145,9 @@ of `[group, entries[]]`. Tuple order controls presentation. References control e
 | `parallel(identity, branches)` | Explicit branches with task or delegate leaves; see §8. |
 | `delegate(identity, references, { bind, deriveChildItemId })` | Typed child-run target and policy; see §8. |
 | `result(schema, references, derive)` | Terminal result schema, references and pure derivation. |
-| `group(step, { omission })` | Whole-step omission declaration; see §7. |
+| `group(step, { omission, description, system, operatorFields })` | Whole-step omission declaration (see §7), plus the step's description, system and operator fields (see §4.1). |
 
-Binds receive `input`, referenced `outputs`, optional `protectedInputBindings` and `configuration`.
+Binds receive `input`, referenced `outputs`, optional `protectedInputBindings` and optional `dryRun`.
 Declare all dependencies. For required nullable facts, use `requireFact(value, nodeId, path)` from
 `src/workflow-kit/workflow.ts`; handle valid absent/conditional arms explicitly.
 
