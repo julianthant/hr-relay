@@ -1909,7 +1909,8 @@ function requireActiveSlot(repositories: AuthorityRepositories, request: Command
 
 /** The member fence is in memory: a card from another lifetime or an older version of this one is stale. */
 function requireMemberFence(pool: WorkerPoolRuntimeSeam, request: WorkerMemberCommand): WorkerMemberState {
-  try { return pool.assertMember(request.target); }
+  const { workerId, lifetimeId, expectedVersion } = request.target;
+  try { return pool.assertMember({ workerId, lifetimeId, expectedVersion }); }
   catch (error) {
     if (error instanceof Error && "code" in error && error.code === "WORKER_TARGET_STALE") conflict(request, 0, "WORKER_TARGET_STALE");
     throw error;
@@ -1955,14 +1956,23 @@ async function executeWorkerPoolCommand(
   if (prior !== undefined) return prior;
   // A stale or missing durable target is refused before admission reaches the process seam (preflight, assistant grant).
   transact(repositories => {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker"
+      || request.type === "stop-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker") {
+      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+    }
     if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
       checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
       if (request.type === "spawn-worker") requireActiveSlot(repositories, request, request.payload.workerId, request.target.workflowId);
     } else requireActiveSlot(repositories, request, request.target.workerId, "workflowId" in request.target ? request.target.workflowId : undefined);
   });
-  if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker" || request.type === "stop-worker") {
-    await pool.admit(request.commandId, { preflight: true });
-  } else await pool.admit(request.commandId, { preflight: false });
+  const preflight = request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker" || request.type === "stop-worker";
+  try { await pool.admit(request.commandId, { preflight }); }
+  catch (error) {
+    const refusal = workerEffectRefusal(request, error);
+    if (refusal === undefined) throw error;
+    return transact(repositories => auditWorkerCommand(dependencies, repositories, request, refusal));
+  }
   const settle = async (effect: () => Promise<void>, application: (repositories: AuthorityRepositories) => CommandApplication): Promise<CommandResult> => {
     try { await effect(); }
     catch (error) {
