@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
-import { ExecutorSpanEventSchema } from "../../../../src/backend/logs/span-emitter.js";
+import { ExecutorSpanEventSchema, type ExecutorSpanEvent } from "../../../../src/backend/logs/span-emitter.js";
 import { inspectArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
@@ -15,8 +15,10 @@ import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-cu
 const { cleanup, roundTrip, parkedIntent, resolutionCommand } = createParkedWriteRoundTripTestWorld();
 afterEach(cleanup);
 
-/** A worker-claimed run whose UNKNOWN write was settled by an authenticated read-only recheck. */
-async function recovered() {
+type FenceSpan = Extract<ExecutorSpanEvent, { t: "transaction.fenced" }>;
+
+/** A worker-claimed run whose UNKNOWN write was settled by an authenticated read-only recheck; `extra` spans join the timeline before it moves to schema 22. */
+async function recovered(extra: (fence: FenceSpan) => readonly unknown[] = () => []) {
   const h = await roundTrip(); await h.park();
   const intent = parkedIntent(h.database);
   const run = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID); assert.ok(run);
@@ -29,16 +31,16 @@ async function recovered() {
   assert.ok(settled?.status === "committed" && settled.resolution !== undefined);
   const fence = h.spans().flatMap(event => event.t === "transaction.fenced" ? [event] : [])[0];
   assert.ok(fence);
-  const emit = (event: unknown) => createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(ExecutorSpanEventSchema.parse(event));
+  const timeline = createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock });
   // The worker's span sink persists the fence; the conversion reads it from the timeline.
-  emit(fence);
+  for (const event of [fence, ...extra(fence)]) timeline.emit(ExecutorSpanEventSchema.parse(event));
   const raw = new DatabaseSync(h.profile.path);
   raw.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000");
   assert.notEqual(writePredecessorWorkerLifetimes(raw, WRITE_FIXTURE_RUN_ID).length, 0, "the run must be claimed with a worker lifetime");
   raw.exec("BEGIN EXCLUSIVE"); restorePredecessorCustodySchema(raw);
   raw.exec("UPDATE database_states SET schema_version=22; PRAGMA user_version=22; COMMIT");
   const migrate = () => migrateWorkerCustody(raw, WRITE_FIXTURE_NOW, ref => inspectArtifactDeletionFile(h.profile.admission, ref));
-  return { h, raw, resolution: settled.resolution, fence, emit, migrate };
+  return { h, raw, resolution: settled.resolution, migrate };
 }
 
 function writeEvidence(raw: DatabaseSync, resolution: { commandId: string; auditId: string }) {
@@ -47,10 +49,11 @@ function writeEvidence(raw: DatabaseSync, resolution: { commandId: string; audit
 }
 
 it("keeps a recovered committed write with its parked attempt and authenticated recheck, ignoring a dry-run preview", async () => {
-  const { raw, resolution, fence, emit, migrate } = await recovered();
-  try {
+  const { raw, resolution, migrate } = await recovered(fence => {
     const { taskId: _taskId, ...preview } = fence;
-    emit({ ...preview, t: "transaction.previewed", subject: "match", externalCommit: "none" });
+    return [{ ...preview, t: "transaction.previewed", subject: "match", externalCommit: "none" }];
+  });
+  try {
     const before = writeEvidence(raw, resolution);
     migrate();
     assert.equal(raw.prepare("SELECT 1 FROM runs WHERE id=?").get(WRITE_FIXTURE_RUN_ID), undefined);
@@ -64,9 +67,8 @@ it("keeps a recovered committed write with its parked attempt and authenticated 
 });
 
 it("refuses a fence for another task that no committed write settles, beside a committed one", async () => {
-  const { raw, fence, emit, migrate } = await recovered();
+  const { raw, migrate } = await recovered(fence => [{ ...fence, taskId: `${fence.taskId}-second` }]);
   try {
-    emit({ ...fence, taskId: `${fence.taskId}-second` });
     const dump = () => ["runs", "commands", "command_audits", "write_intents", "write_attempts", "timeline_events", "deleted_runs"].map(table => raw.prepare(`SELECT * FROM ${table}`).all());
     const before = dump();
     assert.throws(migrate, /authority-upgrade-unresolved-writes/u);
@@ -75,9 +77,8 @@ it("refuses a fence for another task that no committed write settles, beside a c
 });
 
 it("refuses a later fence for the same task that the earlier committed write cannot settle", async () => {
-  const { raw, fence, emit, migrate } = await recovered();
+  const { raw, migrate } = await recovered(fence => [{ ...fence, ts: new Date(Date.parse(fence.ts) + 1_000).toISOString() }]);
   try {
-    emit({ ...fence, ts: new Date(Date.parse(fence.ts) + 1_000).toISOString() });
     const dump = () => ["runs", "commands", "command_audits", "write_intents", "write_attempts", "timeline_events", "deleted_runs"].map(table => raw.prepare(`SELECT * FROM ${table}`).all());
     const before = dump();
     assert.throws(migrate, /authority-upgrade-unresolved-writes/u);
