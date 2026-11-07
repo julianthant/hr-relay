@@ -14,7 +14,7 @@ export const emergencyContactWorkflow = defineWorkflow({
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {}, details: [], role: defineWorkflowRole({ kind: "composition" }),
   identity: { matchKey: input => `${input.document.sha256}:${input.readingId}` },
-  presentation: { title: () => "Emergency Contact PDF", subtitle: () => "Approved PDF records" },
+  presentation: { title: input => input.fileName ?? "Emergency Contact PDF", subtitle: () => "Approved PDF records" },
   scenarios: EMERGENCY_CONTACT_SCENARIOS,
   nodePurposes: [
     { nodeId: "read-document", purpose: "Await the direct OCR child and its operator release before any contact acquisition." },

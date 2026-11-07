@@ -5,11 +5,13 @@ import { OcrPageInputSchema } from "./source-manifest.js";
 import { OcrWorkbookRosterEvidenceSchema } from "./roster.js";
 import { ManualOcrAssertionSchema, OCR_PAGE_EXAMPLE } from "../ocr-page/input.js";
 import { defineCanonicalInput } from "../../workflow/canonical-input.js";
+import { OcrSourceUploadSchema } from "../../ocr/review.js";
 
 export const OcrInputSchema = z.strictObject({
   sourceRunId: RunIdSchema.optional(),
   approval: z.enum(["review-only", "release"]).default("review-only"),
   document: OcrPageInputSchema.shape.document,
+  fileName: OcrSourceUploadSchema.shape.fileName.optional(),
   readingId: ItemIdSchema,
   formType: OcrFormTypeSchema,
   roster: OcrWorkbookRosterEvidenceSchema.nullable(),
