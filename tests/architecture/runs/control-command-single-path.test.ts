@@ -361,8 +361,28 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     function find(node: ts.Node): void { if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
       && node.expression.text === "withCanonicalRunCommandScope") calls.push(node); ts.forEachChild(node, find); }
     find(kernel);
-    if (calls.length !== 1 || calls[0].arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",")
-      !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
+    const argumentsOf = (call: ts.CallExpression) => call.arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",");
+    if (calls.length !== 2 || argumentsOf(calls[0]) !== "repositories,cancel,()=>executeCancel(dependencies,repositories,cancel,now)"
+      || argumentsOf(calls[1]) !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
+    // Reset's own Cancel is journaled inside the Reset's transaction: commands.insert before the scope, commandAudits.insert after.
+    let resetOwner: ts.Node | undefined = calls[0].parent;
+    while (resetOwner !== undefined && !ts.isArrowFunction(resetOwner)) resetOwner = resetOwner.parent;
+    if (resetOwner === undefined || !ts.isArrowFunction(resetOwner) || !ts.isVariableDeclaration(resetOwner.parent)
+      || resetOwner.parent.name.getText(kernel) !== "journaledResetCancel") return content;
+    const resetBefore: ts.CallExpression[] = [], resetAfter: ts.CallExpression[] = [], resetStray: ts.CallExpression[] = [];
+    function resetJournal(node: ts.Node): void {
+      if (ts.isCallExpression(node)) {
+        const expression = node.expression.getText(kernel);
+        if (expression === "repositories.commands.insert" && node.getText(kernel) === "repositories.commands.insert(cancel)") resetBefore.push(node);
+        else if (expression === "repositories.commandAudits.insert") resetAfter.push(node);
+        else if (expression.startsWith("repositories.command")) resetStray.push(node);
+      }
+      ts.forEachChild(node, resetJournal);
+    }
+    resetJournal(resetOwner.body);
+    if (resetBefore.length !== 1 || resetAfter.length !== 1 || resetStray.length !== 0 || resetBefore[0].end >= calls[0].getStart(kernel)
+      || calls[0].end >= resetAfter[0].getStart(kernel)) return content;
+    calls.shift();
     const selection = calls[0].parent;
     if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
       || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"||request.type==="resume")') return content;
@@ -525,6 +545,10 @@ describe("finite native delegation audit read ownership", () => {
           kernel.replaceAll("dependencies.authority.withAuthorityTransaction", "dependencies.authority.withAuthorityReadSnapshot"),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "settings" || request.family === "start"'),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "start"'),
+          kernel.replace("() => executeCancel(dependencies, repositories, cancel, now))", "() => executeCancel(dependencies, repositories, request, now))"),
+          kernel.replace("repositories.commands.insert(cancel);", ""),
+          kernel.replace("const journaledResetCancel =", "const resetCancel ="),
+          kernel.replace("const application = withCanonicalRunCommandScope(repositories, cancel,", "repositories.commandAudits.findByCommand(cancel.commandId); const application = withCanonicalRunCommandScope(repositories, cancel,"),
         ]) {
           assert.notEqual(mutant, kernel);
           assert.ok(withoutDelegationAuditReads(source, path, mutant).includes("commandAudits"));
@@ -577,15 +601,13 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...["remove-worker", "retry-worker"].map((type, index) => ({
     commandId: index === 0 ? "10101010-1010-4010-8010-101010101010" : "20202020-2020-4020-8020-202020202020",
     requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type,
-    target: { workflowId: "fixture-graph", workerId: "fixture-graph-worker-1", membershipRevision: 1,
-      expectedVersion: 0, controlBasis: { leaseGeneration: 1, controlRevision: 1 } },
+    target: { workflowId: "fixture-graph", workerId: "fixture-graph-worker-1", lifetimeId: null, expectedVersion: 0 },
   })),
   {
     commandId: "35353535-3535-4353-8353-353535353535",
     requestedAt: NOW, requestedBy: "local-operator", source: "run-detail", family: "worker-browser", type: "check-parked-write",
     target: {
-      workerId: "fixture-graph-worker-9", expectedVersion: 1, membershipRevision: 1, processId: 1, startedAt: NOW,
-      controlBasis: { leaseGeneration: 1, controlRevision: 1 },
+      workerId: "fixture-graph-worker-9", lifetimeId: "49494949-4949-4494-8494-494949494949", expectedVersion: 1,
       installationId: "33333333-3333-4333-8333-333333333333", profileId: ASSISTANT_PREFERENCE_PROFILE,
       workflowId: "fixture-graph", itemId: "46464646-4646-4464-8464-464646464646",
       runId: "45454545-4545-4454-8454-454545454545", runVersion: 1, runAttempt: 1, traceId: "ab-120000-0001", nodeId: "parked-check",
