@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterEach,it,vi } from "vitest";
 import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-paths.js";
 import { createNominatimGeocodeAdapter } from "../../../../src/backend/processing/providers/geocode-adapters.js";
+import { createIpcRouter } from "../../../../src/backend/runtime/workers/worker-ipc-router.js";
 import { createProviderClient } from "../../../../src/backend/processing/providers/provider-client.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
 import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema } from "../../../../src/models/providers/providers.js";
@@ -25,7 +26,10 @@ const request = ProviderRequestEnvelopeSchema.parse({ capability: "geocode.nomin
 function options(milliseconds = 10_000, controller = new AbortController()) { return { requestId: randomUUID(), signal: controller.signal, deadlineMonotonicMs: systemClock.monotonicMs() + milliseconds }; }
 function child(owner: ReturnType<typeof createNominatimGeocodeAdapter>) {
   const process = fork(join(import.meta.dirname, "../../../support/helpers/geocode/nominatim-client.ts"), [], { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "pipe", "pipe", "ipc"] });
-  owner.attach(process);
+  const router = createIpcRouter({ on: (event, listener) => process.on(event, listener), off: (event, listener) => process.off(event, listener),
+    disconnect: () => { process.disconnect(); } }, error => { throw error; });
+  owner.attach(process, router);
+  for (const kind of ["ready", "fetch-start", "result"]) router.register(kind, () => undefined);
   cleanups.push(async () => { if (process.exitCode === null && process.signalCode === null) { process.kill("SIGKILL"); await once(process, "exit"); } });
   return process;
 }

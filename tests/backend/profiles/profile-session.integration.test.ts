@@ -84,7 +84,7 @@ function createProfileSession(input: Omit<Parameters<typeof realCreateProfileSes
     if (input.activity?.hasUnquiescedWork(operation.profileId)) return;
     const database = databases.get(operation.profileId);
     if (database === undefined) throw new Error("fixture logout native source missing");
-    const stopped = await database.settlePendingLogout(admission, operation, [], { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
+    const stopped = await database.settlePendingLogout(admission, operation, { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
     await stopped.complete();
     completed.set(operationId, { profileId: operation.profileId, epoch: operation.sessionGeneration + 1 });
     stopped.dispose();
@@ -513,7 +513,7 @@ describe("profile session", () => {
     assert.equal(sam.state, "active");
     if (alex.state !== "active" || sam.state !== "active") return;
     const operationId = "77777777-7777-4777-8777-777777777777";
-    machine.publishProfileOperation({ schemaVersion: 2, kind: "logout", operationId, profileId: alex.profileId, sessionGeneration: originalEpoch, source: originalSource,
+    machine.publishProfileOperation({ schemaVersion: 3, kind: "logout", operationId, profileId: alex.profileId, sessionGeneration: originalEpoch, source: originalSource,
       at: IsoInstantSchema.parse("2026-09-06T12:06:00.000Z"), phase: "admitted" });
     const restarted = createProfileSession({ machineRoot: root });
     const blocked = restarted.signIn({ email: "sam@ucsd.edu", password: "secret-two", at: "2026-09-06T12:07:00.000Z" });

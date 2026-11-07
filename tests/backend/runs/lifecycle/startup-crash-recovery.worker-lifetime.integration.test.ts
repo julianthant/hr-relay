@@ -9,38 +9,25 @@ import { attemptingOwnedWrite, ownedWorkerLifetimeFixture } from "../../../suppo
 const world = createRunRecordServiceTestWorld();
 afterEach(world.cleanup);
 
-it("reclaims a dead idle lifetime before admitting another claim of the same workflow", async () => {
+it("leaves a queued run claimable after startup recovery of an exited idle worker", async () => {
   const f = await ownedWorkerLifetimeFixture(world);
   try {
     const queued = world.created(f.service, f.request);
-    f.observe("idle");
     await f.dispose();
     f.clock.advanceWall(120_000); f.clock.advanceMonotonic(120_000);
     reconcileStartupCrash({ ...f, lifecycle: f.service, lock: f.lifetime });
-    assert.equal(f.database.authority.workerLeases.get(f.slot.workerId)?.lifecycle.state, "stopped");
-    assert.ok(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID)
-      .some(note => note.title === "RUN_CRASH_RESOURCES_RELEASED"));
-    const now = f.clock.now().toISOString();
-    const replacement = f.database.authority.workerLeases.start({ workerId: f.slot.workerId, workflow: f.slot.workflow,
-      browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now });
-    assert.equal(replacement.state, "started");
-    if (replacement.state !== "started") throw new Error("replacement lifetime required");
-    assert.equal(replacement.lease.leaseGeneration, f.started.leaseGeneration + 1);
-    assert.equal(replacement.lease.processId, process.pid);
-    const claimed = f.database.authority.runs.claimNext({ workflow: f.slot.workflow, workerId: f.slot.workerId,
-      workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: replacement.lease.leaseGeneration }, now });
+    const claimed = f.database.authority.runs.claimNext({ workflow: f.slot.workflow, workerId: f.slot.workerId, now: f.clock.now().toISOString() });
     assert.ok(claimed.state === "claimed");
     assert.equal(claimed.run.envelope.runId, queued.envelope.runId);
   } finally { await f.dispose(); }
 });
 
 for (const scenario of ["interrupted", "startup-cancelled", "global-cancelled", "attempting-write", "cancelled-attempting-write"] as const) it(
-  `controller recovers ${scenario} without another claim or browser birth`, async () => {
+  `controller recovers ${scenario} without another claim`, async () => {
     const f = await ownedWorkerLifetimeFixture(world, { fenceInOwner: scenario.endsWith("attempting-write") });
     try {
       const queued = world.created(f.service, f.request);
-      const claimed = f.database.authority.runs.claimNext({ workflow: f.slot.workflow, workerId: f.slot.workerId,
-        workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: f.started.leaseGeneration }, now: f.now });
+      const claimed = f.database.authority.runs.claimNext({ workflow: f.slot.workflow, workerId: f.slot.workerId, now: f.now });
       assert.ok(claimed.state === "claimed", "the actual child must own the claim");
       let intentId: string | undefined;
       if (scenario.endsWith("attempting-write")) {
@@ -70,11 +57,6 @@ for (const scenario of ["interrupted", "startup-cancelled", "global-cancelled", 
       if (scenario === "startup-cancelled") {
         const before = f.database.authority.runs.get(queued.envelope.runId);
         assert.ok(before);
-        assert.throws(() => f.service.recoverCrash({ commandId: randomUUID(), runId: queued.envelope.runId,
-          expectedVersion: before.version, claim: { workerId: f.slot.workerId, claimGeneration: before.claimGeneration },
-          workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: f.started.leaseGeneration + 1 },
-          now: f.now }, f.lifetime), /crash-recovery-lifetime-changed/u);
-        assert.deepEqual(f.database.authority.runs.get(queued.envelope.runId), before);
         const generation = f.database.getMeta().authorityGeneration;
         for (const drift of [
           { expectedVersion: before.version + 1 },
@@ -83,7 +65,6 @@ for (const scenario of ["interrupted", "startup-cancelled", "global-cancelled", 
         ]) {
           assert.throws(() => f.service.recoverCrash({ commandId: randomUUID(), runId: queued.envelope.runId,
             expectedVersion: before.version, claim: { workerId: f.slot.workerId, claimGeneration: before.claimGeneration },
-            workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: f.started.leaseGeneration },
             now: f.now, ...drift }, f.lifetime), /crash-recovery-claim-changed/u);
           assert.deepEqual(f.database.authority.runs.get(queued.envelope.runId), before);
           assert.equal(f.database.getMeta().authorityGeneration, generation);
@@ -93,15 +74,13 @@ for (const scenario of ["interrupted", "startup-cancelled", "global-cancelled", 
       f.clock.advanceMonotonic(2_000);
       const reconcile = () => scenario === "global-cancelled"
         ? reconcileExitedWorker({ ...f, lifecycle: f.service, lock: f.lifetime,
-          workerId: f.slot.workerId, leaseGeneration: f.started.leaseGeneration })
+          workerId: f.slot.workerId })
         : reconcileStartupCrash({ ...f, lifecycle: f.service, lock: f.lifetime });
       reconcile();
       const recovered = f.database.authority.runs.get(queued.envelope.runId);
       assert.ok(recovered);
       assert.equal(recovered.envelope.attempt, claimed.run.envelope.attempt);
       assert.equal(recovered.claimGeneration, claimed.run.claimGeneration);
-      assert.equal(f.database.authority.workerLeases.get(f.slot.workerId)?.leaseGeneration, f.started.leaseGeneration);
-      assert.deepEqual(f.database.authority.workerControls.browsers(f.slot.workerId), []);
       if (scenario.endsWith("attempting-write")) {
         assert.ok(recovered.lifecycle.state === "parked-write");
         assert.equal(recovered.lifecycle.writeIntentId, intentId);

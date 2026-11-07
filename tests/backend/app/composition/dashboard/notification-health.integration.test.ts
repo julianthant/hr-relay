@@ -1,11 +1,13 @@
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { RunRecordSchema } from "../../../../../src/models/run/record.js";
+import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { describe, expect, it } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const { fixture } = createNotificationCompositionTestWorld();
+const { fixture, seedRun } = createNotificationCompositionTestWorld();
 
 describe("canonical notification producers", () => {
   it("reads actual backup verification, accepts stale generations, and never creates a backup", async () => {
@@ -23,12 +25,11 @@ describe("canonical notification producers", () => {
       expect((await read()).backupFailed).toBe(true);
     } finally { await f.close(); }
   });
-  it("observes real worker lease expiry strictly after sixty seconds", async () => {
+  it("observes a claimed run's heartbeat expiry strictly after sixty seconds", async () => {
     const f = await fixture();
     try {
-      const lease = f.db.authority.workerLeases.get(f.db.authority.workerSlots.list("person-lookup")[0].workerId)!;
-      expect(f.db.authority.workerLeases.reportLifecycle({ workerId: lease.workerId, leaseGeneration: lease.leaseGeneration,
-        lifecycle: { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: f.clock.now().toISOString() }, now: f.clock.now().toISOString() }).state).toBe("applied");
+      seedRun(f, RunRecordSchema.parse({ ...QUEUED_RUN, lifecycle: { state: "running", workerId: "person-lookup-worker-1", claimedAt: QUEUED_RUN.envelope.enqueuedAt,
+        heartbeatAt: QUEUED_RUN.envelope.enqueuedAt, currentNodeId: "searching" }, claimGeneration: 1 }));
       const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
       f.clock.advanceWall(60_000); expect((await read()).leaseExpired).toBe(false);
       f.clock.advanceWall(1); expect((await read()).leaseExpired).toBe(true);

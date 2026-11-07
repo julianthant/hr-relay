@@ -17,7 +17,7 @@ async function fixture(drain: () => Promise<void> = async () => undefined) {
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("genuine fixture session required");
   const context = runtime.selectedContext(active.token);
-  runtime.beginSupervisorConstruction(active.token); runtime.bindSupervisor(active.token, { memberEvidence: () => undefined, drainOwnedChildren: drain });
+  runtime.beginSupervisorConstruction(active.token); runtime.bindSupervisor(active.token, { snapshot: () => [], stopAll: async () => { await drain(); return []; } });
   return { profile, clock, runtime, active, context, logout: () => runtime.session.logOut(active.token, { at: clock.now().toISOString() }),
     async close(unproved = false) {
       try { await runtime.close(); }
@@ -156,7 +156,7 @@ it("retains a genuine UNKNOWN submit and its exact attempt without revoking the 
     const active = runtime.session.resumeSignedInProfile({ at: h.clock.now().toISOString() });
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("genuine retained profile required");
     context = runtime.selectedContext(active.token);
-    runtime.beginSupervisorConstruction(active.token); runtime.bindSupervisor(active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined });
+    runtime.beginSupervisorConstruction(active.token); runtime.bindSupervisor(active.token, { snapshot: () => [], stopAll: async () => [] });
     const contains = (error: unknown): boolean => error instanceof Error && error.message === "profile-logout-work-unsettled"
       || error instanceof AggregateError && error.errors.some(contains);
     await assert.rejects(runtime.drainForLogout(active.token), contains);

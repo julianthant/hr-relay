@@ -1,14 +1,16 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { randomUUID } from "node:crypto";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import fs, { renameSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { afterAll, it, vi } from "vitest";
-import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { composeWorkerPool } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { scriptedWorkerSpawner, type ScriptedWorkerChild } from "../../../support/helpers/backend/fake-worker-port.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { doctorAuthorityStorage, StorageDoctorObservationChangedError } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
@@ -23,13 +25,11 @@ import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-sett
 import { workflowPreflightScope } from "../../../../src/backend/runs/start/preflight-scope.js";
 import { createPreflightReportService } from "../../../../src/backend/runtime/preflight/report-service.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
 import { requiredPreflightChecks, type PreflightRunner, type PreflightRunnerContext } from "../../../../src/models/preflight/preflight.js";
 import { type RuntimeCapability } from "../../../../src/models/preflight/preflight-contract.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { ActorIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -90,7 +90,7 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
   const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
     preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { pool: {planPoolWorkerCount:unexpected,spawnPoolWorker:unexpected,refreshPoolBrowser:unexpected,reopenPoolBrowser:unexpected,stopPoolWorker:unexpected,pausePoolWorker:unexpected,resumePoolWorker:unexpected} } };
+    workerRuntime: { pool: unusedWorkerPool(unexpected) } };
   const kernel = createCommandKernel(kernelDependencies);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
@@ -196,9 +196,9 @@ try {
   const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
-  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+  const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
     workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-  const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+  const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
   const refused = new Error("synthetic browser profile still closing");
   await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(),
     claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async run => {
@@ -230,9 +230,9 @@ it("returns a changed observation before browser preparation or claim, without r
     await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
     assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
     const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
-    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
       workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
     changed = true;
     const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
       claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
@@ -250,9 +250,9 @@ for (const change of ["selection", "version", "cancel", "abort"] as const) it(`r
     await h.plans.prepare?.(ingress, signal()); const plan = h.plans.plan(ingress);
     assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
     const queued = h.database.authority.runs.listByWorkflow(plan.workflowId); assert.equal(queued.length, 2);
-    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
       workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
     let entered: () => void = () => undefined;
     const started = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
     const prepared: { runId: string; version: number }[] = [], controller = new AbortController();
@@ -299,9 +299,9 @@ try {
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
   h.clock.advanceWall(60_000); h.clock.advanceMonotonic(60_000); h.faults.add("endpoint.ucpath.prod");
-  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+  const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
     workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-  const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+  const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
   const generation = h.database.getMeta().authorityGeneration;
   await assert.rejects(claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }), PreflightAdmissionRefusal);
   assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original); assert.equal(h.database.getMeta().authorityGeneration, generation);
@@ -406,39 +406,25 @@ await _afterEachFixture0();
 it("production worker process composition refuses preflight before spawn and admits a healthy positive control", async () => {
 try {
 
-  const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
-  const plan = CommandRequestSchema.parse({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(),
-    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
-    target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
-  assert.equal(plan.type, "plan-worker-count");
-  if (plan.type !== "plan-worker-count") assert.fail("fixture plan required");
-  const roster = h.database.withAuthorityTransaction(repositories => {
-    repositories.commands.insert(plan);
-    return admitWorkerPoolRoster(repositories, plan, h.clock.now().toISOString());
-  });
-  const slot = roster.selected[0]; assert.ok(slot);
-  const workerId = slot.workerId;
-  const control = composeWorkerProcessControl({
-    admission: h.admission,
-    onExit: () => undefined, profileRoot:join(h.repoRoot,rebuildRuntimeIsolation.browserProfileRoot), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
-    preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
-    spawn: () => {
-      spawns += 1;
-      assert.equal(h.database.authority.workerLeases.start({ workerId, workflow: personLookupDescriptor.id,
-        browserSystems: ["ucpath", "crm"], processId: 4242, requestedBy: "local-operator", now: h.clock.now().toISOString() }).state, "started");
-      return { pid: 4242, onExit: listener => { exit = listener; }, onError() {}, kill: () => true };
-    }, birth: { pollMs: 250, timeoutMs: 10_000 }, onFault: error => { throw error; } });
-  const kernel = h.kernelWith(control.workerRuntime);
+  const h = await harness(); const children: ScriptedWorkerChild[] = [];
+  const workerId = h.database.withAuthorityTransaction(repositories =>
+    admitFixtureSlot(repositories, personLookupDescriptor.id, 1, h.clock.now().toISOString())).workerId;
+  const workers = composeWorkerPool({
+    admission: h.admission, sessionGeneration: 1, profileRoot: join(h.repoRoot, rebuildRuntimeIsolation.browserProfileRoot), database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: scriptedWorkerSpawner(children), settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
   const command = (id: string) => ({ commandId: id, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
     family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 }, payload: { workerId } });
   h.faults.add("browser.assets");
   assert.equal((await kernel.executeWorkerPool(command("11111111-1111-4111-8111-111111111111"))).state, "rejected");
-  assert.equal(spawns, 0); assert.equal(h.database.authority.workerLeases.get(workerId), undefined);
+  assert.equal(children.length, 0);
   h.faults.clear(); const healthy = command("22222222-2222-4222-8222-222222222222");
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(spawns, 1);
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(children.length, 1);
   h.faults.add("browser.assets"); const probes = h.probes.length;
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(spawns, 1); assert.equal(h.probes.length, probes);
-  assert.ok(exit); exit(0, null); control.supervisor.close();
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(children.length, 1); assert.equal(h.probes.length, probes);
+  await workers.pool.stopAll("shutdown");
 
 } finally {
 await _afterEachFixture0();
@@ -492,7 +478,7 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
   const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
     preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } } };
+    workerRuntime: { pool: unusedWorkerPool(unexpected) } };
   const kernel = createCommandKernel(kernelDependencies);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
@@ -522,8 +508,7 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     const scope = h.preflight.runScope(run.envelope);
     testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
     const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
-    assert.equal((await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({ workerLifetime: testWorkerLifetime(h.database, plan.workflowId, 1).workerLifetime,
-      commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId,
+    assert.equal((await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({ commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId,
       runtimeConfig: selectRunRuntime(h.database.authority),
     }, admit) })).state, "applied");
     let opens = 0;
@@ -620,7 +605,7 @@ try {
   const original=h.database.authority.runs.listByWorkflow(plan.workflowId)[0];assert.ok(original);
   testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
   const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
-  const request={commandId:"ffffffff-ffff-4fff-8fff-ffffffffffff",workflow:plan.workflowId,workerId,workerLifetime:testWorkerLifetime(h.database,plan.workflowId,1).workerLifetime,runtimeConfig:selectRunRuntime(h.database.authority)};
+  const request={commandId:"ffffffff-ffff-4fff-8fff-ffffffffffff",workflow:plan.workflowId,workerId,runtimeConfig:selectRunRuntime(h.database.authority)};
   renameSync(h.f.executable,`${h.f.executable}.parked`);h.clock.advanceWall(60_000);h.clock.advanceMonotonic(60_000);
   const generation=h.database.getMeta().authorityGeneration;
   await assert.rejects(claimWithPreflight({prepareRun:async()=>undefined,preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)}),PreflightAdmissionRefusal);
@@ -643,31 +628,27 @@ await _afterEachFixture0();
 it("production worker process composition refuses preflight before spawn and admits a healthy positive control", async () => {
 try {
 
-  const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
-  let workerId = "";
-  const control = composeWorkerProcessControl({
-    admission: h.f.admission,
-    onExit: () => undefined, profileRoot: h.f.input.config.paths.browserProfileRoot,  database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
-    preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
-    spawn: () => {
-      spawns += 1;
-      assert.equal(h.database.authority.workerLeases.start({ workerId, workflow: personLookupDescriptor.id,
-        browserSystems: ["ucpath", "crm"], processId: 4242, requestedBy: "local-operator", now: h.clock.now().toISOString() }).state, "started");
-      return { pid: 4242, onExit: listener => { exit = listener; }, onError() {}, kill: () => true };
-    }, birth: { pollMs: 250, timeoutMs: 10_000 }, onFault: error => { throw error; } });
-  const kernel = h.kernelWith(control.workerRuntime);
-  assert.equal((await kernel.executeWorkerPool({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count", target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
-  const slot = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0]; assert.ok(slot); workerId = slot.workerId;
-  const command = (id: string) => ({ commandId: id, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-    family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: h.database.authority.workerPools.get(personLookupDescriptor.id)?.version }, payload: { workerId } });
+  const h = await harness(); const children: ScriptedWorkerChild[] = [];
+  const workers = composeWorkerPool({
+    admission: h.f.admission, sessionGeneration: 1, profileRoot: h.f.input.config.paths.browserProfileRoot, database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: scriptedWorkerSpawner(children), settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
   renameSync(h.f.executable,`${h.f.executable}.parked`);
+  assert.equal((await kernel.executeWorkerPool({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count", target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
+  assert.equal(children.length, 0, "the plan's start is refused before spawn");
+  const slot = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0]; assert.ok(slot);
+  const command = (id: string) => ({ commandId: id, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+    family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: h.database.authority.workerPools.get(personLookupDescriptor.id)?.version }, payload: { workerId: slot.workerId } });
   assert.equal((await kernel.executeWorkerPool(command("11111111-1111-4111-8111-111111111111"))).state, "rejected");
-  assert.equal(spawns, 0); assert.equal(h.database.authority.workerLeases.get(workerId), undefined);
+  assert.equal(children.length, 0);
   renameSync(`${h.f.executable}.parked`,h.f.executable); const healthy = command("22222222-2222-4222-8222-222222222222");
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(spawns, 1);
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(children.length, 1);
   renameSync(h.f.executable,`${h.f.executable}.parked`); const probes = h.probes;
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(spawns, 1); assert.equal(h.probes, probes);
-  assert.ok(exit); exit(0, null); control.supervisor.close();
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(children.length, 1); assert.equal(h.probes, probes);
+  renameSync(`${h.f.executable}.parked`,h.f.executable);
+  await workers.pool.stopAll("shutdown");
 
 } finally {
 await _afterEachFixture0();

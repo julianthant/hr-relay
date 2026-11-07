@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-pool.js";
 import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
 import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
@@ -62,8 +63,7 @@ async function fixture() {
     descriptors: { resolve: () => undefined }, writeResolution: { recheck: unavailable, resolveAbsent: unavailable },
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     configIdentity: { configSnapshotId: database.authority.runtimeConfig.get()!.configSnapshotId, configFingerprint: database.authority.runtimeConfig.get()!.configFingerprint },
-    workerRuntime: { pool: { planPoolWorkerCount: unavailable, spawnPoolWorker: unavailable, stopPoolWorker: unavailable,
-      pausePoolWorker: unavailable, resumePoolWorker: unavailable, refreshPoolBrowser: unavailable, reopenPoolBrowser: unavailable } },
+    workerRuntime: { pool: unusedWorkerPool(unavailable) },
   });
   const kernel = { ...actualKernel };
   const authorization = composeProfileAssistantAuthorization(runtime, active.token, kernel, clock);

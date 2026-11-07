@@ -2,7 +2,6 @@ import { storageTree } from "../../../support/helpers/integration/storage-recove
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { workerSlotFromRow } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
-import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { confirmationPublicationFromRow } from "../../../../src/models/events/confirmed-operation.js";
 import { recoverInterruptedTestRun } from "../../../support/helpers/backend/run-record-service-world.js";
@@ -53,13 +52,10 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     const checkpoints = db.prepare("SELECT * FROM run_checkpoints WHERE run_id=? ORDER BY id").all(run.envelope.runId)
       .map(row => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints", row)));
     const members = db.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
-    const leases = db.prepare("SELECT * FROM worker_leases ORDER BY id").all()
-      .map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
-    return {runRecord: run, intent, attempt, checkpoints, members, leases, publication: confirmationPublicationFromRow(intent, intentRow.publication_json),
+    return {runRecord: run, intent, attempt, checkpoints, members, publication: confirmationPublicationFromRow(intent, intentRow.publication_json),
       runId:run.envelope.runId,version:run.version,lifecycle:run.lifecycle.state,
       workerId:"workerId" in run.lifecycle?run.lifecycle.workerId:undefined,
       claimedAt:"claimedAt" in run.lifecycle?run.lifecycle.claimedAt:undefined,claimGeneration:run.claimGeneration,
-      workerLifetime:"workerLifetime" in run.lifecycle?run.lifecycle.workerLifetime:undefined,
       attemptId:attempt.writeAttemptId,outcome:attempt.outcome.state,operationStatus:intent.status,
       checkpoint:db.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=?").get(run.envelope.runId)!==undefined,
       events:db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all().map(timelineEventFromRow).map(record=>record.payload.kind==="span"?record.payload.event.t:record.payload.kind)};
@@ -86,10 +82,10 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   assert.deepEqual(current, backupAfterCommit ? committed : before); assert.deepEqual(preserved, committed);
   assert.equal(doctor.exitCode, backupAfterCommit ? 0 : 1, doctor.output);
   if (backupAfterCommit) {
-    assert.equal(current.members.length, 1); assert.equal(current.leases.length, 1);
-    const oldMember = current.members[0], oldLease = current.leases[0]; assert.ok(oldMember); assert.ok(oldLease);
+    assert.equal(current.members.length, 1);
+    const oldMember = current.members[0]; assert.ok(oldMember);
     const member = workerPoolMember(oldMember);
-    assert.equal(oldLease.processId, originalChild.pid); assert.equal(originalChild.signal, "SIGKILL");
+    assert.equal(originalChild.signal, "SIGKILL");
     const authority = relative(p.repoRoot, p.authorityPath);
     const sqliteParticipants = new Set([authority, authority + "-wal", authority + "-shm"]);
     const captureIndependentFiles = () => {
@@ -140,11 +136,9 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
       return closed;
     };
     const independentBefore = captureClosedIndependentCustody();
-    assert.equal(oldLease.workerId, member.workerId); assert.ok(current.workerLifetime);
-    assert.deepEqual(current.workerLifetime, { membershipRevision: member.membershipRevision, leaseGeneration: oldLease.leaseGeneration });
+    assert.equal(current.workerId, member.workerId);
     assert.equal(current.intent.status, "committed"); assert.ok(current.publication); assert.equal(current.checkpoints.length, 1);
-    const successorInput = { runId: current.runId, member, oldLeaseGeneration: oldLease.leaseGeneration,
-      oldProcessId: oldLease.processId, oldLeaseStartedAt: oldLease.lifecycle.startedAt,
+    const successorInput = { runId: current.runId, member,
       oldClaimGeneration: current.claimGeneration, oldAttempt: current.runRecord.envelope.attempt,
       expectedPoolVersion: 0, now: CLOCK.now().toISOString() };
     const healthy = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-control" }, CLOCK, undefined, undefined, undefined, p.credentials);
@@ -169,12 +163,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
       assert.equal(queued.run.claimGeneration, current.claimGeneration);
       const replayGeneration = healthy.getMeta().authorityGeneration;
       assert.deepEqual(service.requeue(request), { state: "applied-already", run: queued.run }); assert.equal(healthy.getMeta().authorityGeneration, replayGeneration);
-      healthy.settleInterruptedWorker(p.lifetime, member.workerId, oldLease.leaseGeneration, CLOCK.now().toISOString());
-      const stopped = healthy.authority.workerLeases.get(member.workerId); assert.ok(stopped);
-      assert.equal(stopped.lifecycle.state, "stopped"); assert.equal(stopped.processId, oldLease.processId);
-      assert.equal(stopped.leaseGeneration, oldLease.leaseGeneration);
-      healthy.assertStoppedWorkerLifetime(member, { leaseGeneration: oldLease.leaseGeneration,
-        processId: oldLease.processId, startedAt: oldLease.lifecycle.startedAt });
+      healthy.settleInterruptedWorker(p.lifetime, member.workerId, CLOCK.now().toISOString());
       assert.deepEqual(healthy.authority.writeIntents.get(current.intent.writeIntentId), current.intent);
       assert.deepEqual(healthy.authority.writeAttempts.get(current.attempt.writeAttemptId), current.attempt);
       assert.deepEqual(inspect(p.authorityPath).checkpoints, current.checkpoints);
@@ -185,15 +174,11 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     assert.equal(world.successorPermitsIssued, permitsBefore + 1);
     assert.deepEqual(captureClosedIndependentCustody(), independentBefore);
     assert.equal(renewed.ownedExit.code, 0); assert.equal(renewed.ownedExit.signal, null);
-    assert.equal(renewed.lease.processId, renewed.ownedExit.pid);
-    assert.deepEqual(renewed.previousLifetime, { workerId: oldLease.workerId, processId: originalChild.pid,
-      leaseGeneration: oldLease.leaseGeneration, startedAt: oldLease.lifecycle.startedAt });
     const advanced = inspect(p.authorityPath);
     assert.deepEqual(advanced.runRecord, renewed.run); assert.deepEqual(advanced.members.map(workerPoolMember), current.members.map(workerPoolMember));
     assert.equal(advanced.claimGeneration, current.claimGeneration + 1); assert.equal(advanced.runRecord.envelope.attempt, current.runRecord.envelope.attempt);
     assert.deepEqual(advanced.intent, current.intent); assert.deepEqual(advanced.attempt, current.attempt);
     assert.deepEqual(advanced.checkpoints, current.checkpoints); assert.deepEqual(advanced.publication, current.publication);
-    assert.equal(advanced.leases[0]?.leaseGeneration, oldLease.leaseGeneration + 1);
     const accounted = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
     assert.equal(accounted.exitCode, 0, accounted.output);
     assert.ok(inspect(p.authorityPath).version > committed.version);

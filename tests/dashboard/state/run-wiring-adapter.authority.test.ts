@@ -504,25 +504,25 @@ describe("served parked-write Logs decisions", () => {
     assert.equal(h.state?.onUcpathDecision, undefined);
   });
 
-  it("refuses a held confirmation after its worker control revision changes", async () => {
+  it("refuses a held confirmation after its worker lifetime changes", async () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [], write = findingsWrite();
     const fixture = parkedClient(selected, sent, { write }), h = await harness(fixture.client, (_pending, send) => confirmations.push(send));
     await h.render(selected); await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" }));
     assert.ok(write.check?.state === "available");
-    const target = { ...write.check.target, controlBasis: { ...write.check.target.controlBasis, controlRevision: 2 } };
+    const target = { ...write.check.target, lifetimeId: "bbbbbbbb-0002-4000-8000-000200000000" };
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "available", target },
       actions: write.actions.map(action => action.kind === "command" && action.command === "check-parked-write" ? { ...action, checkTarget: target } : action) }));
     await h.render(selectionAt(3)); await act(async () => confirmations[0]());
     assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
 
-  it("allows another held check after a settled result serves a new worker-control target", async () => {
+  it("allows another held check after a settled result serves a new worker target", async () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [], write = findingsWrite();
     const fixture = parkedClient(selected, sent, { write }), h = await harness(fixture.client, (_pending, send) => confirmations.push(send));
     await h.render(selected); await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" }));
     await act(async () => confirmations[0]()); assert.equal(h.state?.command?.state, "settled");
     assert.ok(write.check?.state === "available");
-    const target = { ...write.check.target, expectedVersion: 3, controlBasis: { ...write.check.target.controlBasis, controlRevision: 2 } };
+    const target = { ...write.check.target, expectedVersion: 3, lifetimeId: "bbbbbbbb-0002-4000-8000-000200000000" };
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "available", target },
       actions: write.actions.map(action => action.kind === "command" && action.command === "check-parked-write" ? { ...action, checkTarget: target } : action) }));
     await h.render(selectionAt(3)); assert.ok(h.state?.onUcpathDecision);
@@ -530,7 +530,7 @@ describe("served parked-write Logs decisions", () => {
     assert.equal(confirmations.length, 2); await act(async () => confirmations[1]());
     assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
     assert.ok(sent[1].family === "worker-browser" && sent[1].type === "check-parked-write");
-    assert.equal(sent[1].target.controlBasis?.controlRevision, 2);
+    assert.equal(sent[1].target.lifetimeId, "bbbbbbbb-0002-4000-8000-000200000000");
   });
 
   for (const changed of [false, true]) it(`restores an uncertain held check and replays only its original occurrence (${changed})`, async () => {

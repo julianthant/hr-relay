@@ -1,15 +1,11 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
-import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
-import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
-import { TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { randomUUID, createHash } from "node:crypto";
 import { copyFileSync, existsSync } from "node:fs";
@@ -64,8 +60,7 @@ function commands(database: AuthorityDatabase, descriptors: { resolve(id: string
   const unused = (): never => { throw new Error("unrequested-crash-fixture-effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock: systemClock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
     descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: { planPoolWorkerCount: unused,
-      spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+    writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: unusedWorkerPool(unused) } });
   return { lifecycle, kernel };
 }
 
@@ -189,7 +184,6 @@ it("recovers an actual process killed during delegated preview preparation witho
     try {
       const run = observed.authority.runs.get(message.runId); assert.ok(run?.lifecycle.state === "running");
       assert.equal(run.envelope.parent?.runId, f.rootRunId);
-      assert.equal(observed.authority.workerLeases.get(message.workerId)?.processId, child.child.pid);
       assert.equal(child.child.exitCode, null); assert.equal(child.child.signalCode, null);
       for (const id of [f.rootRunId, message.runId]) {
         assert.equal(observed.authority.runResults.get(id), undefined);
@@ -201,10 +195,9 @@ it("recovers an actual process killed during delegated preview preparation witho
     const database = f.open();
     try {
       const { lifecycle } = commands(database, f.descriptors);
-      const lease = database.authority.workerLeases.get(message.workerId); assert.ok(lease);
       const reconcile = () => reconcileExitedWorker({ machine: f.profile.machine, admission: f.profile.admission,
         database, lifecycle, clock: systemClock, lock: f.profile.lifetime,
-        workerId: message.workerId, leaseGeneration: lease.leaseGeneration });
+        workerId: message.workerId });
       reconcile();
       const run = database.authority.runs.get(message.runId); assert.ok(run);
       assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
@@ -212,7 +205,6 @@ it("recovers an actual process killed during delegated preview preparation witho
       assert.equal(database.authority.failures.listByRun(message.runId)[0]?.writeState, "not-attempted");
       const result = database.authority.runResults.get(message.runId); assert.ok(result);
       assert.equal(terminalEvidenceResult(result)?.kind, "failed-evidence");
-      assert.equal(database.authority.workerLeases.get(message.workerId)?.lifecycle.state, "stopped");
       const generation = database.getMeta().authorityGeneration;
       reconcile();
       assert.equal(database.getMeta().authorityGeneration, generation);
@@ -239,7 +231,6 @@ it("recovers an actual process killed during delegated preview preparation witho
         assert.equal(result.operationLineage, undefined);
       }
       assert.equal(retained.authority.runs.listChildren(f.rootRunId).length, 1);
-      assert.ok(retained.readProfileResourceCustody().leases.every(lease => lease.lifecycle.state === "stopped"));
       closureProved = true;
     } finally { retained.close(); }
   } catch (error) { primary = { error }; }
@@ -268,7 +259,6 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
       const checkpoints = observed.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId);
       assert.ok(checkpoints.length > 0);
       retained = canonicalJsonStringify(checkpoints);
-      assert.equal(observed.authority.workerLeases.get(message.workerId)?.processId, child.child.pid);
       assert.equal(child.child.exitCode, null); assert.equal(child.child.signalCode, null);
       assert.equal(observed.authority.runResults.get(run.envelope.runId), undefined);
     } finally { observed.close(); }
@@ -283,7 +273,7 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
       const request = { commandId: lifecycleCommandId("crash", { runId: message.runId, version: interrupted.version }),
         runId: message.runId, expectedVersion: interrupted.version,
         claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
-        ...database.crashRunRecoveryIdentity(message.runId), now: systemClock.now().toISOString() };
+        now: systemClock.now().toISOString() };
       const lock = lifetimeLock;
       assert.equal(lifecycle.recoverCrash(request, lock).state, "applied");
       const run = database.authority.runs.get(message.runId); assert.ok(run);
@@ -291,8 +281,7 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
       assert.equal(database.authority.failures.listByRun(message.runId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
       assert.equal(canonicalJsonStringify(database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId)), retained);
       assert.equal(lifecycle.recoverCrash(request, lock).state, "applied-already");
-      database.settleInterruptedWorker(lock, message.workerId, request.workerLifetime.leaseGeneration, systemClock.now().toISOString());
-      assert.equal(database.authority.workerLeases.get(message.workerId)?.lifecycle.state, "stopped");
+      database.settleInterruptedWorker(lock, message.workerId, systemClock.now().toISOString());
     } finally { database.close(); }
     const resumed = await launch(f.profile.workspace, "resume", lifetimeLock); children.push(resumed);
     const terminal = await next(resumed);
@@ -309,7 +298,6 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
       const value = result.authority.runResults.get(message.runId); assert.ok(value);
       assert.equal(result.authority.runs.listByWorkflow(childRun.envelope.workflow).filter(run => run.envelope.runId === message.runId).length, 1);
       assert.equal(result.authority.writeIntents.listByRun(message.runId).length, 0);
-      assert.ok(result.readProfileResourceCustody().leases.every(lease => lease.lifecycle.state === "stopped"));
       closureProved = true;
     } finally { result.close(); }
   } catch (error) { primary = { error }; }
@@ -344,7 +332,6 @@ it("parks a real attempting child after its owned OS process dies without retry 
       const attempts = observed.authority.writeAttempts.listByIntent(intent.writeIntentId);
       assert.equal(attempts.length, 1);
       intentBytes = canonicalJsonStringify(intent); attemptBytes = canonicalJsonStringify(attempts); version = run.version;
-      assert.equal(observed.authority.workerLeases.get(message.workerId)?.processId, child.child.pid);
       assert.equal(child.child.exitCode, null); assert.equal(child.child.signalCode, null);
       assert.equal(observed.authority.runResults.get(message.runId), undefined);
     } finally { observed.close(); }
@@ -358,7 +345,7 @@ it("parks a real attempting child after its owned OS process dies without retry 
       const commandId = lifecycleCommandId("crash", { runId: message.runId, version });
       const request = { commandId, runId: message.runId, expectedVersion: version,
         claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
-        ...database.crashRunRecoveryIdentity(message.runId), now: systemClock.now().toISOString() };
+        now: systemClock.now().toISOString() };
       const lock = lifetimeLock;
       assert.equal(lifecycle.recoverCrash(request, lock).state, "applied");
       const parked = database.authority.runs.get(message.runId); assert.ok(parked?.lifecycle.state === "parked-write");
@@ -384,186 +371,6 @@ it("parks a real attempting child after its owned OS process dies without retry 
       assert.equal(database.authority.runResults.get(message.runId), undefined);
       assert.deepEqual(database.authority.runs.get(message.runId), parked);
       assert.equal(database.authority.dependencies.listByParentRun(f.rootRunId).length, 1);
-      assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId), /worker-lifecycle-write-custody-unavailable/u);
-      assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId), /worker-lifecycle-write-custody-unavailable/u);
-      for (const workflow of [root.envelope.workflow, childExecutionRoot.descriptor.id]) {
-        const otherMember = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    workflow, poolIndex: 2, commandId: randomUUID(), now: systemClock.now().toISOString(),
-    expectedPoolVersion: repositories.workerPools.get(workflow)?.version ?? 0,
-    processId: process.pid
-}, randomUUID()));
-        assert.notEqual(otherMember.workerId, message.workerId);
-        assert.doesNotThrow(() => database.assertWorkerLifecycleRelease(otherMember.workerId));
-      }
-      const raw = new DatabaseSync(f.profile.path);
-      try {
-        const eventRow = z.object({ id: z.string(), payload_json: z.string(), kind: z.string() }).parse(raw.prepare(`
-          SELECT id,payload_json,kind FROM timeline_events WHERE kind='run.claimed' AND run_id=?
-            AND json_extract(payload_json,'$.payload.event.claimGeneration')=?
-        `).get(message.runId, parked.claimGeneration));
-        const claimRow = z.object({ id: z.string(), request_json: z.string(), outcome_json: z.string() }).parse(raw.prepare(`
-          SELECT id,request_json,outcome_json FROM commands WHERE family='run-lifecycle'
-            AND json_extract(request_json,'$.operation')='claim-next'
-            AND json_extract(outcome_json,'$.result.runId')=?
-        `).get(message.runId));
-        const attemptRow = z.object({ id: z.string(), payload_json: z.string() }).parse(raw.prepare(`
-          SELECT id,payload_json FROM write_attempts WHERE id=(SELECT json_extract(payload_json,'$.currentAttemptId') FROM write_intents WHERE id=?)
-        `).get(message.writeIntentId));
-        const uncertain = () => assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId),
-          error => error instanceof Error && error.message === "worker-lifecycle-write-ownership-unavailable");
-        const nativeRefusal = (table: "commands" | "timeline_events", reason: "command-row-outcome-missing"
-          | "run-lifecycle-request-binding-mismatch" | "timeline-event-owner-mismatch") => () =>
-          assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId), error =>
-            error instanceof Error && error.constructor === Error
-            && error.message === `authority table ${table} failed native record validation: ${reason}`
-            && error.cause instanceof Error && error.cause.constructor === Error
-            && error.cause.message === reason && error.cause.cause === undefined);
-        const corruptProtectedRow = (
-          table: "timeline_events" | "write_attempts", id: string,
-          mutate: () => { changes: number | bigint }, restore: () => { changes: number | bigint },
-          assertRefusal: () => void = uncertain,
-        ): void => {
-          const triggerName = table === "timeline_events" ? "timeline_events_immutable" : "write_attempts_immutable";
-          const refusal = table === "timeline_events" ? "timeline-history-immutable" : "write-attempt-proof-immutable";
-          const select = table === "timeline_events" ? "SELECT * FROM timeline_events WHERE id=?" : "SELECT * FROM write_attempts WHERE id=?";
-          const definitions = SQLITE_MIGRATIONS.flatMap(migration => migration.statements.flatMap(statement =>
-            [...statement.matchAll(new RegExp(`CREATE TRIGGER ${triggerName} BEFORE UPDATE ON ${table}\\n[\\s\\S]*? END;`, "gu"))].map(match => match[0].slice(0, -1))));
-          assert.equal(definitions.length, 1);
-          const sql = definitions[0]; assert.ok(sql);
-          const trigger = { type: "trigger", name: triggerName, tbl_name: table, sql };
-          const assertTrigger = () => assert.deepEqual({ ...raw.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(triggerName) }, trigger);
-          const before = raw.prepare(select).get(id); assert.ok(before);
-          assertTrigger();
-          assert.throws(mutate, { code: "ERR_SQLITE_ERROR", message: refusal });
-          assert.deepEqual(raw.prepare(select).get(id), before);
-          const sealedUpdate = (expected: typeof before, update: typeof mutate) => {
-            raw.exec("BEGIN IMMEDIATE");
-            try {
-              assertTrigger();
-              assert.deepEqual(raw.prepare(select).get(id), expected);
-              raw.exec(table === "timeline_events" ? "DROP TRIGGER timeline_events_immutable" : "DROP TRIGGER write_attempts_immutable");
-              assert.equal(update().changes, 1);
-              raw.exec(sql);
-              assertTrigger();
-              const after = raw.prepare(select).get(id); assert.ok(after);
-              if (table === "timeline_events") timelineEventFromRow(after);
-              raw.exec("COMMIT");
-              return after;
-            } catch (error) {
-              const rollbackFailures: unknown[] = [];
-              try { raw.exec("ROLLBACK"); } catch (rollbackError) { rollbackFailures.push(rollbackError); }
-              if (rollbackFailures.length !== 0) throw new AggregateError([error, ...rollbackFailures], "child-corruption-rollback-unproved", { cause: error });
-              throw error;
-            }
-          };
-          const changed = sealedUpdate(before, mutate);
-          let guardFailure: { error: unknown } | undefined;
-          try { assertTrigger(); assertRefusal(); } catch (error) { guardFailure = { error }; }
-          const restoreFailures: unknown[] = [];
-          try {
-            sealedUpdate(changed, restore);
-            assert.deepEqual(raw.prepare(select).get(id), before);
-            assertTrigger();
-            assert.throws(mutate, { code: "ERR_SQLITE_ERROR", message: refusal });
-            assert.deepEqual(raw.prepare(select).get(id), before);
-          } catch (error) { restoreFailures.push(error); }
-          if (guardFailure !== undefined && restoreFailures.length !== 0) throw new AggregateError([
-            guardFailure.error, ...restoreFailures,
-          ], "child-corruption-restoration-unproved", { cause: guardFailure.error });
-          if (guardFailure !== undefined) throw guardFailure.error;
-          if (restoreFailures.length !== 0) throw restoreFailures[0];
-        };
-        const corruptCommand = (mutate: () => { changes: number | bigint }, restore: () => { changes: number | bigint },
-          assertRefusal: () => void): void => {
-          const before = raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id); assert.ok(before);
-          assert.equal(mutate().changes, 1);
-          const changed = raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id); assert.ok(changed);
-          let guardFailure: { error: unknown } | undefined;
-          try { assertRefusal(); } catch (error) { guardFailure = { error }; }
-          const restoreFailures: unknown[] = [];
-          try {
-            assert.deepEqual(raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id), changed);
-            assert.equal(restore().changes, 1);
-            assert.deepEqual(raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id), before);
-          } catch (error) { restoreFailures.push(error); }
-          if (guardFailure !== undefined && restoreFailures.length !== 0) throw new AggregateError([
-            guardFailure.error, ...restoreFailures,
-          ], "child-command-restoration-unproved", { cause: guardFailure.error });
-          if (guardFailure !== undefined) throw guardFailure.error;
-          if (restoreFailures.length !== 0) throw restoreFailures[0];
-        };
-        const timelineRowSchema = z.strictObject({ cursor: z.number().int(), id: z.string(), workflow: z.string().nullable(),
-          run_id: z.string().nullable(), worker_id: z.string().nullable(), kind: z.string(), occurred_at: z.string(),
-          recorded_at: z.string(), retention_date: z.string(), retention_class: z.string(), operation_id: z.string().nullable(),
-          operation_generation: z.number().nullable(), confirmed_at: z.string().nullable(), system: z.string().nullable(), payload_json: z.string(),
-        });
-        const originalClaimRow = timelineRowSchema.parse(raw.prepare("SELECT * FROM timeline_events WHERE id=?").get(eventRow.id));
-        const claimedNative = timelineEventFromRow(originalClaimRow);
-        const duplicate = timelineRowSchema.parse(raw.prepare("SELECT * FROM timeline_events WHERE run_id=? AND kind='span.started' AND retention_class='ordinary' ORDER BY cursor LIMIT 1").get(message.runId));
-        const otherNative = timelineEventFromRow(duplicate);
-        assert.equal(otherNative.payload.kind, "span");
-        if (otherNative.payload.kind !== "span") throw new Error("child-corruption-span-source-required");
-        assert.equal(otherNative.payload.event.t, "span.started");
-        const missingClaim = TimelineEventRecordSchema.parse({ ...otherNative, eventId: claimedNative.eventId, cursor: claimedNative.cursor });
-        corruptProtectedRow("timeline_events", eventRow.id,
-          () => raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=?,kind=?,occurred_at=?,recorded_at=?,
-            retention_date=?,retention_class=?,operation_id=?,operation_generation=?,confirmed_at=?,system=?,payload_json=? WHERE id=?`)
-            .run(duplicate.workflow, duplicate.run_id, duplicate.worker_id, duplicate.kind, duplicate.occurred_at, duplicate.recorded_at,
-              duplicate.retention_date, duplicate.retention_class, duplicate.operation_id, duplicate.operation_generation,
-              duplicate.confirmed_at, duplicate.system, canonicalJsonStringify(missingClaim), eventRow.id),
-          () => raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=?,kind=?,occurred_at=?,recorded_at=?,
-            retention_date=?,retention_class=?,operation_id=?,operation_generation=?,confirmed_at=?,system=?,payload_json=? WHERE id=?`)
-            .run(originalClaimRow.workflow, originalClaimRow.run_id, originalClaimRow.worker_id, originalClaimRow.kind,
-              originalClaimRow.occurred_at, originalClaimRow.recorded_at, originalClaimRow.retention_date, originalClaimRow.retention_class,
-              originalClaimRow.operation_id, originalClaimRow.operation_generation, originalClaimRow.confirmed_at,
-              originalClaimRow.system, originalClaimRow.payload_json, originalClaimRow.id));
-        const claimedEvent = TimelineEventRecordSchema.parse(JSON.parse(eventRow.payload_json));
-        const duplicateEvent = { ...claimedEvent, eventId: duplicate.id, cursor: duplicate.cursor };
-        corruptProtectedRow("timeline_events", duplicate.id,
-          () => raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=NULL,kind='run.claimed',occurred_at=?,
-          recorded_at=?,retention_date=?,retention_class='ordinary',operation_id=NULL,operation_generation=NULL,
-          confirmed_at=NULL,system=NULL,payload_json=? WHERE id=?`).run(claimedEvent.workflow ?? null, message.runId,
-          claimedEvent.occurredAt, claimedEvent.recordedAt, claimedEvent.retentionDate, canonicalJsonStringify(duplicateEvent), duplicate.id),
-          () => raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=?,kind=?,occurred_at=?,recorded_at=?,
-            retention_date=?,retention_class=?,operation_id=?,operation_generation=?,confirmed_at=?,system=?,payload_json=? WHERE id=?`)
-            .run(duplicate.workflow, duplicate.run_id, duplicate.worker_id, duplicate.kind, duplicate.occurred_at, duplicate.recorded_at,
-              duplicate.retention_date, duplicate.retention_class, duplicate.operation_id, duplicate.operation_generation,
-              duplicate.confirmed_at, duplicate.system, duplicate.payload_json, duplicate.id));
-        assert.deepEqual(raw.prepare("SELECT * FROM timeline_events WHERE id=?").get(duplicate.id), Object.assign(Object.create(null), duplicate));
-        corruptCommand(
-          () => raw.prepare("UPDATE commands SET outcome_json=NULL WHERE id=?").run(claimRow.id),
-          () => raw.prepare("UPDATE commands SET outcome_json=? WHERE id=?").run(claimRow.outcome_json, claimRow.id),
-          nativeRefusal("commands", "command-row-outcome-missing"));
-        corruptCommand(
-          () => raw.prepare("UPDATE commands SET request_json=json_set(request_json,'$.requestFingerprint',?) WHERE id=?")
-          .run("0".repeat(64), claimRow.id),
-          () => raw.prepare("UPDATE commands SET request_json=? WHERE id=?").run(claimRow.request_json, claimRow.id),
-          nativeRefusal("commands", "run-lifecycle-request-binding-mismatch"));
-        corruptCommand(
-          () => raw.prepare("UPDATE commands SET request_json=json_set(request_json,'$.request.workerLifetime.leaseGeneration',?) WHERE id=?")
-          .run(1 + z.object({ request: z.object({ workerLifetime: z.object({ leaseGeneration: z.number() }) }) })
-            .parse(JSON.parse(claimRow.request_json)).request.workerLifetime.leaseGeneration, claimRow.id),
-          () => raw.prepare("UPDATE commands SET request_json=? WHERE id=?").run(claimRow.request_json, claimRow.id),
-          nativeRefusal("commands", "run-lifecycle-request-binding-mismatch"));
-        corruptProtectedRow("timeline_events", eventRow.id,
-          () => raw.prepare("UPDATE timeline_events SET payload_json=json_set(payload_json,'$.payload.event.attempt',?) WHERE id=?")
-          .run(parked.envelope.attempt + 1, eventRow.id),
-          () => raw.prepare("UPDATE timeline_events SET payload_json=? WHERE id=?").run(eventRow.payload_json, eventRow.id),
-          nativeRefusal("timeline_events", "timeline-event-owner-mismatch"));
-        corruptProtectedRow("write_attempts", attemptRow.id,
-          () => raw.prepare("UPDATE write_attempts SET payload_json=json_set(payload_json,'$.runAttempt',?) WHERE id=?")
-          .run(parked.envelope.attempt + 1, attemptRow.id),
-          () => raw.prepare("UPDATE write_attempts SET payload_json=? WHERE id=?").run(attemptRow.payload_json, attemptRow.id));
-        assert.deepEqual(raw.prepare("SELECT id,request_json,outcome_json FROM commands WHERE id=?").get(claimRow.id),
-          Object.assign(Object.create(null), claimRow));
-        assert.deepEqual(raw.prepare("SELECT id,payload_json,kind FROM timeline_events WHERE id=?").get(eventRow.id),
-          Object.assign(Object.create(null), eventRow));
-        assert.deepEqual(raw.prepare("SELECT id,payload_json FROM write_attempts WHERE id=?").get(attemptRow.id),
-          Object.assign(Object.create(null), attemptRow));
-      } finally { raw.close(); }
-      assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId), /worker-lifecycle-write-custody-unavailable/u);
-
-      assert.ok(database.authority.workerControls.browsers(message.workerId).some(browser => browser.health !== "closed"));
       assert.equal(child.child.signalCode, "SIGKILL");
       const unresolvedIntent = database.authority.writeIntents.get(message.writeIntentId);
       assert.ok(unresolvedIntent?.status === "attempting");
@@ -576,7 +383,6 @@ it("parks a real attempting child after its owned OS process dies without retry 
       const durableAttempt = database.authority.writeAttempts.get(durableParked.currentAttemptId);
       assert.ok(durableAttempt?.outcome.state === "parked");
       const durableGeneration = database.getMeta().authorityGeneration;
-      assert.doesNotThrow(() => database.assertWorkerLifecycleRelease(message.workerId));
       assert.equal(database.getMeta().authorityGeneration, durableGeneration);
       assert.deepEqual(database.authority.writeIntents.get(message.writeIntentId), durableParked);
       assert.deepEqual(database.authority.writeAttempts.get(durableParked.currentAttemptId), durableAttempt);

@@ -216,7 +216,7 @@ it("loads a fresh last completed report on revisit without running the doctor, w
 
 it("keeps nonzero work counts visible without classifying normal work as a failure", async () => {
   const report = StorageDoctorWireSchema.parse({...HEALTHY, counts: {state: "available", values: {
-    pendingCommands: 3, unresolvedWriteIntents: 2, leases: 4, providerReservations: 1, artifactOutbox: 5,
+    pendingCommands: 3, unresolvedWriteIntents: 2, providerReservations: 1, artifactOutbox: 5,
   }}});
   const dom = await mountDoctor(report);
   const group = dom.querySelector('[aria-label="Work in progress"]');

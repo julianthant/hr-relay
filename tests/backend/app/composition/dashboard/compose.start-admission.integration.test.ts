@@ -1,4 +1,4 @@
-import { neverBornFixture as fixture } from "../../../../support/helpers/backend/never-born-worker-world.js";
+import { startAdmissionFixture as fixture } from "../../../../support/helpers/backend/start-admission-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
@@ -72,8 +72,9 @@ for (const input of [
     const replay = CommandResultSchema.parse(await (await f.post("commands", command)).json());
     assert.equal(replay.state, "already-applied");
     if (replay.state !== "already-applied") throw new Error("an exact replay must retain the original enqueue");
-    assert.equal(replay.workerStartup?.commandId, result.workerStartup?.commandId);
-    assert.equal(f.detectorErrors.length, 1); assert.equal(f.spawns(), 0);
+    // A replay tries to start a worker again; the still-racing doctor refuses it the same way.
+    assert.equal(replay.workerStartup?.state, "refused");
+    assert.equal(f.detectorErrors.length, 2); assert.equal(f.spawns(), 0);
     assert.deepEqual(f.context.database.authority.runs.listByWorkflow(input.workflowId), runs);
   } finally {
     await f.close();

@@ -56,15 +56,15 @@ describe("canonical run-record service", () => {
   });
 
   it("#4 grants a queued row once and refuses a busy worker", async () => {
-    const { service, request, runtimeConfig, database } = await fixture();
+    const { service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
-    const first = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig });
+    const first = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     assert.equal(first.state, "applied");
     if (first.state !== "applied") throw new Error("claim refused");
     assert.equal(first.run.envelope.runId, run.envelope.runId);
     assert.equal(first.run.claimGeneration, 1);
     assert.equal(first.run.version, 2);
-    assert.deepEqual(service.claimNext({ commandId: "50000000-0000-4000-8000-000000000010", workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig }),
+    assert.deepEqual(service.claimNext({ commandId: "50000000-0000-4000-8000-000000000010", workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig }),
       { state: "refused", refusal: { reason: "worker-busy", runId: run.envelope.runId } });
   });
 
@@ -89,13 +89,13 @@ describe("canonical run-record service", () => {
       settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint };
     const firstOwner = testWorkerLifetime(database, compiled.descriptor.id, 1);
     const childClaim = service.claimNext({ commandId: randomUUID(), workflow: compiled.descriptor.id,
-      workerId: firstOwner.workerId, workerLifetime: firstOwner.workerLifetime, runtimeConfig });
+      workerId: firstOwner.workerId, runtimeConfig });
     assert.equal(childClaim.state, "applied");
     assert.ok("run" in childClaim);
     assert.equal(childClaim.run.envelope.runId, child.envelope.runId);
     assert.equal(childClaim.run.lifecycle.state, "claimed");
-    assert.ok("workerLifetime" in childClaim.run.lifecycle);
-    assert.deepEqual(childClaim.run.lifecycle.workerLifetime, firstOwner.workerLifetime);
+    assert.ok("workerId" in childClaim.run.lifecycle);
+    assert.equal(childClaim.run.lifecycle.workerId, firstOwner.workerId);
     const request = { commandId: randomUUID(), code: compiled.descriptor.code, matchKey: "claim-order",
       workflow: compiled.descriptor.id, descriptorVersion: compiled.descriptor.version,
       contractFingerprint: compiled.descriptor.contractFingerprint, configFingerprint: blocked.envelope.configFingerprint,
@@ -121,7 +121,6 @@ describe("canonical run-record service", () => {
       commandId: "51000000-0000-4000-8000-000000000008",
       workflow: compiled.descriptor.id,
       workerId: owner.workerId,
-      workerLifetime: owner.workerLifetime,
       runtimeConfig,
     });
     assert.equal(claim.state, "applied");
@@ -194,9 +193,9 @@ describe("canonical run-record service", () => {
   });
 
   it("persists a cancellation request without changing the claimed lifecycle or fence", async () => {
-    const { service, request, runtimeConfig, database } = await fixture();
+    const { service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
-    const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig });
+    const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     if (claim.state !== "applied") throw new Error("claim refused");
     const cancelled = service.transition({ commandId: "40000000-0000-4000-8000-000000000001",
       runId: run.envelope.runId, expectedVersion: claim.run.version,
@@ -220,14 +219,14 @@ describe("canonical run-record service", () => {
       commandId: "50000000-0000-4000-8000-000000000009",
       matchKey: "stale-runtime-queued",
     });
-    const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig });
+    const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     if (claim.state !== "applied") throw new Error("claim refused");
     database.authority.runtimeConfig.activate({ settingsRevision: 2, settingsFingerprint: HASH_A,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       activatedAt: NOW });
     const before = database.getMeta().authorityGeneration;
     assert.deepEqual(service.claimNext({ commandId: "50000000-0000-4000-8000-000000000001",
-      workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig }),
+      workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig }),
     { state: "refused", refusal: { reason: "runtime-stale" } });
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.deepEqual(service.read(run.envelope.runId), { state: "present", disposition: "live", run: claim.run });
@@ -245,7 +244,6 @@ describe("canonical run-record service", () => {
       commandId: "83000000-0000-4000-8000-000000000001",
       workflow: WORKFLOW_ID,
       workerId: WORKER_ID,
-      workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime,
       runtimeConfig,
     });
     if (claim.state !== "applied") throw new Error("claim refused");

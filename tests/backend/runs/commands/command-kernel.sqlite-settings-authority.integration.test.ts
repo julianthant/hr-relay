@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -33,11 +34,7 @@ describe("SQLite settings authority", () => {
       intakeProjections: NO_INTAKE_PROJECTIONS,
       descriptors: { resolve: (id) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === id) },
       writeResolution: { recheck: unused, resolveAbsent: unused },
-      workerRuntime: { pool: {
-        planPoolWorkerCount: () => { effects++; return Promise.resolve({ state: "accepted", workerIds: ["person-lookup-worker-1"], retirements: [] }); },
-        spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
-        stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused,
-      } },
+      workerRuntime: { pool: unusedWorkerPool(() => { effects++; }) },
     });
     const command = { family: "worker-browser", type: "plan-worker-count", commandId: pending.commandId,
       requestedAt: pending.requestedAt, requestedBy: "local-operator", source: "dashboard",

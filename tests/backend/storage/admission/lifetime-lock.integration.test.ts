@@ -141,8 +141,6 @@ it("uses the configured singleton port for production parents and refuses busy r
     }
     const bootstrap = await readFile(new URL("../../../../src/backend/app/bootstrap/secure-env-bootstrap.ts", import.meta.url), "utf8");
     assert.match(bootstrap, /receiveRuntimeLifetimeLock\(rebuildRuntimeIsolation\.lockPort,/u);
-    const verification = await readFile(new URL("../../../../scripts/verify/browser-login.ts", import.meta.url), "utf8");
-    assert.match(verification, /acquireRuntimeLifetimeLock\(rebuildRuntimeIsolation\.lockPort\)/u);
   } finally {
     await lock.close();
   }

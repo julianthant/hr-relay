@@ -13,7 +13,7 @@ import { manualClock } from "../../src/rules/time/clock.js";
 import { TaskError } from "../../src/workflow-kit/errors.js";
 import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory, WORKFLOW_ID } from "../support/fixtures/phase1f-run-fixtures.js";
-import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import {
   buildWriteFixtureRegistry,
   createWriteFixtureWorld,
@@ -93,7 +93,7 @@ describe("failure, retry, and resume", () => {
     database.authority.runs.enqueue(personLookupQueuedRun());
     const claimMember1 = database.authority.workerSlots.get(slot.workerId);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: slot.workerId, now });
+    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };
 
@@ -146,8 +146,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     assert.equal(enqueued.state, "inserted");
     const claimMember2 = database.authority.workerSlots.get(WRITE_FIXTURE_WORKER_ID);
     if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
-    const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WRITE_FIXTURE_WORKFLOW_ID, claimMember2.poolIndex).workerLifetime,
-      workflow: WRITE_FIXTURE_WORKFLOW_ID,
+    const claimed = database.authority.runs.claimNext({ workflow: WRITE_FIXTURE_WORKFLOW_ID,
       workerId: WRITE_FIXTURE_WORKER_ID,
       now,
     });
@@ -156,7 +155,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       workerId: WRITE_FIXTURE_WORKER_ID,
       claimGeneration: claimed.run.claimGeneration,
     };
-    const base = { workerId: WRITE_FIXTURE_WORKER_ID, workerLifetime: testWorkerLifetime(database, WRITE_FIXTURE_WORKFLOW_ID, claimMember2.poolIndex).workerLifetime, claimedAt: now, heartbeatAt: now };
+    const base = { workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: now, heartbeatAt: now };
     const validating = database.authority.runs.transition({
       runId: claimed.run.envelope.runId,
       expectedVersion: claimed.run.version,

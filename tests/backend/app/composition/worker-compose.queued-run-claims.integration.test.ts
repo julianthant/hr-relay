@@ -1,3 +1,4 @@
+import { runClaim } from "../../../../src/models/run/record.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
@@ -131,10 +132,7 @@ function journalWorkerSettings(
 function assertStoppedWorkerLifetimes(repoRoot: string, clock: TestClock): void {
   const database = reopen(stateRootFor(repoRoot), clock);
   for (const slot of database.authority.workerSlots.list()) {
-    const lease = database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
-    assert.equal(lease.lifecycle.state, "stopped");
-    database.assertWorkerLifecycleRelease(slot.workerId);
-    assert.ok(database.authority.workerControls.browsers(slot.workerId).every(browser => browser.health === "closed"));
+    assert.equal(database.authority.runs.listByWorker(slot.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state)), false);
   }
 }
 
@@ -201,7 +199,7 @@ describe("composed worker runtime", () => {
     assert.equal(existsSync(join(stateRoot, "settings")), false, "boot and polling create no file authority or lock");
   });
 
-  it("keeps a worker live and idle after completion and reuses its exact lifetime for another queued item", async () => {
+  it("keeps a worker idle after completion and claims another queued item in the same process", async () => {
     const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
@@ -220,8 +218,8 @@ describe("composed worker runtime", () => {
         args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal }),
       heartbeatIntervalMs: 10,
       afterClaimAdmissionCheck: () => {
-        const lease = database.authority.workerLeases.listLive(WORKFLOW_ID)[0];
-        if (lease?.lifecycle.state !== "idle") return;
+        const member = database.authority.workerSlots.active(WORKFLOW_ID)[0];
+        if (member === undefined || database.authority.runs.listByWorker(member.workerId).some(run => runClaim(run) !== undefined)) return;
         if (database.authority.runs.get(RUN_ID)?.lifecycle.state === "terminal") firstIdle?.();
         if (database.authority.runs.get(secondId)?.lifecycle.state === "terminal") secondIdle?.();
       },
@@ -231,19 +229,16 @@ describe("composed worker runtime", () => {
       await idleAfterFirst;
       const member = database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(member);
       const pool = database.authority.workerPools.get(WORKFLOW_ID); assert.ok(pool);
-      const lease = database.authority.workerLeases.get(member.workerId); assert.ok(lease);
       const first = database.authority.runs.get(RUN_ID); assert.ok(first?.lifecycle.state === "terminal");
       assert.equal(first.lifecycle.outcome, "done"); assert.equal(member.retiredAt, null);
-      assert.equal(lease.lifecycle.state, "idle"); assert.equal(lease.control.directive, "run");
+      assert.equal(member.paused, false);
       seedQueuedRun(stateRoot, clock, personLookupQueuedRun({ runId: secondId, itemId: randomUUID() }));
       await idleAfterSecond;
       const second = database.authority.runs.get(secondId); assert.ok(second?.lifecycle.state === "terminal");
       assert.equal(second.lifecycle.outcome, "done");
       assert.deepEqual(database.authority.workerPools.get(WORKFLOW_ID), pool);
       assert.deepEqual(database.authority.workerSlots.get(member.workerId), member);
-      const reused = database.authority.workerLeases.get(member.workerId); assert.ok(reused);
-      assert.equal(reused.leaseGeneration, lease.leaseGeneration); assert.equal(reused.processId, lease.processId);
-      assert.equal(reused.lifecycle.state, "idle"); assert.equal(reused.control.directive, "run");
+      assert.equal(second.lifecycle.state === "terminal" && second.claimGeneration, 1);
     } finally { stop.abort(); await running; }
   });
 

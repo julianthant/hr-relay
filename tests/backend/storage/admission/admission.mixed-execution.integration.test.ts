@@ -1,3 +1,4 @@
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createNominatimWorkerAdapter } from "../../../../src/backend/processing/providers/nominatim-owner.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -10,7 +11,6 @@ import { findProfileFixtureAdmission } from "../../../support/helpers/admission-
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { WorkerIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
@@ -30,9 +30,7 @@ it("browser launch forwards retained display and mode through a headless custody
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 } }).state, "applied");
   const next = f.create();
   const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
-  const held = { workerId: f.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
-    expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0, processId: process.pid,
-    now: f.clock.now().toISOString() }, randomUUID()).workerId) };
+  const held = { workerId: f.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, personLookupDescriptor.id, 1, f.clock.now().toISOString())).workerId };
   const account=await chatGptFixture(admission);cleanups.push(()=>account.cleanup());
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
   const factory = createRunResourcesFactory({admission,database:f.database,nominatim:createNominatimWorkerAdapter(systemClock), ocr,assertBrowserRoot: root=>assertProfileBrowserRoot(admission,root), assertProfileOwner: workerId => {
@@ -51,30 +49,15 @@ it("browser launch forwards retained display and mode through a headless custody
   const open = (run: typeof old) => factory.forRun(run).sessionFactory.open({ workerId: WorkerIdSchema.parse(held.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"),
     system: "ucpath", instance: "prod", configFingerprint: run.envelope.configFingerprint, acceptDownloads: false, exclusive: false,
     signal: new AbortController().signal, duoCeremony: { withCeremony: () => { throw new Error("no authentication in launch proof"); } } });
-  const started = f.database.authority.workerLeases.start({ workerId: held.workerId, workflow: "person-lookup",
-    browserSystems: ["ucpath"], processId: process.pid, requestedBy: "local-operator", now: f.clock.now().toISOString() });
-  assert.equal(started.state, "started");
-  if (started.state !== "started") throw new Error("native worker lease did not start");
   const openAndClose = async (run: typeof old) => {
     const resource = await open(run);
     assert.ok(resource.browserMode);
     assert.ok(resource.profileDirectory);
-    const observation = { workerId: held.workerId, leaseGeneration: started.lease.leaseGeneration,
-      sessionId: resource.sessionId, system: resource.system, instance: resource.instance,
-      configFingerprint: resource.configFingerprint, signInFingerprint: resource.signInFingerprint,
-      browserMode: resource.browserMode, profileDirectory: resource.profileDirectory, profileRevision: resource.profileRevision,
-      acceptDownloads: resource.acceptDownloads, exclusive: resource.exclusive,
-      openedAt: f.clock.now().toISOString(), observedAt: f.clock.now().toISOString() };
-    try {
-      f.database.authority.workerControls.observe({ ...observation, health: "unknown" });
-    } finally {
-      const proof = await resource.close({ reason: "worker-stop" });
-      assert.equal(proof.sessionId, resource.sessionId);
-      assert.equal(proof.system, resource.system);
-      assert.equal(proof.pagesClosed, true);
-      assert.equal(proof.contextClosed, true);
-      f.database.authority.workerControls.observe({ ...observation, health: "closed", observedAt: f.clock.now().toISOString() });
-    }
+    const proof = await resource.close({ reason: "worker-stop" });
+    assert.equal(proof.sessionId, resource.sessionId);
+    assert.equal(proof.system, resource.system);
+    assert.equal(proof.pagesClosed, true);
+    assert.equal(proof.contextClosed, true);
   };
   await openAndClose(old);
   await openAndClose(next);

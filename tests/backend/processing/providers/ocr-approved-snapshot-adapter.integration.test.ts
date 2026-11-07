@@ -103,8 +103,7 @@ it("authenticates record reads under an admitted member's actual claim and node,
   const f = await world.fixture({ coordinator: true, record: true }); release(f, [0]);
   const [member] = await admitMembers(f); assert.ok(member);
   const owner = testWorkerLifetime(f.database, f.parentRun.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
-  const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.parentRun.envelope.workflow, workerId: owner.workerId, workerLifetime: owner.workerLifetime,
-    runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+  const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.parentRun.envelope.workflow, workerId: owner.workerId, runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   assert.ok(claimed.state === "applied" && "run" in claimed);
   assert.equal(claimed.run.envelope.runId, member.envelope.runId);
   const claim = { workerId: owner.workerId, claimGeneration: claimed.run.claimGeneration };
