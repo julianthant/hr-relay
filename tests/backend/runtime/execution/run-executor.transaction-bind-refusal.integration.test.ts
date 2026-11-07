@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, it } from "vitest";
 import { z } from "zod";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -10,6 +11,8 @@ import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
+import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 
@@ -34,19 +37,21 @@ const compiled = compileWorkflow(defineWorkflow({ id: "fixture-transaction-bind-
   },
 }));
 
-it("terminalizes a named real transaction bind refusal before sequencer, probe or browser acquisition", async () => {
+it("terminalizes a named real transaction bind refusal before probe, fence or browser acquisition", async () => {
   const driver = createWriteFixtureWorld(), stores = buildWriteFixtureRegistry(driver), sessions = writeFixtureSessions(driver);
   const h = await world.executorHarness({ descriptor: compiled.descriptor, stores, sessions });
+  const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(h.authority.database, h.authority.clock), stores, authority: h.authority.database,
+    sessions: h.manager, emitter: h.deps.emitter, clock: h.authority.clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
+    operator: "local-operator", log: h.deps.log });
   let calls = 0;
-  const refuseSequencer = async () => { calls++; throw new Error("sequencer-must-not-run"); };
-  const execution = canonicalChildExecution({ ...h.deps, writeSequencer: { executeTransaction: refuseSequencer, executeDryRun: refuseSequencer } },
+  const execution = canonicalChildExecution({ ...h.deps, writeSequencer: { ...sequencer, executeTransaction: async context => { calls++; return sequencer.executeTransaction(context); } } },
     h.authority.database, h.authority.path, id => id === compiled.descriptor.id ? compiled.descriptor : undefined);
   const run = execution.start(compiled.descriptor, { eid: WRITE_FIXTURE_EID }, { dryRun: false });
   const result = await execution.execute(run, world.SIGNAL);
   assert.equal(result.run?.lifecycle.state, "terminal");
   assert.equal(result.outcomes.at(-1)?.state, "failed");
   assert.equal(h.authority.database.authority.failures.listByRun(run.envelope.runId)[0]?.code, "CONTACT_SAVE_UNAVAILABLE");
-  assert.equal(calls, 0);
+  assert.equal(calls, 1);
   assert.equal(sessions.opens(), 0);
   assert.deepEqual(driver.events, []);
   assert.deepEqual(h.authority.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
