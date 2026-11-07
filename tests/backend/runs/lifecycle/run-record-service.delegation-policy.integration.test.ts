@@ -393,7 +393,8 @@ for (const policy of ["cascade", "independent"] as const) {
     // Only the exit settlement terminalizes the parent: its failed evidence binds the retained claim, never a fresh one.
     const evidence = terminalEvidenceResult(RunResultRecordSchema.parse(f.database.authority.runResults.get(f.root.envelope.runId)));
     assert.equal(evidence?.kind, "failed-evidence");
-    assert.deepEqual(evidence.authorization.claim, runClaim(retained));
+    const held = runClaim(retained); assert.ok(held);
+    assert.deepEqual(evidence.authorization.claim, { workerId: held.workerId, claimGeneration: held.claimGeneration });
     assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
     assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
     assert.equal(f.database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
