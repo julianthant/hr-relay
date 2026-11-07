@@ -188,7 +188,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       return audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "worker-recovery";
     },
     assertStoppedLifetime: (member, lifetime) => { input.database.assertStoppedWorkerLifetime(member, lifetime); },
-    proveRetirement: async (member, child) => {
+    proveRetirement: async (member, child, stopped) => {
       const capture = () => input.database.withAuthorityTransaction(repositories => {
         const slot = repositories.workerSlots.get(member.workerId);
         const lease = repositories.workerLeases.get(member.workerId);
@@ -216,13 +216,16 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
       const retained = roots.inventory().roots.filter(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId);
       const process = child?.nativeProcess, lifetime = input.admission.lifetime;
-      const requiresChild = before.processId !== undefined && before.processId !== null || process !== undefined
-        || retained.length !== 0 || lstatSync(directory, { throwIfNoEntry: false }) !== undefined;
-      if (!requiresChild && (before.launches.length !== 0 || before.requiresNonBirthProof)) throw new WorkerControlRefusal("worker-retirement-non-birth-capability-required");
+      // A retry of an earlier dashboard's worker keeps its closed roots; only an open root needs a child closed by this process.
+      const priorLifetime = child === undefined && stopped !== undefined && retained.every(row => row.launch.state === "closed" && row.native === undefined);
+      const requiresChild = !priorLifetime && (before.processId !== undefined && before.processId !== null || process !== undefined
+        || retained.length !== 0 || lstatSync(directory, { throwIfNoEntry: false }) !== undefined);
+      if (!requiresChild && !priorLifetime && (before.launches.length !== 0 || before.requiresNonBirthProof)) throw new WorkerControlRefusal("worker-retirement-non-birth-capability-required");
       const rootAssertions: Array<() => void> = [];
       const assertCurrent = () => {
         input.admission.assertProfileRuntime();
         if (capture().identity !== before.identity) throw new WorkerControlRefusal("worker-retirement-owner-changed");
+        if (priorLifetime && stopped !== undefined) input.database.assertStoppedWorkerLifetime(member, stopped);
         if (requiresChild) {
           if (process === undefined || !(lifetime instanceof RuntimeLifetimeLock)
             || before.processId !== undefined && before.processId !== null && process.pid !== before.processId) throw new WorkerControlRefusal("worker-retirement-child-close-unproved");

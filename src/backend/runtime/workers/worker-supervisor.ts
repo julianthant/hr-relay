@@ -108,7 +108,9 @@ export interface DashboardWorkerSupervisorDependencies {
 
   readonly standingRecoverySettled?: (commandId: string) => boolean;
   readonly assertStoppedLifetime?: (member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>) => void;
-  readonly proveRetirement: (member: WorkerPoolMember, child?: SpawnedWorkerHandle) => WorkerRetirement | Promise<WorkerRetirement>;
+  /** `stopped` is the earlier lifetime whose death `assertStoppedLifetime` proved; it has no child in this process. */
+  readonly proveRetirement: (member: WorkerPoolMember, child?: SpawnedWorkerHandle,
+    stopped?: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>) => WorkerRetirement | Promise<WorkerRetirement>;
   readonly onFault: (error: Error) => void;
   readonly onExit: (member: WorkerPoolMember, pid: number | undefined, valid: () => boolean) => void;
 }
@@ -968,7 +970,7 @@ export function createDashboardWorkerProcessSupervisor(
       } else if (record.state !== "exited" || record.exit?.reportedBy !== "os"
         || record.pid !== binding.lifetime.processId || record.leaseStartedAt !== binding.lifetime.startedAt
         || canonicalJsonStringify(record.member) !== canonicalJsonStringify(member) || deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
-      const retirement = await deps.proveRetirement(member, record?.child);
+      const retirement = await deps.proveRetirement(member, record?.child, record === undefined ? binding.lifetime : undefined);
       retirement.assertCurrent();
       const request = { command: "spawn-worker" as const, member, commandId };
       await deps.prepareAdmission?.(request);
