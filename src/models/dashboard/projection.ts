@@ -2,18 +2,15 @@ import { QueueParentSchema } from "./queue-parent.js";
 import { DelegatedRecordRefSchema } from "../workflow/delegated-record.js";
 import { RunPauseSchema } from "../run/record.js";
 import { z } from "zod";
-import { WorkerControlRecordSchema } from "../run/worker-control.js";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifications/notifications.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../rules/notifications/notification-triggers.js";
 /** The two worker vocabularies are IMPORTED, not mirrored; the queue's priority enum is a copy only because the envelope module reaches a checkpoint module. */
-import { WorkerControlBasisSchema, WorkerDirectiveSchema, WorkerStopReasonSchema } from "../run/worker.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import { RunSessionOriginSchema } from "../run/session.js";
 import {
   ActorIdSchema,
-  CommandIdSchema,
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
   FailureIdSchema,
@@ -402,29 +399,29 @@ export const WorkerBrowserRequirementsWireSchema = z.discriminatedUnion("state",
   z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
 ]);
 
-/** ONE worker, AS AUTHORITY HOLDS IT: the durable worker lease joined with the browser sessions its span stream has open, in that direction and no other. */
+/** The member fence a worker command cites: the pool member's lifetime in this boot (null before its first spawn) and its version. */
+export const WorkerMemberBasisSchema = z.strictObject({ lifetimeId: z.uuid().nullable(), version: z.number().int().nonnegative() });
+export type WorkerMemberBasis = z.infer<typeof WorkerMemberBasisSchema>;
+
+/** ONE worker, AS THE POOL HOLDS IT: the in-memory member joined with its durable slot and the browser sessions it reports. */
 export const WorkerControlWireSchema = z.strictObject({
-  basis: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("present"), value: WorkerControlBasisSchema }), z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) })]),
-  ownership: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("owned") }), z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) })]),
-  operation: z.strictObject({ commandId: CommandIdSchema, type: z.enum(["plan-worker-count", "spawn-worker", "pause-worker", "resume-worker", "stop-worker", "refresh-browser", "reopen-browser", "remove-worker", "retry-worker", "check-parked-write"]),
-    state: z.enum(["admitted", "ready", "executing", "succeeded", "refused", "uncertain"]), at: IsoInstantSchema,
-    browserSessionId: BrowserSessionIdSchema.optional(), message: z.string().optional(), unresolved: z.boolean() }).optional(),
+  basis: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("present"), value: WorkerMemberBasisSchema }), z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) })]),
 });
 
 export const WorkerCardWireSchema = z.strictObject({
   member: WorkerPoolMemberSchema,
   workerId: WorkerIdSchema,
-  /** The one workflow this worker claims for (ref execution-and-sessions ) — from the lease, never guessed. */
+  /** The one workflow this worker claims for (ref execution-and-sessions ) — from its slot, never guessed. */
   workflowId: WorkflowIdSchema,
   state: z.enum(["running", "starting", "idle", "waiting", "paused", "failed"]),
   controls: WorkerControlWireSchema.optional(),
   /** What the operator last ASKED of this worker; `run` is the un-directed state. */
-  directive: WorkerDirectiveSchema,
+  directive: z.enum(["run", "pause"]),
   startedAt: IsoInstantSchema,
-  /** Present iff the lease is terminal — the instant it settled, never `now`. */
+  /** Present iff the member exited — the observed exit instant, never `now`. */
   endedAt: IsoInstantSchema.optional(),
-  /** Present iff the lease is terminal — the recorded reason, never inferred. */
-  stopReason: WorkerStopReasonSchema.optional(),
+  /** Present iff the member exited — requested stop or crash, never inferred. */
+  stopReason: z.enum(["operator", "crashed"]).optional(),
   currentRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),
@@ -432,7 +429,6 @@ export const WorkerCardWireSchema = z.strictObject({
   browserRequirements: WorkerBrowserRequirementsWireSchema.optional(),
   closedBrowserSystems: z.array(BrowserSystemIdSchema).optional(),
   browsers: z.array(WorkerBrowserWireSchema),
-  leaseVersion: RowRevisionSchema,
   revision: RowRevisionSchema,
 }).superRefine((card, context) => {
   const terminal = card.state === "failed";
@@ -456,7 +452,7 @@ export const WorkerCardWireSchema = z.strictObject({
   if (card.member.workerId !== card.workerId || card.member.workflowId !== card.workflowId) {
     context.addIssue({ code: "custom", path: ["member"], message: "worker card must bind its exact member" });
   }
-  // Settled leases cannot claim live processes or browser resources.
+  // An exited member holds no live process or browser resource.
   if (terminal && card.browsers.length > 0) {
     context.addIssue({
       code: "custom",
@@ -622,7 +618,6 @@ export const DashboardDayWireSchema = z.strictObject({
   statusCounts: z.array(StatusCountWireSchema),
   queueSurfaces: z.array(QueueSurfaceWireSchema),
   attemptHistory: z.array(z.strictObject({ runId: QueueBaseFields.runId, startedAt: QueueBaseFields.startedAt, endedAt: QueueBaseFields.endedAt })).optional(),
-  workerOperations: z.array(WorkerControlRecordSchema),
   workerCards: z.array(WorkerCardWireSchema),
   workerAuthority: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), members: z.array(WorkerSlotRecordSchema) }),
@@ -651,10 +646,9 @@ export const DashboardDayWireSchema = z.strictObject({
   }
   requireUnique(day.workerCards.map(({ workerId }) => workerId), "workerCards", context);
   requireUnique(day.workerAuthority.members.map(({ workerId }) => workerId), "workerAuthority", context);
-  requireUnique(day.workerOperations.map(({ commandId }) => commandId), "workerOperations", context);
   if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== day.workerCards.length
     || day.workerAuthority.members.some(member => member.retiredAt !== null || !day.workerCards.some(card =>
-      card.workerId === member.workerId && card.member.membershipRevision === member.membershipRevision
+      card.workerId === member.workerId
       && card.member.ordinal === member.ordinal && card.member.poolIndex === member.poolIndex && card.workflowId === member.workflow)))) {
     context.addIssue({ code: "custom", path: ["workerAuthority"], message: "available worker authority requires every exact standing member card" });
   }

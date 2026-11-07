@@ -14,6 +14,7 @@ import { assertDashboardBuildCurrent } from "../composition/dashboard/build-iden
 import { AutomaticPersonRepairRefusedError,RegisteredPersonUpgradeRefusedError,RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
+import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WorkerPoolError } from "../../runtime/workers/worker-pool.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -29,6 +30,18 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock) => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
+  /** The worker branch and an abnormal root shutdown end here; tests replace it. */
+  readonly exit?: (code: number) => never;
+}
+
+/** The parent's graceful window: an orphaned worker finishes or parks its run, then exits. */
+export const WORKER_ORPHAN_EXIT_MS = WORKER_GRACEFUL_STOP_TIMEOUT_MS;
+
+function workerExitUnobserved(error: unknown, depth = 0): boolean {
+  if (depth > 8 || typeof error !== "object" || error === null) return false;
+  if (error instanceof WorkerPoolError && (error.code === "WORKER_EXIT_UNOBSERVED" || error.code === "WORKER_EXIT_SETTLEMENT_FAILED")) return true;
+  const nested: unknown[] = [...(error instanceof AggregateError ? error.errors as unknown[] : []), ..."cause" in error ? [error.cause] : []];
+  return nested.some(inner => workerExitUnobserved(inner, depth + 1));
 }
 
 export function secureEnvironmentEntrypoint(
@@ -53,12 +66,30 @@ export async function runSecureEnvironmentBootstrap(
     }))(workspace);
   }
   const controller = new AbortController();
-  const lock = selector === "cli" && entrypointArgs[0] === "worker"
-    ? await receiveRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort, () => controller.abort(new Error("runtime-parent-disconnected")))
-    : await (dependencies.acquireLifetimeLock ?? acquireRuntimeLifetimeLock)(rebuildRuntimeIsolation.lockPort);
+  const exit = dependencies.exit ?? ((code: number): never => process.exit(code));
+  if (selector === "cli" && entrypointArgs[0] === "worker") {
+    const lock = await receiveRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort, () => {
+      controller.abort(new Error("runtime-parent-disconnected"));
+      setTimeout(() => exit(1), WORKER_ORPHAN_EXIT_MS);
+    });
+    // The child never closes its listener copy: the OS releases it at exit, after cleanup, so the port proves this process is gone.
+    try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
+    catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+      return exit(1);
+    }
+    return exit(typeof process.exitCode === "number" ? process.exitCode : 0);
+  }
+  const lock = await (dependencies.acquireLifetimeLock ?? acquireRuntimeLifetimeLock)(rebuildRuntimeIsolation.lockPort);
   let retain = false;
   try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
   catch (error) {
+    if (workerExitUnobserved(error)) {
+      // A worker outlived shutdown: close only the root's listener copy and exit, which closes the IPC channels.
+      const survivors = await lock.abandonUnexitedChildren(error);
+      process.stderr.write(`${JSON.stringify({ code: "WORKER_EXIT_UNOBSERVED", survivors })}\n`);
+      return exit(1);
+    }
     retain = error instanceof RuntimeCustodyUncertainError || hasUnprovedSourceClosure(error);
     throw error;
   } finally {

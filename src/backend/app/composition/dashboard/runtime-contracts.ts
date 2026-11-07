@@ -9,7 +9,7 @@ import type { RuntimeIsolation } from "../../../../models/config/define-runtime-
 import { type IdFactory } from "../../../../rules/identity/identifiers.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
-import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
+import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "./worker-process.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { composeProfileAssistantAuthorization,composeProfileRuntime } from "../storage-compose.js";
@@ -57,7 +57,6 @@ export interface DashboardComposeInput {
   readonly workerProcess?: Readonly<{
     spawn?: WorkerProcessSpawner;
     launch?: WorkerCliLaunchSpec;
-    birth?: Readonly<{ pollMs: number; timeoutMs: number }>;
     scheduler?: MonotonicDeadlineScheduler;
     /** Receives one structured JSON line per supervisor fault; default writes to stderr. */
     faultSink?: (line: string) => void;

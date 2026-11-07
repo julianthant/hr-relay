@@ -46,17 +46,21 @@ export function createExclusiveSessionLeaseRepository(ports: Ports) {
   };
   return Object.freeze({
     get: (identityKey: string) => ports.read(() => get(identityKey)),
+    heldByWorker: (workerId: string) => ports.read(() => database.prepare("SELECT * FROM exclusive_session_leases WHERE worker_id=? AND released_at IS NULL ORDER BY id")
+      .all(WorkerIdSchema.parse(workerId)).map(exclusiveSessionLeaseFromRow)),
+    held: () => ports.read(() => database.prepare("SELECT * FROM exclusive_session_leases WHERE released_at IS NULL ORDER BY id").all().map(exclusiveSessionLeaseFromRow)),
     acquire(input: Readonly<{ identityKey: string; workerId: string; sessionId: string; now: string }>) {
       const request = z.strictObject({ identityKey: FingerprintSchema, workerId: WorkerIdSchema, sessionId: BrowserSessionIdSchema, now: IsoInstantSchema }).parse(input);
       return ports.mutate((): { result: Readonly<{ state: "acquired" | "held"; lease: ExclusiveSessionLease }>; changes: number } => {
         const before = get(request.identityKey);
         if (before?.releasedAt === null) return { result: { state: "held", lease: before }, changes: 0 };
-        const owner = z.strictObject({ lease_generation: z.number().int().positive() }).parse(database.prepare(
-          "SELECT l.lease_generation FROM worker_leases l JOIN worker_slots s ON s.id=l.worker_id WHERE l.worker_id=? AND s.retired_at IS NULL AND l.state IN ('starting','idle','busy','waiting','paused') AND l.lease_generation=(SELECT MAX(lease_generation) FROM worker_leases WHERE worker_id=l.worker_id)",
+        // The holder's fence is the claim generation of the run it holds.
+        const owner = z.strictObject({ claim_generation: z.number().int().positive() }).parse(database.prepare(
+          "SELECT r.claim_generation FROM runs r JOIN worker_slots s ON s.id=r.owner_worker_id WHERE r.owner_worker_id=? AND s.retired_at IS NULL AND r.state IN ('claimed','validating','running')"
         ).get(request.workerId));
         if (before !== undefined && request.now < (before.releasedAt ?? before.acquiredAt)) throw new Error("exclusive-session-lease-clock-regressed");
         const lease = ExclusiveSessionLeaseSchema.parse({ identityKey: request.identityKey, generation: (before?.generation ?? 0) + 1,
-          workerId: request.workerId, workerLeaseGeneration: owner.lease_generation, sessionId: request.sessionId, acquiredAt: request.now, releasedAt: null });
+          workerId: request.workerId, workerLeaseGeneration: owner.claim_generation, sessionId: request.sessionId, acquiredAt: request.now, releasedAt: null });
         if (before === undefined) database.prepare("INSERT INTO exclusive_session_leases VALUES(?,?,?,?,?,?,NULL)")
           .run(lease.identityKey, lease.generation, lease.workerId, lease.workerLeaseGeneration, lease.sessionId, lease.acquiredAt);
         else {

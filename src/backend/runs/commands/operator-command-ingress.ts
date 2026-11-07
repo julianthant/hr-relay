@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { AssistantPermissionChangeSchema, LiveWorkerResetRequestSchema, CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
+import { AssistantPermissionChangeSchema, CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
@@ -99,10 +99,6 @@ function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecis
   const parsed = CommandRequestSchema.safeParse(stamped);
   if (parsed.success) {
     const request = parsed.data;
-    if (request.type === "stop-worker" && !LiveWorkerResetRequestSchema.safeParse(request).success) return {
-      state: "refused", response: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
-        code: "invalid-state", message: "worker-reset-authority-unavailable" }) };
-
     if (request.family === "settings") {
       if (request.type === "apply-settings") {
         if (request.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) return settingsRequestRefusal(request.commandId, "schema-mismatch", "settings.json");

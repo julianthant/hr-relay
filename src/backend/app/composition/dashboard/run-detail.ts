@@ -13,11 +13,11 @@ import type {
 import { gateNodeViewsOf, writeContractViewsOf, dataOriginViewsOf } from "./run-detail-descriptors.js";
 import { createItemAttemptHistoryQuery } from "../../../runs/queries/item-attempt-history.js";
 
-export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader" | "ownsWorker"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
+export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader" | "workerMembers"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
   const { stateRoot, projection, database, trust, captures, canonical, runReader } = input;
   const identity = database.getMeta();
   return {
-    ...(input.ownsWorker === undefined ? {} : { ownsWorker: input.ownsWorker }),
+    ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
     ...(identity.installationId === undefined || identity.profileId === undefined ? {} : { authorityIdentity: { installationId: identity.installationId, profileId: identity.profileId } }),
     ...(canonical === undefined ? {} : { canonical }),
     ...(runReader === undefined ? {} : { runReader }),

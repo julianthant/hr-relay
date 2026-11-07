@@ -11,7 +11,7 @@ import { createOperatorRunDetail } from "./run-detail.js";
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
 import { createTrustReadDependencies } from "./trust.js";
 
-import type { WorkerLeaseRecord } from "../../../../models/run/worker.js";
+import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 
 export function prepareWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "admission" | "lifecycle" | "descriptors" | "ids">) {
   const { database, admission, lifecycle, descriptors, ids } = input;
@@ -31,15 +31,15 @@ export function prepareWriteSafety(input: Pick<ReturnType<typeof prepareDashboar
   return { writeResolution, artifacts };
 }
 
-export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "lifecycle" | "stateRoot"> & { projection: ReturnType<typeof createOperatorProjection>; ownsWorker: (lease: WorkerLeaseRecord) => boolean; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader> }) {
-  const { database, lifecycle, stateRoot, projection, ownsWorker, artifacts, artifactReader } = input;
+export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "lifecycle" | "stateRoot"> & { projection: ReturnType<typeof createOperatorProjection>; workerMembers: () => readonly WorkerMemberView[]; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader> }) {
+  const { database, lifecycle, stateRoot, projection, workerMembers, artifacts, artifactReader } = input;
   const intakeParser = createIntakeParser({ artifacts });
   const intakeProjections = {
     resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
   };
 
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
-  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, ownsWorker, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
+  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, workerMembers, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   return { intakeParser, intakeProjections, trustReads, runDetailDeps };
 }

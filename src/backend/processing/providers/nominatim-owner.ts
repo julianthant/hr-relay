@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import type { IpcRouter } from "../../runtime/workers/worker-ipc-router.js";
 import { z } from "zod";
 import { systemClock, machineMonotonicMs, type Clock } from "../../../rules/time/clock.js";
 import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, type ProviderAdapterOutcome } from "../../../models/providers/providers.js";
@@ -73,7 +74,8 @@ export function createNominatimService(input: Readonly<{
     }
   }
 
-  function attach(child: ChildProcess): void {
+  /** The child pipe's router owns the `message` listener; this family answers `nominatim-request` and `nominatim-cancel`. */
+  function attach(child: ChildProcess, router: Pick<IpcRouter, "register">): void {
     if (stopped || !child.connected) throw new Error("nominatim-parent-channel-unavailable");
     const requests = new Map<string, AbortController>();
     const receive = (value: unknown) => {
@@ -91,14 +93,13 @@ export function createNominatimService(input: Readonly<{
       }).finally(() => requests.delete(message.requestId));
     };
     const disconnect = () => {
-      child.removeListener("message", receive);
       child.removeListener("disconnect", disconnect);
       child.removeListener("exit", disconnect);
       for (const controller of requests.values()) controller.abort();
       requests.clear();
       detachments.delete(disconnect);
     };
-    child.on("message", receive);
+    router.register("nominatim-", receive);
     child.once("disconnect", disconnect);
     child.once("exit", disconnect);
     detachments.add(disconnect);
@@ -125,6 +126,7 @@ export function createNominatimService(input: Readonly<{
 export function createNominatimWorkerAdapter(clock: Clock = systemClock) {
   const pending = new Map<string, (outcome: ProviderAdapterOutcome) => void>();
   let stopped = false;
+  let routed = false;
   const disconnect = () => { stopped = true; for (const finish of [...pending.values()]) finish(unavailable(clock, "adapter-unavailable")); };
   const receive = (value: unknown) => {
     const reply = ReplySchema.safeParse(value);
@@ -132,11 +134,13 @@ export function createNominatimWorkerAdapter(clock: Clock = systemClock) {
   };
   let listening = false;
   return Object.freeze({ capability: "geocode.nominatim" as const,
+    /** Registers the reply family on the child's router; without it every request is unavailable. */
+    attach(router: Pick<IpcRouter, "register">): void { router.register("nominatim-", receive); routed = true; },
     async invoke(requestInput: unknown, options: ProviderCallOptions): Promise<ProviderAdapterOutcome> {
       const request = ProviderRequestEnvelopeSchema.parse(requestInput);
       if (request.capability !== "geocode.nominatim") throw new Error("nominatim-capability-mismatch");
-      if (stopped || !process.connected || process.send === undefined) return unavailable(clock, "adapter-unavailable");
-      if (!listening) { process.on("message", receive); process.once("disconnect", disconnect); listening = true; }
+      if (stopped || !routed || !process.connected || process.send === undefined) return unavailable(clock, "adapter-unavailable");
+      if (!listening) { process.once("disconnect", disconnect); listening = true; }
       if (options.signal.aborted) return unavailable(clock, "aborted");
       const remaining = options.deadlineMonotonicMs - clock.monotonicMs();
       if (remaining <= 0 || remaining > 2_147_483_647) return unavailable(clock, "timeout");
@@ -165,7 +169,6 @@ export function createNominatimWorkerAdapter(clock: Clock = systemClock) {
     async stop(): Promise<void> {
       for (const requestId of pending.keys()) if (process.connected) process.send?.({ kind: "nominatim-cancel", requestId }, () => {});
       disconnect();
-      process.removeListener("message", receive);
       process.removeListener("disconnect", disconnect);
     },
   });

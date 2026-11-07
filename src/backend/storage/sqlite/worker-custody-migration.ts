@@ -5,7 +5,7 @@ import { RunDeleteInputSchema } from "../../../models/run/deleted-run.js";
 import type { PredecessorRunRecord } from "../../../models/run/record.js";
 import { CanonicalDeleteRequestSchema } from "./run-store-contracts.js";
 import { commandFromRow, insertNativeCommand } from "./command-record-row.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, WORKER_CUSTODY_SLOT_REBUILD_ID } from "./migrations.js";
 import { executeNativeRunDeletion, prepareNativeRunDeletion, RunDeletionRefusedError } from "./native-run-deletion.js";
 import { childrenFirst, lifecycleCommand, recordAudit, requireSettledPreBuildRun } from "./pre-build-run-deletion.js";
 import { readRestoreWriteFences } from "./restore-write-fences.js";
@@ -14,23 +14,6 @@ import { authenticateParkedWriteResolution } from "../../../rules/write-safety/p
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { predecessorRunRecordFromRow } from "./run-record-row.js";
-
-export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
-export const WORKER_CUSTODY_SCAN_ID = "worker-custody-grammar-scan:v1";
-export const WORKER_CUSTODY_SLOT_REBUILD_ID = "worker-custody-slot-rebuild:v1";
-
-/** Durable worker custody becomes in-memory pool state: leases, controls and browser rows go, slots keep ordinal, pool index and pause. */
-export const WORKER_CUSTODY_MIGRATION_STATEMENTS: readonly string[] = [
-  `CREATE TEMP TABLE worker_pause_capture AS SELECT worker_id, directive='pause' AS paused FROM worker_leases lease
-    WHERE lease_generation=(SELECT MAX(lease_generation) FROM worker_leases WHERE worker_id=lease.worker_id)`,
-  "DROP TABLE worker_controls",
-  "DROP TABLE browser_sessions",
-  "DROP TABLE worker_leases",
-  `SELECT '${WORKER_CUSTODY_SLOT_REBUILD_ID}'`,
-  "DROP TABLE worker_pause_capture",
-  `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`,
-  `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
-];
 
 const SLIM_WORKER_SLOTS = [
   `CREATE TABLE worker_slots (
@@ -62,7 +45,8 @@ const DELETE_BLOCKING_TRIGGERS = ["command_audits_retained", "commands_bulk_reta
 /** Native run deletion retains these by design; they may still name a deleted run. */
 const DELETION_RETAINED_TABLES = new Set(["write_intents", "write_attempts", "deleted_runs", "artifacts", "database_upgrades"]);
 const EVIDENCE_TABLES = ["run_results", "run_receipts", "run_failures", "run_checkpoints", "gate_results"] as const;
-const STORED_SHAPE_VERSION = BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1;
+// Read at call time: migrations.ts imports this module for its statements.
+const storedShapeVersion = (): number => BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1;
 
 type CaptureFile = Parameters<typeof prepareNativeRunDeletion>[3];
 type SettleEvidence = Parameters<typeof requireSettledPreBuildRun>[3];
@@ -283,14 +267,14 @@ function deleteTree(database: DatabaseSync, root: PredecessorRunRecord, members:
   const cascadeRunIds = childrenFirst(members).map(run => run.envelope.runId);
   const deletion = (runId: string) => RunDeleteInputSchema.parse({ runId, origin: "queue", commandId: command.commandId, now, cascadeRunIds });
   try {
-    for (const runId of cascadeRunIds) prepareNativeRunDeletion(database, readRun(database, runId), deletion(runId), captureFile, "preflight", STORED_SHAPE_VERSION);
+    for (const runId of cascadeRunIds) prepareNativeRunDeletion(database, readRun(database, runId), deletion(runId), captureFile, "preflight", storedShapeVersion());
   } catch (error) {
     if (!(error instanceof RunDeletionRefusedError) || error.reason !== "shared-checkpoint") throw error;
     database.prepare("DELETE FROM commands WHERE id=?").run(command.commandId);
     return undefined;
   }
   for (const runId of cascadeRunIds) {
-    executeNativeRunDeletion(database, prepareNativeRunDeletion(database, readRun(database, runId), deletion(runId), captureFile, "execution", STORED_SHAPE_VERSION));
+    executeNativeRunDeletion(database, prepareNativeRunDeletion(database, readRun(database, runId), deletion(runId), captureFile, "execution", storedShapeVersion()));
   }
   recordAudit(database, command, { kind: "deletion", runIds: cascadeRunIds }, now);
   return command.commandId;
@@ -355,4 +339,10 @@ export function assertWorkerCustodyConverted(database: DatabaseSync): void {
       if (hasKey(jsonColumns(RowSchema.parse(row)), REMOVED_KEYS)) throw new Error(`authority-upgrade-worker-grammar-retained:${table}`);
     }
   }
+}
+
+/** Runs one migration statement. The custody slot rebuild is DDL, so it runs on every path: fresh, expected layout and upgrade. */
+export function execMigrationStatement(database: DatabaseSync, statement: string): void {
+  if (statement === `SELECT '${WORKER_CUSTODY_SLOT_REBUILD_ID}'`) rebuildWorkerSlots(database);
+  database.exec(statement);
 }

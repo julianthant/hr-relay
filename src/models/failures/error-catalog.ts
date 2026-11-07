@@ -73,7 +73,6 @@ export const ERROR_CATALOG = Object.freeze({
   DUO_SETUP_FILES_BUSY: catalogEntry("The setup browser’s files are still in use. Select Reopen to check again.", EmptyParametersSchema),
   BROWSER_ROOT_UNAVAILABLE: catalogEntry("Browser ownership could not be verified. The browser and its files remain unavailable until stopped recovery succeeds.", EmptyParametersSchema),
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),
-  LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
   STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),

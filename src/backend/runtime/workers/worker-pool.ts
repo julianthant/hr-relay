@@ -330,3 +330,10 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   });
 }
 export type WorkerPool = ReturnType<typeof createWorkerPool>;
+
+/** Refuses unless every member's exit was observed and settled; shutdown, logout and account switch require it. */
+export function requireStoppedPool(views: readonly WorkerMemberView[]): void {
+  const unobserved = views.filter(view => view.state !== "exited" || view.held !== undefined);
+  if (unobserved.length !== 0) throw new WorkerPoolError("WORKER_EXIT_UNOBSERVED", { cause: unobserved.map(view => ({ workerId: view.member.workerId, pid: view.pid })) });
+  if (views.some(view => view.exit?.settlement === "failed")) throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED");
+}

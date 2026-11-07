@@ -357,7 +357,6 @@ export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle",
 /** How a settled lease ended, in the operator's words rather than the enum's. */
 export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
   operator: "stopped by you",
-  shutdown: "shut down",
   crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
 };
 
@@ -367,14 +366,13 @@ export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;
   if (card.directive === "pause" && card.state !== "paused") return "Pausing after this item";
   if (card.directive === "run" && card.state === "paused") return "Resume requested";
-  if (card.directive === "stop") return "Stopping after this item";
   return undefined;
 }
 
 
-/** Settled leases take no directives; stopping twice must not offer another command. */
+/** An exited member takes no directives. */
 export function canStopWorker(card: WorkerCardWire): boolean {
-  return card.state !== "failed" && card.directive !== "stop";
+  return card.state !== "failed";
 }
 
 

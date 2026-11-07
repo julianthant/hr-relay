@@ -1,5 +1,5 @@
 import { fileStatus } from "./file-identity.js";
-import { StoppedBrowserRootsV1Schema, parseStoppedBrowserRootUpgradeSource, type StoppedBrowserRootsDocument, type StoppedBrowserRoot, BrowserRootHandleSchema, BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
+import { StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema, parseStoppedBrowserRootUpgradeSource, type StoppedBrowserRootsDocument, type StoppedBrowserRoot, BrowserRootHandleSchema, BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
 import { BrowserProfileStillClosingError } from "../../workflow-kit/session.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -129,7 +129,7 @@ export class BrowserRootUnavailableError extends Error {
   readonly code = "BROWSER_ROOT_UNAVAILABLE";
   constructor(options?: ErrorOptions) { super(ERROR_CATALOG.BROWSER_ROOT_UNAVAILABLE.text, options); this.name = "BrowserRootUnavailableError"; }
 }
-type BrowserRegistryDraft = (Omit<BrowserRootsDocument, "roots"> | Omit<z.infer<typeof StoppedBrowserRootsV1Schema>, "roots">)
+type BrowserRegistryDraft = (Omit<BrowserRootsDocument, "roots"> | Omit<z.infer<typeof StoppedBrowserRootsV2Schema>, "roots"> | Omit<z.infer<typeof StoppedBrowserRootsV1Schema>, "roots">)
   & Readonly<{ roots: readonly StoppedBrowserRoot[] }>;
 const encode = (value: unknown) => Buffer.from(canonicalJsonStringify(value));
 const digest = (value: unknown) => createHash("sha256").update(encode(value)).digest("hex");
@@ -144,7 +144,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
   const ancestry = new Map<string, DirectoryIdentity>();
   const stages = new Set<string>();
   const signupRecoveries = new Map<string, ReturnType<typeof createBrowserSourceRecovery>>();
-  let format: 1 | 2 | undefined = recovery ? undefined : 2;
+  let format: 1 | 2 | 3 | undefined = recovery ? undefined : 3;
   function parseDocument(value: unknown): StoppedBrowserRootsDocument {
     if (format === undefined) {
       admission.assertAutomaticRestoreBrowserRegistry();
@@ -152,11 +152,12 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
       format = document.schemaVersion;
       return document;
     }
-    return format === 1 ? StoppedBrowserRootsV1Schema.parse(value) : BrowserRootsSchema.parse(value);
+    return format === 1 ? StoppedBrowserRootsV1Schema.parse(value) : format === 2 ? StoppedBrowserRootsV2Schema.parse(value) : BrowserRootsSchema.parse(value);
   }
   function parseRow(value: unknown): StoppedBrowserRoot {
     if (format === undefined) throw new BrowserRootUnavailableError();
-    return format === 1 ? StoppedBrowserRootsV1Schema.shape.roots.element.parse(value) : BrowserRootSchema.parse(value);
+    return format === 1 ? StoppedBrowserRootsV1Schema.shape.roots.element.parse(value)
+      : format === 2 ? StoppedBrowserRootsV2Schema.shape.roots.element.parse(value) : BrowserRootSchema.parse(value);
   }
   function assertHeld(): void {
     admission.assertBrowserRegistryCustody(); lifetime.assertSourceCustody();
@@ -212,7 +213,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
     if (owner.kind === "worker") {
       admission.assertBrowserRegistryLaunch(profileId);
       if (owner.stoppedProcess !== undefined && !cleanup) throw new BrowserRootUnavailableError();
-      return WorkerOwner.parse(AuthorityDatabase.prototype.browserWorkerOwner.call(owner.database, admission, owner.workerId, profileDirectory, owner.stoppedProcess));
+      return WorkerOwner.parse(AuthorityDatabase.prototype.browserWorkerOwner.call(owner.database, admission, owner.workerId, owner.stoppedProcess));
     }
     if (owner.kind === 'command') return commandOwner(admission, owner.capability, profileId, profileDirectory, cleanup);
     const parsed = SignupOwner.parse(owner);
@@ -247,7 +248,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
     let selected: Readonly<{ input: BrowserRootLaunchInput; owner: BrowserRootOwner }> | undefined;
     const assertCurrent = () => { if (selected === undefined || !same(current(selected.input), selected.owner)) throw new BrowserRootUnavailableError(); };
     const allocated = mutate(document => {
-      if (document.schemaVersion !== 2) throw new BrowserRootUnavailableError();
+      if (document.schemaVersion !== 3) throw new BrowserRootUnavailableError();
       let input: BrowserRootLaunchInput;
       if ("profileDirectory" in request) input = request;
       else {
@@ -342,10 +343,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
       if (prior === undefined || owner !== undefined && (prior.native !== undefined && stoppedProcess === undefined && expectedOwner?.kind !== "signup" || prior.profileId !== owner.profileId)) throw new BrowserRootUnavailableError();
       if (expectedOwner !== undefined && !same(prior.owner, expectedOwner)) {
         const commandRotation = prior.owner.kind === 'command' && expectedOwner.kind === 'command' && prior.launch.state === 'closed';
-        if (!commandRotation && (prior.owner.kind !== "worker" || expectedOwner.kind !== "worker" || prior.owner.workerId !== expectedOwner.workerId
-          || prior.owner.workflowId !== expectedOwner.workflowId || prior.owner.ordinal !== expectedOwner.ordinal
-          || prior.owner.membershipRevision > expectedOwner.membershipRevision || prior.owner.leaseGeneration >= expectedOwner.leaseGeneration
-          || prior.launch.state !== "closed")) throw new BrowserRootUnavailableError();
+        if (!commandRotation) throw new BrowserRootUnavailableError();
       } else if (owner !== undefined && expectedOwner?.kind !== "signup" && prior.launch.state !== "closed") {
         stoppedRecoveryRequired = true; assertStoppedRecovery();
       }
@@ -402,9 +400,8 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
           return { document: { ...document, roots: document.roots.filter(row => row.directory !== root) }, result: undefined };
         }
         const { native: _native, ...prior } = captured;
-        if (owner !== undefined && expectedOwner !== undefined && (prior.owner.kind === "worker" && expectedOwner.kind === "worker"
-          && prior.owner.membershipRevision !== expectedOwner.membershipRevision
-          || owner.credentialFingerprint !== null && owner.credentialFingerprint !== prior.credentialFingerprint)) throw new BrowserRootUnavailableError();
+        if (owner !== undefined && expectedOwner !== undefined
+          && owner.credentialFingerprint !== null && owner.credentialFingerprint !== prior.credentialFingerprint) throw new BrowserRootUnavailableError();
         const row = parseRow({ ...prior, launch: { ...prior.launch, state: "closed" } });
         if (expectedOwner !== undefined) { row.owner = expectedOwner; row.sessionGeneration = binding.sessionGeneration; }
         return { document: replaceRow(document, captured, row), result: undefined };
@@ -451,7 +448,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
   const registry = createBrowserRootRegistry(input);
   return Object.freeze({ ...registry, inventory() {
     const document = registry.inventory();
-    if (document.schemaVersion !== 2) throw new BrowserRootUnavailableError();
+    if (document.schemaVersion !== 3) throw new BrowserRootUnavailableError();
     return document;
   } });
 }
@@ -502,19 +499,19 @@ export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: Stop
     const file = fileStatus(profile.profileDirectory, true);
     if (file === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
     if (!file.isDirectory() || file.isSymbolicLink() || privatePathRejects(profile.profileDirectory, file, "private")) throw new BrowserRootUnavailableError();
-    const browser = custody.browsers.find(row => row.profileDirectory === profile.profileDirectory), slot = custody.slots.find(row => row.workerId === browser?.workerId);
-    const lease = custody.leases.find(row => row.workerId === slot?.workerId);
-    if (browser === undefined || slot === undefined || lease === undefined || browser.health !== "closed" || lease.lifecycle.state !== "stopped") throw new BrowserRootUnavailableError();
+    // Stopped maintenance holds the lifetime, so no worker runs; the sign-in identity is unknown, so the first launch resets the profile.
+    const slot = custody.slots.find(row => profile.profileDirectory.startsWith(join(profile.profileRoot, `w${String(row.ordinal)}`) + sep));
+    if (slot === undefined) throw new BrowserRootUnavailableError();
     const launch = Launch.parse({ launchId: randomUUID(), generation: nextGeneration++, state: "unknown" });
     const row = BrowserRootSchema.parse({ handle: nextHandle++, profileId: source.binding.profileId, profileRoot: relativePath(profile.profileRoot), directory: relativePath(profile.profileDirectory),
-      owner: { kind: "worker", workerId: slot.workerId, workflowId: slot.workflow, ordinal: slot.ordinal, membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration },
-      sessionGeneration: source.sessionGeneration, credentialFingerprint: browser.signInFingerprint, launch,
+      owner: { kind: "worker", workerId: slot.workerId, workflowId: slot.workflow, ordinal: slot.ordinal },
+      sessionGeneration: source.sessionGeneration, credentialFingerprint: null, launch,
       native: { operationId: source.conversionOperationId, launchId: randomUUID(), generation: nextGeneration++,
         source: fileIdentityObservation({ device: file.dev, inode: file.ino }), priorLaunchDigest: digest(launch), phase: "probing" } });
     roots.push(row);
   }
   source.revalidateSource(); source.assertHeld();
-  return BrowserRootsSchema.parse({ schemaVersion: 2, installationId: source.binding.installationId, revision: 0, nextHandle, nextGeneration, roots });
+  return BrowserRootsSchema.parse({ schemaVersion: 3, installationId: source.binding.installationId, revision: 0, nextHandle, nextGeneration, roots });
 }
 
 export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmission, claim: StoppedControlProfileInventory, options: BrowserProfileProbeOptions): Promise<void> {
