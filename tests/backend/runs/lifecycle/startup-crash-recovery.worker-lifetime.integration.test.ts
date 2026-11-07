@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { reconcileExitedWorker, reconcileStartupCrash } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import { attemptingOwnedWrite, ownedWorkerLifetimeFixture } from "../../../support/helpers/backend/worker-lifetime-world.js";
@@ -111,7 +112,8 @@ it("releases only the crashed worker's Duo lease when its exit is settled", asyn
   const f = await ownedWorkerLifetimeFixture(world);
   try {
     const own = "ab".repeat(32), peer = "cd".repeat(32);
-    for (const [credentialKey, workerId] of [[own, f.slot.workerId], [peer, "person-lookup-worker-999"]] as const)
+    const other = f.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, f.slot.workflow, f.slot.poolIndex + 1, f.now));
+    for (const [credentialKey, workerId] of [[own, f.slot.workerId], [peer, other.workerId]] as const)
       assert.equal(f.database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId, system: "ucpath", now: f.now, ttlMs: 60_000 }).state, "acquired");
     await f.dispose();
     reconcileExitedWorker({ ...f, lifecycle: f.service, lock: f.lifetime, workerId: f.slot.workerId });

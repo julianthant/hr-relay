@@ -247,14 +247,15 @@ describe("composed worker runtime", () => {
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     persistJournaledWorkerSettings(repoRoot, stateRoot, clock, { daemon: { idleRepollMs: 10 } });
+    const stop = new AbortController();
+    const input = composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+      args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal });
     const database = reopen(stateRoot, clock);
     const member = database.authority.workerSlots.active(WORKFLOW_ID)[0]; assert.ok(member);
     database.authority.workerSlots.setPaused({ workerId: member.workerId, paused: true, now: NOW });
-    const stop = new AbortController();
     let claimAdmissions = 0;
     const running = composeWorkerRuntime({
-      ...composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
-        args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal }),
+      ...input,
       heartbeatIntervalMs: 10,
       afterClaimAdmissionCheck: () => { claimAdmissions += 1; },
     });
@@ -346,7 +347,8 @@ describe("composed worker runtime", () => {
         assert.equal(typeof row?.payload_json, "string");
         assert.deepEqual(AppSettingsSchema.parse(JSON.parse(String(row?.payload_json))).saved, fixture.record);
         assert.equal(raw.prepare("SELECT state FROM runs WHERE id=?").get(RUN_ID)?.state, "queued");
-        assert.deepEqual(raw.prepare("SELECT id FROM worker_slots").all(), []);
+        // The pool admits the launched slot before boot; a refused boot adds or retires none.
+        assert.deepEqual(raw.prepare("SELECT id FROM worker_slots WHERE retired_at IS NULL").all().map(row => row.id), ["person-lookup-worker-1"]);
         assert.deepEqual(raw.prepare("SELECT id FROM worker_leases").all(), []);
         assert.deepEqual(raw.prepare("SELECT id FROM browser_sessions").all(), []);
       } finally { raw.close(); }
@@ -512,7 +514,7 @@ describe("composed worker runtime", () => {
       (error: unknown) => error === openFailure,
     );
     const database = reopen(stateRootFor(repoRoot), clock);
-    assert.deepEqual(database.authority.workerSlots.list(), []);
+    assert.deepEqual(database.authority.workerSlots.list().map(slot => [slot.workerId, slot.retiredAt]), [["person-lookup-worker-1", null]]);
   });
 
   it("retains controller and database custody when database closure cannot be proven", async () => {

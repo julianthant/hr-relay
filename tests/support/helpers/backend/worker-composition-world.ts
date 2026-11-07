@@ -228,7 +228,9 @@ export function createWorkerCompositionTestWorld() {
     const message = z.strictObject({ state: z.enum(["ready", "report", "failed"]), detail: z.string() });
     const fixture = owner(repoRoot), expected = statSync(fixture.path), database = open(repoRoot, clock);
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
-    const settingsRevision = readSettings(database.authority).revision; database.close();
+    const settingsRevision = readSettings(database.authority).revision;
+    try { database.withAuthorityTransaction(repositories => { for (const index of [1, 2, 3]) admitFixtureSlot(repositories, WORKFLOW_ID, index, clock.now().toISOString()); }); }
+    finally { database.close(); }
     const report = z.strictObject({ pid: z.number().int().positive(), profileId: z.uuid(), databaseIdentity: z.string(),
       device: z.number(), inode: z.number(), configFingerprint: z.string(), settingsRevision: z.number().int().positive(),
       workerId: z.string(), outcomes: z.array(z.string()), closure: z.literal("proved"), stopped: z.literal("idle") });
@@ -251,7 +253,7 @@ export function createWorkerCompositionTestWorld() {
       }
       for (const child of children) child.send("run");
       reports = await Promise.all(replies.map(async (reply, index) => {
-        const result = message.parse((await reply)[0]); assert.equal(result.state, "report");
+        const result = message.parse((await reply)[0]); assert.equal(result.state, "report", result.detail);
         const value = report.parse(JSON.parse(result.detail));
         assert.equal(value.pid, children[index]?.pid); assert.equal(value.profileId, fixture.admission.profileBinding.profileId);
         assert.equal(value.databaseIdentity, AuthorityDatabase.sourceDatabaseIdentity(fixture.admission.authorityBackupExpectedSource()));
