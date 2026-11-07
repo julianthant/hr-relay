@@ -124,7 +124,7 @@ describe("worker-browser arms", () => {
     assert.equal(harness.database.authority.commandAudits.findByCommand(request.commandId)?.result.state, "applied");
     assert.deepEqual(harness.workerCalls, [`stop:${workerId}:reset`, `start:${workerId}`]);
     const replay = await harness.kernel.executeWorkerPool(request);
-    assert.equal(replay.state, "applied");
+    assert.equal(replay.state, "already-applied");
     assert.deepEqual(harness.workerCalls, [`stop:${workerId}:reset`, `start:${workerId}`], "a replayed Reset re-runs no effect");
   });
 
