@@ -43,29 +43,41 @@ describe("real worker processes under the composed pool", () => {
     assert.equal(records.length, 3, "the crashed member is replaced by a fresh process");
   }, 60_000);
 
-  it("probes a killed child's open browser root closed under parent custody so its replacement can launch it", async () => {
+  it("probes a killed child's open browser root closed while a live peer and its open root stay untouched, so the replacement can launch it", async () => {
     const { h, records, output } = await realHarness("obey");
-    await pools.planWorkers(h, 1);
-    await children.waitFor(() => h.workers.pool.snapshot().some(view => view.state === "running"), "a running member", output);
-    const [first] = records;
-    assert.ok(first !== undefined);
+    await pools.planWorkers(h, 2);
+    await children.waitFor(() => h.workers.pool.snapshot().filter(view => view.state === "running").length === 2, "two running members", output);
+    const [first, peer] = records;
+    assert.ok(first?.pid !== undefined && peer?.pid !== undefined);
+    const peerView = h.workers.pool.snapshot().find(view => view.pid === peer.pid);
+    assert.ok(peerView !== undefined);
     const roots = createBrowserRoots(h.admission);
-    const input: BrowserRootLaunchInput = { profileId: h.admission.profileBinding.profileId, profileRoot: h.profileRoot,
-      profileDirectory: workerProfileDirectory({ profileRoot: h.profileRoot, slotOrdinal: 1, system: "ucpath" }), credentialFingerprint: null,
-      owner: { kind: "worker", database: h.database, workerId: pools.WORKER_1 } };
-    const crashed = roots.beginLaunch(input);
-    mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
-    crashed.opened();
+    const rootOf = (workerId: string, slotOrdinal: number): BrowserRootLaunchInput => ({ profileId: h.admission.profileBinding.profileId, profileRoot: h.profileRoot,
+      profileDirectory: workerProfileDirectory({ profileRoot: h.profileRoot, slotOrdinal, system: "ucpath" }), credentialFingerprint: null,
+      owner: { kind: "worker", database: h.database, workerId } });
+    const input = rootOf(pools.WORKER_1, 1), peerInput = rootOf(peerView.member.workerId, peerView.member.ordinal);
+    const crashed = roots.beginLaunch(input), peerLaunch = roots.beginLaunch(peerInput);
+    for (const directory of [input.profileDirectory, peerInput.profileDirectory]) mkdirSync(directory, { recursive: true, mode: 0o700 });
+    crashed.opened(); peerLaunch.opened();
+    const peerRow = () => roots.inventory().roots.find(row => row.launch.launchId === peerLaunch.launchId);
+    const peerBefore = peerRow();
+    assert.equal(peerBefore?.launch.state, "opened");
 
     first.child.kill("SIGKILL");
     await children.waitFor(() => h.settled.length === 1, "the killed child's exit settlement", output);
-    assert.deepEqual(roots.inventory().roots.map(row => [row.launch.launchId, row.launch.state, row.native]), [[crashed.launchId, "closed", undefined]]);
+    assert.equal(h.faults.length, 0, output());
+    const crashedRow = roots.inventory().roots.find(row => row.launch.launchId === crashed.launchId);
+    assert.deepEqual([crashedRow?.launch.state, crashedRow?.native], ["closed", undefined]);
+    assert.deepEqual(peerRow(), peerBefore, "the live peer's root is unchanged");
+    assert.equal(h.workers.pool.snapshot().find(view => view.pid === peer.pid)?.state, "running");
+    assert.equal(children.pidAlive(peer.pid), true);
 
     await h.workers.ensureRunning(pools.WORKFLOW);
-    await children.waitFor(() => h.workers.pool.snapshot().some(view => view.state === "running" && view.pid !== first.pid), "the replacement member", output);
+    await children.waitFor(() => h.workers.pool.snapshot().filter(view => view.state === "running" && view.pid !== first.pid).length === 2, "the replacement member", output);
     const replacement = roots.beginLaunch(input);
     assert.notEqual(replacement.launchId, crashed.launchId);
     replacement.closing(); replacement.closed();
+    peerLaunch.closing(); peerLaunch.closed();
   }, 90_000);
 
   it("stops a real child over IPC with exit code 0 and no signal", async () => {

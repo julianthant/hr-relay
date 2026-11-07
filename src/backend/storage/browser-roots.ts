@@ -329,7 +329,8 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
       if (stoppedProcess === undefined) throw new BrowserRootUnavailableError();
       const context = admission.readInstallationContext();
       if (context === undefined || !(lifetime instanceof RuntimeLifetimeLock)) throw new BrowserRootUnavailableError();
-      lifetime.assertExclusiveWorkspace(context.workspace); lifetime.assertOwnedChildClosed(stoppedProcess);
+      // Scoped to the exact closed child: the row is pinned to its worker, so live peers (other rows) never block it.
+      lifetime.assertWorkspace(context.workspace); lifetime.assertOwnedChildClosed(stoppedProcess);
     };
     const signupOperation = owner?.owner.kind === "signup" ? admission.assertBrowserRegistryCleanup(owner.profileId, owner.owner) : undefined;
     let stoppedRecoveryRequired = false;
