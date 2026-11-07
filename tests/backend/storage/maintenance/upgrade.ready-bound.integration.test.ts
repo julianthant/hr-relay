@@ -183,7 +183,8 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
 function rawEight(path: string, version = 8) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
-    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    const present = new Set(raw.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && present.has(table)).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
@@ -734,6 +735,8 @@ function plantPredecessorWorkerCustody(path: string) {
     try {
       raw.prepare(`UPDATE runs SET ${Object.keys(stored).map(key => `${key}=?`).join(",")} WHERE id=?`).run(...Object.values(stored), queued.envelope.runId);
     } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
+    // The search row still describes the queued run; a stopped store whose search is unbuilt rebuilds it on upgrade.
+    raw.exec("UPDATE database_states SET search_state='unbuilt' WHERE id=1");
     return { runId: queued.envelope.runId };
   } finally { raw.close(); }
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
@@ -18,9 +18,10 @@ const WORKER = "person-lookup-worker-1";
 function store(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
-  for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
-  database.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
-  database.prepare("INSERT INTO database_states VALUES(1,?,0,?,NULL,'unbuilt',?,?)").run(CURRENT_AUTHORITY_SCHEMA_VERSION, NOW, UUID_2, UUID_3);
+  for (const migration of SQLITE_MIGRATIONS.filter(item => item.version < WORKER_CUSTODY_SCHEMA_VERSION)) for (const statement of migration.statements) database.exec(statement);
+  const predecessor = WORKER_CUSTODY_SCHEMA_VERSION - 1;
+  database.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=${String(predecessor)}`);
+  database.prepare("INSERT INTO database_states VALUES(1,?,0,?,NULL,'unbuilt',?,?)").run(predecessor, NOW, UUID_2, UUID_3);
   createSettingsActivationRepositories({ database,
     mutate: work => work().result,
     readRecord(table, key, schema) {

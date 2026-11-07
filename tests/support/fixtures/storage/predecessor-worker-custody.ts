@@ -6,6 +6,7 @@ import { runLifecycleRequestFingerprint } from "../../../../src/backend/storage/
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 import { runSettlementColumns, runSettlementContext } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { restoreSchema22WorkerCustodyFixture } from "./historical-run-schema.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 
@@ -39,6 +40,20 @@ export function rewritePredecessorCommand(raw: DatabaseSync, commandId: string, 
       raw.prepare(`INSERT INTO run_results (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
     }
   });
+}
+
+/** Returns a current store to the schema 22 custody tables (the caller sets the version), keeping each worker slot in its predecessor row shape. */
+export function restorePredecessorCustodySchema(raw: DatabaseSync): void {
+  const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),
+    created_at: z.string(), updated_at: z.string() })).parse(raw.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all());
+  raw.exec("DELETE FROM worker_slots");
+  restoreSchema22WorkerCustodyFixture(raw);
+  for (const slot of slots) {
+    const row = { workerId: slot.id, workflow: slot.workflow, ordinal: slot.ordinal, poolIndex: slot.pool_index, membershipRevision: 1, phase: "idle",
+      retiredAt: slot.retired_at, retirementCommandId: null, reservationCommandId: null, createdAt: slot.created_at, updatedAt: slot.updated_at };
+    raw.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,1,'idle',?,NULL,NULL,?,?,?)")
+      .run(row.workerId, row.workflow, row.ordinal, row.retiredAt, canonicalJsonStringify(row), row.createdAt, row.updatedAt);
+  }
 }
 
 /** Gives a run's claim, worker transitions and crash recovery the worker lifetime schemas 20-22 stored on them. */

@@ -10,8 +10,8 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
-import { rewritePredecessorCommand, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
+import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restorePredecessorCustodySchema, rewritePredecessorCommand, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
@@ -22,18 +22,9 @@ afterEach(() => world.cleanup());
 
 type SourceVersion = 20 | 21 | 22;
 
-function slotRow(raw: DatabaseSync, now: string): void {
-  const row = { workerId: "person-lookup-worker-1", workflow: "person-lookup", ordinal: 1, poolIndex: 1, membershipRevision: 1, phase: "idle",
-    retiredAt: null, retirementCommandId: null, reservationCommandId: null, createdAt: now, updatedAt: now };
-  raw.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
-    .run(row.workerId, row.workflow, row.ordinal, row.membershipRevision, row.phase, null, null, null, canonicalJsonStringify(row), now, now);
-}
-
-function toSourceVersion(raw: DatabaseSync, version: SourceVersion, now: string): void {
+function toSourceVersion(raw: DatabaseSync, version: SourceVersion): void {
   raw.exec("BEGIN EXCLUSIVE");
-  raw.exec("DELETE FROM worker_slots");
-  restoreSchema22WorkerCustodyFixture(raw);
-  slotRow(raw, now);
+  restorePredecessorCustodySchema(raw);
   if (version === 20) restoreSchema20CompletionFixture(raw);
   else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
   raw.exec("COMMIT");
@@ -65,7 +56,8 @@ async function predecessorStore(version: SourceVersion, write?: "attempting") {
   const recovered = requireLifecycleApplied(f.service.recoverCrash({ ...f.recoveryRequest, expectedVersion: requested.run.version }, f.lock));
   for (const run of write === "attempting" ? [f.database.authority.runs.get(kept.envelope.runId)] : [recovered, f.database.authority.runs.get(kept.envelope.runId)]) {
     assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
-    f.database.authority.evidenceReceipts.insert(deriveRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, checkpoints: [], writes: [], gateResults: [] }).receipt);
+    const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+    f.database.authority.evidenceReceipts.insert(deriveRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, result, checkpoints: [], writes: [], gateResults: [] }).receipt);
   }
   const path = join(f.root, "state.db");
   await f.closeController();
@@ -73,7 +65,7 @@ async function predecessorStore(version: SourceVersion, write?: "attempting") {
   const lifetimes = writePredecessorWorkerLifetimes(raw, runId);
   assert.deepEqual(new Set(lifetimes.map(id => String(raw.prepare("SELECT json_extract(request_json,'$.operation') AS operation FROM commands WHERE id=?").get(id)?.operation))),
     new Set(["claim-next", "worker-transition", "recover-crash"]));
-  toSourceVersion(raw, version, now);
+  toSourceVersion(raw, version);
   return { raw, path, runId, keptRunId: kept.envelope.runId, keptCancel, recoverId: f.recoveryRequest.commandId, now };
 }
 
