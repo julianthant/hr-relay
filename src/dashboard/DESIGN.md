@@ -89,8 +89,12 @@ Settings owns its rail and guarded back arrow. Analytics and Explorer mount insi
 `PageBreadcrumbs` precedes a child heading. Available parents call the existing route callback;
 the last item is passive text. Wizard Back changes stages, while dismissal closes the layer.
 `DsBodyScope` supplies a shared content width and body rhythm. Tables hold dense records, grids
-hold aligned peer facts, and short chips carry facts that tolerate truncation.
+hold aligned peer facts, and short chips carry facts that tolerate truncation. In every table
+(log page cards, member lists, queue tables) the last column is right-aligned, header and cells,
+flush to the table's right edge.
 
+A queue row draws its served subtitle ("12 people") as a muted line under the title when it differs from the title.
+Double-clicking a queue row title renames it in place: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
@@ -117,7 +121,7 @@ Shared by every workflow's served Logs (`projectRunLogs`); display only, so evid
 
 - Show one operator-readable sentence or labelled row per fact; never an internal control, selector, task, node or field name.
 - Name a step's system as UCPath, CRM, Kuali and the like; local work shows no system.
-- Show declared operator fields as aligned rows (label, eye or pencil icon, time, value). A declared value that was not kept reads "Not retained" in its row, once.
+- Show declared operator fields as aligned rows (label, eye or pencil icon, time, value). A declared value that was not kept reads "Not retained" in its row, once. A value Relay failed to read reads "Couldn't read" in a muted danger tone.
 - Hide browser gestures whose label comes only from the UI registry; a gesture appears only through a declared operator label or field.
 - Hide task diagnostics: an info note with structured fields repeats the labelled rows. Warnings and errors still show.
 - Leave stage state to the timeline strip: no Pending, In progress, Completed or Failed lines. Skipped keeps one line, "Skipped · Not needed for this run"; a wait or cancel keeps its line.
@@ -159,9 +163,11 @@ A decision is answered where its evidence is. It is never a separate card, dock 
 - Every pick ends with a "None of these" row. Choosing it puts a labelled input on the action row ("Enter employee ID", 8 digits; "Enter row number" for a roster or workbook row), and the primary reads "Continue with <typed value>", disabled until the value is valid. A typed employee ID is asked for only here, when Relay cannot find the person.
 - A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
 - A value to correct, or a transaction number to confirm, is a labelled input on the action row, before the buttons.
-- A failure uses the same anatomy. The question is the failure title in the danger colour, and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written, or "Checked by hand, continue" after a confirmed write, so the run can finish. There is no Add note action.
+- A failure uses the same anatomy. The question is the failure title in the danger colour, and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written. There is no Add note action.
+- When the site rejected a value Relay typed (phone, address, date, ID) and nothing was saved, the failure shows a labelled input prefilled with the rejected value and the primary "Retry with this <value>" ("Retry with this number"). It is never offered after a committed save.
+- When a write saved but its read-back failed, the actions are, in order: Check again (repeats only the read-back), "Checked by hand, continue", "Withdrawn in UCPath, file again" and "Mark as failed" (ends this person's run as failed and files nothing). "File again" first reads the system and proves the saved record is gone or withdrawn, then files once; if the record is still there, a toast refuses it. Relay never withdraws a submitted transaction itself.
 - An unconfirmed write (parked, or uncertain after a restart) always asks "Did the <record> save in <system>?". The note says what did not confirm and where to check. The actions are Confirm saved and "Not saved, <what Relay does next>" (for example "Not saved, file it again"). A transaction or document number input appears only when that system issues one.
-- An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure with no body actions; Retry is the icon button in that log's header. The parent log reads the document, records the approval and lists the records handed to members.
+- An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure; Retry is the icon button in that log's header, and a rejected value adds the fix-and-retry input in the body. The parent log reads the document, records the approval and lists the records handed to members.
 - A cancel in progress is one line with a loading icon. It has no actions.
 - A refused command is a toast (title and one line). The transcript does not change.
 - Toasts and the assistant launcher sit above the Logs footer and never cover its search, copy or latest controls.
