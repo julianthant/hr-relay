@@ -900,8 +900,34 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.review.roster.rows[].name", origin: "captured-hr-value" },
 ];
 
+/* The answered option's label may be a picked row's name; the actor names are the local profile's own display name. */
+const ANSWER_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ["optionId", "repository-authored"], ["label", "captured-hr-value"], ["actor.name", "operator-authored"], ["actor.onBehalfOf.name", "operator-authored"],
+];
+/** A served run decision's free-text leaves: catalog and workflow-declared text, served keys, and the HR values a pick or prefill shows. */
+const DECISION_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ...["title", "options[].id", "options[].label", "options[].hint", "options[].confirm.body", "options[].confirm.confirmLabel", "options[].confirm.title",
+    "options[].input.label", "options[].input.pattern", "options[].input.placeholder", "options[].input.question",
+    "options[].input.table.columns[].id", "options[].input.table.columns[].label", "options[].input.table.rows[].cells[].columnId",
+    "options[].input.table.typed.label", "options[].input.table.typed.pattern", "options[].input.table.typed.placeholder",
+    "options[].send.absentActionKey", "options[].send.actionKey", "options[].send.arm", "options[].send.family", "options[].send.gateNodeId",
+    "options[].send.presentActionKey", "options[].send.transactionPattern", "options[].send.type"].map(path => [path, "repository-authored"] as const),
+  ...["options[].input.prefill", "options[].input.table.title", "options[].input.table.rows[].cells[].value", "options[].input.table.rows[].id",
+    "options[].input.table.rows[].name", "options[].input.table.rows[].rowId", "options[].input.table.rows[].sheetId"].map(path => [path, "captured-hr-value"] as const),
+  ...ANSWER_LEAF_ORIGINS.map(([path, origin]) => [`answer.${path}`, origin] as const),
+];
+
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+    ...([
+      ["wire/run-detail", "decision."], ["wire/run-detail", "gate.decision."], ["wire/run-detail-section", "payload.decision."],
+      ["wire/run-detail-section", "payload.value.decision."], ["wire/run-detail-section", "payload.referenceChoices[].resolution.decision."],
+      ["wire/run-detail-section", "payload.operations[].resolution.decision."],
+    ] as const).flatMap(([surface, prefix]) => DECISION_LEAF_ORIGINS.map(([path, origin]) => ({ surface, path: `${prefix}${path}`, origin }))),
+    ...([
+      ["wire/run-detail", "gate.answer."], ["wire/run-detail-section", "payload.referenceChoices[].resolution.answer."],
+      ["wire/run-detail-section", "payload.operations[].resolution.answer."],
+    ] as const).flatMap(([surface, prefix]) => ANSWER_LEAF_ORIGINS.map(([path, origin]) => ({ surface, path: `${prefix}${path}`, origin }))),
     ...([
       ["wire/queue-surface", "recordMembers.members[]."],
       ["wire/dashboard-day", "queueSurfaces[].recordMembers.members[]."],

@@ -40,6 +40,9 @@ import { deriveSchemaHash } from "../../../../models/validation/schema-bound-val
 import { deriveStableUuid, lifecycleCommandId } from "../../../../rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
+import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
+import type { RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import { projectDecision } from "../../decisions/project-decision.js";
 
 
 function settledGateWire(
@@ -519,6 +522,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && record.request.target.runVersion === authority.version && record.request.target.intentVersion === intent.version);
   const lastCheck = latest?.phase.state === "succeeded" && latest.phase.acknowledgement.kind === "parked-write-check"
     ? latest.phase.acknowledgement.result : undefined;
+  const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check));
   return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck }),
     ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent, latest) } : {}),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
@@ -540,7 +544,30 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
       + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(authority))}. Verify the target system, then use one typed resolution.`,
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
-    actions: [...parkedWriteActions(authority, intent), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
+    actions,
+    decision: parkedWriteDecision(intent.parkedCode, acceptsTransactionId, actions),
+  });
+}
+
+/** D5/D6: the row the operator answers today — Check again, then Check result when a transaction id is accepted, else It didn't land. */
+export function parkedWriteDecision(parkedCode: string, acceptsTransactionId: boolean, actions: readonly ActionDescriptorWire[]): RunDecisionWire {
+  const key = (command: string) => actions.find(action => action.kind === "command" && action.command === command)?.key;
+  const recheck = key("recheck-write"), absent = key("resolve-write-absent"), again = key("check-parked-write") ?? recheck;
+  return projectDecision(parkedCode === "unknown" ? "write-unknown" : "write-parked", [
+    ...(again === undefined ? [] : [{ id: "check-again", send: { via: "action" as const, actionKey: again } }]),
+    ...(acceptsTransactionId
+      ? recheck === undefined || absent === undefined ? [] : [{ id: "check-result", input: { kind: "verification" as const, question: "Was it submitted?" },
+        send: { via: "verification" as const, presentActionKey: recheck, absentActionKey: absent, transactionPattern: "^T\\d+$" } }]
+      : absent === undefined ? [] : [{ id: "didnt-land", send: { via: "action" as const, actionKey: absent } }]),
+  ]);
+}
+
+function parkedWriteActionsWithCheck(
+  authority: RunRecord,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+  check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" },
+): unknown[] {
+  return [...parkedWriteActions(authority, intent), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
       key: "check-parked-write", label: "Check again", detail: "Read UCPath while keeping this write parked.",
       intent: "warning", icon: "resolve", placement: ["review"], kind: "command", command: "check-parked-write",
       expectedVersion: authority.version, checkTarget: check.target,
@@ -548,8 +575,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
         bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest },
       confirm: { title: "Read UCPath transaction findings", body: "Read the transaction list and details. The write stays parked; Relay submits nothing and does not authorize a retry.",
         confirmLabel: "Check again", tone: "neutral" },
-    }])],
-  });
+    }])];
 }
 
 export type GateParkSection = "parked-write" | "identity-gate";

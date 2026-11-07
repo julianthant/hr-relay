@@ -3,7 +3,8 @@ import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrReviewChangeSche
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { StartPlanRequestSchema } from "./start-plan.js";
-import { ActionConfirmWireSchema } from "./actions.js";
+import { ActionConfirmWireSchema, type ActionDescriptorWire } from "./actions.js";
+import { DecisionAnswerWireSchema, RunDecisionWireSchema, type RunDecisionWire } from "./run-decision.js";
 import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
 import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, OcrReviewCommandRequestSchema, GateCommandRequestSchema, CommandResultSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
 import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./workbooks.js";
@@ -64,6 +65,14 @@ import {
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
 import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/types.js";
+
+/** Every `action` option of a served decision names an action served beside it, so a decision never offers an unreachable control. */
+function refineDecisionActions(decision: RunDecisionWire | undefined, actions: readonly ActionDescriptorWire[], context: z.RefinementCtx, path: (string | number)[]): void {
+  if (decision === undefined) return;
+  const keys = new Set(actions.map(({ key }) => key));
+  const named = decision.options.flatMap(({ send }) => send.via === "action" ? [send.actionKey] : send.via === "verification" ? [send.presentActionKey, send.absentActionKey] : []);
+  if (named.some(key => !keys.has(key))) context.addIssue({ code: "custom", path, message: "a decision option must name an action served on the same section" });
+}
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
@@ -211,8 +220,8 @@ export const TimelineWireSchema = z.strictObject({
 /** The `resolved` arm carries the APPROVER: `resolvedBy` is REQUIRED and safe to require, because the arm is newly reachable and no stored record predates the field. */
 export const GateDecisionWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
-  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
+  z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema, decision: RunDecisionWireSchema.optional() }),
+  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema, answer: DecisionAnswerWireSchema.optional() }),
 ]);
 /** A REHEARSAL's terminal outcome: `rehearsal` states that this run's terminal record is a dry-run PREVIEW, so nothing downstream reads it as a completed workflow. */
 export const OutcomeWireSchema = z.discriminatedUnion("state", [
@@ -283,6 +292,8 @@ export const RunDetailWireSchema = z.strictObject({
   captures: RunCaptureAvailabilityWireSchema.optional(),
     /* The timeline steps this run OMITTED at start, by descriptor key; keys only — the operator's typed facts are the run's input and never cross this wire. */
   omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
+    /* The run-level decision (member retry, paused, stalled, cancelling); run controls send the queue row's own descriptors. */
+  decision: RunDecisionWireSchema.optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
   if (detail.childRetry !== undefined && (detail.header.parentRunId === undefined || detail.header.status !== "failed"
@@ -623,6 +634,7 @@ export const FailureDetailWireSchema = z.strictObject({
     retry: ActionDescriptorWireSchema, confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
   }).optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
+  decision: RunDecisionWireSchema.optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,
   traceId: TraceIdSchema,
@@ -674,6 +686,7 @@ export const FailureDetailWireSchema = z.strictObject({
       || source.failureCorrection?.failureId !== failure.failureId || source.failureCorrection.inputField !== recovery.correction.inputField
       || recovery.request.workflowId !== failure.workflowId) context.addIssue({ code: "custom", path: ["recovery"], message: "Failure recovery must target this exact failure and revision" });
   }
+  refineDecisionActions(failure.decision, failure.recovery === undefined ? [] : [failure.recovery.retry], context, ["decision"]);
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
       code: "custom",
@@ -861,7 +874,9 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   proofContract: ProofContractWireSchema,
     /* An interactive control exists only because the SERVER described it; both typed resolutions are always served for a parked run, because hiding either would pre-decide the operator's question. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
+  decision: RunDecisionWireSchema.optional(),
 }).superRefine((parked, context) => {
+  refineDecisionActions(parked.decision, parked.actions, context, ["decision"]);
   if (parked.ucpathFindings !== undefined && (parked.system !== "ucpath" || parked.taskId !== "ucpath/create-termination")) {
     context.addIssue({ code: "custom", path: ["ucpathFindings"], message: "UCPath findings belong to a parked termination submit" });
   }
@@ -931,7 +946,9 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   approvalShape: z.enum(["one-click", "choose-a-candidate"]),
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
+  decision: RunDecisionWireSchema.optional(),
 }).superRefine((gate, context) => {
+  refineDecisionActions(gate.decision, gate.actions, context, ["decision"]);
   if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {
     context.addIssue({ code: "custom", path: ["approvalShape"], message: "presentation must match the shown candidate count" });
   }
@@ -974,14 +991,15 @@ export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
   resolution: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("unavailable"), code: z.literal("WORKBOOK_ROW_CHOICE_UNAVAILABLE"), candidates: z.tuple([]) }),
     z.strictObject({ state: z.literal("available"), target: WorkbookReferenceRowChoiceTargetSchema,
-      action: ActionDescriptorWireSchema, candidates: z.array(WorkbookReferenceRowCandidateWireSchema).min(1) }),
+      action: ActionDescriptorWireSchema, candidates: z.array(WorkbookReferenceRowCandidateWireSchema).min(1), decision: RunDecisionWireSchema.optional() }),
     z.strictObject({ state: z.literal("resolved"), workbookVersion: z.number().int().positive(), resolvedAt: IsoInstantSchema,
-      selected: WorkbookReferenceRowCandidateWireSchema }),
+      selected: WorkbookReferenceRowCandidateWireSchema, answer: DecisionAnswerWireSchema.optional() }),
   ]),
 }).superRefine((choice, ctx) => {
   const resolution = choice.resolution;
   if (resolution.state !== "available") return;
   const { target, action, candidates } = resolution;
+  refineDecisionActions(resolution.decision, [action], ctx, ["resolution", "decision"]);
   if (target.libraryId !== choice.libraryId || target.typeId !== choice.typeId || target.referenceDigest !== choice.referenceDigest
     || target.key !== choice.key || action.kind !== "command" || action.command !== "resolve-workbook-reference-row"
     || action.expectedVersion !== target.expectedVersion || action.referenceTarget === undefined
@@ -996,10 +1014,12 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
   referenceChoices: z.array(RunWorkbookReferenceChoiceWireSchema).optional(), operations: z.array(z.strictObject({
   receipt: WorkbookOperationReceiptSchema, native: NativeRunEventWireSchema,
   resolution: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.enum(["not-required", "resolved"]) }),
+    z.strictObject({ state: z.literal("not-required") }),
+    z.strictObject({ state: z.literal("resolved"), answer: DecisionAnswerWireSchema.optional() }),
     z.strictObject({ state: z.literal("unavailable"), code: z.literal("WORKBOOK_ROW_CHOICE_UNAVAILABLE") }),
     z.strictObject({ state: z.literal("available"), target: WorkbookRowChoiceTargetSchema, action: ActionDescriptorWireSchema,
-      candidates: z.array(z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1) })).min(1) }),
+      candidates: z.array(z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1) })).min(1),
+      decision: RunDecisionWireSchema.optional() }),
   ]),
 })) }).superRefine((section, ctx) => {
   const references = section.referenceChoices ?? [];
@@ -1029,6 +1049,7 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
       || canonicalJsonStringify(resolution.action.workbookTarget) !== canonicalJsonStringify(resolution.target))) {
       ctx.addIssue({ code: "custom", message: "workbook row choice must target its retained receipt" });
     }
+    if (resolution.state === "available") refineDecisionActions(resolution.decision, [resolution.action], ctx, ["operations", "resolution", "decision"]);
   }
 });
 export type RunWorkbookWritesWire = z.infer<typeof RunWorkbookWritesWireSchema>;
