@@ -97,8 +97,6 @@ function runningTerminalFixture(
   const member = database.authority.workerSlots.list().find((slot) => slot.poolIndex === poolIndex);
   assert.ok(member);
   const workerId = member.workerId;
-  const lease = database.authority.workerLeases.get(workerId);
-  assert.ok(lease);
   const activeConfig = database.authority.runtimeConfig.get();
   assert.ok(activeConfig);
   database.authority.runs.enqueue({
@@ -126,20 +124,17 @@ function runningTerminalFixture(
   const claimed = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
     now: NOW,
   });
   if (claimed.state !== "claimed" || claimed.run.envelope.runId !== runId) {
     throw new Error(`terminal recovery fixture did not claim ${runId}`);
   }
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  assert.ok("workerLifetime" in claimed.run.lifecycle && claimed.run.lifecycle.workerLifetime !== undefined);
-  const workerLifetime = claimed.run.lifecycle.workerLifetime;
   const validating = database.authority.runs.transition({
     runId,
     expectedVersion: claimed.run.version,
     claim,
-    lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
+    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
     now: NOW,
   });
   if (validating.state !== "applied") throw new Error(`terminal recovery fixture did not validate ${runId}`);
@@ -150,7 +145,6 @@ function runningTerminalFixture(
     lifecycle: {
       state: "running",
       workerId,
-      workerLifetime,
       claimedAt: NOW,
       heartbeatAt: NOW,
       currentNodeId: nodeId,
@@ -1822,7 +1816,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(report.counts.values, {
       pendingCommands: 1,
       unresolvedWriteIntents: 0,
-      leases: 1,
       providerReservations: 0,
       artifactOutbox: 1,
     });
@@ -2607,7 +2600,6 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/timeline-repository.ts",
       "src/backend/storage/sqlite/transaction-selection.ts",
       "src/backend/storage/sqlite/workbook-library-repository.ts",
-      "src/backend/storage/sqlite/worker-control.ts",
       "src/backend/storage/sqlite/worker-slots.ts",
     ].sort();
     const sourceFiles = gitVisibleFiles(["src"]).filter(

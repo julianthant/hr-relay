@@ -1,9 +1,9 @@
 import { createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
 import { sourceBoundHarness } from "../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../support/fixtures/source-bound-read-fixtures.js";
-import { randomUUID } from "node:crypto";
 import { RunRecordService, lifecycleCommandId } from "../../../src/backend/runs/lifecycle/run-record-service.js";
-import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+import { admitFixtureSlot } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-pool.js";
 import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -806,17 +806,7 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
       recheck: seamFailure("recheck-write"),
       resolveAbsent: seamFailure("resolve-write-absent"),
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => seamFailure("plan-worker-count")(),
-      spawnPoolWorker: async () => seamFailure("spawn-worker")(),
-      refreshPoolBrowser: async () => seamFailure("refresh-browser")(),
-      reopenPoolBrowser: async () => seamFailure("reopen-browser")(),
-      checkParkedWrite: async () => seamFailure("check-parked-write")(),
-      assertResetOwner: () => seamFailure("check-parked-write")(),
-      stopPoolWorker: async () => seamFailure("stop-worker")(),
-      pausePoolWorker: async () => seamFailure("pause-worker")(),
-      resumePoolWorker: async () => seamFailure("resume-worker")(),
-    } },
+    workerRuntime: { pool: unusedWorkerPool(seamFailure("worker-pool")) },
     settings: {
       validateRequest: (command) => command.type === "apply-settings" && command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
         ? { state: "rejected", code: "schema-mismatch", message: "guard fixture uses a noncurrent settings schema" } : undefined,
@@ -1207,23 +1197,15 @@ describe("control-command-single-path", () => {
     const plan = createFixturePlan(harness);
     const runId = singleAppliedRunId(harness.kernel.execute(startCommandFor(plan)));
     const slot = harness.database.withAuthorityTransaction(repositories => {
-      const member = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: "fixture-graph", poolIndex: 1,
-    expectedPoolVersion: 0, processId: process.pid,
-    now: NOW }, randomUUID());
-      assert.equal(repositories.workerLeases.start({ workerId: member.workerId, workflow: "fixture-graph", browserSystems: [],
-        processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
-      return member;
+      return admitFixtureSlot(repositories, "fixture-graph", 1, NOW);
     });
-    const lease = harness.database.authority.workerLeases.get(slot.workerId);
-    assert.ok(lease);
-    const workerLifetime = { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration };
     const claimed = harness.database.authority.runs.claimNext({
-      workflow: "fixture-graph", workerId: slot.workerId, workerLifetime, now: NOW,
+      workflow: "fixture-graph", workerId: slot.workerId, now: NOW,
     });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") return;
     const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };
-    const live = { workerId: slot.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW };
+    const live = { workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       assert.equal(harness.database.authority.runs.transition({
