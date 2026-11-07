@@ -3,7 +3,7 @@ import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { useRef, useState } from "react";
 import { Server } from "lucide-react";
 import { Form } from "@heroui/react";
-import { BodySection, Banner, Button, Dialog, DialogContent, DialogFooter, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText } from "../../../ds/ui.js";
+import { BodySection, Button, Dialog, DialogContent, DialogFooter, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -26,9 +26,7 @@ function CredentialsSection({ editor, profileName }: { editor: Editor; profileNa
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" />;
-  if (editor.editor.state === "failed") return <Banner tone="danger" title="Credentials unavailable">
-    {editor.editor.message.replace(/ Try again\.$/u, "")} <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
-  </Banner>;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;
@@ -45,8 +43,8 @@ function CredentialsSection({ editor, profileName }: { editor: Editor; profileNa
   };
   return <div className="settings-compact-page settings-credentials-page">
     <PageHeading title="Credentials" description="Sign-in details and protected workflow configuration." />
-    {editor.readProblem !== undefined && <Banner tone="warning" title="Current values unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh values</Button></Banner>}
-    {authority.state === "unknown" && <Banner tone="warning" title="Credentials unavailable">Saved credentials could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
+    {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description={editor.readProblem} action={{ label: "Refresh", onAction: editor.reload }} />}
+    {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" action={{ label: "Retry", onAction: editor.reload }} />}
     <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
       <BodySection title="UCPath sign-in">

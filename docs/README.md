@@ -29,8 +29,6 @@ Read the [root instructions](../AGENTS.md) for task rules. Use the [repository o
 
 ## Generated documents
 
-The catalog section in [Stores](reference/stores.md) is generated from [the task registry](../src/backend/app/registries/task-registry.ts). Run `npm run stores:catalog`, then `npm run stores:catalog:check`.
-
 The [roadmap site](roadmap/index.html) is generated from [the roadmap source](roadmap/roadmap.md). Run `npm run roadmap`, then `npm run roadmap:check`.
 
 ## Repository policy

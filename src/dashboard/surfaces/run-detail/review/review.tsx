@@ -5,7 +5,7 @@ import { useDashboardClient, useDashboardCommandBinding } from "../../../state/c
 import { useOcrReviewEditor } from "../../../state/review-wiring-adapter.js";
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import type { LogSelection } from "../logs/log-selection-model.js";
-import { Banner, Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Select, Skeleton, Textarea, dsFocus } from "../../../ds/ui.js";
+import { Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Select, Skeleton, Textarea, dsFocus, Notice } from "../../../ds/ui.js";
 import { LogSkeleton, LoadingRegion } from "../../shared/loading/loading.js";
 import { cn } from "../../../lib/utils.js";
 import { displayExtractedDate } from "../../../lib/date-format.js";
@@ -19,16 +19,16 @@ export function RunReview({ selection, focus }: { selection: LogSelection; focus
   const cards = useMemo(() => resource.page?.ocr === undefined ? undefined : ocrReviewCards(resource.page, (runId, revision, page) => client.ocrSourcePageUrl(runId, revision, page), resource.drafts, resource.includes), [resource.page, client, resource.drafts, resource.includes]);
   const missing = focus !== undefined && cards !== undefined
     && (focus.runId !== selection.row.runId || !cards.some(card => card.record.id === focus.recordId));
-  if (resource.page !== undefined && resource.page.ocr === undefined) return <Banner tone="danger" title="Review unavailable">OCR review authority is unavailable.</Banner>;
-  if (missing) return <Banner tone="danger" title="Record unavailable">The selected record does not belong to this review.</Banner>;
-  if (cards === undefined) return resource.state === "failed" ? <Banner tone="danger" title="Review unavailable">{resource.error}</Banner> : <LogSkeleton />;
+  if (resource.page !== undefined && resource.page.ocr === undefined) return <Notice sticky tone="danger" title="Review unavailable" description="OCR review authority is unavailable." />;
+  if (missing) return <Notice tone="danger" title="Record unavailable" description="Not part of this review." />;
+  if (cards === undefined) return resource.state === "failed" ? <Notice tone="danger" title="Review unavailable" description={resource.error} /> : <LogSkeleton />;
   const review = resource.page?.ocr;
   const discarded = resource.discarded;
   const selected = review?.revision.records.filter(record => (resource.includes[record.recordId] ?? !record.discarded));
   const ready = selected?.filter(record => record.assertedEid !== null && record.fields.blockingPaths.length === 0).length ?? 0;
   return <>
-    {resource.state === "failed" ? <Banner tone="danger" title="Review unavailable">{resource.error}</Banner> : resource.state === "loading" ? <Badge tone="neutral">Refreshing</Badge> : undefined}
-    {resource.feedback && <Banner tone="warning" title="Review changes">{resource.feedback}{resource.check && <Button size="sm" onClick={resource.check}>Check result</Button>}{resource.reload && <Button size="sm" onClick={resource.reload}>Discard local changes</Button>}</Banner>}
+    {resource.state === "failed" ? <Notice tone="danger" title="Review unavailable" description={resource.error} /> : resource.state === "loading" ? <Badge tone="neutral">Refreshing</Badge> : undefined}
+    {resource.feedback && <Notice sticky tone="warning" title="Review changes" description={resource.feedback} action={resource.check ? { label: "Check result", onAction: resource.check } : resource.reload ? { label: "Discard local changes", onAction: resource.reload } : undefined} />}
     <RecordReview runId={selection.row.runId} subject={selection.row.title} cards={cards.map(card => ({ ...card,
       disposition: resource.readOnly ? card.disposition : discarded ? { label: "Discarded", tone: "neutral" } : undefined }))} readOnly={resource.readOnly || discarded}
       disabled={resource.disabled} actionsDisabled={resource.actionsDisabled} discarded={discarded} selectedCount={ready} focusId={focus?.recordId ?? resource.addedRecordId}

@@ -9,7 +9,6 @@ import { personLookupWorkflow } from "./workflow.js";
 
 export const registration = deepFreeze({
   definition: personLookupWorkflow,
-  exposure: { kind: "public", order: 0 },
   queueCapabilities: { sessionItemScope: true, groupedBatchLayout: true, retryBatchMembers: true },
   store: personLookupStore,
   proofs: [

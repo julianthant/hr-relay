@@ -3,7 +3,7 @@ import { type ReactNode } from "react";
 import {
 type SettingsFactsWire
 } from "../../../../models/dashboard/settings.js";
-import { Banner } from "../../../ds/ui.js";
+import { Notice } from "../../../ds/ui.js";
 import { useSettingsFacts } from "./settings-facts-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 
@@ -24,15 +24,7 @@ export function FactsPane({
   }
   if (facts.state === "failed") {
     return (<>
-      <Banner
-        className="mb-[var(--ds-space-heading-content)]"
-        tone="danger"
-        title="These facts could not be read"
-      >
-        <span className="flex flex-col gap-[var(--ds-space-tight)]">
-          <span>{facts.message}</span>
-        </span>
-      </Banner>
+      <Notice tone="danger" title="These facts could not be read" description={facts.message} />
       {facts.facts !== undefined && children(facts.facts)}
     </>);
   }

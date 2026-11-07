@@ -12,7 +12,7 @@ import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.j
 import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { descriptorRuntimeNodes, authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
+import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/registry.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";

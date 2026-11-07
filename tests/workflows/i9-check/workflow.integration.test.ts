@@ -1,6 +1,7 @@
+import { i9CheckModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { afterEach, expect, it } from "vitest";
-import { i9CheckModule, CHILD_ONLY_WORKFLOW_MODULES, createWorkflowRegistry, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, createWorkflowRegistry, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";

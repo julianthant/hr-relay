@@ -1,8 +1,9 @@
+import { ocrModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
-import { childWorkflowModuleOf, ocrModule, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { childWorkflowModuleOf, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";

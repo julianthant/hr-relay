@@ -20,7 +20,7 @@ classifyEvidenceLeaf,
 evidenceLeaves,
 } from "../../../src/models/trust/evidence-classification.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import {
 WriteFixtureCommit,
 WriteFixtureSaveCommit,
@@ -43,7 +43,7 @@ interface CommitLike {
 
 function registeredCommitContracts(): readonly CommitLike["contract"][] {
   const contracts = new Map<string, CommitLike["contract"]>();
-  for (const descriptor of WORKFLOW_DESCRIPTORS) {
+  for (const descriptor of DESCRIPTORS) {
     for (const node of descriptorRuntimeNodes(descriptor)) {
       if (node.kind !== "transaction") continue;
       const commit = node.commit.uses as CommitLike["contract"];

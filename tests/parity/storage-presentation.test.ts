@@ -2,7 +2,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
-import { ERROR_CATALOG } from "../../src/models/failures/error-catalog.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -90,14 +89,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(primary).toContainText("No storage updates have been recorded.");
       await expect(surface.getByRole("group", { name: "Connections", exact: true })).toContainText("Unavailable");
       await run.click();
-      await expect(surface.getByRole("alert")).toContainText("Storage checks could not finish");
+      await expect(page.getByRole("alert").filter({ hasText: "Storage checks could not finish" })).toBeVisible();
       await expect(surface.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
       await expect(surface.getByRole("heading", { name: "Data store and recovery", exact: true })).toBeVisible();
       await expect(recovery).toContainText("No unfinished storage operations.");
       await expect(stamp).toHaveAttribute("dateTime", healthy.checkedAt);
       await expect(run).toBeEnabled();
-      await surface.getByRole("alert").getByRole("button", { name: "Diagnostic details", exact: true }).click();
-      await expect(surface.getByRole("region", { name: "Check error diagnostics", exact: true })).toHaveText(ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
       expect(await surface.innerText()).not.toMatch(/span_stream|record-digest/u);
       expect(requests).toBe(3);
       expect(errors).toEqual([]);

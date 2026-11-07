@@ -39,7 +39,7 @@ for (const state of ["idle", "disabled", "loading", "completed", "failed", "refu
   assert.ok(button); assert.equal(button.disabled, ["disabled", "loading", "uncertain"].includes(state));
   assert.equal(calls, 0);
   if (state === "completed") assert.match(host!.textContent ?? "", /OCR test completed.*Synthetic model/u);
-  else if (state === "loading") assert.match(host!.textContent ?? "", /Testing OCR/u);
+  else if (state === "loading") assert.doesNotMatch(host!.textContent ?? "", /OCR test (completed|failed|refused)/u);
   else if (state !== "idle") assert.ok(host!.textContent?.includes(ERROR_CATALOG.CHATGPT_OCR_INVALID.text));
 });
 it("keeps OCR dispatch separate from Run preflight and scope refresh", async () => {

@@ -1,8 +1,8 @@
+import { emergencyContactMemberModule, i9CheckStartModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach,it,vi } from "vitest";
 import { z } from "zod";
-import { emergencyContactMemberModule,i9CheckStartModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../../src/backend/processing/providers/ocr-approved-snapshot-adapter.js";
 import { createOcrReviewAdapter } from "../../../../src/backend/processing/providers/ocr-review-adapter.js";
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";

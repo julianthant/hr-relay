@@ -13,7 +13,7 @@ import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../.
 import { RunDelegatedDryRunPreviewResultSchema, RunDryRunPreviewResultSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
+import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/registry.js";
 import { childCrashWrite, childPreviewMembersRoot as root } from "../../../support/fixtures/child-execution-write-workflow.js";
 import { testAdmittedWorker, testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureSessions, WRITE_FIXTURE_EID } from "../../../support/fixtures/write-sequencer-fixtures.js";

@@ -1,31 +1,26 @@
-import { ShieldAlert } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type { StorageDoctorWire } from "../../../../models/dashboard/storage.js";
 import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-history.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import { Badge,Banner,BodySection,Button,Dialog,DialogContent,DialogFooter,Disclosure,FormGroup,PageHeading,ResultRow,StatusDot,dsIcon } from "../../../ds/ui.js";
+import { Badge,BodySection,Button,Dialog,DialogContent,DialogFooter,Disclosure,FormGroup,PageHeading,ResultRow,StatusDot, Notice } from "../../../ds/ui.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
 import "../../shared/run-evidence/diagnostic-presentation.css";
 import { fmtClock,fmtInstantDay } from "../../shared/status/format.js";
 import type { StorageHealthSummary } from "./storage-settings-model.js";
-import { useStorageDoctor } from "./storage-settings-model.js";
+import { useRestoreNotice,useStorageDoctor } from "./storage-settings-model.js";
 import { useRunHistory } from "./run-history-model.js";
 
 const AUTHORITY_HAZARD = ERROR_CATALOG.STORAGE_AUTHORITY_UNAVAILABLE.text;
 
 /** The bootstrap summary is cheap; the checklist only claims results from a doctor report. */
-export function StorageBanner({ storage, onOpenSettings }: {
+export function StorageNotice({ storage, onOpenSettings }: {
   storage: StorageHealthSummary;
   onOpenSettings: () => void;
 }) {
   if (storage.authority === "healthy") return null;
-  return <Banner className="shrink-0" tone="danger" shape="band"
-    icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
-    title="Authority storage is unavailable"
-    action={<Button size="sm" variant="secondary" onClick={() => onOpenSettings()}>Storage checks</Button>}>
-    {AUTHORITY_HAZARD} Checked {fmtClock(storage.checkedAt)}.
-  </Banner>;
+  return <Notice sticky tone="danger" title="Storage unavailable" description={AUTHORITY_HAZARD}
+    action={{ label: "Storage checks", onAction: onOpenSettings }} />;
 }
 
 type CheckTone = "pass" | "attention" | "unavailable" | "neutral";
@@ -112,11 +107,16 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
   return { tone: "neutral", value: entry.present ? "Present" : "Not set" };
 }
 
+function RestoreNotice({ backupCapturedAt }: { backupCapturedAt: string }) {
+  return <Notice sticky tone="warning" title={`Restored from the ${fmtInstantDay(backupCapturedAt)} ${fmtClock(backupCapturedAt)} backup.`} description="Check UCPath for anything done after that." />;
+}
+
 export function StorageSection({ storage, onHistoryCleared }: { storage: StorageHealthSummary; onHistoryCleared?: () => void }) {
   const { doctor, runDoctor } = useStorageDoctor();
   const history = useRunHistory(onHistoryCleared);
   const [confirming, setConfirming] = useState<ClearRunHistoryRequest>();
   const historyTrigger = useRef<HTMLButtonElement>(null);
+  const restored = useRestoreNotice();
   const show = useDelayedLoading(doctor.state === "reading");
   const report = doctor.state === "reading" ? undefined : doctor.report;
   const pending = report === undefined && (doctor.state === "reading" || doctor.state === "running" || doctor.state === "failed" && !doctor.neverRun);
@@ -127,12 +127,14 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
     { name: "Storage updates", description: "History of changes to saved data.", result: upgradeResult(report) },
   ];
   return <section className="diagnostics-page ds-body-stack" aria-label="Storage checks" aria-busy={doctor.state === "reading" || undefined}>
+    {restored && <RestoreNotice backupCapturedAt={restored.backupCapturedAt} />}
     <PageHeading title="Storage checks" description="Check saved data." className="settings-heading-actions" actions={
       <Button onClick={runDoctor} disabled={doctor.state === "running" || doctor.state === "reading"}>
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
-    <BodySection title="Status">
+    {storage.authority === "healthy" && authority !== "healthy" && <Notice sticky tone="danger" title="Data store unavailable" description="Review the storage checks." />}
+    {(authority === "healthy" || report !== undefined) && <BodySection title="Status">
       {doctor.state === "reading" && <span role="status" aria-label="Loading storage checks" className="sr-only">Loading storage checks</span>}
       {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}
       {authority === "healthy"
@@ -142,12 +144,9 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
               {pending ? show && <SkeletonText className="w-40" /> : report === undefined ? <span>Not checked</span> : <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
             </span>} />
         </FormGroup>
-        : <Banner tone="danger" title="Data store unavailable">{ERROR_CATALOG.STORAGE_DATA_UNAVAILABLE.text}</Banner>}
-    </BodySection>
-      {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">
-        {ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text}
-        <DiagnosticFindings name="Check error" result={{ tone: "unavailable", value: "Unavailable", detail: doctor.message }} />
-      </Banner>}
+        : null}
+    </BodySection>}
+      {doctor.state === "failed" && <Notice tone="danger" title="Storage checks could not finish" description={ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text} />}
       <BodySection title="Data store and recovery">
         <FormGroup label="Storage health checks"><div role="list">
         {checks.map(check => <CheckRow pending={pending} loading={show} findings key={check.name} {...check} />)}

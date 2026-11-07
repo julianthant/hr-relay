@@ -126,7 +126,7 @@ afterEach_m0(_afterEachFixture0);
   it_m0("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
     assert_m0.equal(page.querySelectorAll('a[href^="?settings="]').length, 10);
-    assert_m0.ok(page.textContent?.includes("Editable settings unavailable"), page.textContent ?? "");
+    assert_m0.ok(page.textContent?.includes("Settings unavailable"), page.textContent ?? "");
     assert_m0.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
     assert_m0.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
   });
@@ -143,7 +143,7 @@ afterEach_m0(_afterEachFixture0);
     const page = await mountFailedRead("archive");
     assert_m0.match(page.textContent ?? "", /Archive page removed/u);
     assert_m0.match(page.textContent ?? "", /Existing stored run data has not been deleted/u);
-    assert_m0.match(page.textContent ?? "", /Editable settings unavailable/u);
+    assert_m0.match(page.textContent ?? "", /Settings unavailable/u);
     assert_m0.equal(page.querySelector('a[href="?settings=archive"]'), null);
     assert_m0.equal(page.querySelector('[aria-label="Archive"]'), null);
   });

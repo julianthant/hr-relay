@@ -29,15 +29,15 @@ Do not author descriptors, flows, module files, node fragments or a second Explo
 `workflow.ts`. Do not add workflow-id branches to generic dashboard or runtime code. Extend a
 shared capability at its owner when the requested behavior needs one.
 
-`workflow-layout` and `workflow-authoring-budget` constrain paths and builder calls; the latter
-checks closed `ARTIFACT_EXEMPTIONS` and `GENERIC_WORKFLOW_ID_ALLOWLIST` lists. Keep receipts and
+`workflow-layout` constrains paths; `no-workflow-id-branches` refuses workflow-id literals in generic
+code outside its reasoned `ALLOWED_SITES` list. Keep receipts and
 evidence in the brief's main-checkout `.work/` evidence folder.
 
 ## 2 · Find, reuse or build
 
-Search the generated task catalog in [stores](../reference/stores.md) by system, capability,
-effect, input and output. `src/backend/app/registries/task-registry.ts` composes that inventory;
-`npm run stores:catalog` generates it and `npm run stores:catalog:check` checks its bytes.
+Search the task catalog in [stores](../reference/stores.md) by system, capability, effect, input
+and output. `src/backend/app/registries/task-registry.ts` composes that inventory; update the
+catalog entry when you add or change a store task.
 
 | Need | Change |
 | --- | --- |
@@ -75,37 +75,33 @@ For a new operator workflow:
    ```ts
    export const registration = deepFreeze({
      definition: exampleWorkflow,
-     exposure: { kind: "public", order: 2 },
      store: exampleStore,
      proofs: [defineStepProof(exampleWorkflow, exampleReadDefinition)],
    } as const);
    ```
 
    Import the workflow from `./workflow.js`, the store from `./task-registry.js`, and each step
-   definition from `./steps/<step>/step.js`. Import `defineStepProof` from workflow-kit. Workflow
-   export names end in `Workflow`; step export names end in `Definition`. Generation replaces
-   either suffix with `Module`. List every retained step definition exactly once.
+   definition from `./steps/<step>/step.js`. Import `defineStepProof` from workflow-kit. List every
+   retained step definition exactly once.
    The step owns its proof `id`, `order` and `build` recipe. `defineStepProof` supplies the harness
    role and validates the built graph. Use `inheritStepProof(parent)` to share ingress and
    presentation; retain a specialized proof schema through `StepProofSpec<Input, Result>` when
    the proof takes different inputs. Reference typed build results directly, never search the
    parent graph by group key or entry id. Declare proof result dependencies in the step module.
-   Public picker orders and registered proof orders are nonnegative integers, unique across indexes.
-   Use `{ kind: "child-only" }` for a workflow admitted only through declared delegation edges,
-   or `{ kind: "unregistered" }` to keep its module, store and proofs out of production registries.
-3. Run `npm run build:registries` and `npm run stores:catalog`. `build:registries` derives the backend
-   module/store/proof lists and a separate browser-safe descriptor tuple. Existing registry imports
-   remain the public entrypoints; do not edit generated lists.
-4. Run `npm run build:registries:check` and `npm run stores:catalog:check`.
+3. Add one line to `src/workflows/registry.ts`: put the registration in `PUBLIC_WORKFLOWS` (in Run
+   picker order) or, for a workflow admitted only through declared delegation edges, in
+   `CHILD_ONLY_WORKFLOWS`. `src/backend/app/registries/workflow-registry.ts` composes each entry
+   against the task-store inventory; a store or contract that does not bind fails at startup.
+4. Add the workflow's failure codes to `src/models/failures/error-catalog.ts`.
 5. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
    evidence folder.
 
-Harnesses derived from the step definitions in `index.ts` enter the generated `STEP_PROOF_MODULES` list.
+Harnesses derived from the step definitions in `index.ts` enter `STEP_PROOF_MODULES`.
 They do not enter the operator tuple or picker.
 A group without a harness needs no step folder.
 
-Declare delegated-only workflows with child-only exposure in their `index.ts`. Generation places
-them in `CHILD_ONLY_WORKFLOW_MODULES`, outside the public tuples. Give them no start surface.
+List delegated-only workflows in `CHILD_ONLY_WORKFLOWS` in `src/workflows/registry.ts`, outside
+`PUBLIC_WORKFLOWS`. Give them no start surface.
 The registry resolves a child only for a parent that declares its delegation edge. A child may
 remain registered without a parent; I-9 Lookup uses this shape.
 
@@ -334,13 +330,13 @@ Inspect these existing tests for the affected seam:
 
 - `tests/workflow-kit/workflow-definition.test.ts` and
   `tests/workflow-kit/workflow-definition.integration.test.ts`: compiler and runtime.
-- `tests/workflows/descriptor-registry.test.ts`: registration identity and ordering.
+- `tests/workflows/registry.test.ts`: registration identity and ordering.
 - `tests/architecture/workflow-kit/workflow-layout.test.ts`: paths.
-- `tests/architecture/workflow-kit/workflow-authoring-budget.test.ts`: budget.
+- `tests/architecture/workflow-kit/no-workflow-id-branches.test.ts`: no workflow-id branches in generic code.
 - `tests/architecture/workflow-kit/descriptor-coverage.test.ts`: descriptor and bundle-boundary coverage.
 - `tests/architecture/workflow-kit/step-omission-invariants.test.ts`: omissions.
 
-Check `npm run build:registries:check`, `npm run stores:catalog:check` and `auditImplBindings`
+Check `auditImplBindings`
 consumers when their inputs change.
 
 Before proposing integration, run `npm run typecheck`, `npm run lint`, `npm run web:build`,

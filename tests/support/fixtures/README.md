@@ -186,7 +186,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/phase1f-executor-harness.ts` | phase1f executor harness |
 | `helpers/protected-secret-source.ts` | protected secret source |
 | `helpers/registered-workflows.ts` | registered workflows |
-| `helpers/retained-dashboard-mock-fixtures.ts` | retained dashboard mock sites and literals |
 | `helpers/run-integration-world.ts` | per-caller run database, clock and lifecycle setup |
 | `helpers/search-workflow-definition-fixtures.ts` | search input and workflow definition builders |
 | `helpers/seeded-dashboard-world.ts` | run records, queued events and dashboard seed builders |

@@ -1,4 +1,4 @@
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { defaultRerunSteps, initialRerunValueDrafts, plainRerunInputText, partialRerunTypedInput } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
@@ -59,7 +59,7 @@ describe("Rerun current-step defaults", () => {
 });
 
 it("does not invent a mode when a source partial input has no declared mode", () => {
-  const surface = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "onboarding")?.surfaces.inputRun?.typedInput;
+  const surface = DESCRIPTORS.find(workflow => workflow.id === "onboarding")?.surfaces.inputRun?.typedInput;
   assert.ok(surface);
   const values: readonly Record<string, string>[] = [{ email: "hire@example.test" }, { email: "hire@example.test", mode: "unknown" }];
   for (const value of values) {
