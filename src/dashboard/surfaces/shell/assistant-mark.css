@@ -28,6 +28,7 @@
 .assistant-mark[data-direction=nodes][data-state=thinking] .mark-node{fill:none;stroke:currentColor;stroke-width:1.6}
 .assistant-mark[data-direction=nodes][data-state=thinking] .mark-node-a{fill:var(--mark-accent);stroke:none}
 .assistant-mark[data-direction=nodes][data-state=working] .mark-packet{opacity:1}
+.assistant-mark[data-direction=nodes][data-state=working] .mark-edge{stroke:var(--mark-accent)}
 .assistant-mark[data-direction=nodes][data-state=done] .mark-close{opacity:1}
 .assistant-mark[data-direction=nodes]:is([data-state=done],[data-state=error]) .mark-node{fill:var(--mark-accent)}
 .assistant-mark[data-direction=nodes][data-state=needs-you] .mark-node-a{fill:var(--mark-accent)}
