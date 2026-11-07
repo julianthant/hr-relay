@@ -13,18 +13,13 @@ export function PageCard({ title, mode, children }: { title: string; mode: strin
   </div>;
 }
 
-/** Label/value rows; a value may show its old value struck through and a differing source on its own muted line; `pick` adds a checkbox per row. */
-export function Rows({ rows, pick }: { rows: readonly MockRow[]; pick?: Readonly<{ checked: readonly boolean[]; toggle: (index: number) => void }> }) {
-  return <dl className="m-0 px-3">{rows.map((row, index) => {
+function Rows({ rows }: { rows: readonly MockRow[] }) {
+  return <dl className="m-0 px-3">{rows.map(row => {
     const Icon = row.kind === "fill" ? PencilLine : Eye;
-    return <div key={row.label} className={cn("grid items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0", pick ? "grid-cols-[1rem_1rem_minmax(6rem,.85fr)_minmax(0,1.15fr)]" : "grid-cols-[1rem_minmax(8rem,.85fr)_minmax(0,1.15fr)]")}>
-      {pick && <input type="checkbox" className="size-3.5 translate-y-0.5 self-start accent-[var(--ui-info)]" checked={pick.checked[index]} aria-label={`Include ${row.label}`} onChange={() => pick.toggle(index)} />}
+    return <div key={row.label} className="grid grid-cols-[1rem_minmax(8rem,.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0">
       <Icon aria-hidden className={cn("size-3.5 translate-y-0.5 self-start", row.kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
       <dt className="text-body font-medium">{row.label}</dt>
-      <dd className={cn("m-0 text-right text-body tabular-nums", row.kind === "fill" ? "font-medium text-ui-info" : row.unread ? "text-ui-danger/75" : "text-ui-secondary")}>
-        {row.before !== undefined && <><s className="font-normal text-ui-muted decoration-ui-muted/60">{row.before}</s><span aria-label="changes to" className="px-1.5 text-ui-muted">→</span></>}{row.value}
-        {row.source && <span className="block text-caption font-normal text-ui-muted">{row.source}</span>}
-      </dd>
+      <dd className={cn("m-0 text-right text-body tabular-nums", row.kind === "fill" ? "font-medium text-ui-info" : row.unread ? "text-ui-danger/75" : "text-ui-secondary")}>{row.value}</dd>
     </div>;
   })}</dl>;
 }
@@ -35,7 +30,7 @@ export const OTHER_ID = "none-of-these";
 export function DataTable({ table, pick }: { table: MockTable; pick?: { chosen?: string; choose: (id: string) => void; extras?: readonly Readonly<{ id: string; label: string }>[] } }) {
   const last = table.columns.length - 1;
   const cell = (row: MockTableRow, index: number) => <td key={index} className={cn("py-2.5 tabular-nums", pick && index === 0 ? "pr-3" : "px-3", index === last && "text-right", index === 0 ? "font-medium" : row.tone === "danger" && index === row.cells.length - 1 ? "text-ui-danger" : "text-ui-secondary")}>{row.cells[index]}</td>;
-  return <PageCard title={table.title} mode={table.mode ?? `${table.rows.length} rows · Read`}>
+  return <PageCard title={table.title} mode={`${table.rows.length} rows · Read`}>
     <table aria-label={table.label} className="w-full border-collapse text-left text-body">
       <thead><tr className="text-caption text-ui-muted">{pick && <th className="w-10 px-3 py-2 font-normal"><span className="sr-only">Choose</span></th>}{table.columns.map((column, index) => <th key={column} className={cn("py-2 font-normal", pick && index === 0 ? "pr-3" : "px-3", index === last && "text-right")}>{column}</th>)}</tr></thead>
       <tbody>{table.rows.map(row => {

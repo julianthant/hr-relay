@@ -14,12 +14,12 @@ export function decisionMock(): { scene?: MockSceneData } | undefined {
   return id ? { scene: MOCK_SCENES[id] } : undefined;
 }
 
-export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "fill"; unread?: boolean; before?: string; source?: string }>;
+export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "fill"; unread?: boolean }>;
 
 /** Running counts the design mock shows in the workflow rail. */
 export const MOCK_RAIL_RUNNING: Readonly<Record<string, number>> = { separations: 2, "emergency-contact": 1 };
 export type MockTableRow = Readonly<{ id: string; cells: readonly string[]; name: string; tone?: "danger" }>;
-export type MockTable = Readonly<{ title: string; label: string; mode?: string; columns: readonly string[]; rows: readonly MockTableRow[] }>;
+export type MockTable = Readonly<{ title: string; label: string; columns: readonly string[]; rows: readonly MockTableRow[] }>;
 export type MockBlock =
   | Readonly<{ kind: "page"; title: string; mode: "Fill" | "Read"; rows: readonly MockRow[] }>
   | Readonly<{ kind: "table"; mode: "Read"; table: MockTable }>

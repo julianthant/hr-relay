@@ -112,21 +112,6 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 #hub-panel-assistant .hub-assistant-strip>span{flex:1;min-width:0;overflow-wrap:anywhere}
 #hub-panel-assistant .hub-assistant-strip>button{flex:none}
 
-/* Assistant plan: navigation line, session chip, choice buttons; proposals use the Logs DecisionCard and page cards. */
+/* Assistant mock: primary actions use the Start a run blue. */
 #hub-panel-assistant{--ds-accent:var(--ui-info);--ds-accent-fg:var(--ui-canvas);--ds-accent-hover:var(--ui-info)}
 #hub-panel-assistant .hub-icon[aria-pressed=true]{background:var(--ui-hover);color:var(--ui-primary)}
-#hub-panel-assistant .hub-nav-line{display:flex;align-items:center;gap:8px;margin:0;padding-left:33px;color:var(--ui-muted);font-size:12px;line-height:18px}
-#hub-panel-assistant .hub-nav-line svg{width:14px;height:14px;flex:none}
-#hub-panel-assistant .hub-session{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:start;column-gap:10px;padding:10px 10px 10px 12px;border:1px solid var(--ui-stroke);border-radius:12px;background:var(--ui-table)}
-#hub-panel-assistant .hub-session[data-state=done]{background:transparent}
-#hub-panel-assistant .hub-session-icon{display:grid;place-items:center;width:16px;height:18px;color:var(--ui-muted)}
-#hub-panel-assistant .hub-session[data-state=running] .hub-session-icon{color:var(--ui-info)}
-#hub-panel-assistant .hub-session[data-state=done] .hub-session-icon{color:var(--ui-positive)}
-#hub-panel-assistant .hub-session-icon svg{width:14px;height:14px}
-#hub-panel-assistant .hub-session-icon .hub-spinner{width:12px;height:12px;margin:0}
-#hub-panel-assistant .hub-session-copy{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:12px;line-height:18px;font-weight:500}
-#hub-panel-assistant .hub-session-copy small{font-size:11px;line-height:16px;font-weight:400;color:var(--ui-muted)}
-#hub-panel-assistant .hub-session>:last-child{align-self:center}
-#hub-panel-assistant .hub-pill{height:26px;padding:0 12px;border:1px solid var(--ui-stroke-control);border-radius:999px;background:var(--ui-panel);color:var(--ui-primary);font-size:12px;font-weight:500}
-#hub-panel-assistant .hub-pill:hover{background:var(--ui-hover)}
-#hub-panel-assistant .hub-choices{display:flex;flex-wrap:wrap;gap:6px;margin:-8px 0 0 33px}

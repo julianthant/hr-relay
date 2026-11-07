@@ -15,7 +15,8 @@ let server: FixtureServer;
 test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
-for (const theme of ["light", "dark"] as const) test(`assistant mock @ ${theme}`, async ({ page }) => {
+// Dark only until the operator approves the design.
+for (const theme of ["dark"] as const) test(`assistant mock @ ${theme}`, async ({ page }) => {
   test.setTimeout(300_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -23,7 +24,7 @@ for (const theme of ["light", "dark"] as const) test(`assistant mock @ ${theme}`
   for (const frame of ASSISTANT_FRAMES.filter(item => ONLY === undefined || ONLY.includes(item.id))) {
     await page.setViewportSize({ width: 1680, height: 900 });
     const workflow = frame.logs.workflow;
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: workflow, mockRun: `mock:${workflow}:sample` }))}&assistantMock=${frame.id}`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: workflow, mockRun: `mock:${workflow}:sample`, ...(frame.queueFilter ? { queueFilter: frame.queueFilter } : {}) }))}&assistantMock=${frame.id}`);
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs.getByRole("heading", { level: 2 })).toHaveText(frame.logs.subject);
     await expect(page.getByRole("region", { name: "Relay assistant", exact: true })).toBeVisible();
