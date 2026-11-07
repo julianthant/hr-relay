@@ -62,7 +62,7 @@ describe("durable exclusive identity-session leases", () => {
     const { database, repository } = exclusiveLeaseFixture();
     try {
       const owned = repository.acquire(first); assert.equal(owned.state, "acquired");
-      database.prepare("UPDATE runs SET state='terminal' WHERE owner_worker_id=?").run(first.workerId);
+      database.prepare("UPDATE runs SET state='terminal'").run();
       const replacement = { ...first, sessionId: "33333333-3333-4333-8333-333333333333", replacesSessionId: first.sessionId };
       assert.equal(repository.acquire(replacement).state, "held", "a held lease is never replaced");
       repository.release(owned.lease, first.now);
