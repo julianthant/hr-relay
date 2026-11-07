@@ -7,6 +7,7 @@ import { queueRunHeader } from "../../run-detail/run-header-model.js";
 import { mockApprovalError, mockNeedsReview, mockQueueStatus, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
 import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
+import { renameMockRun, useMockRunNames } from "./mock-run-names.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
 import { queueItemKey, type QueueSortKey, type QueueSurfaceWire } from "../../queue/queue-model.js";
 import { StatusBadge } from "../../shared/status/status.js";
@@ -28,7 +29,7 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const queueRoot = useRef<HTMLDivElement>(null);
   const deleted = useRef(false);
   const deleteLauncher = useRef<HTMLElement | null>(null);
-  const [names, setNames] = useState<ReadonlyMap<string, string>>(new Map());
+  const names = useMockRunNames();
   const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns).map(surface => {
     const name = names.get(surface.runId);
     return name === undefined ? surface : { ...surface, displayName: { state: "present" as const, value: name } };
@@ -42,12 +43,7 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
     nowIso,
   }), [selected, runs, nowIso, surfaces]);
   const queueHandlers = useMemo(() => ({
-    // shortcut: names live in this mock only; persisting a rename is a later backend part.
-    onRenameTitle: (runId: string, name: string) => setNames(current => {
-      const next = new Map(current);
-      if (name) next.set(runId, name); else next.delete(runId);
-      return next;
-    }),
+    onRenameTitle: renameMockRun,
     onSelect: (id: string) => {
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);
