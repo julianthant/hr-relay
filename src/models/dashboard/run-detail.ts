@@ -372,8 +372,12 @@ export const ObservedLogRowWireSchema = z.strictObject({
   ...LogSpanIdentityWireSchema.shape,
   producer: LogProducerWireSchema,
   points: z.array(ObservedDataPointWireSchema).min(1),
-  displayFields: z.array(z.strictObject({ direction: z.enum(["read", "write"]), label: z.string().min(1), value: z.string().min(1),
-    causal: z.strictObject({ declaration: z.string().min(1), origin: DataObservationOriginSchema }).optional() })).optional(),
+  /* A field carries its observed value, or `unread` when the node's read failed before observing it. */
+  displayFields: z.array(z.union([
+    z.strictObject({ direction: z.enum(["read", "write"]), label: z.string().min(1), value: z.string().min(1),
+      causal: z.strictObject({ declaration: z.string().min(1), origin: DataObservationOriginSchema }).optional() }),
+    z.strictObject({ direction: z.literal("read"), label: z.string().min(1), unread: z.literal(true) }),
+  ])).optional(),
 });
 
 export const LogRowWireSchema = z.discriminatedUnion("kind", [
