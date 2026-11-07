@@ -107,7 +107,7 @@ it("uses canonical client transport and confirms the command's own applied reply
   if (result.data?.state !== "ready") throw new Error("expected current data");
   assert.equal(result.data.workers[0].state, "running", "the latest served phase wins");
   assert.deepEqual(h.sent, [original]); assert(h.gets.length > 0); assert(h.gets.every(url => url.includes("/api/v1/dashboard?day=")));
-  assert.equal((await h.port.send({ ...request, id: uuidOf(8101), authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) })).state, "uncertain", "next request reaches transport after exact Check releases lock");
+  assert.equal((await h.port.send({ ...request, id: uuidOf(8101), authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) })).state, "confirmed", "next request reaches transport after exact Check releases lock");
   assert.equal(h.sent.length, 2);
 });
 
