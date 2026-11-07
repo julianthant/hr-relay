@@ -867,9 +867,8 @@ Run and Rerun have no capture-off choice. Options show a locked “Always on” 
 summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
 capture failure (no click) from post-submit missing evidence with either independently proved or
 unknown write outcome. Submit captures use equal cards with captions below the image. Served task
-captures retain their verified node, attempt, browser session and boundary. A complete pair attaches
-only to the sole declared commit click for that node/session; ambiguous or incomplete associations
-remain separate. Capture log identities remain on the rendered figures. Structured capture-failure
+captures retain their verified node, attempt, browser session and boundary, and each shows as its own
+screenshot row. Capture log identities remain on the rendered figures. Structured capture-failure
 notes distinguish no click before submit, an unknown outcome after submit, and an independently
 proved outcome. The served dry-run result supplies exercise counts, Not clicked stages and tagged
 sample facts at the end of Logs. Missing preview authority remains explicitly unavailable. The

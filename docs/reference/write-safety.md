@@ -214,8 +214,8 @@ with actual start and end instants. Only that operation's live scope admits its 
 the ordinary run window. Required probe captures bind the retained run and descriptor fingerprint.
 The scope remains open until the actual callback settles, sessions close and the canonical action
 notes drain in occurrence order. Notes retain their action timestamps; they do not rewrite run times
-or grant submission, settlement or retry authority. Declared action binding requires the retained
-display snapshot; runs without one record ordinary actions and captures without invented attribution.
+or grant submission, settlement or retry authority. Recovery records ordinary actions and captures
+without invented attribution.
 Cancellation and deadlines stop new action notes
 while cleanup waits for the callback. The scope seals before its durable end append; a crash-open
 record cannot reopen it. Start/end evidence is protected from ordinary timeline expiry. Failed open
