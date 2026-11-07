@@ -741,8 +741,10 @@ it('turns an attached PDF into an OCR start card and an attached spreadsheet int
     const roster = library.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
       columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
       rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
-    database.authority.workbooks.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: roster.libraryId });
+    const rosterType = { id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null };
+    database.authority.workbooks.putType(rosterType);
     library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+    database.authority.workbooks.putType({ ...rosterType, defaultWorkbookId: roster.libraryId });
     let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
     transport.setResponse(init => {
       if (typeof init.body !== 'string') throw Error('synthetic request body required');
