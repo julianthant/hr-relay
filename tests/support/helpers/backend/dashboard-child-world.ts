@@ -8,11 +8,18 @@ import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admiss
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { scaledMs } from "../../time-scale.js";
+import { credentialKeychainTestEnvironment } from "../credential-keychain-fake.js";
 
 export interface RealChildRecord {
   readonly argv: readonly string[];
   readonly pid: number | undefined;
   readonly child: ChildProcess;
+}
+
+/** The production worker runtime over the pool's IPC with fixture browser sessions; a barrier directory holds its UCPath searches (see the process). */
+export function fixtureWorkerLaunch(lifetime: RuntimeLifetimeLock, barrier = "-"): WorkerCliLaunchSpec {
+  return { environment: credentialKeychainTestEnvironment(process.env), command: process.execPath, cwd: process.cwd(),
+    prefixArgs: Object.freeze(["--import", testProcessImport(), join(process.cwd(), "tests", "support", "processes", "fixture-pool-worker.ts"), String(lifetime.port), barrier]) };
 }
 
 /** Real worker processes (the IPC stub) spawned through the production spawner and its lifetime transfer. */
