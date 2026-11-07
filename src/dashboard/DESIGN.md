@@ -170,7 +170,7 @@ A decision is answered where its evidence is. It is never a separate card, dock 
 - An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure; Retry is the icon button in that log's header, and a rejected value adds the fix-and-retry input in the body. The parent log reads the document, records the approval and lists the records handed to members.
 - A cancel in progress is one line with a loading icon. It has no actions.
 - A refused command is a toast (title and one line). The transcript does not change.
-- Toasts and the assistant launcher sit above the Logs footer and never cover its search, copy or latest controls.
+- The assistant launcher docks in the Logs footer's right corner, which the footer reserves, so it never covers log content or footer controls. Toasts sit above the footer and the launcher.
 - Buttons are standard size: one primary, then secondary buttons. The run-ending action (Cancel run, Reject) is secondary, never ghost text.
 - No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
 
