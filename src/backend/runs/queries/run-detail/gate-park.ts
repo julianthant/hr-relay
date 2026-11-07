@@ -43,7 +43,6 @@ import { timelineCheckpointReference } from "../../../../models/events/timeline.
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
-import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 
 
 function settledGateWire(
@@ -417,21 +416,23 @@ export function identityGateDecision(
   arms: readonly Readonly<{ outcome: string; label: string; hint: string }>[],
   rowActions: readonly ActionDescriptorWire[] | undefined,
 ): RunDecisionWire {
-  const keyFor = (resolution: "approved" | "rejected") => actions.find(action => action.kind === "command" && action.resolution === resolution)?.key;
-  const approve = keyFor("approved"), reject = keyFor("rejected");
+  const find = (resolution: "approved" | "rejected") => actions.find(action => action.kind === "command" && action.resolution === resolution);
+  const approved = find("approved"), approve = approved?.key, reject = find("rejected")?.key;
+  // The approve option carries the served approval's confirm; the rejection descriptor has none.
+  const approveConfirm = approved?.kind === "command" && approved.confirm !== undefined ? { confirm: approved.confirm } : {};
   const text = (outcome: string) => { const arm = arms.find(candidate => candidate.outcome === outcome); return arm === undefined ? {} : { label: arm.label, hint: arm.hint }; };
   if (options.length === 1) {
     return projectDecision("identity-mismatch", [
-      ...(approve === undefined ? [] : [{ id: "approve", send: { via: "action" as const, actionKey: approve }, ...text("approved") }]),
+      ...(approve === undefined ? [] : [{ id: "approve", send: { via: "action" as const, actionKey: approve }, ...text("approved"), ...approveConfirm }]),
       ...(reject === undefined ? [] : [{ id: "reject", send: { via: "action" as const, actionKey: reject }, ...text("rejected") }]),
     ]);
   }
   return projectDecision("pick-person", [
-    ...(approve === undefined ? [] : [{ id: "confirm", send: { via: "action" as const, actionKey: approve }, input: { kind: "candidate" as const, table: {
+    ...(approve === undefined ? [] : [{ id: "confirm", send: { via: "action" as const, actionKey: approve }, ...approveConfirm, input: { kind: "candidate" as const, table: {
       title: "Search results",
       columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }, { id: "origin", label: "Found by" }],
       rows: options.map(option => ({ id: option.eid, name: option.displayName, eid: option.eid, chosenFrom: option.chosenFrom, cells: [
-        { columnId: "name", value: option.displayName }, { columnId: "eid", value: directIdentifierDisplay(option.eid) }, { columnId: "origin", value: option.origin },
+        { columnId: "name", value: option.displayName }, { columnId: "eid", value: `••••${option.eid.slice(-4)}` }, { columnId: "origin", value: option.origin },
       ] })),
       typed: { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$" },
     } } }]),
