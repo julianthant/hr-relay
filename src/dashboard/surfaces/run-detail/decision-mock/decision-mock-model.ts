@@ -14,7 +14,7 @@ export function decisionMock(): { scene?: MockSceneData } | undefined {
   return id ? { scene: MOCK_SCENES[id] } : undefined;
 }
 
-export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "fill"; unread?: boolean }>;
+export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "fill"; unread?: boolean; before?: string; source?: string }>;
 
 /** Running counts the design mock shows in the workflow rail. */
 export const MOCK_RAIL_RUNNING: Readonly<Record<string, number>> = { separations: 2, "emergency-contact": 1 };

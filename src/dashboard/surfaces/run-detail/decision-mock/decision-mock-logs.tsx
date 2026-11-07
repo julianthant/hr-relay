@@ -13,13 +13,18 @@ export function PageCard({ title, mode, children }: { title: string; mode: strin
   </div>;
 }
 
-function Rows({ rows }: { rows: readonly MockRow[] }) {
-  return <dl className="m-0 px-3">{rows.map(row => {
+/** Label/value rows; a value may show its old value struck through and a differing source on its own muted line; `pick` adds a checkbox per row. */
+export function Rows({ rows, pick }: { rows: readonly MockRow[]; pick?: Readonly<{ checked: readonly boolean[]; toggle: (index: number) => void }> }) {
+  return <dl className="m-0 px-3">{rows.map((row, index) => {
     const Icon = row.kind === "fill" ? PencilLine : Eye;
-    return <div key={row.label} className="grid grid-cols-[1rem_minmax(8rem,.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0">
+    return <div key={row.label} className={cn("grid items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0", pick ? "grid-cols-[1rem_1rem_minmax(6rem,.85fr)_minmax(0,1.15fr)]" : "grid-cols-[1rem_minmax(8rem,.85fr)_minmax(0,1.15fr)]")}>
+      {pick && <input type="checkbox" className="size-3.5 translate-y-0.5 self-start accent-[var(--ui-info)]" checked={pick.checked[index]} aria-label={`Include ${row.label}`} onChange={() => pick.toggle(index)} />}
       <Icon aria-hidden className={cn("size-3.5 translate-y-0.5 self-start", row.kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
       <dt className="text-body font-medium">{row.label}</dt>
-      <dd className={cn("m-0 text-right text-body tabular-nums", row.kind === "fill" ? "font-medium text-ui-info" : row.unread ? "text-ui-danger/75" : "text-ui-secondary")}>{row.value}</dd>
+      <dd className={cn("m-0 text-right text-body tabular-nums", row.kind === "fill" ? "font-medium text-ui-info" : row.unread ? "text-ui-danger/75" : "text-ui-secondary")}>
+        {row.before !== undefined && <><s className="font-normal text-ui-muted decoration-ui-muted/60">{row.before}</s><span aria-label="changes to" className="px-1.5 text-ui-muted">→</span></>}{row.value}
+        {row.source && <span className="block text-caption font-normal text-ui-muted">{row.source}</span>}
+      </dd>
     </div>;
   })}</dl>;
 }
