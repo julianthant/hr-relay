@@ -84,7 +84,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
       runtimeConfig: { generation: runtime.generation,
         settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint,
         configFingerprint: runtime.configFingerprint } });
-    assert.ok(next.state === "applied" || next.state === "applied-already");
+    assert.ok(next.state === "applied" || next.state === "applied-already", JSON.stringify(next));
     assert.ok("run" in next);
     const run = next.run, execution = resolve(run.envelope.workflow);
     assert.ok(execution);

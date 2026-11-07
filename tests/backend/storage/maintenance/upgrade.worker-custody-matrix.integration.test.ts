@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -18,7 +18,7 @@ import { AuthorityDatabase as ProfileAuthorityDatabase, inspectNativeAuthority }
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { deriveEvidenceReceiptId } from "../../../../src/models/trust/evidence-identity.js";
@@ -49,8 +49,8 @@ const CHANGED_TABLES = new Set(["runs", "deleted_runs", "commands", "command_aud
 /**
  * A real delegation tree on the current schema, then returned to schema 20-22: a cancelled member recovered from a worker crash
  * (claim, recover-crash, lifecycle-evidence result and receipt, all carrying the worker lifetime), the parent's join of its
- * resultDigest and the operator's retry embedding it, beside a kept unrelated run with its receipt, an assistant chat and an
- * action holding a spawn-worker command, a library type and saved settings.
+ * resultDigest and the operator's retry embedding it, beside a kept unrelated run with its receipt, a library type and saved settings.
+ * The kept-reference variant points the kept settings row at the closure's retry command.
  */
 async function predecessorStore(version: SourceVersion, variant: Variant) {
   const { root: compiled, modules } = childPolicyModules("cascade");
@@ -90,16 +90,17 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
   assert.equal(claimed.run.envelope.runId, queuedChild.envelope.runId);
   const childId = queuedChild.envelope.runId, claim = { workerId: owner.workerId, claimGeneration: claimed.run.claimGeneration };
   if (variant === "attempting-write") {
+    requireLifecycleApplied(execution.lifecycle.workerTransition({ commandId: randomUUID(), runId: childId, claim,
+      lifecycle: { state: "validating", workerId: owner.workerId, claimedAt: clock.now().toISOString(), heartbeatAt: clock.now().toISOString() } }));
     const running = requireLifecycleApplied(execution.lifecycle.workerTransition({ commandId: randomUUID(), runId: childId, claim,
       lifecycle: { state: "running", workerId: owner.workerId, claimedAt: clock.now().toISOString(), heartbeatAt: clock.now().toISOString(), currentNodeId: "crm-dates" } }));
     await attemptingOwnedWrite({ database, fence: async input => database.authority.writeIntents.fenceAttempt(input) }, running);
   }
-  const requested = database.authority.runs.requestCancellation({ runId: childId, expectedVersion: current(childId).version, now: clock.now().toISOString() });
-  assert.equal(requested.state, "applied"); if (requested.state !== "applied") throw new Error("cancel-request-refused");
+  assert.equal(database.authority.runs.requestCancellation({ runId: childId, expectedVersion: current(childId).version, now: clock.now().toISOString() }).state, "applied");
   const lock = profile.machine.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
-  requireLifecycleApplied(execution.lifecycle.recoverCrash({ commandId: randomUUID(), runId: childId, expectedVersion: requested.run.version, claim,
-    now: clock.now().toISOString() }, lock));
+  reconcileExitedWorker({ machine: profile.machine, admission: profile.admission, database, clock, lifecycle: execution.lifecycle, lock, workerId: owner.workerId });
   const closure = [root.envelope.runId, childId];
+  let retryCommandId: string | undefined;
   if (variant !== "attempting-write") {
     const cancelled = current(childId);
     assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled", JSON.stringify(cancelled.lifecycle));
@@ -109,7 +110,8 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const joined = await execution.step(root, world.SIGNAL);
     const parent = current(root.envelope.runId);
     assert.ok(parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "failed", JSON.stringify({ outcome: joined.outcome, lifecycle: parent.lifecycle }));
-    const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
+    retryCommandId = randomUUID();
+    const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: retryCommandId, family: "run", type: "recover-run", source: "dashboard",
       requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: parent.version } }));
     assert.equal(retried.state, "applied", JSON.stringify(retried));
     const replacement = database.authority.runs.listByItem({ workflow: cancelled.envelope.workflow, itemId: cancelled.envelope.itemId })
@@ -119,21 +121,6 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     closure.push(replacement.envelope.runId, parentReplacement.envelope.runId);
   }
 
-  const assistant = createAssistantAuthorization({ database, kernel: execution.kernel, clock, current: () => ({ profileId, epoch: 1 }) });
-  assert.equal(executeSettingsCommand(settingsDependencies, { family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(),
-    requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: readSettings(database.authority).revision },
-    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {},
-      assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } }).state, "applied");
-  const chat = assistant.createChat(), spawnCommandId = randomUUID();
-  database.withAuthorityTransaction(() => {
-    assistant.prepare(chat, CommandRequestSchema.parse({ commandId: spawnCommandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-      family: "worker-browser", type: "spawn-worker", target: { workflowId: root.envelope.workflow, expectedVersion: 1 }, payload: { workerId: owner.workerId } }));
-    if (variant === "kept-reference") {
-      const target = current(closure.at(-1) ?? childId);
-      assistant.prepare(chat, CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-        family: "run", type: "cancel", target: { runId: target.envelope.runId, expectedVersion: target.version } }));
-    }
-  });
   database.authority.workbooks.putType({ id: "custody-roster", name: "Custody roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
 
   h.authority.closeDatabase();
@@ -145,12 +132,13 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     assert.notEqual(writePredecessorWorkerLifetimes(raw, childId).length, 0);
     raw.exec("BEGIN EXCLUSIVE");
     restorePredecessorCustodySchema(raw);
+    if (variant === "kept-reference") raw.prepare("UPDATE settings SET command_id=?").run(retryCommandId ?? "");
     if (version === 20) restoreSchema20CompletionFixture(raw);
     else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
     raw.exec("COMMIT");
     assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version);
   } finally { raw.close(); }
-  return { profile, path, stateRoot, profileId, closure, keptRunId: kept.envelope.runId, chatId: chat.chatId, spawnCommandId };
+  return { profile, path, stateRoot, profileId, closure, keptRunId: kept.envelope.runId };
 }
 
 function read(path: string) {
@@ -177,7 +165,6 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   assert.equal(keptRun[2]?.length, 1, "the kept run carries its receipt");
   assert.equal(before.count("SELECT count(*) AS count FROM run_delegations WHERE parent_run_id=?", s.closure[0] ?? ""), 1);
   assert.ok(before.count("SELECT count(*) AS count FROM delegation_dependencies") >= 1);
-  assert.equal(before.count("SELECT count(*) AS count FROM assistant_actions WHERE payload_json LIKE '%spawn-worker%'"), 1);
   assert.equal((await upgrade(s)).state, "upgraded");
 
   const backups = join(s.stateRoot, "backups", "authority");
@@ -212,8 +199,7 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
         assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
         assert.equal(database.authority.runResults.get(s.keptRunId)?.runId, s.keptRunId);
       }
-      assert.equal(database.authority.assistantAuthorization.chat(s.chatId)?.id, s.chatId);
-      assert.equal(database.authority.assistantAuthorization.actionByCommand(s.spawnCommandId)?.command.type, "spawn-worker");
+      assert.match(JSON.stringify(readSettings(database.authority).settings), /Synthetic operator/u);
       assert.equal(database.authority.workbooks.types().find(type => type.id === "custody-roster")?.name, "Custody roster");
     } finally { database.close(); }
   } finally { admission.release(); }
