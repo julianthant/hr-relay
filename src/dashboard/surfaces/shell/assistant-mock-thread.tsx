@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef } from "react";
-import { Check, ChevronRight, Paperclip, Undo2 } from "lucide-react";
+import { Check, ChevronRight, Paperclip } from "lucide-react";
 import { useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { ACTIVITY, type AssistantFrame, type ChatItem, type Row } from "../assistant/assistant-mock-frames.js";
@@ -10,7 +10,7 @@ function Inline({ text }: { text: string }) {
   return <>{text.split(/(\*\*.+?\*\*|\{\{.+?\}\}|~~.+?~~|!!.+?!!|__.+?__)/u).map((part, index) => {
     const inner = part.slice(2, -2);
     if (part.startsWith("**")) return <strong key={index} className="font-medium">{inner}</strong>;
-    if (part.startsWith("{{")) return <button key={index} type="button" className="font-medium text-ui-info hover:underline">{inner}</button>;
+    if (part.startsWith("{{")) return <button key={index} type="button" className="font-medium text-ui-info underline decoration-ui-info/60 underline-offset-2 hover:decoration-ui-info">{inner}</button>;
     if (part.startsWith("~~")) return <s key={index} className="text-ui-muted">{inner}</s>;
     if (part.startsWith("!!")) return <span key={index} className="font-medium text-ui-danger">{inner}</span>;
     if (part.startsWith("__")) return <span key={index} className="font-medium text-ui-info">{inner}</span>;
@@ -64,7 +64,7 @@ export function AssistantMockThread({ frame }: { frame: AssistantFrame }) {
     if (shown.current) return;
     shown.current = true;
     for (const item of frame.toasts ?? []) toast({ tone: item.tone, title: item.title, description: item.description, sticky: item.sticky, duration: 600_000,
-      action: item.action ? { label: item.action, onAction: () => undefined, icon: item.action === "Undo" ? <Undo2 aria-hidden className="size-4" /> : undefined } : undefined });
+      action: item.action ? { label: item.action, onAction: () => undefined } : undefined });
   }, [frame, toast]);
   return <>{frame.chat.map((item, index) => <Item key={index} item={item} />)}</>;
 }

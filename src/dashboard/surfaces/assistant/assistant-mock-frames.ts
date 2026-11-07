@@ -5,8 +5,9 @@ import { EC_PEOPLE, MOCK_SCENES, decisionMock, ecGroup, ecMemberSteps, fill, pag
 export const OPERATOR = "Alex Rivera";
 
 /**
- * Text markup: **bold**, {{link}}, ~~old value~~, !!failure word!!, __value to save__; lines starting "- " are bullets.
- * Everything in the panel is conversation: a sentence, bullets for lists, blue links as the only actions; more than 8 non-approval items is a count with Show in Queue.
+ * Text markup: **bold**, {{link}} (blue, underlined; only opens data: a person, a run, a log, Show in Queue), ~~old value~~, !!failure word!!, __changed or new value__ (blue); lines starting "- " are bullets.
+ * Everything in the panel is conversation: a sentence, bullets for lists; links only open data and never act; more than 8 non-approval items is a count with Show in Queue.
+ * Actions happen only when the operator asks, or replies yes to a question.
  * Approval is a typed short yes that Relay (never the model) recognises; anything else is a change request.
  */
 export type Row = Readonly<{ primary: string; secondary?: string; value?: string }>;
@@ -86,9 +87,13 @@ const frames: readonly AssistantFrame[] = [
   { id: "02-read-only-session", scenario: "Read-only session", look: "Person Lookup starts without asking: the session chip (spinner, what and who, rounded Stop); the run is in Queue and Logs.", title: "Kofi Mensah", logs: lookupRunning, chat: [
     you("Is Kofi Mensah still active in UCPath?"), session("Checking UCPath…", "Person Lookup · Mensah, Kofi"),
   ] },
-  { id: "03-apply-undo", scenario: "Apply + Undo", look: "Edits apply at once: one sentence each with old and new and an Undo link; the toast's Undo is an icon beside the X.", title: "Tidy up", logs: renamedParent, toasts: [{ tone: "success", title: "Spreadsheet updated", description: "Separations tracker · row 65", action: "Undo" }], chat: [
-    you("Rename Scan_0412.pdf to April contacts scan"), text("Renamed ~~Scan_0412.pdf~~ **April contacts scan**. {{Undo}}"),
-    you("Rei's last day worked in the tracker should be 04/24"), text("Changed Separations tracker row 65, last day worked: ~~04/23/2031~~ **04/24/2031**. {{Undo}}"),
+  { id: "03-apply-undo", scenario: "Apply + Undo", look: "Edits apply at once: one sentence each, old muted and struck, new in blue; no Undo link or toast action.", title: "Tidy up", logs: renamedParent, toasts: [{ tone: "success", title: "Spreadsheet updated", description: "Separations tracker · row 65" }], chat: [
+    you("Rename Scan_0412.pdf to April contacts scan"), text("Renamed ~~Scan_0412.pdf~~ __April contacts scan__."),
+    you("Rei's last day worked in the tracker should be 04/24"), text("Changed Separations tracker row 65, last day worked: ~~04/23/2031~~ __04/24/2031__."),
+  ] },
+  { id: "03b-undo-by-asking", scenario: "Undo by asking", look: "There is no Undo control: the operator asks, and the assistant finds the change in its Activity and reverts it.", title: "Tidy up", logs: renamedParent, chat: [
+    you("Rei's last day worked in the tracker should be 04/24"), text("Changed Separations tracker row 65, last day worked: ~~04/23/2031~~ __04/24/2031__."),
+    you("Undo the tracker change"), text("Changed Separations tracker row 65 back: ~~04/24/2031~~ __04/23/2031__."),
   ] },
   { id: "04-proposal", scenario: "Start a run, approved by a typed yes", look: "Values as bullets in blue, the source, \"Reply yes to file it\"; the operator types yes; Relay records \"Filed by you\".", title: "Separate Lin Ortega", logs: lookupOrtega, chat: [
     you("Separate Lin Ortega"), text(ortegaPlan), you("yes"), answered("Filed by you · 09:31"), session("Filing Lin Ortega's termination…", "Separations · Read request"),
@@ -100,8 +105,8 @@ const frames: readonly AssistantFrame[] = [
     you("Separate Lin Ortega"), text(ortegaPlan), you("make the last day 04/28"),
     text("I'll file Lin Ortega's termination in UCPath (EID 10031877):\n- Effective date __04/30/2031__\n- Last day worked ~~04/29/2031~~ __04/28/2031__ (typed by you)\n- Reason __Resignation__\nReply **yes** to file it, or tell me what to change."),
   ] },
-  { id: "05-plan-stopped", scenario: "Run stopped", look: "The reason in one sentence, then the question in text with a blue Retry link; typing yes also works.", title: "Separate Lin Ortega", logs: ortegaStopped, chat: [
-    text("!!Stopped!! at Read timecard: Kronos shows the last punch on **04/27/2031**; the request says **04/29/2031**. Nothing was filed.\nWant me to retry from Read timecard? {{Retry}}"),
+  { id: "05-plan-stopped", scenario: "Run stopped", look: "The reason in one sentence, then a question; the operator replies yes to retry. No action link.", title: "Separate Lin Ortega", logs: ortegaStopped, chat: [
+    text("!!Stopped!! at Read timecard: Kronos shows the last punch on **04/27/2031**; the request says **04/29/2031**. Nothing was filed.\nWant me to retry from Read timecard?"),
   ] },
   { id: "06-manual-value-fixes", scenario: "Value fixes for 3 people", look: "Bullets with old -> new in blue and each source; \"Reply yes to save all 3, or tell me which to skip or change.\"", title: "EC phone fixes", logs: ecFailures, chat: [
     you("Fix the 3 phones UCPath rejected and retry them"), text(phones),
@@ -109,8 +114,8 @@ const frames: readonly AssistantFrame[] = [
   { id: "06b-batch-retry", scenario: "Retry a batch", look: "Same failure for 3 people: bullets, then the yes line.", title: "EC retries", logs: batch, chat: [
     you("Retry the three that timed out"), text("UCPath didn't answer for these 3, so nothing was saved:\n- {{Brooks, Dana}}\n- {{Silva, Ines}}\n- {{Tanaka, Yui}}\nReply **yes** to save all 3 again, or tell me which to skip."),
   ] },
-  { id: "06c-failure", scenario: "A failure", look: "\"Failed\" is the only red word; Retry is a blue link.", title: "EC retries", logs: batch, chat: [
-    you("yes"), answered("Approved by you · 13:31"), text("!!Failed!!: UCPath didn't answer when saving Brooks, Dana's contact. Nothing was saved. {{Retry}}"),
+  { id: "06c-failure", scenario: "A failure", look: "\"Failed\" is the only red word; it ends with the question, not a link.", title: "EC retries", logs: batch, chat: [
+    you("yes"), answered("Approved by you · 13:31"), text("!!Failed!!: UCPath didn't answer when saving Brooks, Dana's contact. Nothing was saved. Want me to try again?"),
   ] },
   { id: "07-sourceless-refused", scenario: "Sourceless value refused", look: "A toast and one sentence saying what to provide.", title: "EC phone fixes", logs: ecSilva, toasts: [{ tone: "warning", title: "Value needs a source", description: "Type it, or name its page or cell." }], chat: [
     you("Just put any valid number in for Silva"), text("I need a source for Ines Silva's phone: type the number, or name the page or cell that has it."),
@@ -118,8 +123,8 @@ const frames: readonly AssistantFrame[] = [
   { id: "08a-evidence-resolved", scenario: "Evidence-resolved decision", look: "One sentence with the value found; Logs shows \"by assistant on behalf of Alex Rivera\".", title: "Rei Nakamura", logs: resolved, chat: [
     you("Sort out Rei Nakamura's read-back"), text("Checked Smart HR Transactions: T00042871 is **Approved**. The run continued. {{Open log}}"),
   ] },
-  { id: "08b-evidence-ambiguous", scenario: "Evidence ambiguous", look: "Two options as bullets with links; the DecisionCard stays open in Logs.", title: "Rei Nakamura", logs: d8, chat: [
-    you("Sort out Rei Nakamura's read-back"), text("Smart HR lists two terminations for Rei Nakamura (10431187). Which one is this run's?\n- {{T00042871}}: Pending, filed today 09:33 by this run\n- {{T00042905}}: Approved, filed 04/22/2031 by hand"),
+  { id: "08b-evidence-ambiguous", scenario: "Evidence ambiguous", look: "Two options as bullets (ids link to the transaction); the operator replies with the number; the DecisionCard stays open in Logs.", title: "Rei Nakamura", logs: d8, chat: [
+    you("Sort out Rei Nakamura's read-back"), text("Smart HR lists two terminations for Rei Nakamura (10431187). Which one is this run's? Reply with its number.\n- {{T00042871}}: Pending, filed today 09:33 by this run\n- {{T00042905}}: Approved, filed 04/22/2031 by hand"),
   ] },
   { id: "09-waiting-on-me", scenario: "\"What's waiting on me?\"", look: "A sentence and bullets, each name a link.", title: "Waiting on me", logs: d2, chat: [
     you("What's waiting on me?"), text("4 runs are waiting on you:\n- {{Rei Nakamura}}: read-back failed (38 min)\n- {{Lin Ortega}}: phone rejected (31 min)\n- {{Bea Morrow}}: pick the person (4 min)\n- {{Chinedu Okafor}}: approve the hire (3 min)"),
@@ -141,11 +146,11 @@ const frames: readonly AssistantFrame[] = [
   { id: "15-error-patterns", scenario: "Error-pattern report", look: "Counts from run data as bullets; the full list is a count with Show in Queue.", title: "EC failures", logs: d9, chat: [
     you("Why does Emergency Contact keep failing?"), text("19 of 214 runs failed in the last 30 days:\n- Phone format rejected: **11**\n- Contact already exists: **4**\n- Session expired: **3**\n- Other: **1**\n9 of the 11 phones came from handwritten scans and are missing a digit. {{Show in Queue}}"),
   ] },
-  { id: "16-cross-check", scenario: "Spreadsheet vs UCPath", look: "3 mismatches as bullets with the cell, the tracker value and the UCPath value.", title: "Tracker check", logs: sepDone, chat: [
-    you("Check the separations tracker against UCPath"), text("37 of 40 agree. 3 differ:\n- Rei Nakamura, D65: tracker 04/23/2031, UCPath **04/24/2031**\n- Chinedu Okafor, E12: tracker Resignation, UCPath **Retirement**\n- Yui Tanaka, C30: tracker Active, UCPath **Terminated**\n{{Update the tracker to match}}"),
+  { id: "16-cross-check", scenario: "Spreadsheet vs UCPath", look: "3 mismatches as bullets with the cell, the tracker value and the UCPath value; the fix is offered as a question.", title: "Tracker check", logs: sepDone, chat: [
+    you("Check the separations tracker against UCPath"), text("37 of 40 agree. 3 differ:\n- Rei Nakamura, D65: tracker 04/23/2031, UCPath **04/24/2031**\n- Chinedu Okafor, E12: tracker Resignation, UCPath **Retirement**\n- Yui Tanaka, C30: tracker Active, UCPath **Terminated**\nWant me to update the 3 tracker cells to match UCPath?"),
   ] },
-  { id: "17-report-saved", scenario: "Report saved to the library", look: "Saved at once: one sentence with Undo; the toast's Undo is an icon.", title: "EC failures", logs: d9p, toasts: [{ tone: "success", title: "Saved to Spreadsheets", description: "EC failures October.xlsx", action: "Undo" }], chat: [
-    you("Save that report to the library"), text("Saved **EC failures October.xlsx** (19 rows) to Spreadsheets. {{Undo}}"),
+  { id: "17-report-saved", scenario: "Report saved to the library", look: "Saved at once: one sentence, the new file in blue; a success toast without an action.", title: "EC failures", logs: d9p, toasts: [{ tone: "success", title: "Saved to Spreadsheets", description: "EC failures October.xlsx" }], chat: [
+    you("Save that report to the library"), text("Saved __EC failures October.xlsx__ (19 rows) to Spreadsheets."),
   ] },
   { id: "18-pdf-batch-prep", scenario: "PDF batch prep", look: "OCR started in one line; after review, all 9 people as bullets, then the yes line.", title: "Scan_0503.pdf", logs: d9p, chat: [
     you("Update emergency contacts from this scan", "Scan_0503.pdf"), text("Started OCR on Scan_0503.pdf (11 pages). {{Open review}}"),
