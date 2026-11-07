@@ -9,6 +9,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -32,6 +33,7 @@ import { restoreSchema20CompletionFixture } from "../../../support/fixtures/stor
 import { restorePredecessorCustodySchema, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -42,7 +44,7 @@ type SourceVersion = 20 | 21 | 22;
 type Variant = "converted" | "attempting-write" | "kept-reference";
 const hostFacts = { primaryDisplay: null };
 // Tables the conversion (and on 20/21 the pre-build run deletion) rewrites; every other table must come through byte for byte.
-const CHANGED_TABLES = new Set(["runs", "deleted_runs", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts",
+const CHANGED_TABLES = new Set(["runs", "deleted_runs", "run_failures", "run_batches", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts",
   "run_checkpoints", "run_delegations", "delegation_dependencies", "run_requests", "worker_slots", "notifications", "write_intents", "write_attempts",
   "artifact_outbox", "database_states"]);
 
@@ -50,7 +52,7 @@ const CHANGED_TABLES = new Set(["runs", "deleted_runs", "commands", "command_aud
  * A real delegation tree on the current schema, then returned to schema 20-22: a cancelled member recovered from a worker crash
  * (claim, recover-crash, lifecycle-evidence result and receipt, all carrying the worker lifetime), the parent's join of its
  * resultDigest and the operator's retry embedding it, beside a kept unrelated run with its receipt, a library type and saved settings.
- * The kept-reference variant adds a library type naming a closure run.
+ * The kept-reference variant adds a library row written by a closure run.
  */
 async function predecessorStore(version: SourceVersion, variant: Variant) {
   const { root: compiled, modules } = childPolicyModules("cascade");
@@ -127,7 +129,11 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
 
   database.authority.workbooks.putType({ id: "custody-roster", name: "Custody roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
   if (variant === "kept-reference") {
-    database.authority.workbooks.putType({ id: "closure-roster", name: `Roster for ${closure.at(-1) ?? childId}`, keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
+    const saved = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync }).create({
+      name: "Custody.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "people", width: 1, hidden: [], headerRow: 1,
+        columnBindings: [{ id: "col-0", sourceColumn: 0, sourceHeader: "eid", fieldId: "eid", basis: "manual" }], rows: [{ id: "people-header", cells: [{ value: "EID" }] }] }] });
+    assert.equal(database.authority.workbooks.operation(saved.libraryId, { operationId: "closure-output", source: { kind: "run", runId: closure.at(-1) ?? childId },
+      at: clock.now().toISOString(), change: { kind: "add", sheetId: "people", rowId: "closure-row", key: "10800000", values: { eid: "10800000" } } }).state, "applied");
   }
 
   h.authority.closeDatabase();
@@ -188,7 +194,7 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
     assert.equal(after.count("SELECT count(*) AS count FROM runs WHERE id=?", runId), 0, runId);
     assert.equal(after.count("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?", runId), 1, runId);
   }
-  for (const table of ["run_delegations", "delegation_dependencies", "run_results", "run_receipts", "timeline_events", "notifications"]) {
+  for (const table of ["run_delegations", "delegation_dependencies", "run_results", "run_receipts", "run_failures", "timeline_events", "notifications"]) {
     assert.ok(after.everyRow().filter(row => row.table === table).every(row => s.closure.every(runId => !row.json.includes(runId))), table);
   }
   assert.deepEqual(after.everyRow().filter(row => row.json.includes(digest)).map(row => row.table), []);
