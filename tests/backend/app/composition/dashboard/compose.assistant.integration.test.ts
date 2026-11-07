@@ -748,7 +748,10 @@ it('turns an attached PDF into an OCR start card and an attached spreadsheet int
     let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
     transport.setResponse(init => {
       if (typeof init.body !== 'string') throw Error('synthetic request body required');
-      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), last = request.input.at(-1);
+      // A tool refusal comes back as the answer text, so a failed card names its code.
+      if (last !== undefined && 'type' in last && last.type === 'function_call_output') return new Response(completedResponseStream([{ type: 'message', role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text: last.output }] }], request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
       const [name, args] = next(init.body);
       return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name, call_id: `call_${randomUUID()}`, arguments: JSON.stringify(args), status: 'completed' }],
         request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
