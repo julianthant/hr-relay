@@ -345,8 +345,27 @@ export function assertWorkerCustodyConverted(database: DatabaseSync): void {
   }
 }
 
+const UnauditedRetrySchema = z.object({ request: z.object({ target: z.object({ workerId: z.string() }) }),
+  lifecycle: z.object({ lifetime: z.object({ leaseGeneration: z.number().int().positive() }) }), effect: z.unknown().optional() });
+
+/**
+ * A retry births its worker on the lease after the one it is bound to. An unaudited retry is admitted only when it observed
+ * no effect and its bound lease is still that worker's newest; otherwise it may have started a worker and the upgrade refuses.
+ */
+function refuseUnprovedRetryBirths(database: DatabaseSync): void {
+  for (const row of rows(database, "SELECT payload_json FROM worker_controls WHERE audited_at IS NULL AND json_extract(payload_json,'$.request.type')='retry-worker'")) {
+    const control = UnauditedRetrySchema.safeParse(JSON.parse(text(row, "payload_json")));
+    const newest = control.success ? z.object({ generation: z.number().nullable() })
+      .parse(database.prepare("SELECT MAX(lease_generation) AS generation FROM worker_leases WHERE worker_id=?").get(control.data.request.target.workerId)).generation : null;
+    if (!control.success || control.data.effect !== undefined || newest !== control.data.lifecycle.lifetime.leaseGeneration) {
+      throw new Error("authority-upgrade-worker-retry-birth-unproved");
+    }
+  }
+}
+
 /** Runs one migration statement. The custody slot rebuild is DDL, so it runs on every path: fresh, expected layout and upgrade. */
 export function execMigrationStatement(database: DatabaseSync, statement: string): void {
+  if (statement === "DROP TABLE worker_controls") refuseUnprovedRetryBirths(database);
   if (statement === `SELECT '${WORKER_CUSTODY_SLOT_REBUILD_ID}'`) rebuildWorkerSlots(database);
   database.exec(statement);
 }
