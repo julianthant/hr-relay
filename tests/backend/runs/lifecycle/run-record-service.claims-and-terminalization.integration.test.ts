@@ -581,7 +581,7 @@ describe("canonical run-record service", () => {
     assert.equal(again.run.version, cleared.run.version + 1);
   });
 
-  it("refuses a display-name self-edge on a terminal run", async () => {
+  it("renames and clears a terminal run but still refuses its priority bump", async () => {
     const { service, request } = await fixture();
     const run = created(service, request);
     const settled = service.transition({
@@ -590,14 +590,23 @@ describe("canonical run-record service", () => {
       expectedVersion: run.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     });
-    assert.equal(settled.state, "applied");
     if (settled.state !== "applied") throw new Error("settlement refused");
 
+    const renamed = service.transition({ commandId: "84000000-0000-4000-8000-000000000016", runId: run.envelope.runId, expectedVersion: settled.run.version, displayName: "Late rename" });
+    if (renamed.state !== "applied") throw new Error("terminal rename refused");
+    assert.equal(renamed.run.displayName, "Late rename");
+    assert.equal(renamed.run.version, settled.run.version + 1);
+    assert.deepEqual(renamed.run.lifecycle, settled.run.lifecycle);
+    const cleared = service.transition({ commandId: "84000000-0000-4000-8000-000000000020", runId: run.envelope.runId, expectedVersion: renamed.run.version, displayName: null });
+    if (cleared.state !== "applied") throw new Error("terminal clear refused");
+    assert.equal(Object.hasOwn(cleared.run, "displayName"), false);
+    assert.equal(cleared.run.version, renamed.run.version + 1);
+
     assert.deepEqual(service.transition({
-      commandId: "84000000-0000-4000-8000-000000000016",
+      commandId: "84000000-0000-4000-8000-000000000021",
       runId: run.envelope.runId,
-      expectedVersion: settled.run.version,
-      displayName: "Late rename",
+      expectedVersion: cleared.run.version,
+      priority: "interactive",
     }), {
       state: "refused",
       refusal: {
@@ -607,6 +616,15 @@ describe("canonical run-record service", () => {
         message: "terminal has no self-edge; a settled outcome is settled",
       },
     });
+  });
+
+  it("refuses a rename while a worker owns the run", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
+    created(service, request);
+    const claimed = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig });
+    if (claimed.state !== "applied") throw new Error("claim refused");
+    assert.deepEqual(service.transition({ commandId: "84000000-0000-4000-8000-000000000022", runId: claimed.run.envelope.runId, expectedVersion: claimed.run.version, displayName: "Mid-run" }),
+      { state: "refused", refusal: { reason: "owned-by-worker" } });
   });
 
   it("#10 journals only request commitments and returns the current version on exact replay", async () => {
