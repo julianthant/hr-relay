@@ -41,7 +41,8 @@ it("drains an owned claimed worker under its admitted epoch before public logout
     app = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       workerProcess: { scheduler, spawn(request) {
-        child = new ScriptedWorkerChild(7001, request, { ready: true, exitOnStop: false, reply: () => ({ state: "done", result: null }) });
+        // Only the drained member holds its stop; the member the fresh login boots exits on stop.
+        child = new ScriptedWorkerChild(7001, request, { ready: true, exitOnStop: child !== undefined, reply: () => ({ state: "done", result: null }) });
         spawned.resolve(); return child; } } });
     const origin = `http://127.0.0.1:${app.port}`;
     const post = (path: string, body: unknown, cookie?: string) => fetch(`${origin}/api/v1/${path}`, { method: "POST",
