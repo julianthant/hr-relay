@@ -206,40 +206,35 @@ Explorer is a generated review spec of what a workflow does. It never shows simu
 
 ## Assistant
 
-The assistant operates the dashboard through the operator's own commands and checks; it never edits workflows or code. Its words are short: no reassurance or explanation of behaviour that Relay enforces. What an action looks like follows its tier, which Relay enforces per tool:
+The assistant operates the dashboard through the operator's own commands and checks; it never edits workflows or code. It writes like a person: the answer sentence comes first, and it never explains behaviour that Relay enforces.
 
-| Action | In the chat |
+### How the panel shows data
+
+The panel uses conversational text, borderless rows, plain buttons and the shared `DecisionCard`. It has no cards around tables, no page cards, tokens or pills, no tinted boxes and no chips. Red appears only on a failure word.
+
+| Amount | Shape |
 | --- | --- |
-| Read dashboard data, answer, navigate | A reply. A navigation is one muted line with an arrow ("Opened Emergency Contact · Failed · Today"), never a card. |
-| Read-only session (Person Lookup, UCPath or Kuali browsing, its own checks) | Starts without asking. A session chip: spinner on the title line, the title ("Checking UCPath…"), a muted meta line, and a fully rounded Stop pill. Finished, it shows a check and a Log link. The run sits in Queue and Logs; its first step has the line "Started by the assistant for <person> · read only". |
-| Reversible local edit (spreadsheets, library, settings, run names, filters) | Applies at once as a Proposal card without Approve, with Undo, and a success toast with Undo. |
-| Anything that leaves the machine (saves and submits, workflows that save, dry or real, re-filing, gate answers, starting OCR) | A Proposal card. Nothing happens until the operator approves. |
+| One fact | One sentence; the value in medium weight. |
+| 2-4 items or values | A sentence, then bullets. Names and run ids are blue links that open the run. |
+| 5-8 items, or a batch of 3+ people to approve | Borderless rows: hairline separators, with no box, header or grid. Each row has a name, an optional muted meta line (truncated, full text on hover), and a value on the right. A row that opens something ends in a chevron. A batch of people to approve has checkboxes. |
+| More than 8 | One sentence with the count and a "Show in Queue" or "Save to library" link. |
 
-### Proposal card
-
-Every proposal (a plan, a retry batch, an edit) is one `DecisionCard` using the Logs page-card grammar.
-
-- Title: the action and the subject once ("Separate Lin Ortega · EID 10031877"). The person is never repeated per step.
-- Sequential steps are a compact numbered list with no checkboxes, because the real run depends on the dry run. A step's condition sits in its own line: "Real run · files in UCPath · after the dry run matches". Anything that saves starts with a dry run.
-- Values appear once, in one page card: label on the left; the old value in muted strikethrough, an arrow and the new value flush right. When all values share a source, the source sits in the card header ("From Kuali SIM-50112"). A value whose source differs from that shared source shows it on its own muted line under the value ("page 2", "Sheet1!D14", "typed by you"); no other caption lines. The panel stays 420px wide. Relay refuses a manual value with no source: a toast "Value needs a source" and a one-line reply saying what to provide.
-- Independent items (people in a batch) have checkboxes; the header counts the chosen ones.
-- Buttons only, with no footer text: a primary in exactly the "Start a run" blue ("Approve", "Retry"; no counts) and "Cancel".
-- A stopped plan shows its steps with Done or Not run, the reason as the card's one line, and "Retry from this step" with "Cancel plan".
-- A blocked plan (a duplicate, or a refused Confirm) has no buttons. The reason is the card's line in the danger colour; the evidence is one muted line with a Log link and no section title. A refused Confirm also shows a toast with the same reason.
-- A started workflow that hands off to the operator (OCR review) collapses to one line ("Started OCR · Scan_0503.pdf · 15:02"); the follow-up is a new Proposal for the reviewed people.
+- **Values to save** are blue, the same as Fill values in Logs. A changed value shows the old one struck through and muted, an arrow, then the new value. When every value has the same source, one sentence names it ("From Kuali SIM-50112."). A value with a different source shows it on its own muted line under the value. Relay refuses a manual value with no source: a toast "Value needs a source", and a sentence saying what to provide.
+- **Starting a run** (anything that leaves the machine: saves, submits, re-filing, gate answers, starting OCR) is a sentence or rows with the exact values, then the buttons Approve or Retry (the "Start a run" blue, no counts) and Cancel. A run is real unless the operator asks for a dry run; then the sentence starts "Dry run, saves nothing." There are no step lists.
+- **Running** is one sentence with a spinner and a Stop link ("Checking UCPath for Kofi Mensah. Stop"). Read-only sessions (Person Lookup, UCPath or Kuali checks) start without asking and appear in Queue and Logs, with the line "Started by the assistant for <person> · read only". Watching runs is the same kind of sentence; it lasts while any run started today is active, and a decision that needs the operator raises a sticky toast with Open.
+- **Edits** (spreadsheets, library, settings, run names, filters) apply at once: one sentence with the old value struck through, the new value and an Undo link, plus a success toast whose Undo is an icon beside its close X.
+- **Choices** with 2-4 options are bullets whose ids are links. A stopped run shows the reason as one sentence (the failure word red), then the shared `DecisionCard` with Retry and Cancel run, the same card as in Logs.
+- **Refusals and blocks** are one sentence: what was not done, the real reason and one link ("Not started: T00042871 is already pending, filed today 09:33. Open log"). A message with no reply is a danger toast "No reply" with Retry; the message stays in the composer.
+- **Several matches for a navigation** ("Open today's EC failures"): Relay filters the Queue to them and opens the first in Logs, and the chat line names each one as a link. One match is a single line.
 
 ### Decisions in Logs
 
-- When the assistant has an answer for a decision, the Logs `DecisionCard` shows "Assistant suggests: <option>" with its evidence. The operator still confirms, and "Use for all N similar" covers a batch with the same failure.
-- The assistant answers a decision itself only when Relay confirms the evidence the decision declares. The check is its own step in that log ("Checked by the assistant for <person> · read only"), and the card collapses to "Answered: <choice> · <time> · by assistant on behalf of <person>".
-- When the evidence is ambiguous, the chat asks one line with the choices as buttons, and the card stays open in Logs.
+- The Logs `DecisionCard` has no assistant suggestion. What the assistant thinks about a decision lives in its panel.
+- The assistant answers a decision only when Relay confirms the evidence the decision declares. The check is its own step in that log ("Checked by the assistant for <person> · read only"), and the card collapses to "Answered: <choice> · <time> · by assistant on behalf of <person>".
 
-### Other surfaces
+### History
 
-- Lists and tables in the chat are Logs page cards: a title and a muted count or source on the right; rows of lead, text, status-coloured meta and an Open or Log link. Counts come from run data ("From run data"); the reply adds one line at most.
-- Watching is a running session chip ("Watching today's runs"). It lasts while any run started today is active. A decision that needs the operator raises a sticky toast with Open.
-- The history icon opens History, with two tabs: Chats (the chat list) and Activity (today's reads, sessions, edits, confirms and refusals, each with its icon, time and a Log link).
-- A message with no reply is a danger toast "No reply" with Retry; the message stays in the composer.
+The history icon opens History, with two tabs: Chats (the chat list) and Activity (today's reads, sessions, edits, approvals and refusals as rows, each opening its log).
 
 ## Motion
 
