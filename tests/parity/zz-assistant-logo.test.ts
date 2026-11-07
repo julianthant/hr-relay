@@ -5,7 +5,7 @@ import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { MARK_DIRECTIONS } from "../../src/dashboard/surfaces/shell/assistant-mark.js";
+import { LAUNCHER_PLACEMENTS, MARK_DIRECTIONS } from "../../src/dashboard/surfaces/shell/assistant-mark.js";
 
 // Logo design mock: stills per direction and theme (motion reduced, so every state is static) and one short dark recording per direction.
 const OUT = process.env.ASSISTANT_LOGO_OUT ?? join(import.meta.dirname, "../../.work/assistant-logo");
@@ -43,6 +43,26 @@ for (const theme of ["dark", "light"] as const) test(`assistant logo stills @ ${
     const box = await launcher.boundingBox();
     if (!box) throw new Error("LAUNCHER_NOT_LAID_OUT");
     await page.screenshot({ path: join(OUT, `${direction}-launcher-needs-you-${theme}.png`), clip: { x: box.x - 360, y: box.y - 40, width: 420, height: box.height + 80 } });
+  }
+});
+
+for (const theme of ["dark", "light"] as const) test(`assistant launcher placements @ ${theme}`, async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  for (const placement of LAUNCHER_PLACEMENTS) {
+    await page.setViewportSize({ width: 1680, height: 900 });
+    await page.goto(url("relay", `&assistantLauncher=${placement}&assistantLogoState=needs-you`));
+    await ready(page);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Ask Relay" })).toBeVisible();
+    await page.mouse.move(1, 1);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(OUT, `placement-${placement}-closed-${theme}.png`) });
+    await page.keyboard.press("ControlOrMeta+j");
+    await expect(page.locator("#hub-shell-assistant")).toBeVisible();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(OUT, `placement-${placement}-open-${theme}.png`) });
   }
 });
 
