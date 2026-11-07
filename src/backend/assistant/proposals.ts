@@ -302,8 +302,8 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
       signal.throwIfAborted(); deps.assertCurrent();
       if (spreadsheets.has(decision.actionId)) return spreadsheets.decide(decision, signal);
       const issued = pending.get(decision.actionId);
-      if (issued === undefined || issued.chat.chatId !== decision.chatId || issued.revision !== decision.revision
-        || Date.parse(issued.expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");
+      if (issued === undefined || issued.chat.chatId !== decision.chatId || issued.revision !== decision.revision) throw new Error("assistant-action-not-current");
+      if (Date.parse(issued.expiresAt) <= deps.clock.nowMs()) throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_EXPIRED");
       issued.assertCurrent();
       if (canonicalJsonStringify(deps.database.authority.assistantAuthorization.action(decision.actionId)) !== canonicalJsonStringify(issued.record)) throw new Error("assistant-action-record-stale");
       const caption = (text: string, modelText?: string) => deps.database.authority.assistantHistory.appendDecision({ conversationId: issued.conversationId, actionId: decision.actionId,

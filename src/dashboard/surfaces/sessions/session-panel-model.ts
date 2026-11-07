@@ -361,6 +361,20 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
   crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
 };
 
+const RETRY_REFUSAL_LABEL: Readonly<Record<string, string>> = {
+  "worker-retirement-child-close-unproved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",
+  "worker-retirement-closure-not-proved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",
+  "worker-retry-death-unproved": "Couldn't restart: Relay couldn't confirm the last worker stopped.",
+  "worker-retirement-profile-identity-mismatch": "Couldn't restart: this worker's browser folder doesn't match its record.",
+};
+
+/** Plain words for a worker restart that was refused or left unconfirmed; undefined when no restart failed. */
+export function workerRetryProblem(card: WorkerCardWire): string | undefined {
+  const operation = card.controls?.operation;
+  if (operation?.type !== "retry-worker" || (operation.state !== "refused" && operation.state !== "uncertain")) return undefined;
+  return RETRY_REFUSAL_LABEL[operation.message ?? ""] ?? "Couldn't restart this worker.";
+}
+
 
 /** Directives describe intent, not state; pause waits for the current item to finish. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {

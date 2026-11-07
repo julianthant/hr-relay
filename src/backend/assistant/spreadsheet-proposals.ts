@@ -201,8 +201,8 @@ export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDep
     async decide(decision: AssistantActionDecision, signal: AbortSignal): Promise<AssistantActionResult> {
       signal.throwIfAborted();
       const entry = issued.get(decision.actionId);
-      if (entry === undefined || entry.state !== "issued" || entry.chatId !== decision.chatId || entry.revision !== decision.revision
-        || Date.parse(entry.expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");
+      if (entry === undefined || entry.state !== "issued" || entry.chatId !== decision.chatId || entry.revision !== decision.revision) throw new Error("assistant-action-not-current");
+      if (Date.parse(entry.expiresAt) <= deps.clock.nowMs()) throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_EXPIRED");
       const caption = (text: string, modelText?: string) => {
         try { deps.database.authority.assistantHistory.appendDecision({ conversationId: entry.conversationId, actionId: decision.actionId, messageId: randomUUID(), text,
           ...(modelText === undefined ? {} : { modelText }), now: deps.clock.now().toISOString() }); } catch { /* readback shows the caption is missing */ }
