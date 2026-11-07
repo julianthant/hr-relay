@@ -73,7 +73,7 @@ async function predecessorStore(version: SourceVersion, write?: "attempting") {
 it.each([20, 21, 22] as const)("admits schema %s worker-lifetime journals and their cancelled recover-crash evidence only through the predecessor reader", async version => {
   const s = await predecessorStore(version);
   try {
-    assert.equal(s.raw.prepare("SELECT count(*) AS count FROM run_results WHERE run_id=? AND json_extract(payload_json,'$.evidence.kind')='lifecycle-evidence'").get(s.runId)?.count, 1);
+    assert.equal(s.raw.prepare("SELECT count(*) AS count FROM run_results WHERE run_id=? AND json_extract(payload_json,'$.result.value.kind')='lifecycle-evidence'").get(s.runId)?.count, 1);
     assert.equal(s.raw.prepare("SELECT count(*) AS count FROM run_receipts WHERE run_id=?").get(s.runId)?.count, 1);
     assert.equal(inspectNativeAuthority(s.raw, version).schemaVersion, version);
   } finally { s.raw.close(); }
