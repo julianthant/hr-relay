@@ -4,6 +4,8 @@ import { Fragment, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, Sparkles, X } from "lucide-react";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockThread } from "./assistant-mock-thread.js";
+import { DIRECTIONS, assistantSheet } from "../assistant/assistant-mock-directions.js";
+import { AssistantMockSheet } from "./assistant-mock-sheet.js";
 import type { DashboardClient } from '../../client/index.js';
 import { Dialog, DialogContent, DialogClose, Button } from '../../ds/ui.js';
 import type { ComposerDraftPort } from './composer-model.js';
@@ -82,7 +84,9 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
 }) {
   const model = useAssistantPanel({ producer, accountClient, served, ports: { onAttachFile, onRegisterSpreadsheet, onRunWorkflow } });
   const frame = assistantFrame();
+  const sheet = assistantSheet();
   if (frame) { title = frame.title; initialText = frame.draft ?? ""; }
+  if (sheet) title = DIRECTIONS[sheet.direction];
   const conversation = model.conversation, workflow = conversation.workflow;
   const wasAtLatest = useRef(true);
   const detailTrigger = useRef<HTMLButtonElement>(null);
@@ -98,7 +102,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
       <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="Chats" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
     </header><div className="hub-panel-content">
       <div className="hub-thread-wrap"><><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
-        {frame ? <AssistantMockThread frame={frame} /> : <>
+        {sheet ? <AssistantMockSheet {...sheet} /> : frame ? <AssistantMockThread frame={frame} /> : <>
         {(served ? served.state.messages.length === 0 : conversation.scene === 'new') ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
         {!served && actionScene ? <><div className="hub-message operator">Update Alex Rivera’s work email.</div><AssistantReply>I found the record. Review the change before I save it.</AssistantReply><AssistantActionCard conversation={conversation} busy={model.busy} onAction={action => { void model.act(action); }} onView={trigger => { detailTrigger.current = trigger; model.setDetail('record'); }} onSignIn={trigger => { detailTrigger.current = trigger; model.setDetail('sign-in'); }} /></> : null}
         {!served && workflow ? <><p className="hub-caption">Sample workflow · synthetic records</p><AssistantFileChip file={workflow.file} /></> : null}
@@ -119,7 +123,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
         </>}
       </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</></div>
       {served && !accountReady && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings(served.accountAction === 'preflight' ? 'preflight' : 'general')}>{served.accountAction === 'preflight' ? 'Open Preflight' : served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}</div>}
-      <ComposerInput key={conversation.id} modelPreference={modelPreference} draft={frame ? undefined : draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); if (served && sent && title === 'New chat') onAutomaticTitle?.(value.text.slice(0, 55)); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={!frame && (model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
+      <ComposerInput key={conversation.id} modelPreference={modelPreference} draft={frame ? undefined : draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); if (served && sent && title === 'New chat') onAutomaticTitle?.(value.text.slice(0, 55)); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={!frame && !sheet && (model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
     </div>
     <Dialog open={model.detail !== null} onOpenChange={open => { if (!open) model.setDetail(null); }}><DialogContent title={model.detail === 'sign-in' ? 'Sign in to UCPath' : 'Work email saved'} className="hub-assistant-detail" hideClose onCloseAutoFocus={event => { event.preventDefault(); if (detailTrigger.current?.isConnected) detailTrigger.current.focus(); }}>{model.detail === 'sign-in' ? <p>Complete sign-in in your browser, then return here.</p> : <p>Alex Rivera<br /><strong>alex.rivera@example.edu</strong></p>}<footer><DialogClose className="hub-btn">Close</DialogClose>{model.detail === 'sign-in' ? <DialogClose className="hub-btn primary" onClick={model.finishMockSignIn}>Simulate signed in</DialogClose> : null}</footer></DialogContent></Dialog>
   </section>;

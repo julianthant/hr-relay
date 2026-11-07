@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { ArrowRight, ArrowUpRight, Ban, Check, CircleCheck, Eye, Minus, Monitor, Paperclip, PencilLine } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Ban, Check, CircleCheck, Eye, Minus, Monitor, Paperclip, PencilLine, Undo2 } from "lucide-react";
 import { Button, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { DecisionCard } from "../run-detail/logs/decision-card.js";
@@ -91,7 +91,7 @@ export function AssistantMockThread({ frame }: { frame: AssistantFrame }) {
   useEffect(() => {
     if (shown.current) return;
     shown.current = true;
-    for (const item of frame.toasts ?? []) toast({ tone: item.tone, title: item.title, description: item.description, sticky: item.sticky, duration: 600_000, action: item.action ? { label: item.action, onAction: () => undefined } : undefined });
+    for (const item of frame.toasts ?? []) toast({ tone: item.tone, title: item.title, description: item.description, sticky: item.sticky, duration: 600_000, action: item.action ? { label: item.action, onAction: () => undefined, icon: item.action === "Undo" ? <Undo2 aria-hidden className="size-4" /> : undefined } : undefined });
   }, [frame, toast]);
   return <>{frame.chat.map((item, index) => <Item key={index} item={item} />)}</>;
 }
