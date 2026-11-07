@@ -16,16 +16,17 @@ function LogLink({ label = "Log" }: { label?: string }) {
   return <button type="button" className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-caption font-medium text-ui-info hover:bg-ui-hover">{label}<ArrowUpRight aria-hidden className="size-3" /></button>;
 }
 
-/** Page-card rows: label left, old (struck, muted) -> new flush right; a source only where it differs. */
+/** Page-card rows: label left, old (struck, muted) -> new flush right; a differing source on its own muted line under the value. */
 function Changes({ changes }: { changes: NonNullable<Proposal["changes"]> }) {
   const [picked, setPicked] = useState(() => changes.rows.map(() => true));
   return <PageCard title={changes.title} mode={changes.source ?? (changes.pick ? `${picked.filter(Boolean).length} of ${changes.rows.length}` : "")}>
     <div className="px-3">{changes.rows.map((row: Change, index) => <div key={row.label} className="flex items-baseline gap-3 border-b border-ui-stroke py-2.5 text-body last:border-b-0">
       {changes.pick && <input type="checkbox" className="size-3.5 shrink-0 translate-y-0.5 self-start accent-[var(--ui-info)]" checked={picked[index]} aria-label={`Include ${row.label}`} onChange={event => setPicked(values => values.map((value, at) => at === index ? event.target.checked : value))} />}
       <span className="min-w-0 shrink-0 font-medium">{row.label}</span>
-      <span className="ml-auto flex min-w-0 flex-wrap items-baseline justify-end gap-x-1.5 text-right tabular-nums">
-        {row.before !== undefined && <><s className="text-ui-muted decoration-ui-muted/60">{row.before}</s><ArrowRight aria-label="to" className="size-3 shrink-0 self-center text-ui-muted" /></>}
-        <span className="font-medium">{row.after}</span>{row.source && <span className="text-caption text-ui-muted">· {row.source}</span>}
+      <span className="ml-auto flex min-w-0 flex-col items-end text-right tabular-nums">
+        <span className="flex flex-wrap items-baseline justify-end gap-x-1.5">{row.before !== undefined && <><s className="text-ui-muted decoration-ui-muted/60">{row.before}</s><ArrowRight aria-label="to" className="size-3 shrink-0 self-center text-ui-muted" /></>}
+          <span className="font-medium">{row.after}</span></span>
+        {row.source && <span className="text-caption text-ui-muted">{row.source}</span>}
       </span>
     </div>)}</div>
   </PageCard>;
@@ -79,6 +80,11 @@ function Item({ item }: { item: ChatItem }) {
   }
 }
 
+/** Today's assistant actions for the History view's Activity tab. */
+export function AssistantMockActivity() {
+  return <PageCard title="Today" mode={`${ACTIVITY.length}`}><ul className="m-0 list-none px-3 py-0">{ACTIVITY.map(row => <Row key={row.lead + row.text} row={row} />)}</ul></PageCard>;
+}
+
 export function AssistantMockThread({ frame }: { frame: AssistantFrame }) {
   const { toast } = useToasts();
   const shown = useRef(false);
@@ -87,6 +93,5 @@ export function AssistantMockThread({ frame }: { frame: AssistantFrame }) {
     shown.current = true;
     for (const item of frame.toasts ?? []) toast({ tone: item.tone, title: item.title, description: item.description, sticky: item.sticky, duration: 600_000, action: item.action ? { label: item.action, onAction: () => undefined } : undefined });
   }, [frame, toast]);
-  if (frame.view === "activity") return <PageCard title="Today" mode={`${ACTIVITY.length}`}><ul className="m-0 list-none px-3 py-0">{ACTIVITY.map(row => <Row key={row.lead + row.text} row={row} />)}</ul></PageCard>;
   return <>{frame.chat.map((item, index) => <Item key={index} item={item} />)}</>;
 }

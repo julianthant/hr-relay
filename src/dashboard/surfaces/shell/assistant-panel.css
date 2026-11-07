@@ -113,7 +113,7 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 #hub-panel-assistant .hub-assistant-strip>button{flex:none}
 
 /* Assistant plan: navigation line, session chip, choice buttons; proposals use the Logs DecisionCard and page cards. */
-#hub-panel-assistant{--ds-accent:var(--ds-info-solid-bg);--ds-accent-fg:var(--ds-info-solid-fg);--ds-accent-hover:var(--ds-info-solid-hover)}
+#hub-panel-assistant{--ds-accent:var(--ui-info);--ds-accent-fg:var(--ui-canvas);--ds-accent-hover:var(--ui-info)}
 #hub-panel-assistant .hub-icon[aria-pressed=true]{background:var(--ui-hover);color:var(--ui-primary)}
 #hub-panel-assistant .hub-nav-line{display:flex;align-items:center;gap:8px;margin:0;padding-left:33px;color:var(--ui-muted);font-size:12px;line-height:18px}
 #hub-panel-assistant .hub-nav-line svg{width:14px;height:14px;flex:none}
