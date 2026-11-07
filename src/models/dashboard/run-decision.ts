@@ -40,6 +40,8 @@ export const CandidateTableWireSchema = z.strictObject({
     rowId: Text.optional(),
     eid: z.string().regex(/^\d{8}$/u).optional(),
     chosenFrom: z.enum(["checked", "name-search", "manual"]).optional(),
+    /* The worksheet row number a typed row number matches. */
+    rowNumber: z.number().int().positive().optional(),
     cells: z.array(z.strictObject({ columnId: Text, value: z.string(), tone: z.literal("attention").optional() })).min(1),
   })).min(1),
   /* The fill row: a typed value is valid only when it names a served row. */

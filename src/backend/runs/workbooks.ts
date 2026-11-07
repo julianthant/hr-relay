@@ -7,6 +7,9 @@ import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-inp
 import { z } from "zod";
 import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import { RunWorkbookSnapshotReferenceSchema, RunWorkbookNamedReferenceSchema, parseRunWorkbookReference, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
+import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../models/dashboard/actions.js";
+import type { RunDecisionWire } from "../../models/dashboard/run-decision.js";
+import { projectDecision } from "./decisions/project-decision.js";
 import { NativeRunEventWireSchema, RunWorkbookWritesWireSchema, WorkbookReferenceRowCandidateWireSchema, RunWorkbookReferenceChoiceWireSchema, type RunWorkbookReferenceChoiceWire, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
 
 import { WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
@@ -161,7 +164,7 @@ function liveCandidates(repositories: AuthorityRepositories, reference: Referenc
     const sheet = record.workbook.sheets.find(sheet => sheet.id === match.sheetId);
     const row = sheet?.rows.findIndex(row => row.id === match.rowId);
     if (sheet === undefined || row === undefined || row < 0) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-    return { ...match, label: `${sheet.name} · Row ${row + 1}` };
+    return { ...match, label: `${sheet.name} · Row ${row + 1}`, rowNumber: row + 1 };
   }) };
 }
 
@@ -397,6 +400,29 @@ function completeCrmReferenceChoice(data: CrmRows, selections: ReadonlyMap<strin
   }) });
 }
 
+const FIELD_LABELS: Readonly<Record<string, string>> = { email: "Email", firstName: "First name", lastName: "Last name", middleName: "Middle name",
+  "roster.livedFirstName": "Lived first name", "roster.livedLastName": "Lived last name", "roster.livedMiddleName": "Lived middle name" };
+
+type PickCandidate = Readonly<{ sheetId: string; rowId: string; label: string; rowNumber?: number;
+  values?: z.infer<typeof WorkbookReferenceRowCandidateWireSchema>["values"] }>;
+
+/** D3 / D11: confirm one served candidate row. A typed row number is offered only when every candidate's row number is known and unique. */
+function rowPickDecision(type: "pick-row" | "workbook-row", title: string, action: ActionDescriptorWire, candidates: readonly PickCandidate[]): RunDecisionWire {
+  const fields = candidates[0]?.values?.map(({ fieldId }) => fieldId) ?? [];
+  const numbers = candidates.flatMap(({ rowNumber }) => rowNumber === undefined ? [] : [rowNumber]);
+  const typed = numbers.length === candidates.length && new Set(numbers).size === numbers.length;
+  return projectDecision(type, [{ id: "confirm", send: { via: "action", actionKey: action.key },
+    ...(action.kind === "command" && action.confirm !== undefined ? { confirm: action.confirm } : {}),
+    input: { kind: "candidate", table: {
+      title,
+      columns: [{ id: "row", label: "Row" }, ...fields.map(fieldId => ({ id: fieldId, label: FIELD_LABELS[fieldId] ?? fieldId }))],
+      rows: candidates.map(candidate => ({ id: `${candidate.sheetId}/${candidate.rowId}`, name: candidate.label, sheetId: candidate.sheetId, rowId: candidate.rowId,
+        ...(candidate.rowNumber === undefined ? {} : { rowNumber: candidate.rowNumber }),
+        cells: [{ columnId: "row", value: candidate.label }, ...(candidate.values ?? []).map(({ fieldId, value }) => ({ columnId: fieldId, value: value === null ? "" : typeof value === "object" ? value.value : String(value) }))] })),
+      ...(typed ? { typed: { label: "Enter row number", placeholder: "Row number", pattern: "^[1-9]\\d*$" } } : {}),
+    } } }]);
+}
+
 function crmCandidateWire(candidate: z.infer<typeof CrmDocumentRowCandidateSchema>) {
   const { row, key } = candidate, { legalName, livedName } = row.names;
   return WorkbookReferenceRowCandidateWireSchema.parse({ sheetId: row.worksheetId, rowId: row.rowId,
@@ -436,11 +462,15 @@ function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunR
     }
     const target = { runId: run.envelope.runId, expectedVersion: run.version, libraryId: base.libraryId, typeId: base.typeId,
       referenceDigest: base.referenceDigest, key, workbookVersion: data.reference.value.snapshot.version, gateId: CRM_DOCUMENT_ROW_CHOICE_GATE_ID };
-    return [{ ...base, native, resolution: { state: "available", target, candidates: person.resolution.candidates.map(crmCandidateWire), action: {
+    const action = ActionDescriptorWireSchema.parse({
       kind: "command", key: "resolve-workbook-reference-row", command: "resolve-workbook-reference-row", label: "Choose a worksheet row",
       intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
       confirm: { title: "Use this worksheet row", body: "Relay retains this row from the selected spreadsheet version. The batch continues after every person has a resolved row.", confirmLabel: "Use row", tone: "neutral" },
-    } } }];
+    });
+    const candidates = person.resolution.candidates.map(crmCandidateWire);
+    const legal = person.resolution.candidates[0]?.row.names.legalName;
+    return [{ ...base, native, resolution: { state: "available", target, candidates, action,
+      decision: rowPickDecision("pick-row", legal === undefined ? "Worksheet rows" : `${legal.firstName} ${legal.lastName}`, action, candidates) } }];
   }).map(choice => RunWorkbookReferenceChoiceWireSchema.parse(choice));
 }
 
@@ -500,20 +530,24 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   }
   const live = liveCandidates(repositories, reference.value, binding.rowKey.email);
-  const candidates = live.candidates.map(match => {
+  const picks = live.candidates.map(match => {
     onboardingRosterRow({ ...binding, workbookVersion: live.version }, match);
-    return { sheetId: match.sheetId, rowId: match.rowId, label: match.label,
+    return { sheetId: match.sheetId, rowId: match.rowId, label: match.label, rowNumber: match.rowNumber,
       values: reference.value.request.fields.map(fieldId => ({ fieldId, value: match.values[fieldId] })) };
   });
+  const candidates = picks.map(({ rowNumber: _rowNumber, ...candidate }) => candidate);
   if (candidates.length === 0) return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   const target = { runId: run.envelope.runId, expectedVersion: run.version, libraryId: binding.workbookId,
     typeId: binding.workbookType, referenceDigest: reference.digest, key: binding.rowKey.email,
     workbookVersion: live.version, gateId: ONBOARDING_ROSTER_GATE_ID };
-  return [{ ...base, native, resolution: { state: "available", target, candidates, action: {
+  const action = ActionDescriptorWireSchema.parse({
     kind: "command", key: "resolve-workbook-reference-row", command: "resolve-workbook-reference-row", label: "Choose a roster row",
     intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
     confirm: { title: "Use this roster row", body: "Relay checks the current key, worksheet and revision, then retains this row's name values for the run.", confirmLabel: "Use row", tone: "neutral" },
-  } } }];
+  });
+  const sheet = reference.value.snapshot.worksheets.find(candidate => candidate.sheetId === picks[0]?.sheetId);
+  return [{ ...base, native, resolution: { state: "available", target, candidates, action,
+    decision: rowPickDecision("pick-row", sheet?.name ?? "Roster", action, picks) } }];
 }
 
 export function buildRunWorkbookSection(repositories: AuthorityRepositories, run: RunRecord): RunWorkbookWritesWire {
@@ -535,11 +569,13 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
     if (live.candidates.length === 0) return { ...base, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE" } };
     const target = { runId: run.envelope.runId, expectedVersion: run.version, libraryId: entry.libraryId,
       operationId: entry.operation.operationId, receiptDigest: sha256Hex(canonicalJsonStringify(entry.receipt)), workbookVersion: live.version };
-    return { ...base, resolution: { state: "available", target, candidates: live.candidates.map(({ sheetId, rowId, label }) => ({ sheetId, rowId, label })), action: {
+    const action = ActionDescriptorWireSchema.parse({
       kind: "command", key: "resolve-workbook-row", command: "resolve-workbook-row", label: "Choose a row", intent: "primary", icon: "resolve",
       placement: ["review"], expectedVersion: run.version, workbookTarget: target,
       confirm: { title: "Apply the captured workbook change to this row", body: "Relay checks the current key, worksheet, revision and cell ownership before applying the retained values.", confirmLabel: "Apply change", tone: "neutral" },
-    } } };
+    });
+    return { ...base, resolution: { state: "available", target, candidates: live.candidates.map(({ sheetId, rowId, label }) => ({ sheetId, rowId, label })), action,
+      decision: rowPickDecision("workbook-row", "Matching rows", action, live.candidates.map(({ sheetId, rowId, label, rowNumber }) => ({ sheetId, rowId, label, rowNumber }))) } };
   }) });
 }
 

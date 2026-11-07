@@ -254,6 +254,12 @@ it("requires a choice after master changes and never offers a worksheet added af
   const section = f.section(run), resolution = section.operations[0].resolution;
   assert.equal(resolution.state, "available"); if (resolution.state !== "available") return;
   expect(resolution.candidates.map(value => value.sheetId)).toEqual(["people"]);
+  const pick = resolution.decision?.options[0];
+  expect([resolution.decision?.type, pick?.send]).toEqual(["workbook-row", { via: "action", actionKey: "resolve-workbook-row" }]);
+  const table = pick?.input?.kind === "candidate" ? pick.input.table : undefined;
+  expect(table?.rows.map(({ sheetId, rowId }) => ({ sheetId, rowId }))).toEqual(resolution.candidates.map(({ sheetId, rowId }) => ({ sheetId, rowId })));
+  expect(table?.rows.every(({ rowNumber }) => rowNumber !== undefined && rowNumber > 0)).toBe(true);
+  expect(table?.typed?.pattern).toBe("^[1-9]\\d*$");
   const command = f.choice(run);
   expect(f.kernel.execute({ ...command, payload: { sheetId: "new-sheet", rowId: "people-person" } }).state).toBe("rejected");
   expect(f.kernel.execute({ ...command, commandId: world.nextCommandId(), target: { ...command.target, receiptDigest: "f".repeat(64) },
