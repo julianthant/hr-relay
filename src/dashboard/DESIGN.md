@@ -89,12 +89,15 @@ Settings owns its rail and guarded back arrow. Analytics and Explorer mount insi
 `PageBreadcrumbs` precedes a child heading. Available parents call the existing route callback;
 the last item is passive text. Wizard Back changes stages, while dismissal closes the layer.
 `DsBodyScope` supplies a shared content width and body rhythm. Tables hold dense records, grids
-hold aligned peer facts, and short chips carry facts that tolerate truncation. In every table
+hold aligned peer facts, and short chips carry facts that tolerate truncation. The workflow rail is
+narrow (`clamp(176px, 25vw - 128px, 232px)`); the Queue keeps its width and the Logs panel takes the rest.
+Each rail row shows one number, its runs running now, as a green pill with a live dot left of the name,
+hidden at 0 and read out as the row's description ("2 running"). In every table
 (log page cards, member lists, queue tables) the last column is right-aligned, header and cells,
 flush to the table's right edge.
 
 A queue row draws its served subtitle ("12 people") as a muted line under the title when it differs from the title.
-Double-clicking a queue row title renames it in place: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
+Double-clicking a run title in its queue row or its Logs header renames it in place, one shared name: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
@@ -156,22 +159,25 @@ Times, durations, capture times and IDs use the body face with tabular figures, 
 
 ### Decisions
 
-A decision is answered where its evidence is. It is never a separate card, dock or banner.
+Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-card.tsx`) in the step, under the evidence it reads.
 
-- Anatomy, in order: the question (`text-heading`), at most one note line (`text-body` secondary), the evidence or input, then the actions on one row.
-- Picking one of several records puts a radio column in the page card that lists them. The primary action names the choice ("Continue with Morrow, Bea A.") and stays disabled until a row is chosen.
-- Every pick ends with a "None of these" row. Choosing it puts a labelled input on the action row ("Enter employee ID", 8 digits; "Enter row number" for a roster or workbook row), and the primary reads "Continue with <typed value>", disabled until the value is valid. A typed employee ID is asked for only here, when Relay cannot find the person.
+- Anatomy, in order: title (what happened, `text-heading`), one context line, an optional "Assistant suggests: <option>" line with its evidence, the control, then Confirm (primary) and Cancel run (secondary, which cancels the run). Enter confirms; Escape only closes an open dropdown and never cancels.
+- The control: a short choice list is a dropdown whose options each carry a one-line hint, with the recommended option preselected (read-back failed: Check again). Picking a candidate keeps the list or table with a radio column, because comparing candidates matters. A typed value is a labelled input. The primary reads Confirm when the control holds the answer; a card without a control names its action (Retry step, Resume, Recover, Approve match).
+- Answered, the card collapses to one line that stays in the log: "Answered: <choice> · <time> · by <person>" or "by Assistant for <person>".
+- A batch member's card offers "Use for all N similar" when the same choice fits the other failed members.
+- Picking one of several records puts a radio column in the page card that lists them; Confirm stays disabled until a row is chosen.
+- Every pick ends with a "None of these" row (after any extra option such as "Add a new row"). Choosing it puts a labelled input in the card ("Enter employee ID", 8 digits; "Enter row number"), and Confirm stays disabled until the value is valid. A typed employee ID is asked for only here, when Relay cannot find the person.
 - A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
-- A value to correct, or a transaction number to confirm, is a labelled input on the action row, before the buttons.
+- A value to correct is the card's input, prefilled with what Relay read or typed.
 - A failure uses the same anatomy. The question is the failure title in the danger colour, and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written. There is no Add note action.
 - When the site rejected a value Relay typed (phone, address, date, ID) and nothing was saved, the failure shows a labelled input prefilled with the rejected value and the primary "Retry with this <value>" ("Retry with this number"). It is never offered after a committed save.
-- When a write saved but its read-back failed, the actions are, in order: Check again (repeats only the read-back), "Checked by hand, continue", "Withdrawn in UCPath, file again" and "Mark as failed" (ends this person's run as failed and files nothing). "File again" first reads the system and proves the saved record is gone or withdrawn, then files once; if the record is still there, a toast refuses it. Relay never withdraws a submitted transaction itself.
-- An unconfirmed write (parked, or uncertain after a restart) always asks "Did the <record> save in <system>?". The note says what did not confirm and where to check. The actions are Confirm saved and "Not saved, <what Relay does next>" (for example "Not saved, file it again"). A transaction or document number input appears only when that system issues one.
+- When a write saved but its read-back failed, the dropdown options are, in order: Check again (repeats only the read-back), "Checked by hand, continue", "Withdrawn in UCPath, file again" and "Mark as failed" (ends this person's run as failed and files nothing). "File again" first reads the system and proves the saved record is gone or withdrawn, then files once; if the record is still there, a toast refuses it. Relay never withdraws a submitted transaction itself.
+- An unconfirmed write (parked, or uncertain after a restart) asks "Did the <record> save in <system>?". The note says what did not confirm and where to check. The dropdown offers "Saved in <system>" (preselected; with a number input when that system issues one) and "Not saved, <what Relay does next>".
 - An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure; Retry is the icon button in that log's header, and a rejected value adds the fix-and-retry input in the body. The parent log reads the document, records the approval and lists the records handed to members.
 - A cancel in progress is one line with a loading icon. It has no actions.
 - A refused command is a toast (title and one line). The transcript does not change.
 - The assistant launcher docks in the Logs footer's right corner, which the footer reserves, so it never covers log content or footer controls. Toasts sit above the footer and the launcher.
-- Buttons are standard size: one primary, then secondary buttons. The run-ending action (Cancel run, Reject) is secondary, never ghost text.
+- Buttons are standard size: Confirm, then Cancel run. Cancel run is secondary, never ghost text.
 - No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
 
 ### Status signals
