@@ -206,6 +206,17 @@ Explorer is a generated review spec of what a workflow does. It never shows simu
 
 ## Assistant
 
+The assistant mark is **Orbit**: a core, a thin orbit and one satellite (`surfaces/shell/assistant-mark.tsx`). It is the message avatar, the panel header icon, the launcher and the Logs "by the assistant" line, and it never uses a sparkle or another brand's shape. Its state shows in shape and colour; motion is CSS only, short, and stops with reduced motion or Animations off.
+
+| State | Mark | Motion |
+| --- | --- | --- |
+| idle | Ring, core and the satellite at the top right | None |
+| thinking (the model is writing) | Hollow blue core, blue satellite | The satellite orbits slowly |
+| working (a session or run is going) | Blue core, dashed blue orbit | The satellite orbits fast |
+| done | Green core; the satellite docked at the top | One settle |
+| needs you (a decision waits; launcher) | Amber core and a halo | A gentle halo pulse |
+| error | Red core, broken orbit, no satellite | None |
+
 The assistant operates the dashboard through the operator's own commands and checks; it never edits workflows or code. It writes like a person: the answer sentence comes first, and it never explains behaviour that Relay enforces.
 
 ### How the panel shows data
