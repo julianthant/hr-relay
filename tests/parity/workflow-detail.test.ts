@@ -1,5 +1,5 @@
 import { setSwitchChecked } from "./helpers/switch-choice.js";
-import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
+import { expectRunningPill, installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
@@ -24,9 +24,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const counts = mockWorkflowCounts(seedMockRuns());
       for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {
         const row = counts.find(row => row.workflowId === flow.id)!;
-        const active = row.statusCounts.filter(item => ["queued", "running", "cancelling"].includes(item.status)).reduce((sum, item) => sum + item.count, 0);
-        await expect(rail.getByRole("button", { name: flow.label, exact: true }).locator(".workflow-rail-meta")).toHaveText(`${active} · ${row.count}`);
-        await expect(rail.getByRole("button", { name: flow.label, exact: true }).locator(".workflow-rail-meta")).toBeVisible();
+        const running = row.statusCounts.filter(item => item.status === "running").reduce((sum, item) => sum + item.count, 0);
+        await expectRunningPill(rail.getByRole("button", { name: flow.label, exact: true }), running);
       }
       await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("jordan.lee@example.com");
@@ -61,11 +60,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const concurrentBox = await page.getByRole("tooltip").boundingBox(); expect(concurrentBox!.y).toBeGreaterThanOrEqual(0); expect(concurrentBox!.y + concurrentBox!.height).toBeLessThanOrEqual(height);
 
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
-      await expect(rail.getByRole("button", { name: "Emergency Contact", exact: true }).locator(".workflow-rail-meta")).toHaveText("1 · 1");
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click(); await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click(); await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      await expect(rail.getByRole("button", { name: "Emergency Contact", exact: true }).locator(".workflow-rail-meta")).toHaveText("0 · 4");
+      await expectRunningPill(rail.getByRole("button", { name: "Emergency Contact", exact: true }), 0);
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click(); await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("Jordan Lee");
