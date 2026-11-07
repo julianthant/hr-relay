@@ -53,6 +53,7 @@ import { update as artifactUpdate } from "../../../support/helpers/database-foun
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { writePredecessorUncertainRetry } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 
 const hostFacts = { primaryDisplay: null };
 // Tables the schema-22 hook changes while it settles and tombstones pre-build runs.
@@ -723,6 +724,8 @@ function plantPredecessorWorkerCustody(path: string) {
     for (const [generation, directive] of [[1, "run"], [2, "pause"]] as const) {
       raw.prepare("INSERT INTO worker_leases VALUES(?,?,'person-lookup',?,1,'idle',?,NULL,1,'{}',?,?)").run(`lease-${String(generation)}`, "person-lookup-worker-2", generation, directive, now, now);
     }
+    // The operator's store: a retry against the crashed worker settled uncertain with no effect and no audit, bound to its newest lease.
+    const retryId = writePredecessorUncertainRetry(raw, { workflowId: "person-lookup", workerId: "person-lookup-worker-2", leaseGeneration: 2, now });
     const lifetime = { membershipRevision: 1, leaseGeneration: 2 };
     const queued = predecessorRunRecordFromRow(raw.prepare("SELECT * FROM runs ORDER BY id LIMIT 1").get());
     const claimed = PredecessorRunRecordSchema.parse({ ...queued, version: queued.version + 1, claimGeneration: 1,
@@ -736,14 +739,14 @@ function plantPredecessorWorkerCustody(path: string) {
       raw.prepare(`UPDATE runs SET ${Object.keys(stored).map(key => `${key}=?`).join(",")} WHERE id=?`).run(...Object.values(stored), queued.envelope.runId);
       raw.prepare("UPDATE run_search SET source_version=?, state='claimed', metadata_json=json_set(metadata_json,'$.sourceVersion',?) WHERE run_id=?").run(claimed.version, claimed.version, queued.envelope.runId);
     } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
-    return { runId: queued.envelope.runId };
+    return { runId: queued.envelope.runId, retryId };
   } finally { raw.close(); }
 }
 
 it.each([20, 21, 22] as const)("converts populated schema %s worker custody through backup and upgrade and reads it back strictly", async sourceVersion => {
   const f = await readyBoundEight("queued", sourceVersion);
   try {
-    const { runId } = plantPredecessorWorkerCustody(f.path);
+    const { runId, retryId } = plantPredecessorWorkerCustody(f.path);
     const stopped = new DatabaseSync(f.path, { readOnly: true });
     try { assert.equal(inspectNativeAuthority(stopped, sourceVersion).schemaVersion, sourceVersion); } finally { stopped.close(); }
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
@@ -765,6 +768,7 @@ it.each([20, 21, 22] as const)("converts populated schema %s worker custody thro
       assert.equal(raw.prepare("SELECT count(*) AS count FROM runs WHERE id=?").get(runId)?.count, 0);
       assert.equal(raw.prepare("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?").get(runId)?.count, 1);
       assert.equal(raw.prepare("SELECT count(*) AS count FROM commands WHERE family='worker-browser' OR request_json LIKE '%workerLifetime%'").get()?.count, 0);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM command_audits WHERE command_id=?").get(retryId)?.count, 0);
       for (const table of ["worker_leases", "worker_controls", "browser_sessions"]) assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name=?").get(table), undefined);
     } finally { raw.close(); }
   } finally { await f.close(); }

@@ -11,6 +11,7 @@ import { WriteAttemptRecordSchema, WriteIntentRecordSchema, deriveIdempotencyKey
 import { CONFIG_SNAPSHOT, HASH_B, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING, UUID_4, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, TRACE_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-custody-migration.js";
+import { writePredecessorUncertainRetry } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 
 const LIFETIME = { leaseGeneration: 2, membershipRevision: 1 };
 const WORKER = "person-lookup-worker-1";
@@ -144,3 +145,25 @@ it("refuses a closure run whose write is not committed and proven, and leaves th
   }
 });
 
+
+it("drops an unaudited uncertain retry bound to the worker's newest lease and refuses one that may have birthed a worker", () => {
+  const retry = (database: DatabaseSync, leaseGeneration: number, effect?: unknown) => writePredecessorUncertainRetry(database,
+    { workflowId: "person-lookup", workerId: WORKER, leaseGeneration, now: NOW, effect });
+  const admitted = store();
+  try {
+    const id = retry(admitted, 2);
+    migrate(admitted);
+    assert.equal(count(admitted, `SELECT count(*) AS count FROM commands WHERE id='${id}'`), 0);
+    assert.equal(count(admitted, "SELECT count(*) AS count FROM sqlite_schema WHERE name='worker_controls'"), 0);
+  } finally { admitted.close(); }
+  const effect = { observedAt: NOW, observation: { kind: "retry", leaseGeneration: 3, processId: 4243, startedAt: NOW } };
+  for (const [leaseGeneration, observed] of [[1, undefined], [2, effect]] as const) {
+    const database = store();
+    try {
+      retry(database, leaseGeneration, observed);
+      const before = [...dump(database), database.prepare("SELECT * FROM worker_controls").all()];
+      assert.throws(() => migrate(database), /authority-upgrade-worker-retry-birth-unproved/u, String(leaseGeneration));
+      assert.deepEqual([...dump(database), database.prepare("SELECT * FROM worker_controls").all()], before);
+    } finally { database.close(); }
+  }
+});

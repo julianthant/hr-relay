@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { createRunTerminalEvidenceResult, RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
@@ -63,4 +64,24 @@ export function writePredecessorWorkerLifetimes(raw: DatabaseSync, runId: string
     ? { ...request, lifecycle: { ...Json.parse(request.lifecycle), workerLifetime: lifetime } }
     : { ...request, workerLifetime: lifetime });
   return ids;
+}
+
+/**
+ * Writes an operator retry the predecessor admitted against a crashed worker and settled uncertain within its window: no effect,
+ * no outcome, never audited. It is bound to the worker's lease `leaseGeneration`.
+ */
+export function writePredecessorUncertainRetry(raw: DatabaseSync, input: { workflowId: string; workerId: string; leaseGeneration: number; now: string; effect?: unknown }): string {
+  const { workflowId, workerId, leaseGeneration, now } = input, commandId = randomUUID();
+  const basis = { leaseGeneration, controlRevision: 1 };
+  const request = { commandId, requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "retry-worker",
+    target: { workflowId, workerId, membershipRevision: 1, expectedVersion: 1, controlBasis: basis } };
+  const json = canonicalJsonStringify(request);
+  raw.prepare("INSERT INTO commands VALUES(?,'worker-browser','local-operator',NULL,?,?,?,'uncertain',NULL,?,?)").run(commandId, workerId, sha256Hex(json), json, now, now);
+  const control = { commandId, request, scope: `worker-pool:${workflowId}`, executorId: randomUUID(), admittedAt: now, expiresAt: now, basisVersion: 1,
+    phase: { state: "uncertain", startedAt: now, observedAt: now, message: "The worker retry outcome is unknown." },
+    lifecycle: { commandId, member: { workflowId, workerId, membershipRevision: 1 }, lifetime: { leaseGeneration, processId: 4242, startedAt: now }, basis,
+      reservedControlRevision: 2, poolVersion: 1, desiredWorkers: 1, operation: { kind: "retry", mode: "initialize", systems: [] } },
+    ...(input.effect === undefined ? {} : { effect: input.effect }) };
+  raw.prepare("INSERT INTO worker_controls VALUES(?,?,?,'uncertain',NULL,?,?)").run(commandId, control.scope, workerId, canonicalJsonStringify(control), now);
+  return commandId;
 }
