@@ -5,8 +5,8 @@ import { ASSISTANT_FAILURES, AssistantActionProposalSchema, ASSISTANT_START_ROWS
 import type { RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
 import { NotificationCollectionOperationSchema, type NotificationCollectionOperation } from "../../models/notifications/notifications.js";
 import { PersonLookupCanonicalInput } from "../../models/workflows/person-lookup/input.js";
-import { OcrCanonicalInputSchema } from "../../models/workflows/ocr/input.js";
-import { OcrFormTypeSchema } from "../../models/ocr/form-registry.js";
+import { EmergencyContactInputSchema } from "../../models/workflows/emergency-contact/input.js";
+import type { OcrFormType } from "../../models/ocr/form-registry.js";
 import type { OcrSourceService } from "../runs/commands/ocr-source-service.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingress.js";
@@ -63,13 +63,17 @@ const planImmutables = (plan: StoredPlan) => canonicalJsonStringify(Object.fromE
 const digestOf = (proposal: AssistantActionProposal) => createHash("sha256").update(canonicalJsonStringify(proposal)).digest("hex");
 function refuse(): never { throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED"); }
 
+/** Workflows whose one input is an OCR document of a fixed form; an attached PDF is their start entry (D6). */
+const PDF_START_FORMS: Readonly<Partial<Record<string, OcrFormType>>> = { "emergency-contact": "emergency-contact" };
+
 /** What one planned row shows: the typed identity of its canonical input, never model text; an OCR file row names its registered source. */
 export function plannedRowDisplay(workflowId: string, input: unknown, sourceName: (artifactId: string) => string | undefined = () => undefined): AssistantProposalRow["display"] {
   const bound = SchemaBoundCanonicalValueSchema.safeParse(input);
   if (!bound.success) return { kind: "request" };
-  if (workflowId === "ocr") {
-    const parsed = OcrCanonicalInputSchema.safeParse(bound.data.value), fileName = parsed.success ? sourceName(parsed.data.document.id) : undefined;
-    return parsed.success && fileName !== undefined ? { kind: "file", fileName, formType: parsed.data.formType } : { kind: "request" };
+  const formType = PDF_START_FORMS[workflowId];
+  if (formType !== undefined) {
+    const parsed = EmergencyContactInputSchema.safeParse(bound.data.value), fileName = parsed.success ? sourceName(parsed.data.document.id) : undefined;
+    return fileName === undefined ? { kind: "request" } : { kind: "file", fileName, formType };
   }
   if (workflowId === "person-lookup") {
     const parsed = PersonLookupCanonicalInput.safeParse(bound.data.value);
@@ -172,17 +176,16 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     });
   }
 
-  const startParameters = z.strictObject({ workflow: z.string().min(1).max(80), entries: z.array(z.string().min(1).max(400)).min(1).max(ASSISTANT_START_ROWS_MAX),
-    formType: OcrFormTypeSchema.nullable() });
-  /** An attached PDF of this chat, registered as an OCR source; the entry becomes that document's OCR input. */
-  async function ocrEntry(entry: string, formType: z.infer<typeof OcrFormTypeSchema>, context: AssistantToolContext) {
+  const startParameters = z.strictObject({ workflow: z.string().min(1).max(80), entries: z.array(z.string().min(1).max(400)).min(1).max(ASSISTANT_START_ROWS_MAX) });
+  /** An attached PDF of this chat, registered as an OCR source; the entry becomes that document's input. */
+  async function pdfEntry(entry: string, context: AssistantToolContext) {
     const record = deps.attachment(context.conversationId, context.references.resolve(entry, ["A"]).target);
     if (record === undefined) throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNAVAILABLE");
     if (record.mediaType !== "application/pdf") throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNSUPPORTED");
     context.assertCurrent();
     const source = await deps.ocrSources().upload({ actorId: "local-operator", fileName: record.name, mediaType: record.mediaType, bytes: record.bytes });
     context.assertCurrent();
-    return JsonValueSchema.parse({ document: source.artifact, readingId: randomUUID(), formType, roster: null, reading: { kind: "subscription" } });
+    return JsonValueSchema.parse({ document: source.artifact, readingId: randomUUID(), roster: null, reading: { kind: "subscription" } });
   }
   const rerunParameters = z.strictObject({ run: referenceSchema("R") });
   const runActionParameters = z.strictObject({ run: referenceSchema("R"), action: z.enum(["pause", "resume", "cancel"]) });
@@ -191,14 +194,13 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
   const plugin: AssistantPlugin = { domain: "proposals", tools: [
     { kind: "proposal", name: "propose_workflow_start",
       description: "Prepare a card to start one served workflow for 1 to 20 entries; the operator confirms it. Each entry is one line of that workflow's input format (see describe_workflow), or exactly a run reference to reuse that run's input. Use references for people and IDs exactly as given. List every entry the operator asked for; the card shows every row. "
-        + "For workflow ocr each entry is exactly an attached PDF reference and formType names the form (emergency-contact for Emergency Contact); formType is null for every other workflow.",
+        + "For emergency-contact each entry is exactly an attached PDF reference; the card reads it through OCR.",
       parameters: startParameters,
       async propose(value, context) {
-        const { workflow, entries, formType } = startParameters.parse(value), { descriptor } = startable(workflow);
-        if ((workflow === "ocr") !== (formType !== null)) throw new AssistantToolRefusal("ASSISTANT_INVALID");
-        if (formType !== null) {
+        const { workflow, entries } = startParameters.parse(value), { descriptor } = startable(workflow);
+        if (PDF_START_FORMS[workflow] !== undefined) {
           const submissions: JsonValue[] = [];
-          for (const entry of entries) submissions.push(await ocrEntry(entry, formType, context));
+          for (const entry of entries) submissions.push(await pdfEntry(entry, context));
           const documents = submissions.map(submission => canonicalJsonStringify(z.object({ document: JsonValueSchema }).parse(submission).document));
           if (new Set(documents).size !== documents.length) refuse();
           return planStart(context, { workflowId: workflow, submissions, source: "entries", assertSource() {},

@@ -184,10 +184,8 @@ it("refuses reruns of cancelled, moved, parked and attempting sources through th
 it("binds Confirm to the exact rendered multi-row card and lets one of a concurrent Confirm and Cancel win", async () => {
   const o = await owners(), first = await o.done("10812345"), second = await o.done("10812346");
   const card = await o.tool("propose_workflow_start").propose({ workflow: o.h.descriptor.id, entries: [
-    o.references.issue("R", first.envelope.runId, "run", first.envelope.runId), o.references.issue("R", second.envelope.runId, "run", second.envelope.runId)], formType: null }, o.context);
+    o.references.issue("R", first.envelope.runId, "run", first.envelope.runId), o.references.issue("R", second.envelope.runId, "run", second.envelope.runId)] }, o.context);
   assert.ok(card.effect === "workflow-start" && card.source === "entries");
-  await assert.rejects(o.tool("propose_workflow_start").propose({ workflow: o.h.descriptor.id, entries: ["x"], formType: "emergency-contact" }, o.context),
-    refusedWith("ASSISTANT_INVALID"), "a form type belongs only to OCR");
   const [rowA, rowB] = card.startPlan.planned; assert.ok(rowA && rowB);
   const before = o.runCount();
   for (const changed of [{ ...card, startPlan: { ...card.startPlan, planned: [rowA] } }, { ...card, startPlan: { ...card.startPlan, planned: [rowB, rowA] } },
@@ -255,6 +253,15 @@ it("shows Separations document identities from the real planned canonical inputs
   });
   assert.deepEqual(rows, [{ kind: "document", documentNumber: "4502" }, { kind: "document", documentNumber: "4510" }]);
   assert.deepEqual(plannedRowDisplay("separations", { value: { documentNumber: "4502" } }), { kind: "request" });
+});
+
+it("shows an Emergency Contact PDF start row as its registered source file, never as a person", () => {
+  const descriptor = DESCRIPTORS.find(candidate => candidate.id === "emergency-contact"); assert.ok(descriptor);
+  const planning = workflowPlanning(descriptor), schemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
+  const document = { id: randomUUID(), sha256: "c".repeat(64), bytes: 21, mediaType: "application/pdf" };
+  const input = { schemaHash, value: planning.parseCanonicalInput(planning.parseInput({ document, readingId: randomUUID(), roster: null, reading: { kind: "subscription" } }).input) };
+  assert.deepEqual(plannedRowDisplay("emergency-contact", input, id => id === document.id ? "contact.pdf" : undefined), { kind: "file", fileName: "contact.pdf", formType: "emergency-contact" });
+  assert.deepEqual(plannedRowDisplay("emergency-contact", input), { kind: "request" }, "an unregistered source shows no file name");
 });
 
 /** A library workbook with one worksheet and a second type, both issued as references. */

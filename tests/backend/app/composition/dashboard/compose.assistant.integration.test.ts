@@ -461,7 +461,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token);
         proposalTurns++;
         return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: "propose_workflow_start", call_id: "call_start_proposal",
-          arguments: JSON.stringify({ workflow: "person-lookup", entries: [token], formType: null }), status: "completed" }], request.model, "resp_start_proposal"), { headers: { "Content-Type": "text/event-stream" } });
+          arguments: JSON.stringify({ workflow: "person-lookup", entries: [token] }), status: "completed" }], request.model, "resp_start_proposal"), { headers: { "Content-Type": "text/event-stream" } });
       });
       const proposed = await send(clientDoor(client), { message: "Run Person Lookup again for this run", subjectRef });
       assert.equal(proposed.state, "action-proposal");
@@ -673,7 +673,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
       const durableCounts = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => ({
         actions: raw.prepare('SELECT id FROM assistant_actions').all().length, plans: raw.prepare('SELECT id FROM run_requests').all().length }));
       const countsBefore = durableCounts();
-      assert.deepEqual(await refusedTurn('Run Person Lookup again for this run', outbound => ['propose_workflow_start', { workflow: 'person-lookup', entries: [selected(outbound)], formType: null }], subjectRef),
+      assert.deepEqual(await refusedTurn('Run Person Lookup again for this run', outbound => ['propose_workflow_start', { workflow: 'person-lookup', entries: [selected(outbound)] }], subjectRef),
         { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }, 'a moved selected run cannot be reused');
       assert.deepEqual(durableCounts(), countsBefore);
 
@@ -707,7 +707,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
         assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, 'applied', 'one canonical execution per confirmed card');
       }
 
-      const documents = await propose('Separate documents 4502 and 4510', () => ['propose_workflow_start', { workflow: 'separations', entries: ['4502', '4510'], formType: null }]);
+      const documents = await propose('Separate documents 4502 and 4510', () => ['propose_workflow_start', { workflow: 'separations', entries: ['4502', '4510'] }]);
       assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
       assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);
       assert.equal(documents.targetLabel, '2 documents');
@@ -715,7 +715,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
 
       const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
         const eid = /\[\[E1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(eid);
-        return ['propose_workflow_start', { workflow: 'person-lookup', entries: [eid, 'Jordan Lee'], formType: null }];
+        return ['propose_workflow_start', { workflow: 'person-lookup', entries: [eid, 'Jordan Lee'] }];
       });
       assert.equal(listed.effect, 'workflow-start'); if (listed.effect !== 'workflow-start') throw new Error('start card required');
       assert.deepEqual(listed.startPlan.planned.map(row => row.display), [{ kind: 'person', employeeId: '10812345' }, { kind: 'person', name: 'Jordan Lee' }]);
@@ -729,7 +729,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
   });
 });
 
-it('turns an attached PDF into an OCR start card and an attached spreadsheet into a confirmed library import', async () => {
+it('refuses a PDF start while Emergency Contact is not served and confirms an attached spreadsheet as a library import', async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock, post } = fixture, client = createDashboardClient({ baseUrl: origin }), database = context.database;
     assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
@@ -738,13 +738,6 @@ it('turns an attached PDF into an OCR start card and an attached spreadsheet int
     publicCapabilityResponses(transport);
     assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
-    const roster = library.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
-      columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
-      rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
-    const rosterType = { id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null };
-    database.authority.workbooks.putType(rosterType);
-    library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
-    database.authority.workbooks.putType({ ...rosterType, defaultWorkbookId: roster.libraryId });
     let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
     transport.setResponse(init => {
       if (typeof init.body !== 'string') throw Error('synthetic request body required');
@@ -756,7 +749,7 @@ it('turns an attached PDF into an OCR start card and an attached spreadsheet int
       return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name, call_id: `call_${randomUUID()}`, arguments: JSON.stringify(args), status: 'completed' }],
         request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
     });
-    const turn = async (message: string, file: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>, script: (token: string) => readonly [string, unknown]) => {
+    const respond = async (message: string, file: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>, script: (token: string) => readonly [string, unknown]) => {
       const conversationId = randomUUID();
       assert.equal(AssistantHistoryResultSchema.parse(await clientDoor(client).history({ operation: 'create', conversationId, title: 'Chat' })).state, 'saved');
       if (client.assistantStageAttachment === undefined || client.assistantConversation === undefined) throw new Error("assistant attachment owners required");
@@ -764,7 +757,10 @@ it('turns an attached PDF into an OCR start card and an attached spreadsheet int
       assert.equal(staged.state, 'staged'); if (staged.state !== 'staged') throw new Error('staged attachment required');
       next = outbound => { const token = /\[\[A1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(token); return script(token); };
       const view = await client.assistantConversation(conversationId);
-      const envelope = AssistantRespondEnvelopeSchema.parse(await client.assistantRespond({ conversationId, expectedRevision: view.revision, messageId: randomUUID(), message, attachments: [staged.attachment.id] }));
+      return AssistantRespondEnvelopeSchema.parse(await client.assistantRespond({ conversationId, expectedRevision: view.revision, messageId: randomUUID(), message, attachments: [staged.attachment.id] }));
+    };
+    const turn = async (...args: Parameters<typeof respond>) => {
+      const envelope = await respond(...args);
       assert.ok(envelope.kind === 'result' && envelope.result.state === 'action-proposal', JSON.stringify(envelope)); if (envelope.kind !== 'result' || envelope.result.state !== 'action-proposal') throw new Error('card required');
       return envelope.result.proposal;
     };
@@ -774,15 +770,11 @@ it('turns an attached PDF into an OCR start card and an attached spreadsheet int
         ...(decision === 'confirm' ? { reviewedDigest: digest } : {}) }));
     });
 
-    const runs = () => database.authority.runs.listByWorkflow("ocr").length, before = runs();
-    const ocr = await turn('Run this PDF for Emergency Contact', { name: 'contact.pdf', mediaType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% synthetic\n') },
-      file => ['propose_workflow_start', { workflow: 'ocr', entries: [file], formType: 'emergency-contact' }]);
-    assert.ok(ocr.effect === 'workflow-start' && ocr.workflowId === 'ocr');
-    assert.deepEqual(ocr.startPlan.planned.map(row => row.display), [{ kind: 'file', fileName: 'contact.pdf', formType: 'emergency-contact' }]);
-    assert.equal(ocr.targetLabel, '1 file');
-    assert.equal(runs(), before, 'registering the source starts nothing');
-    assert.equal((await decide(ocr, 'cancel')).state, 'cancelled');
-    assert.equal(runs(), before);
+    assert.equal(configuredSources['emergency-contact'], 'mock');
+    const pdf = await respond('Run this PDF for Emergency Contact', { name: 'contact.pdf', mediaType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% synthetic\n') },
+      file => ['propose_workflow_start', { workflow: 'emergency-contact', entries: [file] }]);
+    assert.equal(pdf.kind === 'result' ? pdf.result.state === 'refused' && pdf.result.code : pdf.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');
+    assert.equal(database.authority.runs.listByWorkflow('emergency-contact').length, 0);
 
     const sheets = () => library.catalog().filter(entry => entry.name === 'Q3 roster').length;
     const imported = await turn('Import this as Q3 roster', { name: 'roster.csv', mediaType: 'text/csv', bytes: new TextEncoder().encode('Name,Dept\nAda,HR\n') },
