@@ -34,9 +34,17 @@ for (const theme of ["light", "dark"] as const) test(`decision mock @ ${theme}`,
     await expect(close).toHaveCount(0);
     const panel = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(panel.getByRole("heading", { level: 2 })).toHaveText(scene.subject);
-    if (scene.decision.kind === "pick") await panel.getByRole("radio").first().check();
-    await grow(page, panel.getByRole("region", { name: "Run logs", exact: true }));
-    await page.screenshot({ path: join(OUT, `${id}-${scene.name.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/-$/u, "")}-${theme}.png`) });
+    const logs = panel.getByRole("region", { name: "Run logs", exact: true });
+    const file = `${id}-${scene.name.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/-$/u, "")}`;
+    if (scene.decision?.kind === "pick") await panel.getByRole("radio").first().check();
+    await grow(page, logs);
+    await page.screenshot({ path: join(OUT, `${file}-${theme}.png`) });
+    if (scene.decision?.kind !== "pick") continue;
+    await panel.getByRole("radio", { name: "None of these", exact: true }).check();
+    await panel.getByRole("textbox", { name: scene.decision.other.label, exact: true }).fill(scene.decision.other.sample);
+    await expect(panel.getByRole("button", { name: scene.decision.continueLabel(scene.decision.other.name(scene.decision.other.sample)), exact: true })).toBeEnabled();
+    await grow(page, logs);
+    await page.screenshot({ path: join(OUT, `${file}-none-of-these-${theme}.png`) });
   }
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl}/?explore=fixture-person-lookup&decisionMock=explorer`);

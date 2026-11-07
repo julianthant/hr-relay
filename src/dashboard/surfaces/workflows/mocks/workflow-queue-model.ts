@@ -1,5 +1,5 @@
 import { QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
-import { decisionMock, type MockState } from "../../run-detail/decision-mock/decision-mock-model.js";
+import { decisionMock, type MockGroup, type MockState } from "../../run-detail/decision-mock/decision-mock-model.js";
 import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
 import type { QueueSurfaceWire } from "../../queue/queue-model.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
@@ -68,7 +68,27 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
 export function mockQueueSurfaces(runs: readonly MockRun[], anchorIso: string, allRuns = runs): readonly QueueSurfaceWire[] {
   const surfaces = runs.map(run => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : allRuns.find(parent => parent.id === run.parentId)));
   if (new Set(surfaces.map(surface => surface.runId)).size !== runs.length) throw new Error("MOCK_QUEUE_ID_COLLISION");
-  return surfaces;
+  const scene = decisionMock()?.scene;
+  const group = scene?.group;
+  if (!group) return surfaces;
+  const sample = mockQueueId(`mock:${scene.workflow}:sample`);
+  return surfaces.flatMap(surface => surface.runId === sample ? decisionGroupSurfaces(surface, group) : [surface]);
+}
+
+/** Design mock: one parent run for the PDF plus one inline member run per person. The selected run keeps the sample id. */
+function decisionGroupSurfaces(sample: QueueSurfaceWire, group: MockGroup): readonly QueueSurfaceWire[] {
+  const id = (key: string, selected: boolean) => selected ? sample.runId : mockQueueId(`${sample.runId}:${key}`);
+  const parentId = id("pdf", group.selected === "parent");
+  const firstFailed = group.members.findIndex(member => member.failed);
+  const memberIds = group.members.map((_, index) => id(String(index), group.selected === "member" && index === firstFailed));
+  const ended = { state: "present", value: sample.updatedAt } as const;
+  const parent = QueueSurfaceWireSchema.parse({ ...sample, surfaceKind: "operation", runId: parentId, itemId: parentId, title: group.title,
+    subtitle: { state: "present", value: group.subtitle }, status: "failed", endedAt: ended, liveMessage: { state: "absent", reason: "Members carry their own status" }, panelKind: "group",
+    memberRunIds: memberIds, memberRollup: { total: memberIds.length, terminal: memberIds.length, failed: group.members.filter(member => member.failed).length },
+    memberPreview: { state: "present", value: `${group.members[0].name} +${group.members.length - 1} more` } });
+  return [parent, ...group.members.map((member, index) => QueueSurfaceWireSchema.parse({ ...sample, runId: memberIds[index], itemId: memberIds[index], title: member.name,
+    subtitle: { state: "absent", reason: "The member title names the person" }, status: member.failed ? "failed" : "done", endedAt: ended,
+    liveMessage: { state: "absent", reason: "Run is terminal" }, parent: { runId: parentId, visibility: "inline" }, panelKind: "member" }))];
 }
 
 export function mockQueueOutcomes(runs: readonly MockRun[]): ReadonlyMap<string, QueueBusinessOutcome> {

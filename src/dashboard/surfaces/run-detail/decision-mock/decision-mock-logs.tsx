@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDownToLine, Check, ChevronRight, Copy, Eye, LoaderCircle, Monitor, MousePointer2, PanelsTopLeft, PencilLine } from "lucide-react";
+import { ArrowDownToLine, Check, Copy, Eye, LoaderCircle, Monitor, MousePointer2, PanelsTopLeft, PencilLine } from "lucide-react";
 import { Button, Field, IconButton, Input, SearchInput, useToasts } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogScreenshots } from "../logs/log-screenshots.js";
@@ -23,12 +23,12 @@ function Rows({ rows }: { rows: readonly MockRow[] }) {
   })}</dl>;
 }
 
-/** A page's rows as one table; `pick` adds the radio column that makes the evidence the choice. */
+export const OTHER_ID = "none-of-these";
+
+/** A page's rows as one table; `pick` adds the radio column that makes the evidence the choice, ending with "None of these". */
 export function DataTable({ table, pick }: { table: MockTable; pick?: { chosen?: string; choose: (id: string) => void } }) {
-  const [open, setOpen] = useState(false);
-  const total = table.rows.length + (table.folded?.rows.length ?? 0);
   const cell = (row: MockTableRow, index: number) => <td key={index} className={cn("py-2.5 tabular-nums", pick && index === 0 ? "pr-3" : "px-3", index === 0 ? "font-medium" : row.tone === "danger" && index === row.cells.length - 1 ? "text-ui-danger" : "text-ui-secondary")}>{row.cells[index]}</td>;
-  return <PageCard title={table.title} mode={`${total} rows · Read`}>
+  return <PageCard title={table.title} mode={`${table.rows.length} rows · Read`}>
     <table aria-label={table.label} className="w-full border-collapse text-left text-body">
       <thead><tr className="text-caption text-ui-muted">{pick && <th className="w-10 px-3 py-2 font-normal"><span className="sr-only">Choose</span></th>}{table.columns.map((column, index) => <th key={column} className={cn("py-2 font-normal", pick && index === 0 ? "pr-3" : "px-3")}>{column}</th>)}</tr></thead>
       <tbody>{table.rows.map(row => {
@@ -38,8 +38,9 @@ export function DataTable({ table, pick }: { table: MockTable; pick?: { chosen?:
           {row.cells.map((_, index) => cell(row, index))}
         </tr>;
       })}
-      {table.folded && <tr className="border-t border-ui-stroke"><td colSpan={table.columns.length + (pick ? 1 : 0)} className="p-0"><button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-body text-ui-secondary hover:bg-ui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info"><ChevronRight aria-hidden className={cn("size-3.5", open && "rotate-90")} />{table.folded.label}</button></td></tr>}
-      {open && table.folded?.rows.map(row => <tr key={row.id} className="border-t border-ui-stroke">{row.cells.map((_, index) => cell(row, index))}</tr>)}</tbody>
+      {pick && <tr onClick={() => pick.choose(OTHER_ID)} className={cn("cursor-pointer border-t border-ui-stroke hover:bg-ui-hover", pick.chosen === OTHER_ID && "bg-ui-hover")}>
+        <td className="px-3 py-2.5 align-middle"><input type="radio" name="mock-choice" className="block size-4 accent-[var(--ui-info)]" checked={pick.chosen === OTHER_ID} onChange={() => pick.choose(OTHER_ID)} aria-label="None of these" /></td>
+        <td colSpan={table.columns.length} className="py-2.5 pr-3 font-medium">None of these</td></tr>}</tbody>
     </table>
   </PageCard>;
 }
@@ -63,8 +64,12 @@ function Decision({ decision }: { decision: MockDecision }) {
   switch (decision.kind) {
     case "pick": {
       const row = decision.table.rows.find(item => item.id === chosen);
+      const { other } = decision;
+      const typed = chosen === OTHER_ID ? text.trim() : "";
+      const name = row?.name ?? (typed ? other.name(typed) : undefined);
       return <div className="flex flex-col gap-3"><Question text={decision.question} /><DataTable table={decision.table} pick={{ chosen, choose }} />
-        <div className="flex flex-wrap gap-2"><Actions primary={row ? decision.continueLabel(row.name) : "Continue"} disabled={!row} secondary={decision.secondary} /></div></div>;
+        <div className="flex flex-wrap items-end gap-2">{chosen === OTHER_ID && <Field label={other.label} className="w-56"><Input value={text} inputMode="numeric" placeholder={other.placeholder} onChange={event => setText(event.target.value)} /></Field>}
+          <Actions primary={name ? decision.continueLabel(name) : "Continue"} disabled={!row && !other.valid(typed)} secondary={decision.secondary} /></div></div>;
     }
     case "compare": return <div className="flex flex-col gap-3"><Question text={decision.question} note={decision.note} />
       <PageCard title={decision.title} mode="Read"><table aria-label={decision.title} className="w-full border-collapse text-left text-body">
@@ -94,12 +99,12 @@ const GUTTER: Readonly<Record<MockState, { label: string; className: string }>> 
   paused: { label: "Paused", className: "text-ui-muted" }, stalled: { label: "No progress", className: "text-ui-danger" }, cancelling: { label: "Cancelling", className: "text-ui-muted" },
 };
 
-function StepBody({ step, decision }: { step: MockStep; decision: MockDecision }) {
+function StepBody({ step, decision }: { step: MockStep; decision?: MockDecision }) {
   const blocks = step.blocks.filter((block): block is Exclude<MockBlock, { kind: "decision" }> => block.kind !== "decision");
   return <>
     {blocks.map((block, index) => <Block key={index} block={block} />)}
     {step.outcome && <Line icon={<Check aria-hidden className="size-3.5 shrink-0 text-ui-positive" />}>{step.outcome}</Line>}
-    {blocks.length !== step.blocks.length && <Decision decision={decision} />}
+    {decision && blocks.length !== step.blocks.length && <Decision decision={decision} />}
   </>;
 }
 

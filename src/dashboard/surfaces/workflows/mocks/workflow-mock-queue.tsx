@@ -8,7 +8,7 @@ import { mockApprovalError, mockNeedsReview, mockQueueStatus, mockRunLog, mockRu
 import { mockWorkflow } from "./workflow-mock-catalog.js";
 import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
-import type { QueueSortKey, QueueSurfaceWire } from "../../queue/queue-model.js";
+import { queueItemKey, type QueueSortKey, type QueueSurfaceWire } from "../../queue/queue-model.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { mockReviewProps, reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
@@ -33,10 +33,10 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const queueState = useMemo(() => ({
     selectedRunId: selected ? mockQueueId(selected) : undefined,
-    openWells: new Set<string>(),
+    openWells: new Set(surfaces.filter(surface => surface.surfaceKind === "operation").map(queueItemKey)),
     panelWorkflowId: runs[0]?.workflowId,
     nowIso,
-  }), [selected, runs, nowIso]);
+  }), [selected, runs, nowIso, surfaces]);
   const queueHandlers = useMemo(() => ({
     onSelect: (id: string) => {
       const target = ids.get(id);

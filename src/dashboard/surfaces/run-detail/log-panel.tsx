@@ -6,7 +6,8 @@ import { LogTimeline } from "./logs/log-timeline.js";
 import { decisionMock, type MockState } from "./decision-mock/decision-mock-model.js";
 import { DecisionMockFeed } from "./decision-mock/decision-mock-logs.js";
 import { StatusBadge } from "../shared/status/status.js";
-import { Button } from "../../ds/ui.js";
+import { Button, IconButton } from "../../ds/ui.js";
+import { RotateCcw } from "lucide-react";
 import { runHeaderAction, type RunHeaderContext } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";
 
@@ -26,7 +27,7 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, status,
     const data = mock.scene;
     title = data.subject;
     status = <StatusBadge {...MOCK_BADGE[data.state]} presentation="queue" />;
-    toolbar = undefined;
+    toolbar = data.headerRetry ? <IconButton label={data.headerRetry} icon={<RotateCcw aria-hidden className="size-3.5" />} /> : undefined;
     navigation = <LogTimeline stages={data.timeline} onJump={() => undefined} />;
     content = <DecisionMockFeed data={data} />;
   }
