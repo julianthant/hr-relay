@@ -295,7 +295,7 @@ describe("stopped native upgrade admission",()=>{
     Reflect.apply(exec,this,["PRAGMA defer_foreign_keys=ON; DROP TRIGGER worker_pools_retained; DELETE FROM worker_pools; CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END; PRAGMA defer_foreign_keys=OFF;"]);
    }
   });
-  await assert.rejects(f.run(),/FOREIGN KEY constraint failed/u);
+  await assert.rejects(f.run(),/authority-upgrade-foreign-key-check-failed/u);
   assert.equal(injected,true);
   vi.restoreAllMocks();
   assert.deepEqual(readFileSync(f.path),before);
