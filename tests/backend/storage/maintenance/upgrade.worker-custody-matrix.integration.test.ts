@@ -108,7 +108,9 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const evidence = database.authority.runResults.get(childId); assert.ok(evidence);
     assert.equal(terminalEvidenceResult(evidence)?.kind, "lifecycle-evidence");
     receipt(cancelled);
-    const joined = await execution.step(root, world.SIGNAL);
+    const diag = JSON.stringify({ slots: database.authority.workerSlots.list?.() ?? null, parent: (({ lifecycle, pause, cancelRequested, version, claimGeneration }) => ({ lifecycle, pause, cancelRequested, version, claimGeneration }))(current(root.envelope.runId)),
+      readiness: database.authority.dependencies.readiness(root.envelope.runId, "cancel"), join: database.authority.dependencies.readiness(root.envelope.runId, "join") });
+    const joined = await execution.step(root, world.SIGNAL).catch((error: unknown) => { throw new AggregateError([error], diag); });
     const parent = current(root.envelope.runId);
     assert.ok(parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "failed", JSON.stringify({ outcome: joined.outcome, lifecycle: parent.lifecycle }));
     retryCommandId = randomUUID();
