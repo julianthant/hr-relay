@@ -46,6 +46,7 @@ import { timelineCheckpointReference } from "../../../../models/events/timeline.
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
+import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
 
 function settledGateWire(
@@ -53,6 +54,7 @@ function settledGateWire(
   workflowId: string,
   stored: GateResultRecord | undefined,
   folded: RunFoldRecord["resolvedGates"][number] | undefined,
+  answer: DecisionAnswerer | undefined,
 ): unknown {
   if (stored === undefined) {
     return folded === undefined
@@ -112,6 +114,7 @@ function settledGateWire(
     resolvedBy: stored.resolvedBy,
     resolvedAt: stored.resolvedAt,
     revision: 2,
+    ...(answer === undefined || gateId !== ONBOARDING_WRITE_REVIEW_GATE ? {} : { answer: answer(stored.commandId, { id: arm.value, label: arm.label }, stored.resolvedAt) }),
   };
 }
 
@@ -186,7 +189,9 @@ export function buildRunGate(
       ...(decision === undefined ? {} : { decision }),
     };
   }
-  return settledGateWire(runId, run.envelope.workflow, stored.at(-1), row?.resolvedGates.at(-1));
+  const answer = deps.operatorName === undefined || deps.canonical === undefined ? undefined
+    : decisionAnswerer(deps.canonical.database.authority.commands, deps.operatorName);
+  return settledGateWire(runId, run.envelope.workflow, stored.at(-1), row?.resolvedGates.at(-1), answer);
 }
 
 /* ── the parked-write section (ref write-safety ) ──────────────────────────────── */

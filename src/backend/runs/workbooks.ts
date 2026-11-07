@@ -10,6 +10,8 @@ import { RunWorkbookSnapshotReferenceSchema, RunWorkbookNamedReferenceSchema, pa
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../models/dashboard/run-decision.js";
 import { projectDecision } from "./decisions/project-decision.js";
+import { DECISION_CATALOG } from "./decisions/decision-catalog.js";
+import type { DecisionAnswerer } from "./decisions/decision-answer.js";
 import { NativeRunEventWireSchema, RunWorkbookWritesWireSchema, WorkbookReferenceRowCandidateWireSchema, RunWorkbookReferenceChoiceWireSchema, type RunWorkbookReferenceChoiceWire, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
 
 import { WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
@@ -116,6 +118,13 @@ function referenceOfOperation(run: RunRecord, entry: WorkbookOperationRecord) {
   return found;
 }
 
+/** D11's answer: the resolving write's recorded command, at the time it was recorded. */
+function rowAnswer(repositories: AuthorityRepositories, run: RunRecord, resolving: WorkbookOperationRecord, answer: DecisionAnswerer) {
+  const event = repositories.timelineEvents.get(operationEventId(run.envelope.runId, resolving.libraryId, resolving.operation.operationId));
+  if (event?.payload.kind !== "workbook-write-recorded" || event.payload.resolvedBy === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  return answer(event.payload.resolvedBy, { id: "confirm", label: DECISION_CATALOG["workbook-row"].options[0]?.label ?? "Confirm row" }, event.payload.at);
+}
+
 function operationEventId(runId: string, libraryId: string, operationId: string) {
   return deriveStableUuid("run-workbook-write", canonicalJsonStringify({ runId, libraryId, operationId }));
 }
@@ -146,8 +155,8 @@ function capturedOperations(repositories: AuthorityRepositories, run: RunRecord)
   return entries;
 }
 
-function hasResolution(entries: readonly WorkbookOperationRecord[], entry: WorkbookOperationRecord): boolean {
-  return entries.some(candidate => candidate.libraryId === entry.libraryId && candidate.receipt.state === "applied"
+function resolvingEntry(entries: readonly WorkbookOperationRecord[], entry: WorkbookOperationRecord): WorkbookOperationRecord | undefined {
+  return entries.find(candidate => candidate.libraryId === entry.libraryId && candidate.receipt.state === "applied"
     && candidate.operation.change.kind === "patch" && candidate.operation.change.resolves?.operationId === entry.operation.operationId);
 }
 
@@ -433,7 +442,7 @@ function crmCandidateWire(candidate: z.infer<typeof CrmDocumentRowCandidateSchem
   });
 }
 
-function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunRecord): RunWorkbookReferenceChoiceWire[] {
+function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunRecord, answer: DecisionAnswerer | undefined): RunWorkbookReferenceChoiceWire[] {
   const data = crmReferenceRows(repositories, run);
   if (data === undefined || data.rows.state === "resolved") return [];
   const execution = authenticateWorkbookReferenceExecution(repositories, run);
@@ -454,7 +463,9 @@ function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunR
       const native = owner.envelope.runId !== run.envelope.runId ? queuedReferenceNative(repositories, run)
         : NativeRunEventWireSchema.parse({ eventId: selected.record.eventId, order: selected.record.cursor, runId: run.envelope.runId,
           attempt: event.attempt, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, nodeId: event.gateId });
-      return [{ ...base, native, resolution: { state: "resolved", workbookVersion: data.reference.value.snapshot.version, resolvedAt: event.at, selected: crmCandidateWire(selected.candidate) } }];
+      const picked = crmCandidateWire(selected.candidate);
+      return [{ ...base, native, resolution: { state: "resolved", workbookVersion: data.reference.value.snapshot.version, resolvedAt: event.at, selected: picked,
+        ...(answer === undefined ? {} : { answer: answer(event.commandId, { id: "confirm", label: picked.label }, event.at) }) } }];
     }
     const native = pendingReferenceNative(repositories, run, CRM_DOCUMENT_ROW_CHOICE_GATE_ID);
     if (run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== CRM_DOCUMENT_ROW_CHOICE_GATE_ID || person.resolution.candidates.length === 0) {
@@ -500,8 +511,8 @@ function resolveCrmReference(repositories: AuthorityRepositories, run: RunRecord
     : { schemaHash: deriveSchemaHash(CrmDocumentRowChoiceSchema, "output"), value: complete };
 }
 
-function buildReferenceChoices(repositories: AuthorityRepositories, run: RunRecord) {
-  if (crmReferenceWorkflows.has(run.envelope.workflow)) return buildCrmReferenceChoices(repositories, run);
+function buildReferenceChoices(repositories: AuthorityRepositories, run: RunRecord, answer: DecisionAnswerer | undefined) {
+  if (crmReferenceWorkflows.has(run.envelope.workflow)) return buildCrmReferenceChoices(repositories, run, answer);
   if (run.envelope.workflow !== "onboarding") return [];
   const { roster, reference, binding } = onboardingReference(run);
   if (roster.state === "resolved") return [];
@@ -521,9 +532,11 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     ];
     const sheet = reference.value.snapshot.worksheets.find(sheet => sheet.sheetId === row.binding.sheetId);
     if (sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    const label = `${sheet.name} · ${legalName.lastName}, ${legalName.firstName}`;
     return [{ ...base, native: choice.gate.runId === run.envelope.runId ? choice.native : queuedReferenceNative(repositories, run),
       resolution: { state: "resolved", workbookVersion: row.binding.workbookVersion, resolvedAt: choice.gate.resolvedAt,
-      selected: { sheetId: row.binding.sheetId, rowId: row.binding.rowId, label: `${sheet.name} · ${legalName.lastName}, ${legalName.firstName}`, values } } }];
+      selected: { sheetId: row.binding.sheetId, rowId: row.binding.rowId, label, values },
+      ...(answer === undefined || "source" in choice.gate ? {} : { answer: answer(choice.gate.commandId, { id: "confirm", label }, choice.gate.resolvedAt) }) } }];
   }
   const native = pendingReferenceNative(repositories, run);
   if (run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== ONBOARDING_ROSTER_GATE_ID) {
@@ -551,9 +564,9 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     decision: rowPickDecision("pick-row", sheet?.name ?? "Roster rows", action, picks) } }];
 }
 
-export function buildRunWorkbookSection(repositories: AuthorityRepositories, run: RunRecord): RunWorkbookWritesWire {
+export function buildRunWorkbookSection(repositories: AuthorityRepositories, run: RunRecord, answer?: DecisionAnswerer): RunWorkbookWritesWire {
   const entries = capturedOperations(repositories, run);
-  return RunWorkbookWritesWireSchema.parse({ runId: run.envelope.runId, referenceChoices: buildReferenceChoices(repositories, run), operations: entries.map(entry => {
+  return RunWorkbookWritesWireSchema.parse({ runId: run.envelope.runId, referenceChoices: buildReferenceChoices(repositories, run, answer), operations: entries.map(entry => {
     const event = repositories.timelineEvents.get(operationEventId(run.envelope.runId, entry.libraryId, entry.operation.operationId));
     if (event?.payload.kind !== "workbook-write-recorded" || event.payload.runId !== run.envelope.runId
       || event.payload.attempt > run.envelope.attempt || event.payload.traceId !== run.envelope.traceId
@@ -562,7 +575,8 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
       attempt: event.payload.attempt, traceId: event.payload.traceId, spanPath: run.envelope.traceId };
     const base = { receipt: entry.receipt, native };
     if (entry.receipt.state !== "resolve-required") return { ...base, resolution: { state: "not-required" } };
-    if (hasResolution(entries, entry)) return { ...base, resolution: { state: "resolved" } };
+    const resolving = resolvingEntry(entries, entry);
+    if (resolving !== undefined) return { ...base, resolution: { state: "resolved", ...(answer === undefined ? {} : { answer: rowAnswer(repositories, run, resolving, answer) }) } };
     const reference = referenceOfOperation(run, entry).value;
     const change = entry.operation.change;
     if (change.kind !== "patch" && change.kind !== "add") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
@@ -659,7 +673,7 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
       }
       const entries = capturedOperations(repositories, run);
       const original = entries.find(entry => entry.libraryId === command.target.libraryId && entry.operation.operationId === command.target.operationId);
-      if (original === undefined || original.receipt.state !== "resolve-required" || hasResolution(entries, original)
+      if (original === undefined || original.receipt.state !== "resolve-required" || resolvingEntry(entries, original) !== undefined
         || sha256Hex(canonicalJsonStringify(original.receipt)) !== command.target.receiptDigest) {
         rejectCommandRequest(command, "invalid-state", "The retained workbook choice changed.");
       }

@@ -5,6 +5,7 @@ import { afterAll, afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { buildRunWorkbookSection, createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
+import { decisionAnswerer } from "../../../src/backend/runs/decisions/decision-answer.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookLibraryAdapter } from "../../../src/backend/processing/providers/workbook-library-adapter.js";
 import { createProviderClient } from "../../../src/backend/processing/providers/provider-client.js";
@@ -213,6 +214,10 @@ it("serves a resolve-required Logs row choice and applies only the retained valu
   expect(result.state).toBe("applied");
   const after = f.section(run);
   expect(after.operations[0].resolution).toEqual({ state: "resolved" });
+  const answered = f.database.withAuthorityReadSnapshot(() => buildRunWorkbookSection(f.database.authority, run,
+    decisionAnswerer(f.database.authority.commands, () => "Fixture Operator")));
+  expect(answered.operations[0].resolution).toEqual({ state: "resolved", answer: { optionId: "confirm", label: "Confirm row", at: NOW,
+    actor: { kind: "person", name: "Fixture Operator" } } });
   expect(after.operations[1].receipt).toMatchObject({ state: "applied", changes: [{ newValue: "complete" }] });
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBe("complete");
   expect(f.library.read(f.id).workbook.sheets[1].rows[1].cells[1].value).toBeNull();
