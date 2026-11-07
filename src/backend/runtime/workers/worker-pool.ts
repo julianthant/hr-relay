@@ -103,8 +103,12 @@ interface MemberRecord {
   readonly pending: Map<string, PendingReply>;
   timers: MonotonicDeadlineHandle[];
   stopping: Promise<void> | undefined;
+  /** Resolves when the OS exit is observed or the bounded observation window closes. */
   readonly exited: Promise<void>;
   resolveExited(): void;
+  /** Resolves only when the first settlement of an observed OS exit has finished. */
+  readonly settled: Promise<void>;
+  resolveSettled(): void;
   ready: ((error: Error | undefined) => void) | undefined;
 }
 
@@ -136,6 +140,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     try { await deps.settleExit(record.member, fact); record.exit = { ...fact, settlement: "settled" }; }
     catch (error) { record.settlementFailure = error; record.exit = { ...fact, settlement: "failed" }; deps.onFault?.(record.member, error); }
     changed(record);
+    record.resolveSettled();
     record.resolveExited();
   };
 
@@ -255,7 +260,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       const exiting = records.get(member.workerId);
       // An observed exit stays reserved until its first settlement finishes; a failure stays the member's refusal.
       if (exiting?.state === "exited" && exiting.exit === undefined) {
-        await exiting.exited;
+        await exiting.settled;
         if (settlementOf(exiting) !== "settled") throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED", { cause: exiting.settlementFailure });
       }
       const prior = records.get(member.workerId);
@@ -271,9 +276,11 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       catch (error) { if (prior !== undefined) prior.settling = false; throw error; }
       let resolveExited!: () => void;
       const exited = new Promise<void>(resolve => { resolveExited = resolve; });
+      let resolveSettled!: () => void;
+      const settled = new Promise<void>(resolve => { resolveSettled = resolve; });
       const record: MemberRecord = { member, lifetimeId: deps.ids.uuid(), port, startedAt: at(), version: 0, state: "starting", directive: "run", settling: false,
         activity: undefined, browsers: new Map(), held: undefined, exit: undefined, settlementFailure: undefined,
-        pending: new Map(), timers: [], stopping: undefined, exited, resolveExited, ready: undefined };
+        pending: new Map(), timers: [], stopping: undefined, exited, resolveExited, settled, resolveSettled, ready: undefined };
       records.set(member.workerId, record);
       const readiness = new Promise<Error | undefined>(resolve => { record.ready = resolve; });
       if (port.pid === undefined) {
@@ -282,7 +289,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
         cancelTimers(record);
         record.state = "exited";
         record.exit = { code: null, signal: null, at: at(), outcome: "crashed", settlement: "settled" };
-        changed(record); record.resolveExited();
+        changed(record); record.resolveSettled(); record.resolveExited();
         throw new WorkerPoolError("WORKER_START_FAILED", { cause: failure });
       }
       port.onExit((code, signal) => { void onExit(record, code, signal); });
@@ -335,7 +342,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       for (;;) {
         const open = [...records.values()].filter(record => record.state === "exited" ? record.exit === undefined : record.held === undefined);
         if (open.length === 0) break;
-        await Promise.all(open.map(record => record.state === "exited" ? record.exited : escalate(record, reason, false)));
+        await Promise.all(open.map(record => record.state === "exited" ? record.settled : escalate(record, reason, false)));
       }
       return Object.freeze([...records.values()].map(view));
     },

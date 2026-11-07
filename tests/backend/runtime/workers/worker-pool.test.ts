@@ -285,6 +285,45 @@ describe("worker pool", () => {
     });
   }
 
+  for (const probe of ["start", "shutdown"] as const) for (const outcome of ["settled", "failed"] as const) {
+    it(`holds ${probe} behind the settlement of an exit observed after the observation window closed (${outcome})`, async () => {
+      let release: (error?: Error) => void = () => {};
+      const barrier = new Promise<void>((resolve, reject) => { release = error => error === undefined ? resolve() : reject(error); });
+      const w = world({ settle: () => barrier });
+      const { port, target } = await running(w);
+      const stopped = assert.rejects(w.pool.stop(target, "operator"), { code: "WORKER_EXIT_UNOBSERVED" }); await flush();
+      await w.advance(2_000); await w.advance(3_000); await w.advance(500);
+      await stopped;
+      assert.equal(w.pool.snapshot()[0]?.held, "exit-unobserved");
+      port.exit(null, "SIGKILL"); await flush();
+      assert.equal(w.pool.snapshot()[0]?.state, "exited");
+      assert.equal(w.pool.snapshot()[0]?.exit, undefined);
+      let done = false;
+      const pending = (probe === "start" ? w.pool.start(member) : w.pool.stopAll("shutdown"))
+        .then(value => { done = true; return value; }, (error: unknown) => { done = true; return error; });
+      await flush(); await flush();
+      assert.equal(done, false, `${probe} waits for the late exit's settlement`);
+      assert.equal(w.ports.length, 1);
+      release(outcome === "settled" ? undefined : new Error("settlement refused"));
+      if (probe === "shutdown") {
+        const views = await pending as readonly WorkerMemberView[];
+        assert.equal(views[0]?.exit?.settlement, outcome);
+        if (outcome === "settled") requireStoppedPool(views);
+        else assert.throws(() => { requireStoppedPool(views); }, { code: "WORKER_EXIT_SETTLEMENT_FAILED" });
+        return;
+      }
+      if (outcome === "failed") {
+        assert.equal(((await pending) as { code?: string }).code, "WORKER_EXIT_SETTLEMENT_FAILED");
+        assert.equal(w.ports.length, 1);
+        return;
+      }
+      await flush();
+      assert.equal(w.ports.length, 2);
+      w.ports[1]?.ready();
+      assert.equal(((await pending) as WorkerMemberView).state, "running");
+    });
+  }
+
   it("stops a replacement a waiting Start publishes while shutdown is sweeping", async () => {
     let release: () => void = () => {};
     const first = new Promise<void>(resolve => { release = resolve; });
