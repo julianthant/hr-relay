@@ -44,8 +44,6 @@
 .workflow-rail-running { order: -1; display: flex; width: 28px; flex-shrink: 0; }
 .workflow-rail button:has(> .workflow-rail-running) { gap: 6px; padding-left: 6px; }
 
-.session-panel-toggle::before { content: ""; position: absolute; inset: 0; background: var(--ui-hover); mask-image: linear-gradient(to right, black calc(100% - var(--ds-space-page)), transparent); opacity: 0; transition: opacity var(--ds-dur-2) var(--ds-ease-out); }
-.session-panel-toggle:hover::before { opacity: 1; }
 .dashboard-panel-columns { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(var(--ds-w-side-panel),30%) minmax(0,1fr); gap: var(--ds-space-cozy); padding: var(--ds-space-cozy); background: var(--ui-canvas); }
 .dashboard-queue-column, .dashboard-log-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .dashboard-queue-column { container-type: inline-size; container-name: queue; }
