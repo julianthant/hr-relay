@@ -17,6 +17,8 @@ export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest;
 export interface SessionPreviewCommandPort {
   send(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
   check(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
+  /** Member controls the shared executor still holds uncertain for this scope, so a remounted panel keeps them locked and checkable. */
+  retained?(): readonly SessionPreviewOperation[];
 }
 
 export interface SessionCommandBinding {
@@ -103,6 +105,19 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN"), data };
   };
   return {
+    retained() {
+      const binding = current().binding;
+      if (binding === undefined) return [];
+      return binding.executor.retainedAttempts().flatMap((retained): SessionPreviewOperation[] => {
+        const command = retained.request;
+        if ("targets" in command || command.family !== "worker-browser" || retained.outcome?.kind !== "uncertain"
+          || !["pause-worker", "resume-worker", "retry-worker", "stop-worker", "remove-worker"].includes(command.type) || !("workerId" in command.target)
+          || retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return [];
+        const request: SessionPreviewRequest = { id: command.commandId, target: command.target.workerId, action: command.type.replace(/-worker$/u, "") as SessionControl };
+        if (!attempts.has(request.id)) attempts.set(request.id, { body: JSON.stringify(request), actor: binding.scope.actorId, client: binding.client, authority: binding.scope.authority, commands: [command], expected: 1 });
+        return [{ request, state: "uncertain", message: retained.outcome.feedback.text }];
+      });
+    },
     async send(request) {
       if (attempts.has(request.id)) throw new Error("SESSION_COMMAND_ALREADY_SUBMITTED");
       const binding = requireBinding();
@@ -187,8 +202,8 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const identity = useRef(source?.scope ?? port);
   if (identity.current !== (source?.scope ?? port)) { identity.current = source?.scope ?? port; epoch.current = {}; }
   const latestSource = useRef(sourceKey); latestSource.current = sourceKey;
-  const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>({});
-  const operationsRef = useRef<Record<string, SessionPreviewOperation>>({});
+  const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>(() => Object.fromEntries((port.retained?.() ?? []).map(operation => [operation.request.target, operation])));
+  const operationsRef = useRef<Record<string, SessionPreviewOperation>>(operations);
   const live = useRef(true);
   const ordinal = useRef(5);
   const idle = useRef<((request: SessionPreviewRequest, data?: SessionsViewState) => void) | undefined>(undefined);
