@@ -62,8 +62,9 @@ export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfi
   const busy = disposition === 'confirming';
   return <article className="hub-card hub-proposal" aria-label={`Proposed ${proposal.workflow.label}`}>
     <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
-      <ProposalRows rows={rows} />
-      <dt>Options</dt><dd>{options.join(' · ')}</dd>
+      {proposal.issued?.effect === 'spreadsheet' ? proposal.issued.facts.map(fact => <Fragment key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></Fragment>) : <>
+        <ProposalRows rows={rows} />
+        <dt>Options</dt><dd>{options.join(' · ')}</dd></>}
     </dl></div>
     <footer className="hub-card-footer"><span className="hub-footer-status" role="status">{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
       <Button size="sm" variant="ghost" disabled={disposition !== 'review'} onClick={onCancel}>Cancel</Button>

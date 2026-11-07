@@ -1202,6 +1202,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "request/assistant-history", path: "messages[].text", origin: "external-text" },
   { surface: "wire/assistant-history", path: "chats[].title", origin: "operator-authored" },
   { surface: "wire/assistant-conversation", path: "messages[].text", origin: "external-text" },
+  { surface: "wire/assistant-conversation", path: "messages[].attachments[].name", origin: "local-filesystem-name" },
   { surface: "egress/assistant-user-message", path: "content", origin: "operator-authored",
     exception: "Operator decision D1 (11-06): the operator's typed assistant message is sent to ChatGPT as typed, after maskOperatorText replaces Employee IDs with references and SSNs, emails, phone numbers and long digit runs with fixed markers." },
   { surface: "egress/assistant-replay", path: "answer", origin: "external-text",

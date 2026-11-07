@@ -83,7 +83,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   /** The decision captions stored in the card's conversation. */
   const captions = () => (database.authority.assistantHistory.conversation(conversationId, clock.now().toISOString())?.messages ?? [])
     .filter(row => row.kind === "decision").map(row => row.text);
-  const context = { signal: new AbortController().signal, references, actorId: "local-operator", conversationId, assertCurrent() {},
+  const context = { signal: new AbortController().signal, references, actorId: "local-operator", conversationId, operatorText: "", assertCurrent() {},
     assertRetainedCurrent() { if (!modelCurrent) throw new Error("model verification expired"); } };
   const tool = (name: string) => { const found = proposals.plugin.tools.find(candidate => candidate.name === name); assert.ok(found?.kind === "proposal"); return found; };
   const decide = async (proposal: AssistantActionProposal, decision: "confirm" | "cancel", signal = new AbortController().signal, digest?: string) =>

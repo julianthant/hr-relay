@@ -191,6 +191,7 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_LIMIT: ERROR_CATALOG.ASSISTANT_LIMIT.text,
   ASSISTANT_SUBJECT_REQUIRED: ERROR_CATALOG.ASSISTANT_SUBJECT_REQUIRED.text,
   ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
+  ASSISTANT_SPREADSHEET_REFUSED: ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text,
 });
 export type AssistantFailureCode = keyof typeof ASSISTANT_FAILURES;
 export const AssistantActionIdentitySchema = z.strictObject({ chatId: z.uuid(), actionId: z.uuid(), revision: z.number().int().positive() });
@@ -210,6 +211,8 @@ export const AssistantRowDisplaySchema = z.discriminatedUnion("kind", [
 export const AssistantProposalRowSchema = z.strictObject({ title: z.string().min(1), subtitle: z.string().min(1).optional(), display: AssistantRowDisplaySchema })
   .refine(row => row.display.kind !== "person" || row.display.name !== undefined || row.display.employeeId !== undefined, "a person row shows a name or an EID");
 export type AssistantProposalRow = z.infer<typeof AssistantProposalRowSchema>;
+/** The Spreadsheets library changes the assistant may propose; each wraps one existing library owner call. */
+export const AssistantSpreadsheetActionSchema = z.enum(["import", "new-version", "set-type", "sync", "link", "unlink", "rename", "create-version", "use-version", "rename-version"]);
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
   z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("workflow-start"), source: z.enum(["entries", "run", "rerun"]),
     workflowId: z.string().min(1), dryRun: z.boolean(),
@@ -225,6 +228,8 @@ export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
     && Date.parse(value.expiresAt) <= Date.parse(value.startPlan.expiresAt), "assistant start must bind one accepted current plan"),
   z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("run-action"), action: z.enum(["pause", "resume", "cancel"]),
     workflowId: z.string().min(1), run: z.strictObject({ runId: z.uuid(), expectedVersion: z.number().int().positive() }), row: AssistantProposalRowSchema }),
+  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("spreadsheet"), action: AssistantSpreadsheetActionSchema,
+    facts: z.array(z.strictObject({ label: z.string().min(1).max(40), value: z.string().min(1).max(320) })).min(1).max(6) }),
 ]);
 export type AssistantActionProposal = z.infer<typeof AssistantActionProposalSchema>;
 /** Confirm carries the SHA-256 of the canonical JSON of the exact proposal the operator reviewed; Cancel is identity only. */

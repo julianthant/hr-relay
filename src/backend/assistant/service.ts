@@ -255,7 +255,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           options.assertComposition?.();
           if (!modelPolicyCurrent() || !options.account.revalidateAuthority(authority)) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
         };
-        const context = { signal, references: table, actorId: options.actorId, conversationId: request.conversationId, assertCurrent: assertAuthority, assertRetainedCurrent };
+        const context = { signal, references: table, actorId: options.actorId, conversationId: request.conversationId, operatorText: masked, assertCurrent: assertAuthority, assertRetainedCurrent };
         for (let step = 0; step < MAX_MODEL_CALLS; step++) {
           assertAuthority();
           if (structureBytes(input) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_LIMIT") };

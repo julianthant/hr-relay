@@ -135,7 +135,7 @@ it("keeps every seeded personal value out of the provider requests across all pr
     const envelope = await service.respond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: "Who ran recently, and what needs my attention?" }, new AbortController().signal);
     assert.equal(envelope.kind, "result"); if (envelope.kind !== "result") throw new Error("result required");
     const { result } = envelope;
-    assert.equal(result.state, "answered"); if (result.state !== "answered") throw new Error("answer required");
+    assert.equal(result.state, "answered", JSON.stringify(result)); if (result.state !== "answered") throw new Error("answer required");
     assert.match(result.text, new RegExp(`^Found ${CANARIES.subject} in Person Lookup run, \\d{4}-\\d{2}-\\d{2}\\.$`, "u"));
     assert.equal(bodies.length, 11);
     for (const [index, body] of bodies.entries()) for (const [name, value] of Object.entries(CANARIES)) assert.equal(body.includes(value), false, `request ${String(index + 1)} carried ${name}`);

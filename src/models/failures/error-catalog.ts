@@ -148,6 +148,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_CANCELLED: catalogEntry("The assistant request was cancelled.", EmptyParametersSchema),
   ASSISTANT_LIMIT: catalogEntry("The assistant reached its request limit.", EmptyParametersSchema),
   ASSISTANT_SUBJECT_REQUIRED: catalogEntry("Select an unambiguous subject before preparing a proposal.", EmptyParametersSchema),
+  ASSISTANT_SPREADSHEET_REFUSED: catalogEntry("The Spreadsheets library refused this change. Review the workbook in Spreadsheets.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The current planner refused this proposal. Review it in Run.", EmptyParametersSchema),
 
   RUN_LOG_DISPLAY_VALUE_UNMAPPED: catalogEntry(

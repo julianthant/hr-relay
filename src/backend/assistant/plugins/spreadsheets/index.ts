@@ -12,14 +12,14 @@ export const worksheetFacts = (workbook: Readonly<{ sheets: readonly Readonly<{ 
 const flags = (workbook: Readonly<{ hasFormulas: boolean; unsupportedMetadata?: boolean | undefined }>) => ({ formulas: workbook.hasFormulas, unsupportedMetadata: workbook.unsupportedMetadata === true });
 
 /** A library workbook's current entry by `S` reference; removed or missing workbooks are unavailable. */
-export function catalogEntry(deps: AssistantPluginDeps, context: AssistantToolContext, sheet: string) {
+export function catalogEntry(deps: Pick<AssistantPluginDeps, "workbooks">, context: AssistantToolContext, sheet: string) {
   const libraryId = context.references.resolve(sheet, ["S"]).target;
   const entry = deps.workbooks().catalog().find(candidate => candidate.libraryId === libraryId);
   if (entry === undefined || entry.state.removed) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
   return entry;
 }
 /** The staged bytes behind an `A` reference of this chat, parsed by the Spreadsheets importer; parse failures are fixed codes. */
-export async function attachmentWorkbook(deps: AssistantPluginDeps, context: AssistantToolContext, file: string) {
+export async function attachmentWorkbook(deps: Pick<AssistantPluginDeps, "attachment">, context: AssistantToolContext, file: string) {
   const record = deps.attachment(context.conversationId, context.references.resolve(file, ["A"]).target);
   if (record === undefined) throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNAVAILABLE");
   if (record.mediaType !== "text/csv" && record.mediaType !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNSUPPORTED");
