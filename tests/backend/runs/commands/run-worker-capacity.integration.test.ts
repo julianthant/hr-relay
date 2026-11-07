@@ -192,6 +192,35 @@ describe("automatic Run capacity", () => {
     assert.deepEqual(h.database.authority.workerControls.list(), controls);
   });
 
+  it("respawns the stopped sole member when a run is resumed, and that worker claims it", async () => {
+    const h = await openControlHarness();
+    await spawnPoolWorker(h);
+    const { request } = dashboardLaunch(h);
+    const started = h.kernel.execute(request); assert.ok(started.state === "applied");
+    const runTarget = started.affectedTargets.find(target => target.family === "run"); assert.ok(runTarget?.family === "run");
+    const run = () => { const current = h.database.authority.runs.get(runTarget.runId); assert.ok(current); return current; };
+    const runCommand = (type: "pause" | "resume") => ({ commandId: nextCommandId(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+      source: "dashboard", family: "run", type, target: { runId: runTarget.runId, expectedVersion: run().version } });
+    assert.equal((await launchCommands(h).submit(runCommand("pause"))).state, "applied");
+    h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
+      lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "shutdown" }, now: NOW });
+    h.children[0]?.emitExit(0, null);
+    const pending = launchCommands(h).submit(runCommand("resume"));
+    await proveLaunchBirth(h);
+    const resumed = await pending;
+    assert.equal(resumed.state, "applied");
+    assert.equal(resumed.state === "applied" ? resumed.workerStartup : "unexpected", undefined);
+    assert.equal(h.children.length, 2);
+    assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+    assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 2);
+    const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
+    const lifecycle = new RunRecordService({ database: h.database, clock: h.clock, ids: sequentialIdFactory("c"), publishQueued: () => {} });
+    const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1, workerLifetime: testWorkerLifetime(h.database, WORKFLOW, 1).workerLifetime,
+      runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+        settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
+    assert.equal(claimed.envelope.runId, runTarget.runId);
+  });
+
   it("replaces a dead sole member once and retains its stopped reason before replacement", async () => {
     const h = await openControlHarness();
     await spawnPoolWorker(h);

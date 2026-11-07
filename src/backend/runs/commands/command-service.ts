@@ -14,7 +14,7 @@ import {
 import type { CommandKernel } from "./command-kernel.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { errorText } from "../lifecycle/support.js";
-import { RunWorkerStartupError, type RunWorkerCapacity } from "./run-worker-capacity.js";
+import { needsWorkerCapacity, RunWorkerStartupError, type RunWorkerCapacity } from "./run-worker-capacity.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 export interface DashboardCommandServiceDeps {
@@ -86,9 +86,10 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       if (result.state === "applied" && parsed.data.type === "pause-all-and-quit") deps.quitAccepted?.();
       return result;
     }
-    if (!parsed.success || parsed.data.family !== "start" || deps.startWorkerCapacity === undefined) return executeOne(input);
+    if (!parsed.success || !needsWorkerCapacity(parsed.data) || deps.startWorkerCapacity === undefined) return executeOne(input);
     const request = parsed.data;
-    const key = request.target.workflowId;
+    const key = deps.startWorkerCapacity.workflowOf(request);
+    if (key === undefined) return executeOne(input);
     const previous = startTails.get(key);
     let release: () => void = () => undefined;
     const current = new Promise<void>(resolve => { release = resolve; });
