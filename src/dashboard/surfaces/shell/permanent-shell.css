@@ -21,6 +21,8 @@
 
 .workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (30px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
 .workspace-rail-header h2 { margin: 0; font-size: 23px; line-height: 1.4; font-weight: 500; }
+/* Below 1256 px the rail is narrower than the logo, title and two buttons need at 23 px. */
+@media (max-width: 1255px) { .workspace-rail-header { gap: 6px; } .workspace-rail-header h2 { gap: 6px; font-size: 20px; } }
 .workspace-rail-body { display: flex; flex: 1; min-height: 0; flex-direction: column; pointer-events: auto; }
 
 .workspace-rail-footer { height: 48px; padding: 6px 16px; flex-shrink: 0; background: var(--ds-surface-1); pointer-events: auto; }
