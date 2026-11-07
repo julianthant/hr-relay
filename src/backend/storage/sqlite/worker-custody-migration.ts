@@ -140,7 +140,7 @@ function refuseUnresolvedWrites(database: DatabaseSync, closure: ReadonlySet<str
       if (event.operation_id !== null && !settled.has(text(event, "operation_id"))) refuse();
       const fence = TransactionFenceSchema.safeParse(json(event.payload_json));
       if (!fence.success) continue;
-      const { runId, attempt, taskId, ts } = fence.data.event;
+      const { runId, attempt, taskId, ts } = fence.data.payload.event;
       const owner = [...settled.values()].find(write => write.intent.runId === runId && write.intent.runAttempt === attempt
         && write.intent.taskId === taskId && write.unmatchedFences.has(ts));
       if (owner === undefined) refuse();
@@ -150,8 +150,8 @@ function refuseUnresolvedWrites(database: DatabaseSync, closure: ReadonlySet<str
 }
 
 /** The durable pre-click fence; `transaction.previewed` is a dry run and never a possible submit. */
-const TransactionFenceSchema = z.object({ kind: z.literal("span"),
-  event: z.object({ t: z.literal("transaction.fenced"), runId: z.string(), attempt: z.number(), taskId: z.string(), ts: z.string() }) });
+const TransactionFenceSchema = z.object({ payload: z.object({ kind: z.literal("span"),
+  event: z.object({ t: z.literal("transaction.fenced"), runId: z.string(), attempt: z.number(), taskId: z.string(), ts: z.string() }) }) });
 
 /** A committed intent and the fence times of its attempts that no span has claimed yet; each span binds to one attempt. */
 type SettledWrite = Readonly<{ intent: Extract<WriteIntentRecord, { status: "committed" }>; unmatchedFences: Set<string> }>;
