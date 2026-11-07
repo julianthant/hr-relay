@@ -209,7 +209,7 @@ for (const theme of ["light", "dark"] as const) {
       await notifications.hover(); await expect(notifications).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await page.mouse.move(0, 0);
       await page.keyboard.press("Tab"); await notifications.focus();
-      await expect(notifications).toHaveCSS("background-color", theme === "light" ? "rgb(148, 148, 148)" : "rgb(176, 176, 176)");
+      await expect(notifications).toHaveCSS("background-color", theme === "light" ? "rgb(214, 214, 214)" : "rgb(74, 74, 74)");
       const keyboardFill = await notifications.evaluate(element => getComputedStyle(element).backgroundColor);
       await notifications.click();
       expect(await notifications.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe(keyboardFill);
