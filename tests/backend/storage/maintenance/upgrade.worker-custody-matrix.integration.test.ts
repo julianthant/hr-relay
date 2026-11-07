@@ -126,7 +126,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     // The recovered parent re-delegates the cancelled member: the delegation retry binds the member's result.
     const recovered = await execution.step(root, world.SIGNAL);
     assert.ok(database.authority.runs.listByItem({ workflow: cancelled.envelope.workflow, itemId: cancelled.envelope.itemId })
-      .some(run => run.envelope.retryOf === childId), JSON.stringify(recovered.outcome));
+      .some(run => run.envelope.retryOf === childId), JSON.stringify(recovered.outcome.state === "failed" ? database.authority.failures.get(recovered.outcome.failureId) : recovered.outcome).slice(0, 3000));
     for (const run of [cancelled, parent].flatMap(run => database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }))) {
       if (!closure.includes(run.envelope.runId)) closure.push(run.envelope.runId);
     }
