@@ -8,6 +8,7 @@ import { cn } from "../../lib/utils.js";
 import { SESSION_STATE_LABELS, sessionStateColor, sessionTallies, type SessionControl, type SessionWorker, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
 import { SessionTimeline } from "./session-timeline.js";
+import { WorkerCardOption } from "./worker-card-options.js";
 import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 
 /** The bar's counts: one quiet summary line; only the running count is green, like the rail's running pill. */
@@ -28,13 +29,18 @@ function SessionsSkeleton() {
   </div>)}</LoadingRegion>;
 }
 
-function IdleRefreshRing({ countdown }: { countdown: IdleSessionCountdown }) {
+export function IdleRefreshRing({ countdown }: { countdown: IdleSessionCountdown }) {
   const seconds = Math.ceil(countdown.remainingMs / 1000);
   const label = countdown.waiting ? 'Checking idle session refresh' : `Session refresh in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   return <span role="img" aria-label={label} title={label} className="inline-flex size-4 shrink-0 rounded-full bg-black/30"><svg aria-hidden viewBox="0 0 20 20" className="size-4 -rotate-90"><circle cx="10" cy="10" r="8" fill="none" stroke="white" opacity=".25" strokeWidth="2" /><circle cx="10" cy="10" r="8" fill="none" stroke="white" strokeWidth="2" pathLength="1" strokeDasharray="1" strokeDashoffset={1 - countdown.remainingMs / IDLE_REFRESH_MS} /></svg></span>;
 }
 
-function WorkerCard({ countdown, worker, onControl, operation, onCheck }: { countdown?: IdleSessionCountdown; worker: SessionWorker; onControl: (id: string, control: SessionControl) => void; operation?: SessionPreviewOperation; onCheck?: (id: string) => void }) {
+export function WorkerOperationNote({ operation, worker, onCheck }: { operation?: SessionPreviewOperation; worker: SessionWorker; onCheck?: (id: string) => void }) {
+  return <>{operation && (operation.request.action !== 'refresh' || ['refused', 'uncertain'].includes(operation.state)) && <div role={operation.state === 'refused' || operation.state === 'uncertain' ? 'alert' : 'status'} className={cn('mt-2 flex items-center justify-between gap-2 text-caption', operation.state === 'refused' ? 'text-ui-danger' : operation.state === 'uncertain' ? 'text-ui-warning' : 'text-ui-secondary')}><span>{operation.message}</span>{operation.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.(worker.id)}>Check outcome</Button>}</div>}</>;
+}
+
+function WorkerCard({ countdown, worker, onControl, operation, onCheck, variant }: { variant?: "a" | "b"; countdown?: IdleSessionCountdown; worker: SessionWorker; onControl: (id: string, control: SessionControl) => void; operation?: SessionPreviewOperation; onCheck?: (id: string) => void }) {
+  if (variant) return <WorkerCardOption variant={variant} worker={worker} countdown={countdown} operation={operation} onControl={onControl} onCheck={onCheck} />;
   const locked = operation !== undefined && ['pending', 'checking', 'uncertain'].includes(operation.state);
   return <article aria-label={`${worker.label} · ${worker.workflow}`} className="flex w-80 shrink-0 flex-col rounded-lg border border-ui-stroke bg-ui-panel p-3">
     <header className="flex items-center justify-between gap-3"><h3 className="m-0 text-control font-semibold">{worker.workflow}</h3><span className={cn("inline-flex items-center gap-1.5 text-caption", sessionStateColor(worker.state))}>{worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{SESSION_STATE_LABELS[worker.state]}</span></header>
@@ -44,7 +50,7 @@ function WorkerCard({ countdown, worker, onControl, operation, onCheck }: { coun
       {worker.timeline ? <SessionTimeline nodes={worker.timeline} label={`${worker.label} node timeline`} action={worker.action} /> : worker.state === "idle" ? <div><p className="mb-2 mt-0 text-body">Ready for the next run</p><div role="img" aria-label="No run in progress" className="h-1.5 w-full rounded-sm bg-ui-stroke-control" /></div> : <p className="m-0 text-body">{worker.action}</p>}
       {worker.problem && <p className="mb-0 mt-2 text-caption text-ui-danger">{worker.problem}</p>}
     </div>
-    {operation && (operation.request.action !== 'refresh' || ['refused', 'uncertain'].includes(operation.state)) && <div role={operation.state === 'refused' || operation.state === 'uncertain' ? 'alert' : 'status'} className={cn('mt-2 flex items-center justify-between gap-2 text-caption', operation.state === 'refused' ? 'text-ui-danger' : operation.state === 'uncertain' ? 'text-ui-warning' : 'text-ui-secondary')}><span>{operation.message}</span>{operation.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.(worker.id)}>Check outcome</Button>}</div>}
+    <WorkerOperationNote operation={operation} worker={worker} onCheck={onCheck} />
     <footer className="mt-2 flex min-h-8 items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="text-caption tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : "Not measured")}</span><span className="flex items-center gap-1">
       {worker.state === "running" && <Button size="sm" variant="ghost" className="size-6 p-0" disabled={locked} aria-label="Pause" title="Pause" icon={<Pause aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "pause")} />}
       {worker.state === "paused" && <Button size="sm" variant="ghost" className="size-6 p-0" disabled={locked} aria-label="Resume" title="Resume" icon={<Play aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "resume")} />}
@@ -61,6 +67,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   operations?: Readonly<Record<string, SessionPreviewOperation>>; onCheck?: (id: string) => void;
   workflows: readonly { id: string; label: string }[]; settingsOpen?: boolean; onSettings?: () => void;
 }) {
+  const cardVariant = ((value: string | null) => value === "a" || value === "b" ? value : undefined)(typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("workerCards"));
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   const addTriggerRef = useRef<HTMLButtonElement>(null);
@@ -107,7 +114,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     </ActionBarRow>
     {operations.add && ['refused', 'uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'refused' || operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 border-t border-ui-stroke px-4 py-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}
     {open && <div id={contentId} className="max-h-[24rem] overflow-y-auto border-t border-ui-stroke bg-ui-canvas p-3">
-      {data.state === "ready" ? data.workers.length ? <div data-session-strip className="flex items-stretch gap-3 overflow-x-auto pb-1">{data.workers.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={(id, control) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); }} />)}</div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
+      {data.state === "ready" ? data.workers.length ? <div data-session-strip className={cn("flex gap-3 overflow-x-auto pb-1", cardVariant === "b" ? "items-start" : "items-stretch")}>{data.workers.map(worker => <WorkerCard variant={cardVariant} key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={(id, control) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); }} />)}</div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
     </div>}
   </section>;
 }

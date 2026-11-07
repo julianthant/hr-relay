@@ -2,7 +2,7 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../m
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_LABEL } from "../shared/status/system-chip-model.js";
-import { workerBrowserView, workerElapsedSeconds, WORKER_STOP_REASON_LABEL } from "./session-panel-model.js";
+import { workerBrowserView, workerDirectiveNote, workerElapsedSeconds, WORKER_STOP_REASON_LABEL } from "./session-panel-model.js";
 
 type WorkerCardWire = DashboardDayWire["workerCards"][number];
 
@@ -22,7 +22,8 @@ export type SessionWorker = Readonly<{
   elapsed?: string;
   timeline?: readonly SessionNode[];
   problem?: string;
-  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "closed" | "unavailable" }>[];
+  note?: string;
+  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "closed" | "unavailable" | "failed" }>[];
 }>;
 export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[] }>
   | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string; diagnostic?: unknown }>;
@@ -82,12 +83,14 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
       ...(problem === undefined ? {} : { problem }),
+      ...(workerDirectiveNote(card) === undefined ? {} : { note: workerDirectiveNote(card) }),
       browsers: browserView.slots.map((slot, index) => slot.state !== "open"
         ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: slot.state === "closed" ? "closed" : card.state === "starting" ? "starting" : "unopened" }
         : { id: slot.browser.sessionId, label: SYSTEM_LABEL[slot.browser.system],
           state: slot.browser.observation?.state !== "present" ? "unavailable"
             : slot.browser.observation.health === "starting" ? "starting"
             : slot.browser.observation.health === "authenticated" ? "ready"
+            : slot.browser.observation.health === "failed" ? "failed"
             : slot.browser.observation.health === "unknown" && card.state === "running" ? "active" : "unavailable" }),
     });
   }
