@@ -114,8 +114,8 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
           </DialogContent>
         </Dialog>;
   const settingsControl = onSettings && <Button id={SETTINGS_GEAR_ID} size="sm" variant="ghost" className="sessions-bar-icon" aria-label="Settings" title="Settings" aria-pressed={settingsOpen} onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} />;
-  return <section aria-label="Session Panel" className="ui-theme-scope shrink-0 border-t border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    {option ? <ActionBarRow label="Session actions" className="h-11 gap-3 px-3" data-sessions-bar={option}>
+  return <section aria-label="Session Panel" data-sessions-bar={option} className="ui-theme-scope shrink-0 border-t border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
+    {option ? <ActionBarRow label="Session actions" className="h-11 gap-3 px-3">
       <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title={open ? "Hide sessions" : "Show sessions"} onClick={() => onOpenChange(!open)} className="sessions-bar-toggle">
         {open ? <ChevronDown aria-hidden className="size-3.5 text-ui-muted" /> : <ChevronUp aria-hidden className="size-3.5 text-ui-muted" />}<UsersRound aria-hidden className="size-3.5 text-ui-muted" /><span className="text-heading">Sessions</span>
         {option === "c" && <span className="ml-1 border-l border-ui-stroke pl-3"><BarCounts data={data} option="c" /></span>}

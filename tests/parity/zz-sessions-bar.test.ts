@@ -13,13 +13,13 @@ let server: FixtureServer;
 test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
-async function open(page: Page, option: string, extra = "") {
+async function open(page: Page, option: string, extra = "", view: Record<string, unknown> = {}) {
   await page.setViewportSize({ width: 1680, height: 900 });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: "separations", mockRun: "mock:separations:sample" }))}&sessionsBar=${option}${extra}`);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: "separations", mockRun: "mock:separations:sample", ...view }))}&sessionsBar=${option}${extra}`);
   const close = page.getByRole("button", { name: "Close assistant", exact: true });
   await close.click();
   await expect(close).toHaveCount(0);
-  const bar = page.locator(`[data-sessions-bar="${option}"]`);
+  const bar = page.locator(`[data-sessions-bar="${option}"] [aria-label="Session actions"]`);
   await expect(bar).toBeVisible();
   await page.mouse.move(1, 1);
   await page.waitForTimeout(250);
@@ -47,7 +47,9 @@ for (const theme of ["dark", "light"] as const) test(`sessions bar options @ ${t
     states.push(["Hover · Add workers", await shot(bar, page)]);
     await toggle.hover(); await page.mouse.down(); await page.waitForTimeout(150);
     states.push(["Pressed · Sessions toggle", await shot(bar, page)]);
-    await page.mouse.up(); await page.waitForTimeout(250);
+    await page.mouse.up();
+    // A toggle rewrites the route without the mock option, so the expanded bar loads from the route.
+    bar = await open(page, option, "", { sessions: true });
     states.push(["Open (bar expanded)", await shot(bar, page, 220)]);
     bar = await open(page, option);
     await bar.getByRole("button", { name: "Add workers" }).focus();
