@@ -26,7 +26,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(rail).toBeVisible();
       const workspace = page.getByRole("complementary", { name: "Workspace" });
       const railBounds = (await workspace.boundingBox())!;
-      expect(railBounds.x).toBe(0); expect(railBounds.y).toBe(0); expect(railBounds.width).toBe(width === 1024 ? 208 : 264);
+      expect(railBounds.x).toBe(0); expect(railBounds.y).toBe(0); expect(railBounds.width).toBe(width === 1024 ? 176 : 232);
       await expect(rail.getByRole("button")).toHaveCount(15);
       const typeStyle = (node: Element) => ({ size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight });
       expect(await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(typeStyle)).toEqual(await rail.getByRole("button", { name: "I-9 Lookup", exact: true }).evaluate(typeStyle));
@@ -39,10 +39,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const searchIconBounds = (await bar.getByRole("button", { name: "Search runs", exact: true }).locator("svg").boundingBox())!;
       const rowContentRight = await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(node => node.getBoundingClientRect().right - parseFloat(getComputedStyle(node).paddingRight));
       expect(searchIconBounds.x + searchIconBounds.width).toBe(rowContentRight);
-      if (width === 1440) {
-        const countBounds = (await rail.locator(".workflow-rail-meta").first().boundingBox())!;
-        expect(searchIconBounds.x + searchIconBounds.width).toBe(countBounds.x + countBounds.width);
-      }
+      const [slotRight, labelLeft] = await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(node => [node.querySelector(".workflow-rail-running")!.getBoundingClientRect().right, node.querySelector("span")!.getBoundingClientRect().left]);
+      expect(labelLeft - slotRight).toBe(6);
       await expect(page.locator(".navbar-shell")).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Navigation history" })).toHaveCount(0);
       await expect(bar.getByRole("button", { name: "Search runs", exact: true })).toBeVisible();
