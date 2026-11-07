@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDownToLine, Check, Copy, Eye, LoaderCircle, Monitor, MousePointer2, PanelsTopLeft, PencilLine, Sparkles } from "lucide-react";
+import { AssistantMark } from "../../shell/assistant-mark.js";
+import { ArrowDownToLine, Check, Copy, Eye, LoaderCircle, Monitor, MousePointer2, PanelsTopLeft, PencilLine } from "lucide-react";
 import { Field, IconButton, Input, SearchInput, useToasts } from "../../../ds/ui.js";
 import { DecisionCard, DecisionChoice, type DecisionAnswered } from "../logs/decision-card.js";
 import { cn } from "../../../lib/utils.js";
@@ -101,7 +102,7 @@ function Block({ block }: { block: Exclude<MockBlock, { kind: "decision" }> }) {
     case "page": return <PageCard title={block.title} mode={block.mode}><Rows rows={block.rows} /></PageCard>;
     case "table": return <DataTable table={block.table} />;
     case "click": return <Line icon={<MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}>Clicked <span className="font-medium text-ui-primary">{block.label}</span></Line>;
-    case "note": return <Line icon={<Sparkles aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}>{block.text}</Line>;
+    case "note": return <Line icon={<span className="shrink-0 text-ui-muted"><AssistantMark direction="orbit" size={14} /></span>}>{block.text}</Line>;
     case "capture": return <LogScreenshots screenshots={block.shots} presentation={block.submit ? "submit" : undefined} />;
   }
 }

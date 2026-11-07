@@ -52,7 +52,7 @@ for (const theme of ["dark", "light"] as const) test(`assistant launcher placeme
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   for (const placement of LAUNCHER_PLACEMENTS) {
     await page.setViewportSize({ width: 1680, height: 900 });
-    await page.goto(url("relay", `&assistantLauncher=${placement}&assistantLogoState=needs-you`));
+    await page.goto(url("orbit", `&assistantLauncher=${placement}&assistantLogoState=needs-you`));
     await ready(page);
     await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     await expect(page.getByRole("button", { name: "Ask Relay" })).toBeVisible();
