@@ -34,7 +34,7 @@ describe("SQLite settings authority", () => {
       intakeProjections: NO_INTAKE_PROJECTIONS,
       descriptors: { resolve: (id) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === id) },
       writeResolution: { recheck: unused, resolveAbsent: unused },
-      workerRuntime: { pool: unusedWorkerPool(() => { effects++; }) },
+      workerRuntime: { pool: { ...unusedWorkerPool(), admit: async () => { effects++; } } },
     });
     const command = { family: "worker-browser", type: "plan-worker-count", commandId: pending.commandId,
       requestedAt: pending.requestedAt, requestedBy: "local-operator", source: "dashboard",
