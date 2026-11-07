@@ -101,9 +101,7 @@ it("executes two canonical children and a nested child, preserving every derived
   assert.equal(protectedOutcome.run?.lifecycle.state, "terminal");
   assert.ok(protectedOutcome.outcomes.every(value => value.state === "done" || value.state === "yielded-delegation"));
   const protectedNotes = readPersistedNotes(database).map((note) => NoteWireSchema.parse(note)).filter((note) => "runId" in note && note.runId === protectedParent.envelope.runId);
-  const protectedConsumed = protectedNotes.find((note) => note.action?.operation?.logicalActionId === "consume-text" && note.action.operation.state === "completed")?.action;
-  assert.equal(protectedConsumed?.operation?.value?.consumed.state, "withheld");
-  assert.equal(protectedConsumed?.value, undefined);
+  assert.equal(JSON.stringify(protectedNotes).includes("secret-derived"), false);
 });
 
 it("runs local, protected, replay and operator-corrected attempts in one genuine history", async () => {

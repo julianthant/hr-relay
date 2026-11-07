@@ -38,15 +38,14 @@ function snapshot(): RunLogSnapshot {
 }
 const client = { artifactUrl: (artifactId: string) => `/artifacts/${artifactId}` };
 describe("served Person Lookup Logs operator presentation", () => {
-  it("nests native-order Fill, Click, Read and Screenshot entries under their step and system", () => {
+  it("nests native-order Fill, Read and Screenshot entries under their step and system and keeps gestures out", () => {
     const logs = projectRunLogs(snapshot(), client);
     assert.deepEqual(logs.steps.map(step => [step.title, step.system?.toLowerCase()]), [["Search for person", "ucpath"]]);
     const entries = logs.steps[0].entries;
-    assert.deepEqual(entries.map(entry => entry.kind), ["fields", "click", "fields", "decision"]);
+    assert.deepEqual(entries.map(entry => entry.kind), ["fields", "fields", "decision"]);
     assert.equal(entries[0].kind === "fields" && entries[0].fields[0].kind, "fill");
-    assert.equal(entries[2].kind === "fields" && entries[2].fields[0].kind, "read");
-    assert.equal(entries[1].kind === "click" && entries[1].label, "Person Org Search button");
-    const capture = entries[3]; assert.ok(capture.kind === "decision");
+    assert.equal(entries[1].kind === "fields" && entries[1].fields[0].kind, "read");
+    const capture = entries[2]; assert.ok(capture.kind === "decision");
     assert.deepEqual(capture.decision.screenshots?.map(shot => [shot.src, shot.width, shot.height]), [[`/artifacts/${id(501)}`, 1280, 720]]);
   });
   it("retains distinct native observations with equal labels and values in chronological order", () => {
@@ -133,7 +132,7 @@ it("collapses only explicit same-cause aliases across Run notes while retaining 
   const result=projectRunLogs({...original,detail,logs},client),fields=result.steps.flatMap(step=>step.entries.flatMap(entry=>entry.kind==='fields'?entry.fields:[]));
   assert.deepEqual(fields.filter(field=>field.label==='Name').map(field=>field.id),[`${id(104)}:0`,`${id(108)}:0`]);
   assert.deepEqual(fields.filter(field=>field.label==='HR status').map(field=>field.value),['Active','Inactive','Active']);
-  assert.equal(result.steps.flatMap(step=>step.entries).filter(entry=>entry.kind==='click').length,2);
+  assert.equal(result.steps.flatMap(step=>step.entries).filter(entry=>entry.kind==='click').length,0);
   assert.match(logPlainText(result.steps),/Synthetic run note/u);
   const captured=result.steps.flatMap(step=>step.entries).find(entry=>entry.id===`${id(105)}:captures`);assert.ok(captured?.kind==='decision');assert.deepEqual(captured.decision.screenshots?.map(shot=>[shot.src,shot.width,shot.height]),[[`/artifacts/${id(501)}`,1280,720]]);
 });
