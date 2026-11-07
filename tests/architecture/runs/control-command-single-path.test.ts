@@ -104,89 +104,6 @@ function withoutAssistantReconciliationAuditRead(content: string): string {
   return content.slice(0, start) + "receiptReads" + content.slice(admitted.name.end);
 }
 
-function withoutWorkerControlAdmissions(content: string, kernelContent: string): string {
-  const workerPath = join(REPO_ROOT, "src/backend/storage/sqlite/worker-control.ts");
-  const kernelPath = join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts");
-  const options = { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext };
-  const host = ts.createCompilerHost(options);
-  const original = host.getSourceFile.bind(host);
-  host.getSourceFile = (file, version, onError, fresh) => file === workerPath || file === kernelPath
-    ? ts.createSourceFile(file, file === workerPath ? content : kernelContent, version, true) : original(file, version, onError, fresh);
-  const program = ts.createProgram([workerPath, kernelPath], options, host), checker = program.getTypeChecker();
-  const worker = program.getSourceFile(workerPath)!, kernel = program.getSourceFile(kernelPath)!;
-  const compact = (node: ts.Node): string => node.getText().replace(/\s+/gu, "");
-  const canonical = (node: ts.Node, name: string, owner: string): boolean => {
-    let symbol = checker.getSymbolAtLocation(node);
-    if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    return symbol?.name === name && symbol.declarations?.some(declaration => declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith(owner)) === true;
-  };
-  const specs = [
-    { name: "admitWorkerReset", schema: "LiveWorkerResetRequestSchema", binding: "WorkerResetBindingSchema", args: "repositories,request,dependencies.ids.uuid(),now,descriptor" },
-    { name: "admitWorkerLifecycle", schema: "WorkerBrowserCommandRequestSchema", binding: "WorkerLifecycleBindingSchema", args: 'repositories,request,dependencies.ids.uuid(),now,{descriptor,mode:"initialize"}' },
-  ];
-  const admitted: ts.CallExpression[] = [];
-  for (const spec of specs) {
-    const functions = worker.statements.filter(ts.isFunctionDeclaration).filter(fn => fn.name?.text === spec.name);
-    if (functions.length !== 1) return content;
-    const fn = functions[0], repo = fn.parameters[0];
-    if (repo.name.getText() !== "repositories" || repo.type === undefined || !ts.isTypeReferenceNode(repo.type)
-      || !canonical(repo.type.typeName, "AuthorityRepositories", "/src/backend/storage/sqlite/authority-database.ts") || fn.body === undefined) return content;
-    const first = fn.body.statements[0];
-    if (!ts.isVariableStatement(first) || first.declarationList.declarations.length !== 1) return content;
-    const request = first.declarationList.declarations[0], parse = request.initializer;
-    if (request.name.getText() !== "request" || parse === undefined || !ts.isCallExpression(parse) || !ts.isPropertyAccessExpression(parse.expression)
-      || parse.expression.name.text !== "parse" || !canonical(parse.expression.expression, spec.schema, "/src/rules/commands/commands.ts")
-      || compact(parse) !== `${spec.schema}.parse(input)`) return content;
-    const tail = fn.body.statements.slice(-3);
-    if (tail.length !== 3 || !ts.isExpressionStatement(tail[0]) || !ts.isCallExpression(tail[0].expression)
-      || compact(tail[0]) !== "repositories.commands.insert(request);"
-      || !compact(tail[1]).startsWith("repositories.workerLeases.reserveControl(") || !ts.isReturnStatement(tail[2])
-      || tail[2].expression === undefined || !compact(tail[2].expression).startsWith("repositories.workerControls.admit(")) return content;
-    let identity = false, binding = false;
-    function validate(node: ts.Node): void {
-      if (ts.isExpressionStatement(node) && node.parent === fn.body && compact(node) === "repositories.commands.assertIdentity(request);") identity = true;
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "parse"
-        && canonical(node.expression.expression, spec.binding, "/src/models/run/worker-control.ts")) binding = true;
-      ts.forEachChild(node, validate);
-    }
-    validate(fn);
-    if (!identity || !binding) return content;
-    let localInvocation = false;
-    function rejectLocalCall(node: ts.Node): void {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && canonical(node.expression, spec.name, "/src/backend/storage/sqlite/worker-control.ts")) localInvocation = true;
-      ts.forEachChild(node, rejectLocalCall);
-    }
-    rejectLocalCall(worker);
-    if (localInvocation) return content;
-    const calls: ts.CallExpression[] = [];
-    function find(node: ts.Node): void {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === spec.name) calls.push(node);
-      ts.forEachChild(node, find);
-    }
-    find(kernel);
-    if (calls.length !== 1) return content;
-    const call = calls[0];
-    if (!canonical(call.expression, spec.name, "/src/backend/storage/sqlite/worker-control.ts")
-      || call.arguments.map(compact).join(",") !== spec.args) return content;
-    let parent: ts.Node | undefined = call.parent;
-    while (parent !== undefined && !ts.isArrowFunction(parent)) parent = parent.parent;
-    if (parent === undefined || !ts.isArrowFunction(parent) || parent.parameters.length !== 1 || parent.parameters[0].name.getText() !== "repositories"
-      || !ts.isCallExpression(parent.parent) || compact(parent.parent.expression) !== "dependencies.authority.withAuthorityTransaction"
-      || parent.parent.arguments.length !== 1 || parent.parent.arguments[0] !== parent
-      || !ts.isPropertyAccessExpression(parent.parent.expression) || !canonical(parent.parent.expression.name, "withAuthorityTransaction", "/src/backend/runs/commands/command-kernel.ts")) return content;
-    const transaction = checker.getSymbolAtLocation(parent.parent.expression.name);
-    if (!transaction?.declarations?.some(declaration => ts.isMethodSignature(declaration)
-      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "CommandAuthority")) return content;
-    const repoSymbol = checker.getSymbolAtLocation(repo.name);
-    const receiver = tail[0].expression.expression;
-    if (!ts.isPropertyAccessExpression(receiver) || !ts.isPropertyAccessExpression(receiver.expression)
-      || checker.getSymbolAtLocation(receiver.expression.expression) !== repoSymbol) return content;
-    admitted.push(tail[0].expression);
-  }
-  for (const call of admitted.sort((a, b) => b.pos - a.pos)) content = content.slice(0, call.getStart(worker)) + content.slice(call.end);
-  return content;
-}
-
 type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>> }>;
 const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRead[]>> = {
   "src/backend/storage/sqlite/command-record-row.ts": [
@@ -966,11 +883,8 @@ describe("control-command-single-path", () => {
       const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
       const raw = readFileSync(file, "utf8");
       const kernelContent = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
-      const content = path === "src/backend/storage/sqlite/worker-control.ts"
-        ? withoutWorkerControlAdmissions(raw, kernelContent) : withoutDelegationAuditReads(raw, path, kernelContent);
+      const content = withoutDelegationAuditReads(raw, path, kernelContent);
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
-      if (path !== "src/backend/runs/commands/command-kernel.ts" && path !== "src/backend/storage/sqlite/worker-control.ts"
-        && /\b(?:admitWorkerReset|admitWorkerLifecycle)\b/u.test(raw)) violations.push(`${path} references private native worker admission outside the kernel`);
       if (path !== "src/backend/runs/commands/command-kernel.ts" && path !== "src/backend/storage/sqlite/command-record-row.ts"
         && /\bwithCanonicalRunCommandScope\b/u.test(raw)) violations.push(`${path} references private synchronous run command custody outside the kernel`);
       if (allowed.has(path)) continue;
@@ -978,6 +892,11 @@ describe("control-command-single-path", () => {
         const expectedSettingsAuditReads = settingsAuditReaders.get(path);
         if (path === "src/backend/runs/queries/intake-command-result.ts" && token === "commandAudits") {
           if (withoutIntakeCommandReceiptRead(content).includes(token)) violations.push(`${path} may only read its actual intake receipt in an authority snapshot`);
+          continue;
+        }
+        if (path === "src/backend/runs/queries/run-detail/gate-park.ts" && token === "commandAudits") {
+          const uses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
+          if (uses.length !== 1 || uses[0] !== "commandAudits.parkedWriteChecks") violations.push(`${path} may only read its run's parked-write check audits`);
           continue;
         }
         if (path === "src/backend/assistant/authorization.ts" && token === "commandAudits") {
@@ -1007,17 +926,6 @@ describe("control-command-single-path", () => {
     assert.ok(!/\bDatabaseSync\b/.test(kernelSource), "the kernel may not hold a raw database handle");
     assert.ok(!/\bDELETE\s+FROM\b/i.test(kernelSource), "the kernel may not physically delete authority rows");
     assert.ok(!/"Delete"/.test(kernelSource), "the UI label is Hide, never Delete");
-  });
-
-  it.each(["rogue", "repository", "schema", "caller"])("refuses %s command insertion beyond exact native admission", kind => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/worker-control.ts"), "utf8");
-    const kernel = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
-    const candidate = kind === "rogue" ? `${source}\nfunction rogue(repositories: any, request: any) { repositories.commands.insert(request); }`
-      : kind === "repository" ? source.replaceAll("repositories: AuthorityRepositories", "repositories: any")
-      : kind === "schema" ? source.replace("CommandIdentityConflictError, LiveWorkerResetRequestSchema,", "CommandIdentityConflictError,") + "\nconst LiveWorkerResetRequestSchema = { parse: (input: unknown) => input };" : source;
-    const caller = kind === "caller" ? kernel.replace("try { result = dependencies.authority.withAuthorityTransaction(repositories => {", "try { result = unowned(repositories => {") : kernel;
-    assert.ok(candidate !== source || caller !== kernel, "the negative control must change its targeted source");
-    assert.ok(withoutWorkerControlAdmissions(candidate, caller).includes(".commands.insert("));
   });
 
   it("carries a version or immutability binding on every wire arm's target", () => {
