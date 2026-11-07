@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDownToLine, Check, Copy, Eye, LoaderCircle, Monitor, MousePointer2, PanelsTopLeft, PencilLine } from "lucide-react";
+import { ArrowDownToLine, Check, Copy, Eye, LoaderCircle, Monitor, MousePointer2, PanelsTopLeft, PencilLine, Sparkles } from "lucide-react";
 import { Button, Field, IconButton, Input, SearchInput, useToasts } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogScreenshots } from "../logs/log-screenshots.js";
@@ -91,6 +91,7 @@ function Block({ block }: { block: Exclude<MockBlock, { kind: "decision" }> }) {
     case "page": return <PageCard title={block.title} mode={block.mode}><Rows rows={block.rows} /></PageCard>;
     case "table": return <DataTable table={block.table} />;
     case "click": return <Line icon={<MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}>Clicked <span className="font-medium text-ui-primary">{block.label}</span></Line>;
+    case "note": return <Line icon={<Sparkles aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}>{block.text}</Line>;
     case "capture": return <LogScreenshots screenshots={block.shots} presentation={block.submit ? "submit" : undefined} />;
   }
 }
@@ -98,6 +99,7 @@ function Block({ block }: { block: Exclude<MockBlock, { kind: "decision" }> }) {
 const GUTTER: Readonly<Record<MockState, { label: string; className: string }>> = {
   review: { label: "Waiting", className: "text-ui-warning" }, parked: { label: "Parked", className: "text-ui-warning" }, failed: { label: "Failed", className: "text-ui-danger" },
   paused: { label: "Paused", className: "text-ui-muted" }, stalled: { label: "No progress", className: "text-ui-danger" }, cancelling: { label: "Cancelling", className: "text-ui-muted" },
+  running: { label: "Running", className: "text-ui-info" }, done: { label: "", className: "" },
 };
 
 function StepBody({ step, decision }: { step: MockStep; decision?: MockDecision }) {

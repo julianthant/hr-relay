@@ -1,5 +1,6 @@
 import { QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
-import { decisionMock, type MockGroup, type MockState } from "../../run-detail/decision-mock/decision-mock-model.js";
+import { type MockGroup, type MockState } from "../../run-detail/decision-mock/decision-mock-model.js";
+import { mockLogsScene } from "../../assistant/assistant-mock-frames.js";
 import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
 import type { QueueSurfaceWire } from "../../queue/queue-model.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
@@ -19,8 +20,8 @@ export function mockRunDisplayId(run: Pick<MockRun, "id" | "workflowId">): strin
   return runDisplayId(mockQueueId(run.id), workflowDisplayCode(mockWorkflow(run.workflowId).label));
 }
 
-const MOCK_QUEUE_STATUS: Readonly<Record<MockState, "awaiting-approval" | "blocked" | "failed" | "queued" | "cancelling">> = {
-  review: "awaiting-approval", parked: "blocked", failed: "failed", paused: "queued", stalled: "failed", cancelling: "cancelling",
+const MOCK_QUEUE_STATUS: Readonly<Record<MockState, "awaiting-approval" | "blocked" | "failed" | "queued" | "cancelling" | "running" | "done">> = {
+  review: "awaiting-approval", parked: "blocked", failed: "failed", paused: "queued", stalled: "failed", cancelling: "cancelling", running: "running", done: "done",
 };
 export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockRun): QueueSurfaceWire {
   const review = mockNeedsReview(run);
@@ -33,7 +34,7 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
   const start = new Date(anchor - durationSeconds * 1000).toISOString();
   const absent = (reason: string) => ({ state: "absent" as const, reason });
   if (run.parentId !== undefined && parent?.id !== run.parentId) throw new Error("MOCK_QUEUE_PARENT_UNAVAILABLE");
-  const scene = decisionMock()?.scene;
+  const scene = mockLogsScene();
   const decisionRun = scene && run.id === `mock:${scene.workflow}:sample` ? scene : undefined;
   if (decisionRun) run = { ...run, subject: decisionRun.subject };
   return QueueSurfaceWireSchema.parse({
@@ -52,7 +53,7 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
     displayName: absent("Use the input subject"), subtitle: absent("The panel names the workflow"),
     status: decisionRun ? MOCK_QUEUE_STATUS[decisionRun.state] : mockQueueStatus(run),
     startedAt: start, updatedAt: end,
-    endedAt: decisionRun || review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
+    endedAt: decisionRun?.state !== "done" && decisionRun || review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
     gateOpenedAt: review ? { state: "present", value: end } : absent("No open approval"),
     liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : decisionRun ? { state: "present", value: decisionRun.queueMessage } : currentStep ? { state: "present", value: currentStep.label } : absent("No active step"),
     warnings: warnings.length ? { state: "present", count: warnings.length, first: warnings[0] } : absent("No record warnings"),
@@ -68,7 +69,7 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
 export function mockQueueSurfaces(runs: readonly MockRun[], anchorIso: string, allRuns = runs): readonly QueueSurfaceWire[] {
   const surfaces = runs.map(run => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : allRuns.find(parent => parent.id === run.parentId)));
   if (new Set(surfaces.map(surface => surface.runId)).size !== runs.length) throw new Error("MOCK_QUEUE_ID_COLLISION");
-  const scene = decisionMock()?.scene;
+  const scene = mockLogsScene();
   const group = scene?.group;
   if (!group) return surfaces;
   const sample = mockQueueId(`mock:${scene.workflow}:sample`);

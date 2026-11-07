@@ -30,6 +30,7 @@ export type MockBlock =
   | Readonly<{ kind: "page"; title: string; mode: "Fill" | "Read"; rows: readonly MockRow[] }>
   | Readonly<{ kind: "table"; mode: "Read"; table: MockTable }>
   | Readonly<{ kind: "click"; label: string }>
+  | Readonly<{ kind: "note"; text: string }>
   | Readonly<{ kind: "capture"; shots: readonly LogScreenshot[]; submit?: boolean }>
   | Readonly<{ kind: "decision" }>;
 export type MockStep = Readonly<{ id: string; time: string; title: string; system?: string; blocks: readonly MockBlock[]; outcome?: string; current?: boolean }>;
@@ -46,9 +47,9 @@ export type MockDecision =
   | Readonly<{ kind: "answer"; question: string; note?: string; tone?: "danger"; caution?: string; field?: Readonly<{ label: string; value?: string }>; primary?: string; secondary: readonly string[] }>
   | Readonly<{ kind: "line"; text: string; icon: "cancelling" | "paused" }>;
 
-export type MockState = "review" | "parked" | "failed" | "paused" | "stalled" | "cancelling";
+export type MockState = "review" | "parked" | "failed" | "paused" | "stalled" | "cancelling" | "running" | "done";
 export type MockSceneData = Readonly<{
-  id: DecisionId; name: string; workflow: string; subject: string; state: MockState; waited?: string; queueMessage: string;
+  id: string; name: string; workflow: string; subject: string; state: MockState; waited?: string; queueMessage: string;
   steps: readonly MockStep[]; timeline: readonly LogTimelineStage[]; decision?: MockDecision; toast?: Readonly<{ title: string; description: string }>;
   headerRetry?: string; group?: MockGroup;
 }>;
@@ -56,13 +57,13 @@ export type MockSceneData = Readonly<{
 export type MockGroup = Readonly<{ title: string; subtitle: string; selected: "parent" | "member"; members: readonly Readonly<{ name: string; failed?: boolean }>[] }>;
 
 const svg = (label: string, rows: readonly string[]) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450"><rect width="800" height="450" fill="#f4f6f8"/><rect width="800" height="64" fill="#1f4e79"/><text x="32" y="42" font-family="Arial,sans-serif" font-size="26" fill="#fff">${label}</text>${rows.map((row, index) => `<rect x="32" y="${100 + index * 80}" width="736" height="60" rx="4" fill="#fff" stroke="#c9d1d9"/><text x="52" y="${139 + index * 80}" font-family="Arial,sans-serif" font-size="24" fill="#2b3640">${row}</text>`).join("")}</svg>`)}`;
-const shot = (logId: string, label: string, time: string, system: string, title: string, rows: readonly string[], boundary?: LogScreenshot["boundary"]): LogScreenshot => ({
+export const shot = (logId: string, label: string, time: string, system: string, title: string, rows: readonly string[], boundary?: LogScreenshot["boundary"]): LogScreenshot => ({
   logId, label, time, boundary, src: svg(`${title} (fictional)`, rows), alt: `Fictional ${title} page`, width: 800, height: 450, kind: "browser", system,
 });
-const read = (label: string, value: string): MockRow => ({ label, value, kind: "read" });
-const fill = (label: string, value: string): MockRow => ({ label, value, kind: "fill" });
-const page = (title: string, mode: "Fill" | "Read", rows: readonly MockRow[]): MockBlock => ({ kind: "page", title, mode, rows });
-const stage = (id: string, label: string, state: LogTimelineStage["state"], extra: Partial<LogTimelineStage> = {}): LogTimelineStage => ({ id, label, state, stepId: state === "pending" ? undefined : id, substeps: [], ...extra });
+export const read = (label: string, value: string): MockRow => ({ label, value, kind: "read" });
+export const fill = (label: string, value: string): MockRow => ({ label, value, kind: "fill" });
+export const page = (title: string, mode: "Fill" | "Read", rows: readonly MockRow[]): MockBlock => ({ kind: "page", title, mode, rows });
+export const stage = (id: string, label: string, state: LogTimelineStage["state"], extra: Partial<LogTimelineStage> = {}): LogTimelineStage => ({ id, label, state, stepId: state === "pending" ? undefined : id, substeps: [], ...extra });
 const decision: MockBlock = { kind: "decision" };
 
 const PEOPLE: MockTable = { title: "Search results", label: "People found", columns: ["Name", "Employee ID", "Department", "HR status"], rows: [
@@ -79,35 +80,35 @@ const lookupSearch = (current: boolean): MockStep => ({ id: "search", time: "10:
 const lookupCrm = (current: boolean, blocks: readonly MockBlock[] = []): MockStep => ({ id: "crm", time: "10:14:02", title: "Cross-check identity", system: "CRM", current, outcome: current ? undefined : "Records agree", blocks: [
   page("CRM onboarding search", "Fill", [fill("Name", "Morrow, Bea A.")]), ...blocks,
 ] });
-const lookupTimeline = (states: readonly LogTimelineStage["state"][], label?: string): readonly LogTimelineStage[] => [
+export const lookupTimeline = (states: readonly LogTimelineStage["state"][], label?: string): readonly LogTimelineStage[] => [
   stage("search", "Search for person", states[0], { statusLabel: states[0] === "completed" ? undefined : label, durationLabel: states[0] === "completed" ? "18s" : undefined }),
   stage("crm", "Cross-check identity", states[1], { statusLabel: states[1] === "completed" ? undefined : label, durationLabel: states[1] === "completed" ? "18s" : undefined }),
   stage("status", "Read employment status", states[2], { statusLabel: states[2] === "completed" ? undefined : label }),
 ];
 
-const sepRequest: MockStep = { id: "request", time: "09:31:00", title: "Read separation request", system: "Kuali", outcome: "Request found", blocks: [
+export const sepRequest: MockStep = { id: "request", time: "09:31:00", title: "Read separation request", system: "Kuali", outcome: "Request found", blocks: [
   page("RRSS Separation Request", "Read", [read("Employee", "Nakamura, Rei"), read("Employee ID", "10431187"), read("Last day worked", "04/24/2031"), read("Separation date", "04/25/2031")]),
 ] };
-const sepVerify = (current: boolean): MockStep => ({ id: "employee", time: "09:31:14", title: "Verify employee", system: "UCPath", current, outcome: current ? undefined : "Matches the request", blocks: [
+export const sepVerify = (current: boolean): MockStep => ({ id: "employee", time: "09:31:14", title: "Verify employee", system: "UCPath", current, outcome: current ? undefined : "Matches the request", blocks: [
   page("Workforce Job Summary", "Read", [read("Name", current ? "Nakamura, Rei J." : "Nakamura, Rei"), read("Department", current ? "Student Housing" : "Housing Operations"), read("HR status", "Active")]), ...(current ? [decision] : []),
 ] });
-const sepTimecard: MockStep = { id: "timecard", time: "09:31:25", title: "Read timecard", system: "Kronos", outcome: "Last day worked confirmed", blocks: [page("Timecard", "Read", [read("Last punch", "04/24/2031"), read("Sick or holiday leave", "None")])] };
+export const sepTimecard: MockStep = { id: "timecard", time: "09:31:25", title: "Read timecard", system: "Kronos", outcome: "Last day worked confirmed", blocks: [page("Timecard", "Read", [read("Last punch", "04/24/2031"), read("Sick or holiday leave", "None")])] };
 const sent = [fill("Template", "Termination"), fill("Effective date", "04/25/2031"), fill("Last day worked", "04/24/2031"), fill("Reason", "Appointment ended")];
-const sepFile = (current: boolean, after: readonly MockBlock[]): MockStep => ({ id: "file", time: "09:32:17", title: "File termination", system: "UCPath", current, outcome: current ? undefined : "Saved as T00042871", blocks: [
+export const sepFile = (current: boolean, after: readonly MockBlock[]): MockStep => ({ id: "file", time: "09:32:17", title: "File termination", system: "UCPath", current, outcome: current ? undefined : "Saved as T00042871", blocks: [
   page("Smart HR Template", "Fill", sent), { kind: "click", label: "Save and submit" },
   { kind: "capture", submit: true, shots: [
     shot("before", "Before submit", "09:32:39", "UCPath", "Smart HR Template", ["Template: Termination", "Effective date: 04/25/2031", "Reason: Appointment ended"], "before-submit"),
     shot("after", "After submit", "09:33:41", "UCPath", "Smart HR Template", current ? ["Processing, please wait"] : ["Saved. Transaction T00042871"], "after-submit"),
   ] }, ...after,
 ] });
-const sepTimeline = (fileState: LogTimelineStage["state"], label?: string, later: LogTimelineStage["state"] = "pending", laterLabel?: string): readonly LogTimelineStage[] => [
+export const sepTimeline = (fileState: LogTimelineStage["state"], label?: string, later: LogTimelineStage["state"] = "pending", laterLabel?: string): readonly LogTimelineStage[] => [
   stage("request", "Read request", "completed", { durationLabel: "14s" }), stage("employee", "Verify employee", "completed", { durationLabel: "11s" }),
   stage("timecard", "Read timecard", "completed", { durationLabel: "44s" }), stage("file", "File termination", fileState, { statusLabel: label, durationLabel: fileState === "completed" ? "1m 24s" : undefined }),
   stage("finalize", "Finalize document", later, { statusLabel: laterLabel }),
 ];
 const parkedAnswer: MockDecision = { kind: "answer", question: "Did the termination save in UCPath?", note: "Submit did not confirm. Check Smart HR Transactions for 10431187.", field: { label: "Transaction number" }, primary: "Confirm saved", secondary: ["Not saved, file it again"] };
 
-const EC_PEOPLE = ["Ali, Samir", "Ortega, Lin", "Park, Joon", "Nguyen, Thao", "Brooks, Dana", "Haddad, Rami", "Silva, Ines", "Kowalski, Eva", "Mensah, Kofi", "Tanaka, Yui", "Reyes, Marco", "Okafor, Chinedu"];
+export const EC_PEOPLE = ["Ali, Samir", "Ortega, Lin", "Park, Joon", "Nguyen, Thao", "Brooks, Dana", "Haddad, Rami", "Silva, Ines", "Kowalski, Eva", "Mensah, Kofi", "Tanaka, Yui", "Reyes, Marco", "Okafor, Chinedu"];
 const ecGroup = (selected: MockGroup["selected"]): MockGroup => ({ title: "Scan_0412.pdf", subtitle: "12 people", selected, members: EC_PEOPLE.map(name => ({ name, failed: name === "Ortega, Lin" })) });
 
 const scenes: readonly MockSceneData[] = [

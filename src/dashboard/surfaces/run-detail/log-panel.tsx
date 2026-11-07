@@ -4,6 +4,7 @@ import { LogFeed } from "./logs/log-feed.js";
 import type { LogStep } from "./logs/log-feed-model.js";
 import { LogTimeline } from "./logs/log-timeline.js";
 import { decisionMock, type MockState } from "./decision-mock/decision-mock-model.js";
+import { mockLogsScene } from "../assistant/assistant-mock-frames.js";
 import { DecisionMockFeed } from "./decision-mock/decision-mock-logs.js";
 import { StatusBadge } from "../shared/status/status.js";
 import { Button, IconButton } from "../../ds/ui.js";
@@ -11,8 +12,8 @@ import { RotateCcw } from "lucide-react";
 import { runHeaderAction, type RunHeaderContext } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";
 
-const MOCK_BADGE: Readonly<Record<MockState, { status: "waiting" | "parked" | "failed" | "queued" | "cancelling"; label?: string }>> = {
-  review: { status: "waiting" }, parked: { status: "parked" }, failed: { status: "failed" }, paused: { status: "queued", label: "Paused" }, stalled: { status: "failed", label: "Stalled" }, cancelling: { status: "cancelling" },
+const MOCK_BADGE: Readonly<Record<MockState, { status: "waiting" | "parked" | "failed" | "queued" | "cancelling" | "running" | "verifiedDone"; label?: string }>> = {
+  review: { status: "waiting" }, parked: { status: "parked" }, failed: { status: "failed" }, paused: { status: "queued", label: "Paused" }, stalled: { status: "failed", label: "Stalled" }, cancelling: { status: "cancelling" }, running: { status: "running" }, done: { status: "verifiedDone" },
 };
 
 /** The production log layout accepts presentation data and has no transport dependency. */
@@ -22,9 +23,9 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, status,
   title: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; status?: ReactNode; toolbar?: ReactNode; initialStepId?: string;
   navigation?: ReactNode; content?: ReactNode; context?: RunHeaderContext; afterStep?: (id: string) => ReactNode;
 }) {
-  const mock = decisionMock();
-  if (mock?.scene) {
-    const data = mock.scene;
+  const scene = mockLogsScene(), mock = decisionMock() ?? scene;
+  if (scene) {
+    const data = scene;
     title = data.subject;
     status = <StatusBadge {...MOCK_BADGE[data.state]} presentation="queue" />;
     toolbar = data.headerRetry ? <IconButton label={data.headerRetry} icon={<RotateCcw aria-hidden className="size-3.5" />} /> : undefined;
