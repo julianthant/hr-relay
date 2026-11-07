@@ -29,7 +29,7 @@ import { assertSourceClosuresProved,AuthoritySourceClosureUnprovedError,hasUnpro
 import type { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import type { AuthorityBackupExpectedSource } from "../sqlite/database-identity.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../sqlite/migrations.js";
 import { assertCanonicalProfileBinding,assertLiveProfileDatabaseBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
@@ -400,7 +400,7 @@ export class RuntimeAdmission {
     if (this.#readyUpgrade !== undefined) {
       if (this.#readyUpgrade.purpose === "layout") throw new Error("fixed-layout-schema-mutation-refused");
       this.assertStoppedProfileUpgrade(path, this.#readyUpgrade.processLockRoot);
-      if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
+      if (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
       const proof = this.#readyUpgrade.qualification.current;
       if (proof.kind !== "qualified" || sourceFingerprint !== undefined && sourceFingerprint !== proof.sourceFingerprint) {
         this.#readyUpgrade.qualification.current = { kind: "revoked" };
