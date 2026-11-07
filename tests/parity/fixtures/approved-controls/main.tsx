@@ -10,16 +10,22 @@ import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '..
 import { SpreadsheetEditor } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor.js';
 import { newEditableWorkbook, type SpreadsheetSaveResult } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { SessionsView } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
+import { SessionsStates } from './sessions-states.js';
+import { sessionsSample } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
 import './style.css';
 const query = new URLSearchParams(location.search);
 const surface = query.get('surface') ?? 'save';
 const mode = query.get('mode') ?? 'confirmed';
-document.documentElement.setAttribute('data-demo-theme', 'dark');
-document.body.setAttribute('data-demo-theme', 'dark');
+if (surface === 'sessions-bar') await import('../../../../src/dashboard/surfaces/shell/permanent-shell.css');
+const theme = query.get('theme') ?? 'dark';
+document.documentElement.setAttribute('data-demo-theme', theme);
+document.body.setAttribute('data-demo-theme', theme);
 let calls = 0;
 function countCall() { document.body.setAttribute('data-action-calls', String(++calls)); }
 function Fixture() {
   const [book, setBook] = useState(newEditableWorkbook), [dirty, setDirty] = useState(true);
+  if (surface === 'sessions-states') return <SessionsStates />;
+  if (surface === 'sessions-bar') return <SessionsView open={query.get('open') === '1'} onOpenChange={() => {}} onControl={() => {}} onAdd={() => {}} onSettings={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample('active')} />;
   if (surface === 'sessions') return <SessionsView open onOpenChange={() => {}} onControl={() => {}} onAdd={() => {}} workflows={[]} data={{ state: 'ready', workers:
     (['unopened', 'starting', 'active', 'ready', 'closed', 'unavailable'] as const).map((state, index) => ({
       id: `label-worker-${index}`, label: `Worker ${index + 1}`, workflowId: 'person-lookup', workflow: 'Person Lookup', state: 'idle', action: 'Ready for the next run',
