@@ -84,9 +84,8 @@ export function createNominatimService(input: Readonly<{
       const cancellation = CancelSchema.safeParse(value);
       if (cancellation.success) { requests.get(cancellation.data.requestId)?.abort(); return; }
       const parsed = RequestSchema.safeParse(value);
-      if (!parsed.success) return;
+      if (!parsed.success || parsed.data.request.capability !== "geocode.nominatim" || requests.has(parsed.data.requestId)) { disconnect(); return; }
       const message = parsed.data;
-      if (message.request.capability !== "geocode.nominatim" || requests.has(message.requestId)) { disconnect(); return; }
       const controller = new AbortController();
       requests.set(message.requestId, controller);
       void invoke(message.request, { requestId: message.requestId, signal: controller.signal,
@@ -132,7 +131,7 @@ export function createNominatimWorkerAdapter(clock: Clock = systemClock) {
   const disconnect = () => { stopped = true; for (const finish of [...pending.values()]) finish(unavailable(clock, "adapter-unavailable")); };
   const receive = (value: unknown) => {
     const reply = ReplySchema.safeParse(value);
-    if (reply.success) pending.get(reply.data.requestId)?.(reply.data.outcome);
+    if (reply.success) pending.get(reply.data.requestId)?.(reply.data.outcome); else disconnect();
   };
   let listening = false;
   return Object.freeze({ capability: "geocode.nominatim" as const,

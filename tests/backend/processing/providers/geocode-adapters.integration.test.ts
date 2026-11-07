@@ -123,3 +123,17 @@ it("fails in-flight and queued worker requests when their parent dies without re
   const attempt=performance.now();assert.equal((await replacement.invoke(request,options())).response.state,"produced");
   assert.ok((starts[0]??0)-attempt>=1000);assert.equal(starts.length,1);
 }, scaledMs(10000));
+
+it("fails a worker's pending and later Nominatim requests in its adapter on a malformed reply", async () => {
+  let release = () => {};
+  const owner = createNominatimGeocodeAdapter({ clock: systemClock, fetchFn: () => new Promise<Response>(done => { release = () => done(Response.json([])); }) });
+  cleanups.push(async () => { release(); await owner.stop(); });
+  const client = child(owner); await message(client, "ready");
+  const first = message(client, "result"); client.send("call");
+  await new Promise<void>(done => setTimeout(done, 30));
+  client.send({ kind: "nominatim-reply", requestId: "not-a-request-id" });
+  assert.equal((await first).state, "unavailable");
+  const second = message(client, "result"); client.send("call");
+  assert.equal((await second).state, "unavailable");
+  assert.equal(client.connected, true);
+});
