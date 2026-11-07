@@ -7,6 +7,7 @@ import type { FlowPart } from "../../../src/models/workflow/explorer-preview.js"
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
+import { READABLE_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 
 function workflowWire() {
   const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-03T17:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
@@ -22,6 +23,16 @@ function projected() {
 function textOf(parts: readonly FlowPart[]): string[] {
   return parts.flatMap(part => part.kind === "form" || part.kind === "detail" ? [part.title, ...textOf(part.parts)] : part.kind === "note" || part.kind === "action" ? [part.text] : []);
 }
+it("projects every served workflow's Explorer at its registered version", () => {
+  const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-03T17:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
+  assert.ok(wire.workflows.some(workflow => workflow.id === "person-lookup") && wire.workflows.some(workflow => workflow.id === "separations"));
+  for (const workflow of wire.workflows) {
+    // The dashboard refuses an Explorer whose version differs from the bootstrap catalog, which carries the registered version.
+    assert.equal(workflow.version, READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflow.id)?.descriptor.version, workflow.id);
+    assert.equal(projectExplorerDefinition(workflow).state, "ready", workflow.id);
+  }
+});
+
 describe("Explorer operator-field presentation fallback", () => {
   it("generates the four walkthrough steps in declaration order without exposing internal task steps", () => {
     assert.deepEqual(projected().steps.map(step => [step.title, step.system]), [
