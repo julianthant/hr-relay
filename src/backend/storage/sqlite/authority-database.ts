@@ -28,7 +28,7 @@ import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWrit
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
-import { TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
+import { TimelineEventRecordSchema,TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
@@ -2944,6 +2944,47 @@ export class AuthorityDatabase implements Disposable {
     });
     if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
     return { ...identity, ...timeline, recoveryEvidence };
+  }
+
+  /** Recovery evidence of a preserved suspect at any openable schema, from columns every such schema has. */
+  static inspectPreservedRecoveryEvidenceReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250) {
+    return withAuthorityDatabaseReadOnly(admission, path, (database) => {
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new TimelineRecordError("preserved authority is not the HR authority store");
+      const version = readIntPragma(database, "user_version");
+      if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)) throw new TimelineRecordError(`preserved authority schema ${String(version)} is not openable`);
+      const names = inspectionTableNames(database), expected = [...migrationTableNames(version)].sort();
+      if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+        throw new TimelineRecordError(`preserved authority tables do not match schema ${String(version)}`);
+      }
+      const byRun = (rows: readonly Readonly<{ runId: string; value: string }>[]) => {
+        const owned = new Map<string, string[]>();
+        for (const { runId, value } of rows) owned.set(runId, [...owned.get(runId) ?? [], value]);
+        return owned;
+      };
+      const attempts = byRun(database.prepare("SELECT id, run_id FROM write_attempts ORDER BY id").all().map((raw) => {
+        const row = z.object({ id: z.string(), run_id: z.string() }).parse(raw);
+        return { runId: row.run_id, value: row.id };
+      }));
+      // Same digest as the current side: parsed record content without its database-local cursor.
+      const confirmations = byRun(database.prepare("SELECT payload_json FROM timeline_events WHERE kind='operation-confirmed' ORDER BY cursor").all().flatMap((raw) => {
+        let parsed: ReturnType<typeof TimelineEventRecordSchema.safeParse>;
+        try { parsed = TimelineEventRecordSchema.safeParse(JSON.parse(z.object({ payload_json: z.string() }).parse(raw).payload_json)); }
+        catch { throw new TimelineRecordError(`preserved confirmation unreadable at schema ${String(version)}`); }
+        if (!parsed.success) throw new TimelineRecordError(`preserved confirmation unreadable at schema ${String(version)}`);
+        const record = parsed.data;
+        return record.scope.kind === "run"
+          ? [{ runId: record.scope.runId, value: createHash("sha256").update(timelineAppendContent(record)).digest("hex") }] : [];
+      }));
+      const fenced = new Set(database.prepare("SELECT json_extract(payload_json,'$.payload.event.runId') AS run_id FROM timeline_events WHERE kind='transaction.fenced'")
+        .all().map((raw) => z.object({ run_id: z.string() }).parse(raw).run_id));
+      const runs = database.prepare("SELECT id, workflow, trace_id, version FROM runs ORDER BY id").all().map((raw) => {
+        const row = z.object({ id: RunIdSchema, workflow: z.string(), trace_id: z.string(), version: z.number().int() }).parse(raw);
+        const attemptIds = attempts.get(row.id) ?? [];
+        return { runId: row.id, workflow: row.workflow, traceId: row.trace_id, version: row.version,
+          possibleExternalWrite: attemptIds.length > 0 || fenced.has(row.id), attemptIds, confirmations: confirmations.get(row.id) ?? [] };
+      });
+      return { runs };
+    }, busyTimeoutMs);
   }
 
   getSourceDatabaseIdentity(): string {

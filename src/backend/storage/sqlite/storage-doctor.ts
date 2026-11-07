@@ -419,8 +419,7 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
     const deleted = new Map(currentEvidence.deleted.map((run) => [run.runId, run]));
     const findings = new Map<string, { state: "missing" | "restore-loss"; runId: string; possibleExternalWrite?: true }>();
     for (const name of databases) {
-      const source = AuthorityDatabase.inspectTimelineReadOnly(admission, name, busyTimeoutMs, true).recoveryEvidence;
-      if (source === undefined) throw new SafeSpanCorpusError("preserved recovery evidence was not inspected");
+      const source = AuthorityDatabase.inspectPreservedRecoveryEvidenceReadOnly(admission, name, busyTimeoutMs);
       for (const run of source.runs) {
         const tombstone = deleted.get(run.runId);
         if (tombstone !== undefined) {
