@@ -2027,6 +2027,23 @@ async function executeWorkerPoolCommand(
     }
     case "stop-worker": {
       // Reset: the ordinary run Cancel (version fenced, refused over an unresolved write, delegation cascade), then a fresh process.
+      // The Cancel is its own journaled run command, derived from the Reset's id, so cancellation authenticates it.
+      const journaledResetCancel = (repositories: AuthorityRepositories, run: RunRecord): CommandApplication => {
+        const cancel = RunCommandRequestSchema.parse({ commandId: lifecycleCommandId("worker-reset-cancel", request.commandId),
+          requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source,
+          ...(request.reason === undefined ? {} : { reason: request.reason }),
+          family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: run.version } }) as RunBasicCommand;
+        repositories.commands.insert(cancel);
+        try {
+          const application = withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(dependencies, repositories, cancel, now));
+          repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request: cancel, result: application.result, completedAt: now,
+            versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
+          return application;
+        } catch (error) {
+          if (error instanceof CommandRefusal) throw new CommandRefusal({ ...error.result, commandId: request.commandId });
+          throw error;
+        }
+      };
       const { member, result } = transact(repositories => {
         repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
@@ -2034,10 +2051,7 @@ async function executeWorkerPoolCommand(
         const runs = claimedRunsOf(repositories, member.workerId);
         if (runs.length > 1) throw new Error("worker-holds-more-than-one-claimed-run");
         const run = runs[0];
-        const application = run === undefined ? applied(request, [workerTarget(member.workerId)], [])
-          : executeCancel(dependencies, repositories, RunCommandRequestSchema.parse({ commandId: request.commandId, requestedAt: request.requestedAt,
-            requestedBy: request.requestedBy, source: request.source, ...(request.reason === undefined ? {} : { reason: request.reason }),
-            family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: run.version } }) as RunBasicCommand, now);
+        const application = run === undefined ? applied(request, [workerTarget(member.workerId)], []) : journaledResetCancel(repositories, run);
         const reset = applied(request, [workerTarget(member.workerId), ...(run === undefined ? [] : application.result.state === "applied" ? application.result.affectedTargets : [])],
           application.versionChanges, application.affectedDependencyIds);
         return { member, result: auditWorkerCommand(dependencies, repositories, request, reset) };

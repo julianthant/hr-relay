@@ -5,8 +5,11 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
+import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
+import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 
-const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, nextCommandId, applyCurrentSettings } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, nextCommandId, applyCurrentSettings, createPlan, startCommand } = createCommandKernelTestWorld();
 
 
 afterEach(async () => {
@@ -82,6 +85,44 @@ describe("worker-browser arms", () => {
     const missing = await harness.kernel.executeWorkerPool(workerCommand("stop-worker", { workerId: "worker-9", workflowId: rejectActiveDescriptor.id, lifetimeId: null, expectedVersion: 0 }));
     assert.equal(missing.state, "rejected");
     if (missing.state === "rejected") assert.equal(missing.code, "target-not-found");
+  });
+
+  for (const write of ["none", "attempting"] as const) it(`resets a worker holding a claimed run through its own journaled run Cancel (write ${write})`, async () => {
+    const harness = await createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const runId = singleAppliedRunId(harness.kernel.execute(startCommand(plan)));
+    testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    const slot = harness.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0], workerId = slot.workerId;
+    const claimed = harness.database.authority.runs.claimNext({ workflow: rejectActiveDescriptor.id, workerId, now: NOW });
+    assert.equal(claimed.state, "claimed");
+    if (claimed.state !== "claimed") throw new Error("fixture run was not claimed");
+    if (write === "attempting") await attemptingOwnedWrite({ database: harness.database, fence: async input => harness.database.authority.writeIntents.fenceAttempt(input) }, claimed.run);
+    harness.workerMembers.set(workerId, { lifetimeId: UUID_4, version: 3, state: "running" });
+    const before = harness.database.authority.runs.get(runId);
+    assert.ok(before);
+
+    const request = workerCommand("stop-worker", { workerId, workflowId: rejectActiveDescriptor.id, lifetimeId: UUID_4, expectedVersion: 3 });
+    const reset = await harness.kernel.executeWorkerPool(request);
+    const cancelId = lifecycleCommandId("worker-reset-cancel", request.commandId);
+    if (write === "attempting") {
+      assert.equal(reset.state, "rejected", JSON.stringify(reset));
+      if (reset.state === "rejected") { assert.equal(reset.code, "invalid-state"); assert.equal(reset.commandId, request.commandId); }
+      assert.deepEqual(harness.database.authority.runs.get(runId), before, "an unresolved write keeps the claimed run untouched");
+      assert.equal(harness.database.authority.commands.get(cancelId), undefined);
+      assert.equal(harness.database.authority.commands.get(request.commandId), undefined);
+      assert.deepEqual(harness.workerCalls, [], "no process effect over an unresolved write");
+      return;
+    }
+    assert.equal(reset.state, "applied", JSON.stringify(reset));
+    const cancelled = harness.database.authority.runs.get(runId);
+    assert.ok(cancelled?.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled", JSON.stringify(cancelled?.lifecycle));
+    assert.equal(harness.database.authority.commands.get(cancelId)?.type, "cancel");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(cancelId)?.result.state, "applied");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(request.commandId)?.result.state, "applied");
+    assert.deepEqual(harness.workerCalls, [`stop:${workerId}:reset`, `start:${workerId}`]);
+    const replay = await harness.kernel.executeWorkerPool(request);
+    assert.equal(replay.state, "applied");
+    assert.deepEqual(harness.workerCalls, [`stop:${workerId}:reset`, `start:${workerId}`], "a replayed Reset re-runs no effect");
   });
 
   it("delegates plan/spawn/refresh to the pool after authority validation", async () => {
