@@ -127,7 +127,7 @@ export function DecisionMockFeed({ data }: { data: MockSceneData }) {
           <div className="flex min-w-0 flex-col gap-3"><StepBody step={step} decision={data.decision} /></div></div>
       </section>)}
     </div>
-    <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2">
+    <footer className="logs-footer flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2">
       <SearchInput className="w-44" aria-label="Search logs" placeholder="Search logs…" value="" onChange={() => undefined} onClear={() => undefined} />
       <span className="text-caption tabular-nums text-ui-muted">{count} actions</span>
       <span className="ml-auto inline-flex items-center gap-1"><IconButton label="Copy logs" icon={<Copy aria-hidden className="size-3.5" />} /><IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-3.5" />} /></span>

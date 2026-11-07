@@ -41,9 +41,9 @@
 .workflow-rail button:hover { background: var(--ds-surface-3); }
 .workflow-rail button[aria-current="page"] { background: var(--ds-surface-selected); }
 /* Rail running-count comparison (v6 item 6); 6A and 6B put the count in the icon column, 6C where the old meta sat. */
-.workflow-rail-running { margin-left: auto; color: var(--ds-status-running-fg); }
-.workflow-rail:is([data-variant="6a"],[data-variant="6b"]) button { padding-left: 8px; }
-.workflow-rail:is([data-variant="6a"],[data-variant="6b"]) .workflow-rail-running { order: -1; width: 14px; margin-left: 0; text-align: center; }
+.workflow-rail-running { display: flex; flex-shrink: 0; margin-left: auto; }
+.workflow-rail:is([data-variant="6a"],[data-variant="6b"]) button { padding-left: 6px; gap: 6px; }
+.workflow-rail:is([data-variant="6a"],[data-variant="6b"]) .workflow-rail-running { order: -1; width: 28px; margin-left: 0; }
 .dashboard-shell:has(.workflow-rail[data-variant="6a"]):not([data-settings-takeover="true"]) { --shell-rail-width: 192px; }
 .dashboard-shell:has(.workflow-rail[data-variant="6a"]) .dashboard-panel-columns { grid-template-columns: minmax(calc(var(--ds-w-side-panel) + 16px),30%) minmax(0,1fr); }
 

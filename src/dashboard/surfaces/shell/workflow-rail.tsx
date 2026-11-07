@@ -18,7 +18,8 @@ export function WorkflowRail({ workflows, counts, previewCounts, active, preview
     if (!flow) return undefined;
     if (variant) {
       const running = MOCK_RAIL_RUNNING[id] ?? 0;
-      return <span className="workflow-rail-running shrink-0 text-caption tabular-nums" title={running ? "Running now" : undefined}>{running || ""}</span>;
+      return <span className="workflow-rail-running">{running > 0 && <span title="Running now" className="inline-flex h-5 items-center gap-1 rounded-full bg-ui-positive/15 px-1.5 text-caption font-medium tabular-nums text-ui-positive">
+        <span aria-hidden className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" />{running}</span>}</span>;
     }
     const source = flow.source === "preview" ? previewCounts : counts;
     return <span className="workflow-rail-meta ml-auto shrink-0 whitespace-nowrap text-caption tabular-nums text-ui-muted" aria-label={source ? `${activeCount(workflowStatusCounts(source, id))} active of ${workflowCount(source, id)} in ${flow.label}` : `Counts unavailable in ${flow.label}`} title={source ? "Active / all runs today" : "Counts unavailable"}>{source ? `${activeCount(workflowStatusCounts(source, id))} · ${workflowCount(source, id)}` : "…"}</span>;
