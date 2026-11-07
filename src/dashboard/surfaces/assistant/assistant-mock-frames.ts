@@ -50,7 +50,7 @@ const ortegaDryRun = sep("a-dry", "Dry run stopped", "Ortega, Lin", "done", "Dry
 const ecThree = ["Ortega, Lin", "Park, Joon", "Haddad, Rami"];
 const ecThreeGroup: MockGroup = { title: "Scan_0412.pdf", subtitle: "12 people", selected: "member", members: EC_PEOPLE.map(name => ({ name, failed: ecThree.includes(name) })) };
 const ecFailures: MockSceneData = { ...MOCK_SCENES.d9, id: "a-ec3", group: ecThreeGroup };
-const renamedParent: MockSceneData = { ...MOCK_SCENES.d9p, id: "a-rename", group: { ...MOCK_SCENES.d9p.group!, title: "April contacts scan" } };
+const renamedParent: MockSceneData = { ...MOCK_SCENES.d9p, id: "a-rename", subject: "April contacts scan", group: { ...MOCK_SCENES.d9p.group!, title: "April contacts scan" } };
 
 const verifyFailed = (blocks: MockStep["blocks"]): MockStep => ({ id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), { label: "Status", value: "Couldn't read", kind: "read", unread: true }]), ...blocks] });
 const resolved = sep("a-resolved", "Evidence resolved", "Nakamura, Rei", "running", "Finalize document", [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { ...verifyFailed([]), outcome: "Termination confirmed from Smart HR Transactions" },
@@ -211,7 +211,6 @@ const frames: readonly AssistantFrame[] = [
     { kind: "you", text: "Is Kofi Mensah still active in UCPath?" },
     { kind: "session", label: "Checked UCPath", state: "done", meta: "Person Lookup · Mensah, Kofi · 41s" },
     { kind: "reply", text: "Yes. Kofi Mensah (EID 10034736) is **Active** in Campus Dining Operations." },
-    { kind: "you", text: "When did Kofi Mensah start?" },
   ] },
 ];
 
