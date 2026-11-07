@@ -84,7 +84,7 @@ for (const state of ["earlier", "current", "future", "unknown"] as const)
     }
   });
 
-it("names missing browser cleanup proof without treating an absent directory as closed", async () => {
+it("refuses a registered browser directory missing from disk as a membership mismatch, never as closed", async () => {
   const base = await createBoundProfileFixture();
   let f: Awaited<ReturnType<typeof fixture>> | undefined;
   try {
@@ -95,7 +95,7 @@ it("names missing browser cleanup proof without treating an absent directory as 
     const held = `${directory}-held`;
     renameSync(directory, held);
     try {
-      await assert.rejects(f.inventory.prepareShutdown(), { message: "profile-closure-browser-custody-unproved", code: "PROFILE_BROWSER_CLEANUP_UNPROVED" });
+      await assert.rejects(f.inventory.prepareShutdown(), { message: "profile-closure-browser-custody-unproved", code: "PROFILE_BROWSER_MEMBERSHIP_MISMATCH" });
     } finally { renameSync(held, directory); }
   } finally { if (f === undefined) await base.close(); else await f.cleanup(); }
 });
