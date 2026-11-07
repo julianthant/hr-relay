@@ -118,6 +118,27 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await act(async () => replies[7].resolve({ state: 'answered', text: 'Late chat' })); assert.equal(composer.text, 'Other chat draft');
 });
 
+it('gives the automatic chat title only after the first reply settles, never racing the send', async () => {
+  const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
+  const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const };
+  const reply = Promise.withResolvers<AssistantResult>(), titles: string[] = [];
+  const client = resultClient({ assistantRespond: () => reply.promise });
+  let current!: ReturnType<typeof useAssistantController>;
+  function Harness() {
+    current = useAssistantController(client, 1, undefined, false);
+    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) },
+      served: current, title: 'New chat', onAutomaticTitle: title => { titles.push(title); } });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'Who ran today?' }); current.onAction({ type: 'send' }); });
+  assert.deepEqual(titles, [], 'no rename while the send is in flight');
+  await act(async () => { reply.resolve({ state: 'answered', text: 'Nobody yet.' }); await reply.promise; });
+  await vi.waitFor(() => assert.deepEqual(titles, ['Who ran today?']));
+});
+
 it.each(['run-action', 'workflow'] as const)('renders the existing served %s card with truthful local facts and confirms only its server identity', async kind => {
   const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
   const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');

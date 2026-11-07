@@ -9,6 +9,8 @@ import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/ass
 import { assistantModelLabel } from '../../../../src/models/config/assistant-model-preference.js';
 import { ASSISTANT_PAUSE_PROPOSAL, ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
+import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
+import { assistantHistoryServer } from '../../../support/helpers/dashboard/assistant-history-server.js';
 
 
 function pending() {
@@ -244,3 +246,25 @@ it('binds selected-run workflow proposals to the current selection and confirms 
   c.action({ type: 'confirm' }); assert.equal(confirms, 1);
 });
 
+
+it('stores a setup reply before publishing it, so the first automatic rename of a New chat uses the current revision', async () => {
+  const server = assistantHistoryServer();
+  try {
+    const store = await createAssistantHistory(server.client, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);
+    const [chat] = store.chats.read(); assert.ok(chat); assert.equal(chat.title, 'New chat');
+    const view = AssistantModelPreferenceViewSchema.parse({ profileId: server.profileId, epoch: 1, revision: 0, preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
+    const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { throw new Error('setup commands send nothing to the model'); } });
+    const c = createAssistantController({ ...client, ...server.client, async assistantModelPreference() { return view; } }, { authority: 'selected' }, {
+      conversationId: chat.id, read: () => store.read(chat.id), retain: state => { store.retain(chat.id, state); }, revision: () => store.revision(chat.id),
+      receipt: receipt => { store.receipt(receipt); }, local: text => store.local(chat.id, text), outcome: id => store.outcome(chat.id, id),
+      decision: id => store.decision(chat.id, id), unsaved: () => { store.unsaved(); } });
+    // The panel renames as soon as the first reply is published; do the same here.
+    let rename: Promise<void> | undefined;
+    c.subscribe(() => { if (rename === undefined && c.snapshot().messages.some(message => message.role === 'assistant')) rename = store.chats.rename(chat.id, ASSISTANT_MODEL_COMMAND); });
+    c.action({ type: 'edit', value: ASSISTANT_MODEL_COMMAND }); c.action({ type: 'send' });
+    await vi.waitFor(() => assert.ok(rename));
+    await rename;
+    assert.equal(store.chats.read().find(row => row.id === chat.id)?.title, ASSISTANT_MODEL_COMMAND);
+    assert.equal(store.notice(), '');
+  } finally { server.close(); }
+});

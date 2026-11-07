@@ -93,7 +93,8 @@ export function createPreflightAdmission(input: Readonly<{
     assertReady(scope: PreflightAdmissionScope): void {
       const report = read(scope);
       const blocked = report.results.filter(result => result.status === "fail");
-      if (blocked.length > 0) throw new PreflightAdmissionRefusal("blocked", `Preflight blocks this scope: ${blocked.map(result => result.check).join(", ")}.`);
+      // Each check's summary names the failing component (states and codes only, never values) so a worker log shows why.
+      if (blocked.length > 0) throw new PreflightAdmissionRefusal("blocked", `Preflight blocks this scope: ${blocked.map(result => `${result.check} (${result.summary})`).join("; ")}.`);
     },
   });
 }

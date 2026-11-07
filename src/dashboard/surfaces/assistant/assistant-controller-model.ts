@@ -123,29 +123,31 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       } catch { /* the outcome stays unknown, as the fallback states */ }
       if (current()) publish(assistantReducer(state, fallback));
     };
-    const complete = (message: string) => {
+    /** Stores the local line first, so its revision is cached before anything (the automatic title) reacts to the published reply. */
+    const complete = async (message: string) => {
+      if (!current()) return;
+      try { await history?.local(message); } catch { /* the line still shows; local() already flags it unsaved */ }
       if (!current()) return;
       publish(assistantReducer(state, { type: "settle", requestId, message: { id: 'assistant-' + requestId, role: 'assistant', text: message } }));
-      void history?.local(message);
     };
     try {
       if (assistantSetupCommand(prompt) === 'model') {
         const parts = prompt.trim().split(' ');
         const preference = parts.length === 1 ? undefined : AssistantModelPreferenceSchema.safeParse({ slug: parts[1], effort: parts[2] });
         if (parts.length !== 1 && (parts.length !== 3 || preference?.success !== true)) {
-          complete('Use ' + ASSISTANT_MODEL_COMMAND + ' or ' + ASSISTANT_MODEL_COMMAND + ' SLUG EFFORT.'); return;
+          await complete('Use ' + ASSISTANT_MODEL_COMMAND + ' or ' + ASSISTANT_MODEL_COMMAND + ' SLUG EFFORT.'); return;
         }
         if (parts.length === 1) {
-          if (client.assistantModelPreference === undefined) { complete(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE); return; }
+          if (client.assistantModelPreference === undefined) { await complete(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE); return; }
           const view = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(request.abort.signal));
           if (!current()) return;
-          request.binding.preferenceChanged?.(view, false); complete(preferenceText(view)); return;
+          request.binding.preferenceChanged?.(view, false); await complete(preferenceText(view)); return;
         }
         if (preference?.success !== true) return;
         const saved = await savePreference(preference.data, request.binding, request.abort.signal, current);
         if (!current()) return;
         if (saved.kind === "uncertain") { publish(assistantReducer(state, { type: "uncertain", requestId })); return; }
-        complete(saved.kind === "saved" ? preferenceText(saved.view) : saved.text);
+        await complete(saved.kind === "saved" ? preferenceText(saved.view) : saved.text);
         return;
       }
       const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId,

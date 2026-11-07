@@ -243,6 +243,26 @@ it("returns a changed observation before browser preparation or claim, without r
   } finally { await _afterEachFixture0(); }
 });
 
+it("names the failing component when authority.health blocks a worker claim", async () => {
+  const summary = "authority database inspection passed; backup state is stale; span authority is unavailable (span-stream-invalid); ucpathUserId=present; authority upgrade phase settled";
+  let blocked = false;
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run(context) { return blocked ? { check: "authority.health", state: "unhealthy", summary, impact: "authority mutations remain blocked" } : runner.run(context); },
+    }));
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+    blocked = true;
+    await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => {} }),
+      error => error instanceof PreflightAdmissionRefusal && error.reason === "blocked" && error.message.includes(`authority.health (${summary})`));
+    assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
+  } finally { await _afterEachFixture0(); }
+});
+
 for (const change of ["selection", "version", "cancel", "abort"] as const) it(`rechecks ${change} changes made during async browser preparation before claiming`, async () => {
   let release: () => void = () => undefined, completed: Promise<unknown> | undefined;
   try {
