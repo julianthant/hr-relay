@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
+import { createBrowserRoots, workerProfileDirectory, type BrowserRootLaunchInput } from "../../../../../src/backend/storage/browser-roots.js";
 import { createDashboardChildTestWorld, type RealChildRecord } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { createDashboardPoolTestWorld } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
@@ -40,6 +42,31 @@ describe("real worker processes under the composed pool", () => {
     await children.waitFor(() => h.workers.pool.snapshot().filter(view => view.state === "running").length === 2, "the replacement member", output);
     assert.equal(records.length, 3, "the crashed member is replaced by a fresh process");
   }, 60_000);
+
+  it("probes a killed child's open browser root closed under parent custody so its replacement can launch it", async () => {
+    const { h, records, output } = await realHarness("obey");
+    await pools.planWorkers(h, 1);
+    await children.waitFor(() => h.workers.pool.snapshot().some(view => view.state === "running"), "a running member", output);
+    const [first] = records;
+    assert.ok(first !== undefined);
+    const roots = createBrowserRoots(h.admission);
+    const input: BrowserRootLaunchInput = { profileId: h.admission.profileBinding.profileId, profileRoot: h.profileRoot,
+      profileDirectory: workerProfileDirectory({ profileRoot: h.profileRoot, slotOrdinal: 1, system: "ucpath" }), credentialFingerprint: null,
+      owner: { kind: "worker", database: h.database, workerId: pools.WORKER_1 } };
+    const crashed = roots.beginLaunch(input);
+    mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
+    crashed.opened();
+
+    first.child.kill("SIGKILL");
+    await children.waitFor(() => h.settled.length === 1, "the killed child's exit settlement", output);
+    assert.deepEqual(roots.inventory().roots.map(row => [row.launch.launchId, row.launch.state, row.native]), [[crashed.launchId, "closed", undefined]]);
+
+    await h.workers.ensureRunning(pools.WORKFLOW);
+    await children.waitFor(() => h.workers.pool.snapshot().some(view => view.state === "running" && view.pid !== first.pid), "the replacement member", output);
+    const replacement = roots.beginLaunch(input);
+    assert.notEqual(replacement.launchId, crashed.launchId);
+    replacement.closing(); replacement.closed();
+  }, 90_000);
 
   it("stops a real child over IPC with exit code 0 and no signal", async () => {
     const { h, records, output } = await realHarness("obey");

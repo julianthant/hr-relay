@@ -98,7 +98,8 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       else children.set(member.workerId, port.nativeProcess);
       return port;
     },
-    settleExit: member => input.settleExit(member),
+    // A crashed child can leave a root open; it is probed closed before the exit settles, so the replacement can launch.
+    settleExit: async member => { await settleProfiles(member, "recover"); await input.settleExit(member); },
     ...(input.onChange === undefined ? {} : { onChange: input.onChange }),
     onFault: (_member, error) => { input.onFault(fault(error)); },
   });
@@ -115,21 +116,26 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     if (view === undefined) return;
     await pool.stop(targetOf(view), reason);
   };
-  const removeProfiles = async (member: WorkerPoolMember): Promise<void> => {
+  /** Probes each of the member's registry roots under parent custody of its closed child; `remove` also deletes them. */
+  const settleProfiles = async (member: WorkerPoolMember, mode: "recover" | "remove"): Promise<void> => {
     const roots = createBrowserRoots(input.admission), lifetime = input.admission.lifetime;
     const stoppedProcess = children.get(member.workerId);
-    const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
-    const retained = roots.inventory().roots.filter(row => row.profileId === profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId);
+    const retained = roots.inventory().roots.filter(row => row.profileId === profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId
+      && (mode === "remove" || row.launch.state !== "closed" || row.native !== undefined));
     if (retained.length !== 0 && (stoppedProcess === undefined || !(lifetime instanceof RuntimeLifetimeLock))) throw new WorkerControlRefusal("worker-removal-child-close-unproved");
     if (stoppedProcess !== undefined && lifetime instanceof RuntimeLifetimeLock) await lifetime.awaitOwnedChildClosed(stoppedProcess);
     for (const row of retained) {
       const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
       await roots.withUnused(profileDirectory, createNativeBrowserProbe({ clock: input.clock, scheduler: input.scheduler,
         closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs, launchTimeoutMs: ConfigSchema.shape.timeouts.parse(undefined).sessionAcquireMs,
-        signal: new AbortController().signal }), async ({ remove }) => { remove(); },
+        signal: new AbortController().signal }), async ({ remove }) => { if (mode === "remove") remove(); },
       { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: row.credentialFingerprint,
         owner: { kind: "worker", database: input.database, workerId: member.workerId, ...(stoppedProcess === undefined ? {} : { stoppedProcess }) } });
     }
+  };
+  const removeProfiles = async (member: WorkerPoolMember): Promise<void> => {
+    await settleProfiles(member, "remove");
+    const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
     assertPrivateProfilePath(input.profileRoot, directory);
     if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) rmdirSync(directory);
     children.delete(member.workerId);

@@ -25,6 +25,8 @@ import { scriptedWorkerSpawner, type ScriptedWorkerBehavior, type ScriptedWorker
 
 export interface ControlHarness {
   readonly database: AuthorityDatabase;
+  readonly admission: Awaited<ReturnType<typeof createBoundProfileFixture>>["admission"];
+  readonly profileRoot: string;
   readonly clock: TestClock;
   readonly scheduler: ManualScheduler;
   readonly kernel: CommandKernel;
@@ -87,7 +89,7 @@ export function createDashboardPoolTestWorld() {
         reconcileReplay: () => { throw new Error("worker-pool fixture has no persisted settings replay authority"); },
         applyOrdinary: command => ({ state: "applied", revision: command.target.expectedRevision + 1, settingsFingerprint: derivePersistedSettingsFingerprint({}), settings: {} }) },
     });
-    return { database, clock, scheduler, kernel, workers, children, spawnRequests, faults, settled, changes };
+    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), clock, scheduler, kernel, workers, children, spawnRequests, faults, settled, changes };
   }
 
   let commandSequence = 0;
