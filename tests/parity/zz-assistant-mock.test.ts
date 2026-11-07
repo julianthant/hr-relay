@@ -27,6 +27,11 @@ for (const theme of ["light", "dark"] as const) test(`assistant mock @ ${theme}`
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs.getByRole("heading", { level: 2 })).toHaveText(frame.logs.subject);
     await expect(page.getByRole("region", { name: "Relay assistant", exact: true })).toBeVisible();
+    // Show the run's decision (or its answered line) when it has one, else the latest step.
+    await logs.getByRole("region", { name: "Run logs", exact: true }).evaluate(feed => {
+      const target = feed.querySelector("form") ?? [...feed.querySelectorAll("p")].find(line => line.textContent?.startsWith("Answered:"));
+      if (target) target.scrollIntoView({ block: "center" }); else feed.scrollTop = feed.scrollHeight;
+    });
     if (frame.menu === "effort") await page.getByRole("button", { name: /^Thinking effort:/u }).click();
     else await page.mouse.move(1, 1);
     await page.waitForTimeout(500);
