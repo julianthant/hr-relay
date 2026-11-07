@@ -1,9 +1,9 @@
 import type { LogScreenshot } from "../logs/log-feed-model.js";
 import type { LogTimelineStage } from "../logs/log-timeline-model.js";
-import type { DecisionChoiceOption, DecisionSuggestion } from "../logs/decision-card.js";
+import type { DecisionChoiceOption } from "../logs/decision-card.js";
 
 /** Design mock for the run-decision rules; read only from the URL (`decisionMock=d1`…`d16`, or `decisionMock=explorer`). */
-export const DECISION_IDS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d8s", "d9", "d9b", "d9p", "d10", "d11", "d12", "d13", "d14", "d15", "d16"] as const;
+export const DECISION_IDS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d9p", "d10", "d11", "d12", "d13", "d14", "d15", "d16"] as const;
 export type DecisionId = (typeof DECISION_IDS)[number];
 
 export function decisionMock(): { scene?: MockSceneData } | undefined {
@@ -43,7 +43,7 @@ export type MockControl =
   | Readonly<{ kind: "input"; input: MockInput }>;
 /** Every manual choice is one card; `confirm` names the action only when no control holds the answer. */
 export type MockDecision =
-  | Readonly<{ kind: "card"; title: string; context?: string; tone?: "danger"; confirm?: string; control?: MockControl; suggestion?: DecisionSuggestion; applyAll?: number }>
+  | Readonly<{ kind: "card"; title: string; context?: string; tone?: "danger"; confirm?: string; control?: MockControl}>
   | Readonly<{ kind: "line"; text: string; icon: "cancelling" | "paused" }>;
 
 export type MockState = "review" | "parked" | "failed" | "paused" | "stalled" | "cancelling";
@@ -161,19 +161,9 @@ const scenes: readonly MockSceneData[] = [
     steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", current: true, blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), { label: "Status", value: "Couldn't read", kind: "read", unread: true }]), decision] }],
     timeline: sepTimeline("failed", "Failed"),
     decision: readBackFailed },
-  { id: "d8s", name: "Read-back failed, assistant suggests", workflow: "separations", subject: "Nakamura, Rei", state: "failed", queueMessage: "Termination saved, read-back failed",
-    steps: [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", current: true, blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), { label: "Status", value: "Couldn't read", kind: "read", unread: true }]), decision] }],
-    timeline: sepTimeline("failed", "Failed"),
-    decision: { ...readBackFailed, suggestion: { option: "Check again", evidence: "The read timed out at 09:33:52; Smart HR Transactions loaded normally a minute later." } } },
   { id: "d9", name: "Emergency Contact member failed", workflow: "emergency-contact", subject: "Ortega, Lin", state: "failed", queueMessage: "Phone number rejected", headerRetry: "Retry Ortega, Lin", group: ecGroup({ member: "Ortega, Lin" }),
     steps: ecMemberSteps("Ortega, Lin", "10031877", "(619) 555-014", ["Phone: (619) 555-014", "Invalid phone number format"]), timeline: ecMemberTimeline,
     decision: { kind: "card", tone: "danger", title: "Emergency contact could not be saved", context: "UCPath rejected the phone number format. Nothing was saved.", control: { kind: "input", input: { label: "Phone to retry with", value: "(619) 555-014" } } } },
-  { id: "d9b", name: "Emergency Contact several failed", workflow: "emergency-contact", subject: "Brooks, Dana", state: "failed", queueMessage: "UCPath did not respond", headerRetry: "Retry Brooks, Dana", group: ecGroup({ member: "Brooks, Dana" }, ["Brooks, Dana", "Silva, Ines", "Tanaka, Yui"]),
-    steps: ecMemberSteps("Brooks, Dana", "10027802", "(619) 555-0148", ["Saving, please wait", "The server did not respond"], "13:22"), timeline: ecMemberTimeline,
-    decision: { kind: "card", tone: "danger", title: "Emergency contact could not be saved", context: "UCPath did not respond to Save. Nothing was saved.", applyAll: 3, control: { kind: "choice", label: "Next step", value: "retry", options: [
-      { value: "retry", label: "Retry", hint: "Saves the contact again" },
-      { value: "skip", label: "Skip this person", hint: "Leaves this contact unsaved; the others are done" },
-    ] } } },
   { id: "d9p", name: "Emergency Contact PDF parent", workflow: "emergency-contact", subject: "Scan_0412.pdf", state: "failed", queueMessage: "Member runs finished", group: ecGroup("parent"),
     steps: [
       { id: "read", time: "13:02:05", title: "Read document", system: "OCR", outcome: "12 records read", blocks: [page("Scan_0412.pdf", "Read", [read("Pages", "14"), read("Records found", "12")])] },

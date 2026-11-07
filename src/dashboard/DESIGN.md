@@ -97,7 +97,7 @@ hidden at 0 and read out as the row's description ("2 running"). In every table
 flush to the table's right edge.
 
 A queue row draws its served subtitle ("12 people") as a muted line under the title when it differs from the title.
-Double-clicking a run title in its queue row or its Logs header renames it in place, one shared name: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
+Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same name: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
@@ -161,15 +161,15 @@ Times, durations, capture times and IDs use the body face with tabular figures, 
 
 Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-card.tsx`) in the step, under the evidence it reads.
 
-- Anatomy, in order: title (what happened, `text-heading`), one context line, an optional "Assistant suggests: <option>" line with its evidence, the control, then Confirm (primary) and Cancel run (secondary, which cancels the run). Enter confirms; Escape only closes an open dropdown and never cancels.
-- The control: a short choice list is a dropdown whose options each carry a one-line hint, with the recommended option preselected (read-back failed: Check again). Picking a candidate keeps the list or table with a radio column, because comparing candidates matters. A typed value is a labelled input. The primary reads Confirm when the control holds the answer; a card without a control names its action (Retry step, Resume, Recover, Approve match).
-- Answered, the card collapses to one line that stays in the log: "Answered: <choice> · <time> · by <person>" or "by Assistant for <person>".
-- A batch member's card offers "Use for all N similar" when the same choice fits the other failed members.
+- Anatomy, in order: title (what happened, `text-heading`), one context line, the control, then Confirm (primary) and Cancel run (secondary, which cancels the run). Enter confirms; Escape only closes an open dropdown and never cancels.
+- The control: a short choice list is a narrow dropdown (`w-80`, not full width) whose options each carry a one-line hint, with the recommended option preselected (read-back failed: Check again). Picking a candidate keeps the list or table with a radio column, because comparing candidates matters. A typed value is a labelled input. The primary reads Confirm when the control holds the answer; a card without a control names its action (Retry step, Resume, Recover, Approve match).
+- Answered, the card collapses to one line that stays in the log: "Answered: <choice> · <time> · by <person>" or "by assistant on behalf of <person>".
+- The card never carries assistant suggestions or "use for all" choices. The recommended option is preselected, the assistant talks in its own panel, and a batch of the same fix goes through the assistant's Proposal card, which names each person.
 - Picking one of several records puts a radio column in the page card that lists them; Confirm stays disabled until a row is chosen.
 - Every pick ends with a "None of these" row (after any extra option such as "Add a new row"). Choosing it puts a labelled input in the card ("Enter employee ID", 8 digits; "Enter row number"), and Confirm stays disabled until the value is valid. A typed employee ID is asked for only here, when Relay cannot find the person.
 - A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
 - A value to correct is the card's input, prefilled with what Relay read or typed.
-- A failure uses the same anatomy. The question is the failure title in the danger colour, and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written. There is no Add note action.
+- A failure uses the same anatomy. The question is the failure title in the danger colour (the card keeps the normal border; only the title is red), and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written. There is no Add note action.
 - When the site rejected a value Relay typed (phone, address, date, ID) and nothing was saved, the failure shows a labelled input prefilled with the rejected value and the primary "Retry with this <value>" ("Retry with this number"). It is never offered after a committed save.
 - When a write saved but its read-back failed, the dropdown options are, in order: Check again (repeats only the read-back), "Checked by hand, continue", "Withdrawn in UCPath, file again" and "Mark as failed" (ends this person's run as failed and files nothing). "File again" first reads the system and proves the saved record is gone or withdrawn, then files once; if the record is still there, a toast refuses it. Relay never withdraws a submitted transaction itself.
 - An unconfirmed write (parked, or uncertain after a restart) asks "Did the <record> save in <system>?". The note says what did not confirm and where to check. The dropdown offers "Saved in <system>" (preselected; with a number input when that system issues one) and "Not saved, <what Relay does next>".

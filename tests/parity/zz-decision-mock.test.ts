@@ -53,9 +53,7 @@ for (const theme of ["light", "dark"] as const) test(`decision mock @ ${theme}`,
     await expect(header).toHaveText("April contacts scan");
     await expect(page.locator("[data-demo-row-title]", { hasText: "April contacts scan" })).toBeVisible();
     await header.dblclick();
-    await expect(page.getByRole("textbox", { name: "Run name", exact: true })).toHaveValue("April contacts scan");
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: join(OUT, `d9-rename-logs-header-${theme}.png`) });
+    await expect(page.getByRole("textbox", { name: "Run name", exact: true })).toHaveCount(0);
   }
   for (const id of DECISION_IDS.filter(wanted)) {
     const scene = MOCK_SCENES[id];

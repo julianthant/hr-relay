@@ -36,8 +36,8 @@ describe("DecisionCard", () => {
   });
 
   it("collapses to one answered line and shows no actions in preview", async () => {
-    const view = await draw({ title: "Read-back failed", answered: { choice: "Check again", time: "09:41", by: "Assistant for Alex Rivera" } });
-    assert.equal(view.textContent, "Answered: Check again · 09:41 · by Assistant for Alex Rivera");
+    const view = await draw({ title: "Read-back failed", answered: { choice: "Check again", time: "09:41", by: "assistant on behalf of Alex Rivera" } });
+    assert.equal(view.textContent, "Answered: Check again · 09:41 · by assistant on behalf of Alex Rivera");
     assert.equal(view.querySelector("form"), null);
     await draw({ title: "Which Bea Morrow is this run about?", preview: true });
     assert.equal(view.querySelectorAll("button").length, 0);

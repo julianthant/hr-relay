@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Check, Copy, Eye, LoaderCircle, Monitor, MousePointer2, PanelsTopLeft, PencilLine } from "lucide-react";
 import { Field, IconButton, Input, SearchInput, useToasts } from "../../../ds/ui.js";
-import { DecisionCard, DecisionChoice, useApplyAll, type DecisionAnswered } from "../logs/decision-card.js";
+import { DecisionCard, DecisionChoice, type DecisionAnswered } from "../logs/decision-card.js";
 import { cn } from "../../../lib/utils.js";
 import { LogScreenshots } from "../logs/log-screenshots.js";
 import type { MockBlock, MockControl, MockDecision, MockInput, MockRow, MockSceneData, MockState, MockStep, MockTable, MockTableRow } from "./decision-mock-model.js";
@@ -75,7 +75,6 @@ function Decision({ decision }: { decision: MockDecision }) {
   const [choice, setChoice] = useState(control?.kind === "choice" ? control.value : "");
   const [text, setText] = useState(control?.kind === "input" ? control.input.value ?? "" : "");
   const [answered, setAnswered] = useState<DecisionAnswered>();
-  const applyAll = useApplyAll(decision.kind === "card" ? decision.applyAll : undefined);
   if (decision.kind === "line") return <Line icon={<LoaderCircle aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}>{decision.text}</Line>;
   let body: ReactNode, answer: string | undefined = decision.confirm;
   if (control?.kind === "pick") {
@@ -92,7 +91,7 @@ function Decision({ decision }: { decision: MockDecision }) {
     answer = typedValid(control.input, text) ? text.trim() : undefined;
     body = <TypedValue input={control.input} value={text} onChange={setText} />;
   }
-  return <DecisionCard title={decision.title} context={decision.context} tone={decision.tone} suggestion={decision.suggestion} applyAll={applyAll}
+  return <DecisionCard title={decision.title} context={decision.context} tone={decision.tone}
     confirmLabel={control && control.kind !== "compare" ? "Confirm" : decision.confirm} confirmDisabled={answer === undefined && control !== undefined && control.kind !== "compare"} answered={answered}
     onConfirm={() => setAnswered({ choice: answer ?? decision.confirm ?? "Confirmed", time: ANSWERED_AT, by: ANSWERED_BY })} onCancel={() => undefined}>{body}</DecisionCard>;
 }
