@@ -704,7 +704,7 @@ it.each(([17, 18] as const).flatMap(version => (["run", "terminal-run", "plan", 
     } finally { await f.close(); }
 });
 
-/** Writes worker custody rows as schemas 20-22 stored them: old slots, leases with a pause, worker history and a claimed run with its worker lifetime. */
+/** Writes worker custody rows as schemas 20-22 stored them: old slots, leases with a pause, worker history and a claimed run with its worker lifetime; journals carrying the lifetime are covered by worker-custody-predecessor.integration. */
 function plantPredecessorWorkerCustody(path: string) {
   const raw = new DatabaseSync(path, { enableForeignKeyConstraints: true }), now = systemClock.now().toISOString();
   try {
@@ -734,10 +734,6 @@ function plantPredecessorWorkerCustody(path: string) {
     try {
       raw.prepare(`UPDATE runs SET ${Object.keys(stored).map(key => `${key}=?`).join(",")} WHERE id=?`).run(...Object.values(stored), queued.envelope.runId);
     } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
-    const claimId = randomUUID(), request = { kind: "run-lifecycle", operation: "claim-next", request: { workflow: "person-lookup", workerId: "person-lookup-worker-2", workerLifetime: lifetime } };
-    raw.prepare("INSERT INTO commands VALUES(?,'run-lifecycle','local-operator',NULL,?,?,?,'succeeded',?,?,?)")
-      .run(claimId, queued.envelope.runId, "a".repeat(64), canonicalJsonStringify(request), canonicalJsonStringify(request), now, now);
-    raw.prepare("INSERT INTO command_audits VALUES(?,?,NULL,?,?)").run(claimId, claimId, canonicalJsonStringify({ request }), now);
     return { runId: queued.envelope.runId };
   } finally { raw.close(); }
 }
