@@ -6,9 +6,12 @@ import type { AssistantPluginDeps } from "../registry.js";
 const Count = z.number().int().nonnegative();
 const Worksheets = z.array(z.strictObject({ position: z.number().int().positive(), rows: Count, columns: Count, hiddenColumns: Count }));
 const Flags = { formulas: z.boolean(), unsupportedMetadata: z.boolean() };
+type Sheet = Readonly<{ rows: readonly unknown[]; width: number; hidden: readonly number[]; headerRow?: number | undefined }>;
+/** Rows below the header, as the library catalog counts them. */
+export const dataRows = (sheet: Sheet) => sheet.rows.length - (sheet.headerRow ?? 1);
 /** Worksheet structure by position: counts only; names, headers and cells never leave. */
-export const worksheetFacts = (workbook: Readonly<{ sheets: readonly Readonly<{ rows: readonly unknown[]; width: number; hidden: readonly number[] }>[] }>) =>
-  workbook.sheets.map((sheet, index) => ({ position: index + 1, rows: sheet.rows.length, columns: sheet.width, hiddenColumns: sheet.hidden.length }));
+export const worksheetFacts = (workbook: Readonly<{ sheets: readonly Sheet[] }>) =>
+  workbook.sheets.map((sheet, index) => ({ position: index + 1, rows: dataRows(sheet), columns: sheet.width, hiddenColumns: sheet.hidden.length }));
 const flags = (workbook: Readonly<{ hasFormulas: boolean; unsupportedMetadata?: boolean | undefined }>) => ({ formulas: workbook.hasFormulas, unsupportedMetadata: workbook.unsupportedMetadata === true });
 
 /** A library workbook's current entry by `S` reference; removed or missing workbooks are unavailable. */

@@ -259,7 +259,7 @@ it("shows Separations document identities from the real planned canonical inputs
 function seedWorkbook(o: Owners) {
   const created = o.library.create(EditableWorkbookSchema.parse({ name: "Roster", themes: [], hasFormulas: false,
     sheets: [{ id: randomUUID(), name: "Sheet1", width: 1, hidden: [], headerRow: 1, rows: [{ id: randomUUID(), cells: [{ value: "Name" }] }, { id: randomUUID(), cells: [{ value: "A" }] }] }] }));
-  const type = o.library.putType({ id: randomUUID(), name: "Staff", keyFieldId: null, fields: ["Name"], defaultWorkbookId: null, fieldLabels: { Name: "Name" } });
+  const type = o.library.putType({ id: randomUUID(), name: "Staff", keyFieldId: null, fields: ["roster.Name"], defaultWorkbookId: null, fieldLabels: { "roster.Name": "Name" } });
   const typeId = (type as { id: string }).id;
   return { libraryId: created.libraryId, sheet: o.references.issue("S", created.libraryId, "Roster"), type: o.references.issue("T", typeId, "Staff"), typeId,
     entry: () => { const entry = o.library.catalog().find(candidate => candidate.libraryId === created.libraryId); assert.ok(entry); return entry; } };
@@ -273,7 +273,7 @@ it("imports an attached spreadsheet under the typed name only on Confirm, once, 
   await assert.rejects(sheetCard(o, { action: "import", file, name: "Q3 roster", type: "x" }), /ZodError|Unrecognized/u, "extra fields refuse");
   const card = await sheetCard(o, { action: "import", file, name: "Q3 roster" });
   assert.ok(card.effect === "spreadsheet" && card.action === "import");
-  assert.deepEqual(card.facts, [{ label: "File", value: "roster.csv" }, { label: "Name", value: "Q3 roster" }, { label: "Worksheets", value: "1" }, { label: "Rows", value: "3" }]);
+  assert.deepEqual(card.facts, [{ label: "File", value: "roster.csv" }, { label: "Name", value: "Q3 roster" }, { label: "Worksheets", value: "1" }, { label: "Rows", value: "2" }]);
   assert.equal(o.library.catalog().length, before, "nothing is written before Confirm");
   await assert.rejects(o.decide(card, "confirm", undefined, "f".repeat(64)), /assistant-reviewed-proposal-mismatch/u);
   assert.deepEqual(await o.decide(card, "confirm"), { state: "applied", actionId: card.actionId });

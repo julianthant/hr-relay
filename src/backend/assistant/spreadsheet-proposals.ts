@@ -12,7 +12,7 @@ import { WorkbookLibraryError, type WorkbookLibraryService } from "../workbooks/
 import type { createAssistantAuthorization } from "./authorization.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantProposalTool, type AssistantToolContext } from "./plugins/plugin.js";
 import type { AssistantPluginDeps } from "./plugins/registry.js";
-import { attachmentWorkbook, catalogEntry } from "./plugins/spreadsheets/index.js";
+import { attachmentWorkbook, catalogEntry, dataRows } from "./plugins/spreadsheets/index.js";
 
 export type AssistantSpreadsheetLibrary = Pick<WorkbookLibraryService, "catalog" | "read" | "types" | "create" | "operatorOperation" | "libraryAction" | "libraryActionRecord" | "journal">;
 export interface AssistantSpreadsheetProposalDeps {
@@ -70,7 +70,7 @@ const LABELS: Readonly<Record<Change["action"], string>> = {
 };
 /** A binding that changed after issue; nothing was written. */
 const staleCode = (error: unknown): AssistantFailureCode => error instanceof AssistantToolRefusal ? error.code : "ASSISTANT_CONTEXT_STALE";
-const rowsOf = (workbook: ImportedWorkbook) => String(workbook.sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0));
+const rowsOf = (workbook: ImportedWorkbook) => String(workbook.sheets.reduce((sum, sheet) => sum + dataRows(sheet), 0));
 
 /** `propose_spreadsheet_change` and its Confirm: one pinned owner call per card, claimed once, settled from the owner's result. */
 export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDeps) {
