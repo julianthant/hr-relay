@@ -31,7 +31,7 @@ import { findGateDecision } from "../../../../models/trust/gate-decisions.js";
 import type { RunRecord } from "../../../../models/run/record.js";
 import type { RunFoldRecord } from "../../projections/run-queue-projection.js";
 import { deterministicUuid } from "../../lifecycle/support.js";
-import { idempotencyKeyDigestReference } from "../../../../rules/redaction/redaction.js";
+import { directIdentifierDisplay, idempotencyKeyDigestReference } from "../../../../rules/redaction/redaction.js";
 import { SectionUnavailableError } from "../../commands/refusals.js";
 import type { RunDetailQueryDeps } from "../run-detail-types.js";
 import { requireTrustRun } from "../../trust/run-reader.js";
@@ -138,7 +138,7 @@ export function hireReviewDecision(match: z.infer<typeof SearchPersonMatchOutput
       title: "Confirmed UCPath matches",
       columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }],
       rows: confirmed.map(person => ({ id: person.emplId, name: person.name, eid: person.emplId, cells: [
-        { columnId: "name", value: person.name }, { columnId: "eid", value: `••••${person.emplId.slice(-4)}` },
+        { columnId: "name", value: person.name }, { columnId: "eid", value: `••••${directIdentifierDisplay(person.emplId.slice(-4))}` },
       ] })),
     } } }];
     return [];
@@ -484,7 +484,7 @@ export function identityGateDecision(
       title: "Search results",
       columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }, { id: "origin", label: "Found by" }],
       rows: options.map(option => ({ id: option.eid, name: option.displayName, eid: option.eid, chosenFrom: option.chosenFrom, cells: [
-        { columnId: "name", value: option.displayName }, { columnId: "eid", value: `••••${option.eid.slice(-4)}` }, { columnId: "origin", value: option.origin },
+        { columnId: "name", value: option.displayName }, { columnId: "eid", value: `••••${directIdentifierDisplay(option.eid.slice(-4))}` }, { columnId: "origin", value: option.origin },
       ] })),
       typed: { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$" },
     } } }]),
