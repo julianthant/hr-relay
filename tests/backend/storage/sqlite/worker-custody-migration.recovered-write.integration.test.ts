@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { ExecutorSpanEventSchema, type ExecutorSpanEvent } from "../../../../src/backend/logs/span-emitter.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { inspectArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { upgradeProfileAtStartup } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
 import { authenticateParkedWriteResolution } from "../../../../src/rules/write-safety/parked-resolution.js";
 import { WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
@@ -64,6 +67,25 @@ it("keeps a recovered committed write with its parked attempt and authenticated 
     authenticateParkedWriteResolution(intent, attempt, commandFromRow(raw.prepare("SELECT * FROM commands WHERE id=?").get(resolution.commandId)),
       nativeOrdinaryRecordFromRow("command_audits", raw.prepare("SELECT * FROM command_audits WHERE id=?").get(resolution.auditId)));
   } finally { raw.close(); }
+});
+
+it("keeps the committed write evidence through a verified backup and the startup upgrade", async () => {
+  const { h, raw, resolution } = await recovered();
+  const before = writeEvidence(raw, resolution);
+  raw.close();
+  const profileId = h.profile.admission.profileBinding.profileId;
+  h.database.close(); h.profile.admission.release();
+  assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, h.profile.machine, profileId, { primaryDisplay: null }, systemClock)).state, "upgraded");
+  const after = new DatabaseSync(h.profile.path, { readOnly: true });
+  try {
+    assert.equal(after.prepare("SELECT 1 FROM runs WHERE id=?").get(WRITE_FIXTURE_RUN_ID), undefined);
+    assert.ok(after.prepare("SELECT 1 FROM deleted_runs WHERE run_id=?").get(WRITE_FIXTURE_RUN_ID));
+    assert.deepEqual(writeEvidence(after, resolution), before);
+    authenticateParkedWriteResolution(nativeOrdinaryRecordFromRow("write_intents", after.prepare("SELECT * FROM write_intents").get()),
+      nativeOrdinaryRecordFromRow("write_attempts", after.prepare("SELECT * FROM write_attempts").get()),
+      commandFromRow(after.prepare("SELECT * FROM commands WHERE id=?").get(resolution.commandId)),
+      nativeOrdinaryRecordFromRow("command_audits", after.prepare("SELECT * FROM command_audits WHERE id=?").get(resolution.auditId)));
+  } finally { after.close(); }
 });
 
 it("refuses a fence for another task that no committed write settles, beside a committed one", async () => {
