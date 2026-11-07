@@ -45,7 +45,7 @@ export function rewritePredecessorCommand(raw: DatabaseSync, commandId: string, 
 export function restorePredecessorCustodySchema(raw: DatabaseSync): void {
   const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),
     created_at: z.string(), updated_at: z.string() })).parse(raw.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all());
-  raw.exec("DELETE FROM worker_slots");
+  withTriggersDropped(raw, ["worker_slots"], () => raw.exec("DELETE FROM worker_slots"));
   restoreSchema22WorkerCustodyFixture(raw);
   for (const slot of slots) {
     const row = { workerId: slot.id, workflow: slot.workflow, ordinal: slot.ordinal, poolIndex: slot.pool_index, membershipRevision: 1, phase: "idle",
