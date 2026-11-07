@@ -27,6 +27,7 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
   readonly runCli?: (admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime) => Promise<void>;
   readonly acquireLifetimeLock?: (port: number) => Promise<RuntimeLifetimeLock>;
+  readonly receiveLifetimeLock?: typeof receiveRuntimeLifetimeLock;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock) => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
@@ -68,7 +69,7 @@ export async function runSecureEnvironmentBootstrap(
   const controller = new AbortController();
   const exit = dependencies.exit ?? ((code: number): never => process.exit(code));
   if (selector === "cli" && entrypointArgs[0] === "worker") {
-    const lock = await receiveRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort, () => {
+    const lock = await (dependencies.receiveLifetimeLock ?? receiveRuntimeLifetimeLock)(rebuildRuntimeIsolation.lockPort, () => {
       controller.abort(new Error("runtime-parent-disconnected"));
       setTimeout(() => exit(1), WORKER_ORPHAN_EXIT_MS);
     });

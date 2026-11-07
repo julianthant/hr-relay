@@ -140,7 +140,7 @@ it("uses the configured singleton port for production parents and refuses busy r
       }), RuntimeAlreadyRunningError);
     }
     const bootstrap = await readFile(new URL("../../../../src/backend/app/bootstrap/secure-env-bootstrap.ts", import.meta.url), "utf8");
-    assert.match(bootstrap, /receiveRuntimeLifetimeLock\(rebuildRuntimeIsolation\.lockPort,/u);
+    assert.match(bootstrap, /receiveRuntimeLifetimeLock\)\(rebuildRuntimeIsolation\.lockPort,/u);
   } finally {
     await lock.close();
   }
