@@ -27,7 +27,7 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
 import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
-import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { restorePredecessorCustodySchema, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
@@ -83,7 +83,8 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
   const root = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
   assert.equal((await execution.step(root, world.SIGNAL)).outcome.state, "yielded-delegation");
   const [queuedChild] = database.authority.runs.listChildren(root.envelope.runId); assert.ok(queuedChild);
-  const owner = testWorkerLifetime(database, root.envelope.workflow, 1), active = database.authority.runtimeConfig.get(); assert.ok(active);
+  // A second worker crashes, so the root's home worker stays live for the join.
+  const owner = testAdmittedWorker(database, clock, { path, workflow: root.envelope.workflow, poolIndex: 2, browserSystems: [] }), active = database.authority.runtimeConfig.get(); assert.ok(active);
   const claimed = execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: root.envelope.workflow, workerId: owner.workerId,
     runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } });
   assert.ok(claimed.state === "applied" && "run" in claimed);
