@@ -95,11 +95,11 @@ it("serves all six phases from exact current rows, omits unsupported timelines a
   assert.equal(sessionsFromDay({ ...day, workerAuthority: { state: "unavailable", reason: "authority missing", members: [] } }, catalog, now).state, "unavailable");
 });
 
-it("uses canonical client transport and confirms a lost response by the served effect without POST replay", async () => {
+it("uses canonical client transport and confirms the command's own applied reply once its served effect appears, without POST replay", async () => {
   const h = harness(); const request: SessionPreviewRequest = { id: uuidOf(8100), target: h.day().workerCards[0].workerId, action: "pause", authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) };
-  h.effect(command => ({ state: "pending", commandId: command.commandId }));
+  h.effect(command => applied(command));
   assert.equal((await h.port.send(request)).state, "uncertain");
-  assert.equal(h.sent.length, 1); assert.equal(h.gets.length, 0);
+  assert.equal(h.sent.length, 1); assert.equal(h.gets.length, 1, "one readback of the applied reply");
   const command = h.sent[0]; const original = structuredClone(command);
   assert.equal((await h.port.check(request)).state, "uncertain", "no served effect yet");
   h.setDay(DashboardDayWireSchema.parse({ ...effectOf(h.day(), command), workerCards: effectOf(h.day(), command).workerCards.map(card => ({ ...card, state: "running" })) }));
@@ -109,6 +109,16 @@ it("uses canonical client transport and confirms a lost response by the served e
   assert.deepEqual(h.sent, [original]); assert(h.gets.length > 0); assert(h.gets.every(url => url.includes("/api/v1/dashboard?day=")));
   assert.equal((await h.port.send({ ...request, id: uuidOf(8101), authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) })).state, "uncertain", "next request reaches transport after exact Check releases lock");
   assert.equal(h.sent.length, 2);
+});
+
+it("never confirms a pending reply from a served effect that another command could have caused", async () => {
+  const h = harness(); const request: SessionPreviewRequest = { id: uuidOf(8110), target: h.day().workerCards[0].workerId, action: "pause" };
+  h.effect(command => ({ state: "pending", commandId: command.commandId }));
+  assert.equal((await h.port.send(request)).state, "uncertain");
+  const command = h.sent[0];
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: h.day().workerCards.map(card => ({ ...card, directive: "pause" })) }));
+  assert.equal(sessionCommandEffect(h.day(), command), true, "an unrelated pause shows the same directive");
+  assert.equal((await h.port.check(request)).state, "uncertain"); assert.equal(h.sent.length, 1);
 });
 
 it.each(["actor", "client", "request"])("retains original uncertain attempt across %s replacement and A to B to A", async kind => {
@@ -152,15 +162,16 @@ it("does not confirm an applied reply whose served effect is absent", async () =
 });
 
 it.each(["stop", "retry", "remove"] as const)("confirms %s once the served member fence moves, preserving the newest phase", async action => {
-  const h = harness();
+  const h = harness(); let effected: DashboardDayWire | undefined;
   if (action === "retry") h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
   h.effect(command => {
     const next = effectOf(h.day(), command);
-    h.setDay(action === "stop" ? DashboardDayWireSchema.parse({ ...next, workerCards: next.workerCards.map(card => ({ ...card, state: "running" })) }) : next);
-    return { state: "pending", commandId: command.commandId };
+    effected = action === "stop" ? DashboardDayWireSchema.parse({ ...next, workerCards: next.workerCards.map(card => ({ ...card, state: "running" })) }) : next;
+    return applied(command);
   });
   const request: SessionPreviewRequest = { id: uuidOf(8600), target: h.day().workerCards[0].workerId, action };
-  assert.equal((await h.port.send(request)).state, "uncertain");
+  assert.equal((await h.port.send(request)).state, "uncertain", "the applied reply is not yet served");
+  assert(effected); h.setDay(effected);
   const result = await h.port.check(request); assert.equal(result.state, "confirmed"); assert.equal(h.sent.length, 1);
   assert.equal(result.data?.state, "ready");
   if (result.data?.state !== "ready") throw new Error("ready");
@@ -179,12 +190,14 @@ it("refresh confirms only while the member keeps the lifetime it was sent to", a
   const restarted = DashboardDayWireSchema.parse({ ...h.day(), workerCards: h.day().workerCards.map(next => ({ ...next, controls: basis(NEXT_LIFETIME) })) });
   assert.equal(sessionCommandEffect(restarted, command), false);
   assert.equal(sessionCommandEffect(h.day(), command), true);
+  assert.equal((await h.port.check(request)).state, "uncertain", "an unchanged card is no proof that a pending refresh ran");
+  assert.equal(h.sent.length, 1);
 });
 
 it("hydrates mounted Remove after remount, retains it through outage and a failed phase, and removes only on readback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let original: CommandRequest | undefined;
-  h.effect(command => { original = command; return { state: "pending", commandId: command.commandId }; });
+  h.effect(command => { original = command; return applied(command); });
   const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
   const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
   const click = async (label: string) => {
