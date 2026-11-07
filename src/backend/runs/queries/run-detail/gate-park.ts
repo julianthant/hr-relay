@@ -13,6 +13,9 @@ import {
   publicTransactionKeyDigest,
 } from "../../../../models/write-safety/protected-input.js";
 import { deriveIdentityEvidenceDigest } from "../../../../rules/separations/identity-evidence.js";
+import type { z } from "zod";
+import { SearchPersonMatchOutputSchema } from "../../../../models/systems/ucpath/search-person-match.js";
+import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../../models/workflows/onboarding/read-write-plan.js";
 import { MatchIdentityOutputSchema } from "../../../../models/workflows/separations/match-identity.js";
 import type { IdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
 import {
@@ -112,6 +115,48 @@ function settledGateWire(
   };
 }
 
+/** D4 for the hire review: `new-hire` and `existing-person` are served only as `readOnboardingWritePlan` would accept them, from the run's own UCPath match. Other operator gates stay unprojected: the identity gate has its own section, and no other arm's result can be built from served facts. */
+function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string): RunDecisionWire | undefined {
+  const arms = findGateDecision(authority.envelope.workflow, gateId)?.arms;
+  if (gateId !== ONBOARDING_WRITE_REVIEW_GATE || arms === undefined) return undefined;
+  const match = hireReviewMatch(deps, authority);
+  return match === undefined ? undefined : hireReviewDecision(match, arms, gateId, authority.version);
+}
+
+export function hireReviewDecision(match: z.infer<typeof SearchPersonMatchOutputSchema>,
+  arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string, expectedVersion: number): RunDecisionWire | undefined {
+  const confirmed = match.confirmed.filter(person => match.hits.some(hit => hit.emplId === person.emplId && hit.name === person.name)
+    && !match.dropped.some(hit => hit.emplId === person.emplId));
+  const newHire = match.hits.length === 0 && match.confirmed.length === 0 && match.dropped.length === 0;
+  const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion, arm });
+  const served = arms.flatMap(arm => {
+    if (arm.value === "new-hire" && newHire) return [{ id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value) }];
+    if (arm.value === "existing-person" && confirmed.length > 0) return [{ id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value), input: { kind: "candidate" as const, table: {
+      title: "Confirmed UCPath matches",
+      columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }],
+      rows: confirmed.map(person => ({ id: person.emplId, name: person.name, eid: person.emplId, cells: [
+        { columnId: "name", value: person.name }, { columnId: "eid", value: `••••${person.emplId.slice(-4)}` },
+      ] })),
+    } } }];
+    return [];
+  });
+  return served.length === 0 ? undefined : projectDecision("review-before-write", served);
+}
+
+/** The run's `ucpath-source` match checkpoint, or undefined when it cannot be read for this run's bound descriptor. */
+function hireReviewMatch(deps: RunDetailQueryDeps, authority: RunRecord): z.infer<typeof SearchPersonMatchOutputSchema> | undefined {
+  const canonical = deps.canonical;
+  if (canonical === undefined) return undefined;
+  const { envelope } = authority;
+  const stored = readRunCheckpoint(canonical.database.authority, envelope, "ucpath-source", true);
+  if (stored === undefined || stored.workflowId !== envelope.workflow || stored.itemId !== envelope.itemId
+    || stored.attempt > envelope.attempt || stored.descriptorVersion !== envelope.descriptorVersion
+    || stored.contractFingerprint !== envelope.contractFingerprint
+    || stored.output.schemaHash !== deriveSchemaHash(SearchPersonMatchOutputSchema, "output")) return undefined;
+  const parsed = SearchPersonMatchOutputSchema.safeParse(stored.output.value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export function buildRunGate(
   deps: RunDetailQueryDeps,
   runId: string,
@@ -130,6 +175,7 @@ export function buildRunGate(
     const gate = descriptor !== undefined && descriptor.version === run.envelope.descriptorVersion && descriptor.contractFingerprint === run.envelope.contractFingerprint
       ? descriptorRuntimeNodes(descriptor).find((node) => node.kind === "gate" && String(node.id) === gateId)
       : undefined;
+    const decision = gate === undefined ? undefined : reviewBeforeWriteDecision(deps, authority, gateId);
     return {
       state: "open",
       gateId: deterministicUuid(`gate:${runId}:${run.lifecycle.gateId}`),
@@ -137,6 +183,7 @@ export function buildRunGate(
       label: gate === undefined ? run.lifecycle.gateId : runtimeNodeLabel(gate),
       openedAt: run.lifecycle.parkedAt,
       revision: 1,
+      ...(decision === undefined ? {} : { decision }),
     };
   }
   return settledGateWire(runId, run.envelope.workflow, stored.at(-1), row?.resolvedGates.at(-1));
