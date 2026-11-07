@@ -34,10 +34,10 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
   const columnMatches = (column: string, index: number) => `${column} ${index < 26 ? String.fromCharCode(65 + index) : `A${String.fromCharCode(65 + index - 26)}`} ${sheet.mapping[index]}`.toLowerCase().includes(query.trim().toLowerCase());
   const updateSheet = (patch: Partial<SpreadsheetSheet>) => setSheets(current => current.map(entry => entry.name === sheetName ? { ...entry, ...patch } : entry));
   const finish = () => {
-    onOpenChange(false);
     try {
       if (new URLSearchParams(window.location.search).get("spreadsheetPreviewOutcome") === "failure") throw new Error("Import failed. No file was registered.");
       const file = registerMockSpreadsheet({ name, typeId, sheets }, existing?.id);
+      onOpenChange(false);
       onRegistered(file);
       toast({ tone: "success", title: existing ? "Column mappings saved" : `${type.name} imported`, description: `${file.name} · ${file.sheets.length} sheets` });
     } catch (error) {
