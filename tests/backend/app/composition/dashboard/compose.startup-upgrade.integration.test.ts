@@ -90,7 +90,8 @@ function post(port: number) {
   }, body: JSON.stringify(login) });
 }
 function rows(path: string, version: number) {
-  return withReadonlyAuthoritySnapshot(path, database => Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides")
+  // Schema 26 drops the empty assistant_grants table, so it is not part of the retained-row comparison.
+  return withReadonlyAuthoritySnapshot(path, database => Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants")
     .map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
 }
 
