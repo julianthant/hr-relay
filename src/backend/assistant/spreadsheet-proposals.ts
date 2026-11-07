@@ -28,7 +28,7 @@ export interface AssistantSpreadsheetProposalDeps {
 const TTL_MS = 60_000;
 const Sheet = referenceSchema("S"), File = referenceSchema("A"), Version = referenceSchema("V");
 const Text = z.string().min(1).max(320);
-export const SpreadsheetChangeParameters = z.strictObject({ change: z.discriminatedUnion("action", [
+export const SpreadsheetChangeParameters = z.strictObject({ change: z.union([
   z.strictObject({ action: z.literal("import"), file: File, name: Text }),
   z.strictObject({ action: z.literal("new-version"), sheet: Sheet, file: File }),
   z.strictObject({ action: z.literal("set-type"), sheet: Sheet, type: referenceSchema("T") }),
@@ -37,7 +37,7 @@ export const SpreadsheetChangeParameters = z.strictObject({ change: z.discrimina
   z.strictObject({ action: z.literal("unlink"), sheet: Sheet }),
   z.strictObject({ action: z.literal("rename"), sheet: Sheet, name: Text }),
   z.strictObject({ action: z.literal("create-version"), sheet: Sheet, name: Text,
-    from: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("version"), version: Version }), z.strictObject({ kind: z.literal("sharepoint") })]), useNow: z.boolean() }),
+    from: z.union([z.strictObject({ kind: z.literal("version"), version: Version }), z.strictObject({ kind: z.literal("sharepoint") })]), useNow: z.boolean() }),
   z.strictObject({ action: z.literal("use-version"), sheet: Sheet, version: Version }),
   z.strictObject({ action: z.literal("rename-version"), sheet: Sheet, version: Version, name: Text }),
 ]) });

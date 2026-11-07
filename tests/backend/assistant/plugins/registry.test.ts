@@ -22,6 +22,8 @@ it("fits the full read and proposal tool set (14 tools) under the 16-tool cap", 
   const proposals = createAssistantProposals({} as Parameters<typeof createAssistantProposals>[0]);
   const registry = assistantToolRegistry([...plugins(), proposals.plugin]);
   assert.equal(registry.tools.length, 14);
+  // Strict function schemas refuse `oneOf` (discriminated unions); unions must emit `anyOf`.
+  for (const tool of registry.namespace.tools) assert.doesNotMatch(JSON.stringify(tool.parameters), /"oneOf"/u, tool.name);
   assert.deepEqual(proposals.plugin.tools.map(tool => tool.name), ["propose_workflow_start", "propose_rerun", "propose_run_action", "change_notifications", "propose_spreadsheet_change"]);
   assert.throws(() => assistantToolRegistry([...plugins(), proposals.plugin, { domain: "extra", tools: [...plugins()[0]?.tools ?? []].map(tool => ({ ...tool, name: `${tool.name}_x` })).concat(
     [...proposals.plugin.tools].map(tool => ({ ...tool, name: `${tool.name}_y` }))) }]), /assistant-tool-registry-invalid/u, "a seventeenth tool refuses");
