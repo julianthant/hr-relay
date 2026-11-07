@@ -5,7 +5,7 @@ import { WorkerPoolMemberSchema, WorkerRetirementProofSchema, workerPoolMember, 
 export { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import type { WorkerBrowserObservation } from "../../../models/run/worker-control.js";
 import type { WorkerSupervisorEffect } from "../../storage/sqlite/worker-control.js";
-import type { WorkerLifecycleBinding, WorkerResetBinding } from "../../../models/run/worker-control.js";
+import { NAMED_WORKER_REFUSALS, WorkerControlRefusal, type WorkerLifecycleBinding, type WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { RunRecord } from "../../../models/run/record.js";
 
 import { z } from "zod";
@@ -951,7 +951,8 @@ export function createWorkerPoolRuntimeExecutor(
         } catch (error) {
           const current = lifecycle.database.authority.workerControls.get(command.commandId);
           if (current?.phase.state === "executing") lifecycle.database.authority.workerControls.transition(command.commandId, "executing", {
-            state: "uncertain", startedAt: current.phase.startedAt, observedAt: lifecycle.clock.now().toISOString(), message: "worker-lifecycle-effect-or-settlement-unproved" });
+            state: "uncertain", startedAt: current.phase.startedAt, observedAt: lifecycle.clock.now().toISOString(),
+            message: error instanceof WorkerControlRefusal && NAMED_WORKER_REFUSALS.has(error.message) ? error.message : "worker-lifecycle-effect-or-settlement-unproved" });
           throw error;
         }
       });
