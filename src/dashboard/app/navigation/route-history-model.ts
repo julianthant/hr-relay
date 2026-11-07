@@ -1,0 +1,131 @@
+import type { RouteSetter } from "./view-route-model.js";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
+import {
+parseRoute,
+routeAdvancesHistory,
+routeToSearch,
+type AppRouteState
+} from "./url-state.js";
+
+
+/** The route, kept in the URL so every screen is addressable. */
+export interface RouteHistoryTarget {
+  readonly route: AppRouteState;
+  readonly cursor: number;
+  /** Revokes a delayed guard callback after a newer navigation intent. */
+  readonly intent?: number;
+}
+
+export type PopstateRouteHandler = (target: RouteHistoryTarget) => void;
+
+export interface NativeRouteHistory {
+  accept(target: RouteHistoryTarget): void;
+  restore(target: RouteHistoryTarget, afterRestore: () => void): void;
+  replay(target: RouteHistoryTarget): void;
+}
+
+const ROUTE_CURSOR_KEY = "hrDashboardRouteCursor";
+
+
+function cursorOf(state: unknown): number | undefined {
+  if (typeof state !== "object" || state === null) return undefined;
+  const cursor: unknown = Reflect.get(state, ROUTE_CURSOR_KEY);
+  return typeof cursor === "number" && Number.isInteger(cursor) && cursor >= 0 ? cursor : undefined;
+}
+
+
+export function useRoute(
+  onPopstateRef: { readonly current: PopstateRouteHandler | undefined },
+): [AppRouteState, RouteSetter, NativeRouteHistory] {
+  const [route, setRouteState] = useState<AppRouteState>(() => parseRoute(window.location.search));
+  const acceptedRoute = useRef(route);
+  const cursor = useRef(cursorOf(window.history.state) ?? 0);
+  const intent = useRef(0);
+  const pendingWrite = useRef<{ route: AppRouteState; mode: "push" | "replace" } | undefined>(undefined);
+  const queuedRoute = useRef<{ route: AppRouteState; mode: "push" | "replace" } | undefined>(undefined);
+  const pendingPop = useRef<
+    | { readonly cursor: number; readonly kind: "restore"; readonly afterRestore: () => void }
+    | { readonly cursor: number; readonly kind: "accept"; readonly route: AppRouteState }
+    | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (cursorOf(window.history.state) === undefined) {
+      window.history.replaceState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", window.location.href);
+    }
+  }, []);
+
+  const commitRoute = useCallback((next: AppRouteState, mode: "push" | "replace" = "push") => {
+    if (routeAdvancesHistory(next, window.location.search)) {
+      if (mode === "push") cursor.current += 1;
+      window.history[mode === "replace" ? "replaceState" : "pushState"]({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
+    }
+    acceptedRoute.current = next;
+    setRouteState(next);
+  }, []);
+
+  useEffect(() => {
+    const onPop = (): void => {
+      const next = parseRoute(window.location.search);
+      const nextCursor = cursorOf(window.history.state);
+      if (nextCursor === undefined) throw new Error("dashboard history entry has no route cursor");
+      const pending = pendingPop.current;
+      if (pending !== undefined && pending.cursor === nextCursor) {
+        pendingPop.current = undefined;
+        cursor.current = nextCursor;
+        const queued = queuedRoute.current;
+        queuedRoute.current = undefined;
+        if (queued !== undefined) commitRoute(queued.route, queued.mode);
+        else if (pending.kind === "restore") pending.afterRestore();
+        else { acceptedRoute.current = next; setRouteState(next); }
+        return;
+      }
+      if (pending === undefined && nextCursor === cursor.current
+        && routeToSearch(next) === routeToSearch(acceptedRoute.current)) return;
+      const handler = onPopstateRef.current;
+      const target = { route: next, cursor: nextCursor, intent: ++intent.current };
+      if (handler === undefined) {
+        cursor.current = nextCursor;
+        acceptedRoute.current = next;
+        setRouteState(next);
+        return;
+      }
+      handler(target);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [onPopstateRef, commitRoute]);
+
+  const setRoute = useCallback<RouteSetter>((intentRoute, mode = "push") => {
+    const next = typeof intentRoute === "function" ? intentRoute(pendingWrite.current?.route ?? queuedRoute.current?.route ?? acceptedRoute.current) : intentRoute;
+    intent.current += 1;
+    // A push during native restoration would truncate the wrong forward
+    // branch. Finish the physical traversal, then commit the latest intent.
+    if (pendingPop.current !== undefined) { queuedRoute.current = { route: next, mode }; return; }
+    const scheduled = pendingWrite.current !== undefined;
+    pendingWrite.current = { route: next, mode: pendingWrite.current?.mode === "push" ? "push" : mode };
+    if (!scheduled) queueMicrotask(() => {
+      const write = pendingWrite.current;
+      pendingWrite.current = undefined;
+      if (write) commitRoute(write.route, write.mode);
+    });
+  }, [commitRoute]);
+
+  const nativeHistory = useMemo<NativeRouteHistory>(() => ({
+    accept: (target) => { pendingPop.current = undefined; cursor.current = target.cursor; acceptedRoute.current = target.route; setRouteState(target.route); },
+    restore: (target, afterRestore) => {
+      const delta = cursor.current - target.cursor;
+      if (delta === 0) { afterRestore(); return; }
+      pendingPop.current = { cursor: cursor.current, kind: "restore", afterRestore };
+      window.history.go(delta);
+    },
+    replay: (target) => {
+      if (target.intent !== undefined && target.intent !== intent.current) return;
+      const delta = target.cursor - cursor.current;
+      if (delta === 0) { cursor.current = target.cursor; acceptedRoute.current = target.route; setRouteState(target.route); return; }
+      pendingPop.current = { cursor: target.cursor, kind: "accept", route: target.route };
+      window.history.go(delta);
+    },
+  }), []);
+  return [route, setRoute, nativeHistory];
+}

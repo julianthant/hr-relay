@@ -1,0 +1,21 @@
+# baseline-shell-search-invalid-date-unavailable--graphite-warm--1280x720
+# adapter: fixture
+# fixture: mounted-mock-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Search runs":
+  - banner:
+    - heading "Search runs" [level=2]
+    - paragraph: Search recent runs by name, workflow or status.
+    - button "Close"
+  - text: Search runs
+  - group:
+    - combobox "Search runs" [expanded]
+  - listbox "Search results":
+    - text: "Invalid date: invalid-day."
+    - group "Recent runs"
+  - status: "Invalid date: invalid-day."

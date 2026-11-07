@@ -1,0 +1,203 @@
+import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
+import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
+import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../models/dashboard/xlsx-export.js";
+// The recorded head hash owns sink identity; preserve mismatched operator bytes and write the intended update beside them.
+import { createHash } from "node:crypto";
+import { lstat, mkdir, open, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import readXlsxFile from "read-excel-file/node";
+import writeXlsxFile from "write-excel-file/node";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import type { JsonValue } from "../../../rules/validation/canonical-json.js";
+import { WorkbookTableSchema } from "../../../models/processing/workbooks/read-result.js";
+import type { z } from "zod";
+import { FingerprintSchema, IsoInstantSchema, type Fingerprint } from "../../../rules/identity/ids.js";
+import type { ArtifactOutboxStorageRecord } from "../sqlite/storage-records.js";
+
+import { ArtifactSinkConflictError, type ArtifactSink, type ArtifactSinkProjectionRequest } from "./artifact-sink.js";
+
+const SHEET_HEADER = ["stableKey", "keyValues", "record", "projectedAt"] as const;
+
+function contentSha256(bytes: Uint8Array): Fingerprint {
+  return FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));
+}
+
+type WorkbookBytes = Readonly<{ present: true; bytes: Buffer }> | Readonly<{ present: false }>;
+
+/** Absence is a discriminated FACT, never a bare default from a catch. */
+async function readWorkbookBytes(path: string): Promise<WorkbookBytes> {
+  try {
+    return { present: true, bytes: await readFile(path) };
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return { present: false };
+    throw error;
+  }
+}
+
+/** Parse the workbook back to text rows; the layout is this module's own. */
+async function readRows(bytes: Buffer): Promise<string[][]> {
+  const workbook = await readXlsxFile(bytes);
+  const first = workbook[0];
+  if (first === undefined) throw new Error("retention workbook has no worksheets");
+  return first.data.map((row) => row.map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
+}
+
+export type PublicationFaultPoint = "before-stage" | "after-stage" | "after-stage-sync" | "after-prepare" | "before-replace" | "after-replace" | "after-directory-sync";
+export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string | ((row: ArtifactOutboxStorageRecord) => string); artifacts: ContentAddressedArtifactWriter;
+  view?: (records: readonly Readonly<{ payload: JsonValue; projectedAt: string }>[]) => z.output<typeof WorkbookTableSchema>;
+  fault?: (point: PublicationFaultPoint) => void | Promise<void>;
+}>): ArtifactSink {
+  const pathFor = (row: ArtifactOutboxStorageRecord) => typeof options.workbookPath === "string" ? options.workbookPath : options.workbookPath(row);
+  const compose = (rows: readonly (readonly string[])[]) => composeWorkbook(rows, options.view);
+  return Object.freeze({
+    sinkId: "xlsx-retention",
+    async writerLockPath(row: ArtifactOutboxStorageRecord) {
+      const workbookPath = pathFor(row);
+      await mkdir(dirname(workbookPath), { recursive: true });
+      // Canonical parent identity makes aliases share the same exclusive destination fence.
+      return join(await realpath(dirname(workbookPath)), `.${basename(workbookPath)}.writer.lock`);
+    },
+    async project(request: ArtifactSinkProjectionRequest) {
+      const { row, head } = request;
+      const workbookPath = pathFor(row);
+      const lockPath = join(await realpath(dirname(workbookPath)), `.${basename(workbookPath)}.writer.lock`);
+      if (request.lockPath !== lockPath) throw new Error("retention-workbook-destination-changed");
+      const stored = await readWorkbookBytes(workbookPath);
+      if (stored.present && (await lstat(workbookPath)).isSymbolicLink()) throw new ArtifactSinkConflictError({
+        sinkId: row.sinkId, message: "generated-artifact-symlink-destination-conflict",
+      });
+
+      if (head === undefined && stored.present) {
+        throw new ArtifactSinkConflictError({
+          sinkId: "xlsx-retention",
+          message: `a workbook already exists at ${workbookPath} with no recorded head; this projector `
+            + "cannot prove it owns those bytes and will not write over them",
+          actualSha256: contentSha256(stored.bytes),
+        });
+      }
+      if (head !== undefined && !stored.present) {
+        throw new ArtifactSinkConflictError({
+          sinkId: "xlsx-retention",
+          message: `the recorded head names content ${head.contentSha256} but no workbook exists at `
+            + `${workbookPath}; someone removed or moved the file this projector last wrote`,
+          recordedSha256: head.contentSha256,
+        });
+      }
+
+      const intended = [
+        String(row.stableKeyFingerprint),
+        canonicalJsonStringify(row.keyValues),
+        canonicalJsonStringify(row.payload.value),
+        String(row.createdAt),
+      ];
+
+      // Verify the head hash before parsing; malformed edited workbooks must still report a conflict.
+      if (stored.present && head !== undefined) {
+        const actual = contentSha256(stored.bytes);
+        if (actual !== head.contentSha256) {
+          // Preserve BOTH files: the operator's bytes stay untouched, and the
+          // intended update is materialized beside them so nothing is lost.
+          const pendingPath = `${workbookPath}.pending-${String(row.outboxId)}.xlsx`;
+          await writeFile(pendingPath, await compose([intended]));
+          throw new ArtifactSinkConflictError({
+            sinkId: "xlsx-retention",
+            message: `workbook ${workbookPath} does not hash to the recorded head (recorded `
+              + `${head.contentSha256}, actual ${actual}); the operator or another process changed it, `
+              + `and the intended update is preserved at ${pendingPath}`,
+            recordedSha256: head.contentSha256,
+            actualSha256: actual,
+            preservedPendingPath: pendingPath,
+          });
+        }
+      }
+
+      const verifyRetained = async (artifact: ArtifactRef, bytes: Buffer) => {
+        const chunks: Buffer[] = [];
+        let length = 0;
+        for await (const chunk of await options.artifacts.open(artifact)) {
+          if (!(chunk instanceof Uint8Array)) throw new Error("generated-artifact-non-byte-readback");
+          length += chunk.byteLength;
+          if (length > bytes.length) throw new Error("generated-artifact-readback-size-conflict");
+          chunks.push(Buffer.from(chunk));
+        }
+        if (!Buffer.concat(chunks).equals(bytes) || artifact.bytes !== bytes.length || artifact.sha256 !== contentSha256(bytes)
+          || artifact.mediaType !== OPERATOR_XLSX_MEDIA_TYPE) throw new Error("generated-artifact-readback-conflict");
+        return artifact;
+      };
+      if (stored.present) {
+        if (request.previousArtifact === undefined) throw new Error("generated-artifact-previous-version-unavailable");
+        await verifyRetained(request.previousArtifact, stored.bytes);
+      }
+      const existingRows: string[][] = stored.present ? (await readRows(stored.bytes)).slice(1) : [];
+      const upserted = new Map(existingRows.map((cells) => [cells[0] ?? "", cells]));
+      const current = upserted.get(intended[0] ?? "");
+      if (current !== undefined
+        && current[1] === intended[1] && current[2] === intended[2]) {
+        if (!stored.present) {
+          throw new Error("retention upsert found an existing row without existing bytes; impossible state");
+        }
+
+        if (request.previousArtifact === undefined) throw new Error("generated-artifact-previous-version-unavailable");
+        const artifact = request.previousArtifact;
+        request.prepare(artifact);
+        return Object.freeze({ contentSha256: contentSha256(stored.bytes), artifact });
+      }
+
+      upserted.set(intended[0] ?? "", intended);
+      const nextBytes = await compose([...upserted.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, cells]) => cells));
+      const artifact = await verifyRetained(
+        await options.artifacts.put(nextBytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }), nextBytes,
+      );
+      await mkdir(dirname(workbookPath), { recursive: true });
+      const tempPath = `${workbookPath}.tmp-${String(row.outboxId)}`;
+      request.prepare(artifact);
+      await options.fault?.("after-prepare");
+      await options.fault?.("before-stage");
+      await writeFile(tempPath, nextBytes, { flag: "wx" });
+      await options.fault?.("after-stage");
+      const tempHandle = await open(tempPath, "r+");
+      try {
+        await tempHandle.sync();
+      } finally {
+        await tempHandle.close();
+      }
+      await options.fault?.("after-stage-sync");
+      if (!(await readFile(tempPath)).equals(nextBytes)) throw new Error("generated-artifact-staged-bytes-conflict");
+      await options.fault?.("before-replace");
+      const beforeReplace = await readWorkbookBytes(workbookPath);
+      if (beforeReplace.present !== stored.present || (beforeReplace.present && stored.present && !beforeReplace.bytes.equals(stored.bytes))) {
+        throw new ArtifactSinkConflictError({ sinkId: row.sinkId, message: "generated-artifact-destination-changed-before-replace" });
+      }
+      request.assertPrepared(artifact);
+      await rename(tempPath, workbookPath);
+      await options.fault?.("after-replace");
+      const directoryHandle = await open(dirname(workbookPath), "r");
+      try {
+        await directoryHandle.sync();
+      } finally {
+        await directoryHandle.close();
+      }
+      await options.fault?.("after-directory-sync");
+      if (!(await readFile(workbookPath)).equals(nextBytes)) throw new ArtifactSinkConflictError({ sinkId: row.sinkId, message: "generated-artifact-published-bytes-conflict" });
+      return Object.freeze({ contentSha256: contentSha256(nextBytes), artifact });
+    },
+  });
+}
+
+async function composeWorkbook(rows: readonly (readonly string[])[], view?: (records: readonly Readonly<{ payload: JsonValue; projectedAt: string }>[]) => z.output<typeof WorkbookTableSchema>): Promise<Buffer> {
+  const sheet = [
+    [...SHEET_HEADER].map((header) => ({ value: header })),
+    ...rows.map((cells) => cells.map((cell) => ({ value: cell }))),
+  ];
+  const table = view === undefined ? undefined : WorkbookTableSchema.parse(view(rows.map(row => ({
+    payload: JsonValueSchema.parse(JSON.parse(row[2])), projectedAt: IsoInstantSchema.parse(row[3]),
+  }))));
+  const written = table === undefined ? writeXlsxFile(sheet) : writeXlsxFile([
+    { sheet: "Relay journal", data: sheet },
+    { sheet: table.name, data: [table.columns.map(value => ({ value })),
+      ...table.rows.map(row => row.values.map(value => value === null ? null : { value, ...(typeof value === "string" ? { format: "@" } : {}) }))] },
+  ]);
+  const buffer: unknown = await written.toBuffer();
+  if (!Buffer.isBuffer(buffer)) throw new Error("write-excel-file returned a non-Buffer workbook");
+  return buffer;
+}

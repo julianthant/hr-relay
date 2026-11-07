@@ -1,0 +1,25 @@
+import { z } from "zod";
+import { DashboardDayWireSchema,type DashboardDayWire } from "../../../models/dashboard/projection.js";
+import { protocolError } from "../errors.js";
+import { parseOrThrow } from "./query-parse.js";
+import type { DashboardTransport } from "../transport.js";
+
+
+export interface QueueQueries {
+
+  dashboardDay(day: string): Promise<DashboardDayWire>;
+}
+
+export function createQueueQueries(transport: DashboardTransport): QueueQueries { return Object.freeze({
+
+    async dashboardDay(day: string): Promise<DashboardDayWire> {
+      const parsedDay = z.iso.date().parse(day);
+      const result = parseOrThrow(
+        DashboardDayWireSchema,
+        "GET /api/v1/dashboard",
+        await transport.requestJson(`/api/v1/dashboard?day=${parsedDay}`),
+      );
+      if (result.day !== parsedDay) throw protocolError("day-request-identity-mismatch");
+      return result;
+    }
+}); }

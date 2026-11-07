@@ -1,0 +1,87 @@
+/* Canonical semantic palette shared by Tailwind and dashboard DS aliases. */
+:root, [data-demo-theme="light"] {
+  --ui-canvas: #fafafa;
+  --ui-panel: #ffffff;
+  --ui-table: #f4f4f4;
+  --ui-field: #ffffff;
+  --ui-hover: #ebebeb;
+  --ui-stroke: #dedede;
+  --ui-stroke-control: #8b8b8b;
+  --ui-primary: #202020;
+  --ui-secondary: #626262;
+  --ui-muted: #6b6b6b;
+  --ui-info: #245d9e;
+  --ui-positive: #16764a;
+  --ui-warning: #865609;
+  --ui-danger: #ab3232;
+}
+
+[data-demo-theme="dark"] {
+  --ui-canvas: #181818;
+  --ui-panel: #222222;
+  --ui-table: #2b2b2b;
+  --ui-field: #2b2b2b;
+  --ui-hover: #323232;
+  --ui-stroke: #3b3b3b;
+  --ui-stroke-control: #747474;
+  --ui-primary: #efefef;
+  --ui-secondary: #b2b2b2;
+  --ui-muted: #a0a0a0;
+  --ui-info: #9dc4ff;
+  --ui-positive: #63d9a2;
+  --ui-warning: #f0bd61;
+  --ui-danger: #f18d8d;
+}
+
+@theme inline {
+  --color-ui-canvas: var(--ui-canvas);
+  --color-ui-panel: var(--ui-panel);
+  --color-ui-table: var(--ui-table);
+  --color-ui-field: var(--ui-field);
+  --color-ui-hover: var(--ui-hover);
+  --color-ui-stroke: var(--ui-stroke);
+  --color-ui-stroke-control: var(--ui-stroke-control);
+  --color-ui-primary: var(--ui-primary);
+  --color-ui-secondary: var(--ui-secondary);
+  --color-ui-muted: var(--ui-muted);
+  --color-ui-info: var(--ui-info);
+  --color-ui-positive: var(--ui-positive);
+  --color-ui-warning: var(--ui-warning);
+  --color-ui-danger: var(--ui-danger);
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 1rem;
+  --text-body: 0.75rem;
+  --text-body--line-height: 1.125rem;
+  --text-control: 0.8125rem;
+  --text-control--line-height: 1.125rem;
+  --text-heading: 0.875rem;
+  --text-heading--line-height: 1.25rem;
+  --text-heading--font-weight: 600;
+  --text-section: 1rem;
+  --text-section--line-height: 1.375rem;
+  --text-section--font-weight: 600;
+  --text-page: 1.25rem;
+  --text-page--line-height: 1.75rem;
+  --text-page--font-weight: 600;
+  --text-workflow: 1.6875rem;
+  --text-workflow--line-height: 2rem;
+  --text-workflow--font-weight: 650;
+  --spacing-log-time: 4rem;
+  --spacing-log-label: 8rem;
+  --container-log-capture: 28.75rem;
+}
+
+/* Existing DS controls inherit the new palette only inside migrated surfaces. */
+.ui-theme-scope {
+  --ds-fg: var(--ui-primary);
+  --ds-fg-secondary: var(--ui-secondary);
+  --ds-fg-muted: var(--ui-muted);
+  --ds-border: var(--ui-stroke);
+  --ds-border-subtle: var(--ui-stroke);
+  --ds-surface-1: var(--ui-panel);
+  --ds-surface-2: var(--ui-table);
+  --ds-accent: var(--ui-info);
+}

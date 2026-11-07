@@ -1,0 +1,154 @@
+{
+  "generatorBase": "7f77978716319c4329392a19e7a971f18af37362",
+  "proof": "F02-retained-settings-timeline",
+  "proofLogSha256": "2c2e44ea1110a91b55a7c8d0a4761fd7a766467d1db118e92a613dea79d69832",
+  "events": [
+    {
+      "schemaVersion": 1,
+      "eventId": "9a52bdd6-5ceb-52a2-89eb-0a5520a19b66",
+      "workflow": "person-lookup",
+      "scope": {
+        "kind": "run",
+        "runId": "22222222-2222-4222-8222-222222222222"
+      },
+      "occurredAt": "2026-07-31T17:00:00.000Z",
+      "recordedAt": "2026-09-06T12:00:00.000Z",
+      "retentionDate": "2026-07-31",
+      "payload": {
+        "kind": "span",
+        "event": {
+          "t": "run.queued",
+          "kind": "run",
+          "ts": "2026-07-31T17:00:00.000Z",
+          "workflow": "person-lookup",
+          "pid": 4242,
+          "runId": "22222222-2222-4222-8222-222222222222",
+          "attempt": 1,
+          "traceId": "pl-170000-2222",
+          "spanPath": "pl-170000-2222",
+          "itemId": "33333333-3333-4333-8333-333333333333",
+          "shape": "single",
+          "priority": "bulk",
+          "dryRun": false,
+          "actorId": "local-operator",
+          "title": "Imported run",
+          "descriptorVersion": 1,
+          "contractFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resolvedInstance": {
+            "crm": "prod",
+            "ucpath": "prod"
+          },
+          "configFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "configSnapshotId": "44444444-4444-4444-8444-444444444444"
+        }
+      },
+      "source": {
+        "kind": "span-import",
+        "manifestDigest": "615a607aa4ded56206fbe392c887819149da9d96d3f4d8c543f908fe508352cd",
+        "relativePath": "spans/person-lookup-2026-07-31.jsonl",
+        "fileDigest": "1deb896303c4fc721afb10386dd1a070473cbc11361ca2b0b6ff601297f96b61",
+        "line": 1
+      },
+      "cursor": 1
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "a2e23fb2-6c49-584d-8c28-0f7820eeb378",
+      "workflow": "person-lookup",
+      "scope": {
+        "kind": "worker",
+        "workerId": "import-worker"
+      },
+      "occurredAt": "2026-09-06T12:00:00.000Z",
+      "recordedAt": "2026-09-06T12:00:00.000Z",
+      "retentionDate": "2026-07-31",
+      "payload": {
+        "kind": "span",
+        "event": {
+          "t": "span.started",
+          "kind": "worker",
+          "ts": "2026-09-06T12:00:00.000Z",
+          "workflow": "person-lookup",
+          "pid": 4242,
+          "workerId": "import-worker",
+          "spanPath": "worker/import-worker",
+          "name": "Worker"
+        }
+      },
+      "source": {
+        "kind": "span-import",
+        "manifestDigest": "615a607aa4ded56206fbe392c887819149da9d96d3f4d8c543f908fe508352cd",
+        "relativePath": "spans/person-lookup-2026-07-31.jsonl",
+        "fileDigest": "1deb896303c4fc721afb10386dd1a070473cbc11361ca2b0b6ff601297f96b61",
+        "line": 2
+      },
+      "cursor": 2
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "71a2ee2a-2a7a-57f5-8b81-ad637ce1610c",
+      "workflow": "person-lookup",
+      "scope": {
+        "kind": "worker",
+        "workerId": "import-worker"
+      },
+      "occurredAt": "2026-09-06T12:00:00.000Z",
+      "recordedAt": "2026-09-06T12:00:00.000Z",
+      "retentionDate": "2026-07-31",
+      "payload": {
+        "kind": "span",
+        "event": {
+          "t": "span.started",
+          "kind": "worker",
+          "ts": "2026-09-06T12:00:00.000Z",
+          "workflow": "person-lookup",
+          "pid": 4242,
+          "workerId": "import-worker",
+          "spanPath": "worker/import-worker",
+          "name": "Worker"
+        }
+      },
+      "source": {
+        "kind": "span-import",
+        "manifestDigest": "615a607aa4ded56206fbe392c887819149da9d96d3f4d8c543f908fe508352cd",
+        "relativePath": "spans/person-lookup-2026-07-31.jsonl",
+        "fileDigest": "1deb896303c4fc721afb10386dd1a070473cbc11361ca2b0b6ff601297f96b61",
+        "line": 3
+      },
+      "cursor": 3
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "2f17df42-98f9-57b7-87d8-4eadb489bf45",
+      "workflow": "person-lookup",
+      "scope": {
+        "kind": "worker",
+        "workerId": "import-worker"
+      },
+      "occurredAt": "2026-09-06T12:00:00.000Z",
+      "recordedAt": "2026-09-06T12:00:00.000Z",
+      "retentionDate": "2026-08-01",
+      "payload": {
+        "kind": "span",
+        "event": {
+          "t": "span.started",
+          "kind": "worker",
+          "ts": "2026-09-06T12:00:00.000Z",
+          "workflow": "person-lookup",
+          "pid": 4242,
+          "workerId": "import-worker",
+          "spanPath": "worker/import-worker",
+          "name": "Worker"
+        }
+      },
+      "source": {
+        "kind": "span-import",
+        "manifestDigest": "615a607aa4ded56206fbe392c887819149da9d96d3f4d8c543f908fe508352cd",
+        "relativePath": "spans/person-lookup-2026-08-01.jsonl",
+        "fileDigest": "55b91de3ba1f0f4442c8411998beb3872baf7a5dcbf943a92554930818b9607c",
+        "line": 1
+      },
+      "cursor": 4
+    }
+  ]
+}

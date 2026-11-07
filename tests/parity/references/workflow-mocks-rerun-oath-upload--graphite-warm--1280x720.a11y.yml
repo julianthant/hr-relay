@@ -1,0 +1,57 @@
+# workflow-mocks-rerun-oath-upload--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Oath Upload · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values" [disabled]: Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Choose what to run again" [level=3]
+  - text: 5 / 6 included
+  - paragraph: Select steps for the new run. Statuses show the source outcome.
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - list:
+      - listitem:
+        - checkbox "Read oath" [checked]
+        - text: Read oath OCR Not started
+      - listitem: Wait for all signatures Automatic Not started
+      - listitem:
+        - checkbox "Sign in to ServiceNow" [checked] [disabled]
+        - text: Sign in to ServiceNow ServiceNow · required Not started
+      - listitem:
+        - checkbox "Open HR inquiry"
+        - text: Open HR inquiry ServiceNow Not started
+        - group "Manual values for Open HR inquiry":
+          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
+          - text: Service
+          - textbox "Service": None
+          - text: Attachment
+          - textbox "Attachment": None
+      - listitem:
+        - checkbox "Attach oath PDF" [checked] [disabled]
+        - text: Attach oath PDF Form action · required Not started
+        - checkbox "Enter reading values manually for attach oath pdf"
+        - text: Enter reading values manually for attach oath pdf
+      - listitem:
+        - checkbox "File HR ticket" [checked] [disabled]
+        - text: File HR ticket Form action · required Not started
+  - contentinfo:
+    - text: Source run · new runOath Upload
+    - button "Cancel"
+    - button "Continue"

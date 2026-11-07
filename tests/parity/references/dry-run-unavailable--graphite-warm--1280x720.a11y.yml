@@ -1,0 +1,83 @@
+# dry-run-unavailable--graphite-warm--1280x720
+# adapter: fixture
+# fixture: dry-run
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: NEEDS YOU · 1
+    - strong: EID 10777012
+    - text: Dry run Unavailable
+    - paragraph: Did the submit reach UCPath?
+    - text: "9:31 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "EID 10777012" [level=2]
+    - button "View failure"
+    - text: Dry run Unavailable
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read request · Completed" [disabled]: Read request
+        - listitem:
+          - button "Fill termination · Completed" [disabled]: Fill termination
+        - listitem:
+          - button "Submit · Not clicked": Submit Not clicked
+        - listitem:
+          - button "Finalize in Kuali · Failed": Finalize in Kuali Failed
+    - region "Run logs":
+      - region "Submit":
+        - time: 09:12:40
+        - heading "Submit" [level=3]
+        - text: UCPath
+        - time: 09:12:40
+        - paragraph: Not clicked in a dry run.
+      - region "Finalize in Kuali":
+        - time: 09:12:52
+        - heading "Finalize in Kuali" [level=3]
+        - text: Kuali
+        - time: 09:12:52
+        - paragraph: Unavailable; this step could not be exercised.
+        - region "Full dry-run preview":
+          - heading "Dry run result" [level=4]
+          - text: 3 of 4 steps exercised
+          - group "Person verified":
+            - term: Person verified
+            - definition: Rivera, Alex · 10777012
+          - group "Fields filled and checked":
+            - term: Fields filled and checked
+            - definition: "14"
+          - group "Submit":
+            - term: Submit No submit was clicked.
+            - definition: Not clicked
+          - group "Finalize in Kuali":
+            - term: Finalize in Kuali This step could not be exercised.
+            - definition: Unavailable
+          - group "Optional branch":
+            - term: Optional branch Not applicable.
+            - definition: Skipped
+    - group:
+      - searchbox "Search logs"
+    - status: 2 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"

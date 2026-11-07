@@ -1,0 +1,232 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { z } from "zod";
+import { failureCorrectionSubmission } from "../start/failure-correction.js";
+import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import type { RunRecoveryMode } from "../../../models/run/envelope.js";
+import { workflowPreflightScope } from "../start/preflight-scope.js";
+import type { PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
+import { selectNewRunIdentity } from "../settings/run-settings.js";
+import type { ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
+import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
+
+import { StartPlanIngressSchema, StartPlanWireSchema, type StartPlanWire } from "../../../models/dashboard/start-plan.js";
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { IdFactory } from "../../../rules/identity/identifiers.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { buildRerunPlan, previewRerunWarnings, validateRerunSourcePlan, RerunRefusedError } from "../start/rerun.js";
+import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
+import { projectRerunPlanForOperator } from "../../../models/run/rerun.js";
+import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../models/run/start-plan.js";
+import { planStart } from "../start/plan.js";
+import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../start/step-selection.js";
+import type { StartPlannerDeps } from "../start/plan.js";
+import { TargetNotFoundError } from "./refusals.js";
+
+export type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
+
+export interface StartPlanServiceDeps {
+  readonly workbooks?: StartPlannerDeps["workbooks"];
+  readonly preflight?: PreflightAdmission;
+  readonly recovery?: RunRecoveryMode;
+  readonly protectedSecrets?: ProtectedSecretSource;
+  /** Internal test admission only; never accepted by the public ingress schema. */
+  readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
+  readonly authority: {
+    withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
+  };
+  readonly authorityRead: StartPlannerDeps["authority"] & Readonly<{
+    evidenceSchemaHash?: EvidenceSchemaReader;
+    authority: Readonly<{ runs: Pick<AuthorityRepositories["runs"], "admission"> }>;
+  }>;
+  readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
+  readonly clock: Clock;
+  readonly ids: IdFactory;
+  readonly planTtlMs: number;
+  readonly configFingerprint: string;
+  readonly configSnapshotId: string;
+  readonly plannedBy: string;
+}
+
+export interface StartPlanService {
+  previewWarnings(input: unknown): RerunWarningWire;
+  prepare?(input: unknown, signal: AbortSignal): Promise<void>;
+  plan(input: unknown): StartPlanWire;
+}
+
+export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanService {
+  const assertAdmission = (runs: Pick<AuthorityRepositories["runs"], "admission"> = deps.authorityRead.authority.runs) => {
+    if (runs.admission().state !== "open") throw new RerunRefusedError("invalid-state", "Relay is pausing work to quit.");
+  };
+  const scopeFor = (input: unknown) => {
+    const ingress = StartPlanIngressSchema.parse(input);
+    assertAdmission();
+    const descriptor = deps.descriptors.resolve(ingress.workflowId);
+    if (descriptor === undefined) throw new TargetNotFoundError("Preflight workflow is not registered.");
+    const identity = deps.authority.withAuthorityTransaction(repositories => {
+      assertAdmission(repositories.runs);
+      repositories.runtimeConfig.requireSettingsCurrent();
+      return selectNewRunIdentity(repositories, deps);
+    });
+    return workflowPreflightScope(descriptor, { ...identity, ...(ingress.requestedInstance === undefined ? {} : { resolvedInstance: ingress.requestedInstance }) });
+  };
+  return Object.freeze({
+    previewWarnings(input: unknown): RerunWarningWire {
+      const request = RerunWarningRequestSchema.parse(input);
+      const descriptor = deps.descriptors.resolve(request.workflowId);
+      if (descriptor === undefined) throw new TargetNotFoundError("Rerun workflow is not registered.");
+      return deps.authority.withAuthorityTransaction((repositories) => RerunWarningWireSchema.parse({
+        workflowId: descriptor.id,
+        rerun: projectRerunPlanForOperator(previewRerunWarnings(repositories, descriptor, request.source, deps.authorityRead.evidenceSchemaHash?.bind(deps.authorityRead))),
+      }));
+    },
+    async prepare(input: unknown, signal: AbortSignal): Promise<void> {
+      assertAdmission();
+      if (deps.preflight === undefined) return;
+      const scope = scopeFor(input);
+      await deps.preflight.prepare(scope, signal);
+      deps.preflight.assertReady(scope);
+    },
+    plan(input: unknown): StartPlanWire {
+      const ingress = StartPlanIngressSchema.parse(input);
+      assertAdmission();
+      if (deps.preflight !== undefined) deps.preflight.assertReady(scopeFor(input));
+      const descriptor = deps.descriptors.resolve(ingress.workflowId);
+      if (descriptor === undefined) {
+        throw new TargetNotFoundError(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
+      }
+
+      if (ingress.stepOmissions !== undefined && ingress.submissions.length !== 1) {
+        // Typed facts (a last day worked, a transaction number) describe ONE
+        // subject; a plan that fans out to several would assert them for all.
+        throw new StartStepOmissionRefusedError(
+          "single-subject-only",
+          `${descriptor.id} step omissions require exactly one submission; this plan carries ${String(ingress.submissions.length)}`,
+        );
+      }
+      const sourceSelection = ingress.rerunSource?.selectedStepKeys;
+      if (sourceSelection !== undefined && JSON.stringify(sourceSelection) !== JSON.stringify(ingress.selectedStepKeys)) {
+        throw new Error("Rerun source selection must equal submitted selection");
+      }
+      const rerunSource = ingress.rerunSource;
+      const source = rerunSource === undefined ? undefined : deps.authority.withAuthorityTransaction(repositories => {
+        if (repositories.deletedRuns.get(rerunSource.runId) !== undefined) throw new RerunRefusedError("target-deleted", "Rerun source was deleted");
+        const run = repositories.runs.get(rerunSource.runId);
+        if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
+        validateRerunSourcePlan(repositories, run);
+        const correction = rerunSource.failureCorrection;
+        if (correction === undefined) return { input: run.input.parsed };
+        const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress);
+        return { input: run.input.parsed, submissions: [submission], stepOmissions: run.envelope.stepOmissions };
+      });
+      const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
+        source?.stepOmissions ?? ingress.stepOmissions);
+      if (rerunSource?.failureCorrection === undefined) {
+        for (const submission of ingress.submissions) for (const correction of descriptor.failureCorrections ?? []) {
+          if (descriptor.surfaces?.inputRun?.parser.rules.some(rule => rule.emit === correction.inputField)) continue;
+          const object = z.record(z.string(), JsonValueSchema).safeParse(submission);
+          const prior = source === undefined ? undefined : z.record(z.string(), JsonValueSchema).parse(source.input.value);
+          if (object.success && Object.hasOwn(object.data, correction.inputField)
+            && prior?.[correction.inputField] !== object.data[correction.inputField]) {
+            throw new RerunRefusedError("invalid-value", "This input can only be entered through its failure action");
+          }
+        }
+      }
+      let record = planStart(
+        {
+          authority: deps.authorityRead,
+          ...(deps.workbooks === undefined ? {} : { workbooks: deps.workbooks }),
+          ...(deps.protectedSecrets === undefined ? {} : { protectedSecrets: deps.protectedSecrets }),
+          clock: deps.clock,
+          ids: deps.ids,
+          planTtlMs: deps.planTtlMs,
+        },
+        {
+          descriptor,
+          ...(ingress.workbookReferences === undefined ? {} : { workbookReferences: ingress.workbookReferences }),
+          ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
+          ...(source === undefined ? {} : { retainedInputs: [source.input] }),
+          submissions: (source?.submissions ?? ingress.submissions).map((submission) =>
+            applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
+          ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
+          dryRun: ingress.dryRun,
+          browserMode: ingress.browserMode,
+          captureBrowserScreenshots: ingress.captureBrowserScreenshots,
+          ...(stepOmissions === undefined ? {} : { stepOmissions }),
+          priority: ingress.priority,
+          shape: "single",
+          configFingerprint:deps.configFingerprint,
+          configSnapshotId:deps.configSnapshotId,
+          plannedBy: deps.plannedBy,
+        },
+      );
+      if (deps.recovery !== undefined) record = StartPlanRecordSchema.parse({ ...record, recovery: deps.recovery });
+      const stored = deps.authority.withAuthorityTransaction((repositories) => {
+        assertAdmission(repositories.runs);
+        const selected=selectNewRunIdentity(repositories,record);
+        record=StartPlanRecordSchema.parse({...record,...selected});
+        repositories.runtimeConfig.requireSettingsCurrent();
+        deps.preflight?.assertReady(workflowPreflightScope(descriptor, { ...record, resolvedInstance: record.resolvedInstance }));
+        if (ingress.rerunSource !== undefined) {
+          const rerun = buildRerunPlan(repositories, descriptor, ingress.rerunSource, record.planned, ingress.warningAcknowledgment, record.stepOmissions, deps.authorityRead.evidenceSchemaHash?.bind(deps.authorityRead));
+          record = StartPlanRecordSchema.parse({ ...record, rerun, inputFingerprint: derivePlannedInputFingerprint(
+            record.planned, record.ingressSchemaHash, record.canonicalInputSchemaHash, rerun, record.stepOmissions) });
+        } else if (ingress.warningAcknowledgment !== undefined) {
+          throw new Error("warning acknowledgment requires a Rerun source");
+        }
+        return repositories.startPlans.create(record);
+      });
+      if (stored.state !== "inserted") {
+        throw new Error(`start plan ${record.startPlanId} collided with an existing plan; refusing to reuse it`);
+      }
+      return StartPlanWireSchema.parse({
+        wireVersion: 1,
+        startPlanId: record.startPlanId,
+        workflowId: record.workflowId,
+        expectedVersion: record.version,
+        expiresAt: record.expiresAt,
+        dryRun: record.dryRun,
+        ...(record.browserMode === undefined ? {} : { browserMode: record.browserMode }),
+        ...(record.captureBrowserScreenshots === undefined
+          ? {}
+          : { captureBrowserScreenshots: record.captureBrowserScreenshots }),
+        ...(record.stepOmissions === undefined
+          ? {}
+          : { omittedSteps: record.stepOmissions.map((entry) => entry.step) }),
+        priority: record.priority,
+        plannedBy: record.plannedBy,
+        configSnapshotId: record.configSnapshotId,
+        fingerprints: {
+          descriptorFingerprint: record.descriptorFingerprint,
+          configFingerprint: record.configFingerprint,
+          ingressSchemaHash: record.ingressSchemaHash,
+          canonicalInputSchemaHash: record.canonicalInputSchemaHash,
+          inputFingerprint: record.inputFingerprint,
+        },
+        ...(record.rerun === undefined ? {} : { rerun: projectRerunPlanForOperator(record.rerun) }),
+        planned: record.planned.map((planned) => ({
+          ...(planned.supersedeTargets === undefined ? {} : { supersedeTargets: planned.supersedeTargets }),
+          ...(planned.workbookReferences === undefined ? {} : { workbookReferences: planned.workbookReferences.map(reference => {
+            const retained = parseRunWorkbookReference(reference);
+            const snapshot = retained.snapshot;
+            const { libraryId, version, worksheets, type } = snapshot;
+            const versionId = "versionId" in snapshot ? snapshot.versionId : undefined;
+            const versionName = "versionName" in snapshot ? snapshot.versionName : undefined;
+            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }), ...("selectedRow" in retained.request && retained.request.selectedRow !== undefined ? { selectedRow: retained.request.selectedRow } : {}), worksheets, type };
+          }) }),
+          ...(planned.outputs === undefined ? {} : { outputs: planned.outputs }),
+          logicalKey: planned.itemId,
+          title: planned.title,
+          ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),
+          matchKey: planned.matchKey,
+        })),
+        refused: record.refused.map((refusal) => ({
+          entry: refusal.entry,
+          code: refusal.code,
+          message: refusal.message,
+        })),
+      });
+    },
+  });
+}

@@ -1,0 +1,238 @@
+import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
+// @vitest-environment jsdom
+import assert from "node:assert/strict";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { it } from "vitest";
+import { useQueueWiring } from "../../../src/dashboard/state/queue-wiring-adapter.js";
+import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
+import type { ActionDescriptorWire } from "../../../src/models/dashboard/actions.js";
+import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import { planBulkVerb } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
+import { uuidOf } from "../../support/fixtures/dashboard/fixture-identity.js";
+import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+it("owns Queue state/actions and keeps refused workflow jumps from navigating", async () => {
+  const row = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(row);
+  const selected: string[] = [], scopes: string[] = [], wells: ReadonlySet<string>[] = [], bulk: ReadonlySet<string>[] = [];
+  let wiring: ReturnType<typeof useQueueWiring> | undefined;
+  const input: Parameters<typeof useQueueWiring>[0] = {
+    allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces, activeWorkflowId: row.workflowId,
+    filter: ["all"] as const, selectedRunId: row.runId, openWells: new Set<string>(), selectMode: true, bulkIds: new Set<string>(),
+    nowIso: row.updatedAt, selectRun: (id: string) => selected.push(id),
+    openRelatedRun: target => { scopes.push(target.workflowId); }, onWells: (next: ReadonlySet<string>) => wells.push(next),
+    onBulkIds: (next: ReadonlySet<string>) => bulk.push(next), setBatchGrouping: async () => undefined,
+    exitQueueSelection: () => undefined, runQueueAction: () => undefined,
+  };
+  function Probe() { wiring = useQueueWiring(input); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.ok(wiring); assert.equal(wiring.viewState.selectedRunId, row.runId);
+    assert.equal(wiring.queueHandlers.onOpenLinked, input.openRelatedRun);
+    assert.equal(wiring.actionsOf(row), row.actions);
+    assert.ok(wiring.surfaces.every(surface => surface.workflowId === row.workflowId));
+    wiring.queueHandlers.onToggleWell?.(row.runId); wiring.queueHandlers.onToggleBulk?.(row.runId);
+    assert.deepEqual([...wells[0]], [row.runId]); assert.deepEqual([...bulk[0]], [row.runId]);
+    wiring.queueHandlers.onOpenParent?.(queueParentFixture(row.runId, { workflowId: row.workflowId }));
+    assert.deepEqual(scopes, [row.workflowId]); assert.deepEqual([...selected], []);
+    wiring.queueHandlers.onSelect(row.runId); assert.deepEqual(selected, [row.runId]);
+    const first = wiring;
+    await act(async () => root.render(createElement(Probe)));
+    assert.equal(wiring.viewState, first.viewState); assert.equal(wiring.queueHandlers, first.queueHandlers);
+  } finally { await act(async () => root.unmount()); }
+});
+
+type WiringInput = Parameters<typeof useQueueWiring>[0];
+function mountWiring(overrides: Partial<WiringInput> = {}) {
+  const row = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(row);
+  let input: WiringInput = {
+    allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces.filter(surface => surface.workflowId === row.workflowId), activeWorkflowId: row.workflowId,
+    filter: ["all"], selectedRunId: row.runId, openWells: new Set(), selectMode: false, bulkIds: new Set(),
+    nowIso: row.updatedAt, selectRun: () => undefined,
+    openRelatedRun: () => undefined, onWells: () => undefined, onBulkIds: () => undefined,
+    setBatchGrouping: async () => undefined, exitQueueSelection: () => undefined,
+    runQueueAction: () => undefined,
+    ...overrides,
+  };
+  let wiring: ReturnType<typeof useQueueWiring> | undefined;
+  function Probe() { wiring = useQueueWiring(input); return null; }
+  const root = createRoot(document.createElement("div"));
+  return {
+    async draw(next: Partial<WiringInput> = {}) {
+      input = { ...input, ...next };
+      await act(async () => root.render(createElement(Probe)));
+      assert.ok(wiring);
+      return wiring;
+    },
+    async close() { await act(async () => root.unmount()); },
+  };
+}
+
+it("uses served rows without local overlays or fictional actions and retains stable props", async () => {
+  const mounted = mountWiring();
+  try {
+    const first = await mounted.draw();
+    const expected = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.workflowId === first.viewState.panelWorkflowId);
+    assert.deepEqual(first.surfaces, expected);
+    assert.ok(first.surfaces.every((row, index) => row === expected[index]));
+    assert.equal(first.queueHandlers.onPreviewAction, undefined);
+    const repeated = await mounted.draw();
+    assert.equal(repeated.surfaces, first.surfaces);
+    assert.equal(repeated.queueHandlers, first.queueHandlers);
+    const unbacked = QueueSurfaceWireSchema.parse({ ...expected[0], runId: "00000000-8000-4000-8000-000000000001" });
+    const changedPreview = await mounted.draw({ rows: [...expected.map(row => ({ ...row, title: "Fictional overlay", rowRevision: RowRevisionSchema.parse(row.rowRevision + 1) })), unbacked] });
+    assert.deepEqual(changedPreview.surfaces, expected);
+    assert.ok(changedPreview.surfaces.every((row, index) => row === expected[index]));
+    assert.equal(changedPreview.queueHandlers, first.queueHandlers);
+    assert.equal(changedPreview.viewState, first.viewState);
+    assert.equal(changedPreview.actionsOf, first.actionsOf);
+    const clock = await mounted.draw({ nowIso: "2026-10-14T12:00:00.000Z", selectedRunId: undefined });
+    assert.equal(clock.surfaces, changedPreview.surfaces);
+    assert.equal(clock.queueHandlers, first.queueHandlers);
+    assert.equal(clock.viewState.selectedRunId, undefined);
+    const unavailable = await mounted.draw({ allRows: undefined, rows: expected });
+    assert.deepEqual(unavailable.surfaces, []);
+    assert.equal(unavailable.queueHandlers.onPreviewAction, undefined);
+  } finally { await mounted.close(); }
+});
+
+it("preserves caller visibility and ordering instead of admitting every backend workflow", async () => {
+  const first = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(first);
+  const excluded = QueueSurfaceWireSchema.parse({ ...first, workflowId: "separations", runId: "00000000-8000-4000-8000-000000000001" });
+  const included = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.workflowId === first.workflowId).toReversed();
+  const mounted = mountWiring({ rows: included, allRows: [...FIXTURE_DAY_WIRE.queueSurfaces, excluded] });
+  try {
+    const visible = await mounted.draw();
+    assert.deepEqual(visible.surfaces, included);
+    assert.ok(visible.surfaces.every((row, index) => row === included[index]));
+    const hidden = await mounted.draw({ activeWorkflowId: excluded.workflowId });
+    assert.deepEqual(hidden.surfaces, []);
+    const deleted = await mounted.draw({ activeWorkflowId: first.workflowId, rows: included.slice(1) });
+    assert.deepEqual(deleted.surfaces, included.slice(1));
+  } finally { await mounted.close(); }
+});
+
+it("retires Archive while preserving admitted footer descriptors and exact command targets", async () => {
+  const base = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(base);
+  const admitted: ActionDescriptorWire = { kind: "command", key: "cancel", command: "cancel", label: "Cancel",
+    intent: "neutral", placement: ["footer", "menu"], expectedVersion: base.rowRevision };
+  const archive: ActionDescriptorWire = { ...admitted, key: "archive", command: "archive", label: "Archive", icon: "archive" };
+  const row = { ...base, actions: [archive, admitted] };
+  const sent: unknown[] = [];
+  const runQueueAction: WiringInput["runQueueAction"] = (action, target) => { sent.push([action, target]); };
+  const mounted = mountWiring({ allRows: [row], runQueueAction });
+  try {
+    const wiring = await mounted.draw();
+    const served = wiring.surfaces[0]; assert.ok(served);
+    assert.deepEqual(wiring.actionsOf(served), [admitted]);
+    assert.equal(wiring.actionsOf(served)[0], admitted);
+    assert.deepEqual(row.actions, [archive, admitted]);
+    assert.equal(wiring.queueHandlers.onAction, runQueueAction);
+    wiring.queueHandlers.onAction?.(admitted, { runId: served.runId, expectedVersion: served.rowRevision });
+    assert.deepEqual(sent, [[admitted, { runId: row.runId, expectedVersion: row.rowRevision }]]);
+    const empty = await mounted.draw({ allRows: [{ ...base, actions: [] }] });
+    assert.deepEqual(empty.actionsOf(empty.surfaces[0]), []);
+    assert.equal(empty.queueHandlers.onPreviewAction, undefined);
+  } finally { await mounted.close(); }
+});
+
+it("keeps parent and linked navigation refusal and exact cross-day identity", async () => {
+  const row = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(row);
+  const parent = queueParentFixture(row.runId, { workflowId: row.workflowId, partitionDay: "2026-10-12" });
+  const linked = QueueSurfaceWireSchema.parse({ ...row, linkedRuns: [{ runId: "00000000-8000-4000-8000-000000000001", partitionDay: "2026-10-13",
+    workflowId: row.workflowId, label: "Linked child", panelKind: row.panelKind, status: row.status }] }).linkedRuns[0];
+  assert.ok(linked);
+  const selected: unknown[] = [], scopes: string[] = [];
+  const mounted = mountWiring({ selectRun: (runId, day) => { selected.push([runId, day]); },
+    openRelatedRun: (target) => { scopes.push(target.workflowId); } });
+  try {
+    const refused = await mounted.draw();
+    refused.queueHandlers.onOpenParent?.(parent);
+    refused.queueHandlers.onOpenLinked?.(linked);
+    assert.deepEqual(scopes, [row.workflowId, linked.workflowId]);
+    assert.deepEqual([...selected], []);
+    const accepted = await mounted.draw({ openRelatedRun: target => { selected.push([target.runId,target.partitionDay]); } });
+    accepted.queueHandlers.onOpenParent?.(parent);
+    accepted.queueHandlers.onOpenLinked?.(linked);
+    assert.deepEqual(selected, [[row.runId, parent.partitionDay], [linked.runId, linked.partitionDay]]);
+  } finally { await mounted.close(); }
+});
+
+it("takes outcome maps only from visible canonical rows and refreshes/removes them", async () => {
+  const row = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(row);
+  const canonical = { ...row, outcome: { label: "Active", tone: "success" as const } };
+  const hidden = QueueSurfaceWireSchema.parse({ ...canonical, runId: "00000000-8000-4000-8000-000000000002" });
+  const overlay = { ...row, outcome: { label: "Fictional", tone: "warning" as const } };
+  const mounted = mountWiring({ rows: [overlay], allRows: [canonical, hidden] });
+  try {
+    const first = await mounted.draw();
+    assert.deepEqual([...first.outcomes], [[row.runId, canonical.outcome]]);
+    assert.equal(first.outcomes.get(row.runId), canonical.outcome);
+    assert.equal((await mounted.draw()).outcomes, first.outcomes);
+    const refreshed = await mounted.draw({ allRows: [{ ...canonical, outcome: { label: "Inactive", tone: "neutral" } }, hidden] });
+    assert.deepEqual([...refreshed.outcomes], [[row.runId, { label: "Inactive", tone: "neutral" }]]);
+    assert.deepEqual([...(await mounted.draw({ allRows: [row, hidden] })).outcomes], []);
+    assert.deepEqual([...(await mounted.draw({ allRows: [canonical, hidden], rows: [] })).outcomes], []);
+    assert.deepEqual([...(await mounted.draw({ rows: [overlay], activeWorkflowId: "other-workflow" })).outcomes], []);
+    assert.deepEqual([...(await mounted.draw({ allRows: undefined, activeWorkflowId: row.workflowId })).outcomes], []);
+  } finally { await mounted.close(); }
+});
+
+it("keeps cross-workflow inline children within the caller's admitted parent scope", async () => {
+  const base = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(base);
+  const childId = "00000000-8000-4000-8000-000000000081";
+  const parent = QueueSurfaceWireSchema.parse({ ...base, surfaceKind: "operation", memberRunIds: [childId],
+    memberRollup: { total: 1, terminal: 0, failed: 0 }, memberPreview: { state: "present", value: "Person" } });
+  const child = QueueSurfaceWireSchema.parse({ ...base, surfaceKind: "single", runId: childId, workflowId: "i9-lookup",
+    parent: queueParentFixture(parent.runId, { workflowId: parent.workflowId }) });
+  const linked = QueueSurfaceWireSchema.parse({ ...child, runId: "00000000-8000-4000-8000-000000000083",
+    parent: { ...child.parent, visibility: "linked" } });
+  const unrelated = QueueSurfaceWireSchema.parse({ ...child, runId: "00000000-8000-4000-8000-000000000082", parent: null });
+  const mounted = mountWiring({ rows: [parent], allRows: [unrelated, parent, linked, child] });
+  try {
+    const wiring = await mounted.draw();
+    assert.deepEqual(wiring.surfaces, [parent, child]);
+    const absentParent = await mounted.draw({ rows: [] });
+    assert.deepEqual(absentParent.surfaces, []);
+  } finally { await mounted.close(); }
+});
+
+
+it("retains canonical Lookup cohorts across caller/status filters and selects exact current member bulk targets", async () => {
+  const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null && row.surfaceKind === "single"); assert.ok(base);
+  const batchId = uuidOf(7100);
+  const session = { state: "present", itemScope: "session", sessionId: batchId, presentation: { layout: "batch", groupInQueue: true, version: 3, startedAt: base.startedAt } };
+  const make = (n: number, item = n, attempt = 1) => QueueSurfaceWireSchema.parse({ ...base, surfaceKind: "single", workflowId: "person-lookup",
+    parent: null, session, runId: uuidOf(7100 + n), itemId: uuidOf(7200 + item), attempt, rowRevision: 10 + n,
+    status: n === 2 ? "failed" : "queued", actions: [{ kind: "command", key: "cancel", command: "cancel", label: "Cancel",
+      intent: "neutral", placement: ["footer"], expectedVersion: 10 + n }] });
+  const rows = [make(1), make(2), make(3), make(4, 2, 2)];
+  const otherStart = QueueSurfaceWireSchema.parse({ ...make(5, 1), session: { ...session, sessionId: uuidOf(7199) } });
+  const selected: ReadonlySet<string>[] = [];
+  const sent: unknown[] = [];
+  const mounted = mountWiring({ allRows: [...rows, otherStart], rows: [rows[1]], activeWorkflowId: "person-lookup", filter: ["failed"],
+    onBulkIds: ids => { selected.push(ids); }, runQueueAction: (action, target) => { sent.push([action, target]); } });
+  try {
+    const first = await mounted.draw();
+    assert.deepEqual(first.surfaces.map(row => row.runId), rows.map(row => row.runId));
+    assert.ok(first.surfaces.every(row => row !== otherStart));
+    first.queueHandlers.onToggleBulk?.(`batch:${batchId}`);
+    assert.deepEqual([...selected[0]], [rows[0].runId, rows[3].runId, rows[2].runId]);
+    assert.ok(!selected[0].has(batchId));
+    assert.ok(!selected[0].has(rows[1].runId));
+    assert.deepEqual(sent, []);
+    const candidates = rows.filter(row => selected[0].has(row.runId));
+    const plan = planBulkVerb(candidates.map(row => ({ runId: row.runId, title: row.title, actions: row.actions })), "cancel", [...selected[0]]);
+    assert.deepEqual(plan.eligible.map(target => [target.runId, target.expectedVersion]), candidates.map(row => [row.runId, row.rowRevision]));
+    assert.deepEqual(plan.unavailable, []);
+    const refreshed = await mounted.draw({ filter: ["all"], rows: [rows[0]], bulkIds: selected[0], selectedRunId: rows[1].runId });
+    assert.deepEqual(new Set(refreshed.surfaces.map(row => row.runId)), new Set(rows.map(row => row.runId)));
+    assert.equal(refreshed.viewState.selectedRunId, rows[1].runId);
+    refreshed.queueHandlers.onToggleBulk?.(`batch:${batchId}`);
+    assert.deepEqual([...selected[1]], []);
+    const unrelated = await mounted.draw({ rows: [otherStart] });
+    assert.deepEqual(unrelated.surfaces, [otherStart]);
+  } finally { await mounted.close(); }
+});

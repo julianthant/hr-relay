@@ -1,0 +1,88 @@
+# workflow-mocks-input-emergency-contact-dark-1280--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Emergency Contact · Workflow preview
+    - button "Close"
+  - complementary:
+    - group:
+      - searchbox "Filter workflows"
+    - navigation "Workflow":
+      - heading "Search" [level=3]
+      - list:
+        - listitem:
+          - button "Person Lookup"
+        - listitem:
+          - button "I-9 Lookup" [disabled]: I-9 Lookup Parent only
+      - heading "Separations" [level=3]
+      - list:
+        - listitem:
+          - button "Separations"
+        - listitem:
+          - button "I-9 Check"
+      - heading "Onboarding" [level=3]
+      - list:
+        - listitem:
+          - button "Onboarding"
+        - listitem:
+          - button "Oath Signature"
+        - listitem:
+          - button "Oath Upload"
+        - listitem:
+          - button "Emergency Contact"
+      - heading "Work Study" [level=3]
+      - list:
+        - listitem:
+          - button "Work-Study"
+      - heading "Payroll" [level=3]
+      - list:
+        - listitem:
+          - button "Kronos Pay Rule"
+      - heading "Utils" [level=3]
+      - list:
+        - listitem:
+          - button "OCR"
+        - listitem:
+          - button "CRM Doc Download"
+        - listitem:
+          - button "SharePoint Download" [disabled]: SharePoint Download Parent only
+      - heading "OnBase" [level=3]
+      - list:
+        - listitem:
+          - button "OnBase"
+      - heading "Timekeeping" [level=3]
+      - list:
+        - listitem:
+          - button "Old Kronos Reports"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Input": Input
+    - listitem:
+      - button "2 Options" [disabled]: Options
+    - listitem:
+      - button "3 Confirm" [disabled]: Confirm
+  - heading "Run input" [level=3]
+  - paragraph: Choose the documents to process.
+  - region "Input":
+    - region "PDF documents":
+      - heading "PDF documents" [level=4]
+      - button "Choose PDFs"
+      - status: 1 PDF selected
+      - list "Selected PDFs":
+        - listitem:
+          - text: fictional-packet.pdf 1 KB
+          - button "Remove fictional-packet.pdf"
+    - text: Roster
+    - button "Existing Onboarding Roster Roster": Existing Onboarding Roster
+  - contentinfo:
+    - text: 1 runEmergency Contact
+    - button "Cancel"
+    - button "Continue"

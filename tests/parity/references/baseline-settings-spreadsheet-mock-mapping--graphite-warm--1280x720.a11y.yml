@@ -1,0 +1,106 @@
+# baseline-settings-spreadsheet-mock-mapping--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Import spreadsheet":
+  - banner:
+    - heading "Import spreadsheet" [level=2]
+    - paragraph: Match columns to named fields once.
+    - button "Close"
+  - complementary:
+    - paragraph: SHEETS
+    - navigation "Spreadsheet sheets":
+      - button "July 6 3"
+      - button "August 2 3"
+      - button "Sept 11 3"
+      - button "Sept 28 3"
+      - button "Oct 5 3"
+      - button "Oct. 12 3"
+      - button "Oct. 19 3" [pressed]
+    - paragraph: Mappings are saved for each sheet.
+  - heading "26–27 Student applicants.xlsx" [level=3]
+  - paragraph: 7 sheets
+  - text: Change file
+  - button "Choose spreadsheet file"
+  - text: Spreadsheet type
+  - button "Roster Spreadsheet type": Roster
+  - group "Import view":
+    - button "Column mapping" [pressed]
+    - button "Preview"
+  - group:
+    - textbox "Find a column"
+  - text: Header row
+  - spinbutton "Header row": "4"
+  - text: Spreadsheet column Roster field A Email jordan.lee@example.com Map Email
+  - button "Email Map Email": Email
+  - text: B Legal Name Jordan Lee Map Legal Name
+  - button "Legal name Map Legal Name": Legal name
+  - text: C Lived Name Jordan Map Lived Name
+  - button "Preferred name Map Lived Name": Preferred name
+  - text: D Phone (202) 555-0101 Map Phone
+  - button "Phone Map Phone": Phone
+  - text: E TSN DEMO-TSN-001 Map TSN
+  - button "TSN Map TSN": TSN
+  - text: F PID DEMO-PID-001 Map PID
+  - button "PID Map PID": PID
+  - text: G Supervisor Email manager@example.com Map Supervisor Email
+  - button "Supervisor email Map Supervisor Email": Supervisor email
+  - text: H Supervisor Name Casey Reed Map Supervisor Name
+  - button "Supervisor name Map Supervisor Name": Supervisor name
+  - text: I Proposed Location Assignment Sample dining hall Map Proposed Location Assignment
+  - button "Work location Map Proposed Location Assignment": Work location
+  - text: "J Position # DEMO-POS-001 Map Position #"
+  - 'button "Position number Map Position #"': Position number
+  - text: K Initiator Empty in sample Map Initiator
+  - button "Initiator Map Initiator": Initiator
+  - text: L Start Date 10/19/2026 Map Start Date
+  - button "Start date Map Start Date": Start date
+  - text: M Offer Accepted Yes Map Offer Accepted
+  - button "Offer accepted Map Offer Accepted": Offer accepted
+  - text: N Campus Forms Pending No Map Campus Forms Pending
+  - button "Campus forms pending Map Campus Forms Pending": Campus forms pending
+  - text: O Background Check Accept Terms YN Yes Map Background Check Accept Terms YN
+  - button "Background terms accepted Map Background Check Accept Terms YN": Background terms accepted
+  - text: P Date Background Entered 09/28/2026 Map Date Background Entered
+  - button "Background entered Map Date Background Entered": Background entered
+  - text: Q Background Cleared Yes Map Background Cleared
+  - button "Background cleared Map Background Cleared": Background cleared
+  - text: R Entered In UCPath Yes Map Entered In UCPath
+  - button "Entered in UCPath Map Entered In UCPath": Entered in UCPath
+  - text: "S Transaction # DEMO-TXN-001 Map Transaction #"
+  - 'button "Transaction number Map Transaction #"': Transaction number
+  - text: T UCPath ID DEMO-1042 Map UCPath ID
+  - button "Employee ID Map UCPath ID": Employee ID
+  - text: U Ready For Payroll Approval Yes Map Ready For Payroll Approval
+  - button "Ready for payroll approval Map Ready For Payroll Approval": Ready for payroll approval
+  - text: V AD Submitted Empty in sample Map AD Submitted
+  - button "AD submitted Map AD Submitted": AD submitted
+  - text: W Temporary Password Kept in original file only Map Temporary Password
+  - button "Keep in workbook only Map Temporary Password": Keep in workbook only
+  - text: X AD Username Empty in sample Map AD Username
+  - button "AD username Map AD Username": AD username
+  - text: Y Ready for signing Empty in sample Map Ready for signing
+  - button "Ready for signing Map Ready for signing": Ready for signing
+  - text: Z Add Oath to UCPATH Empty in sample Map Add Oath to UCPATH
+  - button "Oath added to UCPath Map Add Oath to UCPATH": Oath added to UCPath
+  - text: AA Hired Empty in sample Map Hired
+  - button "Hired Map Hired": Hired
+  - text: AB I-9 Empty in sample Map I-9
+  - button "I-9 Map I-9": I-9
+  - text: "AC G:Drive: JOL & EE Data Form Empty in sample Map G:Drive: JOL & EE Data Form"
+  - 'button "JOL and employee data form Map G:Drive: JOL & EE Data Form"': JOL and employee data form
+  - text: AD SSN Kept in original file only Map SSN
+  - button "Keep in workbook only Map SSN": Keep in workbook only
+  - text: AE Notes Empty in sample Map Notes
+  - button "Notes Map Notes": Notes
+  - text: 29 of 31 columns mapped Search uses all mapped data
+  - contentinfo:
+    - strong: Roster
+    - text: · 7 sheets
+    - button "Cancel"
+    - button "Import roster"

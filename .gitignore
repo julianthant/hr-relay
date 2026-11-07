@@ -1,0 +1,65 @@
+# Environment variables / secrets
+.env
+.env.*
+
+# Private test inputs (D341): live subject values and private document paths.
+# The tracked example carries placeholders only.
+config/test-data.local.json
+# Staging file of an interrupted private write (same directory, mode 0600).
+config/.test-data.local.*.tmp
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code
+.claude/*
+!.claude/skills
+.design/
+
+# Playwright CLI
+.playwright-cli/
+.playwright/
+
+# Enrollment credentials — NEVER commit WebAuthn private keys
+credentials/
+
+# Rebuild runtime state + artifacts (isolated roots, see config/runtime-isolation.json)
+.tracker/
+
+# Briefs, receipts and task evidence (see root AGENTS.md)
+.work/
+
+# Git worktrees, one per branch (see root AGENTS.md)
+.worktrees/
+
+# Coverage lane output (`npm run test:coverage`) — regenerated every run.
+coverage/
+
+# Generated runner metadata; failure diagnostics remain in the owned /tmp run root.
+test-results/
+
+# Built frontend bundle (`npm run web:build`) — regenerated,
+# and the parity lane rebuilds it before capturing.
+dist/
+
+# Playwright parity lane scratch: failure screenshots, traces, diff images.
+# The REFERENCE set under tests/parity/references/ is committed on purpose —
+# that is the evidence; this is only what a failing run left behind.
+tests/parity/.output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Operator data files dropped into the repo root for a one-off parse.
+# Real HR records — never committed.
+OnboardingRoster-*.xlsx
+*.xlsx
+!tests/**/fixtures/**/*.xlsx
+
+# Private rosters, PDFs and local evidence; never publish.
+.local-private/

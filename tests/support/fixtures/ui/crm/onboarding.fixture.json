@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "deterministic-fixture",
+  "system": "crm",
+  "screens": [
+    "crm.onboarding.search",
+    "crm.onboarding.record",
+    "crm.onboarding.history"
+  ],
+  "verifiedAt": "2026-08-02",
+  "method": "deterministic-driver",
+  "assertions": [
+    {
+      "semanticId": "crm.onboarding.search",
+      "screen": "crm.onboarding.search",
+      "scenarioId": "ui/crm-onboarding-search-results",
+      "portMapRows": [{ "system": "crm", "legacyKey": "search.resultRows()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.record",
+      "screen": "crm.onboarding.record",
+      "scenarioId": "ui/crm-onboarding-record-identity",
+      "portMapRows": [{ "system": "crm", "legacyKey": "record.thLabelFollowingTd()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.history",
+      "screen": "crm.onboarding.history",
+      "scenarioId": "ui/crm-onboarding-history-transitions",
+      "portMapRows": [{ "system": "crm", "legacyKey": "onboardingHistory.historyRows()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.search-result-rows",
+      "screen": "crm.onboarding.search",
+      "scenarioId": "ui/crm-onboarding-search-results",
+      "portMapRows": [{ "system": "crm", "legacyKey": "search.resultRows()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.search-result-row-cells",
+      "screen": "crm.onboarding.search",
+      "scenarioId": "ui/crm-onboarding-search-results",
+      "portMapRows": [{ "system": "crm", "legacyKey": "search.resultRowCells()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.search-result-name-link",
+      "screen": "crm.onboarding.search",
+      "scenarioId": "ui/crm-onboarding-search-results",
+      "portMapRows": [{ "system": "crm", "legacyKey": "search.resultRowNameLink()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.record-field-value",
+      "screen": "crm.onboarding.record",
+      "scenarioId": "ui/crm-onboarding-record-identity",
+      "portMapRows": [{ "system": "crm", "legacyKey": "record.thLabelFollowingTd()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.history-rows",
+      "screen": "crm.onboarding.history",
+      "scenarioId": "ui/crm-onboarding-history-transitions",
+      "portMapRows": [{ "system": "crm", "legacyKey": "onboardingHistory.historyRows()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.search-ready",
+      "screen": "crm.onboarding.search",
+      "scenarioId": "ui/crm-onboarding-search-results",
+      "portMapRows": [{ "system": "crm", "legacyKey": "search.resultRows()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.search-empty",
+      "screen": "crm.onboarding.search",
+      "scenarioId": "ui/crm-onboarding-search-results",
+      "portMapRows": [{ "system": "crm", "legacyKey": "search.resultRows()" }],
+      "assertion": "exactly-one-visible",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.record-ready",
+      "screen": "crm.onboarding.record",
+      "scenarioId": "ui/crm-onboarding-record-identity",
+      "portMapRows": [{ "system": "crm", "legacyKey": "record.thLabelFollowingTd()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.history-ready",
+      "screen": "crm.onboarding.history",
+      "scenarioId": "ui/crm-onboarding-history-transitions",
+      "portMapRows": [{ "system": "crm", "legacyKey": "onboardingHistory.historyRows()" }],
+      "assertion": "recipe-resolves",
+      "matchedCount": 1,
+      "capturedValue": false
+    },
+    {
+      "semanticId": "crm.onboarding.displayed-eid",
+      "screen": "crm.onboarding.record",
+      "scenarioId": "ui/crm-onboarding-record-identity",
+      "portMapRows": [{ "system": "crm", "legacyKey": "record.thLabelFollowingTd()" }],
+      "assertion": "displayed-eid-equals-query",
+      "matchedCount": 1,
+      "capturedValue": false
+    }
+  ],
+  "externalWriteAttempted": false,
+  "sanitized": true
+}

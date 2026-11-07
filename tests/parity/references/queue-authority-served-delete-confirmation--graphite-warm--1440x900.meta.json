@@ -1,0 +1,11 @@
+{
+  "stateId": "queue-authority-served-delete-confirmation",
+  "viewport": "1440x900",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "queue-authority.spec.ts:dialog focus return, keyboard commands, and escape dismiss",
+  "descriptorHash": "3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

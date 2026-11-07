@@ -1,0 +1,5 @@
+{
+  "milestone": "1f",
+  "reason": "Every registered descriptor contract is bound. An unbound contract requires a pending entry; binding the contract removes its entry.",
+  "tasks": []
+}

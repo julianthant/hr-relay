@@ -1,0 +1,16 @@
+# delete-account-confirmation--graphite-warm--1280x720
+# adapter: fixture
+# fixture: delete-account
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Delete Alex Morgan’s account?":
+  - banner:
+    - heading "Delete Alex Morgan’s account?" [level=2]
+    - paragraph: Your runs, history, settings, and credentials will be erased from this Mac. This can’t be undone.
+    - button "Close"
+  - contentinfo:
+    - button "Cancel"
+    - button "Delete account"

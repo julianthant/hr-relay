@@ -1,0 +1,9 @@
+import { taskId } from "../../../rules/identity/ids.js";
+import { UcpathEmergencyContactInputSchema } from "../../systems/ucpath/emergency-contacts.js";
+import { defineTaskContract } from "../../task/task-contract.js";
+import { contactExample,policy } from "./contact-plan.js";
+import { EmergencyContactMemberInputSchema } from "./input.js";
+export const MapApprovedEmergencyContact = defineTaskContract({ ...policy, id: taskId("workflow:emergency-contact-member/read-approved-contact"),
+  title: "Map approved contact fields", operation: { version: 1, id: "map-approved-contact", system: "local", session: { kind: "local", id: "contact-plan" },
+    actions: [{ id: "verify-approved-fields", kind: "verify", label: "Verify approved contact fields and primary policy" }] }, input: EmergencyContactMemberInputSchema, output: UcpathEmergencyContactInputSchema,
+  errorCodes: ["CONTACT_APPROVED_FIELDS_INVALID"], example: contactExample });

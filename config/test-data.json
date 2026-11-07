@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "subjects": {
+    "schemaVersion": 2,
+    "targets": [
+      {
+        "label": "finalization-canary",
+        "availability": {
+          "state": "available",
+          "lastObserved": "2026-09-08",
+          "reason": "The operator-selected private source is available for read-only verification. Complete input admission and a Separations dry run were observed without external writes."
+        },
+        "provenance": {
+          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583",
+          "section": "Task 1.6.7 full-chain acceptance after observation repair"
+        },
+        "usagePolicy": "read-only",
+        "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
+        "owner": "HR automation operator",
+        "purpose": "The read-only Separations subject uses one private Kuali document number from ignored config/test-data.local.json. The composed chain reads identity from Kuali, resolves the UCPath subject through its identity gate, and builds the preview. The standalone finalization arm has no admitted person or write authority.",
+        "workflows": {
+          "separations": {
+            "kind": "full-chain-dry-run",
+            "publicInput": {
+              "document": {
+                "state": "configured",
+                "reference": {
+                  "name": "separationsKualiFinalizationCanaryDocumentNumber"
+                }
+              },
+              "reRead": {
+                "ordinal": 2,
+                "reason": "Operator-requested second read-only rehearsal with repaired pending-set observation."
+              }
+            }
+          },
+          "separations-kuali-finalization": {
+            "kind": "ordinary",
+            "publicInput": {},
+            "pending": {
+              "transactionNumber": "not yet filed (UCPath filing ② pending)",
+              "timekeeperComments": "not authored (the composed chain's comments node composes it)",
+              "terminationEffectiveDate": "not observed on the form; the chain's dates node derives it (separation date + 1)"
+            }
+          }
+        }
+      },
+      {
+        "label": "person-lookup-canary",
+        "availability": {
+          "state": "available",
+          "lastObserved": "2026-09-07",
+          "reason": "The operator-selected private source is available for read-only verification. Presence and complete input admission were observed without exposing the value."
+        },
+        "provenance": {
+          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583",
+          "section": "Network recovery and current live acceptance"
+        },
+        "usagePolicy": "read-only",
+        "cleanupObligation": "A live read changes nothing; the run reads UCPath Person Org and the CRM onboarding record and writes no external system.",
+        "owner": "HR automation operator",
+        "purpose": "The Person Lookup subject uses one private UCPath employee ID from ignored config/test-data.local.json. Searching by EID creates no external transaction and records the ordinary workflow result.",
+        "workflows": {
+          "person-lookup": {
+            "kind": "search-by-eid",
+            "publicInput": {
+              "subject": {
+                "state": "configured",
+                "reference": {
+                  "name": "personLookupCanaryEid"
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "files": {
+    "synthetic-sample-pdf": {
+      "path": "../tests/support/fixtures/documents/synthetic-sample.pdf",
+      "kind": "pdf",
+      "purpose": "Minimal synthetic one-page PDF proving named path resolution and readable bytes; no HR content."
+    }
+  },
+  "samples": {
+    "eids": [
+      "10000001",
+      "10000002",
+      "10000003"
+    ],
+    "kualiDocumentNumbers": [
+      "4000001",
+      "4000002"
+    ],
+    "timekeeperNames": [
+      "Synthetic Timekeeper"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+
+export const TEST_DATA_USAGE = [
+  "test-data check --json [--subject <label> [--workflow <id>]] [--file <name>]  report shared test data, private input presence and one subject's readiness by name only",
+] as const;

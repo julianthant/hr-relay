@@ -1,0 +1,121 @@
+/** Browser-safe names shared by preflight registry metadata, command results and dashboard wire schemas; the executable registry lives in `runtime-dependencies.ts`. */
+import { z } from "zod";
+import { InstanceSelectionSchema } from "../run/envelope.js";
+import {
+  ActorIdSchema,
+  CommandIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  RunIdSchema,
+  SourceSurfaceIdSchema,
+  WorkflowIdSchema,
+} from "../../rules/identity/ids.js";
+import {
+  PreflightCheckIdSchema,
+  PreflightProviderFeaturesSchema,
+  RuntimeCapabilitySchema,
+  validatePreflightReportSemantics,
+} from "../../rules/preflight/preflight-semantics.js";
+
+export {
+  PreflightCheckIdSchema,
+  RuntimeCapabilitySchema,
+  type PreflightCheckId,
+  type RuntimeCapability,
+} from "../../rules/preflight/preflight-semantics.js";
+
+/** The closed, browser-safe result shape; registry semantics remain server-side. */
+export const PreflightResultWireSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("pass"), check: PreflightCheckIdSchema, summary: z.string().min(1), availableFor: PreflightProviderFeaturesSchema.optional() }),
+  z.strictObject({
+    status: z.literal("warning"),
+    check: PreflightCheckIdSchema,
+    summary: z.string().min(1),
+    impact: z.string().min(1),
+    remediation: z.string().min(1),
+  }),
+  z.strictObject({
+    status: z.literal("fail"),
+    check: PreflightCheckIdSchema,
+    summary: z.string().min(1),
+    blocks: z.array(RuntimeCapabilitySchema).min(1),
+    remediation: z.string().min(1),
+  }),
+]);
+
+function duplicateValues(values: readonly string[]): readonly string[] {
+  const seen = new Set<string>();
+  return [...new Set(values.filter((value) => {
+    if (seen.has(value)) return true;
+    seen.add(value);
+    return false;
+  }))];
+}
+
+/** The browser receives the exact report bytes but cannot compose the runtime registry; structural strictness stays here and registry validation layers on the server. */
+export const PreflightReportWireSchema = z.strictObject({
+  configFingerprint: FingerprintSchema,
+  descriptorFingerprint: FingerprintSchema.optional(),
+  checkedAt: IsoInstantSchema,
+  requestedCapabilities: z.array(RuntimeCapabilitySchema).min(1),
+  results: z.array(PreflightResultWireSchema).min(1),
+}).superRefine((report, context) => {
+  const duplicateCapabilities = duplicateValues(report.requestedCapabilities);
+  if (duplicateCapabilities.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["requestedCapabilities"],
+      message: `requested capabilities contain duplicates: ${duplicateCapabilities.join(", ")}`,
+    });
+  }
+  const duplicateResults = duplicateValues(report.results.map(({ check }) => check));
+  if (duplicateResults.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["results"],
+      message: `preflight results contain duplicate check ids: ${duplicateResults.join(", ")}`,
+    });
+  }
+  validatePreflightReportSemantics(report, context);
+});
+
+export const PreflightSelectionSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  requestedInstance: InstanceSelectionSchema.optional(),
+});
+export type PreflightSelection = z.infer<typeof PreflightSelectionSchema>;
+export const PreflightReadinessWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), report: PreflightReportWireSchema }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1),
+    code: z.literal("PREFLIGHT_EVIDENCE_EXPIRED").optional(), lastCompleted: PreflightReportWireSchema.optional() }),
+]);
+export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema>;
+
+export const WorkerPreflightRefusalSchema = z.strictObject({
+  state: z.literal("preflight-refused"), code: z.literal("PREFLIGHT_OBSERVATION_CHANGED"), runId: RunIdSchema.optional(),
+});
+export type WorkerPreflightRefusal = z.infer<typeof WorkerPreflightRefusalSchema>;
+
+export const PreflightRerunCommandRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  requestedAt: IsoInstantSchema,
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
+  type: z.literal("rerun-preflight"),
+  target: z.strictObject({
+    expectedConfigFingerprint: FingerprintSchema,
+    expectedDescriptorFingerprint: FingerprintSchema.optional(),
+    selection: PreflightSelectionSchema.optional(),
+  }),
+});
+
+/** Keep the server's semantic result and browser wire result on one strict envelope factory. */
+export function createPreflightRerunCommandResultSchema<ReportSchema extends z.ZodType>(report: ReportSchema) {
+  return z.strictObject({
+    state: z.literal("completed"),
+    commandId: CommandIdSchema,
+    report,
+  });
+}
+
+export const PreflightRerunCommandResultWireSchema = createPreflightRerunCommandResultSchema(PreflightReportWireSchema);

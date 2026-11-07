@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relay roadmap</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --page: #fafaf9; --text: #252525; --muted: #606060; --line: #dededb;
+  --done: #216642; --done-bg: #e3f1e9;
+  --now: #215caa; --now-bg: #e4edfb;
+  --next: #80560e; --next-bg: #f9efda;
+  --later: #6f488d; --later-bg: #f0e7f7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #191a1b; --text: #ededeb; --muted: #b3b4b1; --line: #383a3b;
+    --done: #a0d9b8; --done-bg: #203a2b;
+    --now: #a8ccff; --now-bg: #20344f;
+    --next: #edd095; --next-bg: #41351e;
+    --later: #d6b8ee; --later-bg: #392a45;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text); font: 16px/1.6 system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 64px 28px 80px; }
+h1 { margin: 0 0 16px; font-size: clamp(2rem, 5vw, 2.75rem); line-height: 1.15; letter-spacing: -.025em; }
+h2 { margin: 0 0 12px; font-size: 1.5rem; line-height: 1.3; letter-spacing: -.015em; }
+section { margin-top: 56px; }
+p { margin: 0; }
+.intro { max-width: 72ch; color: var(--muted); white-space: pre-line; }
+.counts { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 22px 0 14px; font-size: .875rem; }
+.count strong { margin-left: 5px; font-variant-numeric: tabular-nums; }
+ul { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 18px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.pill { align-self: start; text-align: center; border-radius: 5px; padding: 3px 8px; font-size: .75rem; font-weight: 650; line-height: 1.5; }
+.done { color: var(--done); } .now { color: var(--now); }
+.next { color: var(--next); } .later { color: var(--later); }
+.pill.done { background: var(--done-bg); } .pill.now { background: var(--now-bg); }
+.pill.next { background: var(--next-bg); } .pill.later { background: var(--later-bg); }
+.name { font-weight: 600; } .description { margin-top: 4px; color: var(--muted); max-width: 72ch; }
+li div, .intro { overflow-wrap: anywhere; }
+@media (max-width: 480px) { main { padding: 36px 20px 56px; } li { gap: 12px; } }
+</style>
+</head>
+<body>
+<main>
+<header><h1>Relay roadmap</h1><p class="intro">Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation; track operator preview and live sign-off separately.</p></header>
+<section>
+<h2>Foundation</h2>
+
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>9</strong></span>
+<span class="count now">now <strong>0</strong></span>
+<span class="count next">next <strong>1</strong></span>
+<span class="count later">later <strong>0</strong></span></div>
+<ul><li>
+<span class="pill done">done</span>
+<div><strong class="name">Approved mock dashboard frozen</strong><p class="description">keep parity screenshots as the visual contract.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">One combined codebase</strong><p class="description">keep frontend, backend and launch fixes in one codebase.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Renamed to Relay</strong><p class="description">use Relay in the app title, README, favicon and repository name.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">AI limited to ChatGPT</strong><p class="description">use the operator&#39;s subscription for OCR and the dashboard assistant.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Singleton app lock and held operations</strong><p class="description">keep one app in charge of the runtime and hold maintenance operations until they settle.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Person Lookup and Separations rerun readiness</strong><p class="description">use current inputs and readiness checks for reruns.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Settings Test OCR</strong><p class="description">run the OCR test from Preflight.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">PR flow</strong><p class="description">run staging pull request CI on Ubuntu with the macOS-only files, reserve native platform proofs and parity for operator-started full releases, and auto-merge into staging.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Review loop</strong><p class="description">one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push; a fresh reviewer replaces it for the final whole-diff read. A workflow PR also passes a live dry run with the operator before it merges.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Functional spec</strong><p class="description">keep product behaviour in the charter and mechanisms in reference docs.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>Built and wired</h2>
+
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>12</strong></span>
+<span class="count now">now <strong>0</strong></span>
+<span class="count next">next <strong>0</strong></span>
+<span class="count later">later <strong>0</strong></span></div>
+<ul><li>
+<span class="pill done">done</span>
+<div><strong class="name">Portable storage core</strong><p class="description">keep one database and settings per person, simplify Mac safety checks, retain the last three quit-time backups and repair crash or corruption damage automatically without relocating folders.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Shared dashboard surfaces on served data</strong><p class="description">serve sessions, activity, inbox, search, spreadsheets and the assistant.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Workflow logins</strong><p class="description">use fast-duo for every workflow login.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Runs</strong><p class="description">pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Write safety</strong><p class="description">capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Served Explorer matches the mock</strong><p class="description">build Explorer timelines from served workflow definitions.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Assistant usable</strong><p class="description">allowlist reads, make every changing action and workflow start a confirmed proposal, answer ordinary questions through ChatGPT, show the workflow, name, Employee ID and key options on each confirmation card, and run Test assistant from Settings &gt; Preflight.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Operator dashboard fixes</strong><p class="description">tidy Settings (nav, theme, storage, account), derive the timekeeper name and initials from the signed-in name, clean Employee ID input, keep worker notices in toasts, fix spreadsheet import size and add Clear run history.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Readable run logs</strong><p class="description">show plain steps with no internal names and a failure card with its reason.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Dashboard cleanups</strong><p class="description">make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Spreadsheet library</strong><p class="description">retain named versions, bind reference plans to approved snapshots, authenticate SharePoint Sync and publish worksheet archives.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Built workflows on mock data</strong><p class="description">CRM Document Download, I-9 Check and Lookup, Onboarding and OnBase import are implemented; each switches to served data in its own activation below.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>Dashboard ready on the Mac</h2>
+<p class="intro">Complete these in order. A workflow is ready after its live dry run and operator sign-off.</p>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
+<span class="count now">now <strong>5</strong></span>
+<span class="count next">next <strong>9</strong></span>
+<span class="count later">later <strong>0</strong></span></div>
+<ul><li>
+<span class="pill done">done</span>
+<div><strong class="name">Emergency Contact member Retry</strong><p class="description">retry one failed member with an atomic failure hold and superseding accounting.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Finish in-flight work</strong><p class="description">merge the macOS-native test baseline.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Worker custody by construction</strong><p class="description">the parent owns workers in memory, stops them over IPC, learns of exits from the OS and fences claims by generation; delete leases, stored heartbeats, stop journals and the polled browser control channel. Keep automatic backup and restore; after a restore show one dismiss-only toast with the backup time. Live sign-offs start after this merges.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Docs and dev tooling</strong><p class="description">dissolve `docs/rebuild/`, add the AGENTS.md glossary, refresh the repo skills, link `.claude/skills` and add the `verify` skill for live dry runs.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Assistant agent</strong><p class="description">replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Warnings as toasts</strong><p class="description">show warnings and failures as short toasts, sticky with one action when they need acting on; only dialog content, field validation, empty states and the run-log failure card stay inline.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Sign-up and accounts</strong><p class="description">require Touch ID and a Duo security key added at duo.ucsd.edu; use a Chromium virtual platform authenticator where the machine has no Touch ID. Keep credentials on logout, put Delete account in Settings &gt; General, resume a signed-in profile after a restart, and let Log out finish while workflows run.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Person Lookup sign-off</strong><p class="description">pass a read-only exact-ID live run, fix what it finds in one PR, sign off.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Separations sign-off</strong><p class="description">pass a live dry run, fix what it finds in one PR, sign off.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">OCR and Emergency Contact sign-off</strong><p class="description">serve per-person rows, prove the first live Save with the operator present, sign off.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Catalog cleanup</strong><p class="description">remove Work-Study, Kronos Pay Rule, Oath Signature, Oath Upload, Old Kronos Reports and SharePoint Download from the catalog, preflight and docs, and regenerate parity screenshots once with the parity refresh.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">OnBase activation</strong><p class="description">switch to served data, pass a live dry run, update its screenshots, sign off, then refresh the `verify` skill.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Onboarding activation</strong><p class="description">switch to served data, pass a live dry run, update its screenshots, sign off.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">I-9 Lookup and Check activation</strong><p class="description">switch to served data, pass a live dry run, update their screenshots, sign off.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">CRM Document Download activation</strong><p class="description">switch to served data, pass a live dry run, update its screenshots, sign off.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Operator preview</strong><p class="description">complete the full test pass and verify automatic backup and self-repair.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>Simplify the core</h2>
+<p class="intro">Each item deletes its own tests and guards. Worker custody (above) comes first.</p>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
+<span class="count now">now <strong>0</strong></span>
+<span class="count next">next <strong>9</strong></span>
+<span class="count later">later <strong>1</strong></span></div>
+<ul><li>
+<span class="pill done">done</span>
+<div><strong class="name">Contract fingerprints</strong><p class="description">fingerprint each workflow from its own folder, schemas and kit version, bind writes to one app build id and delete the generated manifest; merge before the assistant agent.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Dead code</strong><p class="description">remove the restart command, duplicate retry and recover blocks, empty arms, bulk mode, unused stream topics, the parity verifier and browser-roots v1, move step-proof workflows and the scenario registry into tests, and serve HTTP through @hono/node-server.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Lean run journal</strong><p class="description">journal only operator commands, write heartbeats as a plain update and derive receipts once.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Login mutex</strong><p class="description">hold Duo and OnBase logins with an in-memory parent mutex.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">One schema baseline</strong><p class="description">squash migrations into one baseline, delete old-format conversions and relocation, and store artifacts as raw bytes.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Credentials file</strong><p class="description">keep one encrypted credentials file per person, written atomically, with the keychain key.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Write-time checks only</strong><p class="description">drop read-time re-proving and split the authority database, command kernel and claimed-run executor by move.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Install control</strong><p class="description">replace installation, admission, registry and continuity proofs with one install-control module and a person-store handle.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Workflow facts once</strong><p class="description">declare workflow facts once in a hand-kept registry that replaces the generators; guards stop listing workflows by name.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Dashboard mocks</strong><p class="description">delete each workflow&#39;s mock at its activation, split LoadedApp before the next activation and drop parity-only mock arms after the assistant agent.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Tests and guards</strong><p class="description">keep one line per guard, move behaviour tests out of the architecture suite, scan instead of listing boundary schemas, un-alias merged test files and share one reusable CI workflow.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">UI cleanup</strong><p class="description">right-size parity to 150-200 states, then move to one UI library in a single UI-only PR.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>Windows, after the Mac is signed off</h2>
+
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
+<span class="count now">now <strong>0</strong></span>
+<span class="count next">next <strong>3</strong></span>
+<span class="count later">later <strong>0</strong></span></div>
+<ul><li>
+<span class="pill next">next</span>
+<div><strong class="name">Windows support</strong><p class="description">run the local web app through `relay.cmd` on a restricted Windows laptop without admin rights. Keep Windows file identities exact, fix security-key enrollment, stop cleanly after a Duo attempt, keep setup and start usable at laptop limits, and pass the Windows-native custody tests on the PC.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Prebuilt Windows bundle</strong><p class="description">ship a zip with Node, Chromium and dependencies by USB or GitHub Release, with always-on code-only logs and `relay.cmd diagnose`; never clone, install or run tests on the laptop. Then bundle the backend with esbuild.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Encryption at rest</strong><p class="description">protect Relay&#39;s sensitive data on an unencrypted Windows disk.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>After the dashboard is ready</h2>
+
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
+<span class="count now">now <strong>0</strong></span>
+<span class="count next">next <strong>0</strong></span>
+<span class="count later">later <strong>4</strong></span></div>
+<ul><li>
+<span class="pill later">later</span>
+<div><strong class="name">Release and cutover</strong><p class="description">release staging to main and replace the old app.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Desktop app</strong><p class="description">package a per-user Windows installer and signed macOS build; install updates only on quit or while idle.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Removed workflows</strong><p class="description">build one again only when the operator asks.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Parked work</strong><p class="description">re-judge schema baseline and one UI library against the new core.</p></div>
+</li></ul>
+</section>
+</main>
+</body>
+</html>

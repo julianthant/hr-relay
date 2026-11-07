@@ -1,0 +1,465 @@
+// @vitest-environment jsdom
+import assert from "node:assert/strict";
+import { it, vi } from "vitest";
+import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import type { ChatGptAccountQueries } from "../../../../../src/dashboard/client/queries/chatgpt-account-queries.js";
+import { createServedChatGptAccountPort, type ChatGptAuthorizationWindow } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+import { ChatGptAccountStateSchema, ChatGptSignInStartSchema, type ChatGptAccountView, type ChatGptSignInCompletion } from "../../../../../src/models/dashboard/chatgpt-account.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+const attemptId = "00000000-0000-4000-8000-000000000001";
+const account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2026-10-12T13:00:00.000Z", planUsage: "enabled" });
+const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId, authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2026-10-12T12:05:00.000Z" });
+function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => ChatGptAuthorizationWindow | undefined) {
+  const calls: string[] = [];
+  const initialWall = Date.now();
+  let persisted: ChatGptAccountView = { state: "signed-out" };
+  const complete: ChatGptAccountQueries["completeChatGptSignIn"] = overrides.completeChatGptSignIn ?? (async () => { calls.push("complete"); return { state: "completed", attemptId, account }; });
+  const queries: ChatGptAccountQueries = {
+    chatGptAccount: async () => { calls.push("read"); return persisted; },
+    startChatGptSignIn: async () => { calls.push("start"); return started; },
+    cancelChatGptSignIn: async () => { calls.push("cancel"); return { state: "cancelled", attemptId }; },
+    testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
+    signOutChatGpt: async () => { calls.push("out"); persisted = { state: "signed-out" }; return { state: "signed-out", remoteRevocation: "confirmed" }; }, ...overrides,
+    completeChatGptSignIn: async (id, signal) => { const result = await complete(id, signal); if (result.state === "completed") persisted = result.account; return result; },
+  };
+  const popup = { navigate: (url: string) => { calls.push(`navigate:${url}`); }, close: () => { calls.push("close"); } };
+  const port = createServedChatGptAccountPort(queries, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z") + Date.now() - initialWall, open: open ?? (() => { calls.push("open"); return popup; }) });
+  return { port, calls };
+}
+it("opens synchronously, retains expiry and plan state, and never writes browser storage", async () => {
+  const storageBefore = { local: localStorage.length, session: sessionStorage.length };
+  const f = setup(); try {
+    assert.deepEqual(f.port.getSnapshot(), { state: "loading" });
+    await f.port.refresh(); assert.equal(f.port.getResource().state, "empty");
+    const signing = f.port.signIn({ usePlan: true });
+    assert.deepEqual(f.calls.slice(0, 3), ["read", "open", "start"]);
+    await signing; assert.deepEqual(f.port.getSnapshot(), account);
+    assert.equal(f.port.getResource().state, "loaded");
+    assert.equal(f.calls.filter(call => call === "start").length, 1);
+    await f.port.signOut(); assert.equal(f.port.getResource().state, "empty");
+    assert.deepEqual({ local: localStorage.length, session: sessionStorage.length }, storageBefore);
+  } finally { f.port.dispose(); }
+});
+it("preserves failed, refused and uncertain outcomes with one uncertain state read and no redispatch", async () => {
+  const uncertain = Promise.withResolvers<void>();
+  const f = setup({ completeChatGptSignIn: async () => { throw new Error("synthetic lost response"); } });
+  try {
+    await f.port.refresh();
+    const unsubscribe = f.port.subscribe(() => { if (f.port.getResource().state === "uncertain") uncertain.resolve(); });
+    const signing = f.port.signIn({ usePlan: true });
+    await uncertain.promise;
+    assert.equal(f.port.getResource().state, "uncertain");
+    assert.equal(f.calls.filter(call => call === "read").length, 2);
+    assert.equal(f.calls.filter(call => call === "start").length, 1);
+    f.port.dispose(); await signing; unsubscribe();
+  } finally { f.port.dispose(); }
+  const refused = setup({ startChatGptSignIn: async () => ({ state: "refused", code: "CHATGPT_AUTH_BUSY", message: ERROR_CATALOG.CHATGPT_AUTH_BUSY.text }) });
+  try { await refused.port.refresh(); await refused.port.signIn({ usePlan: true }); assert.equal(refused.port.getResource().state, "refused"); assert.equal(refused.calls.filter(call => call === "read").length, 1); } finally { refused.port.dispose(); }
+  const failed = setup({ chatGptAccount: async () => { throw new Error("secret diagnostic"); } });
+  try { await failed.port.refresh(); assert.equal(failed.port.getResource().state, "failed"); assert.doesNotMatch(JSON.stringify(failed.port.getSnapshot()), /secret/u); } finally { failed.port.dispose(); }
+});
+it("retains local signed-out authority and warns on unconfirmed remote revocation", async () => {
+  const f = setup({ signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "unconfirmed" }) });
+  try {
+    await f.port.refresh(); await f.port.signOut();
+    assert.deepEqual(f.port.getResource(), { state: "empty", account: { state: "signed-out" }, warning: "CHATGPT_REVOCATION_UNCONFIRMED" });
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_REVOCATION_UNCONFIRMED.text });
+  } finally { f.port.dispose(); }
+});
+it("refuses a blocked popup before dispatch and cancels once when navigation fails", async () => {
+  const blocked = setup({}, () => undefined);
+  try { await blocked.port.refresh(); await blocked.port.signIn({ usePlan: true }); assert.deepEqual(blocked.calls, ["read"]); assert.equal(blocked.port.getResource().state, "refused"); } finally { blocked.port.dispose(); }
+  let closed = 0;
+  const failed = setup({}, () => ({ navigate: () => { throw new Error("popup closed"); }, close: () => { closed++; } }));
+  try { await failed.port.refresh(); await failed.port.signIn({ usePlan: true }); assert.deepEqual(failed.calls, ["read", "start", "cancel"]); assert.equal(closed, 1); assert.equal(failed.port.getResource().state, "refused"); } finally { failed.port.dispose(); }
+});
+it("suppresses stale reads and completion settlements and resumes the original signing-in attempt", async () => {
+  const old = Promise.withResolvers<ChatGptAccountView>(); let reads = 0;
+  const stale = setup({ chatGptAccount: () => ++reads === 1 ? old.promise : Promise.resolve(account) });
+  try { const first = stale.port.refresh(); const second = stale.port.refresh(); assert.equal(first, second); old.resolve(account); await first; assert.deepEqual(stale.port.getSnapshot(), account); assert.equal(reads, 1); } finally { stale.port.dispose(); }
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  const resumed = setup({ chatGptAccount: async () => ({ state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } }), completeChatGptSignIn: id => { assert.equal(id, attemptId); return completion.promise; } });
+  const refreshing = resumed.port.refresh(); for (let tick = 0; tick < 4; tick++) await Promise.resolve(); assert.deepEqual(resumed.port.getResource(), { state: "loading", attemptId });
+  const pendingSnapshot = resumed.port.getSnapshot();
+  assert.deepEqual(pendingSnapshot, { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl });
+  resumed.port.dispose(); completion.resolve({ state: "completed", attemptId, account }); await refreshing;
+  assert.deepEqual(resumed.port.getSnapshot(), pendingSnapshot); assert.equal(resumed.calls.includes("start"), false);
+});
+it("reads current state once at connected expiry without starting sign-in", async () => {
+  vi.useFakeTimers(); let reads = 0, now = Date.parse("2026-10-12T12:59:59.000Z");
+  const queries: ChatGptAccountQueries = { testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
+  const port = createServedChatGptAccountPort(queries, { nowMs: () => now });
+  try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getSnapshot(), { state: "expired" }); } finally { port.dispose(); vi.useRealTimers(); }
+});
+
+it("closes its owned popup immediately on disposal while completion is pending", async () => {
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  const f = setup({ completeChatGptSignIn: () => completion.promise });
+  await f.port.refresh();
+  const signing = f.port.signIn({ usePlan: true });
+  await Promise.resolve();
+  assert.equal(f.calls.includes("close"), false);
+  const pendingSnapshot = f.port.getSnapshot();
+  assert.equal(pendingSnapshot.state, "signing-in");
+  f.port.dispose();
+  assert.equal(f.calls.filter(call => call === "close").length, 1);
+  completion.resolve({ state: "completed", attemptId, account }); await signing;
+  assert.equal(f.calls.filter(call => call === "close").length, 1);
+  assert.deepEqual(f.port.getSnapshot(), pendingSnapshot);
+});
+
+it("bounds account snapshots and retains the exact verified account on refresh failure", async () => {
+  vi.useFakeTimers();
+  let reads = 0;
+  const f = setup({ chatGptAccount: () => ++reads === 1 ? Promise.resolve(account) : new Promise(() => {}) });
+  try {
+    await f.port.refresh();
+    const first = f.port.refresh(), second = f.port.refresh(); assert.equal(first, second);
+    assert.deepEqual(f.port.getSnapshot(), account);
+    await vi.advanceTimersByTimeAsync(10_000); await first;
+    const resource = f.port.getResource(); assert.equal(resource.state, "failed");
+    assert.ok("account" in resource); assert.deepEqual(resource.account, account); assert.equal(reads, 2);
+  } finally { f.port.dispose(); vi.useRealTimers(); }
+});
+it("keeps the declared expiry when completion hangs beyond its deadline without redispatch", async () => {
+  vi.useFakeTimers();
+  const f = setup({ completeChatGptSignIn: () => new Promise(() => {}) });
+  try {
+    await f.port.refresh();
+    let settled = false;
+    const signing = f.port.signIn({ usePlan: true }).then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(300_000); assert.equal(settled, true); assert.equal(f.calls.includes("close"), true);
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    await vi.advanceTimersByTimeAsync(10_000); await signing;
+    assert.deepEqual(f.port.getResource(), { state: "refused", code: "CHATGPT_AUTH_EXPIRED" }); assert.equal(f.calls.filter(call => call === "start").length, 1);
+    assert.equal(f.calls.filter(call => call === "read").length, 1); assert.equal(f.calls.filter(call => call === "close").length, 1);
+  } finally { f.port.dispose(); vi.useRealTimers(); }
+});
+
+it.each(["focus", "visibilitychange"] as const)("rechecks the original sign-in on %s through the real client without reloading or redispatching", async event => {
+  const first = Promise.withResolvers<Response>(), requested = Promise.withResolvers<void>();
+  const visible = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  let completionSignal: AbortSignal | null | undefined;
+  let completions = 0, starts = 0, reads = 0;
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async (url, init) => {
+    if (url.endsWith(`/sign-in/${attemptId}`)) {
+      completions++;
+      if (completions === 1) { completionSignal = init?.signal; requested.resolve(); return first.promise; }
+      return Response.json({ state: "completed", attemptId, account });
+    }
+    if (url.endsWith("/sign-in")) { starts++; return Response.json(started); }
+    reads++; return Response.json(reads === 1 ? { state: "signed-out" } : account);
+  } });
+  const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
+  try {
+    await port.refresh();
+    const signing = port.signIn({ usePlan: true });
+    await requested.promise;
+    assert.equal(port.getSnapshot().state, "signing-in");
+    (event === "focus" ? window : document).dispatchEvent(new Event(event));
+    await signing;
+    assert.equal(completionSignal?.aborted, true);
+    assert.deepEqual(port.getSnapshot(), account);
+    assert.equal(port.getResource().state, "loaded");
+    assert.equal(starts, 1); assert.equal(reads, 2); assert.equal(completions, 2);
+    first.resolve(Response.json({ state: "completed", attemptId, account: { state: "signed-out" } }));
+    await Promise.resolve();
+    window.dispatchEvent(new Event("focus")); document.dispatchEvent(new Event("visibilitychange"));
+    assert.deepEqual(port.getSnapshot(), account); assert.equal(completions, 2);
+  } finally { first.resolve(Response.json({ state: "completed", attemptId, account })); port.dispose(); visible.mockRestore(); }
+});
+
+it("rechecks a lost completion on return and preserves the original attempt's closure refusal", async () => {
+  let completions = 0, reads = 0;
+  const uncertain = Promise.withResolvers<void>();
+  const f = setup({
+    chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } },
+    completeChatGptSignIn: async id => {
+      assert.equal(id, attemptId);
+      if (++completions === 1) throw new Error("Synthetic lost completion");
+      return { state: "refused", attemptId, code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text };
+    },
+  });
+  try {
+    await f.port.refresh();
+    const unsubscribe = f.port.subscribe(() => { if (f.port.getResource().state === "uncertain") uncertain.resolve(); });
+    const signing = f.port.signIn({ usePlan: true });
+    await uncertain.promise;
+    assert.equal(f.port.getSnapshot().state, "unavailable");
+    window.dispatchEvent(new Event("focus"));
+    await signing; unsubscribe();
+    const resource = f.port.getResource(); assert.equal(resource.state, "refused");
+    assert.ok("code" in resource); assert.equal(resource.code, "CHATGPT_RESOURCE_CLOSURE_UNPROVED");
+    assert.equal(completions, 2); assert.equal(reads, 2); assert.equal(f.calls.filter(call => call === "start").length, 1);
+  } finally { f.port.dispose(); }
+});
+
+it.each(["completed", "closure-refused"] as const)("recovers the original %s settlement after lost delivery reconciles to a connected account", async settlement => {
+  const uncertain = Promise.withResolvers<void>();
+  let completions = 0, reads = 0;
+  const f = setup({
+    chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : account,
+    completeChatGptSignIn: async id => {
+      assert.equal(id, attemptId);
+      if (++completions === 1) throw new Error("Synthetic lost successful delivery");
+      return settlement === "completed" ? { state: "completed", attemptId, account }
+        : { state: "uncertain", attemptId, code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text };
+    },
+  });
+  try {
+    await f.port.refresh();
+    const unsubscribe = f.port.subscribe(() => { if (f.port.getResource().state === "uncertain") uncertain.resolve(); });
+    const signing = f.port.signIn({ usePlan: true });
+    await uncertain.promise;
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text, account });
+    window.dispatchEvent(new Event("focus"));
+    await signing; unsubscribe();
+    if (settlement === "completed") { assert.deepEqual(f.port.getSnapshot(), account); assert.equal(f.port.getResource().state, "loaded"); }
+    else assert.deepEqual(f.port.getResource(), { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", account });
+    assert.equal(completions, 2); assert.equal(reads, 3); assert.equal(f.calls.filter(call => call === "start").length, 1);
+  } finally { f.port.dispose(); }
+});
+
+it("keeps the original deadline after a lost completion reconciles to connected and return never arrives", async () => {
+  vi.useFakeTimers();
+  let reads = 0, completions = 0;
+  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : account,
+    completeChatGptSignIn: async () => { completions++; throw new Error("Synthetic lost delivery"); } });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(f.port.getResource().state, "uncertain");
+    await vi.advanceTimersByTimeAsync(299_999); assert.equal(f.port.getSnapshot().state, "unavailable");
+    await vi.advanceTimersByTimeAsync(1); await signing;
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    window.dispatchEvent(new Event("focus"));
+    assert.equal(completions, 1); assert.equal(reads, 2);
+  } finally { f.port.dispose(); vi.useRealTimers(); }
+});
+
+it.each(["before", "during"] as const)("does not publish a cached connected replay after another tab signs out %s replay delivery", async timing => {
+  const first = Promise.withResolvers<Response>(), replay = Promise.withResolvers<Response>();
+  const initialRequest = Promise.withResolvers<void>(), replayRequest = Promise.withResolvers<void>();
+  let persisted: ChatGptAccountView = { state: "signed-out" };
+  let starts = 0, completions = 0, reads = 0, signOuts = 0;
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async (url, init) => {
+    if (url.endsWith(`/sign-in/${attemptId}`)) {
+      assert.equal(init?.method, undefined);
+      if (++completions === 1) { initialRequest.resolve(); return first.promise; }
+      replayRequest.resolve(); return replay.promise;
+    }
+    if (url.endsWith("/sign-in")) { starts++; return Response.json(started); }
+    if (url.endsWith("/sign-out")) { signOuts++; persisted = { state: "signed-out" }; return Response.json({ state: "signed-out", remoteRevocation: "confirmed" }); }
+    reads++; return Response.json(persisted);
+  } });
+  const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
+  const published: string[] = [];
+  try {
+    await port.refresh();
+    const unsubscribe = port.subscribe(() => { published.push(port.getSnapshot().state); });
+    const signing = port.signIn({ usePlan: true });
+    await initialRequest.promise;
+    persisted = account;
+    if (timing === "before") await client.signOutChatGpt();
+    window.dispatchEvent(new Event("focus"));
+    await replayRequest.promise;
+    if (timing === "during") await client.signOutChatGpt();
+    replay.resolve(Response.json({ state: "completed", attemptId, account }));
+    await signing;
+    assert.deepEqual(port.getSnapshot(), { state: "signed-out" });
+    assert.deepEqual(port.getResource(), { state: "empty", account: { state: "signed-out" } });
+    assert.equal(published.includes("connected"), false);
+    assert.equal(starts, 1); assert.equal(signOuts, 1); assert.equal(completions, 2); assert.equal(reads, 2);
+    first.resolve(Response.json({ state: "completed", attemptId, account }));
+    await Promise.resolve(); assert.deepEqual(port.getSnapshot(), { state: "signed-out" });
+    unsubscribe();
+  } finally { first.resolve(Response.json({ state: "completed", attemptId, account })); replay.resolve(Response.json({ state: "completed", attemptId, account })); port.dispose(); }
+});
+
+it("shows the original pending attempt and cancels it without accepting a late completion", async () => {
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  const f = setup({ completeChatGptSignIn: () => completion.promise });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    for (let tick = 0; tick < 4; tick++) await Promise.resolve();
+    assert.deepEqual(f.port.getSnapshot(), { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl });
+    await f.port.cancelSignIn();
+    assert.equal(f.calls.filter(call => call === "cancel").length, 1);
+    assert.deepEqual(f.port.getSnapshot(), { state: "signed-out" });
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+    assert.deepEqual(f.port.getSnapshot(), { state: "signed-out" });
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); }
+});
+
+it("shows expiry at the returned attempt deadline and permits a fresh sign-in", async () => {
+  vi.useFakeTimers();
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  const f = setup({ completeChatGptSignIn: () => completion.promise });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    await vi.advanceTimersByTimeAsync(299_999);
+    assert.equal(f.port.getSnapshot().state, "signing-in");
+    await vi.advanceTimersByTimeAsync(1);
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    assert.equal(f.calls.filter(call => call === "close").length, 1);
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    await f.port.signIn({ usePlan: true });
+    assert.equal(f.calls.filter(call => call === "start").length, 2);
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); vi.useRealTimers(); }
+});
+
+it("keeps waiting through a ten-minute attempt rather than applying the five-minute default read limit", async () => {
+  vi.useFakeTimers();
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  const tenMinutes = ChatGptSignInStartSchema.parse({ ...started, expiresAt: "2026-10-12T12:10:00.000Z" });
+  const f = setup({ startChatGptSignIn: async () => tenMinutes, completeChatGptSignIn: () => completion.promise });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    await vi.advanceTimersByTimeAsync(310_000);
+    assert.equal(f.port.getSnapshot().state, "signing-in");
+    await vi.advanceTimersByTimeAsync(290_000);
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    await signing;
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); vi.useRealTimers(); }
+});
+
+it("dispatches cancellation once and preserves an uncertain cancellation instead of inventing sign-out", async () => {
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  const cancellation = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["cancelChatGptSignIn"]>>>();
+  let cancellations = 0;
+  const f = setup({ completeChatGptSignIn: () => completion.promise, cancelChatGptSignIn: () => { cancellations++; return cancellation.promise; } });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    for (let tick = 0; tick < 4; tick++) await Promise.resolve();
+    const cancelling = f.port.cancelSignIn();
+    await f.port.cancelSignIn();
+    assert.equal(cancellations, 1);
+    cancellation.resolve({ state: "uncertain", code: "CHATGPT_AUTH_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text });
+    await cancelling;
+    assert.equal(f.port.getResource().state, "uncertain");
+    assert.equal(f.port.getSnapshot().state, "unavailable");
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+    assert.equal(f.port.getSnapshot().state, "unavailable");
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); }
+});
+
+it("reconciles a Cancel refusal racing a successful sign-in without losing the verified account", async () => {
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  let reads = 0;
+  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : account,
+    completeChatGptSignIn: () => completion.promise,
+    cancelChatGptSignIn: async () => ({ state: "refused", code: "CHATGPT_AUTH_INVALID", message: ERROR_CATALOG.CHATGPT_AUTH_INVALID.text }) });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    for (let tick = 0; tick < 4; tick++) await Promise.resolve();
+    await f.port.cancelSignIn();
+    assert.deepEqual(f.port.getResource(), { state: "refused", code: "CHATGPT_AUTH_INVALID", account });
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_INVALID.text, account });
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+    assert.equal(reads, 2);
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); }
+});
+
+it("bounds a hung Cancel, keeps its outcome uncertain, and expires the original attempt", async () => {
+  vi.useFakeTimers();
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  let reads = 0;
+  const pending = { state: "signing-in" as const, attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" as const } };
+  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : pending,
+    completeChatGptSignIn: () => completion.promise, cancelChatGptSignIn: () => new Promise(() => {}) });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const cancelling = f.port.cancelSignIn();
+    await vi.advanceTimersByTimeAsync(10_000); await cancelling;
+    assert.equal(f.port.getResource().state, "uncertain");
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text, account: pending });
+    await vi.advanceTimersByTimeAsync(290_000);
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); vi.useRealTimers(); }
+});
+
+it("honors ten-minute expiry through the real query and transport, aborting the bounded completion", async () => {
+  vi.useFakeTimers();
+  let completionSignal: AbortSignal | null | undefined;
+  let completions = 0, reads = 0;
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async (url, init) => {
+    if (url.endsWith(`/sign-in/${attemptId}`)) {
+      completions++;
+      completionSignal = init?.signal;
+      return new Promise<Response>((_resolve, reject) => { init?.signal?.addEventListener("abort", () => reject(new DOMException("Synthetic completion aborted", "AbortError")), { once: true }); });
+    }
+    if (url.endsWith("/sign-in")) return Response.json({ ...started, expiresAt: "2026-10-12T12:10:00.000Z" });
+    reads++; return Response.json({ state: "signed-out" });
+  } });
+  const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
+  try {
+    await port.refresh();
+    const signing = port.signIn({ usePlan: true });
+    await vi.advanceTimersByTimeAsync(310_000);
+    assert.equal(port.getSnapshot().state, "signing-in");
+    assert.equal(completionSignal?.aborted, false);
+    await vi.advanceTimersByTimeAsync(290_000); await signing;
+    assert.deepEqual(port.getSnapshot(), { state: "sign-in-expired" });
+    assert.equal(completionSignal?.aborted, true);
+    assert.equal(completions, 1); assert.equal(reads, 1);
+  } finally { port.dispose(); vi.useRealTimers(); }
+});
+
+it("expires a new pending attempt observed after confirmed cancellation", async () => {
+  vi.useFakeTimers();
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  let reads = 0;
+  const next = { state: "signing-in" as const, attemptId: "00000000-0000-4000-8000-000000000002", expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" as const } };
+  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : next, completeChatGptSignIn: () => completion.promise });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    await vi.advanceTimersByTimeAsync(0);
+    await f.port.cancelSignIn();
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text, account: next });
+    await vi.advanceTimersByTimeAsync(300_000);
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); vi.useRealTimers(); }
+});
+
+
+it("lets expired sign-out retain closure refusal and calls the existing sign-out once", async () => {
+  let calls = 0;
+  const f = setup({ chatGptAccount: async () => ({ state: "expired" }), signOutChatGpt: async () => { calls++; return { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text }; } });
+  try {
+    await f.port.refresh(); await f.port.signOut();
+    assert.equal(calls, 1); assert.equal(f.port.getResource().state, "uncertain");
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text, account: { state: "expired" } });
+  } finally { f.port.dispose(); }
+});
+
+
+it("publishes the actual unverified resource whenever its unavailable snapshot is observed", async () => {
+  const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text });
+  const f = setup({ chatGptAccount: async () => unavailable });
+  const observed: ReturnType<typeof f.port.getResource>[] = [];
+  const unsubscribe = f.port.subscribe(() => {
+    if (f.port.getSnapshot().state === "unavailable") observed.push(f.port.getResource());
+  });
+  try {
+    await f.port.refresh();
+    assert.ok(observed.length > 0);
+    for (const resource of observed) {
+      assert.equal(resource.state, "failed"); assert.ok("code" in resource);
+      assert.equal(resource.code, "CHATGPT_USAGE_UNAVAILABLE");
+    }
+  } finally { unsubscribe(); f.port.dispose(); }
+});

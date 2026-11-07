@@ -1,0 +1,54 @@
+# approved-controls-save-uncertain--graphite-warm--1280x720
+# adapter: component-fixture
+# fixture: approved-controls-save-uncertain
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - region "Spreadsheet editor":
+    - navigation "Breadcrumb":
+      - list:
+        - listitem:
+          - button "Spreadsheets"
+        - listitem: Untitled.xlsx
+    - heading "Untitled.xlsx" [level=1]
+    - paragraph: 1 sheet · Edited copy
+    - button "Save"
+    - button "Export copy"
+    - status: Save uncertain The library did not confirm this draft. Draft kept.
+    - group "Sheet view":
+      - text: Sheet
+      - combobox "Workbook sheet": Sheet 1
+      - button "Columns"
+    - group "Sheet editing":
+      - button "Insert"
+      - group "Edit history":
+        - button "Undo spreadsheet edit"
+        - button "Redo spreadsheet edit" [disabled]
+    - group:
+      - searchbox "Search spreadsheet cells"
+    - table "Sheet 1 cells":
+      - rowgroup:
+        - row "1 Sort column A Name Sort column B Employee ID Sort column C Notes":
+          - columnheader "1"
+          - columnheader "Sort column A Name":
+            - button "Sort column A": A
+            - textbox "A1": Name
+          - columnheader "Sort column B Employee ID":
+            - button "Sort column B": B
+            - textbox "B1": Employee ID
+          - columnheader "Sort column C Notes":
+            - button "Sort column C": C
+            - textbox "C1": Notes
+      - rowgroup:
+        - row "2 Draft kept":
+          - rowheader "2"
+          - cell "Draft kept":
+            - textbox "A2": Draft kept
+          - cell:
+            - textbox "B2"
+          - cell:
+            - textbox "C2"
+    - text: Rows 1–1 of 1 · Cell A2 Columns 1–3 of 3

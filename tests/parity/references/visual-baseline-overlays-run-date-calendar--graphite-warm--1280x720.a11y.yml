@@ -1,0 +1,188 @@
+# visual-baseline-overlays-run-date-calendar--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-overlays.spec.ts:mounted launch pickers and queue overlays
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Work-Study · Workflow preview
+    - button "Close"
+  - complementary:
+    - group:
+      - searchbox "Filter workflows"
+    - navigation "Workflow":
+      - heading "Search" [level=3]
+      - list:
+        - listitem:
+          - button "Person Lookup"
+        - listitem:
+          - button "I-9 Lookup" [disabled]: I-9 Lookup Parent only
+      - heading "Separations" [level=3]
+      - list:
+        - listitem:
+          - button "Separations"
+        - listitem:
+          - button "I-9 Check"
+      - heading "Onboarding" [level=3]
+      - list:
+        - listitem:
+          - button "Onboarding"
+        - listitem:
+          - button "Oath Signature"
+        - listitem:
+          - button "Oath Upload"
+        - listitem:
+          - button "Emergency Contact"
+      - heading "Work Study" [level=3]
+      - list:
+        - listitem:
+          - button "Work-Study"
+      - heading "Payroll" [level=3]
+      - list:
+        - listitem:
+          - button "Kronos Pay Rule"
+      - heading "Utils" [level=3]
+      - list:
+        - listitem:
+          - button "OCR"
+        - listitem:
+          - button "CRM Doc Download"
+        - listitem:
+          - button "SharePoint Download" [disabled]: SharePoint Download Parent only
+      - heading "OnBase" [level=3]
+      - list:
+        - listitem:
+          - button "OnBase"
+      - heading "Timekeeping" [level=3]
+      - list:
+        - listitem:
+          - button "Old Kronos Reports"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Input": Input
+    - listitem:
+      - button "2 Options" [disabled]: Options
+    - listitem:
+      - button "3 Confirm" [disabled]: Confirm
+  - heading "Run input" [level=3]
+  - paragraph: Each entry starts one run.
+  - region "Input":
+    - text: Employee IDs
+    - textbox "Employee IDs":
+      - /placeholder: 10000001, 10000002
+    - paragraph: Separate values with a comma or a new line.
+    - text: Effective date*
+    - group "Effective date*":
+      - spinbutton "month, Effective date*": "08"
+      - spinbutton "day, Effective date*": "03"
+      - spinbutton "year, Effective date*": "2026"
+      - button "Choose effective date Effective date*" [expanded]
+  - contentinfo:
+    - text: 0 runsWork-Study
+    - button "Cancel"
+    - button "Continue" [disabled]
+- dialog "Choose effective date":
+  - application "Choose effective date, August 2026":
+    - heading "Choose effective date, August 2026" [level=2]
+    - banner:
+      - button "August 2026, year selector": August 2026
+      - button "Previous month"
+      - button "Next month"
+    - grid "Choose effective date, August 2026":
+      - rowgroup:
+        - row "Sunday, July 26, 2026 Monday, July 27, 2026 Tuesday, July 28, 2026 Wednesday, July 29, 2026 Thursday, July 30, 2026 Friday, July 31, 2026 Saturday, August 1, 2026":
+          - gridcell "Sunday, July 26, 2026" [disabled]:
+            - button "Sunday, July 26, 2026" [disabled]: "26"
+          - gridcell "Monday, July 27, 2026" [disabled]:
+            - button "Monday, July 27, 2026" [disabled]: "27"
+          - gridcell "Tuesday, July 28, 2026" [disabled]:
+            - button "Tuesday, July 28, 2026" [disabled]: "28"
+          - gridcell "Wednesday, July 29, 2026" [disabled]:
+            - button "Wednesday, July 29, 2026" [disabled]: "29"
+          - gridcell "Thursday, July 30, 2026" [disabled]:
+            - button "Thursday, July 30, 2026" [disabled]: "30"
+          - gridcell "Friday, July 31, 2026" [disabled]:
+            - button "Friday, July 31, 2026" [disabled]: "31"
+          - gridcell "Saturday, August 1, 2026":
+            - button "Saturday, August 1, 2026": "1"
+        - row "Sunday, August 2, 2026 Monday, August 3, 2026 selected Tuesday, August 4, 2026 Wednesday, August 5, 2026 Thursday, August 6, 2026 Friday, August 7, 2026 Saturday, August 8, 2026":
+          - gridcell "Sunday, August 2, 2026":
+            - button "Sunday, August 2, 2026": "2"
+          - gridcell "Monday, August 3, 2026 selected" [selected]:
+            - button "Monday, August 3, 2026 selected": "3"
+          - gridcell "Tuesday, August 4, 2026":
+            - button "Tuesday, August 4, 2026": "4"
+          - gridcell "Wednesday, August 5, 2026":
+            - button "Wednesday, August 5, 2026": "5"
+          - gridcell "Thursday, August 6, 2026":
+            - button "Thursday, August 6, 2026": "6"
+          - gridcell "Friday, August 7, 2026":
+            - button "Friday, August 7, 2026": "7"
+          - gridcell "Saturday, August 8, 2026":
+            - button "Saturday, August 8, 2026": "8"
+        - row "Sunday, August 9, 2026 Monday, August 10, 2026 Tuesday, August 11, 2026 Wednesday, August 12, 2026 Thursday, August 13, 2026 Friday, August 14, 2026 Saturday, August 15, 2026":
+          - gridcell "Sunday, August 9, 2026":
+            - button "Sunday, August 9, 2026": "9"
+          - gridcell "Monday, August 10, 2026":
+            - button "Monday, August 10, 2026": "10"
+          - gridcell "Tuesday, August 11, 2026":
+            - button "Tuesday, August 11, 2026": "11"
+          - gridcell "Wednesday, August 12, 2026":
+            - button "Wednesday, August 12, 2026": "12"
+          - gridcell "Thursday, August 13, 2026":
+            - button "Thursday, August 13, 2026": "13"
+          - gridcell "Friday, August 14, 2026":
+            - button "Friday, August 14, 2026": "14"
+          - gridcell "Saturday, August 15, 2026":
+            - button "Saturday, August 15, 2026": "15"
+        - row "Sunday, August 16, 2026 Monday, August 17, 2026 Tuesday, August 18, 2026 Wednesday, August 19, 2026 Thursday, August 20, 2026 Friday, August 21, 2026 Saturday, August 22, 2026":
+          - gridcell "Sunday, August 16, 2026":
+            - button "Sunday, August 16, 2026": "16"
+          - gridcell "Monday, August 17, 2026":
+            - button "Monday, August 17, 2026": "17"
+          - gridcell "Tuesday, August 18, 2026":
+            - button "Tuesday, August 18, 2026": "18"
+          - gridcell "Wednesday, August 19, 2026":
+            - button "Wednesday, August 19, 2026": "19"
+          - gridcell "Thursday, August 20, 2026":
+            - button "Thursday, August 20, 2026": "20"
+          - gridcell "Friday, August 21, 2026":
+            - button "Friday, August 21, 2026": "21"
+          - gridcell "Saturday, August 22, 2026":
+            - button "Saturday, August 22, 2026": "22"
+        - row "Sunday, August 23, 2026 Monday, August 24, 2026 Tuesday, August 25, 2026 Wednesday, August 26, 2026 Thursday, August 27, 2026 Friday, August 28, 2026 Saturday, August 29, 2026":
+          - gridcell "Sunday, August 23, 2026":
+            - button "Sunday, August 23, 2026": "23"
+          - gridcell "Monday, August 24, 2026":
+            - button "Monday, August 24, 2026": "24"
+          - gridcell "Tuesday, August 25, 2026":
+            - button "Tuesday, August 25, 2026": "25"
+          - gridcell "Wednesday, August 26, 2026":
+            - button "Wednesday, August 26, 2026": "26"
+          - gridcell "Thursday, August 27, 2026":
+            - button "Thursday, August 27, 2026": "27"
+          - gridcell "Friday, August 28, 2026":
+            - button "Friday, August 28, 2026": "28"
+          - gridcell "Saturday, August 29, 2026":
+            - button "Saturday, August 29, 2026": "29"
+        - row "Sunday, August 30, 2026 Monday, August 31, 2026 Tuesday, September 1, 2026 Wednesday, September 2, 2026 Thursday, September 3, 2026 Friday, September 4, 2026 Saturday, September 5, 2026":
+          - gridcell "Sunday, August 30, 2026":
+            - button "Sunday, August 30, 2026": "30"
+          - gridcell "Monday, August 31, 2026":
+            - button "Monday, August 31, 2026": "31"
+          - gridcell "Tuesday, September 1, 2026" [disabled]:
+            - button "Tuesday, September 1, 2026" [disabled]: "1"
+          - gridcell "Wednesday, September 2, 2026" [disabled]:
+            - button "Wednesday, September 2, 2026" [disabled]: "2"
+          - gridcell "Thursday, September 3, 2026" [disabled]:
+            - button "Thursday, September 3, 2026" [disabled]: "3"
+          - gridcell "Friday, September 4, 2026" [disabled]:
+            - button "Friday, September 4, 2026" [disabled]: "4"
+          - gridcell "Saturday, September 5, 2026" [disabled]:
+            - button "Saturday, September 5, 2026" [disabled]: "5"
+    - button "Next"

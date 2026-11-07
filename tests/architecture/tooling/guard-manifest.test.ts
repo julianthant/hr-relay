@@ -1,0 +1,695 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { existsSync,globSync,mkdirSync,readFileSync,rmSync,writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname,join,relative } from "node:path";
+import ts from "typescript";
+import { describe,it } from "vitest";
+import inventory from "../../../docs/guard-inventory.json" with { type: "json" };
+import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
+import { spreadsheetValueMatches } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
+import vitestConfig,{
+REBUILD_ARCHITECTURE_TEST_EXCLUDE,
+REBUILD_ARCHITECTURE_TEST_INCLUDE,
+REBUILD_COVERAGE_EXCLUSIONS,
+REBUILD_COVERAGE_FLOORS,
+REBUILD_INTEGRATION_TEST_EXCLUDE,
+REBUILD_INTEGRATION_TEST_INCLUDE,
+REBUILD_LOCAL_TEST_EXCLUDE,
+REBUILD_LOCAL_TEST_INCLUDE,
+REBUILD_PERF_TEST_EXCLUDE,
+REBUILD_PERF_TEST_INCLUDE,
+REBUILD_TEST_PROJECTS,
+REBUILD_TEST_REPORTERS,
+REBUILD_UNIT_TEST_EXCLUDE,
+REBUILD_UNIT_TEST_INCLUDE,
+} from "../../../vitest.config.js";
+import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
+import {
+auditFailLoudCatchDefaults,
+auditReviewedCatchDefaults,
+auditRebuildRatchetArm,
+rebuildRatchetFixture,
+REQUIRED_REBUILD_RATCHET_NAMES,
+} from "./helpers/ratchet-arms.js";
+import { REVIEWED_CATCH_DEFAULTS, type ReviewedCatchDefault } from "./helpers/reviewed-catch-defaults.js";
+
+const ARCHITECTURE_ROOT = join(REPO_ROOT, inventory.architectureRoot);
+const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+  scripts: Record<string, string>;
+};
+
+interface CoverageExclusion {
+  readonly pattern: string;
+  readonly activation: {
+    readonly ownerRoot: string;
+    readonly status: "planned" | "active";
+  };
+  readonly reason: string;
+}
+
+export function discoverArchitectureTests(root: string): string[] {
+  return walkFiles(root, { extensions: [".ts"] })
+    .filter((file) => file.endsWith(".test.ts"))
+    .map((file) => relative(REPO_ROOT, file).replaceAll("\\", "/"))
+    .sort();
+}
+
+interface ArchitectureProjectInputs {
+  readonly command: string;
+  readonly unitInclude: readonly string[];
+  readonly unitExclude: readonly string[];
+  readonly integrationInclude: readonly string[];
+  readonly integrationExclude: readonly string[];
+  readonly architectureInclude: readonly string[];
+  readonly architectureExclude: readonly string[];
+  readonly perfInclude: readonly string[];
+  readonly perfExclude: readonly string[];
+  readonly localInclude: readonly string[];
+  readonly localExclude: readonly string[];
+  readonly reporters: readonly string[];
+}
+
+interface TestProjectDefinition {
+  readonly name: string;
+  readonly include: readonly string[];
+  readonly exclude: readonly string[];
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function stringArray(value: unknown, label: string): readonly string[] {
+  if (!isUnknownArray(value) || !value.every((entry) => typeof entry === "string")) {
+    throw new Error(`${label} must be an array of strings`);
+  }
+  return value;
+}
+
+function configuredTestProjects(config: unknown): readonly TestProjectDefinition[] {
+  if (!isRecord(config) || !isRecord(config.test) || !isUnknownArray(config.test.projects)) {
+    throw new Error("vitest config must expose a static projects array");
+  }
+  return config.test.projects.map((project, index) => {
+    if (!isRecord(project) || !isRecord(project.test) || typeof project.test.name !== "string") {
+      throw new Error(`vitest project ${String(index)} must declare name, include, and exclude`);
+    }
+    return {
+      name: project.test.name,
+      include: stringArray(project.test.include, `vitest project ${String(index)} include`),
+      exclude: stringArray(project.test.exclude, `vitest project ${String(index)} exclude`),
+    };
+  });
+}
+
+function configuredTestReporters(config: unknown): readonly string[] {
+  if (!isRecord(config) || !isRecord(config.test)) {
+    throw new Error("vitest config must expose static test options");
+  }
+  return stringArray(config.test.reporters, "vitest config reporters");
+}
+
+export function architectureProjectViolations({
+  command,
+  unitInclude,
+  unitExclude,
+  integrationInclude,
+  integrationExclude,
+  architectureInclude,
+  architectureExclude,
+  perfInclude,
+  perfExclude,
+  localInclude,
+  localExclude,
+  reporters,
+}: ArchitectureProjectInputs): string[] {
+  const violations: string[] = [];
+  const normalized = command.trim().replace(/\s+/g, " ");
+  const exactCommand =
+    "vitest run --project architecture --passWithNoTests=false";
+  if (normalized !== exactCommand) {
+    violations.push(
+      `test:architecture must select only the named architecture project; expected '${exactCommand}'`,
+    );
+  }
+  if (JSON.stringify(unitInclude) !== JSON.stringify(["tests/**/*.test.ts"])) {
+    violations.push("unit project include must remain tests/**/*.test.ts");
+  }
+  if (JSON.stringify(unitExclude) !== JSON.stringify([
+    "tests/**/*.integration.test.ts",
+    "tests/**/*.local.test.ts",
+    "tests/architecture/**",
+    "tests/parity/**",
+    "tests/perf/**",
+  ])) {
+    violations.push("unit project must exclude integration suffixes, operator-machine markers, architecture, parity, and perf");
+  }
+  if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
+    violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
+  }
+  if (JSON.stringify(integrationExclude) !== JSON.stringify(["tests/**/*.local.integration.test.ts", "tests/perf/**"])) {
+    violations.push("integration project must exclude operator-machine markers and tests/perf/**");
+  }
+  if (
+    JSON.stringify(architectureInclude) !==
+      JSON.stringify(["tests/architecture/**/*.test.ts"])
+  ) {
+    violations.push(
+      "architecture project must include every recursive tests/architecture/**/*.test.ts file",
+    );
+  }
+  if (JSON.stringify(architectureExclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
+    violations.push("architecture project must exclude only operator-machine markers");
+  }
+  if (JSON.stringify(perfInclude) !== JSON.stringify(["tests/perf/**/*.test.ts"])) {
+    violations.push("perf project must include every tests/perf/**/*.test.ts file");
+  }
+  if (JSON.stringify(perfExclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
+    violations.push("perf project must exclude only operator-machine markers");
+  }
+  if (JSON.stringify(localInclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
+    violations.push("local project must include only operator-machine marker files");
+  }
+  if (JSON.stringify(localExclude) !== JSON.stringify(["tests/parity/**"])) {
+    violations.push("local project must exclude parity");
+  }
+  if (JSON.stringify(reporters) !== JSON.stringify(["verbose"])) {
+    violations.push("every Vitest entry point must use the single verbose streaming reporter from config");
+  }
+  return violations;
+}
+
+const OPERATOR_LOCAL_TEST = /(?:^|\/)[^/]+\.local(?:\.integration)?\.test\.tsx?$/u;
+
+export function testProjectTopologyViolations(
+  root: string,
+  definitions: readonly TestProjectDefinition[] = REBUILD_TEST_PROJECTS,
+): string[] {
+  const collect = (patterns: readonly string[]) => globSync([...patterns], { cwd: root }).map(path => path.replaceAll("\\", "/"));
+  const all = collect(["tests/**/*.test.ts", "tests/**/*.test.tsx"]).sort();
+  const projects = definitions.map(({ name, include, exclude }) => {
+    const excluded = new Set(collect(exclude));
+    const collected = collect(include).filter((path) => !excluded.has(path));
+    return { name, files: collected };
+  });
+  const parity = all.filter((path) => path.startsWith("tests/parity/"));
+  const runtime = all.filter((path) => !path.startsWith("tests/parity/"));
+  const cloud = projects.filter((project) => project.name !== "local");
+  const violations = projectOwnershipViolations(
+    runtime.filter((path) => !OPERATOR_LOCAL_TEST.test(path)),
+    cloud.map((project) => ({
+      ...project,
+      files: project.files.filter((path) => !path.startsWith("tests/parity/") && !OPERATOR_LOCAL_TEST.test(path)),
+    })),
+  );
+  for (const path of parity) {
+    const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
+    if (owners.length > 0) violations.push(`${path}: expected no Vitest projects, found ${owners.join(", ")}`);
+  }
+  const localProject = projects.find((project) => project.name === "local");
+  for (const path of runtime.filter((file) => OPERATOR_LOCAL_TEST.test(file))) {
+    const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
+    if (owners.length !== 1 || owners[0] !== "local") {
+      violations.push(`${path}: expected the local project, found ${owners.join(", ") || "none"}`);
+    }
+  }
+  for (const path of localProject?.files ?? []) {
+    if (!OPERATOR_LOCAL_TEST.test(path)) violations.push(`${path}: local project collected a cloud test`);
+  }
+  return violations;
+}
+
+export function coverageExclusionActivationViolations(
+  exclusions: readonly CoverageExclusion[],
+  root: string,
+): string[] {
+  const violations: string[] = [];
+  const owners = exclusions.map(({ activation }) => activation.ownerRoot);
+  if (new Set(owners).size !== owners.length) violations.push("coverage exclusions must have independent owner roots");
+  for (const [index, owner] of owners.entries()) {
+    for (const other of owners.slice(index + 1)) {
+      if (owner.startsWith(`${other}/`) || other.startsWith(`${owner}/`)) {
+        violations.push(`${owner} and ${other}: coverage owner roots overlap`);
+      }
+    }
+  }
+
+  for (const exclusion of exclusions) {
+    const { ownerRoot, status } = exclusion.activation;
+    if (!exclusion.reason.trim()) violations.push(`${exclusion.pattern}: exclusion needs a reason`);
+    if (/[*?{}[\]]/.test(ownerRoot)) violations.push(`${exclusion.pattern}: ownerRoot must be an exact path, not a glob`);
+    if (ownerRoot === exclusion.pattern) violations.push(`${exclusion.pattern}: ownerRoot cannot equal its exclusion pattern`);
+    if (!exclusion.pattern.startsWith(`${ownerRoot}/`)) {
+      violations.push(`${exclusion.pattern}: exclusion must be owned beneath ownerRoot ${ownerRoot}`);
+    }
+    const ownerExists = existsSync(join(root, ownerRoot));
+    const matches = globSync(exclusion.pattern, { cwd: root });
+    if (status === "planned") {
+      if (ownerExists) violations.push(`${exclusion.pattern}: planned exclusion owner is already active`);
+      if (matches.length > 0) violations.push(`${exclusion.pattern}: planned exclusion already matches files`);
+    } else {
+      if (!ownerExists) violations.push(`${exclusion.pattern}: active exclusion owner is missing`);
+      if (matches.length === 0) violations.push(`${exclusion.pattern}: active coverage exclusion is stale`);
+    }
+  }
+  return violations;
+}
+
+function writeFixture(root: string, path: string, content: string): void {
+  const target = join(root, path);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, content);
+}
+
+describe("reviewed architecture guard manifest", () => {
+
+  it("recursively registers every guard file exactly once and every active entry exists", () => {
+    const active = inventory.guards.filter(({ status }) => status === "active");
+    const names = active.map(({ name }) => name);
+    assert.equal(new Set(names).size, names.length, "active guard names must be unique");
+
+    const registered = active.map(({ file }) => file).sort();
+    assert.deepEqual(
+      registered,
+      discoverArchitectureTests(ARCHITECTURE_ROOT),
+      "recursive guard file discovery and inventory must match exactly",
+    );
+    for (const entry of active) {
+      assert.ok(entry.invariant.trim(), `${entry.name} must state its invariant`);
+      assert.ok(entry.owner.trim(), `${entry.name} must name its owner`);
+      assert.equal(entry.replacementRequired, true, `${entry.name} must require a replacement decision on removal`);
+      assert.ok(existsSync(join(REPO_ROOT, entry.file)), entry.file);
+    }
+  });
+
+  it("keeps five exact projects with complete architecture and single test ownership", () => {
+    const actual = {
+      command: packageJson.scripts[inventory.testScript] ?? "",
+      unitInclude: REBUILD_UNIT_TEST_INCLUDE,
+      unitExclude: REBUILD_UNIT_TEST_EXCLUDE,
+      integrationInclude: REBUILD_INTEGRATION_TEST_INCLUDE,
+      integrationExclude: REBUILD_INTEGRATION_TEST_EXCLUDE,
+      architectureInclude: REBUILD_ARCHITECTURE_TEST_INCLUDE,
+      architectureExclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
+      perfInclude: REBUILD_PERF_TEST_INCLUDE,
+      perfExclude: REBUILD_PERF_TEST_EXCLUDE,
+      localInclude: REBUILD_LOCAL_TEST_INCLUDE,
+      localExclude: REBUILD_LOCAL_TEST_EXCLUDE,
+      reporters: REBUILD_TEST_REPORTERS,
+    };
+    assert.deepEqual(architectureProjectViolations(actual), []);
+    assert.equal(
+      packageJson.scripts["test:local"],
+      "vitest run --project local --passWithNoTests=true",
+    );
+    assert.deepEqual(REBUILD_TEST_PROJECTS.map(({ name }) => name), ["unit", "integration", "architecture", "perf", "local"]);
+    assert.deepEqual(configuredTestProjects(vitestConfig), REBUILD_TEST_PROJECTS);
+    assert.deepEqual(configuredTestReporters(vitestConfig), REBUILD_TEST_REPORTERS);
+    assert.deepEqual(testProjectTopologyViolations(REPO_ROOT), []);
+
+    for (const bypass of [
+      { ...actual, command: "vitest run tests/architecture --reporter=dot" },
+      { ...actual, command: "vitest run --project unit --reporter=dot" },
+      { ...actual, command: "vitest run --project architecture guard-manifest.test.ts --reporter=dot" },
+      { ...actual, command: "vitest run --project architecture --exclude runtime-isolation.test.ts --reporter=dot" },
+      { ...actual, command: "vitest run --project architecture --config narrow.config.ts --reporter=dot" },
+      { ...actual, unitExclude: ["tests/unit/fake.test.ts"] },
+      { ...actual, integrationInclude: [] },
+      { ...actual, integrationExclude: ["tests/integration/**"] },
+      { ...actual, unitExclude: ["tests/architecture/tooling/guard-manifest.test.ts"] },
+      { ...actual, integrationExclude: [] },
+      { ...actual, architectureInclude: ["tests/architecture/tooling/guard-manifest.test.ts"] },
+      { ...actual, architectureInclude: ["tests/architecture/*.test.ts"] },
+      { ...actual, architectureExclude: ["tests/architecture/runtime-isolation.test.ts"] },
+      { ...actual, architectureExclude: [] },
+      { ...actual, perfInclude: ["tests/perf/**/*.integration.test.ts"] },
+      { ...actual, perfExclude: ["tests/perf/**"] },
+      { ...actual, perfExclude: [] },
+      { ...actual, localInclude: ["tests/**/*.test.ts"] },
+      { ...actual, localExclude: [] },
+      { ...actual, reporters: ["dot"] },
+    ]) {
+      assert.ok(architectureProjectViolations(bypass).length > 0, JSON.stringify(bypass));
+    }
+
+    const root = join(tmpdir(), `hrauto-test-topology-${process.pid}-${Date.now()}`);
+    try {
+      writeFixture(root, "tests/models/owned.test.ts", "export {};\n");
+      writeFixture(root, "tests/architecture/guard.test.ts", "export {};\n");
+      writeFixture(root, "tests/models/real.integration.test.ts", "export {};\n");
+      writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
+      writeFixture(root, "tests/parity/scene.test.ts", "export {};\n");
+      assert.deepEqual(testProjectTopologyViolations(root), []);
+      const missingPerf = REBUILD_TEST_PROJECTS.filter(({ name }) => name !== "perf");
+      assert.match(testProjectTopologyViolations(root, missingPerf).join("\n"),
+        /tests\/perf\/shape\.integration\.test\.ts: expected exactly one Vitest project, found none/u);
+      const integrationPerfLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "integration"
+        ? { ...project, exclude: [] }
+        : project);
+      assert.match(testProjectTopologyViolations(root, integrationPerfLeak).join("\n"),
+        /tests\/perf\/shape\.integration\.test\.ts: expected exactly one Vitest project, found integration, perf/u);
+      const parityLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/parity/**") }
+        : project);
+      assert.deepEqual(testProjectTopologyViolations(root, parityLeak), [
+        "tests/parity/scene.test.ts: expected no Vitest projects, found unit",
+      ]);
+      writeFixture(root, "tests/support/helpers/helper.test.ts", "export {};\n");
+      writeFixture(root, "tests/types/input.integration.test.ts", "export {};\n");
+      assert.deepEqual(testProjectTopologyViolations(root), []);
+      const narrowed = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, include: ["tests/models/**/*.test.ts", "tests/support/**/*.test.ts"] }
+        : project);
+      writeFixture(root, "tests/scenario/walk.test.ts", "export {};\n");
+      assert.match(testProjectTopologyViolations(root, narrowed).join("\n"),
+        /walk\.test\.ts: expected exactly one Vitest project, found none/u);
+      writeFixture(root, "tests/unknown/orphan.test.ts", "export {};\n");
+      assert.match(testProjectTopologyViolations(root, narrowed).join("\n"), /orphan\.test\.ts: expected exactly one Vitest project, found none/u);
+      writeFixture(root, "tests/scenario/combined/live.combined.test.ts", "export {};\n");
+      assert.match(
+        testProjectTopologyViolations(root, narrowed).join("\n"),
+        /live\.combined\.test\.ts: expected exactly one Vitest project, found none/u,
+      );
+      writeFixture(root, "tests/models/owned.local.test.ts", "export {};\n");
+      writeFixture(root, "tests/models/owned.local.integration.test.ts", "export {};\n");
+      assert.deepEqual(testProjectTopologyViolations(root).filter((violation) => violation.includes(".local.")), []);
+      const localLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/**/*.local.test.ts") }
+        : project);
+      assert.match(testProjectTopologyViolations(root, localLeak).join("\n"),
+        /tests\/models\/owned\.local\.test\.ts: expected the local project, found unit, local/u);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("pins independently activated coverage exclusions and ratified floors", () => {
+    const digest = createHash("sha256")
+      .update(JSON.stringify(REBUILD_COVERAGE_EXCLUSIONS))
+      .digest("hex");
+    assert.equal(digest, inventory.coveragePolicy.exclusionListSha256);
+    const patterns = REBUILD_COVERAGE_EXCLUSIONS.map(({ pattern }) => pattern);
+    assert.equal(new Set(patterns).size, patterns.length, "coverage exclusions must be unique");
+    assert.deepEqual(coverageExclusionActivationViolations(REBUILD_COVERAGE_EXCLUSIONS, REPO_ROOT), []);
+
+    const root = join(tmpdir(), `hrauto-coverage-policy-${process.pid}-${Date.now()}`);
+    const planned: CoverageExclusion = {
+      pattern: "owned/**/*.ts",
+      activation: { ownerRoot: "owned", status: "planned" },
+      reason: "fixture",
+    };
+    try {
+      assert.deepEqual(coverageExclusionActivationViolations([planned], root), []);
+      mkdirSync(join(root, "owned"), { recursive: true });
+      assert.match(coverageExclusionActivationViolations([planned], root).join("\n"), /planned exclusion owner/);
+      const active = { ...planned, activation: { ...planned.activation, status: "active" as const } };
+      assert.match(coverageExclusionActivationViolations([active], root).join("\n"), /stale/);
+      writeFixture(root, "owned/generated.ts", "export {};\n");
+      assert.deepEqual(coverageExclusionActivationViolations([active], root), []);
+      rmSync(join(root, "owned"), { recursive: true, force: true });
+      assert.match(coverageExclusionActivationViolations([active], root).join("\n"), /owner is missing/);
+      assert.match(
+        coverageExclusionActivationViolations([{ ...planned, activation: { ownerRoot: planned.pattern, status: "planned" } }], root).join("\n"),
+        /ownerRoot cannot equal/,
+      );
+      assert.match(
+        coverageExclusionActivationViolations([
+          planned,
+          { ...planned, pattern: "owned/nested/**/*.ts", activation: { ownerRoot: "owned/nested", status: "planned" } },
+        ], root).join("\n"),
+        /owner roots overlap/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+
+    assert.ok(REBUILD_COVERAGE_FLOORS.global.lines >= inventory.coveragePolicy.minimumFloors.global);
+    assert.ok(REBUILD_COVERAGE_FLOORS.global.statements >= inventory.coveragePolicy.minimumFloors.global);
+    assert.ok(REBUILD_COVERAGE_FLOORS.global.functions >= inventory.coveragePolicy.minimumFloors.global);
+    assert.ok(REBUILD_COVERAGE_FLOORS.safetyCritical.lines >= inventory.coveragePolicy.minimumFloors.safetyCritical);
+    assert.equal(REBUILD_COVERAGE_FLOORS.branches.phase1ReportOnly, true);
+    assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2Global >= 50);
+    assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2SafetyCritical >= 70);
+
+    const movedCoreFiles = [
+      "src/backend/runs/commands/command-application.ts",
+      "src/backend/runs/commands/command-kernel.ts",
+      "src/backend/runs/commands/command-refusal.ts",
+      "src/backend/runs/provenance/evidence-receipt.ts",
+      "src/backend/runs/lifecycle/failure-resolution.ts",
+      "src/backend/processing/providers/provider-client.ts",
+      "src/backend/runs/lifecycle/run-claim-admission.ts",
+      "src/backend/runs/lifecycle/run-fan-out.ts",
+      "src/backend/runs/lifecycle/run-record-service.ts",
+      "src/backend/runs/lifecycle/run-result.ts",
+      "src/backend/runs/settings/run-settings.ts",
+      "src/backend/runs/projections/run-summary.ts",
+      "src/backend/runs/provenance/task-provenance.ts",
+      "src/backend/runs/lifecycle/terminal-authorization.ts",
+      "src/backend/runs/provenance/test-data-usage.ts",
+      "src/backend/runtime/checkpoints/checkpoint-patch.ts",
+      "src/backend/runtime/scheduling/deadline-scheduler.ts",
+      "src/backend/runtime/gates/duo-ceremony-gate.ts",
+      "src/backend/runtime/gates/gate-source-runtime.ts",
+      "src/backend/runtime/writes/operation-action-binding.ts",
+      "src/backend/runtime/writes/receipt-derivation-binding.ts",
+      "src/backend/runtime/gates/repeat-proof.ts",
+      "src/backend/storage/sqlite/run-continuation.ts",
+      "src/backend/runtime/execution/run-executor.ts",
+      "src/backend/runtime/execution/run-failure.ts",
+      "src/backend/runtime/workers/worker-loop.ts",
+      "src/backend/runtime/workers/worker-sessions.ts",
+      "src/backend/runtime/writes/write-recovery.ts",
+      "src/backend/runtime/writes/write-resolution-binding.ts",
+      "src/backend/runtime/writes/write-sequencer.ts",
+      "src/backend/runs/archive/archive-runtime-version-changes.ts",
+      "src/backend/runs/lifecycle/archive-terminal-runs.ts",
+      "src/backend/runs/archive/archive-version-changes.ts",
+      "src/backend/storage/sqlite/run-lifecycle-storage.ts",
+    ];
+    const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
+    assert.ok(thresholds);
+    const missingFloors = (candidate: Record<string, unknown>): string[] => movedCoreFiles.filter((path) =>
+      candidate[path] !== REBUILD_COVERAGE_FLOORS.safetyCritical);
+    assert.deepEqual(missingFloors(thresholds), []);
+    assert.deepEqual(missingFloors({ ...thresholds, [movedCoreFiles[0] ?? ""]: undefined }), [movedCoreFiles[0]]);
+  });
+
+  it("executes every required rebuild ratchet arm and proves its violating fixture is caught", () => {
+    assert.deepEqual(
+      [...inventory.rebuildRatchetActivation.requiredGuardNames].sort(),
+      [...REQUIRED_REBUILD_RATCHET_NAMES].sort(),
+    );
+    for (const name of REQUIRED_REBUILD_RATCHET_NAMES) {
+      const actual = auditRebuildRatchetArm(name, REPO_ROOT);
+      assert.deepEqual(actual.violations, [], `${name} found rebuild violations`);
+      if (actual.state === "active") assert.ok(actual.files.length > 0, `${name} active scan is empty`);
+
+      const root = join(tmpdir(), `hrauto-ratchet-${name}-${process.pid}-${Date.now()}`);
+      try {
+        const fixture = rebuildRatchetFixture(name);
+        for (const [path, content] of Object.entries(fixture.files)) writeFixture(root, path, content);
+        const result = auditRebuildRatchetArm(name, root);
+        assert.equal(result.state, "active", `${name} fixture did not activate its scanner`);
+        assert.ok(result.files.length > 0, `${name} fixture resolved no files`);
+        assert.match(result.violations.join("\n"), fixture.expected, `${name} fixture bypassed its executable arm`);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("keeps reviewed spreadsheet validation failures distinct from missing field definitions", () => {
+    assert.equal(spreadsheetValueMatches("personalEmail", "invalid@"), false);
+    assert.equal(spreadsheetValueMatches("personalEmail", ""), true);
+    assert.throws(() => spreadsheetValueMatches("unregistered-field", "value"), /SPREADSHEET_FIELD_NOT_FOUND/u);
+  });
+
+  it("pins reviewed catch statements while permitting edits outside them", () => {
+    const root = join(tmpdir(), `hrauto-reviewed-catches-${process.pid}-${Date.now()}`);
+    const pinnedStatements = (entry: ReviewedCatchDefault, source: string): readonly ts.Node[] => {
+      const ast = ts.createSourceFile(entry.path, source, ts.ScriptTarget.Latest, true);
+      const statements: ts.Node[] = [];
+      const visit = (node: ts.Node): void => {
+        if (ts.isTryStatement(node) || ts.isCallExpression(node)) {
+          const sha256 = createHash("sha256").update(source.slice(node.getStart(ast), node.end)).digest("hex");
+          if (entry.statements.some(pin => pin.sha256 === sha256)) statements.push(node);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(ast);
+      return statements;
+    };
+    try {
+      for (const entry of REVIEWED_CATCH_DEFAULTS) {
+        const source = readFileSync(join(REPO_ROOT, entry.path), "utf8");
+        assert.ok(auditFailLoudCatchDefaults(entry.path, source).length > 0);
+        const statements = pinnedStatements(entry, source);
+        assert.equal(statements.length, entry.statements.reduce((sum, pin) => sum + pin.occurrences, 0));
+        assert.ok(statements.length > 0);
+        writeFixture(root, entry.path, source);
+      }
+      assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
+      for (const entry of REVIEWED_CATCH_DEFAULTS) {
+        const target = join(root, entry.path), source = readFileSync(target, "utf8");
+        writeFileSync(target, source + "\ntry { broken(); } catch { return []; }\n");
+        const violations = auditRebuildRatchetArm("fail-loud-catch-default", root).violations;
+        assert.ok(violations.some(value => value.includes("catch returns a bare default")));
+        assert.ok(violations.some(value => value.includes("re-review required")));
+        writeFileSync(target, source + "\n// outside source-byte control\nconst outsideReviewedStatement = 1;\n");
+        assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
+        const statement = pinnedStatements(entry, source)[0];
+        assert.ok(statement);
+        const inside = statement.end - 1;
+        writeFileSync(target, source.slice(0, inside) + "/* inside source-byte control */" + source.slice(inside));
+        const changedBytes = auditRebuildRatchetArm("fail-loud-catch-default", root).violations;
+        assert.ok(changedBytes.some(value => value.includes(entry.path) && value.includes("re-review required")));
+        assert.ok(changedBytes.some(value => value.includes(entry.path) && value.includes("bare default")));
+        writeFileSync(target, source);
+        assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("requires exact finding-bearing statement multisets and retains each finding", () => {
+    const path = "fixture.ts";
+    const guarded = "try { work(); } catch { return []; } finally { cleanup(); }";
+    const promise = "request().catch(() => { audit(); return {}; })";
+    const pin = (source: string, kind: "try" | "promise", occurrences = 1) => ({
+      kind, sha256: createHash("sha256").update(source).digest("hex"), occurrences,
+    });
+    const reviewed = (statements: ReviewedCatchDefault["statements"]): ReviewedCatchDefault => ({
+      path, reason: "Fixture review", statements,
+    });
+    const assertRejected = (source: string, entry: ReviewedCatchDefault): void => {
+      const violations = auditReviewedCatchDefaults(path, source, entry);
+      assert.ok(violations.some(value => value.includes("re-review required")), source);
+      for (const finding of auditFailLoudCatchDefaults(path, source)) assert.ok(violations.includes(finding));
+    };
+    const tryReview = reviewed([pin(guarded, "try")]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, guarded, tryReview), []);
+    for (const changed of [
+      guarded.replace("work()", "differentWork()"),
+      guarded.replace("return []", "audit(); return []"),
+      guarded.replace("cleanup()", "differentCleanup()"),
+      guarded.replace("work();", "work(); /* byte control */"),
+    ]) assertRejected(changed, tryReview);
+    const promiseReview = reviewed([pin(promise, "promise")]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, promise, promiseReview), []);
+    for (const changed of [promise.replace("request()", "otherRequest()"), promise.replace("audit()", "otherAudit()")]) {
+      assertRejected(changed, promiseReview);
+    }
+    assert.deepEqual(auditReviewedCatchDefaults(path, `// outside\nconst extra = 1;\n${guarded}`, tryReview), []);
+    assertRejected(`${guarded}\ntry { other(); } catch { return false; }`, tryReview);
+    assertRejected("", tryReview);
+    assertRejected(guarded, reviewed([]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", 0)]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", -1)]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", 1.5)]));
+    assertRejected(guarded, reviewed([pin(guarded, "promise")]));
+    assertRejected(guarded, reviewed([pin(guarded, "try"), pin(guarded, "try")]));
+    assertRejected(`${guarded}\n${guarded}`, tryReview);
+    assertRejected(guarded, reviewed([pin(guarded, "try", 2)]));
+    assert.deepEqual(auditReviewedCatchDefaults(path, `${promise};\n${promise};`, reviewed([pin(promise, "promise", 2)])), []);
+    assertRejected(`${promise};\n${promise};\n${promise};`, reviewed([pin(promise, "promise", 2)]));
+    const safe = "try { work(); } catch (error) { throw error; }";
+    assertRejected(`${guarded}\n${safe}`, reviewed([pin(guarded, "try"), pin(safe, "try")]));
+    assertRejected(safe, reviewed([pin(safe, "try")]));
+    const multiple = "try { work(); } catch { const fallback = null; recovered = false; return []; }";
+    const multipleFindings = auditFailLoudCatchDefaults(path, multiple);
+    assert.deepEqual(multipleFindings, [
+      `${path}: catch initializes a bare default`, `${path}: catch assigns a bare default`, `${path}: catch returns a bare default`,
+    ]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, multiple, reviewed([pin(multiple, "try")])), []);
+    assertRejected(multiple, reviewed([pin(multiple, "try", 3)]));
+    const inner = "try { nested(); } catch { return []; }";
+    const outer = `try { work(); } catch { ${inner} return false; }`;
+    assert.equal(auditFailLoudCatchDefaults(path, outer).length, 2);
+    assert.deepEqual(auditReviewedCatchDefaults(path, outer, reviewed([pin(outer, "try"), pin(inner, "try")])), []);
+    assertRejected(outer, reviewed([pin(outer, "try")]));
+    assertRejected(outer, reviewed([pin(inner, "try")]));
+  });
+
+  it("distinguishes erased type dependencies from runtime cycles without relaxing layering",()=>{
+    const root=join(tmpdir(),`hrauto-runtime-cycles-${process.pid}-${Date.now()}`);
+    const target=join(root,"src/domain");mkdirSync(target,{recursive:true});
+    try {
+      for(const declaration of ['import type {B} from "./b.js";', 'import {type B} from "./b.js";', 'export type {B} from "./b.js";', 'export {type B} from "./b.js";']) {
+        writeFileSync(join(target,"a.ts"),declaration+' export const A=1;');
+        writeFileSync(join(target,"b.ts"),'import {A} from "./a.js"; export const B=A;');
+        assert.deepEqual(auditRebuildRatchetArm("import-cycles",root).violations,[]);
+      }
+      for(const declaration of ['import {B} from "./b.js";', 'import "./b.js";', 'export {B} from "./b.js";', 'export * from "./b.js";']) {
+        writeFileSync(join(target,"a.ts"),declaration+' export const A=1;');
+        assert.ok(auditRebuildRatchetArm("import-cycles",root).violations.length>0);
+      }
+    } finally {rmSync(root,{recursive:true,force:true});}
+  });
+
+  it("classifies backend responsibilities and refuses lower-to-higher imports",()=>{
+    const root=join(tmpdir(),`hrauto-backend-layers-${process.pid}-${Date.now()}`);
+    try {
+      writeFixture(root,"src/backend/app/boot.ts","export const boot = true;\n");
+      writeFixture(root,"src/backend/runtime/engine.ts","export const engine = true;\n");
+      writeFixture(root,"src/backend/storage/repository.ts","export const repository = true;\n");
+      writeFixture(root,"src/backend/workbooks/library.ts","export const library = true;\n");
+      writeFixture(root,"src/backend/systems/browser-shared/adapter.ts","export const adapter = true;\n");
+      writeFixture(root,"src/backend/app/worker/compose.ts","export const compose = true;\n");
+      writeFixture(root,"src/base/pure.ts","export const pure = true;\n");
+      writeFixture(root,"src/domain/value.ts","export const value = true;\n");
+      writeFixture(root,"src/validation/pure.ts","export const pure = true;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering",root).violations,[]);
+      writeFixture(root,"src/backend/storage/repository.ts",'import { boot } from "../app/boot.js"; export const repository = boot;\n');
+      writeFixture(root,"src/backend/systems/browser-shared/adapter.ts",'import { engine } from "../../runtime/engine.js"; export const adapter = engine;\n');
+      writeFixture(root,"src/backend/runtime/engine.ts",'import type { compose } from "../app/worker/compose.js"; export type Engine = typeof compose;\n');
+      writeFixture(root,"src/backend/workbooks/library.ts",'import { engine } from "../runtime/engine.js"; import { compose } from "../app/worker/compose.js"; export const library = [engine, compose];\n');
+      writeFixture(root,"src/base/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
+      writeFixture(root,"src/domain/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
+      writeFixture(root,"src/validation/pure.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Pure = typeof engine;\n');
+      writeFixture(root,"src/backend/accounts/account-service.ts",'import { boot } from "../app/boot.js"; import { engine } from "../runtime/engine.js"; export const service = { boot, engine };\n');
+      writeFixture(root,"src/backend/misc/helper.ts","export const helper = true;\n");
+      const issues=auditRebuildRatchetArm("control-layering",root).violations.join("\n");
+      assert.match(issues,/backend\/storage\/repository\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/backend\/systems\/browser-shared\/adapter\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/backend\/runtime\/engine\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
+      assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
+      assert.match(issues,/base\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/domain\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/validation\/pure\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/backend\/misc\/helper\.ts: unclassified backend responsibility/u);
+    } finally {rmSync(root,{recursive:true,force:true});}
+  });
+
+  it("keeps fail-loud catch scanning semantic across multi-statement and nested handlers", () => {
+    const violating = [
+      "try { work(); } catch { log.warn('failed'); return []; }",
+      "request().catch(() => { audit(); return {}; });",
+      "try { work(); } catch { if (retryable) { recovered = false; } throw new Error('failed'); }",
+      "request().catch(() => { if (missing) return 0; throw new Error('failed'); });",
+      "try { work(); } catch { audit(); const fallback = null; return fallback; }",
+    ];
+    for (const [index, content] of violating.entries()) {
+      assert.equal(auditFailLoudCatchDefaults(`fixture-${String(index)}.ts`, content).length > 0, true, content);
+    }
+
+    const allowed = [
+      "try { work(); } catch (error) { log.warn('failed'); throw error; }",
+      "request().catch((error) => { throw error; });",
+      "try { work(); } catch (error) { return { state: 'unknown', reason: error.message }; }",
+      "request().catch((error) => recoverKnownFailure(error));",
+      "try { work(); } catch (error) { const nested = () => []; log.warn('return []; catch { result = false; }'); throw error; }",
+      "const text = 'request.catch(() => { return []; })'; // catch { return {}; }",
+    ];
+    for (const [index, content] of allowed.entries()) {
+      assert.deepEqual(auditFailLoudCatchDefaults(`allowed-${String(index)}.ts`, content), [], content);
+    }
+  });
+});
