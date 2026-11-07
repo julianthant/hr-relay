@@ -242,6 +242,40 @@ describe("composed worker runtime", () => {
     } finally { stop.abort(); await running; }
   });
 
+  it("boots a paused member that claims nothing, then claims on its idle repoll once the slot is resumed without any message", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    persistJournaledWorkerSettings(repoRoot, stateRoot, clock, { daemon: { idleRepollMs: 10 } });
+    const database = reopen(stateRoot, clock);
+    const member = database.authority.workerSlots.active(WORKFLOW_ID)[0]; assert.ok(member);
+    database.authority.workerSlots.setPaused({ workerId: member.workerId, paused: true, now: NOW });
+    const stop = new AbortController();
+    let claimAdmissions = 0;
+    const running = composeWorkerRuntime({
+      ...composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+        args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal }),
+      heartbeatIntervalMs: 10,
+      afterClaimAdmissionCheck: () => { claimAdmissions += 1; },
+    });
+    let failure: unknown;
+    void running.catch((error: unknown) => { failure = error; });
+    try {
+      // Ten idle repolls while paused: the queued run stays unclaimed.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(failure, undefined);
+      assert.equal(claimAdmissions, 0);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      database.authority.workerSlots.setPaused({ workerId: member.workerId, paused: false, now: NOW });
+      await vi.waitFor(() => {
+        assert.equal(failure, undefined);
+        const run = database.authority.runs.get(RUN_ID);
+        assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+      }, { timeout: 5_000, interval: 10 });
+      assert.equal(claimAdmissions >= 1, true);
+    } finally { stop.abort(); await running; }
+  });
+
   it("starts and awaits shutdown of registered gate source ports", async () => {
     const { repoRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));

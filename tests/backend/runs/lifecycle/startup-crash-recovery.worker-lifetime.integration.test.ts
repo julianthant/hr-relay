@@ -106,3 +106,18 @@ for (const scenario of ["interrupted", "startup-cancelled", "global-cancelled", 
       assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), notifications);
     } finally { await f.dispose(); }
   });
+
+it("releases only the crashed worker's Duo lease when its exit is settled", async () => {
+  const f = await ownedWorkerLifetimeFixture(world);
+  try {
+    const own = "ab".repeat(32), peer = "cd".repeat(32);
+    for (const [credentialKey, workerId] of [[own, f.slot.workerId], [peer, "person-lookup-worker-999"]] as const)
+      assert.equal(f.database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId, system: "ucpath", now: f.now, ttlMs: 60_000 }).state, "acquired");
+    await f.dispose();
+    reconcileExitedWorker({ ...f, lifecycle: f.service, lock: f.lifetime, workerId: f.slot.workerId });
+    assert.equal(f.database.authority.duoCeremonyLeases.get(own)?.state, "released");
+    assert.equal(f.database.authority.duoCeremonyLeases.get(peer)?.state, "held");
+    const released = f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID).filter(note => note.title === "RUN_CRASH_RESOURCES_RELEASED");
+    assert.equal(released.length, 1);
+  } finally { await f.dispose(); }
+});

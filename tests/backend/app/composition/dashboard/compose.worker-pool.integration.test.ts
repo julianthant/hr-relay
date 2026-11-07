@@ -47,6 +47,34 @@ describe("the composed worker pool through the kernel", () => {
     assert.equal(h.faults.length, 0);
   });
 
+  it("keeps two people's pools apart: the same worker id spawns per person and a crash settles only its own person's run", async () => {
+    const a = await openControlHarness(), b = await openControlHarness();
+    for (const h of [a, b]) {
+      assert.equal((await launchCommands(h).submit(dashboardLaunch(h).request)).state, "applied");
+      await settleMicrotasks();
+    }
+    const [aSpawn] = a.spawnRequests, [bSpawn] = b.spawnRequests;
+    assert.ok(aSpawn !== undefined && bSpawn !== undefined);
+    assert.equal(argValue(aSpawn.args, "--worker-id"), WORKER_1);
+    assert.equal(argValue(bSpawn.args, "--worker-id"), WORKER_1);
+    assert.equal(argValue(aSpawn.args, "--profile-id"), a.admission.profileBinding.profileId);
+    assert.equal(argValue(bSpawn.args, "--profile-id"), b.admission.profileBinding.profileId);
+    assert.notEqual(a.profileRoot, b.profileRoot);
+    const claims = [a, b].map(h => h.database.authority.runs.claimNext({ workflow: WORKFLOW, workerId: WORKER_1, now: h.clock.now().toISOString() }));
+    assert.ok(claims.every(claim => claim.state === "claimed"));
+    const [aClaim, bClaim] = claims;
+    assert.ok(aClaim?.state === "claimed" && bClaim?.state === "claimed");
+    a.children[0]?.exit(1, null);
+    await settleMicrotasks();
+    assert.deepEqual(a.settled, [WORKER_1]);
+    assert.deepEqual(b.settled, []);
+    const aRun = a.database.authority.runs.get(aClaim.run.envelope.runId)?.lifecycle;
+    assert.ok(aRun?.state === "terminal" && aRun.outcome === "failed");
+    assert.deepEqual(b.database.authority.runs.get(bClaim.run.envelope.runId), bClaim.run);
+    assert.equal(view(b).state, "running");
+    assert.deepEqual([...a.faults, ...b.faults], []);
+  });
+
   it("shares one cold worker between two concurrent starts", async () => {
     const h = await openControlHarness(), commands = launchCommands(h);
     const results = await Promise.all([commands.submit(dashboardLaunch(h).request), commands.submit(dashboardLaunch(h, "10203373").request)]);
