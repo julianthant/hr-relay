@@ -545,9 +545,10 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
     confirm: { title: "Use this roster row", body: "Relay checks the current key, worksheet and revision, then retains this row's name values for the run.", confirmLabel: "Use row", tone: "neutral" },
   });
-  const sheet = reference.value.snapshot.worksheets.find(candidate => candidate.sheetId === picks[0]?.sheetId);
+  const sheets = new Set(picks.map(({ sheetId }) => sheetId));
+  const sheet = sheets.size === 1 ? reference.value.snapshot.worksheets.find(candidate => sheets.has(candidate.sheetId)) : undefined;
   return [{ ...base, native, resolution: { state: "available", target, candidates, action,
-    decision: rowPickDecision("pick-row", sheet?.name ?? "Roster", action, picks) } }];
+    decision: rowPickDecision("pick-row", sheet?.name ?? "Roster rows", action, picks) } }];
 }
 
 export function buildRunWorkbookSection(repositories: AuthorityRepositories, run: RunRecord): RunWorkbookWritesWire {

@@ -175,6 +175,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.deepEqual(table?.rows.map(({ sheetId, rowId, rowNumber }) => [sheetId, rowId, rowNumber]),
       available.candidates.map(({ sheetId, rowId }) => [sheetId, rowId, 2]));
     assert.equal(table?.typed, undefined, "both sheets hold the key on row 2, so a typed row number would be ambiguous");
+    assert.equal(table?.title, "Roster rows", "rows from two sheets are not titled by either sheet");
     f.edit(workbook => { workbook.sheets[1].rows[1].cells[1].value = "Chosen";
       for (const [index, value] of ["Lived", "Hire", ""].entries()) workbook.sheets[1].rows[1].cells[index + 4].value = value; });
     const request = f.choice(run); assert.ok(request.type === "resolve-workbook-reference-row");
