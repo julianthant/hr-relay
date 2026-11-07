@@ -127,6 +127,7 @@ export function assertPredecessorWorkerHistory(commandInput: unknown, auditInput
     throw new Error("predecessor-worker-history-binding-mismatch");
   }
   if (auditInput === undefined) return;
-  const audit = z.object({ command_id: z.literal(row.id), payload_json: z.literal(row.outcome_json ?? "") }).safeParse(auditInput);
-  if (!audit.success) throw new Error("predecessor-worker-history-binding-mismatch");
+  if (row.outcome_json === null || !z.object({ command_id: z.literal(row.id), payload_json: z.literal(row.outcome_json) }).safeParse(auditInput).success) {
+    throw new Error("predecessor-worker-history-binding-mismatch");
+  }
 }
