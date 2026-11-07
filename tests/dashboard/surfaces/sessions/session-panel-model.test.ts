@@ -14,7 +14,7 @@ afterEach(async () => { await act(async () => root?.unmount()); root = undefined
 function card(): WorkerCardWire {
   const idle = FIXTURE_DAY_WIRE.workerCards.find((entry) => entry.state === "idle" && entry.browsers.length > 0); assert.ok(idle);
   return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerAuthority: { state: "present", members: FIXTURE_DAY_WIRE.workerAuthority.members.filter(member => member.workerId === idle.workerId) }, workerCards: [{ ...idle,
-    controls: { basis: { state: "present", value: { leaseGeneration: 3, controlRevision: 7 } }, ownership: { state: "owned" } } }] }).workerCards[0];
+    controls: { basis: { state: "present", value: { lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: 7 } } } }] }).workerCards[0];
 }
 
 it("the worker timeline uses only the claimed run's served queue steps", () => {

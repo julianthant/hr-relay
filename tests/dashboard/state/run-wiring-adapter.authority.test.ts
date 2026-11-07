@@ -443,7 +443,7 @@ describe("served parked-write Logs decisions", () => {
     const recheck = write.actions.find(action => action.kind === "command" && action.command === "recheck-write");
     assert.ok(recheck?.kind === "command" && recheck.writeTarget !== undefined);
     const target = ParkedWriteCheckTargetSchema.parse({ installationId: RUN, profileId: NOTE, workerId: "separations-worker-1", expectedVersion: 2,
-      membershipRevision: 1, processId: 1234, startedAt: AT, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
+      lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000",
       workflowId: "separations", itemId: NOTE, runId: RUN, runVersion: 3, runAttempt: 1, traceId: write.native?.traceId, nodeId: write.native?.nodeId,
       writeIntentId: write.writeIntentId, intentVersion: 2, intentGeneration: write.generation,
       writeAttemptId: recheck.writeTarget.writeAttemptId, bindingProofDigest: recheck.writeTarget.bindingProofDigest,
