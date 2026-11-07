@@ -341,6 +341,21 @@ it("refuses with zero writes when the model verification expires while a SharePo
   assert.equal(seed.entry().state.revision, revision, "no library write");
 });
 
+it("refuses with zero writes when the card expires while a SharePoint download is held", async () => {
+  const o = await owners(), seed = seedWorkbook(o);
+  o.context.operatorText = "link https://contoso.sharepoint.com/sites/hr/roster.xlsx";
+  const link = await sheetCard(o, { action: "link", sheet: seed.sheet, url: "https://contoso.sharepoint.com/sites/hr/roster.xlsx" });
+  assert.deepEqual(await o.decide(link, "confirm"), { state: "applied", actionId: link.actionId });
+  let release: () => void = () => {}, entered: () => void = () => {};
+  const held = new Promise<void>(resolve => { entered = resolve; });
+  o.sync.download = async (_command, use) => { entered(); await new Promise<void>(resolve => { release = resolve; }); return use({ name: "roster.csv", bytes: new TextEncoder().encode("Name\nZed\n").buffer }, { signal: new AbortController().signal, assertCurrent() {} }); };
+  const card = await sheetCard(o, { action: "sync", sheet: seed.sheet });
+  const revision = seed.entry().state.revision, decided = o.decide(card, "confirm");
+  await held; o.clock.advanceWall(Date.parse(card.expiresAt) - o.clock.nowMs() + 1); release();
+  assert.deepEqual(await decided, { state: "refused", code: "ASSISTANT_CONTEXT_STALE" });
+  assert.equal(seed.entry().state.revision, revision, "no library write");
+});
+
 it("reads a lost library-action response back from its operation record and keeps a lost import UNKNOWN", async () => {
   const o = await owners(), seed = seedWorkbook(o);
   const real = o.library;

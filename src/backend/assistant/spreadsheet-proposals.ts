@@ -157,7 +157,9 @@ export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDep
       context.assertCurrent();
       const chat = deps.authorization.createChat(), captured = authority(chat.chatId);
       const attachment = built.attachment, conversationId = context.conversationId;
+      let expiresAt = "";
       const assertIssued = () => {
+        if (expiresAt !== "" && Date.parse(expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");
         deps.assertCurrent(); context.assertRetainedCurrent();
         if (authority(chat.chatId) !== captured) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
         if (deps.database.authority.assistantHistory.conversation(conversationId, deps.clock.now().toISOString()) === undefined) throw new AssistantToolRefusal("ASSISTANT_CONVERSATION_STALE");
@@ -165,7 +167,7 @@ export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDep
       };
       assertIssued();
       const actionId = randomUUID(), label = LABELS[change.action];
-      const expiresAt = new Date(Math.min(deps.clock.nowMs() + TTL_MS, Date.parse(deps.database.authority.assistantAuthorization.chat(chat.chatId)?.expiresAt ?? ""))).toISOString();
+      expiresAt = new Date(Math.min(deps.clock.nowMs() + TTL_MS, Date.parse(deps.database.authority.assistantAuthorization.chat(chat.chatId)?.expiresAt ?? ""))).toISOString();
       const proposal = AssistantActionProposalSchema.parse({ chatId: chat.chatId, actionId, revision: 1, expiresAt, label, targetLabel: built.target.slice(0, 160),
         effect: "spreadsheet", action: change.action, facts: built.facts });
       prune();
