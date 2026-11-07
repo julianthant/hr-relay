@@ -110,8 +110,8 @@ At compact action widths, Start a run uses its existing icon and accessible name
 Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step footer with confirmation. The setup screen uses the house Select for method choice, with the same Security key and Touch ID names as its cards.
 Settings navigation uses the workflow rail's row height, spacing, padding, and hover/selected fills. Appearance has a Light/Dark toggle and an Animations switch without row descriptions or person names; preference feedback sits below the rows. Delete account is the last section in General. Its confirmation belongs to the active profile/session epoch, checked atomically by the server before deletion effects; pending and uncertain deletion stay disabled with visible feedback. General has no assistant permission row.
 Storage's Clear run history row uses the existing destructive dialog with Cancel focused first. Active runs disable it with a visible reason; uncertain results offer a result-only Check clear result for the original action. Not recorded requires a new destructive confirmation. The Run picker hides parent-only previews; Explorer keeps them available for inspection.
-Assistant proposals use a card with a tinted title row: the workflow, one fact per served row in served order (a person as Person "Last, First  EID <eight digits>", or EID alone, or Name alone; a Document; a File for an attached PDF; or a Request), a Total when there is more than one row, the mode, then Cancel and Confirm. Plan ids, fingerprints and stop-point text stay in logs. Confirmed and cancelled proposals collapse to a resolved line naming the one row or the served count. When a run the assistant started cannot finish, the chat shows one plain line, "Couldn't finish this.", with no card and no buttons; Relay never retries it. A Spreadsheets library card shows its fixed facts instead (workbook, file, name or version changes, counts) and resolves to "Done" or "Not done". Confirm applies to runs and Spreadsheets library changes: small local changes (notification read, unread, snooze) happen at once with no card, and the reply says what changed.
-The assistant is a floating, draggable bottom-right panel: tinted header (chats, activity, new chat, close), flat replies, filled operator bubbles with name-only attachment pills, a rounded composer and a quiet status strip above it. The strip shows the served account reason with its action (Sign in, Open Settings or Open Preflight) and never blocks the dashboard or the composer. Replies show only the answer, with no sources or failure codes. The composer is one line with its text vertically centred and no focus ring on the box; the model and effort pickers stay editable, and the effort menu offers Light, Medium, High, xHigh and Max. The Assistant section below covers what the assistant shows for each kind of action. Served model and effort labels use the selected person’s preference; with no served model only “Model unavailable” shows and the effort trigger is hidden. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
+When a run the assistant started cannot finish, the chat shows one plain line, "Couldn't finish this.", with no card and no buttons; Relay never retries it. Small local changes (notification read, unread, snooze) happen at once with no card, and the reply says what changed.
+When open, the assistant docks as a right column beside Logs, full height above the Sessions bar. Logs narrows and the Queue keeps its width. The column is not draggable, and the launcher hides while it is open. It has a tinted header (chats and activity, new chat, close), flat replies, filled operator bubbles with name-only attachment pills, a rounded composer and a quiet status strip above it. The strip shows the served account reason with its action (Sign in, Open Settings or Open Preflight) and never blocks the dashboard or the composer. Replies show only the answer, with no sources or failure codes. The composer is one line with its text vertically centred and no focus ring on the box. The model and effort pickers stay editable, and the effort menu offers Light, Medium, High, xHigh and Max. Served model and effort labels use the selected person's preference; with no served model only "Model unavailable" shows and the effort trigger is hidden. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
 Browser captures stay inline. A verified before/after pair sits under its declared submit action,
 with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
 
@@ -176,7 +176,7 @@ Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-ca
 - An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure; Retry is the icon button in that log's header, and a rejected value adds the fix-and-retry input in the body. The parent log reads the document, records the approval and lists the records handed to members.
 - A cancel in progress is one line with a loading icon. It has no actions.
 - A refused command is a toast (title and one line). The transcript does not change.
-- The assistant launcher docks in the Logs footer's right corner, which the footer reserves, so it never covers log content or footer controls. Toasts sit above the footer and the launcher.
+- The assistant launcher docks in the Logs footer's right corner, which the footer reserves, so it never covers log content or footer controls. Toasts sit above the footer and the launcher. While the assistant column is open, toasts sit at the bottom of the Logs column, left of it.
 - Buttons are standard size: Confirm, then Cancel run. Cancel run is secondary, never ghost text.
 - No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
 
@@ -206,25 +206,39 @@ Explorer is a generated review spec of what a workflow does. It never shows simu
 
 ## Assistant
 
-The assistant operates the dashboard through the operator's own commands and checks; it never edits workflows or code. What an action looks like follows its tier, which Relay enforces per tool:
+The assistant operates the dashboard through the operator's own commands and checks; it never edits workflows or code. Its words are short: no reassurance or explanation of behaviour that Relay enforces. What an action looks like follows its tier, which Relay enforces per tool:
 
 | Action | In the chat |
 | --- | --- |
 | Read dashboard data, answer, navigate | A reply. A navigation is one muted line with an arrow ("Opened Emergency Contact · Failed · Today"), never a card. |
-| Read-only session (Person Lookup, UCPath or Kuali browsing, its own checks) | Starts without asking. A session chip with a spinner reads "Checking UCPath…" and has Stop; when finished it reads "Checked UCPath" with what and how long, and a Log link. The run sits in Queue and Logs like any other; its first step has the line "Started by the assistant for <person> · read only". |
-| Reversible local edit (spreadsheets, library, settings, run names, filters) | Applies at once. An applied block shows a check, the title, an Undo link and the values; a success toast with Undo appears too. |
-| Anything that leaves the machine (saves and submits, workflows that save, dry or real, re-filing, gate answers) | A plan card. Nothing happens until the operator approves. |
+| Read-only session (Person Lookup, UCPath or Kuali browsing, its own checks) | Starts without asking. A session chip: spinner on the title line, the title ("Checking UCPath…"), a muted meta line, and a fully rounded Stop pill. Finished, it shows a check and a Log link. The run sits in Queue and Logs; its first step has the line "Started by the assistant for <person> · read only". |
+| Reversible local edit (spreadsheets, library, settings, run names, filters) | Applies at once as a Proposal card without Approve, with Undo, and a success toast with Undo. |
+| Anything that leaves the machine (saves and submits, workflows that save, dry or real, re-filing, gate answers, starting OCR) | A Proposal card. Nothing happens until the operator approves. |
 
-- Values: the label on the left; on the right the old value struck through, an arrow, the new value, and the source under it (PDF page, spreadsheet cell, UCPath field and read time, "Typed by you" and the time). Relay refuses a manual value with no source: a toast "Value needs a source" and a reply saying what to provide.
-- Plan card: a tinted title row with the plan name and step count, then one row per step: a checkbox (a number when there is one step), the title, the mode in muted text ("Separations · fills, saves nothing"), the person as "Last, First  EID <eight digits>", then its values. Anything that saves starts with a dry run step; the real run is its own step.
-- The operator approves all steps or single ones: the checked steps name the primary ("Approve all 2", "Approve step 1", "Retry 3", "Approve Ortega, Lin"). Cancel is ghost.
-- A running plan shows each step's word (Running, Done, Stopped, Not run, Blocked) and Stop in the footer. On anything unexpected it stops; the footer says where and why in the warning colour, names both values with their sources, and says what was not done ("Nothing was filed.").
-- A blocked plan (a duplicate, or a refused Confirm) has no Confirm. It lists the Evidence Relay found, gives the real reason in the footer in the danger colour, and offers Open log. A refused Confirm also shows a toast with the same reason.
-- A workflow start that hands off to the operator (OCR review) collapses to the resolved line once started; the follow-up is a new plan for the reviewed people.
-- Lists and tables in the chat are one card: title with a muted count, rows of lead, text, status-coloured meta and an Open or Log link. A table's last column is right-aligned. Counts come from run data, labelled "From run data"; the reply only explains them.
-- Decisions: the assistant resolves one only when Relay confirms the evidence the decision declares. The check becomes a step in that run's log with the note line "Checked by the assistant for <person> · read only", and the reply names the value found. When the evidence is ambiguous it asks in one line with the choices as buttons, and the decision stays in Logs.
-- Watching runs is a running session chip ("Watching 3 Separations runs"). A decision that needs the operator raises a sticky toast with Open.
-- Activity (header icon between Chats and New chat) lists today's reads, sessions, edits, confirms and refusals, each with its icon, time and a Log link. The composer is hidden there.
+### Proposal card
+
+Every proposal (a plan, a retry batch, an edit) is one `DecisionCard` using the Logs page-card grammar.
+
+- Title: the action and the subject once ("Separate Lin Ortega · EID 10031877"). The person is never repeated per step.
+- Sequential steps are a compact numbered list with no checkboxes, because the real run depends on the dry run. A step's condition sits in its own line: "Real run · files in UCPath · after the dry run matches". Anything that saves starts with a dry run.
+- Values appear once, in one page card: label on the left; the old value in muted strikethrough, an arrow and the new value flush right. When all values share a source, the source sits in the card header ("From Kuali SIM-50112"). A value shows its own source ("· page 2", "· Sheet1!D14", "· typed by you") only when it differs. There are no caption lines. Relay refuses a manual value with no source: a toast "Value needs a source" and a one-line reply saying what to provide.
+- Independent items (people in a batch) have checkboxes; the header counts the chosen ones.
+- Buttons only, with no footer text: the dashboard-blue primary ("Approve", "Retry"; no counts) and "Cancel".
+- A stopped plan shows its steps with Done or Not run, the reason as the card's one line, and "Retry from this step" with "Cancel plan".
+- A blocked plan (a duplicate, or a refused Confirm) has no buttons. The reason is the card's line in the danger colour; the evidence is one muted line with a Log link and no section title. A refused Confirm also shows a toast with the same reason.
+- A started workflow that hands off to the operator (OCR review) collapses to one line ("Started OCR · Scan_0503.pdf · 15:02"); the follow-up is a new Proposal for the reviewed people.
+
+### Decisions in Logs
+
+- When the assistant has an answer for a decision, the Logs `DecisionCard` shows "Assistant suggests: <option>" with its evidence. The operator still confirms, and "Use for all N similar" covers a batch with the same failure.
+- The assistant answers a decision itself only when Relay confirms the evidence the decision declares. The check is its own step in that log ("Checked by the assistant for <person> · read only"), and the card collapses to "Answered: <choice> · <time> · by assistant on behalf of <person>".
+- When the evidence is ambiguous, the chat asks one line with the choices as buttons, and the card stays open in Logs.
+
+### Other surfaces
+
+- Lists and tables in the chat are Logs page cards: a title and a muted count or source on the right; rows of lead, text, status-coloured meta and an Open or Log link. Counts come from run data ("From run data"); the reply adds one line at most.
+- Watching is a running session chip ("Watching today's runs"). It lasts while any run started today is active. A decision that needs the operator raises a sticky toast with Open.
+- The history icon opens Activity: today's reads, sessions, edits, confirms and refusals, each with its icon, time and a Log link. The composer is hidden there.
 - A message with no reply is a danger toast "No reply" with Retry; the message stays in the composer.
 
 ## Motion
