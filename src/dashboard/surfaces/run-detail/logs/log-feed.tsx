@@ -140,7 +140,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
       {trailingContent}
       <div ref={end} />
     </div>
-    <footer className={cn("logs-footer flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2", embedded && "sticky bottom-0 mt-auto")}>
+    <footer className={cn("flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2", embedded && "sticky bottom-0 mt-auto")}>
       <SearchInput className="w-44" aria-label="Search logs" placeholder="Search logs…" value={query} onChange={event => { setQuery(event.target.value); setCopyState("idle"); }} onClear={() => setQuery("")} />
       <span className="text-caption tabular-nums text-ui-muted" role="status">{count} {query.trim() ? "matching " : ""}{count === 1 ? "action" : "actions"}</span>
       {footerContent}
