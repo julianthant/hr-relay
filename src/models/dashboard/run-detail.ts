@@ -946,9 +946,14 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   approvalShape: z.enum(["one-click", "choose-a-candidate"]),
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
+  /** The reason a served rejection records; the gate's declared arm owns it. */
+  rejectReason: z.string().min(1).optional(),
   decision: RunDecisionWireSchema.optional(),
 }).superRefine((gate, context) => {
   refineDecisionActions(gate.decision, gate.actions, context, ["decision"]);
+  if ((gate.rejectReason !== undefined) !== gate.actions.some(action => action.kind === "command" && action.resolution === "rejected")) {
+    context.addIssue({ code: "custom", path: ["rejectReason"], message: "a served rejection and its recorded reason come together" });
+  }
   if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {
     context.addIssue({ code: "custom", path: ["approvalShape"], message: "presentation must match the shown candidate count" });
   }

@@ -42,7 +42,8 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
-import { projectDecision } from "../../decisions/project-decision.js";
+import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 
 
 function settledGateWire(
@@ -356,7 +357,7 @@ function buildIdentityGatePayload(
     );
   }
   const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
-  const options = packet.approvableEids.map((eid) => ({
+  const options: IdentityOption[] = packet.approvableEids.map((eid) => ({
     eid,
     chosenFrom: eid === packet.emplId ? "checked" : eid === nameSearchEid ? "name-search" : "manual",
     displayName: eid === packet.emplId
@@ -378,6 +379,9 @@ function buildIdentityGatePayload(
   const native = nativeEvent?.payload.kind === "span" && nativeEvent.payload.event.t === "gate.opened"
     ? nativeEvent.payload.event : undefined;
   if (native !== undefined && native.traceId !== authority.envelope.traceId) throw new LogIdentityRefusedError("RUN_LOG_GATE_NATIVE_IDENTITY_MISMATCH");
+  const arms = findGateDecision(authority.envelope.workflow, String(gate.nodeId))?.arms ?? [];
+  const rejected = arms.find(arm => arm.outcome === "rejected");
+  const actions = ActionDescriptorWireSchema.array().parse(identityGateActions(authority, packet, rejected));
   return {
     state: "available",
     value: IdentityGateDetailWireSchema.parse({
@@ -396,13 +400,46 @@ function buildIdentityGatePayload(
       packet,
       options,
       approvalShape: options.length > 1 ? "choose-a-candidate" : "one-click",
-      actions: identityGateActions(authority, packet),
+      actions,
+      ...(rejected?.rejectReason === undefined ? {} : { rejectReason: rejected.rejectReason }),
+      decision: identityGateDecision(options, actions, arms, deps.projection.queueSurface(runId)?.actions),
     }),
   };
 }
 
 
-function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacket): unknown[] {
+type IdentityOption = Readonly<{ eid: string; chosenFrom: "checked" | "name-search" | "manual"; displayName: string; origin: string }>;
+
+/** D1 (one candidate): approve or, where the gate declares it, reject. D2 (several): pick a served candidate, or cancel the run. */
+export function identityGateDecision(
+  options: readonly IdentityOption[],
+  actions: readonly ActionDescriptorWire[],
+  arms: readonly Readonly<{ outcome: string; label: string; hint: string }>[],
+  rowActions: readonly ActionDescriptorWire[] | undefined,
+): RunDecisionWire {
+  const keyFor = (resolution: "approved" | "rejected") => actions.find(action => action.kind === "command" && action.resolution === resolution)?.key;
+  const approve = keyFor("approved"), reject = keyFor("rejected");
+  const text = (outcome: string) => { const arm = arms.find(candidate => candidate.outcome === outcome); return arm === undefined ? {} : { label: arm.label, hint: arm.hint }; };
+  if (options.length === 1) {
+    return projectDecision("identity-mismatch", [
+      ...(approve === undefined ? [] : [{ id: "approve", send: { via: "action" as const, actionKey: approve }, ...text("approved") }]),
+      ...(reject === undefined ? [] : [{ id: "reject", send: { via: "action" as const, actionKey: reject }, ...text("rejected") }]),
+    ]);
+  }
+  return projectDecision("pick-person", [
+    ...(approve === undefined ? [] : [{ id: "confirm", send: { via: "action" as const, actionKey: approve }, input: { kind: "candidate" as const, table: {
+      title: "Search results",
+      columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }, { id: "origin", label: "Found by" }],
+      rows: options.map(option => ({ id: option.eid, name: option.displayName, eid: option.eid, chosenFrom: option.chosenFrom, cells: [
+        { columnId: "name", value: option.displayName }, { columnId: "eid", value: directIdentifierDisplay(option.eid) }, { columnId: "origin", value: option.origin },
+      ] })),
+      typed: { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$" },
+    } } }]),
+    ...rowActionOption("cancel-run", "cancel", rowActions),
+  ]);
+}
+
+function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacket, rejected: Readonly<{ label: string; hint: string }> | undefined): unknown[] {
   const disagreements = packet.comparisons.filter(({ agrees }) => !agrees);
   return [
     {
@@ -430,6 +467,18 @@ function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacke
         tone: disagreements.length === 0 ? "neutral" : "destructive",
       },
     },
+    ...(rejected === undefined ? [] : [{
+      key: "resolve-gate-rejected",
+      label: rejected.label,
+      detail: rejected.hint,
+      intent: "destructive",
+      icon: "cancel",
+      placement: ["footer"],
+      kind: "command",
+      command: "resolve-gate",
+      expectedVersion: authority.version,
+      resolution: "rejected",
+    }]),
   ];
 }
 
