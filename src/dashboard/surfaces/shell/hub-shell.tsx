@@ -7,6 +7,7 @@ import { ChevronDown, History, LogOut, Pencil, Plus, Search, Sparkles, Trash2, X
 import { Button, Dialog, DialogContent, DialogFooter, EmptyState, Tab, TabList, TabPanel, Tabs } from "../../ds/ui.js";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockActivity } from "./assistant-mock-thread.js";
+import { AssistantMark, assistantLogo, assistantLogoState } from "./assistant-mark.js";
 import { chatAge, createMockHubChatsPort, useHubChats, useHubPanelPosition, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
 import type { AssistantPorts } from "./assistant-panel-model.js";
@@ -28,7 +29,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const launcherPosition = useHubPanelPosition(8, true);
   const [logout, setLogout] = useState(false);
   const [opened, setOpened] = useState(source === "mock");
-  const frame = assistantFrame();
+  const frame = assistantFrame(), logo = assistantLogo();
   const [list, setList] = useState(frame?.view === "activity");
   const [tab, setTab] = useState(frame?.view === "activity" ? "activity" : "chats");
   const [query, setQuery] = useState("");
@@ -95,7 +96,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
             onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)} ></AssistantPanel>}
         </div>
       </section>
-      <button tabIndex={0} ref={element => { launcher.current = element; launcherPosition.element.current = element; }} className="hub-assistant-launcher" hidden={settingsOpen} type="button" aria-label="Assistant" aria-description="Drag to move. Alt and arrow keys also move the launcher." aria-controls="hub-shell-assistant" aria-expanded={opened} onPointerDown={launcherPosition.onPointerDown} onPointerMove={launcherPosition.onPointerMove} onPointerUp={launcherPosition.onPointerUp} onPointerCancel={launcherPosition.onPointerCancel} onLostPointerCapture={launcherPosition.onPointerUp} onKeyDown={launcherPosition.onKeyDown} onClick={() => { if (launcherPosition.moved.current) { launcherPosition.moved.current = false; return; } panelPosition.reset(); setOpened(value => !value); }}>{opened ? <ChevronDown aria-hidden /> : <Sparkles aria-hidden />}</button>
+      <button tabIndex={0} ref={element => { launcher.current = element; launcherPosition.element.current = element; }} className="hub-assistant-launcher" hidden={settingsOpen} type="button" aria-label="Assistant" aria-description="Drag to move. Alt and arrow keys also move the launcher." aria-controls="hub-shell-assistant" aria-expanded={opened} onPointerDown={launcherPosition.onPointerDown} onPointerMove={launcherPosition.onPointerMove} onPointerUp={launcherPosition.onPointerUp} onPointerCancel={launcherPosition.onPointerCancel} onLostPointerCapture={launcherPosition.onPointerUp} onKeyDown={launcherPosition.onKeyDown} onClick={() => { if (launcherPosition.moved.current) { launcherPosition.moved.current = false; return; } panelPosition.reset(); setOpened(value => !value); }}>{opened ? <ChevronDown aria-hidden /> : logo ? <AssistantMark direction={logo} state={assistantLogoState()} size={22} /> : <Sparkles aria-hidden />}</button>
     <span ref={anchor} role="status" className="sr-only">{announcement}</span>
     <Dialog open={logout} onOpenChange={setLogout}><DialogContent hideClose className="hub-modal" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><button tabIndex={0} className="hub-btn" onClick={() => setLogout(false)}>Cancel</button><button tabIndex={0} className="hub-btn primary" onClick={() => { setLogout(false); onLogout(); }}>Log out</button></DialogFooter></DialogContent></Dialog>
     <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose className="hub-modal" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}

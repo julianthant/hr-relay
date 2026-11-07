@@ -123,3 +123,5 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 #hub-panel-assistant .hub-pill:hover{background:var(--ui-hover)}
 #hub-panel-assistant .hub-answered{display:flex;align-items:center;gap:6px;margin:-8px 0 0;align-self:flex-end;font-size:11px;color:var(--ui-muted)}
 #hub-panel-assistant .hub-answered svg{width:12px;height:12px;color:var(--ui-positive)}
+#hub-panel-assistant .hub-avatar-sample{width:24px;height:24px;display:grid;place-items:center;flex:none;color:var(--ui-muted);background:var(--ui-table);border-radius:50%}
+#hub-panel-assistant .hub-panel-title>.assistant-mark{align-self:center;margin-right:6px}
