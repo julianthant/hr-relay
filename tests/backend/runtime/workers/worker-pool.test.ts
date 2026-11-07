@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { createWorkerPool, type WorkerExitFact, type WorkerPoolDependencies, type WorkerPoolMember, type WorkerProcessPort } from "../../../../src/backend/runtime/workers/worker-pool.js";
+import { createWorkerPool, requireStoppedPool, type WorkerExitFact, type WorkerPoolDependencies, type WorkerPoolMember, type WorkerProcessPort } from "../../../../src/backend/runtime/workers/worker-pool.js";
 import type { WorkerParentMessage } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { BrowserSessionIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -247,6 +247,39 @@ describe("worker pool", () => {
     await assert.rejects(first, { code: "WORKER_EXIT_SETTLEMENT_FAILED" });
     assert.equal(w.ports.length, 1);
   });
+
+  for (const outcome of ["settled", "failed"] as const) {
+    it(`holds Start and shutdown behind a pending first exit settlement (${outcome})`, async () => {
+      let release: (error?: Error) => void = () => {};
+      const barrier = new Promise<void>((resolve, reject) => { release = error => error === undefined ? resolve() : reject(error); });
+      const w = world({ settle: () => barrier });
+      const { port } = await running(w);
+      port.exit(1, null); await flush();
+      assert.equal(w.pool.snapshot()[0]?.state, "exited");
+      assert.equal(w.pool.snapshot()[0]?.exit, undefined);
+      assert.throws(() => { requireStoppedPool(w.pool.snapshot()); }, { code: "WORKER_EXIT_UNOBSERVED" });
+      let stopped = false;
+      const all = w.pool.stopAll("shutdown").then(views => { stopped = true; return views; });
+      const replacement = w.pool.start(member).then(view => view, (error: unknown) => error);
+      await flush(); await flush();
+      assert.equal(w.ports.length, 1, "no replacement spawns during the first settlement");
+      assert.equal(stopped, false, "shutdown waits for the first settlement");
+      release(outcome === "settled" ? undefined : new Error("settlement refused"));
+      const views = await all;
+      if (outcome === "settled") {
+        assert.equal(views[0]?.exit?.settlement, "settled");
+        requireStoppedPool(views);
+        await flush();
+        assert.equal(w.ports.length, 2);
+        w.ports[1]?.ready();
+        assert.equal(((await replacement) as { state?: string }).state, "running");
+      } else {
+        assert.throws(() => { requireStoppedPool(views); }, { code: "WORKER_EXIT_SETTLEMENT_FAILED" });
+        assert.equal(((await replacement) as { code?: string }).code, "WORKER_EXIT_SETTLEMENT_FAILED");
+        assert.equal(w.ports.length, 1);
+      }
+    });
+  }
 
   it("keeps the settled prior reserved until its replacement is published", async () => {
     let fail = true;

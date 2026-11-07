@@ -241,6 +241,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     if (record === undefined || record.lifetimeId !== target.lifetimeId || record.version !== target.expectedVersion) throw new WorkerPoolError("WORKER_TARGET_STALE");
     return record;
   };
+  const settlementOf = (record: MemberRecord) => record.exit?.settlement;
   const exitFact = (record: MemberRecord): WorkerExitFact => {
     if (record.exit === undefined || record.held !== undefined) throw new WorkerPoolError("WORKER_EXIT_UNOBSERVED");
     if (record.exit.settlement === "failed") throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED", { cause: record.settlementFailure });
@@ -251,6 +252,12 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     snapshot(): readonly WorkerMemberView[] { return Object.freeze([...records.values()].map(view)); },
 
     async start(member: WorkerPoolMember): Promise<WorkerMemberView> {
+      const exiting = records.get(member.workerId);
+      // An observed exit stays reserved until its first settlement finishes; a failure stays the member's refusal.
+      if (exiting?.state === "exited" && exiting.exit === undefined) {
+        await exiting.exited;
+        if (settlementOf(exiting) !== "settled") throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED", { cause: exiting.settlementFailure });
+      }
       const prior = records.get(member.workerId);
       if (prior !== undefined && (prior.state !== "exited" || prior.settling)) throw new WorkerPoolError(prior.held === undefined ? "WORKER_ALREADY_RUNNING" : "WORKER_EXIT_UNOBSERVED");
       if (prior?.exit?.settlement === "failed") {
@@ -322,9 +329,10 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       return view(record);
     },
 
-    /** Stops every member that has not exited and waits only within each member's bounded escalation. */
+    /** Stops every member that has not exited, waits for any first exit settlement, and waits only within each member's bounded escalation. */
     async stopAll(reason: WorkerStopReason): Promise<readonly WorkerMemberView[]> {
-      await Promise.all([...records.values()].filter(record => record.state !== "exited").map(record => escalate(record, reason, false)));
+      await Promise.all([...records.values()].map(record => record.state !== "exited" ? escalate(record, reason, false)
+        : record.exit === undefined ? record.exited : Promise.resolve()));
       return Object.freeze([...records.values()].map(view));
     },
   });
@@ -333,7 +341,7 @@ export type WorkerPool = ReturnType<typeof createWorkerPool>;
 
 /** Refuses unless every member's exit was observed and settled; shutdown, logout and account switch require it. */
 export function requireStoppedPool(views: readonly WorkerMemberView[]): void {
-  const unobserved = views.filter(view => view.state !== "exited" || view.held !== undefined);
+  const unobserved = views.filter(view => view.state !== "exited" || view.held !== undefined || view.exit === undefined);
   if (unobserved.length !== 0) throw new WorkerPoolError("WORKER_EXIT_UNOBSERVED", { cause: unobserved.map(view => ({ workerId: view.member.workerId, pid: view.pid })) });
   if (views.some(view => view.exit?.settlement === "failed")) throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED");
 }
