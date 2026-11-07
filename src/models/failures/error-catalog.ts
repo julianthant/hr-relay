@@ -138,9 +138,17 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_CONVERSATION_STALE: catalogEntry("This chat changed elsewhere and was reloaded.", EmptyParametersSchema),
   ASSISTANT_OUTCOME_UNKNOWN: catalogEntry("Couldn't finish this.", EmptyParametersSchema),
   ASSISTANT_CONVERSATION_BUSY: catalogEntry("This chat is still waiting for a reply.", EmptyParametersSchema),
+  ASSISTANT_ATTACHMENT_UNSUPPORTED: catalogEntry("This file type can't be attached. Attach a PNG, JPEG, WebP, PDF, text, Markdown, Excel or CSV file.", EmptyParametersSchema),
+  ASSISTANT_ATTACHMENT_INVALID: catalogEntry("This file could not be read. Check that it is not damaged and matches its file type.", EmptyParametersSchema),
+  ASSISTANT_ATTACHMENT_TOO_LARGE: catalogEntry("This file is too large to attach.", EmptyParametersSchema),
+  ASSISTANT_ATTACHMENT_BUSY: catalogEntry("Another file is still uploading. Try again when it finishes.", EmptyParametersSchema),
+  ASSISTANT_ATTACHMENT_TIMEOUT: catalogEntry("The file upload took too long. Attach it again.", EmptyParametersSchema),
+  ASSISTANT_ATTACHMENT_UNAVAILABLE: catalogEntry("An attached file is no longer available. Attach it again.", EmptyParametersSchema),
+  ASSISTANT_ATTACHMENT_STORAGE_LIMIT: catalogEntry("Chat attachments are full. Delete an old chat before attaching more files.", EmptyParametersSchema),
   ASSISTANT_CANCELLED: catalogEntry("The assistant request was cancelled.", EmptyParametersSchema),
   ASSISTANT_LIMIT: catalogEntry("The assistant reached its request limit.", EmptyParametersSchema),
   ASSISTANT_SUBJECT_REQUIRED: catalogEntry("Select an unambiguous subject before preparing a proposal.", EmptyParametersSchema),
+  ASSISTANT_SPREADSHEET_REFUSED: catalogEntry("The Spreadsheets library refused this change. Review the workbook in Spreadsheets.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The current planner refused this proposal. Review it in Run.", EmptyParametersSchema),
 
   RUN_LOG_DISPLAY_VALUE_UNMAPPED: catalogEntry(

@@ -13,7 +13,8 @@ export function createAssistantPluginDeps(options: Readonly<{
   runDetail: RunDetailQueryDeps;
   search: () => CrossDateSearchQueryService;
   notifications: () => { snapshot(actor: string): readonly NotificationWire[] };
-  workbooks: () => Pick<WorkbookLibraryService, 'catalog'>;
+  workbooks: () => Pick<WorkbookLibraryService, 'catalog' | 'read' | 'types'>;
+  attachment: AssistantPluginDeps['attachment'];
   facts: () => AssistantWorkflowFacts;
   assertCurrent(): void;
 }>): AssistantPluginDeps {
@@ -22,7 +23,9 @@ export function createAssistantPluginDeps(options: Readonly<{
     search: query => current(() => options.search().search(CrossDateSearchQuerySchema.parse(query))),
     runDetail: runId => current(() => buildRunDetail(options.runDetail, runId)),
     notifications: actor => current(() => options.notifications().snapshot(actor)),
-    workbookCatalog: () => current(() => options.workbooks().catalog()),
+    workbooks: () => { const library = options.workbooks();
+      return { catalog: () => current(() => library.catalog()), read: libraryId => current(() => library.read(libraryId)), types: () => current(() => library.types()) }; },
+    attachment: (conversationId, id) => current(() => options.attachment(conversationId, id)),
     settings: () => current(() => options.database.withAuthorityReadSnapshot(() => readSettings(options.database.authority).settings)),
     facts: options.facts,
   };

@@ -48,7 +48,7 @@ it('restores served rows without a card or Confirm and states every turn deliver
   const history = w.server.repository, now = w.server.now();
   const send = (text: string) => {
     const messageId = randomUUID(), expectedRevision = history.conversation(id, now)?.revision ?? 0;
-    assert.equal(history.accept({ conversationId: id, expectedRevision, messageId, text, modelText: text, subjectRef: null, now }).state, 'accepted');
+    assert.equal(history.accept({ conversationId: id, expectedRevision, messageId, text, modelText: text, subjectRef: null, attachments: [], now }).state, 'accepted');
     return messageId;
   };
   history.settle(id, send('Prepare a card'), { delivery: 'answered', reply: { id: randomUUID(), kind: 'proposal', actionId: randomUUID(), text: ASSISTANT_PROPOSAL_CAPTION, modelText: 'card' } }, now);

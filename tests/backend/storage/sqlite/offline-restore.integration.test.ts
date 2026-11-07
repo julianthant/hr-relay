@@ -76,7 +76,7 @@ describe("assistant history through backup and restore", () => {
       const history = db.authority.assistantHistory, id = randomUUID(), messageId = randomUUID();
       assert.equal(history.apply({ operation: "create", conversationId: id, title: "Kept chat" }, now).state, "saved");
       assert.equal(history.apply({ operation: "draft", conversationId: id, draft: "unsent é", composer: "😀" }, now).state, "saved");
-      const accepted = history.accept({ conversationId: id, expectedRevision: 1, messageId, text: "Explain 10812345", modelText: "Explain [[E1.g1]]", subjectRef: null, now });
+      const accepted = history.accept({ conversationId: id, expectedRevision: 1, messageId, text: "Explain 10812345", modelText: "Explain [[E1.g1]]", subjectRef: null, attachments: [], now });
       assert.equal(accepted.state, "accepted");
       assert.equal(typeof history.settle(id, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Answer for 10812345", modelText: "Answer for [[E1.g1]]" } }, now), "number");
       const expected = { list: history.list(now), conversation: history.conversation(id, now), replay: history.replay(id, 99) };

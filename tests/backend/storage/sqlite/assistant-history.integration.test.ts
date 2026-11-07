@@ -20,7 +20,7 @@ async function world() {
   const revision = (id: string, now = NOW) => history.conversation(id, now)?.revision ?? 0;
   const accept = (conversationId: string, text = "Explain", extra: { messageId?: string; subjectRef?: string | null; expectedRevision?: number } = {}) =>
     history.accept({ conversationId, expectedRevision: extra.expectedRevision ?? revision(conversationId), messageId: extra.messageId ?? randomUUID(), text,
-      modelText: `masked ${text}`, subjectRef: extra.subjectRef ?? null, now: NOW });
+      modelText: `masked ${text}`, subjectRef: extra.subjectRef ?? null, attachments: [], now: NOW });
   const generation = () => fixture.database.getMeta().authorityGeneration;
   return { ...fixture, history, create, revision, accept, generation };
 }
@@ -82,7 +82,7 @@ it("accepts one turn per message identity, reads repeats without the revision an
   assert.equal(w.history.settle(id, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Answer for 10812345", modelText: "Answer for [[E1.g1]]" } }, LATER), 4);
   assert.deepEqual(w.accept(id, "Explain", { messageId, subjectRef: "run_a_1" }), { state: "repeat", ordinal: 1, revision: 4, delivery: "answered" });
   assert.equal(w.history.settle(id, messageId, { delivery: "delivery-unknown" }, LATER), undefined, "a settled turn never settles again");
-  assert.deepEqual(w.history.replay(id, 3), [{ role: "operator", modelText: "masked Explain" }, { role: "assistant", modelText: "Answer for [[E1.g1]]" }]);
+  assert.deepEqual(w.history.replay(id, 3), [{ role: "operator", modelText: "masked Explain", messageId }, { role: "assistant", modelText: "Answer for [[E1.g1]]" }]);
   const view = w.history.conversation(id, LATER); assert.ok(view);
   assert.deepEqual(view.messages.map(row => [row.ordinal, row.role, row.kind, row.text, row.delivery]),
     [[1, "operator", "turn", "Explain", "answered"], [2, "assistant", "answer", "Answer for 10812345", "settled"]]);
@@ -246,4 +246,27 @@ it("bounds the profile's stored titles, drafts and display text in UTF-16 units 
   const view = w.history.conversation(b, NOW); assert.ok(view);
   assert.deepEqual([view.messages.length, view.draft.length, view.composer.length, view.revision], [49, 4000, 3998, revision]);
   assert.equal(w.history.apply({ operation: "draft", conversationId: b, draft: "", composer: "" }, NOW).state, "saved", "a shrinking write still saves");
+});
+
+it("stages attachments under an owned chat, claims them once in send order with the turn and serves authenticated bytes", async () => {
+  const w = await world(), id = w.create(), other = w.create(), messageId = randomUUID();
+  const bytes = (text: string) => new TextEncoder().encode(text);
+  const stage = (conversationId: string, name: string, now = NOW) => w.history.stage({ id: randomUUID(), conversationId, mediaType: "text/plain", name, bytes: bytes(name), now });
+  const [a, b, foreign] = [stage(id, "a.txt"), stage(id, "b.txt"), stage(other, "c.txt")];
+  assert.throws(() => stage(randomUUID(), "x.txt"), refusedWith("ASSISTANT_CONVERSATION_STALE"));
+  assert.equal(w.history.attachment(id, a.id, NOW), undefined, "a stage is not an accepted attachment");
+  const accept = (ids: string[], extra: { messageId?: string; now?: string } = {}) => w.history.accept({ conversationId: id, expectedRevision: w.revision(id), messageId: extra.messageId ?? randomUUID(),
+    text: "Read", modelText: "Read", subjectRef: null, attachments: ids, now: extra.now ?? NOW });
+  assert.throws(() => accept([a.id, foreign.id]), refusedWith("ASSISTANT_ATTACHMENT_UNAVAILABLE"));
+  assert.equal(w.history.conversation(id, NOW)?.messages.length, 0, "a refused claim stores no turn");
+  assert.equal(accept([b.id, a.id], { messageId }).state, "accepted");
+  assert.deepEqual(w.history.turnAttachments(messageId).map(file => [file.name, file.ordinal, new TextDecoder().decode(file.bytes)]), [["b.txt", 1, "b.txt"], ["a.txt", 2, "a.txt"]]);
+  assert.deepEqual(w.history.conversation(id, NOW)?.messages[0]?.attachments, [{ id: b.id, name: "b.txt" }, { id: a.id, name: "a.txt" }]);
+  assert.equal(w.history.attachment(id, a.id, NOW)?.name, "a.txt");
+  assert.equal(w.history.attachment(other, a.id, NOW), undefined, "another chat never reads it");
+  assert.throws(() => accept([a.id], { messageId }), refusedWith("ASSISTANT_CONVERSATION_STALE"), "a repeat with changed attachments refuses");
+  const late = stage(id, "late.txt");
+  assert.throws(() => accept([late.id], { now: "2026-11-06T12:16:00.000Z" }), refusedWith("ASSISTANT_CONVERSATION_BUSY"));
+  w.history.settle(id, messageId, { delivery: "refused", code: "ASSISTANT_UNAVAILABLE" }, LATER);
+  assert.throws(() => accept([late.id], { now: "2026-11-06T12:16:00.000Z" }), refusedWith("ASSISTANT_ATTACHMENT_UNAVAILABLE"), "a stage expires after 15 minutes");
 });

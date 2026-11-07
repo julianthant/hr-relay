@@ -36,6 +36,8 @@ import { createTimelineEmitter } from "../../../../../src/backend/storage/events
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
+import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { unexpectedWorkbookSync } from "../../../../support/helpers/backend/workbook-sync.js";
 
 type Door = { history(operation: AssistantHistoryOperation): Promise<unknown>; respond(request: AssistantRequest): Promise<unknown> };
 const clientDoor = (client: ReturnType<typeof createDashboardClient>): Door => ({
@@ -724,5 +726,62 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
       assert.equal(database.authority.startPlans.get(startPlanId)?.consumedBy, undefined);
 
     } finally { cleanupSubscription(); }
+  });
+});
+
+it('refuses a PDF start while Emergency Contact is not served and confirms an attached spreadsheet as a library import', async () => {
+  await withServedAssistant(async fixture => {
+    const { context, transport, origin, clock, post } = fixture, client = createDashboardClient({ baseUrl: origin }), database = context.database;
+    assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+      family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } })).state, "applied");
+    publicCapabilityResponses(transport);
+    assert.equal((await send(clientDoor(client), { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+    const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
+    let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
+    transport.setResponse(init => {
+      if (typeof init.body !== 'string') throw Error('synthetic request body required');
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), last = request.input.at(-1);
+      // A tool refusal comes back as the answer text, so a failed card names its code.
+      if (last !== undefined && 'type' in last && last.type === 'function_call_output') return new Response(completedResponseStream([{ type: 'message', role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text: last.output }] }], request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
+      const [name, args] = next(init.body);
+      return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name, call_id: `call_${randomUUID()}`, arguments: JSON.stringify(args), status: 'completed' }],
+        request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const respond = async (message: string, file: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>, script: (token: string) => readonly [string, unknown]) => {
+      const conversationId = randomUUID();
+      assert.equal(AssistantHistoryResultSchema.parse(await clientDoor(client).history({ operation: 'create', conversationId, title: 'Chat' })).state, 'saved');
+      if (client.assistantStageAttachment === undefined || client.assistantConversation === undefined) throw new Error("assistant attachment owners required");
+      const staged = await client.assistantStageAttachment(conversationId, file);
+      assert.equal(staged.state, 'staged'); if (staged.state !== 'staged') throw new Error('staged attachment required');
+      next = outbound => { const token = /\[\[A1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(token); return script(token); };
+      const view = await client.assistantConversation(conversationId);
+      return AssistantRespondEnvelopeSchema.parse(await client.assistantRespond({ conversationId, expectedRevision: view.revision, messageId: randomUUID(), message, attachments: [staged.attachment.id] }));
+    };
+    const turn = async (...args: Parameters<typeof respond>) => {
+      const envelope = await respond(...args);
+      assert.ok(envelope.kind === 'result' && envelope.result.state === 'action-proposal', JSON.stringify(envelope)); if (envelope.kind !== 'result' || envelope.result.state !== 'action-proposal') throw new Error('card required');
+      return envelope.result.proposal;
+    };
+    const decide = (proposal: Parameters<typeof assistantProposalDigest>[0], decision: 'confirm' | 'cancel') => Promise.resolve(assistantProposalDigest(proposal)).then(digest => {
+      if (client.assistantDecide === undefined) throw new Error('assistant decide owner required');
+      return client.assistantDecide(AssistantActionDecisionSchema.parse({ chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision, decision,
+        ...(decision === 'confirm' ? { reviewedDigest: digest } : {}) }));
+    });
+
+    assert.equal(configuredSources['emergency-contact'], 'mock');
+    const pdf = await respond('Run this PDF for Emergency Contact', { name: 'contact.pdf', mediaType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% synthetic\n') },
+      file => ['propose_workflow_start', { workflow: 'emergency-contact', entries: [file] }]);
+    assert.equal(pdf.kind === 'result' ? pdf.result.state === 'refused' && pdf.result.code : pdf.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');
+    assert.equal(database.authority.runs.listByWorkflow('emergency-contact').length, 0);
+
+    const sheets = () => library.catalog().filter(entry => entry.name === 'Q3 roster').length;
+    const imported = await turn('Import this as Q3 roster', { name: 'roster.csv', mediaType: 'text/csv', bytes: new TextEncoder().encode('Name,Dept\nAda,HR\n') },
+      file => ['propose_spreadsheet_change', { change: { action: 'import', file, name: 'Q3 roster' } }]);
+    assert.ok(imported.effect === 'spreadsheet' && imported.action === 'import');
+    assert.equal(sheets(), 0, 'nothing is imported before Confirm');
+    assert.equal((await decide(imported, 'confirm')).state, 'applied');
+    assert.equal(sheets(), 1);
   });
 });

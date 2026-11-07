@@ -257,7 +257,7 @@ export class OfflineAuthorityRestoreService {
         try {
           const manifest = parseBackupManifestFile(path);
           if (manifest.installationId !== admission.profileBinding.installationId || manifest.profileId !== admission.profileBinding.profileId
-            || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(manifest.schemaVersion) || Date.parse(manifest.createdAt) > this.#clock.nowMs()) {
+            || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].includes(manifest.schemaVersion) || Date.parse(manifest.createdAt) > this.#clock.nowMs()) {
             rejected.push(new Error("automatic-repair-backup-identity-version-or-time-invalid")); continue;
           }
           const verified = await verifyBackupManifestAtPath(admission, path);
@@ -333,7 +333,7 @@ export class OfflineAuthorityRestoreService {
     }
 
     const verified = await verifyBackupManifestAtPath(admission,request.manifestPath);
-    if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(verified.manifest.schemaVersion)) throw new Error("automatic-restore-backup-schema-unsupported");
+    if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].includes(verified.manifest.schemaVersion)) throw new Error("automatic-restore-backup-schema-unsupported");
     if (verified.manifest.installationId !== profile.binding.installationId || verified.manifest.profileId !== profile.binding.profileId) throw new Error("profile-restore-backup-binding-mismatch");
     validateSamePersonRestoreCandidate({ admission: admission,
       activeAuthorityPath: this.#authorityPath, verifiedBackup: verified });

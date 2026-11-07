@@ -5,6 +5,9 @@ import { ASSISTANT_FAILURES, AssistantActionProposalSchema, ASSISTANT_START_ROWS
 import type { RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
 import { NotificationCollectionOperationSchema, type NotificationCollectionOperation } from "../../models/notifications/notifications.js";
 import { PersonLookupCanonicalInput } from "../../models/workflows/person-lookup/input.js";
+import { EmergencyContactInputSchema } from "../../models/workflows/emergency-contact/input.js";
+import type { OcrFormType } from "../../models/ocr/form-registry.js";
+import type { OcrSourceService } from "../runs/commands/ocr-source-service.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingress.js";
 import { CommandRequestSchema, StartCommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
@@ -21,8 +24,9 @@ import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js"
 import type { createAssistantAuthorization } from "./authorization.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "./plugins/plugin.js";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
+import { createSpreadsheetProposals, type AssistantSpreadsheetProposalDeps } from "./spreadsheet-proposals.js";
 
-export interface AssistantProposalDeps {
+export interface AssistantProposalDeps extends Pick<AssistantSpreadsheetProposalDeps, "kernel" | "workbooks" | "attachment"> {
   readonly database: AuthorityDatabase;
   readonly authorization: ReturnType<typeof createAssistantAuthorization>;
   readonly plans: StartPlanService;
@@ -30,6 +34,8 @@ export interface AssistantProposalDeps {
   readonly runs: Pick<RunRecordService, "read">;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   readonly rerunValues: (request: unknown) => RerunValuesResponse;
+  /** Registers an attached PDF as an OCR source (D6); a local write, like preparing a plan. */
+  ocrSources(): Pick<OcrSourceService, "upload">;
   served(workflowId: string): boolean;
   readonly actorId: string;
   readonly clock: Clock;
@@ -57,10 +63,18 @@ const planImmutables = (plan: StoredPlan) => canonicalJsonStringify(Object.fromE
 const digestOf = (proposal: AssistantActionProposal) => createHash("sha256").update(canonicalJsonStringify(proposal)).digest("hex");
 function refuse(): never { throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED"); }
 
-/** What one planned row shows: the typed identity of its canonical input, never model text. */
-export function plannedRowDisplay(workflowId: string, input: unknown): AssistantProposalRow["display"] {
+/** Workflows whose one input is an OCR document of a fixed form; an attached PDF is their start entry (D6). */
+const PDF_START_FORMS: Readonly<Partial<Record<string, OcrFormType>>> = { "emergency-contact": "emergency-contact" };
+
+/** What one planned row shows: the typed identity of its canonical input, never model text; an OCR file row names its registered source. */
+export function plannedRowDisplay(workflowId: string, input: unknown, sourceName: (artifactId: string) => string | undefined = () => undefined): AssistantProposalRow["display"] {
   const bound = SchemaBoundCanonicalValueSchema.safeParse(input);
   if (!bound.success) return { kind: "request" };
+  const formType = PDF_START_FORMS[workflowId];
+  if (formType !== undefined) {
+    const parsed = EmergencyContactInputSchema.safeParse(bound.data.value), fileName = parsed.success ? sourceName(parsed.data.document.id) : undefined;
+    return fileName === undefined ? { kind: "request" } : { kind: "file", fileName, formType };
+  }
   if (workflowId === "person-lookup") {
     const parsed = PersonLookupCanonicalInput.safeParse(bound.data.value);
     if (!parsed.success) return { kind: "request" };
@@ -74,7 +88,7 @@ export function plannedRowDisplay(workflowId: string, input: unknown): Assistant
 const countLabel = (rows: readonly AssistantProposalRow[]) => {
   const kind = rows[0]?.display.kind, n = rows.length;
   if (rows.some(row => row.display.kind !== kind)) return n === 1 ? "1 request" : `${String(n)} requests`;
-  const noun = kind === "person" ? ["person", "people"] : kind === "document" ? ["document", "documents"] : ["request", "requests"];
+  const noun = kind === "person" ? ["person", "people"] : kind === "document" ? ["document", "documents"] : kind === "file" ? ["file", "files"] : ["request", "requests"];
   return n === 1 ? `1 ${noun[0]}` : `${String(n)} ${noun[1]}`;
 };
 const NOTIFICATION_ACTIONS = { read: "notification-read", unread: "notification-unread", snooze: "notification-snooze", unsnooze: "notification-unsnooze" } as const;
@@ -83,6 +97,7 @@ const ChangeOutput = z.strictObject({ state: z.literal("applied"), count: z.numb
 /** The proposal tools and the one Confirm owner; nothing here dispatches before the operator confirms an issued card. */
 export function createAssistantProposals(deps: AssistantProposalDeps) {
   const pending = new Map<string, Pending>();
+  const spreadsheets = createSpreadsheetProposals(deps);
   const prune = () => { for (const [id, entry] of pending) if (Date.parse(entry.expiresAt) <= deps.clock.nowMs()) pending.delete(id); };
   const settings = () => deps.database.withAuthorityReadSnapshot(() => selectActiveRunSettings(deps.database.authority));
 
@@ -127,6 +142,9 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     const { descriptor, dryRun } = startable(input.workflowId), active = settings();
     const request = { workflowId: descriptor.id, submissions: [...input.submissions], dryRun, browserMode: active.config.browser.headless ? "headless" as const : "headed" as const,
       captureBrowserScreenshots: true, ...(input.rerunSource === undefined ? {} : { rerunSource: input.rerunSource }),
+      // Required workbooks (the OCR roster) use each type's default workbook, as the Run dialog does without a pick.
+      ...(descriptor.requiredWorkbookTypeIds.length === 0 ? {} : { workbookReferences: input.submissions.flatMap((_submission, index) =>
+        descriptor.requiredWorkbookTypeIds.map(typeId => ({ entry: index + 1, typeId }))) }),
       ...(input.selectedStepKeys === undefined ? {} : { selectedStepKeys: [...input.selectedStepKeys] }) };
     await deps.plans.prepare?.(request, context.signal);
     context.assertCurrent(); input.assertSource();
@@ -142,7 +160,8 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
       if (current.consumedBy === undefined ? consumed || current.version !== plan.version
         : current.consumedBy.commandId !== command.commandId || current.version !== plan.version + 1) refuse();
     };
-    const rows = plan.planned.map(run => ({ title: run.title, ...(run.subtitle === undefined ? {} : { subtitle: run.subtitle }), display: plannedRowDisplay(plan.workflowId, run.input) }));
+    const sourceName = (artifactId: string) => deps.database.authority.ocrReviews.source(artifactId)?.fileName;
+    const rows = plan.planned.map(run => ({ title: run.title, ...(run.subtitle === undefined ? {} : { subtitle: run.subtitle }), display: plannedRowDisplay(plan.workflowId, run.input, sourceName) }));
     return issue(command, context, identity => ({ ...identity, label: `${input.source === "rerun" ? "Rerun" : "Start"} ${descriptor.label}`, targetLabel: countLabel(rows),
       effect: "workflow-start", source: input.source, workflowId: descriptor.id, dryRun, startPlan: {
         startPlanId: planned.startPlanId, workflowId: planned.workflowId, expectedVersion: planned.expectedVersion, expiresAt: planned.expiresAt, dryRun: planned.dryRun,
@@ -158,16 +177,36 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
   }
 
   const startParameters = z.strictObject({ workflow: z.string().min(1).max(80), entries: z.array(z.string().min(1).max(400)).min(1).max(ASSISTANT_START_ROWS_MAX) });
+  /** An attached PDF of this chat, registered as an OCR source; the entry becomes that document's input. */
+  async function pdfEntry(entry: string, context: AssistantToolContext) {
+    const record = deps.attachment(context.conversationId, context.references.resolve(entry, ["A"]).target);
+    if (record === undefined) throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNAVAILABLE");
+    if (record.mediaType !== "application/pdf") throw new AssistantToolRefusal("ASSISTANT_ATTACHMENT_UNSUPPORTED");
+    context.assertCurrent();
+    const source = await deps.ocrSources().upload({ actorId: "local-operator", fileName: record.name, mediaType: record.mediaType, bytes: record.bytes });
+    context.assertCurrent();
+    return JsonValueSchema.parse({ document: source.artifact, readingId: randomUUID(), roster: null, reading: { kind: "subscription" } });
+  }
   const rerunParameters = z.strictObject({ run: referenceSchema("R") });
   const runActionParameters = z.strictObject({ run: referenceSchema("R"), action: z.enum(["pause", "resume", "cancel"]) });
   const notificationParameters = z.strictObject({ action: z.enum(["read", "unread", "snooze", "unsnooze"]), target: z.union([z.literal("all"), referenceSchema("N")]) });
 
   const plugin: AssistantPlugin = { domain: "proposals", tools: [
     { kind: "proposal", name: "propose_workflow_start",
-      description: "Prepare a card to start one served workflow for 1 to 20 entries; the operator confirms it. Each entry is one line of that workflow's input format (see describe_workflow), or exactly a run reference to reuse that run's input. Use references for people and IDs exactly as given. List every entry the operator asked for; the card shows every row.",
+      description: "Prepare a card to start one served workflow for 1 to 20 entries; the operator confirms it. Each entry is one line of that workflow's input format (see describe_workflow), or exactly a run reference to reuse that run's input. Use references for people and IDs exactly as given. List every entry the operator asked for; the card shows every row. "
+        + "For emergency-contact each entry is exactly an attached PDF reference; the card reads it through OCR.",
       parameters: startParameters,
       async propose(value, context) {
         const { workflow, entries } = startParameters.parse(value), { descriptor } = startable(workflow);
+        if (PDF_START_FORMS[workflow] !== undefined) {
+          const submissions: JsonValue[] = [];
+          for (const entry of entries) submissions.push(await pdfEntry(entry, context));
+          const documents = submissions.map(submission => canonicalJsonStringify(z.object({ document: JsonValueSchema }).parse(submission).document));
+          if (new Set(documents).size !== documents.length) refuse();
+          return planStart(context, { workflowId: workflow, submissions, source: "entries", assertSource() {},
+            accepts: planned => planned.length === submissions.length
+              && planned.every((run, index) => canonicalJsonStringify(run.rawInput) === canonicalJsonStringify(submissions[index])) });
+        }
         const parser = descriptor.surfaces.inputRun?.parser;
         const runs: { runId: string; version: number }[] = [];
         const submissions = entries.map(entry => {
@@ -253,6 +292,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         if (result?.state !== "applied") refuse();
         return { state: "applied", count };
       } },
+    spreadsheets.tool,
   ] };
 
   return Object.freeze({
@@ -260,6 +300,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     /** Confirm or Cancel one issued card: identity, revision, expiry and the reviewed digest first; one claim; UNKNOWN is never retried. */
     async decideAction(decision: AssistantActionDecision, signal: AbortSignal): Promise<AssistantActionResult> {
       signal.throwIfAborted(); deps.assertCurrent();
+      if (spreadsheets.has(decision.actionId)) return spreadsheets.decide(decision, signal);
       const issued = pending.get(decision.actionId);
       if (issued === undefined || issued.chat.chatId !== decision.chatId || issued.revision !== decision.revision
         || Date.parse(issued.expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");

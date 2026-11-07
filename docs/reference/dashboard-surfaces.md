@@ -449,8 +449,12 @@ still requires the real signed-in account with available plan use and the existi
 permission and currentness checks. After explicit verification settles, the current binding refreshes
 the served account once. Superseded requests cannot publish into another conversation.
 
-The panel has no Files view. Attached and generated workbooks register through the version-bound
-Spreadsheets library; sent attachments show as name-only pills on the operator message. The model,
+The panel has no Files view. Attached spreadsheets (`.xlsx`, `.csv`) never reach the model as content;
+the model sees only worksheet positions and counts, and they enter the Spreadsheets library through the
+Spreadsheets page or a confirmed assistant card (import, new version, type, SharePoint link or download,
+rename, named versions). An attached PDF can start a served workflow whose input is one OCR document
+(Emergency Contact), through a confirmed card only. Sent attachments show as name-only pills on the
+operator message. The model,
 effort, approval and voice controls remain unavailable. The served model and effort labels come from
 the selected person’s preference; setup changes use the existing composer command. Test assistant
 in Settings › Preflight explicitly runs the same public capability verification; its result is bound to

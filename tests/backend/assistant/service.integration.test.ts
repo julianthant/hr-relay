@@ -388,3 +388,93 @@ it("sends nothing and stores nothing new once the chat expires while the credent
     } finally { await w.f.cleanup(); }
   }
 });
+
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array<number>(200_000).fill(7)]);
+const PDF = new TextEncoder().encode("%PDF-1.7\nsynthetic\n%%EOF");
+const XLSX = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]);
+type World = Awaited<ReturnType<typeof world>>;
+const stage = (w: World, conversationId: string, name: string, contentType: string, bytes: Uint8Array) =>
+  w.service.stage({ conversationId, contentType, name, read: async () => bytes }, new AbortController().signal);
+const stagedId = async (...args: Parameters<typeof stage>) => {
+  const result = await stage(...args); assert.equal(result.state, "staged", JSON.stringify(result));
+  return result.state === "staged" ? result.attachment.id : "";
+};
+const userParts = (body: z.infer<typeof AssistantInferenceRequestSchema>) => body.input.flatMap(item => "type" in item || item.role !== "user" || typeof item.content === "string" ? [] : [item.content]);
+
+it("sends staged attachments once as content parts with references, keeps names local and replays them on a follow-up", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const ids = [await stagedId(w, conversationId, "Scan CANARY.png", "image/png", PNG), await stagedId(w, conversationId, "Form CANARY.pdf", "application/pdf", PDF),
+      await stagedId(w, conversationId, "notes CANARY.txt", "text/plain", new TextEncoder().encode("Line one\nLine two")),
+      await stagedId(w, conversationId, "Roster CANARY.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", XLSX)];
+    w.script.push(body => assistantMessageStream(`Read ${/\[\[A2\.g\d+\]\]/u.exec(JSON.stringify(body.input))?.[0] ?? "none"}.`));
+    const first = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "What is in these?", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(first.kind === "result" && first.result, { state: "answered", text: "Read Form CANARY.pdf." });
+    const [body] = w.bodies; assert.ok(body);
+    assert.equal(JSON.stringify(body).includes("CANARY"), false);
+    const [parts] = userParts(body); assert.ok(parts);
+    assert.deepEqual(parts.map(part => part.type), ["input_text", "input_text", "input_image", "input_text", "input_file", "input_text", "input_text", "input_text"]);
+    assert.deepEqual(parts[2], { type: "input_image", image_url: `data:image/png;base64,${Buffer.from(PNG).toString("base64")}`, detail: "high" });
+    assert.deepEqual(parts[4], { type: "input_file", filename: "attachment-2.pdf", file_data: `data:application/pdf;base64,${Buffer.from(PDF).toString("base64")}` });
+    assert.deepEqual(parts[6], { type: "input_text", text: "Line one\nLine two" });
+    assert.match(JSON.stringify(parts[7]), /Attachment \[\[A4\.g\d+\]\]: spreadsheet/u);
+    assert.equal(JSON.stringify(body).includes(Buffer.from(XLSX).toString("base64")), false);
+    assert.deepEqual(w.service.conversation(conversationId)?.messages[0]?.attachments.map(file => file.name),
+      ["Scan CANARY.png", "Form CANARY.pdf", "notes CANARY.txt", "Roster CANARY.xlsx"]);
+
+    w.script.push(assistantMessageStream("Still here."));
+    assert.deepEqual(await w.ask("And now?", undefined, conversationId), { state: "answered", text: "Still here." });
+    const replayed = userParts(w.bodies[1] ?? body);
+    assert.equal(replayed.length, 1); assert.deepEqual(replayed[0]?.[2], parts[2]);
+    assert.equal(w.posts(), 2);
+
+    const consumed = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Again", attachments: [ids[0] ?? ""] },
+      new AbortController().signal);
+    assert.deepEqual(consumed.kind === "result" && consumed.result.state === "refused" && consumed.result.code, "ASSISTANT_ATTACHMENT_UNAVAILABLE");
+    assert.equal(w.posts(), 2);
+  } finally { await w.f.cleanup(); }
+});
+
+it("refuses bad uploads with fixed codes before storing, one upload at a time", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const cases: [string, string, Uint8Array, string][] = [
+      ["a.gif", "image/gif", PNG, "ASSISTANT_ATTACHMENT_UNSUPPORTED"],
+      ["a.jpg", "image/png", PNG, "ASSISTANT_ATTACHMENT_UNSUPPORTED"],
+      ["a.png", "image/png", PDF, "ASSISTANT_ATTACHMENT_INVALID"],
+      ["a.txt", "text/plain", new Uint8Array(), "ASSISTANT_ATTACHMENT_INVALID"],
+      ["a.txt", "text/plain", new Uint8Array([0xff, 0xfe]), "ASSISTANT_ATTACHMENT_INVALID"],
+      ["a.txt", "text/plain", new TextEncoder().encode("nul\u0000"), "ASSISTANT_ATTACHMENT_INVALID"],
+      ["a/b.txt", "text/plain", new TextEncoder().encode("ok"), "ASSISTANT_ATTACHMENT_INVALID"],
+      ["a.txt", "text/plain", new Uint8Array(32 * 1024 + 1).fill(65), "ASSISTANT_ATTACHMENT_TOO_LARGE"],
+      ["a.csv", "text/csv", new TextEncoder().encode("a,b"), "ok"],
+    ];
+    for (const [name, type, bytes, code] of cases) {
+      const result = await stage(w, conversationId, name, type, bytes);
+      assert.equal(result.state === "refused" ? result.code : "ok", code, `${name} ${type}`);
+    }
+    assert.deepEqual(await stage(w, randomUUID(), "a.txt", "text/plain", new TextEncoder().encode("ok")), { state: "refused", code: "ASSISTANT_CONVERSATION_STALE" });
+    const gate = Promise.withResolvers<Uint8Array>();
+    const held = w.service.stage({ conversationId, contentType: "text/plain", name: "a.txt", read: () => gate.promise }, new AbortController().signal);
+    assert.deepEqual(await stage(w, conversationId, "b.txt", "text/plain", new TextEncoder().encode("ok")), { state: "refused", code: "ASSISTANT_ATTACHMENT_BUSY" });
+    gate.resolve(new TextEncoder().encode("ok"));
+    assert.equal((await held).state, "staged");
+    assert.equal(w.posts(), 0);
+  } finally { await w.f.cleanup(); }
+});
+
+it("refuses a whole send whose attachment text exceeds the context bound, without a provider call", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const text = new Uint8Array(30 * 1024).fill(65);
+    const ids = [await stagedId(w, conversationId, "a.txt", "text/plain", text), await stagedId(w, conversationId, "b.md", "text/markdown", text)];
+    const result = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(result.kind === "result" && result.result.state === "refused" && result.result.code, "ASSISTANT_ATTACHMENT_TOO_LARGE");
+    assert.equal(w.posts(), 0);
+  } finally { await w.f.cleanup(); }
+});

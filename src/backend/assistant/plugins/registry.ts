@@ -2,8 +2,8 @@ import { z } from "zod";
 import type { CrossDateSearchPage, CrossDateSearchQueryInput } from "../../../models/dashboard/search.js";
 import type { RunDetailWire } from "../../../models/dashboard/run-detail.js";
 import type { NotificationWire } from "../../../models/dashboard/projection.js";
-import type { WorkbookLibraryEntrySchema } from "../../../models/dashboard/workbook-library.js";
-import { AssistantFunctionNamespaceSchema, type AssistantFunctionNamespace } from "../../../models/dashboard/assistant.js";
+import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
+import { AssistantFunctionNamespaceSchema, type AssistantAttachmentRecord, type AssistantFunctionNamespace } from "../../../models/dashboard/assistant.js";
 import type { AssistantPlugin, AssistantTool } from "./plugin.js";
 import type { AssistantWorkflowFacts } from "./workflows/facts.js";
 import { workflowsPlugin } from "./workflows/index.js";
@@ -18,7 +18,10 @@ export interface AssistantPluginDeps {
   search(query: CrossDateSearchQueryInput): CrossDateSearchPage;
   runDetail(runId: string): RunDetailWire;
   notifications(actorId: string): readonly NotificationWire[];
-  workbookCatalog(): readonly z.infer<typeof WorkbookLibraryEntrySchema>[];
+  /** The Spreadsheets library owner; every read and change goes through it. */
+  workbooks(): Pick<WorkbookLibraryService, "catalog" | "read" | "types">;
+  /** An accepted attachment of the chat, with authenticated bytes. */
+  attachment(conversationId: string, id: string): (AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>) | undefined;
   settings(): unknown;
   facts(): AssistantWorkflowFacts;
 }

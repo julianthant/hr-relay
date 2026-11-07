@@ -1,5 +1,5 @@
 /** Opaque `[[K<n>.g<generation>]]` references: the model sees tokens, never the personal values behind them. */
-export type AssistantReferenceKind = "P" | "E" | "R" | "N" | "S" | "A";
+export type AssistantReferenceKind = "P" | "E" | "R" | "N" | "S" | "A" | "T" | "V";
 export interface AssistantReferenceEntry {
   readonly kind: AssistantReferenceKind;
   readonly target: string;
@@ -14,9 +14,9 @@ export class AssistantReferenceError extends Error {
   constructor(readonly reason: "reference-unknown" | "reference-expired" | "reference-kind" | "reference-limit") { super(reason); this.name = "AssistantReferenceError"; }
 }
 
-const TOKEN = /\[\[([PERNSA])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]/gu;
+const TOKEN = /\[\[([PERNSATV])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]/gu;
 const TOKEN_SHAPED = /\[\[[A-Za-z][0-9]+\.g[0-9]+\]\]/gu;
-const EXACT_TOKEN = /^\[\[([PERNSA])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]$/u;
+const EXACT_TOKEN = /^\[\[([PERNSATV])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]$/u;
 const MAX_ENTRIES = 500;
 
 export function createAssistantReferenceTable(generation: number) {

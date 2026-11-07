@@ -1,4 +1,5 @@
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { OcrFormTypeSchema } from "../ocr/form-registry.js";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { z } from "zod";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
@@ -7,6 +8,7 @@ import { StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
+export const ASSISTANT_ATTACHMENTS_PER_SEND = 4;
 export const ASSISTANT_DEFAULT_EFFORT = "medium";
 export const ASSISTANT_VERIFY_COMMAND = '/verify-assistant';
 export const ASSISTANT_MODEL_COMMAND = '/assistant-model';
@@ -50,11 +52,41 @@ export const AssistantResponseItemSchema = z.discriminatedUnion("type", [
 export type AssistantResponseItem = z.infer<typeof AssistantResponseItemSchema>;
 export const AssistantFunctionOutputSchema = z.strictObject({ type: z.literal("function_call_output"), call_id: z.string().min(1).max(256), namespace: FunctionNameSchema, name: FunctionNameSchema,
   caller: z.strictObject({ type: z.literal("direct") }).nullish(), output: z.string().max(32_000) });
+const Base64 = z.string().min(4).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{4})$/u);
+const MediaUrl = (prefix: RegExp) => z.string().refine(url => { const match = prefix.exec(url); return match !== null && Base64.safeParse(url.slice(match[0].length)).success; });
+/** Attachment content parts: original images and PDFs as data URLs, text as text. */
+export const AssistantUserContentPartSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("input_text"), text: z.string().min(1).max(80_000) }),
+  z.strictObject({ type: z.literal("input_image"), image_url: MediaUrl(/^data:image\/(?:png|jpeg|webp);base64,/u), detail: z.literal("high") }),
+  z.strictObject({ type: z.literal("input_file"), filename: z.string().regex(/^attachment-[1-9][0-9]{0,3}\.pdf$/u), file_data: MediaUrl(/^data:application\/pdf;base64,/u) }),
+]);
+export type AssistantUserContentPart = z.infer<typeof AssistantUserContentPartSchema>;
 export const AssistantInputItemSchema = z.union([
   z.strictObject({ role: z.enum(["user", "developer"]), content: z.string().min(1).max(80_000) }),
+  z.strictObject({ role: z.literal("user"), content: z.array(AssistantUserContentPartSchema).min(2).max(1 + ASSISTANT_ATTACHMENTS_PER_SEND * 2) }),
   AssistantResponseItemSchema, AssistantFunctionOutputSchema,
 ]);
 export type AssistantInputItem = z.infer<typeof AssistantInputItemSchema>;
+/** Context bounds for attachments, replay included: decoded media, attachment text, and the complete outbound request. */
+export const ASSISTANT_CONTEXT_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
+export const ASSISTANT_CONTEXT_TEXT_MAX_BYTES = 48 * 1024;
+export const ASSISTANT_REQUEST_MAX_BYTES = 28 * 1024 * 1024;
+/** The content parts of a user turn that carries attachments; empty for every other item. */
+export const assistantUserParts = (item: AssistantInputItem): readonly AssistantUserContentPart[] =>
+  "type" in item || item.role !== "user" || typeof item.content === "string" ? [] : item.content;
+/** The Base64 payload of every image and PDF part: its characters are exempt from structure budgets, its decoded bytes count toward the media bound. */
+export function assistantInputMedia(input: readonly AssistantInputItem[]): Readonly<{ base64Chars: number; bytes: number }> {
+  let base64Chars = 0, bytes = 0;
+  for (const item of input) {
+    for (const part of assistantUserParts(item)) {
+      if (part.type === "input_text") continue;
+      const url = part.type === "input_image" ? part.image_url : part.file_data, payload = url.slice(url.indexOf(",") + 1);
+      base64Chars += payload.length;
+      bytes += payload.length / 4 * 3 - (payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0);
+    }
+  }
+  return { base64Chars, bytes };
+}
 export const AssistantInferenceResultSchema = z.strictObject({ responseId: z.string().min(1).max(256), model: AssistantModelSlugSchema,
   output: z.array(AssistantResponseItemSchema).min(1).max(32),
 });
@@ -108,6 +140,8 @@ export type AssistantInferenceRequest = z.infer<typeof AssistantInferenceRequest
 export const AssistantRequestSchema = z.strictObject({
   conversationId: z.uuid(), expectedRevision: z.number().int().positive(), messageId: z.uuid(),
   message: z.string().min(1).max(4000), subjectRef: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u).optional(),
+  /** Staged attachment IDs in send order; the server record supplies every name, type and size. */
+  attachments: z.array(z.uuid()).min(1).max(ASSISTANT_ATTACHMENTS_PER_SEND).refine(ids => new Set(ids).size === ids.length).optional(),
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 export const ASSISTANT_FAILURES = Object.freeze({
@@ -134,6 +168,13 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_HISTORY_FULL: ERROR_CATALOG.ASSISTANT_HISTORY_FULL.text,
   ASSISTANT_CONVERSATION_STALE: ERROR_CATALOG.ASSISTANT_CONVERSATION_STALE.text,
   ASSISTANT_CONVERSATION_BUSY: ERROR_CATALOG.ASSISTANT_CONVERSATION_BUSY.text,
+  ASSISTANT_ATTACHMENT_UNSUPPORTED: ERROR_CATALOG.ASSISTANT_ATTACHMENT_UNSUPPORTED.text,
+  ASSISTANT_ATTACHMENT_INVALID: ERROR_CATALOG.ASSISTANT_ATTACHMENT_INVALID.text,
+  ASSISTANT_ATTACHMENT_TOO_LARGE: ERROR_CATALOG.ASSISTANT_ATTACHMENT_TOO_LARGE.text,
+  ASSISTANT_ATTACHMENT_BUSY: ERROR_CATALOG.ASSISTANT_ATTACHMENT_BUSY.text,
+  ASSISTANT_ATTACHMENT_TIMEOUT: ERROR_CATALOG.ASSISTANT_ATTACHMENT_TIMEOUT.text,
+  ASSISTANT_ATTACHMENT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_ATTACHMENT_UNAVAILABLE.text,
+  ASSISTANT_ATTACHMENT_STORAGE_LIMIT: ERROR_CATALOG.ASSISTANT_ATTACHMENT_STORAGE_LIMIT.text,
   CHATGPT_RESOURCE_CLOSURE_UNPROVED: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text,
   ASSISTANT_INVALID: ERROR_CATALOG.ASSISTANT_INVALID.text,
   ASSISTANT_CONTEXT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_CONTEXT_UNAVAILABLE.text,
@@ -151,6 +192,7 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_LIMIT: ERROR_CATALOG.ASSISTANT_LIMIT.text,
   ASSISTANT_SUBJECT_REQUIRED: ERROR_CATALOG.ASSISTANT_SUBJECT_REQUIRED.text,
   ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
+  ASSISTANT_SPREADSHEET_REFUSED: ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text,
 });
 export type AssistantFailureCode = keyof typeof ASSISTANT_FAILURES;
 export const AssistantActionIdentitySchema = z.strictObject({ chatId: z.uuid(), actionId: z.uuid(), revision: z.number().int().positive() });
@@ -165,11 +207,14 @@ export const ASSISTANT_START_ROWS_MAX = 20;
 export const AssistantRowDisplaySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("person"), name: z.string().min(1).max(160).optional(), employeeId: z.string().regex(/^\d{8}$/u).optional() }),
   z.strictObject({ kind: z.literal("document"), documentNumber: z.string().min(1).max(40) }),
+  z.strictObject({ kind: z.literal("file"), fileName: z.string().min(1).max(255), formType: OcrFormTypeSchema }),
   z.strictObject({ kind: z.literal("request") }),
 ]);
 export const AssistantProposalRowSchema = z.strictObject({ title: z.string().min(1), subtitle: z.string().min(1).optional(), display: AssistantRowDisplaySchema })
   .refine(row => row.display.kind !== "person" || row.display.name !== undefined || row.display.employeeId !== undefined, "a person row shows a name or an EID");
 export type AssistantProposalRow = z.infer<typeof AssistantProposalRowSchema>;
+/** The Spreadsheets library changes the assistant may propose; each wraps one existing library owner call. */
+export const AssistantSpreadsheetActionSchema = z.enum(["import", "new-version", "set-type", "sync", "link", "unlink", "rename", "create-version", "use-version", "rename-version"]);
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
   z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("workflow-start"), source: z.enum(["entries", "run", "rerun"]),
     workflowId: z.string().min(1), dryRun: z.boolean(),
@@ -185,6 +230,8 @@ export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
     && Date.parse(value.expiresAt) <= Date.parse(value.startPlan.expiresAt), "assistant start must bind one accepted current plan"),
   z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("run-action"), action: z.enum(["pause", "resume", "cancel"]),
     workflowId: z.string().min(1), run: z.strictObject({ runId: z.uuid(), expectedVersion: z.number().int().positive() }), row: AssistantProposalRowSchema }),
+  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("spreadsheet"), action: AssistantSpreadsheetActionSchema,
+    facts: z.array(z.strictObject({ label: z.string().min(1).max(40), value: z.string().min(1).max(320) })).min(1).max(6) }),
 ]);
 export type AssistantActionProposal = z.infer<typeof AssistantActionProposalSchema>;
 /** Confirm carries the SHA-256 of the canonical JSON of the exact proposal the operator reviewed; Cancel is identity only. */
@@ -222,6 +269,39 @@ const FailureCode = z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureC
 export const AssistantImportNoticeSchema = z.enum(["unknown", "proposal-expired"]);
 export const AssistantDeliverySchema = z.enum(["sending", "answered", "refused", "delivery-unknown", "settled"]);
 export const AssistantMessageKindSchema = z.enum(["turn", "answer", "proposal", "decision", "inert"]);
+/** Gate 50 attachments: images and PDFs reach the model as originals, text as text; spreadsheets stay local. */
+export const ASSISTANT_ATTACHMENT_TYPES = Object.freeze({
+  "image/png": { extensions: ["png"], maxBytes: 5 * 1024 * 1024, content: "image" },
+  "image/jpeg": { extensions: ["jpg", "jpeg"], maxBytes: 5 * 1024 * 1024, content: "image" },
+  "image/webp": { extensions: ["webp"], maxBytes: 5 * 1024 * 1024, content: "image" },
+  "application/pdf": { extensions: ["pdf"], maxBytes: 10 * 1024 * 1024, content: "file" },
+  "text/plain": { extensions: ["txt"], maxBytes: 32 * 1024, content: "text" },
+  "text/markdown": { extensions: ["md"], maxBytes: 32 * 1024, content: "text" },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { extensions: ["xlsx"], maxBytes: 10 * 1024 * 1024, content: "none" },
+  "text/csv": { extensions: ["csv"], maxBytes: 2 * 1024 * 1024, content: "none" },
+} as const);
+export type AssistantAttachmentMediaType = keyof typeof ASSISTANT_ATTACHMENT_TYPES;
+export const AssistantAttachmentMediaTypeSchema = z.enum(Object.keys(ASSISTANT_ATTACHMENT_TYPES) as [AssistantAttachmentMediaType, ...AssistantAttachmentMediaType[]]);
+export const ASSISTANT_ATTACHMENT_STAGE_TTL_MS = 15 * 60 * 1000;
+export const ASSISTANT_ATTACHMENT_UPLOAD_MS = 30_000;
+export const ASSISTANT_ATTACHMENT_PROFILE_MAX_BYTES = 256 * 1024 * 1024;
+/** A display-only basename: no separators or controls, at most 160 UTF-16 units and 640 UTF-8 bytes. */
+export const AssistantAttachmentNameSchema = z.string().min(1).max(160).refine(name => !/[\\/\p{Cc}]/u.test(name) && name.isWellFormed()
+  && new TextEncoder().encode(name).byteLength <= 640 && name.trim() === name && name !== "." && name !== "..", "assistant-attachment-name-invalid");
+export const AssistantAttachmentRecordSchema = z.strictObject({
+  id: z.uuid(), conversationId: z.uuid(), messageId: z.uuid().nullable(), ordinal: z.number().int().min(1).max(ASSISTANT_ATTACHMENTS_PER_SEND).nullable(),
+  mediaType: AssistantAttachmentMediaTypeSchema, name: AssistantAttachmentNameSchema, byteLength: z.number().int().positive(), sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  createdAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
+}).refine(record => (record.messageId === null) === (record.ordinal === null), "assistant-attachment-membership-invalid")
+  .refine(record => record.byteLength <= ASSISTANT_ATTACHMENT_TYPES[record.mediaType].maxBytes, "assistant-attachment-too-large");
+export type AssistantAttachmentRecord = z.infer<typeof AssistantAttachmentRecordSchema>;
+/** The stage route's answer: the server-owned descriptor the composer shows and sends back by ID, or a fixed refusal. */
+export const AssistantStageResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("staged"), attachment: z.strictObject({ id: z.uuid(), mediaType: AssistantAttachmentMediaTypeSchema, name: AssistantAttachmentNameSchema,
+    byteLength: z.number().int().positive(), expiresAt: z.iso.datetime() }) }),
+  z.strictObject({ state: z.literal("refused"), code: FailureCode }),
+]);
+export type AssistantStageResult = z.infer<typeof AssistantStageResultSchema>;
 export const AssistantConversationRecordSchema = z.strictObject({
   id: z.uuid(), profileId: z.uuid(), revision: Revision, selectedAt: z.iso.datetime().nullable(), title: Title, draft: Draft, composer: Draft,
   importTotal: z.number().int().min(0).max(ASSISTANT_MESSAGES_MAX), importNotice: AssistantImportNoticeSchema.nullable(),
@@ -245,6 +325,7 @@ export type AssistantHistoryView = z.infer<typeof AssistantHistoryViewSchema>;
 export const AssistantStoredMessageSchema = z.strictObject({
   id: z.uuid(), ordinal: z.number().int().min(1), role: z.enum(["operator", "assistant"]), kind: AssistantMessageKindSchema,
   text: DisplayText, delivery: AssistantDeliverySchema, code: FailureCode.nullable(), actionId: z.uuid().nullable(),
+  attachments: z.array(z.strictObject({ id: z.uuid(), name: AssistantAttachmentNameSchema })).max(ASSISTANT_ATTACHMENTS_PER_SEND),
 });
 export type AssistantStoredMessage = z.infer<typeof AssistantStoredMessageSchema>;
 export const AssistantConversationViewSchema = z.strictObject({

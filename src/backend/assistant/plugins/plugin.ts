@@ -11,6 +11,8 @@ export interface AssistantToolContext {
   readonly actorId: string;
   /** The conversation whose accepted turn issued this call; a decision caption is bound to it. */
   readonly conversationId: string;
+  /** This turn's masked operator message; typed names and links must appear in it verbatim. */
+  readonly operatorText: string;
   assertCurrent(): void;
   /** The turn's captured authority (composition, model policy, account) without its request signal; a proposal keeps it for Confirm. */
   assertRetainedCurrent(): void;

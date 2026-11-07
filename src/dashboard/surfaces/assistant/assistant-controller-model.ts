@@ -41,7 +41,7 @@ export function presentResult(result: AssistantResult, requestId: number, prompt
       const start = p.effect === 'workflow-start' ? p : undefined;
       return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? ASSISTANT_UNKNOWN_NOTICE : 'Review this proposal. No action has been applied.' }, proposal: {
         id: p.actionId, revision: String(p.revision), prompt, issued: p, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
-        workflow: { id: p.workflowId, label: p.label, version: String(p.revision) },
+        workflow: { id: p.effect === 'spreadsheet' ? 'spreadsheets' : p.workflowId, label: p.label, version: String(p.revision) },
         mode: start === undefined ? 'local-change' : start.dryRun ? 'dry-run' : 'read-only',
         values: p.effect === 'workflow-start' ? [
           { label: 'Input', value: p.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
@@ -50,8 +50,9 @@ export function presentResult(result: AssistantResult, requestId: number, prompt
           { label: 'Browser', value: p.startPlan.browserMode === 'headed' ? 'Headed' : 'Headless' },
           { label: 'Captures', value: p.startPlan.captureBrowserScreenshots ? 'On' : 'Off' },
           { label: 'Expires', value: p.expiresAt },
-        ] : [{ label: 'Action', value: p.action === 'pause' ? 'Pause' : p.action === 'resume' ? 'Resume' : 'Cancel' }, { label: 'Expires', value: p.expiresAt }],
-        effects: [start !== undefined ? 'Starts the reviewed plan after confirmation. No HR transaction is submitted.' : 'Changes only this run in the local queue.'], stopBefore: []
+        ] : p.effect === 'spreadsheet' ? [...p.facts, { label: 'Expires', value: p.expiresAt }]
+        : [{ label: 'Action', value: p.action === 'pause' ? 'Pause' : p.action === 'resume' ? 'Resume' : 'Cancel' }, { label: 'Expires', value: p.expiresAt }],
+        effects: [start !== undefined ? 'Starts the reviewed plan after confirmation. No HR transaction is submitted.' : p.effect === 'spreadsheet' ? 'Changes only the Spreadsheets library.' : 'Changes only this run in the local queue.'], stopBefore: []
       } };
     }
   }
