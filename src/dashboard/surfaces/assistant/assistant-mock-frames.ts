@@ -1,27 +1,39 @@
-import { EC_PEOPLE, MOCK_SCENES, decisionMock, fill, page, read, sepFile, sepRequest, sepTimecard, sepTimeline, sepVerify, stage, type MockGroup, type MockSceneData, type MockStep } from "../run-detail/decision-mock/decision-mock-model.js";
+import type { DecisionAnswered, DecisionSuggestion } from "../run-detail/logs/decision-card.js";
+import { EC_PEOPLE, MOCK_SCENES, decisionMock, ecGroup, ecMemberSteps, fill, page, read, sepFile, sepRequest, sepTimecard, sepTimeline, sepVerify, stage, type MockGroup, type MockSceneData, type MockStep, type MockTable } from "../run-detail/decision-mock/decision-mock-model.js";
 
 /** Design mock for the assistant plan; read only from the URL (`assistantMock=<frame id>`). People and values are fictional. */
-export const OPERATOR = "Dana Whitfield";
+export const OPERATOR = "Alex Rivera";
 
-export type ChatValue = Readonly<{ label: string; before?: string; after: string; source?: string }>;
-export type PlanStep = Readonly<{ title: string; mode: string; subject?: string; values: readonly ChatValue[]; note?: string; state: "ready" | "running" | "done" | "stopped" | "not-run" | "blocked"; checked?: boolean }>;
+/** One value change: label, old -> new; `source` only when it differs from the table's shared source. */
+export type Change = Readonly<{ label: string; before?: string; after: string; source?: string }>;
+/** Sequential steps are numbered; their state shows once the plan has run. */
+export type ProposalStep = Readonly<{ title: string; detail: string; state?: "done" | "not-run" }>;
+export type Proposal = Readonly<{
+  title: string; state: "review" | "stopped" | "blocked" | "applied";
+  steps?: readonly ProposalStep[]; changes?: Readonly<{ title: string; source?: string; rows: readonly Change[]; pick?: boolean }>;
+  confirm?: string; reason?: string; evidence?: string;
+}>;
 export type ListRow = Readonly<{ lead: string; text: string; meta?: string; tone?: "danger" | "warning" | "positive" | "info"; icon?: "read" | "session" | "edit" | "confirm" | "refused"; link?: string }>;
 export type ChatItem =
   | Readonly<{ kind: "you"; text: string; file?: string }>
   | Readonly<{ kind: "reply"; text: string }>
   | Readonly<{ kind: "nav"; text: string }>
-  | Readonly<{ kind: "session"; label: string; state: "running" | "done" | "stopped"; meta?: string }>
-  | Readonly<{ kind: "applied"; title: string; values: readonly ChatValue[]; undone?: boolean }>
-  | Readonly<{ kind: "plan"; title: string; steps: readonly PlanStep[]; state: "review" | "running" | "stopped" | "blocked" | "started"; status?: string; evidence?: readonly ChatValue[]; primary?: string }>
-  | Readonly<{ kind: "list"; title: string; meta?: string; rows: readonly ListRow[]; footer?: string }>
-  | Readonly<{ kind: "table"; title: string; meta?: string; columns: readonly string[]; rows: readonly (readonly string[])[]; danger?: number; footer?: string }>
-  | Readonly<{ kind: "ask"; text: string; choices: readonly string[] }>
-  | Readonly<{ kind: "line"; text: string }>;
+  | Readonly<{ kind: "session"; label: string; state: "running" | "done"; meta?: string }>
+  | Readonly<{ kind: "proposal"; proposal: Proposal }>
+  | Readonly<{ kind: "started"; text: string }>
+  | Readonly<{ kind: "list"; title: string; meta?: string; rows: readonly ListRow[] }>
+  | Readonly<{ kind: "table"; table: MockTable }>
+  | Readonly<{ kind: "ask"; text: string; choices: readonly string[] }>;
 export type FrameToast = Readonly<{ tone: "info" | "success" | "warning" | "danger"; title: string; description?: string; action?: string; sticky?: boolean }>;
 export type AssistantFrame = Readonly<{
-  id: string; scenario: string; look: string; title: string; logs: MockSceneData;
+  id: string; scenario: string; look: string; changed: string; title: string; logs: MockSceneData;
   chat: readonly ChatItem[]; view?: "activity"; toasts?: readonly FrameToast[]; draft?: string; menu?: "effort";
 }>;
+
+const answeredCard = (scene: MockSceneData, answered: DecisionAnswered): MockSceneData["decision"] => scene.decision?.kind === "card" ? { ...scene.decision, answered } : scene.decision;
+const suggestedCard = (scene: MockSceneData, suggestion: DecisionSuggestion): MockSceneData["decision"] => scene.decision?.kind === "card" ? { ...scene.decision, suggestion } : scene.decision;
+const table = (title: string, mode: string, columns: readonly string[], rows: readonly (readonly string[])[], danger = false): MockTable =>
+  ({ title, label: title, mode, columns, rows: rows.map(cells => ({ id: cells[0], name: cells[0], cells, tone: danger ? "danger" as const : undefined })) });
 
 const sep = (id: string, name: string, subject: string, state: MockSceneData["state"], queueMessage: string, steps: readonly MockStep[], timeline: MockSceneData["timeline"], extra: Partial<MockSceneData> = {}): MockSceneData =>
   ({ id, name, workflow: "separations", subject, state, queueMessage, steps, timeline, ...extra });
@@ -53,84 +65,88 @@ const ecFailures: MockSceneData = { ...MOCK_SCENES.d9, id: "a-ec3", group: ecThr
 const renamedParent: MockSceneData = { ...MOCK_SCENES.d9p, id: "a-rename", subject: "April contacts scan", group: { ...MOCK_SCENES.d9p.group!, title: "April contacts scan" } };
 
 const verifyFailed = (blocks: MockStep["blocks"]): MockStep => ({ id: "verify", time: "09:33:50", title: "Verify termination", system: "UCPath", blocks: [page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), { label: "Status", value: "Couldn't read", kind: "read", unread: true }]), ...blocks] });
-const resolved = sep("a-resolved", "Evidence resolved", "Nakamura, Rei", "running", "Finalize document", [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), { ...verifyFailed([]), outcome: "Termination confirmed from Smart HR Transactions" },
+const resolved = sep("a-resolved", "Evidence resolved", "Nakamura, Rei", "running", "Finalize document", [sepRequest, sepVerify(false), sepTimecard, sepFile(false, []), verifyFailed([{ kind: "decision" }]),
   { id: "evidence", time: "09:47:12", title: "Check Smart HR Transactions", system: "UCPath", outcome: "T00042871 approved; the run continued", blocks: [
     { kind: "note", text: `Checked by the assistant for ${OPERATOR} · read only` },
     page("Smart HR Transactions", "Read", [read("Transaction", "T00042871"), read("Type", "Termination"), read("Effective date", "04/25/2031"), read("Status", "Approved")])] },
   { id: "finalize", time: "09:47:30", title: "Finalize Kuali document", system: "Kuali", current: true, blocks: [page("RRSS Separation Request", "Fill", [fill("Comments", "Termination filed on UCPath as T00042871")])] },
-], [...sepTimeline("completed").slice(0, 4), stage("finalize", "Finalize document", "active", { statusLabel: "Running" })], { waited: "6s" });
+], [...sepTimeline("completed").slice(0, 4), stage("finalize", "Finalize document", "active", { statusLabel: "Running" })], { waited: "6s", decision: answeredCard(MOCK_SCENES.d8, { choice: "Saved, T00042871 approved", time: "09:47:12", by: `assistant on behalf of ${OPERATOR}` }) });
 const sepDone = sep("a-sep-done", "Separation filed", "Nakamura, Rei", "done", "Saved as T00042871", [sepRequest, sepVerify(false), sepTimecard, sepFile(false, [])], sepTimeline("completed", undefined, "completed"));
-const d8 = MOCK_SCENES.d8, d9 = MOCK_SCENES.d9, d9p = MOCK_SCENES.d9p, d2 = MOCK_SCENES.d2;
+const d8 = MOCK_SCENES.d8, d9 = MOCK_SCENES.d9, d9p = MOCK_SCENES.d9p, d2 = MOCK_SCENES.d2, d9b = MOCK_SCENES.d9b;
+const ecSuggested: MockSceneData = { ...ecFailures, id: "a-ec3-suggest", decision: suggestedCard(ecFailures, { option: "(619) 555-0148", evidence: "Scan_0412.pdf, page 2" }) };
+const ecSilva: MockSceneData = { ...d9, id: "a-ec-silva", subject: "Silva, Ines", headerRetry: "Retry Silva, Ines", group: ecGroup({ member: "Silva, Ines" }, ["Silva, Ines"]),
+  steps: ecMemberSteps("Silva, Ines", "10027415", "555-01", ["Phone: 555-01", "Invalid phone number format"], "13:24") };
+const batchSuggested: MockSceneData = { ...d9b, id: "a-batch", decision: suggestedCard(d9b, { option: "Retry", evidence: "UCPath answered again at 13:30; nothing was saved for these 3" }) };
 
-const sepPlanValues: readonly ChatValue[] = [
-  { label: "HR status", before: "Active", after: "Terminated", source: "UCPath, read 15:10" },
-  { label: "Effective date", after: "04/30/2031", source: "Kuali request SIM-50112" },
-  { label: "Last day worked", after: "04/29/2031", source: "Kuali request SIM-50112" },
-  { label: "Reason", after: "Resignation", source: "Kuali request SIM-50112" },
+const sepPlan = (dry?: ProposalStep["state"], real?: ProposalStep["state"]): readonly ProposalStep[] => [
+  { title: "Dry run", detail: "fills, saves nothing", state: dry },
+  { title: "Real run", detail: "files in UCPath · after the dry run matches", state: real },
 ];
-const sepPlanSteps = (dry: PlanStep["state"], real: PlanStep["state"]): readonly PlanStep[] => [
-  { title: "Dry run", mode: "Separations · fills, saves nothing", subject: "Ortega, Lin  EID 10031877", values: sepPlanValues, state: dry, checked: true },
-  { title: "Real run", mode: "Separations · files in UCPath, saves Kuali", subject: "Ortega, Lin  EID 10031877", values: [], note: "Same values. Runs only if the dry run matches them.", state: real, checked: true },
-];
+const sepChanges = { title: "UCPath job", source: "From Kuali SIM-50112", rows: [
+  { label: "HR status", before: "Active", after: "Terminated", source: "UCPath" },
+  { label: "Effective date", after: "04/30/2031" },
+  { label: "Last day worked", after: "04/29/2031" },
+  { label: "Reason", after: "Resignation" },
+] };
 
 const frames: readonly AssistantFrame[] = [
-  { id: "01-chat-basics", scenario: "Chat basics", look: "Answer from dashboard data; \"open today's EC failures\" just navigates (one quiet line, no card); fixed composer.", title: "This week", logs: d9, chat: [
+  { id: "01-chat-basics", scenario: "Chat basics", look: "Answer from dashboard data; \"open today's EC failures\" navigates with one quiet line; one-line composer.", changed: "Docked panel; blue primary.", title: "This week", logs: d9, chat: [
     { kind: "you", text: "How many separations did we file this week?" },
-    { kind: "reply", text: "**7 separations** this week: 6 done, 1 waiting on you (Rei Nakamura, the read-back failed after T00042871 saved)." },
+    { kind: "reply", text: "**7**: 6 done, 1 waiting on you (Rei Nakamura)." },
     { kind: "you", text: "Open today's EC failures" },
     { kind: "nav", text: "Opened Emergency Contact · Failed · Today" },
-    { kind: "reply", text: "1 failed today: **Lin Ortega**. UCPath rejected the phone number; nothing was saved." },
   ] },
-  { id: "01b-model-effort", scenario: "Chat basics: pickers", look: "Model and effort pickers are editable; the effort menu lists Light, Medium, High, xHigh, Max.", title: "This week", logs: d9, draft: "Which of these can be retried today?", menu: "effort", chat: [
+  { id: "01b-model-effort", scenario: "Chat basics: pickers", look: "Model and effort pickers are editable (Light, Medium, High, xHigh, Max).", changed: "Docked panel.", title: "This week", logs: d9, draft: "Which of these can be retried?", menu: "effort", chat: [
     { kind: "you", text: "Open today's EC failures" },
     { kind: "nav", text: "Opened Emergency Contact · Failed · Today" },
-    { kind: "reply", text: "1 failed today: **Lin Ortega**. UCPath rejected the phone number; nothing was saved." },
   ] },
-  { id: "02-read-only-session", scenario: "Read-only session", look: "Person Lookup starts without asking; \"Checking UCPath…\" chip with Stop; the run is in Queue and Logs, marked as started by the assistant.", title: "Kofi Mensah status", logs: lookupRunning, chat: [
+  { id: "02-read-only-session", scenario: "Read-only session", look: "Person Lookup starts without asking; the session chip has a rounded Stop; the run is in Queue and Logs.", changed: "Chip spacing; Stop is a pill; no \"This is read only\" reply.", title: "Kofi Mensah", logs: lookupRunning, chat: [
     { kind: "you", text: "Is Kofi Mensah still active in UCPath?" },
-    { kind: "reply", text: "I'll check UCPath. This is read only." },
     { kind: "session", label: "Checking UCPath…", state: "running", meta: "Person Lookup · Mensah, Kofi" },
   ] },
-  { id: "03-apply-undo", scenario: "Apply + Undo", look: "A queue row rename and a library spreadsheet edit apply at once; each has an Undo line, and the latest shows an Undo toast.", title: "Tidy up", logs: renamedParent, toasts: [{ tone: "success", title: "Spreadsheet updated", description: "Separations tracker · row 65", action: "Undo" }], chat: [
+  { id: "03-apply-undo", scenario: "Apply + Undo", look: "A run rename and a spreadsheet edit apply at once, each with Undo; the latest shows an Undo toast left of the panel.", changed: "Edits use the Proposal card; toast moved left of the panel.", title: "Tidy up", logs: renamedParent, toasts: [{ tone: "success", title: "Spreadsheet updated", description: "Separations tracker · row 65", action: "Undo" }], chat: [
     { kind: "you", text: "Rename Scan_0412.pdf to April contacts scan" },
-    { kind: "applied", title: "Renamed run", values: [{ label: "Name", before: "Scan_0412.pdf", after: "April contacts scan" }] },
-    { kind: "you", text: "In the separations tracker, Rei's last day worked should be 04/24, not 04/23" },
-    { kind: "applied", title: "Updated Separations tracker", values: [{ label: "Fall 2031 · row 65", before: "04/23/2031", after: "04/24/2031", source: "Typed by you" }] },
+    { kind: "proposal", proposal: { title: "Renamed run", state: "applied", changes: { title: "Queue", rows: [{ label: "Name", before: "Scan_0412.pdf", after: "April contacts scan" }] } } },
+    { kind: "you", text: "Rei's last day worked in the tracker should be 04/24" },
+    { kind: "proposal", proposal: { title: "Updated Separations tracker", state: "applied", changes: { title: "Fall 2031 · row 65", source: "Typed by you", rows: [{ label: "Last day worked", before: "04/23/2031", after: "04/24/2031" }] } } },
   ] },
-  { id: "04-plan-card", scenario: "Plan card", look: "\"separate Lin Ortega\": dry run then real run; exact values with before -> after and sources; approve all or one step.", title: "Separate Lin Ortega", logs: lookupOrtega, chat: [
+  { id: "04-plan-card", scenario: "Plan card", look: "\"Separate Lin Ortega\": numbered dry run then real run, values once with one shared source, Approve / Cancel.", changed: "One Proposal card on DecisionCard; no checkboxes for dependent steps; no footer text.", title: "Separate Lin Ortega", logs: lookupOrtega, chat: [
     { kind: "you", text: "Separate Lin Ortega" },
     { kind: "session", label: "Checked UCPath", state: "done", meta: "Person Lookup · Ortega, Lin · 38s" },
-    { kind: "reply", text: "Lin Ortega (EID 10031877) is Active. The Kuali request SIM-50112 asks for a resignation effective 04/30/2031. Here's the plan:" },
-    { kind: "plan", title: "Separate Lin Ortega", steps: sepPlanSteps("ready", "ready"), state: "review", status: "Runs one step at a time and stops on anything unexpected." },
+    { kind: "proposal", proposal: { title: "Separate Lin Ortega · EID 10031877", state: "review", confirm: "Approve", steps: sepPlan(), changes: sepChanges } },
   ] },
-  { id: "05-plan-stopped", scenario: "Plan running, then stopped", look: "Step 1 done, step 2 not run; the stop reason names the unexpected value and its source.", title: "Separate Lin Ortega", logs: ortegaDryRun, chat: [
-    { kind: "plan", title: "Separate Lin Ortega", steps: sepPlanSteps("done", "not-run"), state: "stopped", status: "Stopped before step 2. Kronos shows a last punch on 04/27/2031; the plan says 04/29/2031. Nothing was filed." },
-    { kind: "reply", text: "I stopped before the real run. Should the last day worked be **04/27/2031** (Kronos) or **04/29/2031** (Kuali request)?" },
+  { id: "05-plan-stopped", scenario: "Plan stopped", look: "Step 1 done, step 2 not run; the reason, then Retry from this step / Cancel plan.", changed: "Stop reason + DecisionCard actions; no follow-up question.", title: "Separate Lin Ortega", logs: ortegaDryRun, chat: [
+    { kind: "proposal", proposal: { title: "Separate Lin Ortega · EID 10031877", state: "stopped", reason: "Kronos last punch 04/27/2031; the plan says 04/29/2031.", confirm: "Retry from this step", steps: sepPlan("done", "not-run") } },
   ] },
-  { id: "06-manual-value-fixes", scenario: "Manual-value fixes", look: "3 rejected phones in one card; every new value names its source (PDF page, spreadsheet cell, typed by you); pick all or single people.", title: "EC phone fixes", logs: ecFailures, chat: [
-    { kind: "you", text: "Fix the 3 phone numbers UCPath rejected and retry them" },
-    { kind: "reply", text: "I found new numbers for two people. Haddad, Rami's scan is unreadable, so I used the number you typed earlier." },
-    { kind: "plan", title: "Retry 3 emergency contacts", state: "review", primary: "Retry 3", status: "Nothing was saved for these people, so a retry files once.", steps: [
-      { title: "Ortega, Lin", mode: "EID 10031877", values: [{ label: "Phone", before: "(619) 555-014", after: "(619) 555-0148", source: "Scan_0412.pdf · page 2" }], state: "ready", checked: true },
-      { title: "Park, Joon", mode: "EID 10024056", values: [{ label: "Phone", before: "858-555-01", after: "(858) 555-0193", source: "Contacts.xlsx · Sheet1!D14" }], state: "ready", checked: true },
-      { title: "Haddad, Rami", mode: "EID 10029175", values: [{ label: "Phone", before: "760555", after: "(760) 555-0127", source: "Typed by you · 13:42" }], state: "ready", checked: true },
-    ] },
+  { id: "06-manual-value-fixes", scenario: "Manual-value fixes", look: "3 rejected phones in one card; a source per value because they differ; people are checkboxes. Logs: DecisionCard with Assistant suggests.", changed: "One table, inline sources, Retry / Cancel; Logs card shows the suggestion.", title: "EC phone fixes", logs: ecSuggested, chat: [
+    { kind: "you", text: "Fix the 3 phones UCPath rejected and retry them" },
+    { kind: "proposal", proposal: { title: "Retry 3 emergency contacts", state: "review", confirm: "Retry", changes: { title: "Phone", pick: true, rows: [
+      { label: "Ortega, Lin", before: "(619) 555-014", after: "(619) 555-0148", source: "page 2" },
+      { label: "Park, Joon", before: "858-555-01", after: "(858) 555-0193", source: "Sheet1!D14" },
+      { label: "Haddad, Rami", before: "760555", after: "(760) 555-0127", source: "typed by you" },
+    ] } } },
   ] },
-  { id: "07-sourceless-refused", scenario: "Sourceless value refused", look: "Relay refuses a value with no source: a toast, and one line saying what to provide.", title: "EC phone fixes", logs: ecFailures, toasts: [{ tone: "warning", title: "Value needs a source", description: "Type the number, or name its PDF page or cell." }], chat: [
+  { id: "06b-batch-retry", scenario: "Batch retry", look: "Same failure for 3 people: the Logs card suggests Retry with \"Use for all 3 similar\"; the chat proposal lists the people.", changed: "New frame.", title: "EC retries", logs: batchSuggested, chat: [
+    { kind: "you", text: "Retry the three that timed out" },
+    { kind: "proposal", proposal: { title: "Retry 3 emergency contacts", state: "review", confirm: "Retry", changes: { title: "Same values", pick: true, rows: [
+      { label: "Brooks, Dana", after: "(619) 555-0148" }, { label: "Silva, Ines", after: "(858) 555-0112" }, { label: "Tanaka, Yui", after: "(760) 555-0190" },
+    ] } } },
+  ] },
+  { id: "07-sourceless-refused", scenario: "Sourceless value refused", look: "No source, no value: a toast and one line saying what to provide.", changed: "Shorter reply; Logs shows Silva's own card.", title: "EC phone fixes", logs: ecSilva, toasts: [{ tone: "warning", title: "Value needs a source", description: "Type it, or name its page or cell." }], chat: [
     { kind: "you", text: "Just put any valid number in for Silva" },
-    { kind: "reply", text: "Relay won't file a phone number without a source. Type Ines Silva's number here, or tell me which PDF page or spreadsheet cell has it." },
+    { kind: "reply", text: "Type Ines Silva's number, or name the page or cell that has it." },
   ] },
-  { id: "08a-evidence-resolved", scenario: "Evidence-resolved decision", look: "Read-back failed -> the assistant checks Smart HR Transactions (chip) -> T00042871 found -> Relay resolves it; the evidence step sits in the log.", title: "Rei Nakamura", logs: resolved, chat: [
-    { kind: "you", text: "Can you sort out Rei Nakamura's read-back?" },
-    { kind: "session", label: "Checked Smart HR Transactions", state: "done", meta: "UCPath · read only · 11s" },
-    { kind: "reply", text: "T00042871 is in Smart HR Transactions: termination, effective 04/25/2031, **Approved**. Relay accepted that as the read-back and the run is finalizing the Kuali document." },
+  { id: "08a-evidence-resolved", scenario: "Evidence-resolved decision", look: "The assistant checks Smart HR Transactions; Relay resolves the decision; the answered line reads \"by assistant on behalf of Alex Rivera\".", changed: "Answered DecisionCard line in Logs.", title: "Rei Nakamura", logs: resolved, chat: [
+    { kind: "you", text: "Sort out Rei Nakamura's read-back" },
+    { kind: "session", label: "Checked Smart HR Transactions", state: "done", meta: "UCPath · 11s" },
+    { kind: "reply", text: "T00042871 is **Approved**. The run continued." },
   ] },
-  { id: "08b-evidence-ambiguous", scenario: "Evidence ambiguous", look: "Two terminations found, so the assistant asks one line and leaves the decision in Logs.", title: "Rei Nakamura", logs: d8, chat: [
-    { kind: "you", text: "Can you sort out Rei Nakamura's read-back?" },
-    { kind: "session", label: "Checked Smart HR Transactions", state: "done", meta: "UCPath · read only · 12s" },
-    { kind: "ask", text: "I found two terminations for 10431187. Which one is this run's?", choices: ["T00042871 · Pending", "T00042905 · Approved"] },
+  { id: "08b-evidence-ambiguous", scenario: "Evidence ambiguous", look: "Two terminations found: one line with two choices; the DecisionCard stays open in Logs.", changed: "Shorter question.", title: "Rei Nakamura", logs: d8, chat: [
+    { kind: "you", text: "Sort out Rei Nakamura's read-back" },
+    { kind: "session", label: "Checked Smart HR Transactions", state: "done", meta: "UCPath · 12s" },
+    { kind: "ask", text: "Two terminations for 10431187. Which is this run's?", choices: ["T00042871 · Pending", "T00042905 · Approved"] },
   ] },
-  { id: "09-waiting-on-me", scenario: "\"What's waiting on me?\"", look: "One list, oldest first, each row opens its run.", title: "Waiting on me", logs: d2, chat: [
+  { id: "09-waiting-on-me", scenario: "\"What's waiting on me?\"", look: "One list, oldest first, each row opens its run.", changed: "Logs page-card grammar.", title: "Waiting on me", logs: d2, chat: [
     { kind: "you", text: "What's waiting on me?" },
     { kind: "list", title: "Waiting on you", meta: "4", rows: [
       { lead: "Nakamura, Rei", text: "Separations · read-back failed", meta: "38 min", tone: "danger", link: "Open" },
@@ -139,90 +155,87 @@ const frames: readonly AssistantFrame[] = [
       { lead: "Ortega, Lin", text: "Onboarding · approve the hire", meta: "3 min", tone: "warning", link: "Open" },
     ] },
   ] },
-  { id: "10-duplicate-guard", scenario: "Duplicate guard", look: "A pending termination already exists, so the proposal is blocked with the evidence; Confirm is not offered.", title: "Rei Nakamura", logs: sepDone, chat: [
+  { id: "10-duplicate-guard", scenario: "Duplicate guard", look: "Blocked: the reason in red and one muted evidence line with its log link; no Approve.", changed: "No Evidence section title.", title: "Rei Nakamura", logs: sepDone, chat: [
     { kind: "you", text: "Separate Rei Nakamura" },
-    { kind: "plan", title: "Separate Rei Nakamura", state: "blocked", status: "Blocked: a termination for 10431187 is already pending.", steps: [{ title: "Real run", mode: "Separations", subject: "Nakamura, Rei  EID 10431187", values: [], state: "blocked" }],
-      evidence: [{ label: "Transaction", after: "T00042871", source: "Smart HR Transactions" }, { label: "Status", after: "Pending" }, { label: "Filed", after: "Today 09:33 by Relay" }] },
+    { kind: "proposal", proposal: { title: "Separate Rei Nakamura · EID 10431187", state: "blocked", reason: "A termination is already pending.", evidence: "T00042871 · Pending · filed today 09:33" } },
   ] },
-  { id: "11-activity", scenario: "Activity list", look: "Everything the assistant did today: reads, sessions, edits, confirms; each opens its log.", title: "Activity", logs: resolved, view: "activity", chat: [] },
-  { id: "12-person-timeline", scenario: "Person timeline", look: "One person across workflows, newest first, each row opens its run.", title: "Lin Ortega", logs: d9, chat: [
-    { kind: "you", text: "Show me everything we've done for Lin Ortega" },
-    { kind: "list", title: "Ortega, Lin  EID 10031877", meta: "5 runs", rows: [
+  { id: "11-activity", scenario: "Activity", look: "The history icon opens today's reads, sessions, edits, confirms and refusals, each with its log.", changed: "Opened from the history icon; no caption.", title: "Activity", logs: resolved, view: "activity", chat: [] },
+  { id: "12-person-timeline", scenario: "Person timeline", look: "One person across workflows, newest first.", changed: "Logs page-card grammar.", title: "Lin Ortega", logs: d9, chat: [
+    { kind: "you", text: "Everything we've done for Lin Ortega" },
+    { kind: "list", title: "Ortega, Lin · EID 10031877", meta: "5 runs", rows: [
       { lead: "Today 15:21", text: "Separations · dry run", meta: "Done", tone: "positive", link: "Log" },
-      { lead: "Today 13:20", text: "Emergency Contact · phone rejected", meta: "Failed", tone: "danger", link: "Log" },
+      { lead: "Today 13:20", text: "Emergency Contact", meta: "Failed", tone: "danger", link: "Log" },
       { lead: "04/12/2031", text: "Person Lookup · Active", meta: "Done", tone: "positive", link: "Log" },
       { lead: "08/02/2030", text: "Onboarding · hire filed", meta: "Done", tone: "positive", link: "Log" },
-      { lead: "07/28/2030", text: "I-9 Check · section 2", meta: "Done", tone: "positive", link: "Log" },
+      { lead: "07/28/2030", text: "I-9 Check", meta: "Done", tone: "positive", link: "Log" },
     ] },
   ] },
-  { id: "13-preflight", scenario: "Pre-flight before a batch", look: "Before proposing runs: missing EIDs, duplicates, already separated, out of scope; only the ready rows go forward.", title: "May separations", logs: sepDone, chat: [
+  { id: "13-preflight", scenario: "Pre-flight before a batch", look: "Missing EIDs, duplicates, already separated, out of scope; then a proposal for the ready rows.", changed: "Ready rows go straight into a Proposal card.", title: "May separations", logs: sepDone, chat: [
     { kind: "you", text: "Separate everyone on this list", file: "May separations.xlsx" },
-    { kind: "session", label: "Checked UCPath", state: "done", meta: "8 people · read only · 1m 12s" },
-    { kind: "list", title: "Before I plan 8 separations", meta: "4 ready", rows: [
-      { lead: "Row 6", text: "Kim, Ari · no EID, 2 people match", meta: "Missing EID", tone: "warning" },
-      { lead: "Row 7", text: "Same person as row 3 (Reyes, Marco)", meta: "Duplicate", tone: "warning" },
-      { lead: "Row 4", text: "Silva, Ines · terminated 03/30/2031", meta: "Already separated", tone: "info" },
-      { lead: "Row 8", text: "Brooks, Dana · academic appointment", meta: "Out of scope", tone: "info" },
-    ], footer: "Rows 1, 2, 3 and 5 are ready." },
-    { kind: "reply", text: "Should I plan dry runs for the 4 ready people? Give me Ari Kim's EID and I'll add row 6." },
+    { kind: "list", title: "8 rows checked", meta: "4 ready", rows: [
+      { lead: "Row 6", text: "Kim, Ari · 2 people match", meta: "Missing EID", tone: "warning" },
+      { lead: "Row 7", text: "Same as row 3", meta: "Duplicate", tone: "warning" },
+      { lead: "Row 4", text: "Silva, Ines · 03/30/2031", meta: "Already separated", tone: "info" },
+      { lead: "Row 8", text: "Brooks, Dana · academic", meta: "Out of scope", tone: "info" },
+    ] },
+    { kind: "proposal", proposal: { title: "Separate 4 people · dry run", state: "review", confirm: "Approve", changes: { title: "Ready rows", source: "May separations.xlsx", pick: true, rows: [
+      { label: "Reyes, Marco", after: "05/15/2031" }, { label: "Okafor, Chinedu", after: "05/16/2031" }, { label: "Tanaka, Yui", after: "05/20/2031" }, { label: "Mensah, Kofi", after: "05/31/2031" },
+    ] } } },
   ] },
-  { id: "14-watching", scenario: "Watching runs", look: "The assistant watches a batch; a sticky toast with Open appears when a decision needs you.", title: "Separations batch", logs: d8, toasts: [{ tone: "warning", title: "Nakamura, Rei needs you", description: "Separations · the read-back failed", action: "Open", sticky: true }], chat: [
-    { kind: "you", text: "Watch the separations batch and tell me when you need me" },
-    { kind: "session", label: "Watching 3 Separations runs", state: "running", meta: "Read only" },
-    { kind: "reply", text: "**Rei Nakamura** needs you: T00042871 saved, but Relay couldn't read its status back." },
+  { id: "14-watching", scenario: "Watching runs", look: "Watching lasts while any run started today is active; a decision raises a sticky toast with Open.", changed: "Chip wording; toast left of the panel.", title: "Today's runs", logs: d8, toasts: [{ tone: "warning", title: "Nakamura, Rei needs you", description: "Separations · read-back failed", action: "Open", sticky: true }], chat: [
+    { kind: "you", text: "Tell me when you need me" },
+    { kind: "session", label: "Watching today's runs", state: "running", meta: "3 active" },
   ] },
-  { id: "15-error-patterns", scenario: "Workflow gap / error-pattern report", look: "Counts come from run data (labelled); the model only explains them.", title: "EC failures", logs: d9, chat: [
+  { id: "15-error-patterns", scenario: "Error-pattern report", look: "Counts from run data in a Logs-style table; the model adds one line.", changed: "Logs table; shorter explanation.", title: "EC failures", logs: d9, chat: [
     { kind: "you", text: "Why does Emergency Contact keep failing?" },
-    { kind: "table", title: "Emergency Contact · last 30 days", meta: "From run data", columns: ["Failure", "Runs", "Share"], rows: [["Phone format rejected", "11", "58%"], ["Contact already exists", "4", "21%"], ["UCPath session expired", "3", "16%"], ["Other", "1", "5%"]], footer: "19 of 214 runs failed" },
-    { kind: "reply", text: "Most rejected phones are missing a digit: 9 of 11 came from handwritten scans read by OCR. Checking the phone length during PDF review would catch them before the run." },
+    { kind: "table", table: table("Last 30 days · 19 of 214 failed", "From run data", ["Failure", "Runs", "Share"], [["Phone format rejected", "11", "58%"], ["Contact already exists", "4", "21%"], ["Session expired", "3", "16%"], ["Other", "1", "5%"]]) },
+    { kind: "reply", text: "9 of the 11 phones came from handwritten scans and are missing a digit." },
   ] },
-  { id: "16-cross-check", scenario: "Spreadsheet vs UCPath cross-check", look: "Only mismatches are listed, each with its cell and the UCPath value.", title: "Tracker check", logs: sepDone, chat: [
+  { id: "16-cross-check", scenario: "Spreadsheet vs UCPath", look: "Only mismatches, each with its cell and the UCPath value; then a proposal to fix the cells.", changed: "Logs table; the fix is an applied-edit offer, not a question.", title: "Tracker check", logs: sepDone, chat: [
     { kind: "you", text: "Check the separations tracker against UCPath" },
-    { kind: "session", label: "Checked UCPath", state: "done", meta: "40 people · read only · 4m 06s" },
-    { kind: "table", title: "3 mismatches", meta: "37 of 40 agree", columns: ["Person", "Tracker", "UCPath"], rows: [["Nakamura, Rei", "D65 · 04/23/2031", "04/24/2031"], ["Okafor, Chinedu", "E12 · Resignation", "Retirement"], ["Tanaka, Yui", "C30 · Active", "Terminated"]], danger: 2 },
-    { kind: "reply", text: "Want me to update the 3 tracker cells to match UCPath? That's a local edit you can undo." },
+    { kind: "session", label: "Checked UCPath", state: "done", meta: "40 people · 4m 06s" },
+    { kind: "table", table: table("3 mismatches", "37 of 40 agree", ["Person", "Tracker", "UCPath"], [["Nakamura, Rei", "D65 · 04/23/2031", "04/24/2031"], ["Okafor, Chinedu", "E12 · Resignation", "Retirement"], ["Tanaka, Yui", "C30 · Active", "Terminated"]], true) },
   ] },
-  { id: "17-report-saved", scenario: "Report saved into the library", look: "The report lands in the Spreadsheets library at once, with Undo (line and toast).", title: "EC failures", logs: d9p, toasts: [{ tone: "success", title: "Saved to Spreadsheets", description: "EC failures October.xlsx", action: "Undo" }], chat: [
-    { kind: "you", text: "Save that failure report to the library" },
-    { kind: "applied", title: "Saved to Spreadsheets library", values: [{ label: "File", after: "EC failures October.xlsx" }, { label: "Rows", after: "19 failed runs" }] },
+  { id: "17-report-saved", scenario: "Report saved to the library", look: "Applied at once with Undo (card and toast).", changed: "Proposal card grammar; toast left of the panel.", title: "EC failures", logs: d9p, toasts: [{ tone: "success", title: "Saved to Spreadsheets", description: "EC failures October.xlsx", action: "Undo" }], chat: [
+    { kind: "you", text: "Save that report to the library" },
+    { kind: "proposal", proposal: { title: "Saved to Spreadsheets", state: "applied", changes: { title: "Library", rows: [{ label: "File", after: "EC failures October.xlsx" }, { label: "Rows", after: "19" }] } } },
   ] },
-  { id: "18-pdf-batch-prep", scenario: "PDF batch prep", look: "The assistant proposes the OCR start (never reads the PDF itself), then one proposal for the people you approved in review.", title: "Scan_0503.pdf", logs: d9p, chat: [
+  { id: "18-pdf-batch-prep", scenario: "PDF batch prep", look: "The OCR start was a Proposal (now one started line); then one Proposal for the people approved in review.", changed: "OCR start is a Proposal; started collapses to one line.", title: "Scan_0503.pdf", logs: d9p, chat: [
     { kind: "you", text: "Update emergency contacts from this scan", file: "Scan_0503.pdf" },
-    { kind: "plan", title: "Read Scan_0503.pdf", state: "started", steps: [{ title: "OCR", mode: "Reads the PDF; you review the records", values: [{ label: "File", after: "Scan_0503.pdf · 11 pages" }], state: "done" }] },
-    { kind: "reply", text: "You approved 9 of 10 records in review. Here's the update:" },
-    { kind: "plan", title: "Emergency Contact for 9 people", state: "review", primary: "Approve dry run", status: "A dry run first; the real run is a second step.", steps: [{ title: "Dry run", mode: "Emergency Contact", values: [
-      { label: "Okafor, Chinedu", after: "Okafor, Grace · Spouse", source: "page 1" }, { label: "Tanaka, Yui", after: "Tanaka, Ken · Parent", source: "page 2" }, { label: "Reyes, Marco", after: "Reyes, Ana · Sibling", source: "page 3" }, { label: "+ 6 more", after: "pages 4-11" }], state: "ready", checked: true }] },
+    { kind: "started", text: "Started OCR · Scan_0503.pdf · 15:02" },
+    { kind: "proposal", proposal: { title: "Emergency Contact · 9 people", state: "review", confirm: "Approve", steps: [{ title: "Dry run", detail: "fills, saves nothing" }, { title: "Real run", detail: "saves in UCPath · after the dry run matches" }],
+      changes: { title: "Contacts", source: "From Scan_0503.pdf review", rows: [{ label: "Okafor, Chinedu", after: "Okafor, Grace · Spouse" }, { label: "Tanaka, Yui", after: "Tanaka, Ken · Parent" }, { label: "Reyes, Marco", after: "Reyes, Ana · Sibling" }, { label: "6 more", after: "pages 4-11" }] } } },
   ] },
-  { id: "19-end-of-day", scenario: "End-of-day summary", look: "Today in one card: runs by outcome, what is still open, what the assistant did.", title: "Today", logs: resolved, chat: [
+  { id: "19-end-of-day", scenario: "End-of-day summary", look: "Today in one card: outcomes, what is open, what the assistant did.", changed: "No footer line.", title: "Today", logs: resolved, chat: [
     { kind: "you", text: "Wrap up today" },
     { kind: "list", title: "Today", meta: "23 runs", rows: [
-      { lead: "19 done", text: "Separations 7 · Emergency Contact 9 · Person Lookup 3", tone: "positive" },
-      { lead: "2 failed", text: "Ortega, Lin · Park, Joon (Emergency Contact)", tone: "danger", link: "Open" },
-      { lead: "1 waiting", text: "Morrow, Bea · pick the person", tone: "warning", link: "Open" },
-      { lead: "1 running", text: "Nakamura, Rei · finalizing", tone: "info" },
+      { lead: "19 done", text: "Separations 7 · EC 9 · Lookup 3", tone: "positive" },
+      { lead: "2 failed", text: "Ortega, Lin · Park, Joon", tone: "danger", link: "Open" },
+      { lead: "1 waiting", text: "Morrow, Bea", tone: "warning", link: "Open" },
+      { lead: "1 running", text: "Nakamura, Rei", tone: "info" },
       { lead: "Assistant", text: "6 reads · 2 sessions · 3 edits · 2 confirmed", link: "Activity" },
-    ], footer: "3 items carry over to tomorrow." },
+    ] },
   ] },
-  { id: "20a-refusal", scenario: "Refusal with its real reason", look: "Relay refuses the Confirm; the toast and the resolved line give the real reason, not a generic error.", title: "Rei Nakamura", logs: d8, toasts: [{ tone: "warning", title: "Confirm refused", description: "T00042871 is still waiting for your answer in Logs." }], chat: [
+  { id: "20a-refusal", scenario: "Refusal with its real reason", look: "Relay refuses; the card and the toast carry the real reason.", changed: "Blocked Proposal card.", title: "Rei Nakamura", logs: d8, toasts: [{ tone: "warning", title: "Refused", description: "T00042871 is waiting for your answer in Logs." }], chat: [
     { kind: "you", text: "File Rei Nakamura's termination again" },
-    { kind: "plan", title: "File termination again", state: "blocked", status: "Not done: T00042871 is still waiting for your answer in Logs.", steps: [{ title: "Real run", mode: "Separations · re-file", subject: "Nakamura, Rei  EID 10431187", values: [], state: "blocked" }] },
+    { kind: "proposal", proposal: { title: "File again · Nakamura, Rei", state: "blocked", reason: "T00042871 is waiting for your answer in Logs.", evidence: "Verify termination · read-back failed" } },
   ] },
-  { id: "20b-no-reply", scenario: "No reply", look: "A message with no reply: a failure toast with Retry; the message stays in the composer.", title: "Kofi Mensah status", logs: lookupRunning, draft: "When did Kofi Mensah start?", toasts: [{ tone: "danger", title: "No reply", description: "Your message is kept.", action: "Retry" }], chat: [
+  { id: "20b-no-reply", scenario: "No reply", look: "A danger toast with Retry; the message stays in the composer.", changed: "Toast left of the panel.", title: "Kofi Mensah", logs: lookupRunning, draft: "When did Kofi Mensah start?", toasts: [{ tone: "danger", title: "No reply", description: "Your message is kept.", action: "Retry" }], chat: [
     { kind: "you", text: "Is Kofi Mensah still active in UCPath?" },
     { kind: "session", label: "Checked UCPath", state: "done", meta: "Person Lookup · Mensah, Kofi · 41s" },
-    { kind: "reply", text: "Yes. Kofi Mensah (EID 10034736) is **Active** in Campus Dining Operations." },
+    { kind: "reply", text: "Yes, **Active** in Campus Dining Operations." },
   ] },
 ];
 
 export const ACTIVITY: readonly ListRow[] = [
-  { lead: "09:47", text: "Checked Smart HR Transactions · Nakamura, Rei", icon: "session", link: "Log" },
-  { lead: "09:46", text: "Resolved read-back · T00042871 approved", icon: "confirm", link: "Log" },
-  { lead: "09:40", text: "Renamed run · Scan_0412.pdf → April contacts scan", icon: "edit", link: "Log" },
-  { lead: "09:38", text: "Updated Separations tracker · row 65", icon: "edit", link: "Log" },
-  { lead: "09:31", text: "Confirmed by you · Separations dry run · Ortega, Lin", icon: "confirm", link: "Log" },
-  { lead: "09:20", text: "Person Lookup · Ortega, Lin · read only", icon: "session", link: "Log" },
+  { lead: "09:47", text: "Checked Smart HR · Nakamura, Rei", icon: "session", link: "Log" },
+  { lead: "09:47", text: "Resolved read-back · T00042871", icon: "confirm", link: "Log" },
+  { lead: "09:40", text: "Renamed run · April contacts scan", icon: "edit", link: "Log" },
+  { lead: "09:38", text: "Separations tracker · row 65", icon: "edit", link: "Log" },
+  { lead: "09:31", text: "Dry run approved · Ortega, Lin", icon: "confirm", link: "Log" },
+  { lead: "09:20", text: "Person Lookup · Ortega, Lin", icon: "session", link: "Log" },
   { lead: "09:12", text: "Refused · file again · Nakamura, Rei", icon: "refused", link: "Log" },
-  { lead: "09:05", text: "Read Queue · Emergency Contact failures", icon: "read", link: "Log" },
+  { lead: "09:05", text: "Read Emergency Contact failures", icon: "read", link: "Log" },
 ];
 
 export const ASSISTANT_FRAMES: readonly AssistantFrame[] = frames;

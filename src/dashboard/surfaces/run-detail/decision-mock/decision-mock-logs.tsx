@@ -30,7 +30,7 @@ export const OTHER_ID = "none-of-these";
 export function DataTable({ table, pick }: { table: MockTable; pick?: { chosen?: string; choose: (id: string) => void; extras?: readonly Readonly<{ id: string; label: string }>[] } }) {
   const last = table.columns.length - 1;
   const cell = (row: MockTableRow, index: number) => <td key={index} className={cn("py-2.5 tabular-nums", pick && index === 0 ? "pr-3" : "px-3", index === last && "text-right", index === 0 ? "font-medium" : row.tone === "danger" && index === row.cells.length - 1 ? "text-ui-danger" : "text-ui-secondary")}>{row.cells[index]}</td>;
-  return <PageCard title={table.title} mode={`${table.rows.length} rows · Read`}>
+  return <PageCard title={table.title} mode={table.mode ?? `${table.rows.length} rows · Read`}>
     <table aria-label={table.label} className="w-full border-collapse text-left text-body">
       <thead><tr className="text-caption text-ui-muted">{pick && <th className="w-10 px-3 py-2 font-normal"><span className="sr-only">Choose</span></th>}{table.columns.map((column, index) => <th key={column} className={cn("py-2 font-normal", pick && index === 0 ? "pr-3" : "px-3", index === last && "text-right")}>{column}</th>)}</tr></thead>
       <tbody>{table.rows.map(row => {
@@ -74,7 +74,7 @@ function Decision({ decision }: { decision: MockDecision }) {
   const [chosen, choose] = useState<string>();
   const [choice, setChoice] = useState(control?.kind === "choice" ? control.value : "");
   const [text, setText] = useState(control?.kind === "input" ? control.input.value ?? "" : "");
-  const [answered, setAnswered] = useState<DecisionAnswered>();
+  const [answered, setAnswered] = useState<DecisionAnswered | undefined>(decision.kind === "card" ? decision.answered : undefined);
   const applyAll = useApplyAll(decision.kind === "card" ? decision.applyAll : undefined);
   if (decision.kind === "line") return <Line icon={<LoaderCircle aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}>{decision.text}</Line>;
   let body: ReactNode, answer: string | undefined = decision.confirm;

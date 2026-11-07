@@ -1,6 +1,6 @@
 import type { LogScreenshot } from "../logs/log-feed-model.js";
 import type { LogTimelineStage } from "../logs/log-timeline-model.js";
-import type { DecisionChoiceOption, DecisionSuggestion } from "../logs/decision-card.js";
+import type { DecisionChoiceOption, DecisionAnswered, DecisionSuggestion } from "../logs/decision-card.js";
 
 /** Design mock for the run-decision rules; read only from the URL (`decisionMock=d1`…`d16`, or `decisionMock=explorer`). */
 export const DECISION_IDS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d8s", "d9", "d9b", "d9p", "d10", "d11", "d12", "d13", "d14", "d15", "d16"] as const;
@@ -19,7 +19,7 @@ export type MockRow = Readonly<{ label: string; value: string; kind: "read" | "f
 /** Running counts the design mock shows in the workflow rail. */
 export const MOCK_RAIL_RUNNING: Readonly<Record<string, number>> = { separations: 2, "emergency-contact": 1 };
 export type MockTableRow = Readonly<{ id: string; cells: readonly string[]; name: string; tone?: "danger" }>;
-export type MockTable = Readonly<{ title: string; label: string; columns: readonly string[]; rows: readonly MockTableRow[] }>;
+export type MockTable = Readonly<{ title: string; label: string; mode?: string; columns: readonly string[]; rows: readonly MockTableRow[] }>;
 export type MockBlock =
   | Readonly<{ kind: "page"; title: string; mode: "Fill" | "Read"; rows: readonly MockRow[] }>
   | Readonly<{ kind: "table"; mode: "Read"; table: MockTable }>
@@ -44,7 +44,7 @@ export type MockControl =
   | Readonly<{ kind: "input"; input: MockInput }>;
 /** Every manual choice is one card; `confirm` names the action only when no control holds the answer. */
 export type MockDecision =
-  | Readonly<{ kind: "card"; title: string; context?: string; tone?: "danger"; confirm?: string; control?: MockControl; suggestion?: DecisionSuggestion; applyAll?: number }>
+  | Readonly<{ kind: "card"; title: string; context?: string; tone?: "danger"; confirm?: string; control?: MockControl; suggestion?: DecisionSuggestion; applyAll?: number; answered?: DecisionAnswered }>
   | Readonly<{ kind: "line"; text: string; icon: "cancelling" | "paused" }>;
 
 export type MockState = "review" | "parked" | "failed" | "paused" | "stalled" | "cancelling" | "running" | "done";
@@ -118,8 +118,8 @@ const readBackFailed: MockDecision = { kind: "card", tone: "danger", title: "Ter
 ] } };
 
 export const EC_PEOPLE = ["Ali, Samir", "Ortega, Lin", "Park, Joon", "Nguyen, Thao", "Brooks, Dana", "Haddad, Rami", "Silva, Ines", "Kowalski, Eva", "Mensah, Kofi", "Tanaka, Yui", "Reyes, Marco", "Okafor, Chinedu"];
-const ecGroup = (selected: MockGroup["selected"], failed: readonly string[] = ["Ortega, Lin"]): MockGroup => ({ title: "Scan_0412.pdf", subtitle: "12 people", selected, members: EC_PEOPLE.map(name => ({ name, failed: failed.includes(name) })) });
-const ecMemberSteps = (name: string, eid: string, phone: string, result: readonly string[], time = "13:20"): readonly MockStep[] => [
+export const ecGroup = (selected: MockGroup["selected"], failed: readonly string[] = ["Ortega, Lin"]): MockGroup => ({ title: "Scan_0412.pdf", subtitle: "12 people", selected, members: EC_PEOPLE.map(name => ({ name, failed: failed.includes(name) })) });
+export const ecMemberSteps = (name: string, eid: string, phone: string, result: readonly string[], time = "13:20"): readonly MockStep[] => [
   { id: "navigation", time: `${time}:11`, title: "Read existing contacts", system: "UCPath", outcome: "No matching contact", blocks: [page("Emergency Contacts", "Read", [read("Employee", name), read("Employee ID", eid), read("Existing contacts", "1")])] },
   { id: "fill-form", time: `${time}:24`, title: "Fill emergency contact", system: "UCPath", outcome: "Contact filled", blocks: [page("Emergency Contact", "Fill", [fill("Contact", `${name.split(",")[0]}, Maya`), fill("Relationship", "Parent"), fill("Phone", phone)])] },
   { id: "save", time: `${time}:40`, title: "Save emergency contact", system: "UCPath", current: true, blocks: [{ kind: "click", label: "Save" },

@@ -1,7 +1,7 @@
 import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { Fragment, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
-import { ArrowDown, Check, History, ListChecks, Paperclip, Plus, Sparkles, X } from "lucide-react";
+import { ArrowDown, Check, History, Paperclip, Plus, Sparkles, X } from "lucide-react";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockThread } from "./assistant-mock-thread.js";
 import type { DashboardClient } from '../../client/index.js';
@@ -95,7 +95,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
   const proposal = turn?.state === 'proposal' ? turn.proposal : undefined;
   return <section id="hub-panel-assistant" className="hub-assistant-panel" role="region" aria-label="Relay assistant" data-source={served ? "served" : conversation.source}>
     <header {...headerProps} className="hub-panel-header"><div className="hub-panel-title"><button type="button" className="hub-chat-title hub-plain" title="Rename chat" onClick={onRename} disabled={!onRename}><span>{title ?? conversation.title}</span></button></div>
-      <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="Chats" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="Activity" aria-pressed={frame?.view === "activity"} disabled><ListChecks aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
+      <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="Chats" aria-pressed={frame?.view === "activity"} onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
     </header><div className="hub-panel-content">
       <div className="hub-thread-wrap"><><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
         {frame ? <AssistantMockThread frame={frame} /> : <>
