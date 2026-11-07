@@ -210,22 +210,23 @@ The assistant operates the dashboard through the operator's own commands and che
 
 ### How the panel shows data
 
-The panel uses conversational text, borderless rows, plain buttons and the shared `DecisionCard`. It has no cards around tables, no page cards, tokens or pills, no tinted boxes and no chips. Red appears only on a failure word.
+Everything in the panel is conversation: sentences and bullets. Blue links are the only actions. The panel has no buttons, checkbox rows, cards, tables, tokens or tinted boxes. Red appears only on a failure word.
 
 | Amount | Shape |
 | --- | --- |
 | One fact | One sentence; the value in medium weight. |
-| 2-4 items or values | A sentence, then bullets. Names and run ids are blue links that open the run. |
-| 5-8 items, or a batch of 3+ people to approve | Borderless rows: hairline separators, with no box, header or grid. Each row has a name, an optional muted meta line (truncated, full text on hover), and a value on the right. A row that opens something ends in a chevron. A batch of people to approve has checkboxes. |
-| More than 8 | One sentence with the count and a "Show in Queue" or "Save to library" link. |
+| A list (people, runs, values, options) | A sentence, then one bullet per item; names and run ids are blue links that open the run. |
+| More than 8 items that are not an approval | One sentence with the count and a "Show in Queue" or "Save to library" link. |
 
-- **Values to save** are blue, the same as Fill values in Logs. A changed value shows the old one struck through and muted, an arrow, then the new value. When every value has the same source, one sentence names it ("From Kuali SIM-50112."). A value with a different source shows it on its own muted line under the value. Relay refuses a manual value with no source: a toast "Value needs a source", and a sentence saying what to provide.
-- **Starting a run** (anything that leaves the machine: saves, submits, re-filing, gate answers, starting OCR) is a sentence or rows with the exact values, then the buttons Approve or Retry (the "Start a run" blue, no counts) and Cancel. A run is real unless the operator asks for a dry run; then the sentence starts "Dry run, saves nothing." There are no step lists.
-- **Running** is one sentence with a spinner and a Stop link ("Checking UCPath for Kofi Mensah. Stop"). Read-only sessions (Person Lookup, UCPath or Kuali checks) start without asking and appear in Queue and Logs, with the line "Started by the assistant for <person> · read only". Watching runs is the same kind of sentence; it lasts while any run started today is active, and a decision that needs the operator raises a sticky toast with Open.
+- **Values to save** are blue, the same as Fill values in Logs. A changed value shows the old one struck through and muted, then the new one. A source shared by every value is named once in the sentence ("From Kuali SIM-50112."). A value with its own source names it in brackets after the value ("(Scan_0412.pdf · page 2)"). Relay refuses a manual value with no source: a toast "Value needs a source", and a sentence saying what to provide.
+- **Starting a run** (anything that leaves the machine: saves, submits, re-filing, gate answers, starting OCR) is a sentence and bullets with the exact values, then one line: "Reply yes to file it, or tell me what to change." A batch lists every person and says "Reply yes to save all 3, or tell me which to skip or change." A run is real unless the operator asks for a dry run; then the sentence starts "Dry run, saves nothing."
+- **Approval is a typed yes that Relay recognises, never the model.** Relay treats the operator's next message as approval only when it is a short, explicit yes ("yes", "yes file it", "approve", "go ahead", "do it"). Anything else goes to the model as a change request, and it proposes again. The model can never approve. After a yes, a muted line under the operator's message records it ("Filed by you · 09:31").
+- **Running** is the session chip: a spinner aligned to the title line, what is happening ("Checking UCPath…"), a muted line naming the workflow and person, and a fully rounded Stop pill. Read-only sessions (Person Lookup, UCPath or Kuali checks) start without asking and appear in Queue and Logs, with the line "Started by the assistant for <person> · read only". Watching runs uses the same chip; it lasts while any run started today is active, and a decision that needs the operator raises a sticky toast with Open.
 - **Edits** (spreadsheets, library, settings, run names, filters) apply at once: one sentence with the old value struck through, the new value and an Undo link, plus a success toast whose Undo is an icon beside its close X.
-- **Choices** with 2-4 options are bullets whose ids are links. A stopped run shows the reason as one sentence (the failure word red), then the shared `DecisionCard` with Retry and Cancel run, the same card as in Logs.
+- **A stopped run** is the reason in one sentence (the failure word red), then a question in text with a blue link at its end ("Want me to retry from Read timecard? Retry"). Typing yes also works.
+- **A failure** is "Failed: <what>. Nothing was saved. Retry", with Retry as a blue link.
 - **Refusals and blocks** are one sentence: what was not done, the real reason and one link ("Not started: T00042871 is already pending, filed today 09:33. Open log"). A message with no reply is a danger toast "No reply" with Retry; the message stays in the composer.
-- **Several matches for a navigation** ("Open today's EC failures"): Relay filters the Queue to them and opens the first in Logs, and the chat line names each one as a link. One match is a single line.
+- **Several matches for a navigation** ("Open today's EC failures"): Relay filters the Queue to them and opens the first in Logs, and the chat lists each one as a bullet link.
 
 ### Decisions in Logs
 
