@@ -232,6 +232,7 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/assistant-history|chats[].title|operator-authored",
       "wire/assistant-conversation|messages[].text|external-text",
       "wire/assistant-conversation|messages[].attachments[].name|local-filesystem-name",
+      ...["action", "proposal"].flatMap(root => ["row.display.fileName", "startPlan.planned[].display.fileName"].map(path => `wire/assistant|result.${root}.${path}|local-filesystem-name`)),
       ...["action", "proposal"].flatMap(root => [`wire/assistant|result.${root}.facts[].label|repository-authored`, `wire/assistant|result.${root}.facts[].value|captured-hr-value`]),
       "wire/chatgpt-ocr-test|model|external-text",
       "wire/chatgpt-ocr-test|message|repository-authored",

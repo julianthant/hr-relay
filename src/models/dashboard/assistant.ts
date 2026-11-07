@@ -1,4 +1,5 @@
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { OcrFormTypeSchema } from "../ocr/form-registry.js";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { z } from "zod";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
@@ -206,6 +207,7 @@ export const ASSISTANT_START_ROWS_MAX = 20;
 export const AssistantRowDisplaySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("person"), name: z.string().min(1).max(160).optional(), employeeId: z.string().regex(/^\d{8}$/u).optional() }),
   z.strictObject({ kind: z.literal("document"), documentNumber: z.string().min(1).max(40) }),
+  z.strictObject({ kind: z.literal("file"), fileName: z.string().min(1).max(255), formType: OcrFormTypeSchema }),
   z.strictObject({ kind: z.literal("request") }),
 ]);
 export const AssistantProposalRowSchema = z.strictObject({ title: z.string().min(1), subtitle: z.string().min(1).optional(), display: AssistantRowDisplaySchema })

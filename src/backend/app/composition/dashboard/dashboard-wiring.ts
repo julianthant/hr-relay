@@ -244,7 +244,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
   const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
   const dataQueries = composeDataQueries(runDetailDeps);
-  const assistantProposals = createAssistantProposals({ database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
+  const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
+  const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
     rerunValues: request => dataQueries.rerunValues(request), served: workflowId => workflowSources[workflowId] === "served",
     actorId: resolved.config.actor.id, clock, assertCurrent, kernel, workbooks: () => workbookLibrary,
     attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
@@ -355,7 +356,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     startPlans,
     applicationLifecycle,
     intake,
-    ocr: createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent }),
+    ocr: ocrSources,
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,

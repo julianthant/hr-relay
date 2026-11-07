@@ -75,7 +75,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: { withDownload: (command, use) => sync.download(command, use) } });
   const workbookOwner: { library: Parameters<typeof createAssistantProposals>[0] extends { workbooks(): infer L } ? L : never } = { library };
   const files = new Map<string, AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>>();
-  const proposals = createAssistantProposals({ database, authorization, kernel, workbooks: () => workbookOwner.library,
+  const proposals = createAssistantProposals({ database, authorization, kernel, ocrSources: () => { throw new Error("no OCR source in this harness"); }, workbooks: () => workbookOwner.library,
     attachment: (conversation, id) => { const file = files.get(id); return file?.conversationId === conversation ? file : undefined; }, plans: h.planner, runs: h.lifecycle, descriptors: { resolve: () => h.descriptor },
     rerunValues: request => data.rerunValues(request), served: () => true, actorId: "local-operator", clock, assertCurrent() {},
     commands: { publish() {}, async submit(command) {
@@ -184,8 +184,10 @@ it("refuses reruns of cancelled, moved, parked and attempting sources through th
 it("binds Confirm to the exact rendered multi-row card and lets one of a concurrent Confirm and Cancel win", async () => {
   const o = await owners(), first = await o.done("10812345"), second = await o.done("10812346");
   const card = await o.tool("propose_workflow_start").propose({ workflow: o.h.descriptor.id, entries: [
-    o.references.issue("R", first.envelope.runId, "run", first.envelope.runId), o.references.issue("R", second.envelope.runId, "run", second.envelope.runId)] }, o.context);
+    o.references.issue("R", first.envelope.runId, "run", first.envelope.runId), o.references.issue("R", second.envelope.runId, "run", second.envelope.runId)], formType: null }, o.context);
   assert.ok(card.effect === "workflow-start" && card.source === "entries");
+  await assert.rejects(o.tool("propose_workflow_start").propose({ workflow: o.h.descriptor.id, entries: ["x"], formType: "emergency-contact" }, o.context),
+    refusedWith("ASSISTANT_INVALID"), "a form type belongs only to OCR");
   const [rowA, rowB] = card.startPlan.planned; assert.ok(rowA && rowB);
   const before = o.runCount();
   for (const changed of [{ ...card, startPlan: { ...card.startPlan, planned: [rowA] } }, { ...card, startPlan: { ...card.startPlan, planned: [rowB, rowA] } },

@@ -45,13 +45,14 @@ function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
         : row.display.employeeId === undefined ? <><dt>Name</dt><dd>{row.display.name}</dd></>
         : <><dt>Person</dt><dd className="hub-person"><span>{row.display.name}</span> <span>EID {row.display.employeeId}</span></dd></>
       : row.display.kind === 'document' ? <><dt>Document</dt><dd>{row.display.documentNumber}</dd></>
+      : row.display.kind === 'file' ? <><dt>File</dt><dd>{row.display.fileName}</dd></>
       : <><dt>Request</dt><dd>{row.title}</dd></>}</Fragment>)}
     {rows.length > 1 && <><dt>Total</dt><dd>{rows.length}</dd></>}
   </>;
 }
 export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
   const rows = proposalRows(proposal), only = rows.length === 1 ? rows[0] : undefined;
-  const target = only === undefined ? proposal.issued?.targetLabel : only.display.kind === 'person' ? only.display.name ?? only.display.employeeId ?? only.title : only.display.kind === 'document' ? only.display.documentNumber : only.title;
+  const target = only === undefined ? proposal.issued?.targetLabel : only.display.kind === 'person' ? only.display.name ?? only.display.employeeId ?? only.title : only.display.kind === 'document' ? only.display.documentNumber : only.display.kind === 'file' ? only.display.fileName : only.title;
   // An unknown outcome is one plain line, carried by the transcript message.
   if (disposition === 'unknown') return null;
   if (disposition === 'confirmed' || disposition === 'cancelled') {
