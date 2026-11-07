@@ -746,7 +746,8 @@ it.each([20, 21, 22] as const)("converts populated schema %s worker custody thro
   const f = await readyBoundEight("queued", sourceVersion);
   try {
     const { runId } = plantPredecessorWorkerCustody(f.path);
-    assert.equal(inspectNativeAuthority(new DatabaseSync(f.path, { readOnly: true }), sourceVersion).schemaVersion, sourceVersion);
+    const stopped = new DatabaseSync(f.path, { readOnly: true });
+    try { assert.equal(inspectNativeAuthority(stopped, sourceVersion).schemaVersion, sourceVersion); } finally { stopped.close(); }
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     const backupDirectory = join(f.stateRoot, "backups", "authority");
     assert.ok(readdirSync(backupDirectory).filter(name => name.endsWith(".manifest.json"))
