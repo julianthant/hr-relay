@@ -4,7 +4,9 @@ import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, ty
 import { PreflightAssistantContext } from "../settings/preflight/preflight-assistant-model.js";
 import { createPortal } from "react-dom";
 import { ChevronDown, History, LogOut, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
-import { Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
+import { Button, Dialog, DialogContent, DialogFooter, EmptyState, Tab, TabList, TabPanel, Tabs } from "../../ds/ui.js";
+import { assistantFrame } from "../assistant/assistant-mock-frames.js";
+import { AssistantMockActivity } from "./assistant-mock-thread.js";
 import { chatAge, createMockHubChatsPort, useHubChats, useHubPanelPosition, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
 import type { AssistantPorts } from "./assistant-panel-model.js";
@@ -26,7 +28,9 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const launcherPosition = useHubPanelPosition(8, true);
   const [logout, setLogout] = useState(false);
   const [opened, setOpened] = useState(source === "mock");
-  const [list, setList] = useState(false);
+  const frame = assistantFrame();
+  const [list, setList] = useState(frame?.view === "activity");
+  const [tab, setTab] = useState(frame?.view === "activity" ? "activity" : "chats");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<{ kind: "rename" | "delete"; id: string }>();
   const [title, setTitle] = useState("");
@@ -64,10 +68,11 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
       <section ref={panelPosition.element} id="hub-shell-assistant" className="hub-slot" aria-label={list ? "Relay assistant" : "Assistant panel"} data-source={model.source} hidden={settingsOpen || !opened} inert={settingsOpen || !opened} aria-hidden={settingsOpen || !opened} onKeyDown={event => {
         if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { setOpened(false); panelPosition.reset(); launcher.current?.focus(); } }
       }}>
-        {list && <header className="hub-slot-header"><div className="hub-slot-title"><span>Chats</span></div><div className="hub-header-actions">
+        {list && <header className="hub-slot-header"><div className="hub-slot-title"><span>History</span></div><div className="hub-header-actions">
           {icon("Chats", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { void model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, () => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); })}
         </div></header>}
-        {list ? <div className="hub-transcript hub-chat-list" onKeyDown={event => {
+        {list ? <Tabs value={tab} onValueChange={setTab} className="hub-history"><TabList label="History" className="px-3"><Tab value="chats">Chats</Tab><Tab value="activity">Activity</Tab></TabList>
+          <TabPanel value="chats" className="flex min-h-0 flex-1 flex-col"><div className="hub-transcript hub-chat-list" onKeyDown={event => {
           if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;
           const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
           const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -82,7 +87,9 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
               if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); edit("delete", chat.id); }
             }}><button tabIndex={0} className="hub-chat-open" type="button" aria-current={chat.id === model.currentId ? "true" : undefined} onClick={() => { void model.select(chat.id); setList(false); }}><strong>{chat.title}</strong><small>{chatAge(chat.minutes)}{chat.id === model.currentId && " · Current"}</small></button>{icon(`Rename chat ${chat.title}`, <Pencil aria-hidden />, () => edit("rename", chat.id))}{icon(`Delete chat ${chat.title}`, <Trash2 aria-hidden />, () => edit("delete", chat.id))}</div>)}</section>;
           })}
-        </div> : null}
+        </div></TabPanel>
+          <TabPanel value="activity" className="hub-transcript">{frame ? <AssistantMockActivity /> : <EmptyState title="No activity today" />}</TabPanel>
+        </Tabs> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
           {current && currentSession && <AssistantPanel key={current.id} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
             onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)} ></AssistantPanel>}
