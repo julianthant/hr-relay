@@ -156,11 +156,12 @@ A decision is answered where its evidence is. It is never a separate card, dock 
 
 - Anatomy, in order: the question (`text-heading`), at most one note line (`text-body` secondary), the evidence or input, then the actions on one row.
 - Picking one of several records puts a radio column in the page card that lists them. The primary action names the choice ("Continue with Morrow, Bea A.") and stays disabled until a row is chosen.
+- Every pick ends with a "None of these" row. Choosing it puts a labelled input on the action row ("Enter employee ID", 8 digits; "Enter row number" for a roster or workbook row), and the primary reads "Continue with <typed value>", disabled until the value is valid. A typed employee ID is asked for only here, when Relay cannot find the person.
 - A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
 - A value to correct, or a transaction number to confirm, is a labelled input on the action row, before the buttons.
 - A failure uses the same anatomy. The question is the failure title in the danger colour, and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written, or "Checked by hand, continue" after a confirmed write, so the run can finish. There is no Add note action.
 - An unconfirmed write (parked, or uncertain after a restart) always asks "Did the <record> save in <system>?". The note says what did not confirm and where to check. The actions are Confirm saved and "Not saved, <what Relay does next>" (for example "Not saved, file it again"). A transaction or document number input appears only when that system issues one.
-- A batch member failure lists the members in one table: failed members first, then the saved ones folded into a count row ("11 saved"). The action retries that member only.
+- An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure with no body actions; Retry is the icon button in that log's header. The parent log reads the document, records the approval and lists the records handed to members.
 - A cancel in progress is one line with a loading icon. It has no actions.
 - A refused command is a toast (title and one line). The transcript does not change.
 - Toasts and the assistant launcher sit above the Logs footer and never cover its search, copy or latest controls.
