@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { pickedRunWorld, pickedSignupState, PICKED_RUN_STATES, PICKED_SAFETY_STATES, PICKED_SIGNUP_STATES } from "../support/helpers/dashboard/picked-dashboard.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { installFrozenMonotonic } from "./helpers/app-driver.js";
+import { expectRunningPill, installFrozenMonotonic } from "./helpers/app-driver.js";
 import { captureParityPair } from "./helpers/capture.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -42,8 +42,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(page.getByRole("region", { name: "Run logs", exact: true })).toBeVisible();
         await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         expect(world.day.queueSurfaces.filter(row => row.workflowId === "onboarding")).toHaveLength(0);
-        await expect(page.getByRole("navigation", { name: "Workflows", exact: true })
-          .getByLabel("0 active of 0 in Onboarding", { exact: true })).toHaveText("0 · 0");
+        await expectRunningPill(page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Onboarding", exact: true }), 0);
         if (state === "quit-confirm" || state === "quitting") {
           await expect(page.getByRole("button", { name: "Pause all runs", exact: true })).toBeEnabled();
           await page.keyboard.press("Control+q");
