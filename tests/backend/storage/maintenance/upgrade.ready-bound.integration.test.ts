@@ -730,13 +730,12 @@ function plantPredecessorWorkerCustody(path: string) {
     const columns = runRecordColumns(claimed, PredecessorRunRecordSchema);
     const lifecycle = z.record(z.string(), z.unknown()).parse(JSON.parse(String(columns.lifecycle_json)));
     const stored = { ...columns, lifecycle_json: canonicalJsonStringify({ ...lifecycle, lifecycle: { ...z.record(z.string(), z.unknown()).parse(lifecycle.lifecycle), workerLifetime: lifetime } }) };
-    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='runs'").all();
+    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name IN ('runs','run_search')").all();
     for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
     try {
       raw.prepare(`UPDATE runs SET ${Object.keys(stored).map(key => `${key}=?`).join(",")} WHERE id=?`).run(...Object.values(stored), queued.envelope.runId);
+      raw.prepare("UPDATE run_search SET source_version=?, state='claimed', metadata_json=json_set(metadata_json,'$.sourceVersion',?) WHERE run_id=?").run(claimed.version, claimed.version, queued.envelope.runId);
     } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
-    // The search row still describes the queued run; a stopped store whose search is unbuilt rebuilds it on upgrade.
-    raw.exec("UPDATE database_states SET search_state='unbuilt' WHERE id=1");
     return { runId: queued.envelope.runId };
   } finally { raw.close(); }
 }
