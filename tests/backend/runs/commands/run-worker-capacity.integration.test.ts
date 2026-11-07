@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { createDashboardPoolTestWorld } from "../../../support/helpers/backend/dashboard-pool-world.js";
 
 const { WORKFLOW, WORKER_1, openControlHarness, dashboardLaunch, launchCommands, planWorkers, nextCommandId, settleMicrotasks, view, cleanup } = createDashboardPoolTestWorld();
@@ -53,7 +53,7 @@ describe("automatic Run capacity", () => {
   it("keeps the start applied and shows a member that never becomes ready as failed on its card", async () => {
     const h = await openControlHarness({ ready: false });
     const pending = launchCommands(h).submit(dashboardLaunch(h).request);
-    await settleMicrotasks();
+    await vi.waitFor(() => assert.equal(h.children.length, 1));
     h.clock.advanceMonotonic(60_000);
     for (const entry of h.scheduler.pending()) entry.fire();
     await settleMicrotasks();

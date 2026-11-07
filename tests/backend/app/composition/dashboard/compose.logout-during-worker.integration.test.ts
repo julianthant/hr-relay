@@ -56,7 +56,7 @@ it("drains an owned claimed worker under its admitted epoch before public logout
     const plan = StartPlanWireSchema.parse(await (await post("start-plans", { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false }, cookie)).json());
     const starting = post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
       target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints }, cookie);
-    await spawned.promise;
+    await Promise.race([spawned.promise, starting.then(async response => { throw new Error(`start settled before its worker spawned: ${await response.text()}`); })]);
     const member = worker.authority.workerSlots.list("person-lookup")[0]; assert.ok(member);
     assert.equal(CommandResultSchema.parse(await (await starting).json()).state, "applied");
     const service = new RunRecordService({ database: worker, clock, ids: { uuid: randomUUID }, publishQueued() { throw new Error("no fixture enqueue"); } });
