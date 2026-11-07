@@ -92,6 +92,7 @@ import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReado
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
 import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "./worker-custody-migration.js";
+import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow, predecessorCustodyRunRow, predecessorLifecycleRequest, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
@@ -1695,8 +1696,10 @@ function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion:
     : Object.freeze({ state: "initialized" as const, record: settings });
   const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
     .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convert("settings_snapshots", row))));
+  // A predecessor slot's pause is its newest lease directive, which the custody migration carries onto the slot.
+  const predecessorPaused = (slot: WorkerSlotRecord) => ({ ...slot, paused: database.prepare("SELECT directive FROM worker_leases WHERE worker_id=? ORDER BY lease_generation DESC LIMIT 1").get(slot.workerId)?.directive === "pause" });
   const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all()
-    .map(inspectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION ? predecessorWorkerSlotFromRow : workerSlotFromRow);
+    .map(inspectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION ? row => predecessorPaused(predecessorWorkerSlotFromRow(row)) : workerSlotFromRow);
   return { settingsAuthority, configSnapshots, slots };
 }
 

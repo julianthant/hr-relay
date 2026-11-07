@@ -16,7 +16,7 @@ import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../sqlite/migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,WORKER_CUSTODY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfileUpgradeInventory,StorageBackupClosureUnprovedError,type ProfileBrowserClosure,type StoppedBackupClosure } from "./profile-inventory.js";
 
@@ -154,7 +154,11 @@ function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: Ready
   // The upgrade that crosses the build-id schema deletes every run; all other facts stay identical.
   const runsDeleted = publication.kind === "upgraded" && publication.sourceSchemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION;
   if (runsDeleted && nextFacts.runs.length !== 0) throw new Error("profile-stopped-upgrade-resources-changed");
-  const comparable = (facts: typeof priorFacts) => runsDeleted ? { ...facts, runs: [] } : facts;
+  // Crossing the custody schema deletes the worker-lifetime closure, which the conversion itself proves; every other run stays identical.
+  const custodyConverted = publication.kind === "upgraded" && publication.sourceSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
+  const kept = new Set(nextFacts.runs.map(run => run.envelope.runId));
+  const comparable = (facts: typeof priorFacts) => runsDeleted ? { ...facts, runs: [] }
+    : custodyConverted ? { ...facts, runs: facts.runs.filter(run => kept.has(run.envelope.runId)) } : facts;
   if (canonicalJsonStringify(comparable(priorFacts)) !== canonicalJsonStringify(comparable(nextFacts))) throw new Error("profile-stopped-upgrade-resources-changed");
   if (publication.kind === "unchanged") {
     if (canonicalJsonStringify(priorUpgrades) !== canonicalJsonStringify(nextUpgrades)) throw new Error("profile-stopped-upgrade-journal-changed");
