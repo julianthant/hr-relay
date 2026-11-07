@@ -106,7 +106,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
   const lock = profile.machine.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
   reconcileExitedWorker({ machine: profile.machine, admission: profile.admission, database, clock, lifecycle: execution.lifecycle, lock, workerId: owner.workerId });
   const closure = [root.envelope.runId, childId];
-  let retryCommandId: string | undefined;
+  let retryCommandId: string | undefined, childDigest: string | undefined;
   if (variant !== "attempting-write") {
     const cancelled = current(childId);
     assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled", JSON.stringify(cancelled.lifecycle));
@@ -120,11 +120,10 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     const retried = execution.kernel.execute(CommandRequestSchema.parse({ commandId: retryCommandId, family: "run", type: "recover-run", source: "dashboard",
       requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: parent.version } }));
     assert.equal(retried.state, "applied", JSON.stringify(retried));
-    const replacement = database.authority.runs.listByItem({ workflow: cancelled.envelope.workflow, itemId: cancelled.envelope.itemId })
-      .find(run => run.envelope.retryOf === childId); assert.ok(replacement);
-    const parentReplacement = database.authority.runs.listByItem({ workflow: parent.envelope.workflow, itemId: parent.envelope.itemId })
-      .find(run => run.envelope.runId !== root.envelope.runId); assert.ok(parentReplacement);
-    closure.push(replacement.envelope.runId, parentReplacement.envelope.runId);
+    for (const run of [cancelled, parent].flatMap(run => database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }))) {
+      if (!closure.includes(run.envelope.runId)) closure.push(run.envelope.runId);
+    }
+    childDigest = evidence.resultDigest;
   }
 
   database.authority.workbooks.putType({ id: "custody-roster", name: "Custody roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
@@ -144,7 +143,7 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     raw.exec("COMMIT");
     assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version);
   } finally { raw.close(); }
-  return { profile, path, stateRoot, profileId, closure, keptRunId: kept.envelope.runId };
+  return { profile, path, stateRoot, profileId, closure, keptRunId: kept.envelope.runId, childDigest };
 }
 
 function read(path: string) {
@@ -171,6 +170,9 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   assert.equal(keptRun[2]?.length, 1, "the kept run carries its receipt");
   assert.equal(before.count("SELECT count(*) AS count FROM run_delegations WHERE parent_run_id=?", s.closure[0] ?? ""), 1);
   assert.ok(before.count("SELECT count(*) AS count FROM delegation_dependencies") >= 1);
+  const digest = s.childDigest; assert.ok(digest !== undefined);
+  const linked = before.everyRow().filter(row => row.table !== "run_results" && row.json.includes(digest)).map(row => row.table);
+  assert.ok(linked.length > 0, "the join and retry embed the cancelled member's resultDigest");
   assert.equal((await upgrade(s)).state, "upgraded");
 
   const backups = join(s.stateRoot, "backups", "authority");
@@ -187,6 +189,7 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   for (const table of ["run_delegations", "delegation_dependencies", "run_results", "run_receipts", "timeline_events", "notifications"]) {
     assert.ok(after.everyRow().filter(row => row.table === table).every(row => s.closure.every(runId => !row.json.includes(runId))), table);
   }
+  assert.deepEqual(after.everyRow().filter(row => row.json.includes(digest)).map(row => row.table), []);
   assert.ok(after.everyRow().every(row => !row.json.includes("workerLifetime") && !row.json.includes("membershipRevision") && !row.json.includes("controlBasis")),
     "the removed custody grammar is gone");
   assert.equal(after.count("SELECT count(*) AS count FROM commands WHERE family='worker-browser'"), 0);
