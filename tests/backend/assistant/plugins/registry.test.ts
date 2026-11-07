@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry, createAssistantPlugins } from "../../../../src/backend/assistant/plugins/registry.js";
+import { createAssistantProposals } from "../../../../src/backend/assistant/proposals.js";
 import { surfaceLeaves } from "../../../architecture/logs/helpers/redaction-surface-audit.js";
 
 const unused = () => { throw new Error("registry test reads declarations only"); };
@@ -14,6 +15,16 @@ it("offers every plugin's tools in one strict namespace with unique names", () =
   for (const tool of registry.tools) assert.ok(tool.description.length > 40, tool.name);
   const [first] = plugins(); assert.ok(first);
   assert.throws(() => assistantToolRegistry([first, first]), /assistant-tool-registry-invalid/u);
+});
+
+it("fits the full read and proposal tool set (14 tools) under the 16-tool cap", () => {
+  // Construction reads no owner; the declarations alone are registered.
+  const proposals = createAssistantProposals({} as Parameters<typeof createAssistantProposals>[0]);
+  const registry = assistantToolRegistry([...plugins(), proposals.plugin]);
+  assert.equal(registry.tools.length, 14);
+  assert.deepEqual(proposals.plugin.tools.map(tool => tool.name), ["propose_workflow_start", "propose_rerun", "propose_run_action", "change_notifications", "propose_spreadsheet_change"]);
+  assert.throws(() => assistantToolRegistry([...plugins(), proposals.plugin, { domain: "extra", tools: [...plugins()[0]?.tools ?? []].map(tool => ({ ...tool, name: `${tool.name}_x` })).concat(
+    [...proposals.plugin.tools].map(tool => ({ ...tool, name: `${tool.name}_y` }))) }]), /assistant-tool-registry-invalid/u, "a seventeenth tool refuses");
 });
 
 it("declares a privacy origin for exactly the free-text leaves of every tool output", () => {

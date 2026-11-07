@@ -246,7 +246,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const dataQueries = composeDataQueries(runDetailDeps);
   const assistantProposals = createAssistantProposals({ database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
     rerunValues: request => dataQueries.rerunValues(request), served: workflowId => workflowSources[workflowId] === "served",
-    actorId: resolved.config.actor.id, clock, assertCurrent });
+    actorId: resolved.config.actor.id, clock, assertCurrent, kernel, workbooks: () => workbookLibrary,
+    attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
   const assistantPluginDeps = createAssistantPluginDeps({ database, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
     search: () => shell.search, notifications: () => notifications,
     workbooks: () => workbookLibrary, attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });

@@ -21,8 +21,9 @@ import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js"
 import type { createAssistantAuthorization } from "./authorization.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "./plugins/plugin.js";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
+import { createSpreadsheetProposals, type AssistantSpreadsheetProposalDeps } from "./spreadsheet-proposals.js";
 
-export interface AssistantProposalDeps {
+export interface AssistantProposalDeps extends Pick<AssistantSpreadsheetProposalDeps, "kernel" | "workbooks" | "attachment"> {
   readonly database: AuthorityDatabase;
   readonly authorization: ReturnType<typeof createAssistantAuthorization>;
   readonly plans: StartPlanService;
@@ -83,6 +84,7 @@ const ChangeOutput = z.strictObject({ state: z.literal("applied"), count: z.numb
 /** The proposal tools and the one Confirm owner; nothing here dispatches before the operator confirms an issued card. */
 export function createAssistantProposals(deps: AssistantProposalDeps) {
   const pending = new Map<string, Pending>();
+  const spreadsheets = createSpreadsheetProposals(deps);
   const prune = () => { for (const [id, entry] of pending) if (Date.parse(entry.expiresAt) <= deps.clock.nowMs()) pending.delete(id); };
   const settings = () => deps.database.withAuthorityReadSnapshot(() => selectActiveRunSettings(deps.database.authority));
 
@@ -253,6 +255,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         if (result?.state !== "applied") refuse();
         return { state: "applied", count };
       } },
+    spreadsheets.tool,
   ] };
 
   return Object.freeze({
@@ -260,6 +263,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     /** Confirm or Cancel one issued card: identity, revision, expiry and the reviewed digest first; one claim; UNKNOWN is never retried. */
     async decideAction(decision: AssistantActionDecision, signal: AbortSignal): Promise<AssistantActionResult> {
       signal.throwIfAborted(); deps.assertCurrent();
+      if (spreadsheets.has(decision.actionId)) return spreadsheets.decide(decision, signal);
       const issued = pending.get(decision.actionId);
       if (issued === undefined || issued.chat.chatId !== decision.chatId || issued.revision !== decision.revision
         || Date.parse(issued.expiresAt) <= deps.clock.nowMs()) throw new Error("assistant-action-not-current");

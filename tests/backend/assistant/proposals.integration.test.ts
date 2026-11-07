@@ -27,6 +27,10 @@ import { rerunValuesHarness } from "../../support/fixtures/rerun-values-fixtures
 import { launchHarness } from "../../support/fixtures/run-launch-fixtures.js";
 import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { createWorkbookLibraryService, type WorkbookSyncDownload } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { EditableWorkbookSchema } from "../../../src/models/dashboard/workbooks.js";
+import type { AssistantAttachmentRecord } from "../../../src/models/dashboard/assistant.js";
+import { createHash } from "node:crypto";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 
 const profiles = createProfileFixtureSet();
@@ -67,7 +71,12 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   let mode: SubmitMode = "direct", entered = false, release: () => void = () => {};
   const gate = () => new Promise<void>(resolve => { release = resolve; });
   cleanups.push(() => { release(); });
-  const proposals = createAssistantProposals({ database, authorization, plans: h.planner, runs: h.lifecycle, descriptors: { resolve: () => h.descriptor },
+  const sync: { download: WorkbookSyncDownload["withDownload"] } = { download: () => Promise.reject(new Error("no SharePoint download in this test")) };
+  const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: { withDownload: (command, use) => sync.download(command, use) } });
+  const workbookOwner: { library: Parameters<typeof createAssistantProposals>[0] extends { workbooks(): infer L } ? L : never } = { library };
+  const files = new Map<string, AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>>();
+  const proposals = createAssistantProposals({ database, authorization, kernel, workbooks: () => workbookOwner.library,
+    attachment: (conversation, id) => { const file = files.get(id); return file?.conversationId === conversation ? file : undefined; }, plans: h.planner, runs: h.lifecycle, descriptors: { resolve: () => h.descriptor },
     rerunValues: request => data.rerunValues(request), served: () => true, actorId: "local-operator", clock, assertCurrent() {},
     commands: { publish() {}, async submit(command) {
       entered = true;
@@ -92,7 +101,15 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   const done = async (eid?: string) => { const queued = h.start(h.proposal(undefined, undefined, false, eid)); assert.equal((await h.execute(queued)).state, "done"); return h.fresh(queued); };
   const runCount = () => database.authority.runs.listByWorkflow(h.descriptor.id).length;
   const commandOf = (card: AssistantActionProposal) => database.authority.assistantAuthorization.action(card.actionId)?.command;
-  return { h, database, clock, kernel, proposals, tool, decide, done, runCount, commandOf, references, context, captions, executeSettings,
+  /** Stages one accepted attachment of this chat and returns its `A` reference. */
+  const attach = (name: string, mediaType: AssistantAttachmentRecord["mediaType"], text: string) => {
+    const bytes = new TextEncoder().encode(text), id = randomUUID(), now = clock.now().toISOString();
+    files.set(id, { id, conversationId, messageId: randomUUID(), ordinal: 1, mediaType, name, byteLength: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex"), createdAt: now, expiresAt: new Date(clock.nowMs() + 86_400_000).toISOString(), bytes });
+    return references.issue("A", id, name);
+  };
+  const replaceAttachment = (token: string) => { const id = references.resolve(token, ["A"]).target, file = files.get(id); assert.ok(file); files.set(id, { ...file, sha256: "0".repeat(64) }); };
+  return { h, database, clock, kernel, proposals, library, sync, workbookOwner, attach, replaceAttachment, tool, decide, done, runCount, commandOf, references, context, captions, executeSettings,
     submitMode(next: SubmitMode) { mode = next; entered = false; }, entered: () => entered, release: () => { release(); },
     expireModel() { modelCurrent = false; }, changeManifest() { factsSha = "b".repeat(64); },
     markAttempting(runId: string, itemId: string, runAttempt: number) { attemptingFor = attemptingIntent(runId, itemId, runAttempt); } };
@@ -236,4 +253,97 @@ it("shows Separations document identities from the real planned canonical inputs
   });
   assert.deepEqual(rows, [{ kind: "document", documentNumber: "4502" }, { kind: "document", documentNumber: "4510" }]);
   assert.deepEqual(plannedRowDisplay("separations", { value: { documentNumber: "4502" } }), { kind: "request" });
+});
+
+/** A library workbook with one worksheet and a second type, both issued as references. */
+function seedWorkbook(o: Owners) {
+  const created = o.library.create(EditableWorkbookSchema.parse({ name: "Roster", themes: [], hasFormulas: false,
+    sheets: [{ id: randomUUID(), name: "Sheet1", width: 1, hidden: [], headerRow: 1, rows: [{ id: randomUUID(), cells: [{ value: "Name" }] }, { id: randomUUID(), cells: [{ value: "A" }] }] }] }));
+  const type = o.library.putType({ id: randomUUID(), name: "Staff", keyFieldId: null, fields: ["Name"], defaultWorkbookId: null, fieldLabels: { Name: "Name" } });
+  const typeId = (type as { id: string }).id;
+  return { libraryId: created.libraryId, sheet: o.references.issue("S", created.libraryId, "Roster"), type: o.references.issue("T", typeId, "Staff"), typeId,
+    entry: () => { const entry = o.library.catalog().find(candidate => candidate.libraryId === created.libraryId); assert.ok(entry); return entry; } };
+}
+const sheetCard = (o: Owners, change: Record<string, unknown>) => o.tool("propose_spreadsheet_change").propose({ change }, o.context);
+
+it("imports an attached spreadsheet under the typed name only on Confirm, once, as an untyped workbook", async () => {
+  const o = await owners(), file = o.attach("roster.csv", "text/csv", "Name,Dept\nAda,HR\nBo,IT\n"), before = o.library.catalog().length;
+  await assert.rejects(sheetCard(o, { action: "import", file, name: "Q3 roster" }), refusedWith("ASSISTANT_INVALID"), "a name the operator did not type refuses");
+  o.context.operatorText = "Import this as Q3 roster please";
+  await assert.rejects(sheetCard(o, { action: "import", file, name: "Q3 roster", type: "x" }), /ZodError|Unrecognized/u, "extra fields refuse");
+  const card = await sheetCard(o, { action: "import", file, name: "Q3 roster" });
+  assert.ok(card.effect === "spreadsheet" && card.action === "import");
+  assert.deepEqual(card.facts, [{ label: "File", value: "roster.csv" }, { label: "Name", value: "Q3 roster" }, { label: "Worksheets", value: "1" }, { label: "Rows", value: "3" }]);
+  assert.equal(o.library.catalog().length, before, "nothing is written before Confirm");
+  await assert.rejects(o.decide(card, "confirm", undefined, "f".repeat(64)), /assistant-reviewed-proposal-mismatch/u);
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "applied", actionId: card.actionId });
+  const imported = o.library.catalog().filter(entry => entry.name === "Q3 roster");
+  assert.equal(imported.length, 1);
+  await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
+  assert.equal(o.library.catalog().filter(entry => entry.name === "Q3 roster").length, 1, "a duplicate Confirm writes nothing");
+  assert.deepEqual(o.captions(), ["Done: Import spreadsheet."]);
+});
+
+it("pins set-type with the current SharePoint link and settles a stale version as a refused receipt", async () => {
+  const o = await owners(), seed = seedWorkbook(o);
+  const card = await sheetCard(o, { action: "set-type", sheet: seed.sheet, type: seed.type });
+  assert.ok(card.effect === "spreadsheet");
+  assert.deepEqual(card.facts.at(-1), { label: "Type", value: `${seed.entry().type.name} → Staff` });
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "applied", actionId: card.actionId });
+  assert.deepEqual(seed.entry().metadata, { typeId: seed.typeId, sharePoint: null });
+  const stale = await sheetCard(o, { action: "set-type", sheet: seed.sheet, type: seed.type });
+  const current = o.library.read(seed.libraryId);
+  o.library.save(seed.libraryId, current.version, { ...current.workbook });
+  assert.deepEqual(await o.decide(stale, "confirm"), { state: "refused", code: "ASSISTANT_SPREADSHEET_REFUSED" });
+  assert.equal(o.library.journal(seed.libraryId).at(-1)?.state, "refused");
+});
+
+it("settles a stale library action refused, refuses foreign versions before a card, and binds every change to the attachment", async () => {
+  const o = await owners(), seed = seedWorkbook(o), other = seedWorkbook(o);
+  o.context.operatorText = "rename it to Payroll";
+  const card = await sheetCard(o, { action: "rename", sheet: seed.sheet, name: "Payroll" });
+  assert.deepEqual(card.effect === "spreadsheet" ? card.facts : [], [{ label: "Name", value: "Roster → Payroll" }]);
+  const entry = seed.entry();
+  await o.library.libraryAction(seed.libraryId, { operationId: randomUUID(), expectedRevision: entry.state.revision, expectedVersion: entry.version, change: { kind: "rename", name: "Elsewhere" } }, new AbortController().signal);
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "refused", code: "ASSISTANT_SPREADSHEET_REFUSED" });
+  assert.equal(seed.entry().name, "Elsewhere");
+  const foreign = o.references.issue("V", `${other.libraryId}:${other.entry().state.selectedVersionId}`, "v");
+  await assert.rejects(sheetCard(o, { action: "use-version", sheet: seed.sheet, version: foreign }), refusedWith("ASSISTANT_READ_STALE"));
+  const file = o.attach("next.csv", "text/csv", "Name\nCy\n");
+  const next = await sheetCard(o, { action: "new-version", sheet: seed.sheet, file });
+  o.replaceAttachment(file);
+  const version = seed.entry().version;
+  assert.deepEqual(await o.decide(next, "confirm"), { state: "refused", code: "ASSISTANT_ATTACHMENT_UNAVAILABLE" });
+  assert.equal(seed.entry().version, version, "a changed attachment writes nothing");
+});
+
+it("refuses with zero writes when the model verification expires while a SharePoint download is held", async () => {
+  const o = await owners(), seed = seedWorkbook(o);
+  o.context.operatorText = "link https://contoso.sharepoint.com/sites/hr/roster.xlsx";
+  const link = await sheetCard(o, { action: "link", sheet: seed.sheet, url: "https://contoso.sharepoint.com/sites/hr/roster.xlsx" });
+  assert.deepEqual(await o.decide(link, "confirm"), { state: "applied", actionId: link.actionId });
+  let release: () => void = () => {}, entered: () => void = () => {};
+  const held = new Promise<void>(resolve => { entered = resolve; });
+  o.sync.download = async (_command, use) => { entered(); await new Promise<void>(resolve => { release = resolve; }); return use({ name: "roster.csv", bytes: new TextEncoder().encode("Name\nZed\n").buffer }, { signal: new AbortController().signal, assertCurrent() {} }); };
+  const card = await sheetCard(o, { action: "sync", sheet: seed.sheet });
+  const revision = seed.entry().state.revision, decided = o.decide(card, "confirm");
+  await held; o.expireModel(); release();
+  assert.deepEqual(await decided, { state: "refused", code: "ASSISTANT_CONTEXT_STALE" });
+  assert.equal(seed.entry().state.revision, revision, "no library write");
+});
+
+it("reads a lost library-action response back from its operation record and keeps a lost import UNKNOWN", async () => {
+  const o = await owners(), seed = seedWorkbook(o);
+  const real = o.library;
+  o.workbookOwner.library = { ...real, async libraryAction(...args: Parameters<typeof real.libraryAction>) { await real.libraryAction(...args); throw new Error("synthetic lost response"); },
+    create(value: unknown) { real.create(value); throw new Error("synthetic lost response"); } };
+  o.context.operatorText = "rename to Kept, import as Lost";
+  const rename = await sheetCard(o, { action: "rename", sheet: seed.sheet, name: "Kept" });
+  assert.deepEqual(await o.decide(rename, "confirm"), { state: "applied", actionId: rename.actionId });
+  assert.equal(seed.entry().name, "Kept");
+  const file = o.attach("lost.csv", "text/csv", "Name\nA\n");
+  const card = await sheetCard(o, { action: "import", file, name: "Lost" });
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "unknown", actionId: card.actionId });
+  assert.ok(o.captions().at(-1)?.includes("Check the Spreadsheets library for Lost."));
+  await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u, "UNKNOWN is never retried");
 });

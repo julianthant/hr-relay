@@ -116,13 +116,14 @@ it("keeps every seeded personal value out of the provider requests across all pr
         const found = z.object({ runs: z.array(z.object({ run: z.string(), person: z.string().nullable() })).min(1) }).parse(outputs[0]).runs[0]; assert.ok(found);
         tokens.run = found.run; tokens.person = found.person ?? undefined;
       }
-      if (step === 6) tokens.sheet = z.object({ sheets: z.array(z.object({ sheet: z.string() })).min(1) }).parse(outputs[5]).sheets[0]?.sheet;
-      const calls: readonly (readonly [string, unknown])[] = [["find_runs", { workflow: null, status: null, day: null, limit: 5 }], ["find_people", { query: tokens.person }],
-        ["read_run", { run: tokens.run }], ["read_run_logs", { run: tokens.run, last: 5 }], ["list_notifications", { unreadOnly: false }],
+      if (step === 8) tokens.sheet = z.object({ sheets: z.array(z.object({ sheet: z.string() })).min(1) }).parse(outputs[6]).sheets[0]?.sheet;
+      // Two turns, each within the 8-call limit: run and people reads, then the library reads.
+      const calls: readonly (readonly [string, unknown] | null)[] = [["find_runs", { workflow: null, status: null, day: null, limit: 5 }], ["find_people", { query: tokens.person }],
+        ["read_run", { run: tokens.run }], ["read_run_logs", { run: tokens.run, last: 5 }], ["list_notifications", { unreadOnly: false }], ["read_settings", { key: null }], null,
         ["read_spreadsheets", { view: "list", sheet: null, limit: 10 }], ["read_spreadsheets", { view: "open", sheet: tokens.sheet, limit: 10 }],
-        ["read_spreadsheets", { view: "versions", sheet: tokens.sheet, limit: 10 }], ["read_spreadsheets", { view: "types", sheet: null, limit: 10 }], ["read_settings", { key: null }]];
+        ["read_spreadsheets", { view: "versions", sheet: tokens.sheet, limit: 10 }], ["read_spreadsheets", { view: "types", sheet: null, limit: 10 }], null];
       const next = calls[step++];
-      const output = next === undefined ? [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: `Found ${String(tokens.person)} in ${String(tokens.run)}.` }] }]
+      const output = next === null || next === undefined ? [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: `Found ${String(tokens.person)} in ${String(tokens.run)}.` }] }]
         : [{ type: "function_call", namespace: "relay", name: next[0], call_id: `call_${String(step)}`, arguments: JSON.stringify(next[1]), status: "completed" }];
       return new Response(completedResponseStream(output, request.model, `resp_${String(step)}`), { headers: { "Content-Type": "text/event-stream" } });
     });
@@ -137,10 +138,13 @@ it("keeps every seeded personal value out of the provider requests across all pr
     const { result } = envelope;
     assert.equal(result.state, "answered", JSON.stringify(result)); if (result.state !== "answered") throw new Error("answer required");
     assert.match(result.text, new RegExp(`^Found ${CANARIES.subject} in Person Lookup run, \\d{4}-\\d{2}-\\d{2}\\.$`, "u"));
-    assert.equal(bodies.length, 11);
+    assert.ok(envelope.receipt);
+    const library = await service.respond({ conversationId, expectedRevision: envelope.receipt.revision, messageId: randomUUID(), message: "What is in the Spreadsheets library?" }, new AbortController().signal);
+    assert.equal(library.kind === "result" ? library.result.state : library.kind, "answered");
+    assert.equal(bodies.length, 12);
     for (const [index, body] of bodies.entries()) for (const [name, value] of Object.entries(CANARIES)) assert.equal(body.includes(value), false, `request ${String(index + 1)} carried ${name}`);
     for (const value of [owners.run.envelope.runId, owners.run.envelope.traceId]) assert.ok(bodies.every(body => !body.includes(value)));
-    const [runs, people, read, logs, notifications, sheets, opened, versions, types, settings] = outputs;
+    const [runs, people, read, logs, notifications, settings, sheets, opened, versions, types] = outputs;
     assert.equal(z.object({ runs: z.array(z.object({ person: z.string() })).length(1) }).parse(runs).runs.length, 1);
     assert.deepEqual(z.object({ people: z.array(z.object({ person: z.string() })) }).parse(people).people.map(entry => entry.person), [tokens.person]);
     assert.equal(z.object({ person: z.string(), workflow: z.literal("person-lookup") }).parse(read).person, tokens.person);
