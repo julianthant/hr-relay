@@ -56,8 +56,8 @@ export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfi
   // An unknown outcome is one plain line, carried by the transcript message.
   if (disposition === 'unknown') return null;
   if (disposition === 'confirmed' || disposition === 'cancelled') {
-    const done = disposition === 'confirmed';
-    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{rows.length > 0 ? ` · ${target ?? ''}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (proposal.issued?.effect === 'workflow-start' ? 'Started' : 'Done') : 'Not started'}</span></div>;
+    const done = disposition === 'confirmed', start = proposal.issued?.effect === 'workflow-start', named = rows.length > 0 || proposal.issued?.effect === 'spreadsheet';
+    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{named ? ` · ${target ?? ''}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (start ? 'Started' : 'Done') : start ? 'Not started' : 'Not done'}</span></div>;
   }
   const options = [MODE_LABEL[proposal.mode], ...proposal.values.filter(value => !HIDDEN_PROPOSAL_FACTS.has(value.label)).map(value => value.value)];
   const busy = disposition === 'confirming';

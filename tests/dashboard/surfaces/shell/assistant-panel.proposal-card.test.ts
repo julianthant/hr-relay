@@ -49,6 +49,21 @@ describe('assistant proposal card rows', () => {
     expect(facts).toEqual([['Request', 'Onboarding request'], ['Options', 'Local change · Pause']]);
     expect(confirm?.disabled).toBe(false);
   });
+  it('shows a spreadsheet card as its fixed facts with the local change mode and resolves to its workbook', () => {
+    const sheet = AssistantActionProposalSchema.parse({ chatId: start.chatId, actionId: start.actionId, revision: 1, expiresAt: '2099-01-01T00:00:00Z', label: 'Rename spreadsheet',
+      targetLabel: 'Roster', effect: 'spreadsheet', action: 'rename', facts: [{ label: 'Name', value: 'Roster → Payroll' }] });
+    const { facts, confirm } = render(sheet);
+    expect(facts).toEqual([['Name', 'Roster → Payroll']]);
+    expect(confirm?.disabled).toBe(false);
+    expect(render(sheet, 'confirmed').host.textContent).toBe('Rename spreadsheet · RosterDone');
+    expect(render(sheet, 'cancelled').host.textContent).toBe('Rename spreadsheet · RosterNot done');
+  });
+  it('shows an attached PDF start row as its file', () => {
+    const { facts } = render(withRows([{ title: 'emergency-contact', display: { kind: 'file', fileName: 'contact.pdf', formType: 'emergency-contact' } }],
+      { label: 'Start Emergency Contact', targetLabel: '1 file' }, 'emergency-contact'));
+    expect(facts[0]).toEqual(['File', 'contact.pdf']);
+    for (const term of ['Person', 'EID', 'Name']) expect(facts.map(([label]) => label)).not.toContain(term);
+  });
   it('renders no card for an unknown outcome; its one line is the transcript message', () => {
     expect(render(withRows([person('Sample, Avery', '10101010')]), 'unknown').host.innerHTML).toBe('');
     expect(presentResult({ state: 'unknown', actionId: start.actionId, action: withRows([person('Sample, Avery', '10101010')]) }, 1, 'prompt').message.text).toBe(ASSISTANT_UNKNOWN_NOTICE);
