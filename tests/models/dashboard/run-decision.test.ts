@@ -18,6 +18,7 @@ describe("RunDecisionWireSchema", () => {
     const answer = { optionId: "resume", label: "Resume", at: "2026-11-07T10:00:00.000Z", actor: { kind: "assistant", onBehalfOf: { name: "Sam Lee" } } };
     assert.ok(RunDecisionWireSchema.safeParse({ type: "paused", title: "Paused", options: [option("resume")], answer }).success);
     assert.ok(!RunDecisionWireSchema.safeParse({ type: "paused", title: "Paused", options: [option("cancel-run")], answer }).success);
+    assert.ok(!RunDecisionWireSchema.safeParse({ type: "cancelling", title: "Cancelling", options: [], answer }).success, "a line names no option to answer");
   });
 
   it("pairs a verification send with its verification input, and never on another option", () => {

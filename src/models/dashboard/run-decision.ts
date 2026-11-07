@@ -100,7 +100,7 @@ export const RunDecisionWireSchema = z.strictObject({
   const keys = decision.options.flatMap(({ send }) => send.via === "action" ? [send.actionKey] : []);
   if (new Set(keys).size !== keys.length) context.addIssue({ code: "custom", path: ["options"], message: "decision action keys must be unique" });
   if (decision.options.filter(option => option.recommended).length > 1) context.addIssue({ code: "custom", path: ["options"], message: "at most one option is recommended" });
-  if (decision.answer !== undefined && !ids.includes(decision.answer.optionId) && decision.options.length > 0) {
+  if (decision.answer !== undefined && !ids.includes(decision.answer.optionId)) {
     context.addIssue({ code: "custom", path: ["answer", "optionId"], message: "the answer must name a declared option" });
   }
   if (decision.type === "cancelling" && decision.options.length > 0) context.addIssue({ code: "custom", path: ["options"], message: "a cancelling decision is a line, with no options" });

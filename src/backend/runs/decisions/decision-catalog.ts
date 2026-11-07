@@ -6,7 +6,7 @@ type ActionCommand = z.infer<typeof ActionCommandKeySchema>;
 
 /** How an option is sent, as declared; the projection binds it to the instance's served key. */
 export type DeclaredSend =
-  | Readonly<{ via: "action" | "row-action"; command: ActionCommand }>
+  | Readonly<{ via: "action" | "row-action"; command: ActionCommand; /** Sent instead when `command` is not served. */ fallback?: ActionCommand }>
   | Readonly<{ via: "verification"; present: ActionCommand; absent: ActionCommand }>
   | Readonly<{ via: "gate-arm" }>
   | Readonly<{ via: "start-plan" }>
@@ -42,12 +42,12 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
   ] },
   "review-before-write": { title: "Review before Relay writes", recommended: [], gateArms: true, options: [] },
   "write-parked": { title: "Check whether the submit went through", recommended: ["check-result", "check-again"], options: [
-    { id: "check-again", label: "Check again", hint: "Read the target system again. Nothing is submitted.", send: { via: "action", command: "check-parked-write" } },
+    { id: "check-again", label: "Check again", hint: "Read the target system again. Nothing is submitted.", send: { via: "action", command: "check-parked-write", fallback: "recheck-write" } },
     { id: "check-result", label: "Check result", hint: "Tell Relay what you found in the target system.", send: { via: "verification", present: "recheck-write", absent: "resolve-write-absent" } },
     { id: "didnt-land", label: "It didn't land", hint: "You checked and nothing was sent. Relay may submit again.", send: { via: "action", command: "resolve-write-absent" } },
   ] },
   "write-unknown": { title: "Check whether the submit went through", recommended: ["check-result", "check-again"], options: [
-    { id: "check-again", label: "Check again", hint: "Read the target system again. Nothing is submitted.", send: { via: "action", command: "check-parked-write" } },
+    { id: "check-again", label: "Check again", hint: "Read the target system again. Nothing is submitted.", send: { via: "action", command: "check-parked-write", fallback: "recheck-write" } },
     { id: "check-result", label: "Check result", hint: "Tell Relay what you found in the target system.", send: { via: "verification", present: "recheck-write", absent: "resolve-write-absent" } },
     { id: "didnt-land", label: "It didn't land", hint: "You checked and nothing was sent. Relay may submit again.", send: { via: "action", command: "resolve-write-absent" } },
   ] },

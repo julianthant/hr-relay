@@ -67,7 +67,7 @@ import { QueueStatusSchema } from "./projection.js";
 import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/types.js";
 
 /** Every `action` option of a served decision names an action served beside it, so a decision never offers an unreachable control. */
-function refineDecisionActions(decision: RunDecisionWire | undefined, actions: readonly ActionDescriptorWire[], context: z.RefinementCtx, path: (string | number)[]): void {
+function refineDecisionActions(decision: RunDecisionWire | undefined, actions: readonly Pick<ActionDescriptorWire, "key">[], context: z.RefinementCtx, path: (string | number)[]): void {
   if (decision === undefined) return;
   const keys = new Set(actions.map(({ key }) => key));
   const named = decision.options.flatMap(({ send }) => send.via === "action" ? [send.actionKey] : send.via === "verification" ? [send.presentActionKey, send.absentActionKey] : []);
@@ -296,6 +296,7 @@ export const RunDetailWireSchema = z.strictObject({
   decision: RunDecisionWireSchema.optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
+  refineDecisionActions(detail.decision, detail.childRetry === undefined ? [] : [detail.childRetry], context, ["decision"]);
   if (detail.childRetry !== undefined && (detail.header.parentRunId === undefined || detail.header.status !== "failed"
     || detail.childRetry.expectedVersion !== detail.rowRevision)) {
     context.addIssue({ code: "custom", path: ["childRetry"], message: "child retry requires the exact failed run revision" });

@@ -600,14 +600,17 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
 
 /** D5/D6: the row the operator answers today — Check again, then Check result when a transaction id is accepted, else It didn't land. */
 export function parkedWriteDecision(parkedCode: string, acceptsTransactionId: boolean, actions: readonly ActionDescriptorWire[]): RunDecisionWire {
-  const key = (command: string) => actions.find(action => action.kind === "command" && action.command === command)?.key;
-  const recheck = key("recheck-write"), absent = key("resolve-write-absent"), again = key("check-parked-write") ?? recheck;
+  const find = (command: string) => actions.find(action => action.kind === "command" && action.command === command);
+  // Each single-action option carries the confirm of the descriptor it sends; Check result leaves its two outcomes' confirms on their actions.
+  const sending = (id: string, action: ActionDescriptorWire) => ({ id, send: { via: "action" as const, actionKey: action.key },
+    ...(action.kind === "command" && action.confirm !== undefined ? { confirm: action.confirm } : {}) });
+  const recheck = find("recheck-write"), absent = find("resolve-write-absent"), again = find("check-parked-write") ?? recheck;
   return projectDecision(parkedCode === "unknown" ? "write-unknown" : "write-parked", [
-    ...(again === undefined ? [] : [{ id: "check-again", send: { via: "action" as const, actionKey: again } }]),
+    ...(again === undefined ? [] : [sending("check-again", again)]),
     ...(acceptsTransactionId
       ? recheck === undefined || absent === undefined ? [] : [{ id: "check-result", input: { kind: "verification" as const, question: "Was it submitted?" },
-        send: { via: "verification" as const, presentActionKey: recheck, absentActionKey: absent, transactionPattern: "^T\\d+$" } }]
-      : absent === undefined ? [] : [{ id: "didnt-land", send: { via: "action" as const, actionKey: absent } }]),
+        send: { via: "verification" as const, presentActionKey: recheck.key, absentActionKey: absent.key, transactionPattern: "^T\\d+$" } }]
+      : absent === undefined ? [] : [sending("didnt-land", absent)]),
   ]);
 }
 

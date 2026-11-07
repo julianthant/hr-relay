@@ -21,10 +21,19 @@ describe("decision catalog", () => {
     const registered = new Set(COMMAND_FAMILY_REGISTRY.flatMap(family => family.actions.map(action => `${family.family}/${action}`)));
     for (const [type, declaration] of Object.entries(DECISION_CATALOG)) {
       for (const { id, send } of declaration.options) {
-        if (send.via === "action" || send.via === "row-action") assert.ok(ActionCommandKeySchema.safeParse(send.command).success, `${type}/${id}`);
+        if (send.via === "action" || send.via === "row-action") {
+          assert.ok(ActionCommandKeySchema.safeParse(send.command).success, `${type}/${id}`);
+          if (send.fallback !== undefined) assert.ok(ActionCommandKeySchema.safeParse(send.fallback).success, `${type}/${id} fallback`);
+        }
         if (send.via === "verification") assert.ok(ActionCommandKeySchema.safeParse(send.present).success && ActionCommandKeySchema.safeParse(send.absent).success, `${type}/${id}`);
         if (send.via === "command") assert.ok(registered.has(`${send.family}/${send.type}`), `${type}/${id}`);
       }
+    }
+  });
+
+  it("declares Check again as the held check, falling back to recheck-write", () => {
+    for (const type of ["write-parked", "write-unknown"] as const) {
+      assert.deepEqual(DECISION_CATALOG[type].options.find(({ id }) => id === "check-again")?.send, { via: "action", command: "check-parked-write", fallback: "recheck-write" });
     }
   });
 
