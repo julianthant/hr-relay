@@ -191,7 +191,7 @@ export const BAND_LABEL: Record<QueueBandKey, string> = {
 
 /** Bands count drawn rows; only the served status projection reports day totals. */
 export function bandOf(status: ProposedStatus): QueueBandKey {
-  if (status === "waiting" || status === "parked") return "attention";
+  if (status === "waiting" || status === "parked" || status === "failed") return "attention";
   if (status === "running" || status === "cancelling") return "active";
   if (status === "queued") return "queued";
   return "finished";

@@ -89,8 +89,12 @@ Settings owns its rail and guarded back arrow. Analytics and Explorer mount insi
 `PageBreadcrumbs` precedes a child heading. Available parents call the existing route callback;
 the last item is passive text. Wizard Back changes stages, while dismissal closes the layer.
 `DsBodyScope` supplies a shared content width and body rhythm. Tables hold dense records, grids
-hold aligned peer facts, and short chips carry facts that tolerate truncation.
+hold aligned peer facts, and short chips carry facts that tolerate truncation. In every table
+(log page cards, member lists, queue tables) the last column is right-aligned, header and cells,
+flush to the table's right edge.
 
+A queue row draws its served subtitle ("12 people") as a muted line under the title when it differs from the title.
+Double-clicking a queue row title renames it in place: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
@@ -108,7 +112,7 @@ The assistant is a floating, draggable bottom-right panel: tinted header (histor
 Browser captures stay inline. A verified before/after pair sits under its declared submit action,
 with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
 
-Warnings and failures are toasts (`Notice`, or `useToasts`): a title and at most one short line, with no code, outcome or explanatory paragraph. A one-off result (an action failed or was refused) dismisses itself. A state the operator must act on (unavailable storage, unread settings, a pending check) is `sticky`, carries one action button, and shows again whenever its surface mounts while the state still holds. These stay inline: field validation beside its input, anything inside a dialog or drawer (toasts are inert while one is open; the Start run dialog uses `Banner`/`Refusal`), confirmations that need two choices, empty states, and the run log failure card.
+Warnings and failures are toasts (`Notice`, or `useToasts`): a title and at most one short line, with no code, outcome or explanatory paragraph. A one-off result (an action failed or was refused) dismisses itself. A state the operator must act on (unavailable storage, unread settings, a pending check) is `sticky`, carries one action button, and shows again whenever its surface mounts while the state still holds. These stay inline: field validation beside its input, anything inside a dialog or drawer (toasts are inert while one is open; the Start run dialog uses `Banner`/`Refusal`), confirmations that need two choices, empty states, and a failed step's decision in Logs.
 Required browser slots without an observed session read “Not opened”; observed health failures stay “Unavailable”.
 
 ## Run logs
@@ -117,14 +121,82 @@ Shared by every workflow's served Logs (`projectRunLogs`); display only, so evid
 
 - Show one operator-readable sentence or labelled row per fact; never an internal control, selector, task, node or field name.
 - Name a step's system as UCPath, CRM, Kuali and the like; local work shows no system.
-- Show declared operator fields as aligned rows (label, eye or pencil icon, time, value). A declared value that was not kept reads "Not retained" in its row, once.
+- Show declared operator fields as aligned rows (label, eye or pencil icon, time, value). A declared value that was not kept reads "Not retained" in its row, once. A value Relay failed to read reads "Couldn't read" in a muted danger tone.
 - Hide browser gestures whose label comes only from the UI registry; a gesture appears only through a declared operator label or field.
 - Hide task diagnostics: an info note with structured fields repeats the labelled rows. Warnings and errors still show.
 - Leave stage state to the timeline strip: no Pending, In progress, Completed or Failed lines. Skipped keeps one line, "Skipped · Not needed for this run"; a wait or cancel keeps its line.
 - Never write a "<step> completed" line for a step with no rows.
 - Label a capture with its step's system and "Browser"; its caption is its label, else its capture time.
-- A failed step is one card: the step's failure title, a Failed badge, the catalog sentence for its code, and the write outcome in operator words ("No changes were made." in the footer; any other outcome as a caution sentence). Never "Write state: …", a developer remark about the panel, or a failure code.
+- A failed step follows the failure rule under Decisions: its failure title, the catalog sentence for its code, and the write outcome in operator words ("Nothing was written."). Never "Write state: …", a developer remark about the panel, or a failure code.
 - Do not repeat a fact between the card, the row, and the timeline.
+
+### Type levels in Logs and Explorer
+
+Use one level per role, from the existing scale, and never two roles at one level in the same view.
+
+| Role | Logs | Explorer |
+| --- | --- | --- |
+| Page title | Not used | `PageHeading` |
+| Section title (run title, "Run options") | `text-section` | `text-section` |
+| Step title | `text-heading` | `text-section` |
+| Decision question | `text-heading` | Not used |
+| Page card title | `text-control` semibold | `text-control` semibold |
+| Field and column label | `text-body` medium; column headers `text-caption` muted | `text-body` medium, secondary |
+| Meta (time, system, mode, counts) | `text-caption` muted | `text-caption` muted |
+
+Times, durations, capture times and IDs use the body face with tabular figures, never the data face.
+
+### Steps
+
+- One time per step, in the left column. Rows inside the step have no time.
+- A step reads in order: page cards, clicks, captures, then its outcome line, then any decision.
+- A page card shows the page name and its mode (Fill, Read) on the right. Its values sit in rows under it, or in one table when the page lists records.
+- A click is a plain line with the pointer icon: "Clicked Search". Never draw it as a button.
+- Every finished step ends with one outcome line in Explorer's words, with a check icon.
+
+### Decisions
+
+A decision is answered where its evidence is. It is never a separate card, dock or banner.
+
+- Anatomy, in order: the question (`text-heading`), at most one note line (`text-body` secondary), the evidence or input, then the actions on one row.
+- Picking one of several records puts a radio column in the page card that lists them. The primary action names the choice ("Continue with Morrow, Bea A.") and stays disabled until a row is chosen.
+- Every pick ends with a "None of these" row. Choosing it puts a labelled input on the action row ("Enter employee ID", 8 digits; "Enter row number" for a roster or workbook row), and the primary reads "Continue with <typed value>", disabled until the value is valid. A typed employee ID is asked for only here, when Relay cannot find the person.
+- A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
+- A value to correct, or a transaction number to confirm, is a labelled input on the action row, before the buttons.
+- A failure uses the same anatomy. The question is the failure title in the danger colour, and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written. There is no Add note action.
+- When the site rejected a value Relay typed (phone, address, date, ID) and nothing was saved, the failure shows a labelled input prefilled with the rejected value and the primary "Retry with this <value>" ("Retry with this number"). It is never offered after a committed save.
+- When a write saved but its read-back failed, the actions are, in order: Check again (repeats only the read-back), "Checked by hand, continue", "Withdrawn in UCPath, file again" and "Mark as failed" (ends this person's run as failed and files nothing). "File again" first reads the system and proves the saved record is gone or withdrawn, then files once; if the record is still there, a toast refuses it. Relay never withdraws a submitted transaction itself.
+- An unconfirmed write (parked, or uncertain after a restart) always asks "Did the <record> save in <system>?". The note says what did not confirm and where to check. The actions are Confirm saved and "Not saved, <what Relay does next>" (for example "Not saved, file it again"). A transaction or document number input appears only when that system issues one.
+- An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure; Retry is the icon button in that log's header, and a rejected value adds the fix-and-retry input in the body. The parent log reads the document, records the approval and lists the records handed to members.
+- A cancel in progress is one line with a loading icon. It has no actions.
+- A refused command is a toast (title and one line). The transcript does not change.
+- Toasts and the assistant launcher sit above the Logs footer and never cover its search, copy or latest controls.
+- Buttons are standard size: one primary, then secondary buttons. The run-ending action (Cancel run, Reject) is secondary, never ghost text.
+- No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
+
+### Status signals
+
+Each state keeps its own badge in the queue row and the run header, its own word in the step's time column, and its own timeline bar. Waiting uses one colour everywhere: the warning colour of the queue's Needs you band, the hatched timeline bar and the time column. Waiting, failed and parked runs sit under Needs you.
+
+| State | Header and queue | Time column under the step time |
+| --- | --- | --- |
+| Waiting for you | Review (`waiting`), hatched warning timeline bar | "Waiting" and the wait time, warning colour |
+| Write parked or uncertain submit | Write parked (`parked`, dashed), dashed warning outline timeline bar | "Parked" and the wait time, warning colour |
+| Failed | Failed (`failed`) | "Failed", danger colour |
+| Stalled | Failed with the label Stalled | "No progress" and the time, danger colour |
+| Paused | Queued with the label Paused | "Paused", muted |
+| Cancelling | Cancelling (`cancelling`), muted timeline bar | "Cancelling", muted |
+
+## Explorer
+
+Explorer is a generated review spec of what a workflow does. It never shows simulated runs or action buttons.
+
+- Run options sit above the step list as a "Run options" section: a label above each select, in one row.
+- Step 1 is "Open browser sessions", with a chip for each system the run signs in to. Logs never show this step.
+- A step reads: title and system, one description line, check lines (outside page cards), page cards, clicks as plain lines ("Clicks Search").
+- A decision point is a select under the evidence it reads, including terminal reads such as employment status (Active, Inactive, Not found). It lists every outcome declared there, ending with "Anything else", with what happens next beside it. Changing it changes the steps below.
+- When an outcome stops the run, the steps after it are hidden and the run's end line states the stop in the danger colour, once.
+- There is no "If" label. Fill values keep their source button. Sample values come from the definition's examples.
 
 ## Motion
 
@@ -144,7 +216,7 @@ status fill changes without changing the information's position.
 - Compose public primitives; change a shared variant at its owner instead of forking a component.
 - Use defined tokens for color, size, radius, depth, and duration; verify any runtime custom property has an actual writer.
 - Keep the theme root above Tooltip and Toast providers so their fragment siblings inherit tokens.
-- Reserve the toast viewport's bottom inset for the Sessions bar; panel notices belong to their panel's coordinate space.
+- Reserve the toast viewport's bottom inset for the Sessions bar and the Logs footer; panel notices belong to their panel's coordinate space.
 - Let a segmented frame own its height and make segments fill it; give free space to the control group rather than multiple `ml-auto` siblings.
 - Use `CardBase` with a growing body for aligned card bottoms and `CompareGrid` for peer records that share row tracks.
 - Put facts shared by every row on the group heading; show per-row departures next to the affected value.

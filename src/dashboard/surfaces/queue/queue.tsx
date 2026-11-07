@@ -7,6 +7,7 @@ import { cn } from "../../lib/utils.js";
 import {
   BareButton,
   Chip,
+  Input,
   Checkbox,
   dsBorder,
   dsClip,
@@ -104,6 +105,8 @@ export interface QueueHandlers {
   /** Jump to a run this row DELEGATED TO . Same shape as
  * `onOpenParent` and separate from it on purpose: the wire hands the whole */
   onOpenLinked?: (link: LinkedRunWire) => void;
+  /** Double-click renames the row title in place; an empty name restores the default. Offered only when a host supplies it. */
+  onRenameTitle?: (runId: string, name: string) => void;
 }
 
 /** How a surface reaches its served actions. The default is honest emptiness. */
@@ -709,6 +712,9 @@ export function QueueRow({
   const bulkIds = state.bulkIds;
   const titleTooltip = batch === undefined ? queueRowTitleTooltip(surface) : undefined;
   const title = batch === undefined ? queueRowTitle(surface) : workflowLabel;
+  const [draft, setDraft] = useState<string>();
+  const { onRenameTitle } = handlers;
+  const renameTitle = batch === undefined && onRenameTitle !== undefined ? onRenameTitle : undefined;
   const selectedBatchMember = batch === undefined ? undefined
     : batch.items.flatMap(item => item.attempts).find(attempt => attempt.runId === state.selectedRunId);
   const bulkKey = batch?.key ?? surface.runId;
@@ -769,8 +775,23 @@ export function QueueRow({
           <div data-queue-body className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
             <div className="flex min-w-0 items-center gap-x-[var(--ds-space-base)]">
               <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
-                <span
+                {draft !== undefined && renameTitle !== undefined ? <Input
+                  autoFocus
+                  aria-label="Run name"
+                  value={draft}
+                  onChange={event => setDraft(event.target.value)}
+                  onClick={event => event.stopPropagation()}
+                  onFocus={event => event.currentTarget.select()}
+                  onBlur={() => setDraft(undefined)}
+                  onKeyDown={event => {
+                    event.stopPropagation();
+                    if (event.key === "Enter") { renameTitle(surface.runId, draft.trim()); setDraft(undefined); }
+                    if (event.key === "Escape") setDraft(undefined);
+                  }}
+                  className={cn(dsText.title, "h-7 min-w-0 flex-1 font-semibold")}
+                /> : <span
                   data-demo-row-title
+                  onDoubleClick={renameTitle === undefined ? undefined : event => { event.stopPropagation(); setDraft(title); }}
                   className={cn(
                     dsText.title,
                     // Truncate rather than wrap — wrapping shoved the status
@@ -781,7 +802,7 @@ export function QueueRow({
                   {...(titleTooltip === undefined ? {} : { title: titleTooltip })}
                 >
                   {title}
-                </span>
+                </span>}
                 {/* Name workflow ownership only when the surface mixes workflows. */}
                 {surface.workflowId !== state.panelWorkflowId && (
                   <span className={rowChip("neutral", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}>

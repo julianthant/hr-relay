@@ -296,6 +296,51 @@ describe("Queue consumes the served day boundary", () => {
     }
   });
 
+  it("renames a row title in place only when the host offers it: Enter saves, Escape cancels, empty restores", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const row = rowWhere((candidate) => candidate.surfaceKind === "single" && candidate.parent === null);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const renamed: [string, string][] = [];
+    const draw = (onRenameTitle?: (runId: string, name: string) => void) => createElement(QueuePanel, {
+      surfaces: [row],
+      state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: row.workflowId },
+      handlers: { onSelect: () => undefined, ...(onRenameTitle === undefined ? {} : { onRenameTitle }) },
+      workflowLabelOf: () => "Person Lookup",
+      panelLabel: "Person Lookup",
+      day: FIXTURE_DAY,
+    });
+    const title = () => host.querySelector<HTMLElement>("[data-demo-row-title]");
+    const input = () => host.querySelector<HTMLInputElement>('input[aria-label="Run name"]');
+    const edit = async (value: string, key: string) => {
+      await act(async () => title()?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+      const field = input();
+      assert.ok(field);
+      assert.equal(field.value, queueRowTitle(row));
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(field, value);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => field.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+      assert.equal(input(), null);
+    };
+    try {
+      await act(async () => root.render(draw()));
+      await act(async () => title()?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+      assert.equal(input(), null);
+      await act(async () => root.render(draw((runId, name) => renamed.push([runId, name]))));
+      await edit("  April contacts  ", "Enter");
+      await edit("Ignored", "Escape");
+      await edit("", "Enter");
+      assert.deepEqual(renamed, [[row.runId, "April contacts"], [row.runId, ""]]);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders warning and duration facts without replacing unavailable values with plausible defaults", () => {
     const warned = rowWhere((row) => row.warnings.state === "present");
     const running = rowWhere((row) => row.status === "running" && row.endedAt.state === "absent");

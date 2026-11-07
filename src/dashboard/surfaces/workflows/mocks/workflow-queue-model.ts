@@ -1,4 +1,5 @@
 import { QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
+import { decisionMock, type MockGroup, type MockState } from "../../run-detail/decision-mock/decision-mock-model.js";
 import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
 import type { QueueSurfaceWire } from "../../queue/queue-model.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
@@ -18,6 +19,9 @@ export function mockRunDisplayId(run: Pick<MockRun, "id" | "workflowId">): strin
   return runDisplayId(mockQueueId(run.id), workflowDisplayCode(mockWorkflow(run.workflowId).label));
 }
 
+const MOCK_QUEUE_STATUS: Readonly<Record<MockState, "awaiting-approval" | "blocked" | "failed" | "queued" | "cancelling">> = {
+  review: "awaiting-approval", parked: "blocked", failed: "failed", paused: "queued", stalled: "failed", cancelling: "cancelling",
+};
 export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockRun): QueueSurfaceWire {
   const review = mockNeedsReview(run);
   const records = reviewRecords(run);
@@ -29,6 +33,9 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
   const start = new Date(anchor - durationSeconds * 1000).toISOString();
   const absent = (reason: string) => ({ state: "absent" as const, reason });
   if (run.parentId !== undefined && parent?.id !== run.parentId) throw new Error("MOCK_QUEUE_PARENT_UNAVAILABLE");
+  const scene = decisionMock()?.scene;
+  const decisionRun = scene && run.id === `mock:${scene.workflow}:sample` ? scene : undefined;
+  if (decisionRun) run = { ...run, subject: decisionRun.subject };
   return QueueSurfaceWireSchema.parse({
     surfaceKind: "single", runId: mockQueueId(run.id), itemId: mockQueueId(run.id), workflowId: run.workflowId,
     traceId: `${workflowDisplayCode(mockWorkflow(run.workflowId).label)}-091000-${sha256Hex(run.id).slice(0, 4)}`, attempt: 1,
@@ -43,11 +50,11 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
     runNumber: absent("No persisted run ordinal"), session: absent("Local workflow fixture"),
     facts: absent("Results appear in Logs"), title: run.subject,
     displayName: absent("Use the input subject"), subtitle: absent("The panel names the workflow"),
-    status: mockQueueStatus(run),
+    status: decisionRun ? MOCK_QUEUE_STATUS[decisionRun.state] : mockQueueStatus(run),
     startedAt: start, updatedAt: end,
-    endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
+    endedAt: decisionRun || review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
     gateOpenedAt: review ? { state: "present", value: end } : absent("No open approval"),
-    liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : currentStep ? { state: "present", value: currentStep.label } : absent("No active step"),
+    liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : decisionRun ? { state: "present", value: decisionRun.queueMessage } : currentStep ? { state: "present", value: currentStep.label } : absent("No active step"),
     warnings: warnings.length ? { state: "present", count: warnings.length, first: warnings[0] } : absent("No record warnings"),
     pipeline: timeline.map((stage, index) => ({
       id: `step-${index + 1}`, label: stage.label,
@@ -61,7 +68,27 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
 export function mockQueueSurfaces(runs: readonly MockRun[], anchorIso: string, allRuns = runs): readonly QueueSurfaceWire[] {
   const surfaces = runs.map(run => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : allRuns.find(parent => parent.id === run.parentId)));
   if (new Set(surfaces.map(surface => surface.runId)).size !== runs.length) throw new Error("MOCK_QUEUE_ID_COLLISION");
-  return surfaces;
+  const scene = decisionMock()?.scene;
+  const group = scene?.group;
+  if (!group) return surfaces;
+  const sample = mockQueueId(`mock:${scene.workflow}:sample`);
+  return surfaces.flatMap(surface => surface.runId === sample ? decisionGroupSurfaces(surface, group) : [surface]);
+}
+
+/** Design mock: one parent run for the PDF plus one inline member run per person. The selected run keeps the sample id. */
+function decisionGroupSurfaces(sample: QueueSurfaceWire, group: MockGroup): readonly QueueSurfaceWire[] {
+  const id = (key: string, selected: boolean) => selected ? sample.runId : mockQueueId(`${sample.runId}:${key}`);
+  const parentId = id("pdf", group.selected === "parent");
+  const firstFailed = group.members.findIndex(member => member.failed);
+  const memberIds = group.members.map((_, index) => id(String(index), group.selected === "member" && index === firstFailed));
+  const ended = { state: "present", value: sample.updatedAt } as const;
+  const parent = QueueSurfaceWireSchema.parse({ ...sample, surfaceKind: "operation", runId: parentId, itemId: parentId, title: group.title,
+    subtitle: { state: "present", value: group.subtitle }, status: "failed", endedAt: ended, liveMessage: { state: "absent", reason: "Members carry their own status" }, panelKind: "group",
+    memberRunIds: memberIds, memberRollup: { total: memberIds.length, terminal: memberIds.length, failed: group.members.filter(member => member.failed).length },
+    memberPreview: { state: "present", value: `${group.members[0].name} +${group.members.length - 1} more` } });
+  return [parent, ...group.members.map((member, index) => QueueSurfaceWireSchema.parse({ ...sample, runId: memberIds[index], itemId: memberIds[index], title: member.name,
+    subtitle: { state: "absent", reason: "The member title names the person" }, status: member.failed ? "failed" : "done", endedAt: ended,
+    liveMessage: { state: "absent", reason: "Run is terminal" }, parent: { runId: parentId, visibility: "inline", partitionDay: localDatePart(new Date(sample.startedAt)), workflowId: sample.workflowId, label: "Emergency Contact", title: group.title, panelKind: "group", status: "failed" }, panelKind: "member" }))];
 }
 
 export function mockQueueOutcomes(runs: readonly MockRun[]): ReadonlyMap<string, QueueBusinessOutcome> {
