@@ -368,11 +368,13 @@ const RETRY_REFUSAL_LABEL: Readonly<Record<string, string>> = {
   "worker-retirement-profile-identity-mismatch": "Couldn't restart: this worker's browser folder doesn't match its record.",
 };
 
-/** Plain words for a worker restart that was refused or left unconfirmed; undefined when no restart failed. */
+/** Plain words for a worker restart (a Retry, or a stop-worker that restarts it) that was refused or left unconfirmed; undefined otherwise. */
 export function workerRetryProblem(card: WorkerCardWire): string | undefined {
   const operation = card.controls?.operation;
-  if (operation?.type !== "retry-worker" || (operation.state !== "refused" && operation.state !== "uncertain")) return undefined;
-  return RETRY_REFUSAL_LABEL[operation.message ?? ""] ?? "Couldn't restart this worker.";
+  if (operation === undefined || (operation.state !== "refused" && operation.state !== "uncertain")) return undefined;
+  const named = RETRY_REFUSAL_LABEL[operation.message ?? ""];
+  if (operation.type === "stop-worker") return named ?? (operation.message === "worker-retry-never-started" ? "The last restart never started. Use Retry." : undefined);
+  return operation.type === "retry-worker" ? named ?? "Couldn't restart this worker." : undefined;
 }
 
 

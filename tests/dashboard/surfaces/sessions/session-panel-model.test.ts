@@ -36,5 +36,10 @@ it("a refused or unconfirmed worker restart names its cause in plain words", () 
   assert.equal(workerRetryProblem(retry("uncertain", "worker-retirement-child-close-unproved")), "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.");
   assert.equal(workerRetryProblem(retry("refused", "worker-lifecycle-effect-or-settlement-unproved")), "Couldn't restart this worker.");
   assert.equal(workerRetryProblem(retry("succeeded")), undefined);
+  const stop = (state: "uncertain" | "refused", message: string): WorkerCardWire => ({ ...base, controls: { ...base.controls!,
+    operation: { commandId, type: "stop-worker", state, at, unresolved: false, message } } });
+  assert.equal(workerRetryProblem(stop("uncertain", "worker-retirement-child-close-unproved")), "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.");
+  assert.equal(workerRetryProblem(stop("refused", "worker-retry-never-started")), "The last restart never started. Use Retry.");
+  assert.equal(workerRetryProblem(stop("uncertain", "worker-lifecycle-effect-or-settlement-unproved")), undefined);
   assert.equal(workerRetryProblem(base), undefined);
 });
