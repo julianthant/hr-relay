@@ -5,14 +5,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
-import { readRunLogs, projectRunLogs, useRunWiring, gateLogActions } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { readRunLogs, projectRunLogs, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { RunDetailWireSchema, NativeRunEventWireSchema, IdentityGateDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
-import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
+import { createIdentityCeremonyFixtures } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
@@ -32,6 +32,7 @@ import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboa
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 import { RunIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { projectDecision, rowActionOption } from "../../../src/backend/runs/decisions/project-decision.js";
 import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
@@ -195,17 +196,33 @@ describe("served Logs wiring", () => {
     const cursor = `lc:${"a".repeat(64)}:1`;
     assert.throws(() => appendLogPage(page(RUN, 0, cursor), cursor, page(OTHER, 1)), /cannot append logs/);
   });
-  it("exposes gate approvals as a pick or a confirm, with or without served confirmation, and never a rejection", () => {
+  it("serves gate approvals as a pick or a confirm and offers no rejection the gate did not serve", () => {
     const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
     for (const packet of [fixtures.ONE_CLICK, fixtures.CHOOSE, fixtures.NAME_MISMATCH]) {
       const gate = fixtures.gateDetail(packet);
-      const approval = identityApprovalAction("Approve");
-      const actions = gateLogActions({ ...gate, actions: [approval] });
-      if (gate.approvalShape === "choose-a-candidate") assert.equal(actions[0]?.input?.kind, "candidate");
-      else assert.equal(actions[0]?.input, undefined);
-      assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, resolution: "rejected" }] }), []);
-      assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, confirm: { title: "Confirm", body: "Exact confirmation", confirmLabel: "Approve", tone: "neutral" } }] }), actions);
+      const option = gate.decision?.options[0];
+      if (gate.approvalShape === "choose-a-candidate") assert.equal(option?.input?.kind, "candidate");
+      else assert.equal(option?.input, undefined);
+      assert.equal(gate.decision?.options.some(candidate => candidate.id === "reject"), false);
     }
+  });
+  it("sends a paused run's Resume and every card's Cancel run through the queue row's own descriptors", async () => {
+    const h = commandBindingFixture();
+    const selected = selection();
+    const rowActions = [
+      { kind: "command", key: "resume", label: "Resume", command: "resume", icon: "resume", intent: "primary", placement: ["footer"], expectedVersion: selected.row.rowRevision },
+      { kind: "command", key: "cancel", label: "Cancel run", command: "cancel", icon: "cancel", intent: "danger", placement: ["footer"], expectedVersion: selected.row.rowRevision },
+    ] as const;
+    const withActions = { ...selected, row: { ...selected.row, actions: rowActions } } as unknown as LogSelection;
+    const served = RunDetailWireSchema.parse({ ...detail(withActions), availableSections: ["logs"], decision: projectDecision("paused", [...rowActionOption("resume", "resume", rowActions), ...rowActionOption("cancel-run", "cancel", rowActions)]) });
+    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : served);
+    const sent: string[] = [];
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+      children: createElement(LogSample, { selection: withActions, onAction: action => sent.push(action.key) }) }) }));
+    const button = (label: string) => { const found = [...document.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === label); assert.ok(found, label); return found; };
+    await act(async () => button("Resume").click());
+    await act(async () => button("Cancel run").click());
+    assert.deepEqual(sent, ["resume", "cancel"]);
   });
   it("retains exact parked UNKNOWN identity with no submission control", async () => {
     let writes = 0;
@@ -217,10 +234,10 @@ describe("served Logs wiring", () => {
     const projection = projectRunLogs(snapshot, client);
     const entry = projection.steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
     assert.equal(entry?.id, FIXTURE_PARKED_WRITE.writeIntentId); assert.equal(entry?.kind, "decision");
-    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.actions?.map(action => action.label), ["Check again", "Check result"]); assert.equal(entry.decision.footer, undefined); }
+    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.served?.options.map(option => option.label), ["Check again", "Check result"]); assert.equal(entry.decision.footer, undefined); }
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
-    assert.match(document.body.textContent ?? "", /Write parked/);
-    assert.equal(document.querySelector('article[aria-label="Write parked"]')?.querySelectorAll("button").length, 2);
+    assert.match(document.body.textContent ?? "", /Check whether the submit went through/);
+    assert.equal(document.querySelector('form[aria-label="Check whether the submit went through"]')?.querySelectorAll("button").length, 2);
     const jump = [...document.querySelectorAll("button")].find(button => button.textContent === "Resolve");
     assert.ok(jump);
     await act(async () => jump.click());
@@ -244,8 +261,8 @@ describe("served Logs wiring", () => {
     assert.equal(entry?.kind, "decision");
     if (entry?.kind !== "decision") throw new Error("parked decision absent");
     assert.equal(entry.decision.state, "parked");
-    assert.deepEqual(entry.decision.actions?.map(action => action.label), ["Check again", "Check result"]);
-    assert.equal(entry.decision.actions?.[0].input, undefined);
+    assert.deepEqual(entry.decision.served?.options.map(option => option.label), ["Check again", "Check result"]);
+    assert.equal(entry.decision.served?.options[0].input, undefined);
     assert.equal(entry.decision.message, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_OCCURRENCE_UNPROVED", {})).text);
     assert.equal(entry.decision.footer, undefined);
     const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: "local-operator", requestedAt: AT, source: "run-detail",
@@ -313,7 +330,7 @@ describe("served Logs wiring", () => {
     const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
     const decision = projectRunLogs(snapshot, client).steps.find(step => step.id === source.failureId)?.entries[0];
     assert.equal(decision?.kind, "decision");
-    if (decision?.kind === "decision") { assert.equal(decision.decision.state, "unconfirmed"); assert.equal(decision.decision.actions, undefined); assert.equal(decision.decision.caution, "The result is unknown. Check the system before continuing."); }
+    if (decision?.kind === "decision") { assert.equal(decision.decision.state, "unconfirmed"); assert.deepEqual(decision.decision.served?.options.filter(option => /retry/iu.test(option.label)), []); assert.equal(decision.decision.caution, "The result is unknown. Check the system before continuing."); }
     const foreign = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/failure") ? original : servedDetail);
     await assert.rejects(() => readRunLogs(foreign, selection(), new AbortController().signal), /IDENTITY_MISMATCH/);
   });
@@ -351,7 +368,7 @@ describe("served Logs wiring", () => {
     let state: ReturnType<typeof useRunWiring> | undefined;
     function Probe() { state = useRunWiring(client, selected, binding); return null; }
     await mount(createElement(Probe));
-    const approve = gateLogActions(gate)[0]; assert.ok(approve); assert.ok(state?.onDecision);
+    const approve = gate.decision!.options[0]; assert.ok(approve); assert.ok(state?.onDecision);
     await act(async () => state?.onDecision?.(gate.gateId, approve, { candidate: gate.options[1].eid }));
     assert.equal(sent.length, 1); assert.equal(state?.command?.state, "uncertain"); assert.equal(refreshed, 0);
     assert.equal(feedback[0]?.kind, "uncertain"); assert.equal(state?.onDecision, undefined);
@@ -385,7 +402,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected }) }) }));
-    const block = document.querySelector('article[aria-label="Identity Approval"]'); assert.ok(block);
+    const block = document.querySelector('form[aria-label="Identity Approval"]'); assert.ok(block);
     const text = block.textContent ?? "";
     for (const target of [gate.options[0].eid, gate.options[0].displayName, gate.options[0].chosenFrom, gate.options[0].origin]) assert.ok(text.includes(target), target);
     for (const comparison of gate.packet.comparisons) for (const basis of [comparison.documentValue, comparison.ucpathValue, comparison.note]) assert.ok(text.includes(basis), basis);
@@ -394,7 +411,7 @@ describe("served Logs wiring", () => {
     await act(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
     assert.ok(document.activeElement?.contains(block)); assert.equal(document.activeElement?.getAttribute("tabindex"), "-1");
     assert.equal(sent.length, 0);
-    const approve = [...block.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(approve); assert.equal(approve.disabled, false);
+    const approve = [...block.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label); assert.ok(approve); assert.equal(approve.disabled, false);
     await act(async () => approve.click());
     assert.equal(sent.length, 1); assert.equal(outcomes.at(-1)?.kind, "uncertain"); assert.equal(refreshed, 0);
     const envelope = sent[0]; assert.equal(envelope.family, "gate");
@@ -426,7 +443,7 @@ describe("served Logs wiring", () => {
     const panel = (next: LogSelection, currentBinding = binding) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
       children: createElement(LogSample, { selection: next, key: transition === "keyed-run-roundtrip" ? next.row.runId : undefined }) }) });
     await mount(panel(selected));
-    const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label);
+    const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label);
     const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
     assert.match(document.body.textContent ?? "", /Pending/);
     const next = { ...selected, row: { ...selected.row, ...(transition === "command-revision" ? { rowRevision: RowRevisionSchema.parse(4) } : {}) } };
@@ -491,7 +508,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     const panel = (index: number) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected[index] }) }) });
-    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gates[0].actions[0].label); assert.ok(control); return control; };
+    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gates[0].decision!.options[0].label); assert.ok(control); return control; };
     await mount(panel(0)); await act(async () => approve().click());
     await act(async () => root?.render(panel(1))); await act(async () => approve().click()); assert.equal(sent.length, 2);
     resolved.add(OTHER); await act(async () => releases.get(OTHER)?.());
@@ -518,7 +535,7 @@ describe("served Logs wiring", () => {
     const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: next }) }) });
     await mount(panel(selected));
-    const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label);
+    const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label);
     const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
     await act(async () => root?.render(panel({ ...selected, row: { ...selected.row } })));
     assert.match(document.body.textContent ?? "", /could not be confirmed/); const blocked = approve(); assert.ok(blocked); assert.equal(blocked.disabled, true);
@@ -546,7 +563,7 @@ describe("served Logs wiring", () => {
     let current: ReturnType<typeof useRunWiring> | undefined;
     function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding }) { current = useRunWiring(client, selected, activeBinding); return createElement("span", null, current.command?.feedback); }
     await mount(createElement(Probe, { key: "first", activeBinding: binding }));
-    await act(async () => current?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {})); assert.equal(sent.length, 1);
+    await act(async () => current?.onDecision?.(gate.gateId, gate.decision!.options[0], {})); assert.equal(sent.length, 1);
     await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: binding })));
     const restored = current?.command, replay = current?.replay; assert.ok(restored); assert.equal(restored.state, outcome);
     for (let tick = 0; tick < 2; tick++) await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: binding })));
@@ -607,13 +624,10 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { throw new Error("refusal must not invent changed authority"); } } } };
     await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected }) }) }));
-    const approve = () => { const node = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(node); return node; };
+    const approve = () => { const node = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label); assert.ok(node); return node; };
     async function choose(index: number) {
+      const radio = document.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]; assert.ok(radio); await act(async () => radio.click());
       assert.equal(approve().disabled, false); await act(async () => approve().click());
-      const radio = document.querySelectorAll<HTMLInputElement>('input[name="candidate"]')[index]; assert.ok(radio);
-      await act(async () => radio.click());
-      const submit = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Continue run"); assert.ok(submit); assert.equal(submit.disabled, false);
-      await act(async () => submit.click());
     }
     await choose(0);
     assert.equal(sent.length, 1); assert.match(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, false);
@@ -650,7 +664,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: next }) }) });
-    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === firstGate.actions[0].label); assert.ok(control); return control; };
+    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === firstGate.decision!.options[0].label); assert.ok(control); return control; };
     await mount(panel(selected)); await act(async () => approve().click());
     assert.equal(sent.length, 1); assert.equal(outcomes[0].kind, "confirmed"); assert.equal(refreshed, 1); assert.equal(approve().disabled, true);
     gateIndex = 1; resolved = false;
@@ -682,11 +696,10 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     const panel = (next: LogSelection, currentBinding = binding, nowIso = AT) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
       children: createElement(LogSample, { key: next.row.runId, selection: next, nowIso }) }) });
-    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(control); return control; };
+    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label); assert.ok(control); return control; };
     async function choose(index: number) {
+      const radio = document.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]; assert.ok(radio); await act(async () => radio.click());
       assert.equal(approve().disabled, false); await act(async () => approve().click());
-      const radio = document.querySelectorAll<HTMLInputElement>('input[name="candidate"]')[index]; assert.ok(radio); await act(async () => radio.click());
-      const submit = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Continue run"); assert.ok(submit); await act(async () => submit.click());
     }
     await mount(panel(selected)); await choose(0); assert.equal(sent.length, 1);
     await act(async () => root?.render(panel(selection(OTHER))));
@@ -707,7 +720,8 @@ describe("served Logs wiring", () => {
     assert.equal(sent.length, 1); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
     assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
     if (authority !== "current") { assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); return; }
-    assert.match(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, false);
+    assert.match(document.body.textContent ?? "", /The command was refused/);
+    await act(async () => document.querySelectorAll<HTMLButtonElement>('[role="radio"]')[0]?.click()); assert.equal(approve().disabled, false);
     await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:02.000Z"))); assert.equal(sent.length, 1);
     await choose(1); assert.equal(sent.length, 2); assert.notEqual(sent[1].commandId, sent[0].commandId);
     for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value,

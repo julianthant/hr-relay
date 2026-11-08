@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { composeCommandRequest, verifyShellCommandEffect } from "../../../../src/dashboard/app/commands/command-dispatch.js";
-import { workbookRowChoiceId, workbookWriteLogActions, workbookWriteLogStep, workbookWriteMatchesReplay } from "../../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
+import { workbookWriteLogStep, workbookWriteMatchesReplay } from "../../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
 import { RunWorkbookWritesWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/stable-uuid.js";
@@ -34,9 +34,6 @@ it("composes only the current served row candidate and retains exact original re
   assert.equal(composeCommandRequest(action, { runId: UUID_1, expectedVersion: 5 }, context).state, "refused");
   assert.equal(composeCommandRequest(action, { runId: UUID_2, expectedVersion: 4 }, context).state, "refused");
   assert.equal(composeCommandRequest(action, { runId: UUID_1, expectedVersion: 4 }, { ...context, workbookAnswer: { sheetId: "new", rowId: "row-1" } }).state, "refused");
-  const choices = workbookWriteLogActions(operation);
-  assert.equal(choices[0].input?.kind, "candidate");
-  assert.equal(workbookRowChoiceId({ sheetId: "a:b", rowId: "c" }) === workbookRowChoiceId({ sheetId: "a", rowId: "b:c" }), false);
   assert.equal(workbookWriteLogStep(operation).id, UUID_4);
 });
 
