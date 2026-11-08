@@ -296,6 +296,103 @@ describe("Queue consumes the served day boundary", () => {
     }
   });
 
+  it("renames a row title in place only when the host offers it: Enter and blur save, Escape cancels, empty restores", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const source = rowWhere((candidate) => candidate.surfaceKind === "single" && candidate.parent === null);
+    const row = source.actions.some((action) => action.kind === "command" && action.command === "rename") ? source
+      : QueueSurfaceWireSchema.parse({ ...source, actions: [...source.actions, {
+        key: "rename", label: "Rename run…", intent: "neutral", icon: "rename", placement: ["menu"],
+        kind: "command", command: "rename", expectedVersion: source.rowRevision,
+      }] });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const renamed: [string, string][] = [];
+    const draw = (onRenameTitle?: (runId: string, name: string) => void) => createElement(QueuePanel, {
+      surfaces: [row],
+      state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: row.workflowId },
+      handlers: { onSelect: () => undefined, ...(onRenameTitle === undefined ? {} : { onRenameTitle }) },
+      workflowLabelOf: () => "Person Lookup",
+      panelLabel: "Person Lookup",
+      day: FIXTURE_DAY,
+    });
+    const title = () => host.querySelector<HTMLElement>("[data-demo-row-title]");
+    const input = () => host.querySelector<HTMLInputElement>('input[aria-label="Run name"]');
+    const edit = async (value: string, settle: "Enter" | "Escape" | "blur") => {
+      await act(async () => title()?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+      const field = input();
+      assert.ok(field);
+      assert.equal(field.value, queueRowTitle(row));
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(field, value);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        if (settle === "blur") field.blur();
+        else field.dispatchEvent(new KeyboardEvent("keydown", { key: settle, bubbles: true }));
+      });
+      assert.equal(input(), null);
+    };
+    try {
+      await act(async () => root.render(draw()));
+      await act(async () => title()?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+      assert.equal(input(), null);
+      await act(async () => root.render(draw((runId, name) => renamed.push([runId, name]))));
+      await edit("  April contacts  ", "Enter");
+      await edit("Ignored", "Escape");
+      await edit("  May roster  ", "blur");
+      await edit("", "Enter");
+      assert.deepEqual(renamed, [[row.runId, "April contacts"], [row.runId, "May roster"], [row.runId, ""]]);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("shows the served name on the row and again after a fresh mount", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const source = rowWhere((candidate) => candidate.surfaceKind === "single" && candidate.parent === null);
+    const row = QueueSurfaceWireSchema.parse({
+      ...source,
+      title: "Jordan",
+      displayName: { state: "present", value: "April contacts" },
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const draw = () => createElement(QueuePanel, {
+      surfaces: [row],
+      state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: row.workflowId },
+      handlers: { onSelect: () => undefined },
+      workflowLabelOf: () => "Person Lookup",
+      panelLabel: "Person Lookup",
+      day: FIXTURE_DAY,
+    });
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(draw()));
+      assert.equal(host.querySelector("[data-demo-row-title]")?.textContent, "April contacts");
+      await act(async () => root.unmount());
+      const reloaded = createRoot(host);
+      await act(async () => reloaded.render(draw()));
+      assert.equal(host.querySelector("[data-demo-row-title]")?.textContent, "April contacts");
+      const restored = QueueSurfaceWireSchema.parse({ ...row, displayName: { state: "absent", reason: "the operator has not renamed this run" } });
+      await act(async () => reloaded.render(createElement(QueuePanel, {
+        surfaces: [restored],
+        state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: row.workflowId },
+        handlers: { onSelect: () => undefined },
+        workflowLabelOf: () => "Person Lookup",
+        panelLabel: "Person Lookup",
+        day: FIXTURE_DAY,
+      })));
+      assert.equal(host.querySelector("[data-demo-row-title]")?.textContent, "Jordan");
+      await act(async () => reloaded.unmount());
+    } finally {
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders warning and duration facts without replacing unavailable values with plausible defaults", () => {
     const warned = rowWhere((row) => row.warnings.state === "present");
     const running = rowWhere((row) => row.status === "running" && row.endedAt.state === "absent");

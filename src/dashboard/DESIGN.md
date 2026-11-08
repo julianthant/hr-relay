@@ -95,6 +95,8 @@ Each rail row shows one number, its runs running now, as a green pill with a liv
 hidden at 0 and read out as the row's description ("2 running").
 The sidebar header carries the Baton symbol (24 px, accent) before "Relay"; `favicon.svg` and the desktop icon sources come from `shell/app-logo.ts`.
 
+Waiting, parked and failed runs sit under Needs you. Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same served name: Enter or blur saves, Escape cancels, and an empty name restores the default name (the PDF or run name).
+
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
