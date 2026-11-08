@@ -646,7 +646,9 @@ executor settles the abort from the run row: a requested pause is acknowledged a
 paused, a requested cancellation terminalizes, and any other abort abandons. The cancelled step has no
 checkpoint, so Resume replays completed checkpoints and runs it again under a new claim generation. A
 transaction step is restartable until its fence. After the fence its write finishes, and the run
-pauses or stops at the next boundary.
+pauses or stops at the next boundary. A failure after the fence never becomes a pause: a settlement
+that does not commit parks the write `UNKNOWN`, and a pause is never acknowledged over an
+`attempting` write.
 
 The worker observes reset during current execution, acquisition and sign-in using a work abort
 signal separate from lifetime shutdown. Actual read callback promises retain run/claim/attempt
