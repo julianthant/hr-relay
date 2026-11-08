@@ -12,7 +12,7 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 - [done] Person Lookup and Separations rerun readiness — use current inputs and readiness checks for reruns.
 - [done] Settings Test OCR — run the OCR test from Preflight.
 - [done] PR flow — run staging pull request CI on Ubuntu with the macOS-only files, reserve native platform proofs and parity for operator-started full releases, and auto-merge into staging.
-- [done] Review loop — one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push; a fresh reviewer replaces it for the final whole-diff read. A workflow PR also passes a live dry run with the operator before it merges.
+- [done] Review loop — one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push. Green required checks merge the cleared SHA; there is no final reviewer pass. A workflow PR also passes a live dry run with the operator before it merges.
 - [next] Functional spec — keep product behaviour in the charter and mechanisms in reference docs.
 
 ## Built and wired
