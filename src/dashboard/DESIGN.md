@@ -90,6 +90,10 @@ Settings owns its rail and guarded back arrow. Analytics and Explorer mount insi
 the last item is passive text. Wizard Back changes stages, while dismissal closes the layer.
 `DsBodyScope` supplies a shared content width and body rhythm. Tables hold dense records, grids
 hold aligned peer facts, and short chips carry facts that tolerate truncation.
+The workflow rail is narrow (`clamp(176px, 25vw - 128px, 232px)`); the Queue keeps its width and the Logs panel takes the rest.
+Each rail row shows one number, its runs running now, as a green pill with a live dot left of the name,
+hidden at 0 and read out as the row's description ("2 running").
+The sidebar header carries the Baton symbol (24 px, accent) before "Relay"; `favicon.svg` and the desktop icon sources come from `shell/app-logo.ts`.
 
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects

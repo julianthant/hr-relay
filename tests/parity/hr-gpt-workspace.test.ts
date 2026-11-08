@@ -38,15 +38,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         for (const row of await group.getByRole('button').all()) {
           const label = (await row.locator('span').first().boundingBox())!;
           const card = (await row.boundingBox())!;
-          expect(Math.abs(label.x - headingTextX)).toBeLessThanOrEqual(0.5);
+          expect(Math.abs(label.x - (headingTextX + 10))).toBeLessThanOrEqual(0.5);
           expect(icon.x - card.x).toBe(8);
           expect(card.x).toBe(8);
           expect(card.x + card.width).toBe((await workflows.boundingBox())!.width - 8);
         }
       }
 
-      const meta = workflows.locator('.workflow-rail-meta').first();
-      await expect(meta).toBeVisible();
+      await expect(workflows.locator('.workflow-rail-running')).toHaveCount(await workflows.getByRole('button').count());
       await expect(workflows.getByText('Preview', { exact: true })).toHaveCount(0);
       const bell = rail.getByRole('button', { name: /^Notifications,/ }); await bell.click();
       await expect(rail.getByRole('heading', { name: 'Relay', exact: true })).toBeVisible();

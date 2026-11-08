@@ -154,6 +154,12 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(payload.fencedAt, NOW);
     assert.equal(payload.parkedAt, NOW);
     assert.equal(payload.parkedCode, "unknown");
+    // An UNKNOWN park without a typed-ID contract offers Check again (recheck) and It didn't land, never Retry.
+    assert.equal(payload.decision?.type, "write-unknown");
+    assert.deepEqual(payload.decision?.options.map(({ id, send, recommended }) => [id, send, recommended]), [
+      ["check-again", { via: "action", actionKey: "recheck-write" }, true],
+      ["didnt-land", { via: "action", actionKey: "resolve-write-absent" }, undefined],
+    ]);
     assert.equal(payload.parkedMessage.includes(IDEMPOTENCY_KEY), false);
     assert.equal(payload.parkedMessage.includes("10101010"), false);
     assert.ok(payload.parkedMessage.includes(IDEMPOTENCY_KEY_DIGEST.slice(0, 12)));
