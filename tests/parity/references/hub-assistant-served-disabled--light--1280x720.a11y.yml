@@ -15,7 +15,7 @@
     - strong: How can I help?
     - text: Ask about a record or describe what you want to do.
   - status:
-    - text: ChatGPT plan use is not enabled or permitted for this connection. Review app permissions and plan eligibility in ChatGPT.
+    - text: Enable ChatGPT plan usage before using the assistant.
     - button "Open Settings"
   - group "Message composer":
     - text: Message Relay

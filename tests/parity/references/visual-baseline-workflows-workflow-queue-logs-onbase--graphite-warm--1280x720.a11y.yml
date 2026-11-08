@@ -87,6 +87,7 @@
     - button "Review"
     - button "Records 4"
     - button "Rerun"
+    - button "Linked runs (2)"
     - navigation "Run timeline":
       - list:
         - listitem:

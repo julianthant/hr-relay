@@ -63,7 +63,7 @@
     - text: "Finished 1 08/03/2026: 1 completed"
     - button "Onboarding Roster — done" [pressed]:
       - text: Onboarding Roster Done
-      - button "OCR · detect-test.pdf — the run that delegated this one": OCR · review
+      - button "OnBase · detect-test.pdf — the run that delegated this one": OnBase · running
       - text: 10:04 AM
       - button "Attempts for Onboarding Roster": "#1"
       - text: SD40731962 56s

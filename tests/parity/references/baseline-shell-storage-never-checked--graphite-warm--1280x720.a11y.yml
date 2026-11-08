@@ -44,6 +44,12 @@
       - heading "Storage checks" [level=1]
       - paragraph: Check saved data.
       - button "Run storage checks"
+      - heading "Backup and Restore" [level=2]
+      - group "Backup and restore":
+        - text: Back up Backups are unavailable. Try again when connected.
+        - button "Back up now" [disabled]
+        - text: Restore Restore is unavailable. Try again when connected.
+        - button "Restore…" [disabled]
       - heading "Status" [level=2]
       - group "Data store summary":
         - img "Done"
@@ -100,13 +106,17 @@
             - paragraph: Password for UCPath access.
             - text: Not checked
           - listitem:
+            - text: Timekeeper name
+            - paragraph: Name used for timekeeping workflows.
+            - text: Not checked
+          - listitem:
             - text: SharePoint roster
             - paragraph: Link to the onboarding roster.
             - text: Not checked
-      - heading "Run history" [level=2]
-      - group "Run history":
-        - text: Clear run history Run history is unavailable. Refresh Storage to check again.
-        - button "Clear run history" [disabled]
+          - listitem:
+            - text: Activity identity
+            - paragraph: Identifier used in activity records.
+            - text: Not checked
 - status
 - region "Session Panel":
   - group "Session actions":

@@ -16,51 +16,53 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup 3
+        - button "Person Lookup": Person Lookup 5 · 14
       - listitem:
-        - button "I-9 Lookup"
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations"
+        - button "Separations": Separations 0 · 1
       - listitem:
-        - button "I-9 Check": I-9 Check 1
+        - button "I-9 Check": I-9 Check 1 · 1
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
-        - button "Onboarding"
+        - button "Onboarding": Onboarding 0 · 1
       - listitem:
-        - button "Oath Signature": Oath Signature 1
+        - button "Oath Signature": Oath Signature 1 · 1
       - listitem:
-        - button "Oath Upload": Oath Upload 1
+        - button "Oath Upload": Oath Upload 1 · 1
       - listitem:
-        - button "Emergency Contact": Emergency Contact 1
+        - button "Emergency Contact": Emergency Contact 1 · 1
     - heading "Work Study" [level=3]
     - list:
       - listitem:
-        - button "Work-Study"
+        - button "Work-Study": Work-Study 0 · 1
     - heading "Payroll" [level=3]
     - list:
       - listitem:
-        - button "Kronos Pay Rule"
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
     - heading "Utils" [level=3]
     - list:
       - listitem:
         - button "CRM Doc Download"
       - listitem:
-        - button "SharePoint Download"
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1
+        - button "OnBase": OnBase 1 · 1
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:
-        - button "Old Kronos Reports"
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
 - main:
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
-    - text: Needs you 4
+    - text: Needs you 3
     - button "Morrow, Bea — review · 16m 0s":
       - text: Morrow, Bea Review Waiting on identity review 9:47 AM
       - button "Attempts for Morrow, Bea": "#1"
@@ -94,12 +96,6 @@
       - button "Attempts for Rehire eligibility sweep": "#1"
       - text: PL33065442 45m 0s
       - button "Cancel group"
-    - button "EID 10555001 — failed":
-      - text: EID 10555001 Failed 9:33 AM
-      - button "Attempts for EID 10555001": "#1"
-      - text: PL39484305 6m 0s
-      - button "Rerun"
-      - button "Delete run"
     - button "EID 10777012 — write parked":
       - text: EID 10777012 Write parked A write to UCPath is parked pending proof 9:44 AM
       - button "Attempts for EID 10777012": "#1"
@@ -164,7 +160,13 @@
       - text: PL61636475
       - button "Run next"
       - button "Cancel run"
-    - text: "Finished today 5 Today: 2 completed 2 with warnings 1 cancelled"
+    - text: "Finished today 6 Today: 2 completed 2 with warnings 1 failed 1 cancelled"
+    - button "EID 10555001 — failed":
+      - text: EID 10555001 Failed 9:33 AM
+      - button "Attempts for EID 10555001": "#1"
+      - text: PL39484305 6m 0s
+      - button "Rerun"
+      - button "Delete run"
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015 3 Done 9:24 AM
       - button "Attempts for EID 10333015": "#1"
@@ -316,7 +318,6 @@
       - button "Filter queue by status": Status
       - combobox "Sort the queue": Newest first
       - button "Attention first" [pressed]
-      - button "Pause all runs"
     - group "Log date controls":
       - text: Dashboard date*
       - group "Dashboard date*":
@@ -328,6 +329,7 @@
 - region "Assistant panel":
   - region "Relay assistant":
     - button "Update Alex Rivera work email"
+    - button "Chat files"
     - button "Chats"
     - button "New chat"
     - button "Close assistant"

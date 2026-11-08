@@ -86,6 +86,7 @@
     - text: Running
     - button "Records 4" [pressed]
     - button "Rerun"
+    - button "Linked runs (2)"
     - region "OCR records":
       - region "Record person-1":
         - region "Source PDF":

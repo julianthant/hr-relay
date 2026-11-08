@@ -77,6 +77,8 @@
         - group:
           - menuitemradio "Existing Onboarding Roster" [checked]
           - menuitemradio "Download Onboarding Roster"
+    - text: Form type
+    - button "Oath Form type": Oath
   - contentinfo:
     - text: 0 runsEmergency Contact
     - button "Cancel"

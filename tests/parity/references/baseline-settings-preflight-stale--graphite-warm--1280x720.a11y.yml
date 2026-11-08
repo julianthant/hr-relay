@@ -128,6 +128,7 @@
     - button "Settings" [pressed]
     - button "Log out"
 - region "Notifications":
-  - status "Readiness check is out of date":
-    - heading "Readiness check is out of date" [level=2]
-    - paragraph: Preflight evidence expired; re-check readiness. Run it again in Settings > Preflight.
+  - status "Previous result":
+    - heading "Previous result" [level=2]
+    - paragraph: Preflight evidence expired; re-check readiness.
+    - button "Run preflight"
