@@ -1,21 +1,20 @@
 import type { SessionPreviewCommandPort, SessionPreviewResult } from "./session-preview-command-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import type { SessionControl, SessionNode, SessionWorker, SessionsViewState } from "./sessions-view-model.js";
-import { buildExplorerPreview } from "../explorer/explorer-fixture.js";
 
 export const SESSION_SAMPLE_OPTIONS = [
   { id: "active", label: "Active workers" }, { id: "attention", label: "Needs attention" },
   { id: "idle", label: "Idle workers" }, { id: "empty", label: "No workers" },
   { id: "loading", label: "Loading" }, { id: "unavailable", label: "Unavailable" },
 ] as const;
-const separationNodes = buildExplorerPreview({ identity: "verified", pending: "none", termination: "absent" }).map(step => ({ id: `separation-${step.number}`, label: step.title }));
-const lookupNodes = ["Open UCPath", "Search the employee", "Verify the matching person", "Read the job summary"].map((label, index) => ({ id: `lookup-${index + 1}`, label }));
+const separationNodes = [["identity-check", "Identity check"], ["kronos-timecard", "Kronos timecard"], ["kuali-extraction", "Kuali extraction"], ["kuali-finalization", "Kuali finalization"], ["ucpath-transaction", "UCPath transaction"]].map(([id, label]) => ({ id, label }));
+const lookupNodes = [["searching", "Search for person"], ["cross-verify", "Cross-check identity"], ["active-status", "Read employment status"], ["crm-dates", "Read CRM dates"]].map(([id, label]) => ({ id, label }));
 function sampleTimeline(workflow: "separations" | "person-lookup", completed: number, state: SessionNode["state"] = "active"): readonly SessionNode[] {
   return (workflow === "separations" ? separationNodes : lookupNodes).map((node, index) => ({ ...node, state: index < completed ? "completed" : index === completed ? state : "pending" }));
 }
 const workers: readonly [SessionWorker, SessionWorker, SessionWorker, SessionWorker] = [
-  { id: "sample-worker-1", label: "Worker 1", workflowId: "separations", workflow: "Separations", subject: "Alex Morgan", action: "Read the timecard", state: "running", elapsed: "2m 14s", timeline: sampleTimeline("separations", 11), browsers: [{ id: "kuali", label: "Kuali", state: "ready" }, { id: "ucpath", label: "UCPath", state: "ready" }, { id: "kronos", label: "Kronos", state: "active" }] },
-  { id: "sample-worker-2", label: "Worker 2", workflowId: "person-lookup", workflow: "Person Lookup", subject: "Jordan Lee", action: "Read the job summary", state: "running", elapsed: "41s", timeline: sampleTimeline("person-lookup", 3), browsers: [{ id: "ucpath", label: "UCPath", state: "active" }] },
+  { id: "sample-worker-1", label: "Worker 1", workflowId: "separations", workflow: "Separations", subject: "Alex Morgan", action: "Kronos timecard", state: "running", elapsed: "2m 14s", timeline: sampleTimeline("separations", 1), browsers: [{ id: "kuali", label: "Kuali", state: "ready" }, { id: "ucpath", label: "UCPath", state: "ready" }, { id: "kronos", label: "Kronos", state: "active" }] },
+  { id: "sample-worker-2", label: "Worker 2", workflowId: "person-lookup", workflow: "Person Lookup", subject: "Jordan Lee", action: "Read CRM dates", state: "running", elapsed: "41s", timeline: sampleTimeline("person-lookup", 3), browsers: [{ id: "ucpath", label: "UCPath", state: "active" }] },
   { id: "sample-worker-3", label: "Worker 3", workflowId: "separations", workflow: "Separations", subject: "Casey Rivera", action: "Open browser sessions", state: "starting", elapsed: "12s", timeline: sampleTimeline("separations", 0), browsers: [{ id: "kuali", label: "Kuali", state: "ready" }, { id: "ucpath", label: "UCPath", state: "starting" }] },
   { id: "sample-worker-4", label: "Worker 4", workflowId: "person-lookup", workflow: "Person Lookup", action: "Ready for the next run", state: "idle", browsers: [{ id: "ucpath", label: "UCPath", state: "ready" }] },
 ];
@@ -23,9 +22,9 @@ export function sessionsSample(scenario: string): SessionsViewState {
   switch (scenario) {
     case "active": return { state: "ready", workers };
     case "attention": return { state: "ready", workers: [
-      { ...workers[0], state: "waiting", action: "Confirm the matching employee", timeline: sampleTimeline("separations", 14, "waiting") },
-      { ...workers[1], state: "failed", action: "Read the job summary", problem: "The UCPath session expired.", timeline: sampleTimeline("person-lookup", 3, "failed"), browsers: [{ id: "ucpath", label: "UCPath", state: "unavailable" }] },
-      { ...workers[2], state: "paused", action: "Read the timecard", timeline: sampleTimeline("separations", 11, "paused") },
+      { ...workers[0], state: "waiting", action: "Identity check", timeline: sampleTimeline("separations", 0, "waiting") },
+      { ...workers[1], state: "failed", action: "Read CRM dates", problem: "The UCPath session expired.", timeline: sampleTimeline("person-lookup", 3, "failed"), browsers: [{ id: "ucpath", label: "UCPath", state: "unavailable" }] },
+      { ...workers[2], state: "paused", action: "Kronos timecard", timeline: sampleTimeline("separations", 1, "paused") },
     ] };
     case "idle": return { state: "ready", workers: workers.slice(0, 2).map(worker => ({ id: worker.id, label: worker.label, workflowId: worker.workflowId, workflow: worker.workflow, action: "Ready for the next run", state: "idle", browsers: worker.browsers.map(browser => ({ ...browser, state: "ready" })) })) };
     case "empty": return { state: "ready", workers: [] };

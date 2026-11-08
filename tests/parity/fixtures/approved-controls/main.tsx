@@ -12,7 +12,7 @@ import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '..
 import { SpreadsheetEditor } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor.js';
 import { newEditableWorkbook, type SpreadsheetSaveResult } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { SessionsView } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
-import { SessionsStates } from './sessions-states.js';
+import { SessionsR2, SessionsStates } from './sessions-states.js';
 import { sessionsSample } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
 import './style.css';
 const query = new URLSearchParams(location.search);
@@ -38,6 +38,7 @@ function SessionsBarHarness() {
 function Fixture() {
   const [book, setBook] = useState(newEditableWorkbook), [dirty, setDirty] = useState(true);
   if (surface === 'sessions-states') return <SessionsStates />;
+  if (surface === 'sessions-r2') return <SessionsR2 />;
   if (surface === 'sessions-bar') return <SessionsBarHarness />;
   if (surface === 'sessions') return <SessionsView open onOpenChange={() => {}} onControl={() => {}} onAdd={() => {}} workflows={[]} data={{ state: 'ready', workers:
     (['unopened', 'starting', 'active', 'ready', 'closed', 'unavailable'] as const).map((state, index) => ({
