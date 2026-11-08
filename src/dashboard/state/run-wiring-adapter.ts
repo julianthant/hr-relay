@@ -288,8 +288,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     let entry: LogEntry | undefined;
     if (row.kind === "observed") {
       const fields = row.displayFields?.flatMap((field, index) => {
-        // shortcut: an unread field has no feed entry until U2 renders it.
-        if ("unread" in field) return [];
+        if ("unread" in field) return [{ id: `${row.logId}:${index}`, time, kind: "read" as const, label: field.label, value: "Couldn't read", unread: true as const }];
         if (field.causal !== undefined) {
           const key = canonicalJsonStringify([field.direction, field.causal]);
           if (observedCauses.has(key)) return [];

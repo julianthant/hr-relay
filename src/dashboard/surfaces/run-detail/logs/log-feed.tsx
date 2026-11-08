@@ -22,7 +22,7 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
           <time className="self-start pt-0.5 font-data text-caption tabular-nums text-ui-muted">{field.time}</time>
           <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", field.kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
           <dt className="min-w-0 text-body font-medium">{field.label}</dt>
-          <dd className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word]", field.kind === "fill" ? "text-ui-info font-medium" : "text-ui-secondary")}><FieldValue value={field.value} /></dd>
+          <dd className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word]", field.kind === "fill" ? "text-ui-info font-medium" : field.unread ? "text-ui-danger/75" : "text-ui-secondary")}><FieldValue value={field.value} /></dd>
         </div>;
       })}
     </dl>

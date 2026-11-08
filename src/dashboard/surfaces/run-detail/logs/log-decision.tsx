@@ -27,7 +27,7 @@ function OptionInput({ option, answer, setAnswer, disabled }: { option: Decision
       {answer.outcome === "present" && <Field label="Transaction number" className="w-64"><Input value={answer.transaction ?? ""} disabled={disabled} onChange={event => setAnswer({ ...answer, transaction: event.target.value })} placeholder="Enter the submitted transaction number" /></Field>}
     </div>;
     case "text": return <Field label={input.label} className="w-64"><Input value={answer.text ?? ""} disabled={disabled} placeholder={input.placeholder} onChange={event => setAnswer({ text: event.target.value })} /></Field>;
-    case "date": return <DateInput label={input.label} value={answer.date ?? ""} onChange={date => setAnswer({ date })} />;
+    case "date": return <DateInput label={input.label} value={answer.date ?? ""} disabled={disabled} onChange={date => setAnswer({ date })} />;
     case "candidate": return <PickTable table={input.table} disabled={disabled} chosen={answer.typed !== undefined ? TYPED_ROW : answer.candidate} text={answer.typed ?? ""}
       onChoose={id => setAnswer(id === TYPED_ROW ? { typed: answer.typed ?? "" } : { candidate: id })} onText={typed => setAnswer({ typed })} />;
   }
@@ -59,7 +59,7 @@ function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: Lo
   return <div className="flex min-w-0 flex-col gap-3" data-decision-state={decision.state}>
     {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
     <DecisionCard title={decision.title} context={context} tone={decision.state === "failed" ? "danger" : undefined} inline={pick}
-      confirmLabel={named ? option.label : "Confirm"} confirmDisabled={disabled || (option !== undefined && !decisionAnswerValid(option, answer))}
+      confirmLabel={named ? option.label : "Confirm"} confirmDisabled={disabled || option === undefined || !decisionAnswerValid(option, answer)}
       onConfirm={() => { if (option !== undefined && decisionAnswerValid(option, answer)) onAnswer?.(option, answer); }} onCancel={onCancel}>
       {decision.attemptedAction && <p className="log-attempted">While trying to <strong>{decision.attemptedAction}</strong></p>}
       {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}

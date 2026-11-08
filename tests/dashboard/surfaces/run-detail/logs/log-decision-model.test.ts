@@ -101,6 +101,14 @@ describe("served log decisions", () => {
     assert.equal(document.querySelector("button"), null);
     assert.equal(document.querySelector("figure"), null);
   });
+  it("keeps Confirm disabled when a served decision has no choice, and locks the date without an answer handler", async () => {
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const base = example("failure-no-write").decision;
+    await act(async () => root?.render(createElement(LogDecisionBlock, { decision: { ...base, served: { ...served("failure-no-write"), options: [] } }, onAnswer: () => undefined })));
+    assert.equal(button("Confirm").disabled, true);
+    await act(async () => root?.render(createElement(LogDecisionBlock, { decision: example("review-fields").decision })));
+    assert.equal(document.querySelector('[role="spinbutton"]')?.getAttribute("aria-disabled"), "true");
+  });
   it("collapses an answered decision to one line with who answered", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const base = example("failure-no-write").decision;
