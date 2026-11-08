@@ -148,18 +148,21 @@ it("plans one Emergency Contact run per uploaded PDF and says so on Confirm", as
       return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
         artifact: { id: `00000000-0000-4000-8000-${String(uploads.length).padStart(12, "0")}`, mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
     }, submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000002");
-      return { ...plan, workflowId: contact.id, planned: ["first.pdf", "second.pdf"].map(title => ({ ...plan.planned[0], title,
+      return { ...plan, dryRun: true, workflowId: contact.id, planned: ["first.pdf", "second.pdf"].map(title => ({ ...plan.planned[0], title,
         workbookReferences: [{ libraryId: roster.libraryId, version: roster.version, versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: roster.type }] })) }; } });
   const flow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: contact.id, label: contact.label, version: contact.version, steps: projectStartSteps(contact),
-    inputRun: { state: "absent", reason: "PDF input" }, uploadRun: contact.surfaces.uploadRun, requiredWorkbookTypeIds: contact.requiredWorkbookTypeIds };
+    inputRun: { state: "absent", reason: "PDF input" }, uploadRun: contact.surfaces.uploadRun && { ...contact.surfaces.uploadRun, supportsDryRun: true }, requiredWorkbookTypeIds: contact.requiredWorkbookTypeIds };
   const dialog = await h.openDialog(served, { workflows: [flow], panelWorkflowId: flow.workflowId });
   await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
   await dialog.press("Continue");
   await dialog.press("Current Reference version");
   const version = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-label="Fall review"]'); assert.ok(version);
   await act(async () => version.click());
+  const dryRun = [...document.querySelectorAll<HTMLElement>('[role="checkbox"], [role="switch"]')].find(node => node.closest("label")?.textContent?.startsWith("Dry run"));
+  assert.ok(dryRun); await act(async () => dryRun.click());
   await dialog.press("Continue");
   const request = StartPlanRequestSchema.parse(plans[0]);
+  expect(request.dryRun).toBe(true);
   expect(request.submissions).toHaveLength(2);
   expect(request.submissions.map(submission => EmergencyContactInputSchema.parse(submission).fileName)).toEqual(uploads);
   expect(dialog.text()).toContain("One run for each attached PDF");

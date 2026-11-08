@@ -468,7 +468,7 @@ export function RunStartDialog({
     rowReadReady, rowReference?.libraryId ?? "", rowVersion, rowLibrary?.type);
   const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.authority === workbookRows.authority;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
-  const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
+  const supportsDryRun = inputRun.state === "present" ? inputRun.surface.supportsDryRun === true : workflow?.uploadRun?.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
   const launchStages = useMemo(() => runStartStages(customizeSteps, "typed", isRerun), [customizeSteps, isRerun]);
 

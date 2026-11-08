@@ -29,10 +29,10 @@ function rosterRows(reference: ReturnType<typeof parseRunWorkbookReference>, rea
       throw new Error("ocr-roster-identity-invalid");
     }
     return OcrRosterRowSchema.parse({ sourceRow: index + 1, sheetId: match.sheetId, rowId: match.rowId,
-      eid: eid === null || eid === "" ? null : CANONICAL_FIELDS.eid.coerce(String(eid), {
+      eid: eid === null || typeof eid === "string" && eid.trim() === "" ? null : CANONICAL_FIELDS.eid.coerce(String(eid), {
         workflow: WorkflowIdSchema.parse("ocr"), readAt, sourceRow: index + 1, header: "eid", targetFieldId: IntakeTargetFieldIdSchema.parse("employee.employeeId"),
       }),
-      name: name === null || name === "" ? null : CANONICAL_FIELDS.fullName.schema.parse(name) });
+      name: name === null || typeof name === "string" && name.trim() === "" ? null : CANONICAL_FIELDS.fullName.schema.parse(name) });
   });
 }
 

@@ -30,6 +30,11 @@ describe("OCR captured workbook roster", () => {
       assert.throws(() => bindOcrRoster(bound(invalid), readAt));
     }
   });
+  it("treats a whitespace-only EID or name as missing", () => {
+    const blank = reference(); Object.assign(blank.snapshot.rows[0].matches[0].values, { eid: " ", fullName: "  " });
+    const row = bindOcrRoster(bound(blank), readAt).rows[0];
+    assert.equal(row.eid, null); assert.equal(row.name, null);
+  });
   it("retains the exact version, duplicate identities and missing values without rereading the library", () => {
     const captured = reference(), roster = bindOcrRoster(bound(captured), readAt);
     assert.equal(roster.workbookVersion, 4);

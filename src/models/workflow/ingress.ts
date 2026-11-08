@@ -411,6 +411,8 @@ export const UploadRunSurfaceSchema = z.strictObject({
   fields: z.array(UploadFieldSpecSchema),
   accepts: z.array(FileAcceptSpecSchema).min(1),
   successMessage: TextTemplateSchema,
+  /* DERIVED, never authored: served on the bootstrap wire from the descriptor's dry-run support. */
+  supportsDryRun: z.boolean().optional(),
 });
 export type UploadRunSurface = z.infer<typeof UploadRunSurfaceSchema>;
 

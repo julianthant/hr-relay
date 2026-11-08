@@ -23,6 +23,7 @@ import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard
 import { PreflightReportSchema } from "../../../../src/models/preflight/preflight.js";
 
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
+import { workflowDryRunSupport } from '../../../../src/workflow-kit/workflow.js';
 
 {
 
@@ -129,7 +130,7 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
             : { inputRun: descriptor.surfaces.inputRun }),
-          ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),
+          ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: { ...descriptor.surfaces.uploadRun, supportsDryRun: workflowDryRunSupport(descriptor).state === 'supported' } }),
         });
       }
       const doors = [...served.values()].map((start) => start?.inputRun !== undefined);
@@ -208,6 +209,8 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
     expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'emergency-contact')?.start?.uploadRun?.pdfInput).toEqual({
       documentField: 'document', fileNameField: 'fileName', readingIdField: 'readingId', fixed: { roster: null, reading: { kind: 'subscription' } },
     });
+    const uploadDryRun = (id: string) => wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === id)?.start?.uploadRun?.supportsDryRun;
+    expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, false]);
     expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
     const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
     expect(onboarding?.availability).toEqual({ state: 'available' });

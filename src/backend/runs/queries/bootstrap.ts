@@ -1,5 +1,5 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { descriptorRuntimeNodes, workflowProjections } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../workflow-kit/workflow.js";
 import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
@@ -114,7 +114,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),
-        ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),
+        ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: { ...descriptor.surfaces.uploadRun, supportsDryRun: workflowDryRunSupport(descriptor).state === "supported" } }),
 
         spreadsheetIntake: intake !== undefined,
         requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
