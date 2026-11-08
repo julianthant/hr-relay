@@ -410,8 +410,11 @@ describe("served Logs decision authority", () => {
 });
 
 function withParkedDecision(write: ReturnType<typeof ParkedWriteDetailWireSchema.parse>) {
-  return ParkedWriteDetailWireSchema.parse({ ...write, decision: parkedWriteDecision(write.parkedCode, write.acceptsTransactionId, write.actions) });
+  return ParkedWriteDetailWireSchema.parse({ ...write, decision: parkedWriteDecision({ taskId: write.taskId, parkedCode: write.parkedCode, readBack: false, acceptsTransactionId: write.acceptsTransactionId }, write.actions) });
 }
+/** Saved with a transaction number: the parked answer that re-reads the write. */
+const SAVED = { text: "T123456" } as const;
+const savedOf = (write: ReturnType<typeof parkedAt>) => { const option = write.decision?.options.find(({ id }) => id === "saved"); assert.ok(option); return option; };
 function parkedAt(revision = 3, acceptsTransactionId = true) {
   return withParkedDecision(ParkedWriteDetailWireSchema.parse({ ...FIXTURE_PARKED_WRITE, acceptsTransactionId, runId: RUN,
     native: native(50), actions: FIXTURE_PARKED_WRITE.actions.map(action => ({ ...action, expectedVersion: revision })) }));
@@ -586,18 +589,17 @@ describe("served parked-write Logs decisions", () => {
   });
 
   for (const [acceptsId, choice, answer, verb, transactionId] of [
-    [true, 0, {}, "recheck-write", undefined],
-    [true, 1, { outcome: "present", transaction: " T123456 " }, "recheck-write", "T123456"],
-    [true, 1, { outcome: "absent" }, "resolve-write-absent", undefined],
-    [false, 0, {}, "recheck-write", undefined],
-    [false, 1, {}, "resolve-write-absent", undefined],
+    [true, "saved", { text: " T123456 " }, "recheck-write", "T123456"],
+    [true, "not-saved", {}, "resolve-write-absent", undefined],
+    [false, "saved", {}, "recheck-write", undefined],
+    [false, "not-saved", {}, "resolve-write-absent", undefined],
   ] as const) it(`confirms and dispatches ${verb} (${acceptsId}, ${choice}, ${transactionId})`, async () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: { pending: PendingCommand; send: () => void }[] = [];
     const write = parkedAt(3, acceptsId);
     const { client } = parkedClient(selected, sent, { write });
     const h = await harness(client, (pending, send) => confirmations.push({ pending, send }));
     await h.render(selected);
-    const action = write.decision!.options[choice]; assert.ok(action);
+    const action = write.decision!.options.find(({ id }) => id === choice); assert.ok(action);
     await act(async () => h.state?.onDecision?.(write.writeIntentId, action, answer));
     assert.equal(sent.length, 0); assert.equal(confirmations.length, 1);
     const expected = write.actions.find(action => action.kind === "command" && action.command === verb); assert.ok(expected?.kind === "command");
@@ -611,11 +613,21 @@ describe("served parked-write Logs decisions", () => {
     assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 1);
   });
 
+  it("sends nothing for Saved without its transaction number when the system issues one", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = parkedAt(3, true);
+    const h = await harness(parkedClient(selected, sent, { write }).client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    const saved = write.decision!.options.find(({ id }) => id === "saved"); assert.ok(saved);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, saved, {}));
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, saved, { text: "123456" }));
+    assert.equal(confirmations.length, 0); assert.equal(sent.length, 0);
+  });
+
   for (const change of ["version", "generation", "intent", "attempt"] as const) it(`refuses confirmation after the parked ${change} changes`, async () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
     const write = parkedAt(); const fixture = parkedClient(selected, sent);
     const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
-    await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options.find(({ id }) => id === "not-saved")!, {}));
     const next = { ...write, ...(change === "generation" ? { generation: 2 } : {}),
       ...(change === "intent" ? { writeIntentId: NOTE } : {}),
       actions: write.actions.map(action => action.kind !== "command" ? action : { ...action, expectedVersion: change === "version" ? 4 : 3,
@@ -632,8 +644,8 @@ describe("served parked-write Logs decisions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
     const fixture = parkedClient(selected, sent, { execute: () => new Promise(resolve => { release = resolve; }) });
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(), action = write.decision!.options[0];
-    await act(async () => h.state?.onDecision?.(write.writeIntentId, action, {}));
+    const write = parkedAt(), action = savedOf(write);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, action, SAVED));
     await act(async () => confirms[0]());
     assert.equal(h.state?.command?.state, "pending"); assert.equal(h.state?.onDecision, undefined);
     await act(async () => confirms[0]()); assert.equal(sent.length, 1);
@@ -641,7 +653,7 @@ describe("served parked-write Logs decisions", () => {
     assert.equal(h.state?.command?.state, "refused"); assert.ok(h.state?.command?.feedback); assert.ok(h.state?.onDecision);
     await h.render(selectionAt(3), 1);
     assert.equal(h.state?.command?.state, "refused"); assert.ok(h.state?.command?.feedback); assert.ok(h.state?.onDecision);
-    await act(async () => h.state?.onDecision?.(write.writeIntentId, action, {})); assert.equal(confirms.length, 2);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, action, SAVED)); assert.equal(confirms.length, 2);
   });
 
   it("restores uncertainty after remount, replays the exact request and settles on matching readback", async () => {
@@ -653,7 +665,7 @@ describe("served parked-write Logs decisions", () => {
       return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }] });
     } });
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(write), SAVED));
     await act(async () => confirms[0]());
     assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.state?.onDecision, undefined);
     await h.render(selectionAt(3), 1);
@@ -666,7 +678,7 @@ describe("served parked-write Logs decisions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
     const fixture = parkedClient(selected, sent, { execute: async () => { throw new Error("reply lost"); } });
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(write), SAVED));
     await act(async () => confirms[0]());
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2, actions: write.actions.map(action => action.kind === "command"
       ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 } } : action) }));
@@ -679,18 +691,18 @@ describe("served parked-write Logs decisions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
     const fixture = parkedClient(selected, sent);
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(write), SAVED));
     await act(async () => confirms[0]()); assert.equal(h.state?.command?.state, "settled");
     fixture.setWrite(parkedAt(4), 4); await h.render(selectionAt(4));
     assert.ok(h.state?.onDecision); assert.equal(h.state?.command, undefined);
-    await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedAt(4).decision!.options[0], {}));
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(parkedAt(4)), SAVED));
     await act(async () => confirms[1]()); assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
   });
 
   it("sends nothing without the served confirmation port", async () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [];
     const h = await harness(parkedClient(selected, sent).client); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, savedOf(write), SAVED));
     assert.equal(sent.length, 0);
   });
 });
@@ -820,5 +832,57 @@ describe("served not-found failure actions", () => {
     assert.equal(h.state?.command?.state, "uncertain"); assert.ok(h.state?.replay);
     await act(async () => h.state?.replay?.());
     assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(planned.length, 1);
+  });
+});
+
+describe("failure resolution from the decision card", () => {
+  function committedAt(selected: LogSelection) {
+    const { recovery: _recovery, decision: _decision, ...failed } = failedAt(selected);
+    return withFailureDecision(FailureDetailWireSchema.parse({ ...failed, writeState: "committed",
+      resolution: { capability: { state: "available" }, capture: { failureId: FAILURE, runId: RUN, resolution: { status: "unresolved", version: 2 } } } }));
+  }
+  const applied = async (request: CommandRequest) => CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
+    affectedTargets: [{ family: "failure-resolution", runId: RUN, failureId: FAILURE }] });
+
+  for (const [choice, answer, payload] of [
+    ["mark-as-failed", {}, { action: "resolve" }],
+    ["add-note", { text: " Checked T00042871 in UCPath " }, { action: "resolve", note: "Checked T00042871 in UCPath" }],
+  ] as const) it(`closes the failure with ${choice} and nothing else`, async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [];
+    const fixture = failureClient(selected, sent, [], applied, committedAt(selected));
+    const h = await harness(fixture.client); await h.render(selected);
+    await act(async () => h.state?.onDecision?.(FAILURE, failureOption(fixture.failed, choice), answer));
+    assert.equal(sent.length, 1);
+    const request = sent[0];
+    assert.ok(request.family === "failure-resolution" && request.type === "annotate-failure");
+    assert.deepEqual(request.target, { runId: RUN, failureId: FAILURE, expectedVersion: 2 });
+    assert.deepEqual(request.payload, payload);
+    assert.equal(request.source, "run-detail");
+  });
+
+  it("sends no note without its text, and nothing for a failure option the server no longer serves", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [];
+    const fixture = failureClient(selected, sent, [], applied, committedAt(selected));
+    const h = await harness(fixture.client); await h.render(selected);
+    await act(async () => h.state?.onDecision?.(FAILURE, failureOption(fixture.failed, "add-note"), { text: "  " }));
+    await act(async () => h.state?.onDecision?.(FAILURE, { ...failureOption(fixture.failed, "mark-as-failed"), id: "retry" }, {}));
+    assert.equal(sent.length, 0);
+  });
+
+  it("serves nothing after the failure is resolved, and a stale Mark as failed sends no second resolve", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [];
+    const unresolved = failureClient(selected, sent, [], applied, committedAt(selected));
+    const first = await harness(unresolved.client); await first.render(selected);
+    const stale = failureOption(unresolved.failed, "mark-as-failed");
+    await act(async () => first.state?.onDecision?.(FAILURE, stale, {}));
+    assert.equal(sent.length, 1);
+    const { decision: _decision, ...open } = committedAt(selected);
+    const resolved = withFailureDecision(FailureDetailWireSchema.parse({ ...open, resolution: { capability: { state: "available" },
+      capture: { failureId: FAILURE, runId: RUN, resolution: { status: "resolved", version: 3, by: "local-operator", at: "2026-08-03T12:00:00.000Z" } } } }));
+    assert.deepEqual(resolved.decision?.options, []);
+    const refreshed = failureClient(selected, sent, [], applied, resolved);
+    const second = await harness(refreshed.client); await second.render(selected);
+    await act(async () => second.state?.onDecision?.(FAILURE, stale, {}));
+    assert.equal(sent.length, 1);
   });
 });

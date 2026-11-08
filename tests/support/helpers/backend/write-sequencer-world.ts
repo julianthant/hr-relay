@@ -21,6 +21,7 @@ import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 
 interface Harness {
   readonly world: WriteFixtureWorld;
+  readonly lifetime: Awaited<ReturnType<typeof createBoundProfileFixture>>["lifetime"];
   readonly retain: (error: unknown) => Error;
   readonly admitWorker: (poolIndex: number) => void;
   readonly database: AuthorityDatabase;
@@ -147,7 +148,7 @@ export function createWriteSequencerTestWorld() {
       held.failure ??= retainAuthoritySourceClosure([held.primary.error], { admission: held });
       return held.failure;
     };
-    return { world, retain, admitWorker, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
+    return { world, lifetime: profile.lifetime, retain, admitWorker, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
     } catch (error) {
       held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure;
     }

@@ -667,7 +667,7 @@ describe("source-bound Rerun value read", () => {
       commandId: h.ids.uuid(), runId: running.envelope.runId, expectedVersion: running.version,
       claim: { workerId, claimGeneration: running.claimGeneration }, lifecycle: { state, workerId,
         claimedAt: now, heartbeatAt: now, ...(state === "running" ? { currentNodeId: "later" } : {}) } }));
-    const failure = buildNodeFailureRecord({ run: running, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse("later"),
+    const failure = buildNodeFailureRecord({ writes: [], run: running, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse("later"),
       taskId: later.uses.id, error: new Error("fixture later read failed"), occurredAt: now });
     const authorization = buildFailureTerminalAuthorization({ run: running, authorizedAt: now, consequence: { kind: "failed", failure } });
     const run = requireLifecycleApplied(h.lifecycle.terminalize({ commandId: h.ids.uuid(), kind: "failure", terminal: { authorization, failure } }, h.descriptor));

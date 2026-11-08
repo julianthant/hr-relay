@@ -177,7 +177,8 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
   } as const;
 
   const FIXTURE_PARKED_WRITE = { ...PARKED_WRITE_BASE,
-    decision: parkedWriteDecision(PARKED_WRITE_BASE.parkedCode, PARKED_WRITE_BASE.acceptsTransactionId, ActionDescriptorWireSchema.array().parse(PARKED_WRITE_BASE.actions)) };
+    decision: parkedWriteDecision({ taskId: PARKED_WRITE_BASE.taskId, parkedCode: PARKED_WRITE_BASE.parkedCode, readBack: false, acceptsTransactionId: PARKED_WRITE_BASE.acceptsTransactionId },
+      ActionDescriptorWireSchema.array().parse(PARKED_WRITE_BASE.actions)) };
 
   const FIXTURE_GATE_PARK_SECTIONS = Object.freeze({
     [FIXTURE_IDS.parkedRun]: Object.freeze({

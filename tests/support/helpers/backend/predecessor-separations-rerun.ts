@@ -60,7 +60,7 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
       scope: { input: run.input.parsed.value, protectedInputBindings: run.input.parsed.protectedBindings, outputs } }));
     assert.equal(Reflect.get(Object(outcome), "disposition"), "committed");
     const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
-    const failure = buildNodeFailureRecord({ run: current, failureId: randomUUID(), nodeId: NodeIdSchema.parse(FINALIZE_NODE), taskId: context.node.commit.uses.id,
+    const failure = buildNodeFailureRecord({ writes: [], run: current, failureId: randomUUID(), nodeId: NodeIdSchema.parse(FINALIZE_NODE), taskId: context.node.commit.uses.id,
       error: new Error("synthetic post-completion diagnostic failure"), occurredAt: h.clock.now().toISOString() });
     const authorization = buildFailureTerminalAuthorization({ run: current, authorizedAt: h.clock.now().toISOString(), consequence: { kind: "failed", failure } });
     const terminal = requireLifecycleApplied(testRunLifecycle(h.database, h.clock).terminalize({ commandId: randomUUID(), kind: "failure", terminal: { authorization, failure } }, descriptor));

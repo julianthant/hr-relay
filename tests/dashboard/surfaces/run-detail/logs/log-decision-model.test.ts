@@ -31,11 +31,11 @@ describe("served log decisions", () => {
     assert.deepEqual(choiceOptions(served("review-candidates")).map(item => item.id), ["review-candidates-0"]);
   });
   it("requires only the selected option's answer", () => {
-    const check = option("parked", "parked-0");
-    assert.equal(decisionAnswerValid(check, {}), false);
-    assert.equal(decisionAnswerValid(check, { outcome: "present", transaction: " " }), false);
-    assert.equal(decisionAnswerValid(check, { outcome: "present", transaction: "SIM-042" }), true);
-    assert.equal(decisionAnswerValid(check, { outcome: "absent" }), true);
+    const saved = option("parked", "saved");
+    for (const text of [undefined, " ", "SIM-042", "T"]) assert.equal(decisionAnswerValid(saved, text === undefined ? {} : { text }), false, String(text));
+    assert.equal(decisionAnswerValid(saved, { text: " T00042871 " }), true);
+    assert.equal(decisionAnswerValid(option("parked", "not-saved"), {}), true, "Not saved needs no answer of its own");
+    assert.equal(decisionAnswerValid(option("parked-kuali", "saved"), {}), true, "a system without numbers is re-read as it is");
     const date = option("review-fields", "review-fields-0");
     for (const value of ["", "9/25/2026", "2026-02-30", "2026-99-99"]) assert.equal(decisionAnswerValid(date, { date: value }), false);
     assert.equal(decisionAnswerValid(date, { date: "2026-09-25" }), true);
@@ -56,7 +56,7 @@ describe("served log decisions", () => {
     assert.equal(answeredRow(pick, { typed: " 10000077 " })?.name, "Morgan, Alexis");
   });
   it("never offers a submit retry while the result is unknown", () => {
-    for (const id of ["parked", "verification", "park-unavailable", "failure-attempting", "failure-unknown", "transport-unknown"]) {
+    for (const id of ["parked", "parked-kuali", "park-unavailable", "failure-attempting", "failure-unknown", "transport-unknown"]) {
       assert.ok(served(id).options.every(item => !/retry/iu.test(item.label)), id);
     }
   });
@@ -70,15 +70,29 @@ describe("served log decisions", () => {
     await act(async () => button("Confirm").click());
     assert.deepEqual(calls, [["employee-not-found-enter", { text: " 10873698 " }]]);
   });
-  it("opens an unselected check and submits only the needed answer", async () => {
+  it("asks for the transaction number only under Saved, and sends Saved with the typed number", async () => {
     const calls: unknown[] = [];
     await mount("parked", (picked, answer) => calls.push([picked.id, answer]));
     assert.equal(button("Confirm").disabled, true);
-    assert.equal(document.querySelector('input[type="text"]'), null);
-    await act(async () => (document.querySelector('input[value="absent"]') as HTMLInputElement).click());
+    const input = document.querySelector('input:not([type="radio"])') as HTMLInputElement;
+    assert.equal(input.placeholder, "T00000000");
+    await type(input, "SIM-042");
+    assert.equal(button("Confirm").disabled, true);
+    await type(input, "T00042871");
     assert.equal(button("Confirm").disabled, false);
     await act(async () => button("Confirm").click());
-    assert.deepEqual(calls, [["parked-0", { outcome: "absent" }]]);
+    assert.deepEqual(calls, [["saved", { text: "T00042871" }]]);
+  });
+  it("closes a failure after a write with Mark as failed, or with a typed note", async () => {
+    assert.deepEqual(choiceOptions(served("failure-committed")).map(item => [item.id, item.label]), [["mark-as-failed", "Mark as failed"], ["add-note", "Add note"]]);
+    assert.equal(recommendedOption(served("failure-committed"))?.id, "mark-as-failed");
+    const calls: unknown[] = [];
+    await mount("failure-committed", (picked, answer) => calls.push([picked.id, answer]));
+    assert.equal(button("Confirm").disabled, false);
+    await act(async () => button("Confirm").click());
+    assert.deepEqual(calls, [["mark-as-failed", {}]]);
+    assert.equal(decisionAnswerValid(option("failure-committed", "add-note"), { text: "  " }), false);
+    assert.equal(decisionAnswerValid(option("failure-committed", "add-note"), { text: "Checked by hand" }), true);
   });
   it("cancels the run only from Cancel run", async () => {
     const calls: string[] = [];

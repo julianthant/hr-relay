@@ -109,10 +109,10 @@ export function createRunRecordServiceTestWorld() {
       async closeController() { closeDatabase(); await profile.closeController(); } };
   }
 
-  async function interruptedFixture(options: { nativePaths?: boolean } = {}) {
+  async function interruptedFixture({ dryRun, ...options }: { nativePaths?: boolean; dryRun?: boolean } = {}) {
     const f = await fixture(undefined, undefined, { interrupted: true, ...options });
     const lock = f.lifetime;
-    const run = runningRun(f.service, f.request, f.runtimeConfig);
+    const run = runningRun(f.service, dryRun === undefined ? f.request : { ...f.request, dryRun }, f.runtimeConfig);
     return { ...f, lock, run, recoveryRequest: { commandId: randomUUID(), runId: run.envelope.runId,
       expectedVersion: run.version, claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration },
       now: f.clock.now().toISOString() } };

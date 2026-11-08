@@ -8,6 +8,7 @@ import { buildNodeFailureRecord } from "../../../../src/backend/runtime/executio
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { AuthenticatedRunContinuation } from "../../../../src/backend/storage/sqlite/run-continuation-delegation.js";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import { SourceBoundRunSchema, repeatOccurrenceKey, repeatEvidenceDigest } from "../../../../src/models/run/rerun.js";
 import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
@@ -42,9 +43,11 @@ function failAfterTransaction(h: Harness, run: RunRecord) {
   assert.equal(current.lifecycle.state, "running");
   assert.ok(current.lifecycle.state === "running" && current.lifecycle.currentNodeId === WRITE_FIXTURE_NODE_ID);
   const now = h.clock.now().toISOString();
-  const failure = FailureRecordSchema.parse({ ...buildNodeFailureRecord({ run: current, failureId: randomUUID(),
+  const failure = FailureRecordSchema.parse(buildNodeFailureRecord({ writes: AuthenticatedRunContinuation.authenticate(h.database.authority, current.envelope).writeRunIds()
+    .flatMap(id => h.database.authority.writeIntents.listByRun(id)), run: current, failureId: randomUUID(),
     nodeId: NodeIdSchema.parse(WRITE_FIXTURE_NODE_ID), taskId: WriteFixtureCommit.id,
-    error: new Error("Synthetic failure after the settled transaction"), occurredAt: now }), writeState: "committed" });
+    error: new Error("Synthetic failure after the settled transaction"), occurredAt: now }));
+  assert.equal(failure.writeState, "committed");
   const failed = h.database.terminalizeFailure(writeFixtureDescriptor, { failure,
     authorization: { kind: "failed", runId: current.envelope.runId, workflowId: current.envelope.workflow,
       attempt: current.envelope.attempt, descriptorVersion: current.envelope.descriptorVersion,
@@ -146,6 +149,18 @@ async function completedRepeat() {
   f.h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
   f.h.world.commitOutput = { transactionId: "T234567" };
   return { ...f, repeated: await f.h.execute(f.context) };
+}
+
+function crashContinuation(f: Awaited<ReturnType<typeof fixture>>) {
+  const run = fresh(f.h, f.context.run);
+  return f.lifecycle.recoverCrash({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version, claim: f.context.claim,
+    now: f.h.clock.now().toISOString() }, f.h.lifetime);
+}
+
+function settlement(f: Awaited<ReturnType<typeof fixture>>) {
+  const runId = f.context.run.envelope.runId;
+  return { run: f.h.database.authority.runs.get(runId), failures: f.h.database.authority.failures.listByRun(runId),
+    result: f.h.database.authority.runResults.get(runId), effects: effects(f.h) };
 }
 
 describe("authenticated completed transaction continuation", () => {
@@ -294,4 +309,22 @@ describe("authenticated completed transaction continuation", () => {
       listByBusinessKey: () => [...before.intents, sibling] } }), /business key has an unresolved write occurrence/);
     assert.deepEqual(effects(f.h), before);
   });
+
+  it("records a crashed continuation as failed after the source run's committed write it retains", async () => {
+    const f = await fixture(); const before = effects(f.h);
+    assert.deepEqual(f.h.database.authority.writeIntents.listByRun(f.context.run.envelope.runId), []);
+    assert.equal(crashContinuation(f).state, "applied");
+    const failure = f.h.database.authority.failures.listByRun(f.context.run.envelope.runId)[0]; assert.ok(failure);
+    assert.equal(failure.code, "RUN_INTERRUPTED_BY_CRASH");
+    assert.equal(failure.writeState, "committed");
+    assert.deepEqual(effects(f.h), before);
+  });
+
+  for (const reference of ["digest", "node"] as const) {
+    it(`refuses crash settlement through a retained checkpoint whose ${reference} does not match, writing nothing`, async () => {
+      const f = await fixture(undefined, reference); const before = settlement(f);
+      assert.throws(() => crashContinuation(f), /run-continuation-checkpoint-unavailable/);
+      assert.deepEqual(settlement(f), before);
+    });
+  }
 });

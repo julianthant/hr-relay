@@ -21,12 +21,11 @@ describe("RunDecisionWireSchema", () => {
     assert.ok(!RunDecisionWireSchema.safeParse({ type: "cancelling", title: "Cancelling", options: [], answer }).success, "a line names no option to answer");
   });
 
-  it("pairs a verification send with its verification input, and never on another option", () => {
+  it("serves no combined present-or-absent answer: each written outcome is its own option and command", () => {
     const send = { via: "verification", presentActionKey: "recheck-write", absentActionKey: "resolve-write-absent", transactionPattern: "^T\\d+$" };
-    assert.ok(DecisionOptionWireSchema.safeParse({ id: "check-result", label: "Check result", hint: "h", send, input: { kind: "verification", question: "Was it submitted?" } }).success);
-    assert.ok(!DecisionOptionWireSchema.safeParse({ id: "check-result", label: "Check result", hint: "h", send }).success);
-    assert.ok(!DecisionOptionWireSchema.safeParse({ ...option("check-again"), input: { kind: "verification", question: "Was it submitted?" } }).success);
-    assert.ok(!DecisionOptionWireSchema.safeParse({ id: "x", label: "x", hint: "h", send: { ...send, transactionPattern: "(" }, input: { kind: "verification", question: "q" } }).success);
+    assert.ok(!DecisionOptionWireSchema.safeParse({ id: "check-result", label: "Check result", hint: "h", send, input: { kind: "verification", question: "Was it submitted?" } }).success);
+    assert.ok(!DecisionOptionWireSchema.safeParse({ ...option("saved", "recheck-write"), input: { kind: "verification", question: "Was it submitted?" } }).success);
+    assert.ok(DecisionOptionWireSchema.safeParse({ ...option("saved", "recheck-write"), input: { kind: "text", label: "Transaction number", placeholder: "T00000000", pattern: "^T\\d+$" } }).success);
   });
 });
 

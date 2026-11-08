@@ -44,7 +44,8 @@ import { deriveStableUuid, lifecycleCommandId } from "../../../../rules/identity
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
-import type { RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import type { DecisionInputWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import { PARKED_WRITE_RECORDS, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
 import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
 import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
@@ -644,24 +645,39 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
     actions,
-    decision: parkedWriteDecision(intent.parkedCode, acceptsTransactionId, actions),
+    decision: parkedWriteDecision({ taskId: intent.taskId, parkedCode: intent.parkedCode, acceptsTransactionId,
+      ...(hasProtectedTransactionInput(authority) || intent.occurrence !== undefined ? {} : { recordId: parkedWriteRecordId(intent.taskId, intent.idempotencyKey) }),
+      readBack: ["post-click-verifier-exception", "post-click-verifier-unknown"].includes(intent.authorityReason.code) }, actions),
   });
 }
 
-/** D5/D6: the row the operator answers today — Check again, then Check result when a transaction id is accepted, else It didn't land. */
-export function parkedWriteDecision(parkedCode: string, acceptsTransactionId: boolean, actions: readonly ActionDescriptorWire[]): RunDecisionWire {
+/** D5/D6: "Did the <record> save in <system>?" — Check again (held check only), Saved (Relay re-reads; a typed transaction number where the verifier takes one), Not saved (confirmed absence). */
+export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCode: string; readBack: boolean; acceptsTransactionId: boolean; recordId?: string }>,
+  actions: readonly ActionDescriptorWire[]): RunDecisionWire {
   const find = (command: string) => actions.find(action => action.kind === "command" && action.command === command);
-  // Each single-action option carries the confirm of the descriptor it sends; Check result leaves its two outcomes' confirms on their actions.
-  const sending = (id: string, action: ActionDescriptorWire) => ({ id, send: { via: "action" as const, actionKey: action.key },
-    ...(action.kind === "command" && action.confirm !== undefined ? { confirm: action.confirm } : {}) });
-  const recheck = find("recheck-write"), absent = find("resolve-write-absent"), again = find("check-parked-write") ?? recheck;
-  return projectDecision(parkedCode === "unknown" ? "write-unknown" : "write-parked", [
-    ...(again === undefined ? [] : [sending("check-again", again)]),
-    ...(acceptsTransactionId
-      ? recheck === undefined || absent === undefined ? [] : [{ id: "check-result", input: { kind: "verification" as const, question: "Was it submitted?" },
-        send: { via: "verification" as const, presentActionKey: recheck.key, absentActionKey: absent.key, transactionPattern: "^T\\d+$" } }]
-      : absent === undefined ? [] : [sending("didnt-land", absent)]),
-  ]);
+  const sending = (id: string, action: ActionDescriptorWire | undefined, text: Readonly<{ label?: string; hint?: string }>, input?: DecisionInputWire) => action === undefined ? []
+    : [{ id, send: { via: "action" as const, actionKey: action.key }, ...text, ...(input === undefined ? {} : { input }),
+      ...(action.kind === "command" && action.confirm !== undefined ? { confirm: action.confirm } : {}) }];
+  // A task no longer registered keeps both typed resolutions in the catalog's general wording.
+  const record = PARKED_WRITE_RECORDS[parked.taskId];
+  const transaction = parked.acceptsTransactionId ? { kind: "text" as const, label: "Transaction number", placeholder: "T00000000", pattern: "^T\\d+$" } : undefined;
+  return projectDecision(parked.parkedCode === "unknown" ? "write-unknown" : "write-parked", [
+    ...sending("check-again", find("check-parked-write"), record === undefined ? {} : { hint: `Reads ${record.check} again; files nothing.` }),
+    ...sending("saved", find("recheck-write"), record === undefined ? {} : { label: `Saved in ${record.system}`,
+      hint: transaction === undefined ? `Relay checks ${record.system}, then the run continues.` : "Relay checks this number, then the run continues." }, transaction),
+    ...sending("not-saved", find("resolve-write-absent"), record === undefined ? {} : { label: `Not saved, ${record.again}`, hint: record.againHint }),
+  ], { ...(record === undefined ? {} : parkedWriteText(record, parked.readBack, parked.recordId)),
+    // After a failed read-back the frame preselects the read that files nothing.
+    ...(parked.readBack ? { recommend: "check-again" } : {}) });
+}
+
+/** The question and its context line; a park after the saved-effect read failed says the system accepted the write but its status could not be read. */
+function parkedWriteText(record: ParkedWriteRecord, readBack: boolean, recordId: string | undefined) {
+  const where = recordId === undefined || record.id === undefined ? `${record.check} in ${record.system}` : record.id.where(recordId);
+  return readBack
+    ? { title: `${record.record[0]?.toUpperCase() ?? ""}${record.record.slice(1)} saved, but the read-back failed`,
+      context: `${record.system} accepted the ${record.act.toLowerCase()}, but Relay could not read its status. Check ${where}.` }
+    : { title: `Did the ${record.record} save in ${record.system}?`, context: `${record.act} did not confirm. Check ${where}.` };
 }
 
 function parkedWriteActionsWithCheck(

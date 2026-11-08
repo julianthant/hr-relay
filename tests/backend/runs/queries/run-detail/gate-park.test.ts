@@ -3,10 +3,16 @@ import { it } from "vitest";
 import { buildGateParkSection } from "../../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import type { RunDetailQueryDeps } from "../../../../../src/backend/runs/queries/run-detail-types.js";
 import { descriptorRuntimeNodes } from "../../../../../src/workflow-kit/workflow.js";
-import { WriteIntentRecordSchema, deriveWriteBindingProofDigest } from "../../../../../src/rules/write-safety/write-safety.js";
+import { WriteIntentRecordSchema, deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest } from "../../../../../src/rules/write-safety/write-safety.js";
 import { FIXTURE_PARKED_WRITE_INTENT } from "../../../../support/fixtures/dashboard/run-detail/gates-park.js";
 import { runRecordOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { separationsDescriptor } from "../../../../support/helpers/registered-workflows.js";
+
+const CONTRACT_KEYS: Readonly<Record<string, string>> = {
+  "ucpath/create-termination": "ucpath:termination|10807012|2026-08-28",
+  "ucpath/delete-pending-terminations": `ucpath:pending-terminations-clear:v2|10807012|${"a".repeat(64)}`,
+  "kuali/save-separation-finalization": "kuali:3170001|finalization|T00012345",
+};
 
 it("serves typed-ID support from the exact runtime completion contract for each parked transaction", () => {
   const original = WriteIntentRecordSchema.parse(FIXTURE_PARKED_WRITE_INTENT);
@@ -17,9 +23,14 @@ it("serves typed-ID support from the exact runtime completion contract for each 
     const run = runRecordOf({ seed: 1, workflow: "separations", descriptor: separationsDescriptor,
       lifecycle: { state: "parked-write", writeIntentId: original.writeIntentId,
         intentGeneration: 1, parkedAt: original.updatedAt, code: "unknown", message: "Uncertain" } });
-    const bindingProof = { ...original.bindingProof, runId: run.envelope.runId, attempt: run.envelope.attempt };
+    const taskId = node.commit.uses.id;
+    const idempotencyKey = CONTRACT_KEYS[taskId];
+    if (idempotencyKey === undefined) throw new Error(`no contract-valid key for ${taskId}`);
+    const system = taskId.split("/")[0];
+    const bindingProof = { ...original.bindingProof, runId: run.envelope.runId, attempt: run.envelope.attempt, taskId };
     const intent = WriteIntentRecordSchema.parse({ ...original, runId: run.envelope.runId,
-      workflowId: run.envelope.workflow, itemId: run.envelope.itemId, taskId: node.commit.uses.id,
+      workflowId: run.envelope.workflow, itemId: run.envelope.itemId, taskId, system, idempotencyKey,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest(system, idempotencyKey),
       bindingProof, bindingProofDigest: deriveWriteBindingProofDigest(bindingProof) });
     const deps = { runReader: { read: () => ({ state: "present", run }) }, authority: { getWriteIntent: () => intent },
       timeline: { withReadSnapshot: <T>(read: () => T) => read(), highWaterMark: () => 0, page: () => [] },

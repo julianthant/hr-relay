@@ -1035,6 +1035,8 @@ export async function executeClaimedRun(
       ...(taskId === undefined ? {} : { taskId: TaskIdSchema.parse(taskId) }),
       error,
       occurredAt: instant(),
+      writes: deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, getRun().envelope)
+        .writeRunIds().flatMap(id => repositories.writeIntents.listByRun(id))) ?? [],
     }));
 
     const abortReason = (fallback: string): RunAbandonedError => new RunAbandonedError(
