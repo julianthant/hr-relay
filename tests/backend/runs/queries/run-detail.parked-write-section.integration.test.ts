@@ -468,14 +468,16 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       const w = await world();
       seed(w, { intent: kualiIntent() });
       const run = w.authority.getRun(RUN_ID);
-      assert.ok(run);
+      const value = run?.input.parsed.value;
+      assert.ok(run && value !== null && typeof value === "object" && !Array.isArray(value));
       w.authority.put(RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
-        protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
+        value: { ...value, documentNumber: "3170001" }, protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
           name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: uuidOf(24) }] } } }));
       const payload = parkedSection(w);
       const digest = deriveIdempotencyKeyDigest("kuali", KEY);
-      const serialized = JSON.stringify(payload);
-      for (const secret of ["3170001", KEY, digest, digest.slice(0, 12)]) assert.ok(!serialized.includes(secret), secret);
+      // The kernel fences typed resolutions on the exact occurrence digest, so only those command targets carry it.
+      const served = JSON.stringify(payload).replaceAll(`"occurrenceKeyDigest":"${digest}"`, "");
+      for (const secret of ["3170001", KEY, digest, digest.slice(0, 12)]) assert.ok(!served.includes(secret), secret);
       assert.equal(payload.idempotencyKeyDigest, "withheld-protected-input");
       assert.equal(payload.decision?.context, "Kuali accepted the save, but Relay could not read its status. Check the separation document in Kuali.");
     });

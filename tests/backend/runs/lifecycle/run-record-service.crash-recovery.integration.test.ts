@@ -51,14 +51,17 @@ it("parks an unfinished attempt unchanged without a terminal result or a retry",
 });
 
 it("records a crash after the run's own committed write as a failure after that write", async () => {
-  const f = await world.interruptedFixture();
+  const f = await world.interruptedFixture({ dryRun: false });
   const intent = await attemptingOwnedWrite({ database: f.database, fence: async input => f.database.authority.writeIntents.fenceAttempt(input) }, f.run);
-  const owner = { writeIntentId: intent.writeIntentId, workflowId: intent.workflowId, itemId: intent.itemId, runId: f.run.envelope.runId,
-    traceId: f.run.envelope.traceId, attempt: intent.runAttempt, bindingProofDigest: intent.bindingProofDigest };
+  const owned = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(owned);
+  const owner = { writeIntentId: intent.writeIntentId, workflowId: intent.workflowId, itemId: intent.itemId, runId: owned.envelope.runId,
+    traceId: owned.envelope.traceId, attempt: intent.runAttempt, bindingProofDigest: intent.bindingProofDigest };
   const commit = { ...ATOMIC_WRITE_COMMIT, writeIntentId: intent.writeIntentId, generation: intent.generation,
-    transaction: { ...LEDGER_PAYLOAD, ...owner, configFingerprint: f.run.envelope.configFingerprint, fencedAt: intent.fencedAt },
+    transaction: { ...LEDGER_PAYLOAD, ...owner, configFingerprint: owned.envelope.configFingerprint, fencedAt: intent.fencedAt,
+      instance: owned.envelope.resolvedInstance.ucpath },
     committedSpan: { ...SPAN_OUTBOX_PAYLOAD, ...owner } };
-  f.database.commitWriteAttempt(commit, atomicWriteCheckpoint(commit));
+  f.database.commitWriteAttempt(commit, { ...atomicWriteCheckpoint(commit), claimGeneration: owned.claimGeneration,
+    descriptorVersion: owned.envelope.descriptorVersion, contractFingerprint: owned.envelope.contractFingerprint });
   const committed = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.deepEqual(committed.map(({ status }) => status), ["committed"]);
   assert.equal(f.service.recoverCrash(f.recoveryRequest, f.lock).state, "applied");
