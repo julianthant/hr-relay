@@ -184,7 +184,6 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       });
     },
     lastWorkerClaim(workerId: string) {
-      // shortcut: unindexed json_extract scan from the newest cursor; add an expression index if worker cards slow the day read.
       return ports.read(() => {
         const row = prepare(`SELECT * FROM timeline_events WHERE kind='run.claimed'
           AND json_extract(payload_json,'$.payload.event.workerId')=? ORDER BY cursor DESC LIMIT 1`).get(z.string().min(1).parse(workerId));

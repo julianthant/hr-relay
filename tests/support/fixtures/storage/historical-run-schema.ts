@@ -12,7 +12,7 @@ export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));
   assert.ok(trigger);
-  database.exec(`DROP TRIGGER runs_completion_immutable; ${trigger}`);
+  database.exec(`DROP INDEX timeline_worker_claim_idx; DROP TRIGGER runs_completion_immutable; ${trigger}`);
   database.exec("UPDATE database_states SET schema_version=20; PRAGMA user_version=20");
 }
 
