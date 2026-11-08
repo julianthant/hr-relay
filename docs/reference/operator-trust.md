@@ -96,8 +96,9 @@ cause. A subject, page, or action block cannot be empty. `attempting` and `unkno
 whose operation is `commit`. Transience does not establish retry permission.
 
 `src/backend/runtime/execution/run-failure.ts` builds failure records and bounded debug details.
-A node failure and a crash both record `settledWriteState`: `committed` or `verified` when the run
-already settled a write, otherwise `not-attempted`. A failure after a settled write is never served
+A node failure and a crash both record `settledWriteState`: `committed` or `verified` when the run,
+or a source run whose checkpoints its continuation retains, already settled a write, otherwise
+`not-attempted`. A failure after a settled write is never served
 as a retryable failure or a correction.
 The optional `diagnosticSafetyVersion: 1` remains a recorded field.
 `projectFailureForOperator` serves the catalog sentence for the failure's code as `summary`. A code
