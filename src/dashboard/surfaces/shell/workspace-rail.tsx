@@ -11,7 +11,7 @@ import type { NotificationDestination, NotificationsState } from "../notificatio
 import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
-import { appSymbolSvg } from "./app-logo.js";
+import { AppLockup } from "./app-lockup.js";
 
 
 export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, inbox, onOpenNotification, searchData, onSearch }: {
@@ -43,7 +43,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
       if (open && event.key === "Escape" && !(event.target instanceof HTMLElement && event.target.closest('[role="dialog"], [role="menu"]'))) { event.preventDefault(); event.stopPropagation(); setOpen(false); bell.current?.focus(); }
     }}>
     <header className="workspace-rail-header">
-      <h2 className="flex items-center gap-2"><span className="flex text-ui-info" dangerouslySetInnerHTML={{ __html: appSymbolSvg(24) }} />Relay</h2>
+      <h2 className="flex items-center gap-2"><AppLockup /></h2>
       <div className="flex shrink-0 items-center gap-0.5">
         <ToggleButton ref={bell} isIconOnly size="sm" variant="ghost" isSelected={open} onChange={notificationRail.changeOpen} aria-controls={open ? "workspace-notifications" : undefined}
           aria-label={notificationRail.state.state === "loading" ? "Notifications loading" : notificationRail.state.state === "unavailable" ? "Notifications unavailable" : `Notifications, ${notificationRail.unread} unread`} className="rail-notification-toggle">
