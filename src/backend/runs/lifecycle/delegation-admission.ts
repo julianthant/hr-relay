@@ -101,7 +101,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       const snapshot = repositories.configSnapshots.get(parent.envelope.configSnapshotId);
       const active = repositories.runtimeConfig.get();
       if (snapshot === undefined || snapshot.fingerprint !== parent.envelope.configFingerprint || active === undefined
-        || active.configSnapshotId !== snapshot.configSnapshotId || active.configFingerprint !== snapshot.fingerprint) throw new Error("delegation-config-stale");
+        || active.configFingerprint !== snapshot.fingerprint) throw new Error("delegation-config-stale");
       if (canonicalJsonStringify(resolveInstances(descriptor, parent.envelope.requestedInstance)) !== canonicalJsonStringify(parent.envelope.resolvedInstance)) throw new Error("delegation-parent-instance-mismatch");
       if (repositories.writeIntents.listAttemptingByItem({ workflowId: parent.envelope.workflow, itemId: parent.envelope.itemId }).length > 0
         || repositories.writeIntents.listByRun(parent.envelope.runId).some(intent => intent.status === "parked")) throw new Error("delegation-write-recovery-required");

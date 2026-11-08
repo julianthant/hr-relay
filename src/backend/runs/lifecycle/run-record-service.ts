@@ -349,7 +349,8 @@ export class RunRecordService {
       void commandId; void matchKey; void runtimeConfig;
       const run = RunRecordSchema.parse({
         envelope: {
-          ...selectNewRunIdentity(repositories, envelope), runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
+          // A delegated child keeps its parent's snapshot; delegation admission proves it matches the active config.
+          ...(envelope.parent === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
           buildId: approvalBuildId(repositories, envelope.parent),
           attempt: repositories.runs.nextItemAttempt({ workflow: request.workflow, itemId }),
           enqueuedAt: now,

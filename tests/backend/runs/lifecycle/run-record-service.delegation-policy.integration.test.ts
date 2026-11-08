@@ -9,6 +9,7 @@ import type { RunRecord } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -120,6 +121,36 @@ it("authenticates a genuine delegated child at claim and execution boundaries an
   const completed = await f.execution.step(f.root, world.SIGNAL);
   assert.equal(completed.run.envelope.runId, child.envelope.runId);
   assert.equal(completed.outcome.state, "done");
+});
+
+function reactivateConfig(f: Awaited<ReturnType<typeof fixture>>, actorLabel?: string): void {
+  const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
+  const prior = f.database.authority.configSnapshots.get(active.configSnapshotId); assert.ok(prior);
+  const config = actorLabel === undefined ? prior.config : { ...prior.config, actor: { ...prior.config.actor, label: actorLabel } };
+  const configSnapshotId = randomUUID(), configFingerprint = sha256Hex(canonicalJsonStringify(config));
+  f.database.withAuthorityTransaction(repositories => {
+    repositories.configSnapshots.insert({ ...prior, configSnapshotId, config, fingerprint: configFingerprint });
+    repositories.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
+      configFingerprint, activatedAt: f.clock.now().toISOString(), configSnapshotId });
+  });
+}
+
+it("admits delegation after a restart re-activates the same config under a new snapshot id", async () => {
+  const f = await fixture("cascade");
+  reactivateConfig(f);
+  const outcome = (await f.execution.step(f.root, world.SIGNAL)).outcome;
+  assert.equal(outcome.state, "yielded-delegation", outcome.state === "failed" ? String(f.database.authority.failures.get(outcome.failureId)?.summary) : outcome.state);
+  assert.equal(f.child().envelope.parent?.runId, f.root.envelope.runId);
+  assert.equal(f.child().envelope.configSnapshotId, f.root.envelope.configSnapshotId);
+});
+
+it("refuses delegation when the active config fingerprint changed after the parent was queued", async () => {
+  const f = await fixture("cascade");
+  reactivateConfig(f, "Changed operator");
+  const outcome = (await f.execution.step(f.root, world.SIGNAL)).outcome;
+  assert.ok(outcome.state === "failed", JSON.stringify(outcome));
+  assert.equal(f.database.authority.failures.get(outcome.failureId)?.summary, "delegation-config-stale");
+  assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 0);
 });
 
 it("authenticates each sibling issuance once during native child eligibility without mutating authority", async () => {
