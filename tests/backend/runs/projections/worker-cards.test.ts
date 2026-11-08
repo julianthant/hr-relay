@@ -95,6 +95,14 @@ describe("the exact current worker authority card", () => {
     assert.equal(value.currentRun.state, "absent");
   });
 
+  it("attributes a stop to shutdown when Relay's drain wrote the directive, whatever the lifecycle stored", () => {
+    const cases = [["operator", "application-shutdown", "shutdown"], ["operator", "profile-logout", "shutdown"], ["operator", undefined, "operator"],
+      ["operator", "shift over", "operator"], ["crashed", "application-shutdown", "crashed"]] as const;
+    for (const [stored, directive, shown] of cases) assert.equal(card({ ownerAlive: false, lease: leaseOf({ lifecycle: { state: "stopped", startedAt: STARTED,
+      stoppedAt: "2026-08-20T16:05:00.000Z", reason: stored }, control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator",
+      ...(directive === undefined ? {} : { reason: directive }) } }) }).stopReason, shown, `${stored} + ${String(directive)}`);
+  });
+
   it("serves a stopped member as failed with its actual terminal time and no live resources", () => {
     for (const reason of ["operator", "shutdown", "crashed"] as const) {
       const value = card({ ownerAlive: false, lease: leaseOf({ lifecycle: { state: "stopped", startedAt: STARTED,

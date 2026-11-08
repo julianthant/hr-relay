@@ -7,6 +7,7 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { runClaim } from "../../../models/run/record.js";
+import { WORKER_LOGOUT_STOP_REASON, WORKER_SHUTDOWN_STOP_REASON } from "../../../models/run/worker.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
@@ -669,8 +670,11 @@ export function composeProfileActivity(input: Readonly<{
         }
         if ("state" in input.supervisor) {
           if (busy(false)) throw new Error("profile-resource-closure-unproved");
-        } else await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-          requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: "application-shutdown" });
+        } else {
+          await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
+            requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: WORKER_SHUTDOWN_STOP_REASON });
+          input.database.reconcileWorkerControlMilestones(input.clock.now().toISOString());
+        }
       })());
       const completion = Promise.allSettled(pending).then(results => {
         const errors: unknown[] = [...failures];
@@ -711,8 +715,11 @@ export function composeProfileActivity(input: Readonly<{
           await new Promise<void>(resolve => setTimeout(resolve, 50));
         }
         if ('state' in input.supervisor) { if (busy(false)) throw new Error('profile-resource-closure-unproved'); }
-        else await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-          requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: 'profile-logout' });
+        else {
+          await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
+            requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: WORKER_LOGOUT_STOP_REASON });
+          input.database.reconcileWorkerControlMilestones(input.clock.now().toISOString());
+        }
       })());
       const completion = Promise.allSettled(pending).then(results => {
         const errors: unknown[] = [...failures];

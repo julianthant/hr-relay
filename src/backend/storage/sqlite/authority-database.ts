@@ -7067,6 +7067,7 @@ export class AuthorityDatabase implements Disposable {
   reconcileWorkerControlMilestones(now: string): void {
     for (const record of this.authority.workerControls.list()) {
       if (record.auditedAt !== undefined) continue;
+      if (record.request.type === "refresh-browser" || record.request.type === "reopen-browser") { if (this.#browserLifetimeEnded(record)) this.#refuseEndedBrowserControl(record.commandId, now); continue; }
       if ((record.request.type === "stop-worker" || record.lifecycle !== undefined) && ["admitted", "ready", "executing"].includes(record.phase.state)
         && Date.parse(record.expiresAt) <= Date.parse(now)) this.authority.workerControls.transition(record.commandId, record.phase.state, {
           state: "uncertain", startedAt: "startedAt" in record.phase ? record.phase.startedAt : record.admittedAt,
@@ -7082,6 +7083,26 @@ export class AuthorityDatabase implements Disposable {
           state: "uncertain", startedAt: current.phase.startedAt, observedAt: now, message: error.message });
       }
     }
+  }
+
+  #browserLifetimeEnded(record: z.infer<typeof WorkerControlRecordSchema>): boolean {
+    const control = record.control;
+    if (control === undefined || record.auditedAt !== undefined || record.phase.state === "succeeded") return false;
+    const lease = this.#readWorkerLease(control.member.workerId), lifetime = control.lifetime;
+    return lease !== undefined && (lease.leaseGeneration > lifetime.leaseGeneration || lease.leaseGeneration === lifetime.leaseGeneration
+      && lease.lifecycle.state === "stopped" && lease.processId === lifetime.processId && lease.lifecycle.startedAt === lifetime.startedAt);
+  }
+
+  /** A browser control bound to a stopped worker lifetime can take no further effect; refuse and audit it so it stops holding the pool. */
+  #refuseEndedBrowserControl(commandId: string, now: string): void {
+    this.withAuthorityTransaction(repositories => {
+      const current = repositories.workerControls.get(commandId);
+      if (current === undefined || !this.#browserLifetimeEnded(current)) return;
+      const message = "worker-browser-lifetime-ended";
+      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+      repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+        result: { state: "rejected", commandId, code: "invalid-state", message } });
+    });
   }
 
   /** Startup only: a Retry, or a stop-worker restart with no run work, whose reserved old lifetime is still exact never birthed; refuse it and release the reservation. */

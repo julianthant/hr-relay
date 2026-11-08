@@ -589,6 +589,9 @@ Internal pool retirement and lifetime shutdown request the durable stop directiv
 SIGTERM, waits `WORKER_SIGTERM_TIMEOUT_MS = 30_000`, then sends SIGKILL. Observed escalation stages
 are a timestamped prefix of that policy. An initial acknowledgement records only the graceful
 request, not future signals or exit. Failed delivery and uncertain stop effects remain visible.
+A lifetime that a shutdown or logout drain's directive ends records stop reason `shutdown`; any other
+stop directive records `operator`. The worker card reads the directive's reason, so such a lifetime shows
+`shutdown` even if its stored reason says `operator`.
 During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_TIMEOUT_MS = 5_000`.
 
 ### 11.2 Durable worker and browser controls
@@ -775,6 +778,9 @@ the request's expiry. `worker-browser-control.ts` consumes only ready requests f
 worker lifetime, between whole runs. Kernel admission and child execution both refuse busy
 workers with `worker-browser-busy`. A busy refusal queues no deferred browser effect.
 The claim transaction blocks while that lifetime has an unaudited browser control.
+Once that lifetime has stopped, the control can take no further effect: worker control
+reconciliation (at startup, every 250 ms, and right after a shutdown or logout drain stops its
+workers) refuses and audits it with `worker-browser-lifetime-ended`, which releases the pool scope.
 
 Refresh uses the selected resource's neutral reset and authentication proof, retaining the
 session id. Reopen proves closure and opens a replacement with a new session id, the same profile,

@@ -596,3 +596,34 @@ for (const failure of ["none", "worker", "command", "both"] as const) it(`shutdo
     }
   } finally { finishWorker(); finishCommand(); await f.cleanup(); }
 });
+
+it("refuses an uncertain browser control left by a worker the shutdown drain stops instead of failing the drain", async () => {
+  const f = await fixture(), profileId = f.admission.profileBinding.profileId, { authority } = f.context.database;
+  try {
+    const at = f.input.clock.now().toISOString();
+    const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+      commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid, now: at }, randomUUID()));
+    assert.equal(authority.workerLeases.start({ workerId: slot.workerId, workflow: "person-lookup", browserSystems: ["crm"], processId: process.pid,
+      requestedBy: "local-operator", now: at }).state, "started");
+    authority.workerLeases.reportLifecycle({ workerId: slot.workerId, leaseGeneration: 1, lifecycle: { state: "idle", startedAt: at, heartbeatAt: at }, now: at });
+    const lease = authority.workerLeases.get(slot.workerId); assert.ok(lease);
+    const commandId = randomUUID(), controlBasis = { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision };
+    const request = WorkerBrowserCommandRequestSchema.parse({ commandId, family: "worker-browser", type: "refresh-browser", source: "dashboard", requestedAt: at,
+      requestedBy: "local-operator", target: { workerId: slot.workerId, browserSessionId: randomUUID(), expectedVersion: lease.version, controlBasis } });
+    f.context.database.withAuthorityTransaction(repositories => {
+      repositories.commands.insert(request); repositories.workerLeases.reserveControl(slot.workerId, controlBasis, commandId, at);
+      repositories.workerControls.admit({ commandId, request, scope: "worker-pool:person-lookup", executorId: randomUUID(), admittedAt: at,
+        expiresAt: new Date(f.input.clock.nowMs() + 60_000).toISOString(), basisVersion: lease.version, phase: { state: "admitted" } });
+    });
+    authority.workerControls.transition(commandId, "admitted", { state: "executing", startedAt: at });
+    authority.workerControls.transition(commandId, "executing", { state: "uncertain", startedAt: at, observedAt: at, message: "worker-browser-effect-failed-or-uncertain" });
+    const evidence = WorkerChildEvidenceSchema.parse({ state: "exited", pid: process.pid, outcome: "stopped", exitCode: 0, signal: null, at, reportedBy: "os", observedStop: [] });
+    const activity = composeProfileActivity({ ...f.input, supervisor: { memberEvidence: () => evidence, drainOwnedChildren: async () => {
+      authority.workerLeases.reportLifecycle({ workerId: slot.workerId, leaseGeneration: 1, lifecycle: { state: "stopped", startedAt: at, stoppedAt: at, reason: "shutdown" }, now: at });
+    } } });
+    activity.requestShutdown(profileId); await activity.awaitCancellation();
+    assert.equal(authority.workerControls.get(commandId)?.phase.state, "refused");
+    assert.equal(authority.commandAudits.findByCommand(commandId)?.result.state, "rejected");
+    assert.equal(activity.hasUnquiescedWork(profileId), false);
+  } finally { await f.cleanup(); }
+});
