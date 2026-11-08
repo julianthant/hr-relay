@@ -93,7 +93,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           expect(await paintedBackground(page.getByRole("region", { name: "Settings", exact: true }))).toBe(palette.canvas);
         }
         const sessions = page.getByRole("region", { name: "Session Panel", exact: true });
-        await page.getByRole("button", { name: "Sessions", exact: true }).click();
+        await page.getByRole("button", { name: /^Sessions\b/ }).click();
         const strip = sessions.locator("[data-session-strip]");
         await expect(strip.locator("..")).toHaveCSS("background-color", palette.canvas);
         await expect(sessions.getByRole("article").first()).toHaveCSS("background-color", palette.panel);

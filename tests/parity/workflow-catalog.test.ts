@@ -51,7 +51,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
       await expect(dialog).toHaveCount(0);
       await expect(page.getByRole("article", { name: new RegExp(`^Worker \\d+ · ${label?.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u") })).toHaveCount(2);
     }
-    await page.getByRole("button", { name: "Sessions", exact: true }).click();
+    await page.getByRole("button", { name: /^Sessions\b/ }).click();
     await page.goto(`${server.baseUrl}/?fixture=workflow-catalog&settings=explorer&day=${FIXTURE_DAY}`);
     await page.getByRole("combobox", { name: "Explorer workflow", exact: true }).click();
     await expect(page.getByRole("option")).toHaveCount(labels.length);

@@ -43,7 +43,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       for (const scenario of ["active", "attention", "idle", "empty", "loading", "unavailable"]) {
         await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&sessionsPreview=${scenario}`);
         await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
-        await page.getByRole("button", { name: "Sessions", exact: true }).click();
+        await page.getByRole("button", { name: /^Sessions\b/ }).click();
         const panel = page.getByRole("region", { name: "Session Panel", exact: true });
         if (scenario === "empty") await expect(panel).toContainText("No workers yet");
         else if (scenario === "loading") await expect(panel.getByRole("status", { name: "Loading sessions" })).toBeVisible();
@@ -71,7 +71,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${outcome === "normal" ? "" : `&workerCommandPreview=${outcome}`}`);
         await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
-        await page.getByRole("button", { name: "Sessions", exact: true }).click();
+        await page.getByRole("button", { name: /^Sessions\b/ }).click();
         const worker = page.getByRole("article", { name: "Worker 1 · Separations", exact: true });
         await worker.getByRole("button", { name: "Pause", exact: true }).click();
         await expect(worker).toContainText("Pause requested…");
