@@ -54,6 +54,7 @@ describe("error catalog", () => {
       AUTHENTICATED_LANDING_MISSING: "No authenticated landing appeared.",
       TRAINING_REMINDER_REPEATED: "The UCSD training reminder appeared again after Continue Log In.",
       DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run it again; if it repeats, check Fast Duo.",
+      UCPATH_MAINTENANCE: "UCPath is down for maintenance. Try again later.",
       UCPATH_SIGN_IN_FAILED: "UCPath sign-in failed.",
       CRM_SIGN_IN_FAILED: "CRM sign-in failed.",
       ONBASE_SIGN_IN_FAILED: "OnBase sign-in failed.",
