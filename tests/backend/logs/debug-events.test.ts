@@ -39,8 +39,8 @@ describe("bounded native debug events", () => {
     const events = records.map(record => record.payload.kind === "debug" ? record.payload.event : undefined);
     assert.deepEqual(events.map(event => [event?.code, event?.reason, event?.message]), [
       ["WORKER_SUPERVISOR_FAILED", "supervisor-failed", undefined],
-      ["INTERNAL_FAILURE", "supervisor-cause", "AggregateError"],
-      ["PREFLIGHT_OBSERVATION_CHANGED", "supervisor-cause", "PreflightObservationChangedError"],
+      ["INTERNAL_FAILURE", "aggregate-cause", "AggregateError"],
+      ["PREFLIGHT_OBSERVATION_CHANGED", "observation-changed", "PreflightObservationChangedError"],
     ]);
     assert.equal(new Set(events.map(event => event?.correlationId)).size, 1);
     assert.deepEqual((JSON.parse(faults[0] ?? "{}") as { causes: unknown }).causes, [

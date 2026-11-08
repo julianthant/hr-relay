@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { bindErrorOrigin } from "../failures/error-origins.js";
 import { WorkerControlBasisSchema } from "./worker.js";
 import { WorkerPoolMemberSchema, WorkerPoolRosterAdmissionSchema, WorkerRetirementProofSchema } from "./worker-slot.js";
 import { CommandAuditRecordSchema, WorkerBrowserCommandRequestSchema, ParkedWriteCheckResultSchema } from "../../rules/commands/commands.js";
@@ -221,3 +222,9 @@ export type WorkerBrowserObservation = z.infer<typeof WorkerBrowserObservationSc
 export class WorkerControlRefusal extends Error {
   override readonly name = "WorkerControlRefusal";
 }
+/** The worker lifecycle refusals a log row or worker card may name; any other refusal text stays unnamed. */
+export const NAMED_WORKER_REFUSALS: ReadonlySet<string> = new Set(["worker-lifecycle-supervisor-unavailable", "worker-retry-binding-required",
+  "worker-retry-death-unproved", "worker-retry-owner-changed", "worker-removal-death-unproved", "worker-retirement-closure-not-proved",
+  "worker-retirement-profile-identity-mismatch", "worker-retirement-non-birth-capability-required", "worker-retirement-owner-changed",
+  "worker-retirement-child-close-unproved"]);
+bindErrorOrigin(WorkerControlRefusal, error => ({ key: "worker-refusal", reason: NAMED_WORKER_REFUSALS.has(error.message) ? error.message : "cause-unavailable" }));

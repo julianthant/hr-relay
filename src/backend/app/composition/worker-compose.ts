@@ -837,6 +837,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         claimNext: (request, sessions) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          onObservationChanged: attempt => { log.warn("preflight observation changed during claim; re-preparing", { workerId, attempt }); },
           prepareRun: async (run, signal) => {
             const target = executionDescriptor(run.envelope.workflow);
             if (target === undefined) throw new Error("worker-execution-descriptor-unavailable");
