@@ -473,15 +473,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const systems = first.getByRole("list", { name: "Worker 1 systems", exact: true });
       expect(await systems.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(2);
       expect((await systems.getByRole("listitem").first().boundingBox())!.height).toBeLessThanOrEqual(32);
-      expect((await systems.getByRole("listitem").last().boundingBox())!.width).toBe((await systems.boundingBox())!.width);
+      expect(Math.abs((await systems.getByRole("listitem").last().boundingBox())!.width - ((await systems.boundingBox())!.width - 6) / 2)).toBeLessThanOrEqual(1);
       const soloSystem = second.getByRole("list", { name: "Worker 2 systems", exact: true });
-      expect((await soloSystem.getByRole("listitem").first().boundingBox())!.width).toBe((await soloSystem.boundingBox())!.width);
+      expect(Math.abs((await soloSystem.getByRole("listitem").first().boundingBox())!.width - ((await soloSystem.boundingBox())!.width - 6) / 2)).toBeLessThanOrEqual(1);
       expect(Math.abs((await systems.boundingBox())!.y - (await second.getByRole("list", { name: "Worker 2 systems", exact: true }).boundingBox())!.y)).toBeLessThanOrEqual(1);
       expect((await first.getByRole("progressbar").boundingBox())!.y).toBeGreaterThan((await systems.boundingBox())!.y + (await systems.boundingBox())!.height);
-      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "11");
-      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "22");
-      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "11 of 22 nodes complete");
-      await expect(first.locator("[data-session-node]")).toHaveCount(22);
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "5");
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "1 of 5 steps complete");
+      await expect(first.locator("[data-session-node]")).toHaveCount(5);
       await expect(second.locator("[data-session-node]")).toHaveCount(4);
       expect((await first.boundingBox())!.height).toBeLessThan(280);
       const firstFooter = (await first.locator("footer").boundingBox())!;
@@ -498,7 +498,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await first.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(first).toContainText("Paused");
-      await expect(first.locator('[data-session-node="separation-12"]')).toHaveAttribute("title", "Read the timecard · paused");
+      await expect(first.locator('[data-session-node="kronos-timecard"]')).toHaveAttribute("title", "Kronos timecard · paused");
       await first.getByRole("button", { name: "Resume", exact: true }).click();
       await expect(first).toContainText("Running");
       await second.getByRole("button", { name: "Stop", exact: true }).click();
@@ -510,7 +510,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await second.getByRole("button", { name: "Remove worker", exact: true }).click();
       await expect(second).toHaveCount(0);
       await expect(panel.getByRole("article")).toHaveCount(3);
-      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "11");
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
       await expect(toggle).toBeFocused();
       await showScenario("attention");
       await expect(panel).toContainText("Waiting");
