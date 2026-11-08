@@ -129,6 +129,7 @@ export async function initializeRetryWorker(input: Readonly<{
       for (const need of needs) {
         if (systems.has(need.system)) continue;
         systems.add(need.system);
+        await sessions.prepareProfile(need, "prod", signal);
         await sessions.withDriver({ ...need, access: "read", session: "reuse-worker" }, "prod", signal, async () => undefined);
       }
     });
