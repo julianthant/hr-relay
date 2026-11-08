@@ -3,9 +3,7 @@ import { Circle, CircleCheck, PanelsTopLeft } from "lucide-react";
 import { Input } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { CandidateTableWire } from "../../../../models/dashboard/run-decision.js";
-
-/** The selection when the operator is typing their own value instead of picking a served row. */
-export const TYPED_ROW = "\u0001typed";
+import { TYPED_ROW } from "./log-decision-model.js";
 
 /**
  * A pick is the step's own page card in Pick mode: the icon column is the selection mark and the chosen row takes the

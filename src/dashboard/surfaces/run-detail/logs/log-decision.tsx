@@ -7,9 +7,9 @@ import { cn } from "../../../lib/utils.js";
 import type { DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import { fmtActionClock } from "../../shared/status/format.js";
 import { DecisionCard, DecisionChoice } from "./decision-card.js";
-import { choiceOptions, decisionAnswerValid, LOG_DECISION_STATUS, recommendedOption, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
+import { choiceOptions, decisionAnswerValid, LOG_DECISION_STATUS, recommendedOption, TYPED_ROW, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
-import { PickTable, TYPED_ROW } from "./pick-table.js";
+import { PickTable } from "./pick-table.js";
 import "./log-presentation.css";
 
 export type DecisionAnswerHandler = (option: DecisionOptionWire, answer: LogDecisionAnswer) => void;

@@ -24,6 +24,9 @@ export const LOG_DECISION_STATUS = {
   parked: { label: "Write parked", tone: "warning", className: "text-ui-warning" }, failed: { label: "Failed", tone: "danger", className: "text-ui-danger" }, review: { label: "Review", tone: "info", className: "text-ui-info" }, held: { label: "Held", tone: "warning", className: "text-ui-warning" }, unconfirmed: { label: "Unconfirmed", tone: "warning", className: "text-ui-warning" }, loading: { label: "Loading", tone: "muted", className: "text-ui-muted" }, recorded: { label: "Recorded", tone: "muted", className: "text-ui-muted" }, resolved: { label: "Resolved", tone: "muted", className: "text-ui-muted" },
 } as const;
 
+/** The selection when the operator is typing their own value instead of picking a served row. */
+export const TYPED_ROW = "\u0001typed";
+
 /** The Cancel run button sends this option's descriptor; it is never a dropdown choice. */
 export const isCancelOption = (option: DecisionOptionWire): boolean => option.send.via === "row-action" && option.id === "cancel-run";
 export const choiceOptions = (decision: RunDecisionWire): readonly DecisionOptionWire[] => decision.options.filter(option => !isCancelOption(option));

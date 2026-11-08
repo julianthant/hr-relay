@@ -111,7 +111,7 @@ function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; now
     const label = answeredRow(option, answer)?.name ?? option.label;
     setEdited(current => {
       const nextSteps = (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.map(entry => entry.id !== id || entry.kind !== "decision" ? entry
-        : { ...entry, decision: { ...withoutServed(entry.decision), answered: { optionId: option.id, label, at: IsoInstantSchema.parse(new Date().toISOString()), actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
+        : { ...entry, decision: { ...withoutServed(entry.decision), answered: { optionId: option.id, label, at: PREVIEW_ANSWERED_AT, actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
       if (scenarioId === "preview" && option.id === "approve-lookup-match" && !nextSteps.some(step => step.id === "lookup-job")) {
         nextSteps.push({ id: "lookup-job", time: "09:40:20", title: "Read employment record", system: "UCPath", entries: [{ kind: "note", id: "lookup-job-started", time: "09:40:20", message: `Reading the employment record for ${preview?.subject}.`, tone: "info" }] });
       }
@@ -120,6 +120,9 @@ function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; now
   };
   return <LogPanel key={basis} context={selection && (scenarioId === 'preview' || scenarioId === 'selected') ? queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt) : undefined} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : previewCancel} />;
 }
+
+/** A fixture has no clock; the preview answer carries a fixed instant. */
+const PREVIEW_ANSWERED_AT = IsoInstantSchema.parse("2026-08-03T16:41:05.000Z");
 
 /** A fixture has no run to cancel; the button shows and does nothing. */
 const previewCancel = () => undefined;
