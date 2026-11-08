@@ -1,6 +1,7 @@
 import { ReviewPageSchema, type RunDetailSectionResponse } from "../../../models/dashboard/run-detail.js";
 import { readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
+import { hostedOcrRun } from "./ocr-record-members.js";
 import { SectionUnavailableError } from "../commands/refusals.js";
 import { deterministicUuid } from "../lifecycle/support.js";
 import { ocrRecordName } from "../../../models/ocr/review.js";
@@ -8,10 +9,12 @@ import { runClaim } from "../../../models/run/record.js";
 import { GateIdSchema } from "../../../rules/identity/ids.js";
 import { ocrRecordSourcePages } from "../../../models/ocr/review-record.js";
 
-export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): RunDetailSectionResponse {
+export function buildOcrReviewSection(deps: RunDetailQueryDeps, requestedRunId: string): RunDetailSectionResponse {
   const canonical = deps.canonical;
   if (canonical === undefined) throw new SectionUnavailableError("OCR review authority is unavailable");
   return canonical.database.withAuthorityReadSnapshot(() => {
+    const requested = canonical.reader.read(requestedRunId);
+    const runId = (requested.state === "present" ? hostedOcrRun(canonical.database.authority, requested.run) : undefined)?.envelope.runId ?? requestedRunId;
     const review = readOcrReviewAuthority(canonical.database.authority, canonical.reader, runId);
     if (review === undefined) throw new SectionUnavailableError("OCR review has no published source reading");
     const snapshots = readOcrSnapshotsAuthority(canonical.database.authority, review);

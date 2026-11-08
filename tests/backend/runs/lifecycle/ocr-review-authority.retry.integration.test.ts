@@ -107,6 +107,7 @@ it("publishes a complete new review from retained pages and one authenticated fa
     accounting: accountOcrPages(original.seed.review.accounting.manifest, original.seed.review.accounting.readingId, pages) }) };
   const resumed = await f.canonical.execute(f.run, new AbortController().signal);
   assert.equal(resumed.run?.lifecycle.state, "parked-gate");
+  assert.deepEqual(f.pageReads.toSorted(), [1, 2, 2], "only the failed page is read again");
   const review = readOcrReviewAuthority(repositories, f.canonical.lifecycle, f.run.envelope.runId); assert.ok(review);
   assert.equal(review.revision.revision, 2);
   assert.deepEqual(review.revision.seed, seed);
