@@ -2047,7 +2047,8 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
           }
         }
       }
-      return Object.freeze([...references.values()].map(reference => Object.freeze(reference)));
+      // Table scans return rows in storage order, which a rebuild can change; inventories compare this list, so order it by content.
+      return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
 export class AuthorityDatabase implements Disposable {
