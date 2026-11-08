@@ -199,7 +199,7 @@ afterEach_m1(_afterEachFixture0);
     const first = row(1);
     const standalone = QueueSurfaceWireSchema_m1.parse({ ...row(3), session: { state: "absent", reason: "historical run" }, status: "running" });
     const second = QueueSurfaceWireSchema_m1.parse({ ...row(2), status: "failed" });
-    assert_m1.deepEqual(visibleQueueKeys_m1([first, standalone, second]), [standalone.runId, first.runId, second.runId]);
+    assert_m1.deepEqual(visibleQueueKeys_m1([first, standalone, second]), [second.runId, standalone.runId, first.runId]);
   });
   it_m1("keeps unavailable historical grouping separate and refuses conflicting batch facts", () => {
     const old = QueueSurfaceWireSchema_m1.parse({ ...row(1), session: { state: "present", itemScope: "workflow", sessionId: uuidOf_m1(700) } });
@@ -229,7 +229,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.equal(initial.length, 1);
     const batch = initial[0]; assert_m1.ok("kind" in batch);
     assert_m1.equal(batch.id, uuidOf_m1(700));
-    assert_m1.equal(batch.status, "running");
+    assert_m1.equal(batch.status, "failed");
     assert_m1.equal(batch.startedAt, alice.session.state === "present" ? alice.session.presentation?.startedAt : undefined);
     assert_m1.deepEqual(queueMemberLines(batch, []).map(line => line.kind === "run" ? line.item.representative.runId : undefined), [failed.runId, ben.runId, alice.runId]);
     const retry = lookupRow(4, { itemId: ben.itemId, attempt: 2, startedAt: "2026-08-03T16:00:00.000Z" });

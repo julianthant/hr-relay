@@ -440,7 +440,7 @@ describe("queue-row action descriptors — every served verb has a command behin
     }
   });
 
-  it("refuses a rename with no name, and one the display-name schema would reject", () => {
+  it("refuses a rename with no answer or an illegal name, and sends an empty name as a clear", () => {
     const rename = served.find((action) => action.kind === "command" && action.command === "rename");
     assert.ok(rename?.kind === "command", "the projection served no rename to test");
     const target = { runId: uuid(1), expectedVersion: rename.expectedVersion };
@@ -452,7 +452,12 @@ describe("queue-row action descriptors — every served verb has a command behin
 
     for (const blank of ["", "   "]) {
       const composed = composeCommandRequest(rename, target, { ...base, renameAnswer: blank });
-      assert.equal(composed.state, "refused", `"${blank}" composed a rename`);
+      assert.equal(composed.state, "ready", `"${blank}" should clear the name`);
+      if (composed.state !== "ready") continue;
+      const parsed = CommandRequestSchema.safeParse(composed.request);
+      assert.ok(parsed.success);
+      if (!parsed.success || parsed.data.type !== "rename") continue;
+      assert.deepEqual(parsed.data.payload, { displayName: "" });
     }
 
     const tooLong = composeCommandRequest(rename, target, { ...base, renameAnswer: "x".repeat(121) });
@@ -529,6 +534,32 @@ it("confirms cascade deletion only through the exact lifecycle tombstone provena
   assert.equal((await verifyShellCommandEffect(client, "2026-08-03", command, reply)).state, "mismatch");
   absent = true;
   assert.equal((await verifyShellCommandEffect(client, "2026-08-03", command, reply)).state, "mismatch", "absence alone cannot prove deletion");
+});
+
+it("reads a rename back from the served name and treats an empty name as the default", async () => {
+  const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
+  const root = FIXTURE_DAY_WIRE.queueSurfaces.find((row) => row.parent === null);
+  assert.ok(root);
+  let displayName: typeof root.displayName = { state: "present", value: "April contacts" };
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({
+    ...FIXTURE_DAY_WIRE,
+    queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map((candidate) => candidate.runId === root.runId
+      ? { ...root, rowRevision: root.rowRevision + 1, displayName, actions: [] } : candidate),
+  }) });
+  const commandFor = (displayName: string) => CommandRequestSchema.parse({
+    family: "run", type: "rename", commandId: "77777777-7777-4777-8777-777777777777", source: "queue",
+    requestedBy: "local-operator", requestedAt: "2026-08-03T12:00:00.000Z",
+    target: { runId: root.runId, expectedVersion: root.rowRevision }, payload: { displayName },
+  });
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: "77777777-7777-4777-8777-777777777777",
+    affectedTargets: [{ family: "run", runId: root.runId }] });
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, commandFor("April contacts"), reply)).state, "matched");
+  displayName = { state: "absent", reason: "the operator has not renamed this run" };
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, commandFor("April contacts"), reply)).state, "mismatch");
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, commandFor(""), reply)).state, "matched");
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, commandFor("   "), reply)).state, "matched");
+  displayName = { state: "present", value: "April contacts" };
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, commandFor(""), reply)).state, "mismatch");
 });
 
 it("checks cancellation effect and rejects an unrelated acknowledged run", async () => {

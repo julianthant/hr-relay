@@ -16,7 +16,7 @@ queueRowAccessibleName as queueRowAccessibleName_m1
 
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
-import { attentionQueueKeys as attentionQueueKeys_m2 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { attentionQueueKeys as attentionQueueKeys_m2, queueRenameDraft as queueRenameDraft_m2 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m2 } from "../../../../src/models/dashboard/projection.js";
 
 import assert_m3 from "node:assert/strict";
@@ -178,10 +178,21 @@ describe_m2("attentionQueueKeys — the band and the key cannot disagree", () =>
         endedAt: { state: "present", value: NOW },
       }),
       surface({ runId: runId(4), status: "blocked" }),
+      surface({ runId: runId(5), status: "failed", endedAt: { state: "present", value: NOW } }),
     ];
-    // `awaiting-approval` and `blocked` are the two statuses the band draws;
-    // the order is the band's, so the waiting row precedes the parked one.
-    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(4)]);
+    // Waiting, then failed, then parked: failed sits in Needs you with them.
+    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(5), runId(4)]);
+  });
+
+  it_m2("sends a changed name, clears with an empty draft, and skips an unchanged title", () => {
+    const named = surface({ runId: runId(1), status: "running", displayName: { state: "present", value: "April contacts" } });
+    const unnamed = surface({ runId: runId(2), status: "running", title: "Jordan" });
+    assert_m2.equal(queueRenameDraft_m2(named, "  May roster  "), "May roster");
+    assert_m2.equal(queueRenameDraft_m2(named, "April contacts"), undefined);
+    assert_m2.equal(queueRenameDraft_m2(named, "   "), "");
+    assert_m2.equal(queueRenameDraft_m2(unnamed, "Jordan"), undefined);
+    assert_m2.equal(queueRenameDraft_m2(unnamed, ""), undefined);
+    assert_m2.equal(queueRenameDraft_m2(unnamed, "April contacts"), "April contacts");
   });
 });
 }
