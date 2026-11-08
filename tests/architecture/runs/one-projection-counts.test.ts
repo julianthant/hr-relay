@@ -74,7 +74,7 @@ function countFieldConstructions(filePath: string, content = readFileSync(filePa
         const admitted = relative(REPO_ROOT, filePath).replaceAll("\\", "/") === MOCK_COUNT_OWNER
           && parent !== undefined && ts.isFunctionDeclaration(parent) && parent.name?.text === "mockWorkflowCounts"
           && parent.parameters.length === 1 && parent.parameters[0].name.getText(source) === "runs"
-          && parent.body?.getText(source).replace(/\s+/gu, "") === '{returnMOCK_WORKFLOWS.map(flow=>{constrows=runs.filter(run=>run.workflowId===flow.id);returnWorkflowCountWireSchema.parse({workflowId:flow.id,count:rows.length,statusCounts:mockQueueCounts(rows)});});}'
+          && parent.body?.getText(source).replace(/\s+/gu, "") === '{returnMOCK_WORKFLOWS.filter(flow=>flow.id!=="ocr").map(flow=>{constrows=runs.filter(run=>run.workflowId===flow.id);returnWorkflowCountWireSchema.parse({workflowId:flow.id,count:rows.length,statusCounts:mockQueueCounts(rows)});});}'
           && name.text === "statusCounts";
         if (!admitted) found.push(name.text);
       }

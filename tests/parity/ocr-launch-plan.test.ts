@@ -46,7 +46,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         const steps = dialog.getByRole("region", { name: "Steps", exact: true });
         const rows = steps.getByRole("listitem");
-        await expect(rows).toHaveCount(4);
+        await expect(rows).toHaveCount(6);
         await expect(rows.nth(0)).toContainText("Read emergency contact");
         await expect(rows.nth(0)).toContainText("OCR");
         await expect(steps).not.toContainText("Delegate document to OCR");
@@ -57,7 +57,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(steps.getByRole("checkbox", { name: "Read existing contacts", exact: true })).toBeEnabled();
         await expect(steps.getByRole("checkbox", { name: "Fill emergency contact", exact: true })).toBeDisabled();
         await expect(steps.getByRole("checkbox", { name: "Save emergency contact", exact: true })).toBeDisabled();
-        await expect(dialog).toContainText(extraction ? "4 / 4 included" : "3 / 4 included");
+        await expect(dialog).toContainText(extraction ? "6 / 6 included" : "4 / 6 included");
         if (extraction) {
           const a11y = await dialog.ariaSnapshot();
 
@@ -65,12 +65,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           info.annotations.push({ type: `a11y-attachment-sha256:${planName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
         }
         await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
-        await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText(extraction ? "4 / 4 included" : "3 / 4 included");
+        await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText(extraction ? "6 / 6 included" : "4 / 6 included");
         await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText("Bulk");
         await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
         if (extraction) {
           await expect(logs).toContainText("Read emergency contact");
-          await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
           await logs.locator("header").first().getByRole("button", { name: "Review", exact: true }).click();
           await expect(logs.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
         } else {

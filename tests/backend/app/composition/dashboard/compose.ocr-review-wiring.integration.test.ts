@@ -40,7 +40,7 @@ it("composes served OCR with readable gate authority while public starts remain 
       workerProcess: { spawn: () => { throw new Error("composition proof must not launch a worker"); } } });
     const created = composed.slice(before); assert.equal(created.length, 1);
     const production = created[0], readable = production.readableDescriptors; assert.ok(readable);
-    assert.equal(production.workflowSources?.ocr, "served");
+    assert.equal(production.workflowSources?.ocr, "hidden");
     assert.equal(production.descriptors.resolve("ocr"), undefined);
     assert.equal(readable.resolve("ocr")?.capabilities?.review, true);
     assert.equal(readable.resolve("unknown-review-workflow"), undefined);
