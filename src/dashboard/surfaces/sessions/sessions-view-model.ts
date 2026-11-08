@@ -1,4 +1,4 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_LABEL } from "../shared/status/system-chip-model.js";
@@ -75,7 +75,8 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
         : step.state === "active" ? "active" : step.state === "failed" ? "failed" : "pending" })) : undefined;
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
-    const problem = workerRetryProblem(card) ?? (card.stopReason === undefined ? undefined : SETTLED_LINE[card.stopReason]);
+    const problem = workerRetryProblem(card) ?? (card.failureCode === undefined ? undefined : operatorFailureSentence(card.failureCode))
+      ?? (card.stopReason === undefined ? undefined : SETTLED_LINE[card.stopReason]);
     const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state,
