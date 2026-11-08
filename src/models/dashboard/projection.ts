@@ -1,6 +1,7 @@
 import { QueueParentSchema } from "./queue-parent.js";
 import { DelegatedRecordRefSchema } from "../workflow/delegated-record.js";
 import { RunOutcomeSchema, RunPauseSchema } from "../run/record.js";
+import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { z } from "zod";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
@@ -449,8 +450,10 @@ export const WorkerCardWireSchema = z.strictObject({
   startedAt: IsoInstantSchema,
   /** Present iff the member exited — the observed exit instant, never `now`. */
   endedAt: IsoInstantSchema.optional(),
-  /** Present iff the card is failed — requested stop, crash, or a planned member with no process this boot; never inferred. */
-  stopReason: z.enum(["operator", "crashed", "not-started"]).optional(),
+  /** Present iff the card is failed — requested stop, Relay's own shutdown or logout drain, crash, or a planned member with no process this boot; never inferred. */
+  stopReason: z.enum(["operator", "shutdown", "crashed", "not-started"]).optional(),
+  /** The catalog code a crashed worker reported before it exited. */
+  failureCode: ErrorCatalogCodeSchema.optional(),
   currentRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),

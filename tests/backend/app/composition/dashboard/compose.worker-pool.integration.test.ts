@@ -132,7 +132,27 @@ describe("the composed worker pool through the kernel", () => {
     assert.deepEqual(request.request, { type: "refresh-browser", browserSessionId });
     h.children[0]?.exit(1, null); await settleMicrotasks();
     const refused = await h.kernel.executeWorkerPool({ ...envelope(h), type: "refresh-browser", target: browserTarget() });
-    assert.notEqual(refused.state, "applied");
+    assert.ok(refused.state === "rejected");
+    assert.equal(refused.code, "invalid-state");
+    assert.equal(refused.message, "WORKER_EXITED");
+  });
+
+  it("settles a browser refresh in flight when its worker exits as an audited WORKER_EXITED rejection", async () => {
+    const h = await openControlHarness({ answers: false });
+    await planWorkers(h, 1); await settleMicrotasks();
+    const { workflowId: _workflow, ...target } = memberTarget(h);
+    const command = { ...envelope(h), type: "refresh-browser" as const, target: { ...target, browserSessionId: "bbbbbbbb-0001-4000-8000-000100000000" } };
+    const pending = h.kernel.executeWorkerPool(command);
+    await settleMicrotasks();
+    assert.ok(h.children[0]?.sent.some(message => message.kind === "worker-request"));
+    h.children[0]?.exit(1, null); await settleMicrotasks();
+    const result = await pending;
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, "invalid-state");
+    assert.equal(result.message, "WORKER_EXITED");
+    const audit = h.database.authority.commandAudits.findByCommand(command.commandId);
+    assert.ok(audit?.result.state === "rejected");
+    assert.equal(audit.result.message, "WORKER_EXITED");
   });
 
   it("shutdown stops every member, including one that ignores stop, and a crashed member never blocks it", async () => {

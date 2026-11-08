@@ -382,4 +382,59 @@ describe("worker pool", () => {
     const views = await all;
     assert.equal(views[0]?.held, "exit-unobserved");
   });
+
+  for (const [label, reason] of [["stop", "operator"], ["stopAll", "shutdown"], ["stopAll", "logout"]] as const) {
+    it(`records the ${reason} request as the stopped exit reason (${label})`, async () => {
+      const w = world(), { port, target } = await running(w);
+      const stopped = label === "stop" ? w.pool.stop(target, reason) : w.pool.stopAll(reason); await flush();
+      port.exit(0, null); await stopped;
+      assert.equal(w.settled[0]?.outcome, "stopped"); assert.equal(w.settled[0]?.reason, reason);
+    });
+  }
+
+  it("records a protocol fault as the stopped exit reason", async () => {
+    const w = world(), { port } = await running(w);
+    port.message({ kind: "worker-activity", activity: { state: "busy" } }); await flush();
+    port.exit(null, "SIGKILL"); await flush();
+    assert.equal(w.settled[0]?.outcome, "stopped"); assert.equal(w.settled[0]?.reason, "fault");
+  });
+
+  it("keeps the first stop reason when a later stop request names another", async () => {
+    const w = world(), { port, target } = await running(w);
+    const first = w.pool.stop(target, "operator"); await flush();
+    const second = w.pool.stopAll("shutdown"); await flush();
+    port.exit(0, null); await first; await second;
+    assert.equal(w.settled[0]?.reason, "operator");
+  });
+
+  it("carries the child's reported failure code on a crash only", async () => {
+    const coded = world(), a = await running(coded);
+    a.port.message({ kind: "worker-failed", code: "BROWSER_ROOT_UNAVAILABLE" });
+    a.port.exit(1, null); await flush();
+    assert.equal(coded.settled[0]?.outcome, "crashed"); assert.equal(coded.settled[0]?.failureCode, "BROWSER_ROOT_UNAVAILABLE");
+    const plain = world(), b = await running(plain);
+    b.port.exit(1, null); await flush();
+    assert.equal(plain.settled[0]?.outcome, "crashed"); assert.equal("failureCode" in (plain.settled[0] ?? {}), false);
+    const stopped = world(), c = await running(stopped);
+    c.port.message({ kind: "worker-failed", code: "BROWSER_ROOT_UNAVAILABLE" });
+    const stop = stopped.pool.stop(c.target, "operator"); await flush();
+    c.port.exit(0, null); await stop;
+    assert.equal(stopped.settled[0]?.outcome, "stopped"); assert.equal("failureCode" in (stopped.settled[0] ?? {}), false);
+  });
+
+  it("exposes the browser systems the child reported when ready, and none before", async () => {
+    const w = world(), started = w.pool.start(member); await flush();
+    assert.equal("browserSystems" in (w.pool.snapshot()[0] ?? {}), false);
+    w.ports[0]?.ready({ browserSystems: ["crm", "ucpath"] });
+    assert.deepEqual((await started).browserSystems, ["crm", "ucpath"]);
+  });
+
+  it("stores a waiting activity detail and faults a detail on a non-waiting state", async () => {
+    const w = world(), { port } = await running(w);
+    port.message({ kind: "worker-activity", activity: { state: "waiting", waiting: "acquiring" } });
+    assert.deepEqual(w.pool.snapshot()[0]?.activity, { state: "waiting", waiting: "acquiring" });
+    assert.deepEqual(port.kills, []);
+    port.message({ kind: "worker-activity", activity: { state: "idle", waiting: "closing" } }); await flush();
+    assert.equal(port.state.disconnected, true); assert.deepEqual(port.kills, ["SIGKILL"]);
+  });
 });

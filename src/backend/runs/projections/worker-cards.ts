@@ -3,7 +3,7 @@ import { WorkerBrowserWireSchema, WorkerCardWireSchema, WorkerLastRunWireSchema 
 import type { RunRecord } from "../../../models/run/record.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import type { WorkerChildBrowserObservation } from "../../runtime/workers/worker-messages.js";
-import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
+import type { WorkerExitFact, WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import type { RunFoldRecord } from "./run-queue-projection.js";
 
@@ -57,8 +57,13 @@ function signInOf(view: WorkerMemberView, observed: WorkerChildBrowserObservatio
   // Closed and failed rows keep no authentication history, so signed-out is not provable.
   if (observed.health === "closed" || observed.health === "failed") return "unknown";
   if (duoSystems.includes(observed.system)) return "needs-duo";
-  if (observed.health === "starting" || view.activity?.state === "waiting") return "signing-in";
+  if (observed.health === "starting" || view.activity?.state === "waiting" && view.activity.waiting !== "closing") return "signing-in";
   return "unknown";
+}
+
+function stopReasonOf(exit: WorkerExitFact | undefined): NonNullable<WorkerCardWire["stopReason"]> {
+  if (exit?.outcome !== "stopped" || exit.reason === "fault") return "crashed";
+  return exit.reason === "shutdown" || exit.reason === "logout" ? "shutdown" : "operator";
 }
 
 /** A card is the pool's in-memory member joined with its durable slot; the fence it serves is the member's lifetime and version. */
@@ -93,20 +98,26 @@ export function workerCardOf(input: Readonly<{
     observation: { state: "present", health: browser.health, observedAt: browser.observedAt, instance: browser.instance,
       browserMode: browser.browserMode, configFingerprint: browser.configFingerprint },
     signIn: signInOf(view, browser, input.duoSystems ?? []) });
+  const state = workerCardState(view);
+  const browsers = view.state === "exited" ? [] : view.browsers.filter(browser => browser.health !== "closed").map(browserWire);
   return WorkerCardWireSchema.parse({
     ...base,
-    state: workerCardState(view),
+    state,
     controls: { basis: { state: "present", value: { lifetimeId: view.lifetimeId, version: view.version } } },
     startedAt: view.startedAt,
     ...(view.state === "exited"
-      ? { endedAt: exit?.at ?? view.startedAt, stopReason: exit?.outcome === "stopped" ? "operator" : "crashed",
+      ? { endedAt: exit?.at ?? view.startedAt, stopReason: stopReasonOf(exit),
+        ...(exit?.outcome === "crashed" && exit.failureCode !== undefined ? { failureCode: exit.failureCode } : {}),
         // An exited member holds no live browser; its last reported sessions stay readable.
         lastBrowsers: view.browsers.map(browserWire) }
       : {}),
     currentRun: run === undefined || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== slot.workerId
       ? { state: "absent", reason: "no current claimed run" }
       : { state: "present", runId: run.envelope.runId, traceId: run.envelope.traceId },
-    browsers: view.state === "exited" ? [] : view.browsers.filter(browser => browser.health !== "closed").map(browserWire),
+    ...(view.browserSystems === undefined ? {} : { browserRequirements: { state: "present", systems: view.browserSystems,
+      missing: view.browserSystems.filter(system => !browsers.some(browser => browser.system === system && browser.signIn === "signed-in")) } }),
+    browsers,
+    ...(state === "waiting" && view.activity?.waiting !== undefined ? { waitingActivity: view.activity.waiting } : {}),
     revision: input.foldRevision + view.version + 1,
   });
 }

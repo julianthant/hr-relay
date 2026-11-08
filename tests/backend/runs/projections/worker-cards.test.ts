@@ -154,3 +154,39 @@ describe("sessions panel card data", () => {
     assert.deepEqual(card({ view: undefined }).availability, { state: "available" });
   });
 });
+
+describe("worker custody card data", () => {
+  const exitOf = (fact: Partial<NonNullable<WorkerMemberView["exit"]>>) =>
+    ({ code: null, signal: null, at: STARTED, outcome: "stopped", settlement: "settled", ...fact }) as NonNullable<WorkerMemberView["exit"]>;
+  const exitedCard = (fact: Partial<NonNullable<WorkerMemberView["exit"]>>) => card({ view: memberView({ state: "exited", exit: exitOf(fact) }) });
+
+  it("maps a stopped member's reason and a crash to the served stop reason", () => {
+    for (const [reason, expected] of [["operator", "operator"], ["reset", "operator"], ["remove", "operator"], ["shutdown", "shutdown"],
+      ["logout", "shutdown"], ["fault", "crashed"], [undefined, "operator"]] as const)
+      assert.equal(exitedCard({ outcome: "stopped", ...(reason === undefined ? {} : { reason }) }).stopReason, expected, String(reason));
+    assert.equal(exitedCard({ outcome: "crashed" }).stopReason, "crashed");
+  });
+
+  it("serves a crashed exit's failure code and never a stopped exit's", () => {
+    assert.equal(exitedCard({ outcome: "crashed", failureCode: "BROWSER_ROOT_UNAVAILABLE" }).failureCode, "BROWSER_ROOT_UNAVAILABLE");
+    assert.equal("failureCode" in exitedCard({ outcome: "crashed" }), false);
+    assert.equal("failureCode" in exitedCard({ outcome: "stopped", reason: "operator", failureCode: "BROWSER_ROOT_UNAVAILABLE" }), false);
+  });
+
+  it("serves the required browser systems with those not yet signed in, only when the view names them", () => {
+    assert.deepEqual(card({ view: memberView({ browserSystems: ["crm", "ucpath"], browsers: [observation] }) }).browserRequirements,
+      { state: "present", systems: ["crm", "ucpath"], missing: ["ucpath"] });
+    assert.equal("browserRequirements" in card({ view: memberView({ browsers: [observation] }) }), false);
+  });
+
+  it("serves what a waiting member waits on, and keeps a closing wait from reading as signing in", () => {
+    const waiting = card({ view: memberView({ activity: { state: "waiting", waiting: "acquiring" } }) });
+    assert.equal(waiting.state, "waiting");
+    assert.equal(waiting.waitingActivity, "acquiring");
+    assert.equal("waitingActivity" in card({ view: memberView({ activity: { state: "waiting" } }) }), false);
+    const signIn = (waitingOn: "closing" | "authenticating") =>
+      card({ view: memberView({ activity: { state: "waiting", waiting: waitingOn }, browsers: [{ ...observation, health: "unknown" }] }) }).browsers.map(browser => browser.signIn);
+    assert.deepEqual(signIn("closing"), ["unknown"]);
+    assert.deepEqual(signIn("authenticating"), ["signing-in"]);
+  });
+});

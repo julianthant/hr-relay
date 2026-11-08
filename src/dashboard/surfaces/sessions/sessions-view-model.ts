@@ -1,4 +1,4 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_LABEL } from "../shared/status/system-chip-model.js";
@@ -32,7 +32,7 @@ export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
     ...(diagnostic === undefined ? {} : { diagnostic }) };
 }
 /** One plain sentence for why a worker is not running; a deliberate stop is not an error. */
-const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", crashed: "Worker stopped unexpectedly.", "not-started": "Worker didn't start." };
+const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly.", "not-started": "Worker didn't start." };
 export const SESSION_STATE_LABELS: Readonly<Record<SessionWorkerState, string>> = {
   running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", stopped: "Stopped", failed: "Failed",
 };
@@ -75,8 +75,8 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
         : step.state === "active" ? "active" : step.state === "failed" ? "failed" : "pending" })) : undefined;
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
-    const problem = card.stopReason === undefined ? undefined : SETTLED_LINE[card.stopReason];
-    const state = card.state === "failed" && card.stopReason === "operator" ? "stopped" : card.state;
+    const problem = card.failureCode !== undefined ? operatorFailureSentence(card.failureCode) : card.stopReason === undefined ? undefined : SETTLED_LINE[card.stopReason];
+    const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state,
       ...(row === undefined ? {} : { subject: row.title }),

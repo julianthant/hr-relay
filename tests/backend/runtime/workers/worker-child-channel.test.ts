@@ -89,3 +89,12 @@ it("replies with a handler's catalog code, INTERNAL_FAILURE otherwise, and fails
   c.child.receive({ kind: "worker-stop", reason: "shutdown", mode: "after-run" });
   assert.deepEqual(c.stops, ["shutdown"]);
 });
+
+it("names a catalog-coded error to the parent and sends nothing for any other error", () => {
+  const c = channel();
+  c.child.failed(Object.assign(new Error("x"), { code: "BROWSER_ROOT_UNAVAILABLE" }));
+  assert.deepEqual(c.sent, [{ kind: "worker-failed", code: "BROWSER_ROOT_UNAVAILABLE" }]);
+  c.child.failed(new Error("x"));
+  c.child.failed(Object.assign(new Error("x"), { code: "NOT_A_CATALOG_CODE" }));
+  assert.equal(c.sent.length, 1);
+});

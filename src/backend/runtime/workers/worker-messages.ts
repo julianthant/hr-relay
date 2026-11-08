@@ -22,7 +22,10 @@ export type WorkerReplyOutcome = z.infer<typeof WorkerReplyOutcomeSchema>;
 
 export const WorkerActivitySchema = z.strictObject({
   state: z.enum(["idle", "busy", "waiting", "paused"]), runId: RunIdSchema.optional(),
-}).refine(activity => (activity.state === "busy") === (activity.runId !== undefined), "worker-activity-run-binding-invalid");
+  /** What a waiting worker's browser is doing. */
+  waiting: z.enum(["acquiring", "authenticating", "closing"]).optional(),
+}).refine(activity => (activity.state === "busy") === (activity.runId !== undefined), "worker-activity-run-binding-invalid")
+  .refine(activity => activity.waiting === undefined || activity.state === "waiting", "worker-activity-waiting-invalid");
 export type WorkerActivity = z.infer<typeof WorkerActivitySchema>;
 
 export type WorkerChildBrowserObservation = z.infer<typeof WorkerBrowserObservationSchema>;
@@ -33,6 +36,8 @@ export const WorkerChildMessageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("worker-activity"), activity: WorkerActivitySchema }),
   z.strictObject({ kind: z.literal("worker-browser"), observation: WorkerBrowserObservationSchema }),
   z.strictObject({ kind: z.literal("worker-reply"), requestId: z.uuid(), outcome: WorkerReplyOutcomeSchema }),
+  /** The catalog code of the error ending this child, sent before it exits. */
+  z.strictObject({ kind: z.literal("worker-failed"), code: ErrorCatalogCodeSchema }),
 ]);
 export type WorkerChildMessage = z.infer<typeof WorkerChildMessageSchema>;
 

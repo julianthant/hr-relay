@@ -8,6 +8,8 @@ export interface ScriptedWorkerBehavior {
   readonly ready: boolean;
   /** Exits with code 0 on `worker-stop`. */
   readonly exitOnStop: boolean;
+  /** Answers `worker-request` messages; false leaves them pending. */
+  readonly answers?: boolean;
   readonly reply: (request: WorkerControlRequest) => WorkerReplyOutcome;
 }
 
@@ -35,7 +37,7 @@ export class ScriptedWorkerChild implements WorkerProcessPort {
       if (message.kind === "worker-stop") { if (this.behavior.exitOnStop) this.exit(0, null); }
       else if (message.kind === "worker-pause" || message.kind === "worker-resume") {
         this.emit({ kind: "worker-reply", requestId: message.requestId, outcome: { state: "done", result: { directive: message.kind === "worker-pause" ? "pause" : "run" } } });
-      } else this.emit({ kind: "worker-reply", requestId: message.requestId, outcome: this.behavior.reply(message.request) });
+      } else if (this.behavior.answers !== false) this.emit({ kind: "worker-reply", requestId: message.requestId, outcome: this.behavior.reply(message.request) });
     });
   }
 

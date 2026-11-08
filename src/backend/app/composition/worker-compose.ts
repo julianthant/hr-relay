@@ -529,11 +529,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     let current: WorkerActivity = { state: paused() ? "paused" : "idle" };
     const browserActivities = new Map<symbol, "acquiring" | "authenticating" | "closing">();
     let claimedRun: RunId | undefined;
-    const activityNow = (): WorkerActivity => browserActivities.size !== 0 ? { state: "waiting" }
+    const activityNow = (): WorkerActivity => browserActivities.size !== 0 ? { state: "waiting", waiting: [...browserActivities.values()].at(-1) }
       : claimedRun !== undefined ? { state: "busy", runId: claimedRun } : { state: paused() ? "paused" : "idle" };
     let channel: WorkerChildChannel | undefined;
     const publish = (next: WorkerActivity): void => {
-      if (next.state === current.state && next.runId === current.runId) return;
+      if (next.state === current.state && next.runId === current.runId && next.waiting === current.waiting) return;
       current = next;
       channel?.activity(next);
     };
@@ -678,6 +678,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         browserScreenshotCapture,
       });
       runtimeReport = report;
+    } catch (error) {
+      channel?.failed(error);
+      throw error;
     } finally {
       await stopGateSources();
       router?.close();

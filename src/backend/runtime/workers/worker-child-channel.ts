@@ -15,6 +15,8 @@ export interface WorkerChildControlHandlers {
 }
 
 const refused = (code: ErrorCatalogCode): WorkerReplyOutcome => ({ state: "refused", code, message: code });
+const catalogCodeOf = (error: unknown): ErrorCatalogCode | undefined =>
+  error instanceof Error && "code" in error ? ErrorCatalogCodeSchema.safeParse(error.code).data : undefined;
 
 /**
  * The child end of the worker family. Claims and controls share one turn: a control never starts while a run is
@@ -37,10 +39,7 @@ export function createWorkerChildChannel(input: Readonly<{
       case "close-for-removal": return await input.handlers.closeForRemoval();
     }
   };
-  const outcomeOf = (error: unknown): WorkerReplyOutcome => {
-    const code = error instanceof Error && "code" in error ? ErrorCatalogCodeSchema.safeParse(error.code) : undefined;
-    return refused(code?.success === true ? code.data : "INTERNAL_FAILURE");
-  };
+  const outcomeOf = (error: unknown): WorkerReplyOutcome => refused(catalogCodeOf(error) ?? "INTERNAL_FAILURE");
 
   return Object.freeze({
     /** Throws `WorkerIpcProtocolError` for a malformed worker message; the caller exits the process. */
@@ -75,6 +74,7 @@ export function createWorkerChildChannel(input: Readonly<{
     ready(fact: Omit<Extract<WorkerChildMessage, { kind: "worker-ready" }>, "kind">): void { input.send({ kind: "worker-ready", ...fact }); },
     activity(activity: WorkerActivity): void { input.send({ kind: "worker-activity", activity }); },
     browser(observation: WorkerChildBrowserObservation): void { input.send({ kind: "worker-browser", observation }); },
+    failed(error: unknown): void { const code = catalogCodeOf(error); if (code !== undefined) input.send({ kind: "worker-failed", code }); },
   });
 }
 export type WorkerChildChannel = ReturnType<typeof createWorkerChildChannel>;

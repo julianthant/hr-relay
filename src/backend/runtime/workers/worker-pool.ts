@@ -1,7 +1,7 @@
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { IsoInstantSchema } from "../../../rules/identity/ids.js";
+import { IsoInstantSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { WorkerChildMessageSchema, type WorkerActivity, type WorkerChildBrowserObservation, type WorkerControlRequest,
   type WorkerDirective, type WorkerParentMessage, type WorkerStopReason } from "./worker-messages.js";
@@ -32,6 +32,10 @@ export interface WorkerExitFact {
   readonly signal: string | null;
   readonly at: string;
   readonly outcome: "stopped" | "crashed";
+  /** The stop request that ended a stopped member. */
+  readonly reason?: WorkerStopReason;
+  /** The catalog code a crashed child reported before it exited. */
+  readonly failureCode?: ErrorCatalogCode;
 }
 
 export interface WorkerMemberView {
@@ -44,6 +48,8 @@ export interface WorkerMemberView {
   readonly startedAt: string;
   readonly activity: WorkerActivity | undefined;
   readonly browsers: readonly WorkerChildBrowserObservation[];
+  /** The descriptor's browser systems, as the child reported them when ready. */
+  readonly browserSystems?: readonly BrowserSystemId[];
   readonly exit: (WorkerExitFact & { readonly settlement: "settled" | "failed" }) | undefined;
   /** A stop whose OS exit was not observed in time, or whose kill could not be delivered; no replacement may start. */
   readonly held: "exit-unobserved" | "kill-undelivered" | undefined;
@@ -97,6 +103,9 @@ interface MemberRecord {
   settling: boolean;
   activity: WorkerActivity | undefined;
   readonly browsers: Map<string, WorkerChildBrowserObservation>;
+  browserSystems: readonly BrowserSystemId[] | undefined;
+  stopReason: WorkerStopReason | undefined;
+  failureCode: ErrorCatalogCode | undefined;
   held: WorkerMemberView["held"];
   exit: WorkerMemberView["exit"];
   settlementFailure: unknown;
@@ -122,6 +131,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   const view = (record: MemberRecord): WorkerMemberView => Object.freeze({
     member: record.member, lifetimeId: record.lifetimeId, version: record.version, state: record.state, directive: record.directive, pid: record.port.pid,
     startedAt: record.startedAt, activity: record.activity, browsers: Object.freeze([...record.browsers.values()]), exit: record.exit, held: record.held,
+    ...(record.browserSystems === undefined ? {} : { browserSystems: record.browserSystems }),
   });
   const changed = (record: MemberRecord): void => {
     record.version += 1;
@@ -133,7 +143,9 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   const onExit = async (record: MemberRecord, code: number | null, signal: string | null): Promise<void> => {
     if (record.state === "exited") return;
     cancelTimers(record);
-    const fact: WorkerExitFact = { code, signal, at: at(), outcome: record.stopping === undefined ? "crashed" : "stopped" };
+    const fact: WorkerExitFact = record.stopping === undefined
+      ? { code, signal, at: at(), outcome: "crashed", ...(record.failureCode === undefined ? {} : { failureCode: record.failureCode }) }
+      : { code, signal, at: at(), outcome: "stopped", ...(record.stopReason === undefined ? {} : { reason: record.stopReason }) };
     record.state = "exited"; record.held = undefined;
     rejectPending(record, new WorkerPoolError("WORKER_EXITED"));
     record.ready?.(new WorkerPoolError("WORKER_EXITED"));
@@ -160,6 +172,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   /** Bounded escalation; resolves when the OS exit is observed or the observation window closes. */
   const escalate = (record: MemberRecord, reason: WorkerStopReason, immediate: boolean): Promise<void> => {
     if (record.stopping !== undefined) return record.stopping;
+    record.stopReason = reason;
     record.state = "stopping"; changed(record);
     record.stopping = record.exited;
     const lastResort = (): void => { kill(record, "SIGKILL"); observeExit(record); };
@@ -196,6 +209,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
         return;
       }
       record.activity = message.activity;
+      record.browserSystems = Object.freeze(message.browserSystems);
       record.directive = message.activity.state === "paused" ? "pause" : "run";
       record.state = "running";
       cancelTimers(record); changed(record);
@@ -207,6 +221,8 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       if (message.observation.health === "closed") record.browsers.delete(message.observation.sessionId);
       else record.browsers.set(message.observation.sessionId, message.observation);
       changed(record);
+    } else if (message.kind === "worker-failed") {
+      record.failureCode = message.code;
     } else {
       const pending = record.pending.get(message.requestId);
       if (pending === undefined) { deps.onFault?.(record.member, new WorkerPoolError("WORKER_REQUEST_TIMED_OUT")); return; }
@@ -279,7 +295,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       let resolveSettled!: () => void;
       const settled = new Promise<void>(resolve => { resolveSettled = resolve; });
       const record: MemberRecord = { member, lifetimeId: deps.ids.uuid(), port, startedAt: at(), version: 0, state: "starting", directive: "run", settling: false,
-        activity: undefined, browsers: new Map(), held: undefined, exit: undefined, settlementFailure: undefined,
+        activity: undefined, browsers: new Map(), browserSystems: undefined, stopReason: undefined, failureCode: undefined, held: undefined, exit: undefined, settlementFailure: undefined,
         pending: new Map(), timers: [], stopping: undefined, exited, resolveExited, settled, resolveSettled, ready: undefined };
       records.set(member.workerId, record);
       const readiness = new Promise<Error | undefined>(resolve => { record.ready = resolve; });

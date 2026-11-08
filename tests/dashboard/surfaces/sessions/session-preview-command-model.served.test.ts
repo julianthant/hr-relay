@@ -486,6 +486,27 @@ it("distinguishes an intentionally stopped worker after restart from a crashed w
   }
 });
 
+it("shows a crashed worker's catalog failure text and falls back to the generic line without a code", () => {
+  const day = dayWith(); const card = day.workerCards[0];
+  const problemOf = (failureCode?: "BROWSER_ROOT_UNAVAILABLE") => {
+    const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, state: "failed", endedAt: now, stopReason: "crashed", browsers: [],
+      ...(failureCode === undefined ? {} : { failureCode }) }] }), catalog, now);
+    assert.ok(view.state === "ready");
+    assert.equal(view.workers[0].state, "failed");
+    return view.workers[0].problem;
+  };
+  assert.equal(problemOf("BROWSER_ROOT_UNAVAILABLE"), ERROR_CATALOG.BROWSER_ROOT_UNAVAILABLE.text);
+  assert.equal(problemOf(), "Worker stopped unexpectedly.");
+});
+
+it("shows a worker stopped by a Relay shutdown as stopped, not failed", () => {
+  const day = dayWith(); const card = day.workerCards[0];
+  const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, state: "failed", endedAt: now, stopReason: "shutdown", browsers: [] }] }), catalog, now);
+  assert.ok(view.state === "ready");
+  assert.equal(view.workers[0].state, "stopped");
+  assert.equal(view.workers[0].problem, "Relay shut down.");
+});
+
 /** A failed card whose Retry reply is lost in transit: the command reached the server, the answer never came back. */
 async function lostRetry(options: { audit?: (command: CommandRequest) => unknown; serverEffect?: (h: ReturnType<typeof harness>) => void } = {}) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
