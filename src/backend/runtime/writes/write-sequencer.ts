@@ -226,7 +226,7 @@ export interface TransactionSessionHost {
     signal: AbortSignal,
     operation: (
       driver: BrowserDriver,
-      ownership: Readonly<{ retainAfterFence(): void }>,
+      ownership: Readonly<{ readonly signal: AbortSignal; retainAfterFence(): void }>,
       captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>,
     ) => Promise<Result>,
     screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
@@ -1040,7 +1040,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     context: WriteSequencerContext,
     role: TransactionTaskRole,
     event: "span.started" | "span.ended",
-    outcome?: "done" | "failed",
+    outcome?: "done" | "failed" | "cancelled",
     deliverySafe = false,
   ): void {
     const envelope = context.run.envelope;
@@ -1089,14 +1089,17 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     );
   }
 
-  /** Emit the failed terminal beat without ever replacing the task's primary failure. */
+  /** Emit the failed (or, before the fence under a pending pause or stop, cancelled) terminal beat without replacing the task's primary failure. */
   function preserveTaskFailure(
     context: WriteSequencerContext,
     role: TransactionTaskRole,
     taskFailure: unknown,
   ): unknown {
     try {
-      emitTaskSpan(context, role, "span.ended", "failed");
+      const current = role === "verify" ? undefined : deps.authority.authority.runs.get(context.run.envelope.runId);
+      const interrupted = current !== undefined
+        && (context.signal.aborted || current.pause?.state === "requested" || current.cancelRequested === true);
+      emitTaskSpan(context, role, "span.ended", interrupted ? "cancelled" : "failed");
       return taskFailure;
     } catch (spanFailure) {
       return aggregateSecondaryFailure(
@@ -1395,6 +1398,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   /** Beat ⑥ — capture/verify: every completion arm parses through its proofSchema. */
   async function captureProof(input: Readonly<{
     context: WriteSequencerContext;
+    signal: AbortSignal;
     commitContract: AnyCommitTaskContract;
     commitInput: unknown;
     driver: BrowserDriver;
@@ -1482,7 +1486,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         input.context,
         "verify",
         completion.verify.taskId,
-        input.context.signal,
+        input.signal,
         (innerSignal, recordData) => {
           const run = RunnableTaskSchema.parse(verifyTask.impl.run);
           return run({
@@ -1969,7 +1973,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             context,
             "prepare",
             prepareContract.id,
-            context.signal,
+            ownership.signal,
             (innerSignal, recordData) => {
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
               return runImpl({
@@ -2064,9 +2068,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           recordedAt: fencedAt,
         });
         let fencedRecord: WriteIntentRecord;
-        if (context.signal.aborted) {
-          throw context.signal.reason instanceof Error
-            ? context.signal.reason
+        if (ownership.signal.aborted) {
+          throw ownership.signal.reason instanceof Error
+            ? ownership.signal.reason
             : new Error(`${commitContract.id} was cancelled before its write fence`);
         }
         refuseRequestedCancellation(context);
@@ -2120,7 +2124,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const commitInvocation = beginBoundedTask(
           deps,
           commitContract.id,
-          context.signal,
+          ownership.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
             return runImpl({
@@ -2212,7 +2216,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ...(emissionFailure === undefined ? {} : { diagnosticFailure: emissionFailure.error }),
           diagnosticIsProgramFailure: containsSchemaFailure,
           reportDeliveryFailure: () => reportDiagnosticFailure(context),
-          verifySavedEffect: () => captureProof({ context, commitContract, commitInput, driver,
+          verifySavedEffect: () => captureProof({ context, signal: ownership.signal, commitContract, commitInput, driver,
             rawCommitOutput, captureScreenshot: () => captureScreenshot("step"), intent: fenced }),
           onProgramFailure: error => { throw postFenceTaskFailure(
             `${commitContract.id} post-settlement observation failed schema validation after saved-effect verification`,

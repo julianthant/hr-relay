@@ -1,4 +1,3 @@
-import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -202,7 +201,7 @@ describe("exact native worker reset reservation", () => {
     } finally { raw.close(); }
   });
 
-  it("retains the real fenced sequencer callback through reset then preserves its UNKNOWN parked result", async () => {
+  it("retains the real fenced sequencer callback through reset and parent abort, then settles its save committed", async () => {
     const h = await world.harness();
     const { run, claim } = world.claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -225,9 +224,9 @@ describe("exact native worker reset reservation", () => {
     expect(h.database.authority.workerControls.get(record.commandId)?.phase.state).toBe("admitted");
     release();
     const result = await execution;
-    expect("error" in result && result.error).toBeInstanceOf(WriteParkedError);
-    expect(world.intentByKey(h.database)?.status).toBe("parked");
-    expect(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state).toBe("parked-write");
+    expect("value" in result).toBe(true);
+    expect(world.intentByKey(h.database)?.status).toBe("committed");
+    expect(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state).toBe("running");
     expect(h.database.authority.workerControls.pending(record.scope)).toHaveLength(1);
   });
 

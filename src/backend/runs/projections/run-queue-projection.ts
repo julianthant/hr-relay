@@ -42,7 +42,7 @@ import {
   type Fingerprint,
 } from "../../../rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
-import type { RunRecord } from "../../../models/run/record.js";
+import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import type { RunSummary, DelegationWaitState } from "../../../models/run/summary.js";
 import {
   projectReceiptForOperator,
@@ -60,7 +60,7 @@ import type { RunSessionRecord } from "../../../models/run/session.js";
 import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { allowsSubjectIdentity, resolveResultTitle, verifiedResultDisplayValue, resolveSubjectTitle } from "./run-subject-title.js";
-import { lastRunOf, workerCardOf, type WorkerBrowserFold, type WorkerCardWire } from "./worker-cards.js";
+import { lastRunOf, stepInterruptOf, workerCardOf, type WorkerBrowserFold, type WorkerCardWire } from "./worker-cards.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
@@ -165,6 +165,8 @@ export interface RunQueueProjectionDeps {
     heldDuoSystems?(workerId: string): readonly string[];
     workerControls?(): readonly WorkerControlRecord[];
     ownsWorker?(lease: WorkerLeaseRecord): boolean;
+    /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
+    writeInFlight?(runId: string): boolean;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -895,6 +897,9 @@ export class RunQueueProjection {
       lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
         ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
       cancelRequested: run.cancelRequested,
+      // Served step interrupts change with the pause request and the write fence.
+      pause: run.pause,
+      ...(runClaim(run) === undefined ? {} : { writeInFlight: this.#deps.authority.writeInFlight?.(run.envelope.runId) }),
     }));
     const leases = this.#cardLeases();
     const controlFacts = [...leases.values()].map(lease => ({ workerId: lease.workerId, owned: this.#deps.authority.ownsWorker?.(lease), custody: this.#ownerFact(lease), browsers: this.#deps.authority.workerBrowsers?.(lease.workerId) }));
@@ -1300,6 +1305,12 @@ export class RunQueueProjection {
     const pauseControl: NonNullable<QueueSurfaceWire["pauseControl"]> = { expectedVersion: authority.version,
       state: pauseUnavailable ? "unavailable" : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
       ...(pauseUnavailable || authority.pause?.state === "requested" ? {} : { command: authority.pause?.state === "paused" ? "resume" as const : "pause" as const }) };
+    const claim = runClaim(authority);
+    const interrupt = claim === undefined ? undefined : stepInterruptOf(authority,
+      this.#deps.authority.workerControls?.().some(record => record.request.type === "stop-worker" && record.phase.state !== "succeeded"
+        && record.phase.state !== "refused" && record.reset?.work.kind === "current" && record.reset.work.current.runId === queued.runId
+        && record.reset.work.current.claimGeneration === claim.claimGeneration) === true,
+      this.#deps.authority.writeInFlight?.(queued.runId) === true);
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
@@ -1320,6 +1331,7 @@ export class RunQueueProjection {
       dryRun: authority.envelope.dryRun,
       ...(authority.pause === undefined ? {} : { pause: authority.pause }),
       pauseControl,
+      ...(interrupt === undefined ? {} : { interrupt }),
 
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
@@ -1341,7 +1353,8 @@ export class RunQueueProjection {
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
       ...(status === "cancelled" ? { cancelledBy: cancelledBy(authority) } : {}),
-      liveMessage: pauseControl.state === "pause-pending" ? { state: "present", value: "Pauses after this step finishes" }
+      liveMessage: interrupt?.step === "finish-write" ? { state: "present", value: "Finishing the save first" }
+        : pauseControl.state === "pause-pending" ? { state: "present", value: "Restarts this step on Resume" }
         : pauseControl.state === "paused" ? { state: "present", value: "Pause recorded. Resume to continue." } : this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
       pipeline: this.#pipeline(row, queued.workflow, authority.lifecycle.state === "terminal", delegationWait),
@@ -1569,6 +1582,7 @@ export class RunQueueProjection {
           ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
             : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
           fold: fold === undefined ? undefined : { revision: fold.eventCount, browsers: [...fold.browsers.values()] },
+          writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
           resolveRun: runId => {
             const read = this.#deps.reader.read(runId);
             return read.state === "present" && read.disposition === "live" ? read.run : undefined;

@@ -1,7 +1,6 @@
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { z } from "zod";
 import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { absentProbeEvidence, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
@@ -11,7 +10,7 @@ afterEach(cleanup);
 
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
 
-  it("retains a parent-aborted transaction lease until its non-cooperative commit callback settles", async () => {
+  it("a parent abort after the fence never reaches the in-flight commit, which settles committed", async () => {
     const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -54,20 +53,17 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     assert.equal(intentByKey(h.database)?.status, "attempting");
     assert.deepEqual(h.sessions.closeReasons(), [], "the retained transaction session remains open");
     assert.equal(executionSettled, false, "the fenced execution remains owned while its callback is in flight");
-    assert.deepEqual(h.scheduler.pending(), [], "parent-first cancellation cancels the later task deadline");
+    assert.equal(h.scheduler.pending().length, 1, "only the commit's own task deadline still bounds the write");
 
     releaseCallback();
     const outcome = await execution;
-    assert.equal(outcome.state, "rejected");
-    if (outcome.state !== "rejected") return;
-    assert.ok(outcome.error instanceof WriteParkedError);
-    assert.match(outcome.error.message, /operator cancelled while the external callback was in flight/u);
-    assert.equal(intentByKey(h.database)?.status, "parked");
-    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
-    assert.deepEqual(h.sessions.closeReasons(), ["poisoned"], "post-settlement failure poisons exactly once");
+    assert.equal(outcome.state, "fulfilled");
+    assert.equal(intentByKey(h.database)?.status, "committed");
+    assert.notEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    assert.deepEqual(h.sessions.closeReasons(), []);
   });
 
-  it("keeps a deadline failure primary when parent abort follows during retained callback settlement", async () => {
+  it("keeps a deadline failure primary and never joins a parent abort that follows it", async () => {
     const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -116,13 +112,10 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     if (outcome.state !== "rejected") return;
     assert.ok(outcome.error instanceof WriteParkedError);
     assert.ok(outcome.error.cause instanceof Error);
-    assert.ok(outcome.error.cause.cause instanceof AggregateError);
-    const [deadlineFailure, retainedParentFailure] = z.array(z.unknown()).parse(
-      outcome.error.cause.cause.errors,
-    );
-    assert.ok(deadlineFailure instanceof Error);
+    const deadlineFailure = outcome.error.cause.cause;
+    assert.ok(deadlineFailure instanceof Error && !(deadlineFailure instanceof AggregateError));
     assert.match(deadlineFailure.message, /exceeded its immutable 60000ms task deadline/u);
-    assert.equal(retainedParentFailure, parentFailure);
+    assert.doesNotMatch(outcome.error.message, /parent abort followed the commit deadline/u);
     assert.equal(intentByKey(h.database)?.status, "parked");
     assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
   });
