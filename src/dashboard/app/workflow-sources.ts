@@ -19,6 +19,12 @@ export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFL
   return source;
 }
 
+/** A mock run stays when its workflow is a mock; a hidden workflow's run stays only as a host's child. */
+export function keepsMockRun(composition: WorkflowComposition, run: MockRun): boolean {
+  const source = composition.sourceForRoute(run.workflowId, true);
+  return source === "mock" || source === "hidden" && run.parentId !== undefined;
+}
+
 export interface WorkflowComposition {
   readonly sources: WorkflowSourcePolicy;
   readonly initialMockRuns: () => readonly MockRun[];
