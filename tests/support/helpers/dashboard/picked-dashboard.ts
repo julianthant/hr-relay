@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
-import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema, type StepInterruptWire } from "../../../../src/models/dashboard/projection.js";
 import { RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { ApplicationLifecycleSchema } from "../../../../src/models/dashboard/application-lifecycle.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
@@ -12,6 +12,14 @@ import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DESCRIPTOR_HASH } 
 import { separationsDescriptor } from "../registered-workflows.js";
 import { TERMINATION_NODE, UCPATH_TRANSACTION_STEP } from "../../../../src/workflows/separations/steps/ucpath-transaction/step.js";
 import { FIXTURE_NOW, uuidOf } from "../../fixtures/dashboard/fixture-identity.js";
+
+// The parity runner loads this file in Node. status-model pulls in the CSS token sheet.
+function servedInterruptLabel(interrupt: StepInterruptWire | undefined): string | undefined {
+  if (interrupt?.step === "finish-write") return "Finishing the save first";
+  if (interrupt?.action === "pause") return "This step will restart";
+  if (interrupt?.action === "stop") return "This step is cancelled";
+  return undefined;
+}
 
 export const PICKED_RUN_STATES = ["running", "pausing", "paused", "resuming", "pause-all", "quit-confirm", "quitting", "after-crash"] as const;
 export const PICKED_SAFETY_STATES = ["captures", "before-after", "pre-submit-failed", "post-submit-unknown", "post-submit-proved", "dry-run"] as const;
@@ -41,13 +49,17 @@ export function pickedRunWorld(state: PickedRunState) {
     : unknownWrite ? "blocked" : terminal ? "done" : state === "resuming" ? "queued" : "running";
   const pauseControl = { state: terminal || unknownWrite ? "unavailable" as const : paused ? "paused" as const : pending ? "pause-pending" as const : "running" as const,
     expectedVersion: PositiveIntSchema.parse(original.rowRevision), ...(terminal || pending || unknownWrite ? {} : { command: paused ? "resume" as const : "pause" as const }) };
+  const interrupt = state === "quitting" ? { action: "pause" as const, step: "finish-write" as const }
+    : pending ? { action: "pause" as const, step: "cancel" as const } : undefined;
+  const interruptLabel = servedInterruptLabel(interrupt);
   const row = QueueSurfaceWireSchema.parse({ ...original, ...(safety ? { workflowId: separationsDescriptor.id, descriptorHash: separationsDescriptor.contractFingerprint, traceId: "sp-095200-0002" } : {}), status, pauseControl, dryRun: state === "dry-run",
     ...(paused || pending ? { pause: { state: paused ? "paused" : "requested", commandId: uuidOf(963), requestedAt: FIXTURE_NOW, ...(paused ? { pausedAt: FIXTURE_NOW } : {}) } } : {}),
+    ...(interrupt === undefined ? {} : { interrupt }),
     pipeline: safety ? [{ id: categoryKey, label: UCPATH_TRANSACTION_STEP.label, state: status === "done" ? "done" : status === "failed" ? "failed" : unknownWrite ? "blocked" : "active" }] : original.pipeline.map(stage => ({ ...stage, state: status === "failed" && stage.state === "active" ? "failed" : stage.state })),
     endedAt: terminal ? { state: "present", value: FIXTURE_NOW } : { state: "absent", reason: "The run is not terminal." },
     liveMessage: { state: "present", value: state === "after-crash" ? "Relay closed during Searching. Rerun continues after authenticated completed steps."
-      : pending ? "Pauses after this step finishes" : paused ? "Pause recorded. Resume to continue." : unknownWrite ? "Write outcome unknown. Check UCPath without submitting again."
-        : terminal ? "Recorded workflow result" : "Searching UCPath" },
+      : interruptLabel ?? (paused ? "Pause recorded. Resume to continue." : unknownWrite ? "Write outcome unknown. Check UCPath without submitting again."
+        : terminal ? "Recorded workflow result" : "Searching UCPath") },
     actions: queueRowActions(STANDARD_WORKFLOW_ACTIONS, { status, rowRevision: original.rowRevision, pauseControl,
       ...(state === "after-crash" ? { recoverySource: "failed", crashed: true } : {}), dryRun: state === "dry-run", isChild: false, parkedWrite: unknownWrite,
       memberCount: 0, isMember: false, named: false, hasReviewPanel: false }) });

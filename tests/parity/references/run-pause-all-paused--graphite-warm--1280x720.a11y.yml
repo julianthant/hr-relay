@@ -46,7 +46,7 @@
         - listitem:
           - button "Read request · Completed · 14s" [disabled]: Read request 14s
         - listitem:
-          - button "Verify employee · Paused after this step": Verify employee Paused after this step
+          - button "Verify employee · Pause recorded. Resume to continue.": Verify employee Pause recorded. Resume to continue.
         - listitem:
           - button "Read timecard · Upcoming" [disabled]: Read timecard
         - listitem:

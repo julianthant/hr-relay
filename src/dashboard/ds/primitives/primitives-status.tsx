@@ -256,7 +256,7 @@ export function StatusPill({
 }) {
   const displayStatus = pause === "paused" ? "queued" : pause === "requested" ? "running" : status;
   const spec = pause === "paused" ? { ...DS_STATUS.queued, label: "Paused", icon: Pause, meaning: "Pause recorded. Resume to continue." }
-    : pause === "requested" ? { ...DS_STATUS.running, label: "Pausing", meaning: "Finishing the current step. A submit is never interrupted." } : DS_STATUS[status];
+    : pause === "requested" ? { ...DS_STATUS.running, label: "Pausing", meaning: "Pause requested." } : DS_STATUS[status];
   const Icon = spec.icon;
   const compactAttention = presentation === "queue" && (displayStatus === "waiting" || displayStatus === "failed");
   const chip = compactAttention

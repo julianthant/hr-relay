@@ -9,7 +9,7 @@
 - dialog "Pause all and quit?":
   - banner:
     - heading "Pause all and quit?" [level=2]
-    - paragraph: Each run finishes its current step, then pauses. Resume them next time.
+    - paragraph: A save in progress finishes first. Other steps restart on Resume.
     - button "Close"
   - contentinfo:
     - button "Keep working"

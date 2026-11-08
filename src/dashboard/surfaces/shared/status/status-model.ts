@@ -7,7 +7,7 @@ import {
   displayStatusOf,
 } from "../../../../models/dashboard/status-vocabulary.js";
 import type { z } from "zod";
-import type { QueueStatusSchema } from "../../../../models/dashboard/projection.js";
+import type { QueueStatusSchema, StepInterruptWire } from "../../../../models/dashboard/projection.js";
 import type { OutcomeWireSchema } from "../../../../models/dashboard/run-detail.js";
 
 export type QueueStatus = z.infer<typeof QueueStatusSchema>;
@@ -78,5 +78,16 @@ export function statusText(status: ProposedStatus, age?: string): string {
 export function statusAccessibleName(status: ProposedStatus, age?: string): string {
   return dsStatusAccessibleName(status, age);
 }
+
+/** The served interrupt, in the operator's words. No sentence when the server sent none. */
+export function stepInterruptLabel(interrupt: StepInterruptWire | undefined): string | undefined {
+  if (interrupt?.step === "finish-write") return "Finishing the save first";
+  if (interrupt?.action === "pause") return "This step will restart";
+  if (interrupt?.action === "stop") return "This step is cancelled";
+  return undefined;
+}
+
+export const PAUSE_ALL_PENDING_STATUS = "Pauses are not yet confirmed. A save in progress finishes first.";
+export const PAUSE_ALL_EFFECT = "A save in progress finishes first. Other steps restart on Resume.";
 
 export type { QueueBusinessOutcome } from "../../../../models/dashboard/projection.js";
