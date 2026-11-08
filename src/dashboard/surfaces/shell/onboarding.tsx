@@ -7,6 +7,7 @@ import { Check, CircleDashed, CircleHelp, PanelTop, PanelTopClose, TriangleAlert
 import { duoMethodLabels, duoSummary, useDuoBrowser, mockOnboardingPort, type DuoMethods, type OnboardingDetails, type OnboardingErrors, type OnboardingPort, type OnboardingStep } from "./onboarding-model.js";
 import "./onboarding.css";
 import { Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
+import { AppLockup } from "./app-lockup.js";
 
 export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPort, authenticated = false, problem, resumable = false }: {
   step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port?: OnboardingPort; authenticated?: boolean; problem?: string;
@@ -143,9 +144,9 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
     : unavailableMethod ? `Relay cannot verify ${unavailableMethod}. Open the setup browser to check it.`
     : launching && port.source !== "served" ? "Relay is opening a browser with Fast Duo installed." : closed ? "The setup browser closed. Reopen it to continue; confirmed methods stay confirmed."
     : failed ? "Relay could not show the setup browser. Reopen it to try again." : port.source === "served" ? "Add your security key and Touch ID, in either order." : "Add your security key and Touch ID in the setup browser, in either order.";
-  if (inaccessible) return <div className="hub-onboarding"><div className="brand">Relay</div><main><div className="stack"><h1>Start with your details</h1><p>Complete the previous setup steps to continue.</p><button tabIndex={0} className="btn primary" onClick={() => onStep("login")}>Log in</button></div></main></div>;
+  if (inaccessible) return <div className="hub-onboarding"><div className="brand"><AppLockup /></div><main><div className="stack"><h1>Start with your details</h1><p>Complete the previous setup steps to continue.</p><button tabIndex={0} className="btn primary" onClick={() => onStep("login")}>Log in</button></div></main></div>;
   return <div className="hub-onboarding" data-source={port.source}>
-    <a tabIndex={0} href="#onboarding-main" className="skip">Skip to content</a><div className="brand">Relay</div>
+    <a tabIndex={0} href="#onboarding-main" className="skip">Skip to content</a><div className="brand"><AppLockup /></div>
     <main id="onboarding-main" tabIndex={-1}><div className={`auth-layout${step === "login" ? " login" : ""}`}>
       {step !== "login" && <ol className="progress" aria-label="Profile setup progress">{(["signup", "duo", "ready"] as const).map((item, index) => {
         const current = step === "signup" ? 0 : step === "duo" ? 1 : 2;

@@ -15,8 +15,8 @@
 .hub-onboarding .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .hub-onboarding .skip { position:absolute; top:12px; left:12px; padding:10px 16px; transform:translateY(-200%); z-index:90; }
 .hub-onboarding .skip:focus-visible { transform:none; }
-.hub-onboarding .brand { position:absolute; top:30px; left:40px; font-size:20px; line-height:1.4; letter-spacing:-.035em; font-weight:700; }
-.hub-onboarding .brand img { width:30px; height:30px; }
+.hub-onboarding .brand { position:absolute; top:30px; left:40px; display:flex; align-items:center; gap:calc(8em / 23); font-size:23px; line-height:1.4; letter-spacing:0; font-weight:500; }
+.hub-onboarding .brand svg { display:block; width:calc(24em / 23); height:calc(24em / 23); }
 .hub-onboarding .brand small { display:block; font-size:12px; font-weight:400; letter-spacing:0; color:var(--ui-secondary); }
 .hub-onboarding main { min-height:100dvh; padding:104px 40px 184px; display:flex; align-items:center; justify-content:center; }
 .hub-onboarding .auth-layout { display:grid; grid-template-columns:max-content minmax(0,var(--form-width)); gap:var(--rail-gap); align-items:start; width:max-content; max-width:100%; }
