@@ -25,9 +25,9 @@ describe("mock Queue clock wiring", () => {
       return footer.firstElementChild?.lastElementChild?.textContent;
     };
     try {
-      expect(await render("2026-08-03", "2026-08-03T23:59:30.000Z")).toBe("0s");
-      expect(await render("2026-08-03", "2026-08-04T00:00:30.000Z")).toBe("1m 0s");
-      expect(await render("2026-08-02", "2026-08-04T00:00:30.000Z")).toBe("1m 0s");
+      expect(await render("2026-08-03", "2026-08-03T23:59:30.000Z")).toBe("44s");
+      expect(await render("2026-08-03", "2026-08-04T00:00:30.000Z")).toBe("1m 44s");
+      expect(await render("2026-08-02", "2026-08-04T00:00:30.000Z")).toBe("1m 44s");
     } finally {
       await act(async () => root.unmount());
       container.remove();

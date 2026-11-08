@@ -46,8 +46,6 @@
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR"
-      - listitem:
         - button "CRM Doc Download"
       - listitem:
         - button "SharePoint Download"
