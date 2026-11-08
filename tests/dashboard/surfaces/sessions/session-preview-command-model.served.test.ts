@@ -561,3 +561,30 @@ it("clears an uncertain Retry once the served day shows its command audited, so 
     assert.equal(h.sent.length, 1, "clearing is a read of the served day, never a resend");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
+
+it("toasts a Retry the served day shows refused before its worker started", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const failed = { ...h.day().workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" };
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [failed] }));
+  let original: CommandRequest | undefined;
+  h.effect(command => {
+    original = command;
+    const pending = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), command), readiness: undefined, auditedAt: undefined, phase: { state: "executing", startedAt: now } });
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [pending] }));
+    return { state: "pending", commandId: command.commandId };
+  });
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  try {
+    await act(async () => render());
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]')!.click());
+    assert(original); assert.doesNotMatch(document.body.textContent ?? "", /Couldn't restart this worker/);
+    const refused = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), original), readiness: undefined, phase: { state: "refused", completedAt: now, message: "worker-retry-never-started" } });
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [refused] }));
+    await act(async () => render());
+    assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/);
+    assert.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(item => /Couldn't restart this worker\./.test(item.textContent ?? "")).length, 1);
+    await act(async () => render());
+    assert.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(item => /Couldn't restart this worker\./.test(item.textContent ?? "")).length, 1, "one toast per settlement");
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});

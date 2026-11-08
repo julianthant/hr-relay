@@ -111,10 +111,11 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     return { view, assertPreferenceCurrent };
   };
 
-  custody.revoke = profile.runtime.beginClose;
+  // A failed startup is no logout: keep live runs for the next start, as a shutdown does.
+  custody.revoke = () => profile.runtime.beginClose("shutdown");
   databaseClosed = false;
   const prepareRuntimeClosure = (): Promise<void> => {
-    profile.runtime.beginClose();
+    profile.runtime.beginClose("shutdown");
     return profile.runtime.awaitClosurePreparation(admission.profileBinding.profileId);
   };
   startupCleanups.push(async () => {

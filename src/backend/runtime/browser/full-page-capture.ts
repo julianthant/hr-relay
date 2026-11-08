@@ -86,7 +86,9 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
   return page.evaluate(() => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const docH = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0);
+    // The viewport scrolls only its scrolling element; a body that scrolls under a clipped root is an element target.
+    const viewportScroller = document.scrollingElement ?? document.documentElement;
+    const docH = viewportScroller.scrollHeight;
     const winOverflow = Math.max(0, docH - vh);
     const all = [...document.querySelectorAll<HTMLElement>("*")].slice(0, 25_000);
     const visibility = { visible(el: HTMLElement): boolean {
@@ -193,7 +195,7 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
       clientHeight = target.clientHeight;
       scrollHeight = mode === "iframe" ? (bestFrame!.contentDocument!.scrollingElement ?? bestFrame!.contentDocument!.documentElement).scrollHeight : target.scrollHeight;
     } else {
-      scrollHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0);
+      scrollHeight = viewportScroller.scrollHeight;
       clientHeight = vh;
       if (scrollHeight <= vh) {
         const range = document.createRange();

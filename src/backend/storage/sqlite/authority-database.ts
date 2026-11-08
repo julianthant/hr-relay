@@ -119,7 +119,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
+import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
 import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
@@ -410,7 +410,7 @@ type RunRepository = Readonly<{
   requeue(input: unknown): RunUpdateOutcome;
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
-  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
+  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; errorSummary?: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
 
   setPause(input: unknown, accountingAuthorization?: object): RunUpdateOutcome;
@@ -3001,10 +3001,10 @@ export class AuthorityDatabase implements Disposable {
         const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
         if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
         const { probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
-        assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
+        assertLogoutResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
         const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-        assertCredentialCopyResourcesClosed(facts);
+        assertLogoutResourcesClosed(facts);
         const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
           : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
         const { resolveConfigWithProvenance } = await import("../../app/config/resolve.js");
@@ -6727,7 +6727,7 @@ export class AuthorityDatabase implements Disposable {
           },
         );
       },
-      requestCancellation: ({ runId, expectedVersion, now, cancellationSource }) => this.#mutateRun(
+      requestCancellation: ({ runId, expectedVersion, now, errorSummary, cancellationSource }) => this.#mutateRun(
         RunIdSchema.parse(runId), z.number().int().positive().parse(expectedVersion), IsoInstantSchema.parse(now),
         undefined, (current) => {
           if (runClaim(current) === undefined) {
@@ -6736,7 +6736,7 @@ export class AuthorityDatabase implements Disposable {
             authenticateCancellationSource(this.authority, current, cancellationSource);
             for (const manifest of this.authority.delegationManifests.listByParentRun(runId)) authenticateDelegationGroup(this.authority, manifest);
           }
-          return RunRecordSchema.parse({ ...current, cancelRequested: true });
+          return RunRecordSchema.parse({ ...current, cancelRequested: true, ...(errorSummary !== undefined && { cancelSummary: errorSummary }) });
         },
       ),
       advanceRevision: ({ runId, expectedVersion, now }) => this.#mutateRun(
@@ -7086,24 +7086,36 @@ export class AuthorityDatabase implements Disposable {
       const restart = record.request.type === "retry-worker" || record.request.type === "stop-worker" && record.reset?.work.kind === "absent";
       if (record.auditedAt !== undefined || !restart || record.phase.state !== "uncertain"
         || record.effect !== undefined || binding?.operation.kind !== "retry") continue;
-      try {
-        this.withAuthorityTransaction(repositories => {
-          const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
-          if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
-            || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
-            || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
-          this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
-          const message = "worker-retry-never-started";
-          this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
-          const { controlCommandId: _released, ...rest } = lease;
-          this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
-          repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
-            result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
-        });
-      } catch (error) {
+      try { this.#refuseUnbornRetry(record, "worker-retry-never-started", now); }
+      catch (error) {
         if (!(error instanceof Error) || !error.message.startsWith("worker-")) throw error;
       }
     }
+  }
+
+  /** The supervisor proved this executing Retry failed before spawning its replacement; refuse it and release the reservation. */
+  refuseUnbornWorkerRetry(commandId: string, message: string, now: string): void {
+    const record = this.authority.workerControls.get(commandId);
+    if (record?.request.type !== "retry-worker" || record.auditedAt !== undefined || record.phase.state !== "executing"
+      || record.effect !== undefined) throw new Error("worker-retry-birth-unproved");
+    this.#refuseUnbornRetry(record, message, now);
+  }
+
+  #refuseUnbornRetry(record: z.infer<typeof WorkerControlRecordSchema>, message: string, now: string): void {
+    const binding = record.lifecycle;
+    if (binding?.operation.kind !== "retry") throw new Error("worker-retry-birth-unproved");
+    this.withAuthorityTransaction(repositories => {
+      const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
+      if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
+        || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
+        || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
+      this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
+      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+      const { controlCommandId: _released, ...rest } = lease;
+      this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
+      repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+        result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
+    });
   }
 
   #assertRetainedWorkerLifecycleEffect(record: z.infer<typeof WorkerControlRecordSchema>): void {

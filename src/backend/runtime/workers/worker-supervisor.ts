@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { WorkerRetirementProofSchema, type WorkerRetirementProof } from "../../../models/run/worker-slot.js";
 import { mintWorkerNonBirthProof, mintWorkerSupervisorEffect, type WorkerNonBirthProof, type WorkerSupervisorEffect } from "../../storage/sqlite/worker-control.js";
 import { WorkerLifecycleBindingSchema, type WorkerLifecycleBinding } from "../../../models/run/worker-control.js";
-import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
+import { NAMED_WORKER_REFUSALS, WorkerControlRefusal, WorkerRetryUnbornRefusal } from "../../../models/run/worker-control.js";
 
 import { isAbsolute } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -957,7 +957,10 @@ export function createDashboardWorkerProcessSupervisor(
     }
   };
 
-  const spawnReplacement = async (input: WorkerLifecycleBinding) => {
+  // An unborn Retry changed nothing, so a failure before the spawn refuses it.
+  const spawnReplacement = async (input: WorkerLifecycleBinding, refuseUnborn = false) => {
+    let spawning = false;
+    try {
       const binding = WorkerLifecycleBindingSchema.parse(input);
       if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
       if (binding.operation.kind !== "retry") throw new WorkerControlRefusal("worker-retry-binding-required");
@@ -979,10 +982,15 @@ export function createDashboardWorkerProcessSupervisor(
       if (record === undefined) deps.assertStoppedLifetime?.(member, binding.lifetime);
       retirement.assertCurrent();
       deps.admission?.(request);
+      spawning = true;
       await spawnWorker(member, commandId);
       const born = requireLiveOwnedChild("spawn-worker", member);
       if (born.pid === undefined || born.leaseStartedAt === undefined) throw new WorkerControlRefusal("worker-retry-birth-unproved");
       return { binding, born, birth: { processId: born.pid, startedAt: born.leaseStartedAt } };
+    } catch (error) {
+      if (!refuseUnborn || spawning) throw error;
+      throw new WorkerRetryUnbornRefusal(error instanceof WorkerControlRefusal && NAMED_WORKER_REFUSALS.has(error.message) ? error.message : "worker-retry-never-started", { cause: error });
+    }
   };
 
   const supervisor: DashboardWorkerProcessSupervisor = Object.freeze({
@@ -1035,7 +1043,7 @@ export function createDashboardWorkerProcessSupervisor(
       });
     },
     async retryWorker(input: WorkerLifecycleBinding): Promise<WorkerSupervisorEffect> {
-      const { binding, born, birth } = await spawnReplacement(input), member = binding.member;
+      const { binding, born, birth } = await spawnReplacement(input, true), member = binding.member;
       return mintWorkerSupervisorEffect(binding, { kind: "retry", leaseGeneration: binding.lifetime.leaseGeneration + 1,
         ...birth }, () => records.get(member.workerId) === born && born.state === "running"
           && deps.leases.observe(member.workerId)?.processId === born.pid && deps.leases.observe(member.workerId)?.startedAt === born.leaseStartedAt);

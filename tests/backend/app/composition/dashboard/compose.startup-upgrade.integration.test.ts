@@ -216,9 +216,9 @@ it("drains startup producers before inventory when the real HTTP listener cannot
   });
   const inventory = vi.spyOn(credentialInventoryOwner, "composeProfileClosureInventory").mockImplementation(input => {
     const owned = createInventory(input);
-    return { ...owned, async prepare() {
+    return { ...owned, async prepareShutdown() {
       preparations++; assert.equal(producerStopped, true);
-      await owned.prepare();
+      await owned.prepareShutdown();
     } };
   });
   try {
