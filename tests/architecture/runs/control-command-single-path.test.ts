@@ -381,11 +381,12 @@ function isStopHeldCancelAdmission(kernel: ts.SourceFile, call: ts.CallExpressio
   if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isBlock(callback.body) || !ts.isCallExpression(callback.parent)
     || compact(callback.parent.expression) !== "dependencies.authority.withAuthorityTransaction"
     || compact(callback.body.statements[0] ?? callback) !== "repositories.commands.assertIdentity(request);") return false;
-  let branch: ts.Node | undefined = callback.parent;
-  while (branch !== undefined && !(ts.isIfStatement(branch) && compact(branch.expression) === 'request.type==="stop-worker"')) branch = branch.parent;
-  let owner: ts.Node | undefined = branch?.parent;
+  let arm: ts.Node = callback, branch: ts.Node | undefined = callback.parent;
+  while (branch !== undefined && !(ts.isIfStatement(branch) && compact(branch.expression) === 'request.type==="stop-worker"')) { arm = branch; branch = branch.parent; }
+  if (branch === undefined || !ts.isIfStatement(branch) || branch.thenStatement !== arm) return false;
+  let owner: ts.Node | undefined = branch.parent;
   while (owner !== undefined && !ts.isFunctionDeclaration(owner)) owner = owner.parent;
-  return branch !== undefined && owner !== undefined && ts.isFunctionDeclaration(owner) && owner.name?.text === "executeWorkerPoolCommand";
+  return owner !== undefined && ts.isFunctionDeclaration(owner) && owner.name?.text === "executeWorkerPoolCommand";
 }
 
 function withoutDelegationAuditReads(content: string, path: string, kernelContent: string): string {
@@ -538,7 +539,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
   return content;
 }
 
-/** Stop held-cancel negative controls: an extra or foreign scoped call, the Cancel outside its admission transaction or after reset admission, an altered request or dispatch, and a missing or moved journal or audit. */
+/** Stop held-cancel negative controls: an extra or foreign scoped call, the Cancel outside its admission transaction, in the Stop branch's else arm or after reset admission, an altered request or dispatch, and a missing or moved journal or audit. */
 function stopHeldCancelMutants(kernel: string): readonly string[] {
   const parsed = ts.createSourceFile("kernel.ts", kernel, ts.ScriptTarget.Latest, true);
   const loop = stopHeldCancelLoop(parsed);
@@ -557,6 +558,7 @@ function stopHeldCancelMutants(kernel: string): readonly string[] {
     kernel.replace("withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(", "withCanonicalRunCommandScope(repositories, request, () => executeCancel("),
     kernel.replace("() => executeCancel(dependencies, repositories, cancel, now)", "() => executeRetry(dependencies, repositories, cancel, now)"),
     kernel.replace("try { result = dependencies.authority.withAuthorityTransaction(repositories => {", "try { result = unowned(repositories => {"),
+    kernel.replace('if (request.type === "stop-worker") {', 'if (request.type === "stop-worker") {} else {'),
     swap(loop, next),
     kernel.replace('family: "run", type: "cancel", source: request.source', 'family: "run", type: "retry", source: request.source'),
     kernel.replace('lifecycleCommandId("worker-stop-held-cancel",', 'lifecycleCommandId("operator-cancel",'),

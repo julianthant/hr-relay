@@ -2135,7 +2135,8 @@ export async function executeClaimedRun(
       }
     }
 
-
+    // The last node's boundary: an abort pauses, cancels or abandons the run instead of settling it done.
+    if (input.signal.aborted) throw abortReason(`run ${runId} was aborted before its terminal settlement`);
     assertAccounting();
     if (envelope.dryRun) {
       const support = workflowDryRunSupport(descriptor);

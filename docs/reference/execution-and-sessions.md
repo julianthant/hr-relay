@@ -258,11 +258,13 @@ cancellation poison-closes the resource. Failed closure retains poison and refus
 Browser observations distinguish `starting` login from authenticated, leased unknown, failed and
 proved closed states. The dashboard keeps closed system history separate from live browser identities.
 
-`withTransactionDriver` adds the sequencer's one-way `retainAfterFence()` transition. Before the
-fence, abort races the callback normally. After the fence, cancellation reaches the task but
-cannot detach the callback or reset, close, or return its resource before actual settlement.
-Cancellation and callback failures remain visible together. A callback that never settles leaves
-the session and `attempting` write process-owned until process loss permits write recovery.
+`withTransactionDriver` gives the transaction a lease signal that follows the run's abort until
+the sequencer's one-way `retainAfterFence()`. Before the fence, abort races the callback normally.
+After the fence the lease stops following the run: only task deadlines bound the commit,
+verification and settlement, and the callback keeps its resource until actual settlement. The run
+then meets its abort at the next boundary, including after its last node. A callback that never
+settles leaves the session and `attempting` write process-owned until process loss permits write
+recovery.
 
 ### 4.1 Authentication proof
 
