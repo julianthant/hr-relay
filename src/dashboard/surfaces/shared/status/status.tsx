@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { cn } from "../../../lib/utils.js";
 import { DS_STATUS, StatusPill, dsText } from "../../../ds/ui.js";
 import type { QueueSurfaceWire } from "../../../../models/dashboard/projection.js";
@@ -14,6 +15,8 @@ export type { OutcomeWire, ProposedStatus, QueueStatus, TerminalOutcomeResult };
 /** the wire types, the wire→ds maps and the naming functions live in `status-model.ts` */
 
 
+const RELAY_CANCELLATION = { logout: "RUN_LOGOUT_CANCELLED", "stale-queue": "RUN_STALE_QUEUE_CANCELLED" } as const;
+
 /** The row-level status chip. A thin wrapper over the one ratified
  * `StatusPill` so a status can never be rendered two ways */
 export function StatusBadge({
@@ -24,8 +27,10 @@ export function StatusBadge({
   presentation,
   outcome,
   pauseControl,
+  cancelledBy,
 }: {
   status: ProposedStatus;
+  cancelledBy?: QueueSurfaceWire["cancelledBy"];
   pauseControl?: QueueSurfaceWire["pauseControl"];
   outcome?: QueueBusinessOutcome;
   label?: string;
@@ -36,7 +41,8 @@ export function StatusBadge({
   const completedOutcome = (status === "verifiedDone" || status === "doneWarnings") ? outcome : undefined;
   const tone = completedOutcome ? DS_STATUS[completedOutcome.tone === "success" ? "verifiedDone" : completedOutcome.tone === "warning" ? "doneWarnings" : "cancelled"] : undefined;
   const pause = pauseControl?.state === "paused" ? "paused" : pauseControl?.state === "pause-pending" ? "requested" : undefined;
-  return <StatusPill status={status} pause={pause} className={tone && cn(tone.chip, tone.text)} label={completedOutcome?.label ?? label} age={age} size="sm" hideIcon={pause === "paused" ? false : hideIcon} presentation={presentation} />;
+  return <StatusPill status={status} pause={pause} className={tone && cn(tone.chip, tone.text)} label={completedOutcome?.label ?? label} age={age} size="sm" hideIcon={pause === "paused" ? false : hideIcon} presentation={presentation}
+    {...(status === "cancelled" && cancelledBy !== undefined && cancelledBy !== "operator" ? { meaning: ERROR_CATALOG[RELAY_CANCELLATION[cancelledBy]].text } : {})} />;
 }
 
 /** A member's OUTCOME — what its run found — as a word in a column.

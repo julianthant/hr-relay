@@ -221,6 +221,8 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   status: QueueStatusSchema,
+    /* Who cancelled a cancelled run: the operator, or Relay when the profile logged out or the queue went stale. */
+  cancelledBy: z.enum(["operator", "logout", "stale-queue"]).optional(),
   outcome: QueueBusinessOutcomeSchema.optional(),
   liveMessage: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),

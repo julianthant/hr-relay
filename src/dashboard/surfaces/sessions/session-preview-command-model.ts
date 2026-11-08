@@ -10,6 +10,7 @@ import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptio
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
 import { sessionsFromDay } from './sessions-view-model.js';
 import { useIdleSessionRefresh } from './session-idle-model.js';
+import { workerRestartProblem } from './session-panel-model.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToasts } from '../../ds/ui.js';
 import type { WorkflowCatalogEntry } from '../workflows/workflow-catalog-model.js';
@@ -208,7 +209,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
 
 const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Workers added' : request.action === 'refresh' ? 'Idle sessions refreshed' : ({ pause: 'Pause', resume: 'Resume', retry: 'Retry', stop: 'Stop', remove: 'Remove' }[request.action]);
 
-export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; records?: DashboardDayWire["workerOperations"] }>) {
+export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; records?: DashboardDayWire["workerOperations"]; onRefused?: (problem: string) => void }>) {
   const sourceKey = source?.snapshot ?? port;
   const [readback, setReadback] = useState<{ key: object; data: SessionsViewState }>(() => ({ key: sourceKey, data: initial }));
   const data = readback.key === sourceKey ? readback.data : initial;
@@ -218,6 +219,7 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const latestSource = useRef(sourceKey); latestSource.current = sourceKey;
   const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>({});
   const operationsRef = useRef<Record<string, SessionPreviewOperation>>({});
+  const onRefused = useRef(source?.onRefused); onRefused.current = source?.onRefused;
   const live = useRef(true);
   const ordinal = useRef(5);
   const idle = useRef<((request: SessionPreviewRequest, data?: SessionsViewState) => void) | undefined>(undefined);
@@ -227,11 +229,16 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     setOperations(operationsRef.current);
   }, []);
   useEffect(() => {
-    const audited = new Set<string>((source?.records ?? []).filter(record => record.auditedAt !== undefined).map(record => record.commandId));
+    const audited = new Map<string, DashboardDayWire["workerOperations"][number]>((source?.records ?? []).filter(record => record.auditedAt !== undefined).map(record => [record.commandId, record]));
     const settled = Object.entries(operationsRef.current).filter(([, operation]) => operation.state === "uncertain" && operation.request.action !== "add" && audited.has(operation.request.id));
     if (settled.length > 0) {
       const next = { ...operationsRef.current };
-      for (const [target] of settled) delete next[target];
+      for (const [target, operation] of settled) {
+        delete next[target];
+        const record = audited.get(operation.request.id);
+        const refusal = record?.phase.state === "refused" ? workerRestartProblem(record.request.type, record.phase.message) : undefined;
+        if (refusal !== undefined) onRefused.current?.(refusal);
+      }
       operationsRef.current = next; setOperations(next);
     }
     for (const record of source?.records ?? []) {

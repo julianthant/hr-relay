@@ -77,6 +77,16 @@ describe("whole-page factory screenshots", () => {
       });
     });
   }
+  it("captures a page whose body scrolls under a clipped root as one image", async () => {
+    await withPage(`<style>html{overflow:hidden;height:100%}body{height:100%;overflow-y:auto}</style>${content}`, async (page, resource) => {
+      const png = await image(resource);
+      assert.equal(png.height, 3000);
+      assert.deepEqual(pixel(png, 20, 20), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 20, 1500), [20, 210, 30]);
+      assert.deepEqual(pixel(png, 20, 2980), [20, 30, 210]);
+      assert.equal(await page.evaluate(() => document.body.scrollTop), 0);
+    });
+  });
   for (const target of ["window", "element", "iframe"] as const) {
     it(`refuses residual horizontal overflow at the width limit for a ${target}`, async () => {
       const wide = '<div style="width:7000px;height:620px;background:rgb(20,30,210)"></div>';

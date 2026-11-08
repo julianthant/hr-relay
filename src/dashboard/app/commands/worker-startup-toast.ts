@@ -1,4 +1,6 @@
 import type { RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
+import { WORKER_STOP_REASON_LABEL } from "../../surfaces/sessions/session-panel-model.js";
 
 const QUEUEING_RUN = new Set(["resume", "retry", "recover-run"]);
 const QUEUEING_BULK = new Set(["resume", "retry"]);
@@ -63,4 +65,17 @@ export function appliedWorkerStartupToast(request: StartupRequest, reply: Startu
 export function unconfirmedBulkWorkerToast(request: StartupRequest, reply: StartupReply | undefined, parentConfirmed: boolean): WorkerStartupToast | undefined {
   if (parentConfirmed || request.targets === undefined) return undefined;
   return appliedWorkerStartupToast(request, reply);
+}
+
+/** Queued runs no worker can take: every worker of their workflow has stopped. Sticky while that holds. */
+export function stoppedWorkerToasts(day: DashboardDayWire, workflowLabel: (workflowId: string) => string): WorkerStartupToast[] {
+  const waiting = day.queueSurfaces.filter(row => row.status === "queued" && row.pause === undefined);
+  return [...new Set(waiting.map(row => row.workflowId))].flatMap(workflowId => {
+    const workers = day.workerCards.filter(card => card.workflowId === workflowId);
+    const stopped = workers[0]?.stopReason;
+    if (stopped === undefined || workers.some(card => card.state !== "failed")) return [];
+    const runs = waiting.filter(row => row.workflowId === workflowId).length;
+    return [{ tone: "warning" as const, title: queuedWorkerTitle("refused", runs === 1 ? undefined : runs),
+      description: `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];
+  });
 }
