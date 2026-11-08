@@ -46,7 +46,7 @@ Complete these in order. A workflow is ready after its live dry run and operator
 - [now] Run decision UI — render every served decision through one DecisionCard with Cancel run, show a running pill on the rail, pick a person from the Search results card in Pick mode with an Enter employee ID row, rename runs from the queue row and title PDF runs by file name; ship as one feature PR after the parity refresh.
 - [next] Relay app logo — use one mark that pairs with the Orbit assistant mark for the favicon, app icon and sidebar.
 - [next] Store repairs — clear crash orphans at startup and read suspect backups at any supported schema, read-only.
-- [now] Warnings as toasts — show warnings and failures as short toasts that only notify (a close X, no buttons), sticky when they need acting on; only dialog content, field validation, empty states and the run-log failure card stay inline.
+- [now] Warnings as toasts — show warnings and failures as short toasts that only notify, with no buttons; only dialog content, field validation, empty states and the run-log failure card stay inline.
 - [now] Sign-up and accounts — require Touch ID and a Duo security key added at duo.ucsd.edu; use a Chromium virtual platform authenticator where the machine has no Touch ID. Keep credentials on logout, put Delete account in Settings > General, resume a signed-in profile after a restart, and let Log out finish while workflows run.
 - [next] Person Lookup sign-off — pass a read-only exact-ID live run, fix what it finds in one PR, sign off.
 - [next] Separations sign-off — pass a live dry run, fix what it finds in one PR, sign off.
