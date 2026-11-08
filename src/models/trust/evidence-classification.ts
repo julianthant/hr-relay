@@ -638,7 +638,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),
     ...open(workflowInput(id), "approval", "formType", "reading.kind"),
-    ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "readingId", "reading.actorId", "reading.assertions"),
+    ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...["ocr-page", "ocr-page-reading"].flatMap(id => [
     ...ocrPageInputLeaves(workflowInput(id), "page."),
