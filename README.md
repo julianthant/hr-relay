@@ -26,7 +26,7 @@ Relay is the rebuild, started in July 2026. It keeps everything the first versio
 each workflow and system, and redesigns the rest: one clear home for each piece, failures that are
 always visible, strict protections around anything that changes an HR record, and a dashboard
 that's tested down to its screenshots. The first version still runs our workflows while Relay
-replaces it one workflow at a time.
+replaces it one workflow at a time. Until cutover, that production repository is also the rollback asset.
 
 ## What it automates
 

@@ -21,12 +21,11 @@ head validation, so omitted expensive work cannot satisfy main protection for an
 Valid Markdown-only omissions pass after proof validation; manual releases validate routine proofs
 without a PR source-head restriction.
 The expensive job’s isolated macOS runner builds the web bundle, runs coverage alone, then
-performance. The operator authorizes release PRs from
-`staging` to `main`, and syncs `main` back into `staging` after merging.
+performance. The [release instructions](../AGENTS.md#pr-and-release-flow) own promotion and branch synchronization.
 
 ## Merge train and automatic fixes
 
-Push roadmap-only commits (`docs/roadmap/**`) straight to `staging` to skip staging CI and the merge train.
+Roadmap-only pushes (`docs/roadmap/**`) are excluded from CI and the merge train; this filter does not authorize direct publication.
 `.github/workflows/merge-train.yml` runs on other pushes to `staging`, and CI calls it as its final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
 `staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
@@ -37,27 +36,21 @@ resolved by running the generators against the combined sources. Catalog conflic
 inside the generated section of `stores.md`; conflicts in authored text refuse. Generator failure
 or any authored conflict prevents a push. Before an ordinary fast-forward push, the train rechecks
 the PR's eligibility and expected head; a moved head is left to its owner. Successful updates clear
-`merge-conflict`. Workers merge their remote branch before pushing (never rebase or force-push). The workflow uses the `TRAIN_TOKEN`
+`merge-conflict`. The workflow uses the `TRAIN_TOKEN`
 secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
 with the default token do not start CI.
 
-Use a blob-filtered full-history checkout for the merge train. Keep all commit ancestry and fetch
-historical file contents on demand within the existing five-minute job budget.
+The merge train uses a blob-filtered full-history checkout, retaining ancestry and fetching
+historical file contents on demand within its five-minute job budget.
 
-Cursor Bugbot reviews every push and only comments. The orchestrator session is the only fixer: it
-watches its open PRs and, on the PR branch, fixes failed CI, real Bugbot findings and PRs labeled
-`merge-conflict` (merging `staging` in, never rebasing). A failure unrelated to the PR's diff is a
-`staging` failure, fixed once in its own PR rather than in every PR. Fixes never raise deadlines,
-skip or loosen tests, edit workflows, touch HR write paths, or update parity references or snapshots
-for screens the PR did not intentionally change; anything that needs those gets `needs-human`. While no orchestrator
-session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
+Cursor Bugbot reviews every push and only comments. The [review loop](../AGENTS.md#review-before-push)
+owns reviewer/coder responsibility, including the easy-lane exception. The
+[PR flow](../AGENTS.md#pr-and-release-flow) owns repairs and escalation. A `needs-human` label
+identifies work requiring the operator. Red required checks prevent a merge.
 
-CI takes Node from `package.json` engines and caches npm. Run portable suites on Ubuntu for staging
-pull requests. Run platform-native proofs and Desktop parity in CI only for a full release
-started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Only the operator
-may start such a run; agents must never dispatch or rerun CI workflows. Between releases, run
-Windows-native tests locally on Windows and macOS-native tests locally on the Mac when load is low.
-Keep native files out of Ubuntu shards. Native proofs and the padded-receipt storage upgrade run in separate single-worker invocations, preserving their
+CI takes Node from `package.json` engines and caches npm. The [check rules](../AGENTS.md#checks)
+own runner placement and release authorization. Native proofs and the padded-receipt storage
+upgrade run in separate single-worker invocations, preserving their
 existing deadlines under duration-based assignment. Native integration jobs first verify the
 full-Chromium installation through `scripts/test/chromium-preflight.ts` by opening a blank page
 and observing the owned browser process exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
@@ -120,8 +113,7 @@ when both platforms report one file, the slower duration wins independently of a
 Measurements for omitted suites remain intact.
 Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;
 unmeasured files use the positive measured median, or one second without measurements. Invalid
-reports or failed downloads fail CI. Every later CI fix must preserve this automatic timing feedback
-and refresh the committed seed when shard end times spread more than a minute. The
+reports or failed downloads fail CI. The [check rules](../AGENTS.md#checks) own timing-seed maintenance. The
 [test reference](reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
 membership and selection details.
 
@@ -133,9 +125,9 @@ Chromium and existing references; CI never updates references or uploads HR evid
 
 ## Privacy check
 
-Run `npm run privacy:check` after staging the exact candidate paths. It scans Git's index, including
-staged new files; unstaged edits and untracked files are outside its input. CI checks the checked-out
-commit through its index. Findings contain only paths and rule names.
+`npm run privacy:check` scans Git's index, including staged new files; unstaged edits and untracked
+files are outside its input. The [check rules](../AGENTS.md#checks) own pre-publication validation.
+CI checks the checked-out commit through its index. Findings contain only paths and rule names.
 
 Private documents belong in ignored `.local-private/`. The scanner rejects roster formats, PDFs,
 environment files, credential paths and recognizable credential/employee ID/SSN patterns. Text checks cover
@@ -154,5 +146,5 @@ credential canaries are pinned by exact token and file. Other credentials still 
 New values fail even in test text; changing an approved binary fixture also fails. Changes to this
 list require independent review of synthetic provenance; do not generate allowances from unreviewed findings.
 
-Pattern checks cannot establish that every name, email, image or document is synthetic. Authors and
-reviewers must inspect staged content and screenshots before publishing.
+Pattern checks cannot establish that every name, email, image or document is synthetic. The root
+check rules therefore include content inspection.
