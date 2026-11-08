@@ -27,5 +27,4 @@
 - region "Notifications":
   - alert "Settings unavailable":
     - heading "Settings unavailable" [level=2]
-    - paragraph: Settings could not be read.
-    - button "Try again"
+    - paragraph: Settings could not be read. Reopen Settings to try again.

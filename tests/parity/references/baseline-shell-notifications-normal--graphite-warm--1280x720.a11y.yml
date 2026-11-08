@@ -67,35 +67,35 @@
           - button "single-oath.pdf"
           - paragraph: Records ready for approval
           - paragraph: 1 of 1 records ready for approval
-          - text: OCR Just now
+          - text: Oath Signature Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "multiple-oath.pdf"
           - paragraph: Records ready for approval
           - paragraph: 4 of 4 records ready for approval
-          - text: OCR Just now
+          - text: Oath Upload Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "emergency-contacts.pdf"
           - paragraph: Records ready for approval
           - paragraph: 3 of 3 records ready for approval
-          - text: OCR Just now
+          - text: Emergency Contact Just now
           - 'button "Mark read: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "detect-test.pdf"
           - paragraph: Records ready for approval
           - paragraph: 3 of 4 records ready for approval
-          - text: OCR Just now
+          - text: OnBase Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "i9.pdf"
           - paragraph: Records ready for approval
           - paragraph: 2 of 2 records ready for approval
-          - text: OCR Just now
+          - text: I-9 Check Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
@@ -115,7 +115,7 @@
 - main:
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
-    - text: Needs you 3
+    - text: Needs you 4
     - button "Morrow, Bea — review · 16m 0s":
       - text: Morrow, Bea Review Waiting on identity review 9:47 AM
       - button "Attempts for Morrow, Bea": "#1"
@@ -149,6 +149,12 @@
       - button "Attempts for Rehire eligibility sweep": "#1"
       - text: PL33065442 45m 0s
       - button "Cancel group"
+    - button "EID 10555001 — failed":
+      - text: EID 10555001 Failed 9:33 AM
+      - button "Attempts for EID 10555001": "#1"
+      - text: PL39484305 6m 0s
+      - button "Rerun"
+      - button "Delete run"
     - button "EID 10777012 — write parked":
       - text: EID 10777012 Write parked A write to UCPath is parked pending proof 9:44 AM
       - button "Attempts for EID 10777012": "#1"
@@ -213,13 +219,7 @@
       - text: PL61636475
       - button "Run next"
       - button "Cancel run"
-    - text: "Finished today 6 Today: 2 completed 2 with warnings 1 failed 1 cancelled"
-    - button "EID 10555001 — failed":
-      - text: EID 10555001 Failed 9:33 AM
-      - button "Attempts for EID 10555001": "#1"
-      - text: PL39484305 6m 0s
-      - button "Rerun"
-      - button "Delete run"
+    - text: "Finished today 5 Today: 2 completed 2 with warnings 1 cancelled"
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015 3 Done 9:24 AM
       - button "Attempts for EID 10333015": "#1"

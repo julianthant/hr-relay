@@ -1,7 +1,7 @@
 # run-reference-library-options--graphite-warm--1440x1000
 # adapter: fixture
 # fixture: run-reference-library.spec.ts:named reference planning dark 1440
-# descriptorHash: 79922bb8b02de4c3729d6d8b6c0e1d9e18ed07cef0bc46e021ccdabf5be2133d
+# descriptorHash: eab1f14290dd12875d56473270e52fa5b75f18230f6e159434bfc1922f0c345b
 # appVersion: 0.1.0
 # viewport: 1440x1000  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -20,8 +20,6 @@
       - list:
         - listitem:
           - button "Person Lookup"
-        - listitem:
-          - button "I-9 Lookup" [disabled]: I-9 Lookup Parent only
       - heading "Separations" [level=3]
       - list:
         - listitem:
@@ -49,11 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "OCR"
-        - listitem:
           - button "CRM Doc Download"
-        - listitem:
-          - button "SharePoint Download" [disabled]: SharePoint Download Parent only
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -105,12 +99,6 @@
       - paragraph: The version in use is selected by default.
       - text: Reference version
       - button "Fall hires Reference version": Fall hires
-    - text: Active policy
-    - paragraph: Starts regardless of what is already running for the same subject
-    - paragraph: Fixed by this workflow.
-    - text: Workflow version
-    - paragraph: v1
-    - paragraph: Fixed by the selected workflow.
   - contentinfo:
     - text: 1 runReference fixture
     - button "Back"

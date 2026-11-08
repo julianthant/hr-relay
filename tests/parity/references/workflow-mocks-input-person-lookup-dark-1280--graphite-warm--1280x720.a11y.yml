@@ -20,8 +20,6 @@
       - list:
         - listitem:
           - button "Person Lookup"
-        - listitem:
-          - button "I-9 Lookup" [disabled]: I-9 Lookup Parent only
       - heading "Separations" [level=3]
       - list:
         - listitem:
@@ -49,11 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "OCR"
-        - listitem:
           - button "CRM Doc Download"
-        - listitem:
-          - button "SharePoint Download" [disabled]: SharePoint Download Parent only
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -84,8 +78,13 @@
       - /placeholder: 10000001; Lee, Jordan
       - text: "10000001"
     - paragraph: Separate people with a semicolon or a new line.
-    - list "Parsed inputs":
-      - listitem: 1 10000001
+    - region "Parsed input":
+      - heading "Parsed input" [level=4]
+      - text: 1 run
+      - list:
+        - listitem:
+          - text: 1. 10000001
+          - button "Remove 10000001"
   - contentinfo:
     - text: 1 runPerson Lookup
     - button "Cancel"
