@@ -221,16 +221,28 @@ it("uses complete persisted exact presence without a new intent or Save", async 
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
 });
 
-it("keeps interrupted Save ownership until callback settlement, then parks without output or another click", async () => {
+it("keeps interrupted Save ownership until callback settlement, then verifies and commits it once without another click", async () => {
   const f = await memberFixture({ interrupt: true });
+  assert.deepEqual(f.failures, []);
   assert.equal(f.persistence.submissions.length, 1);
-  assert.equal(f.database.authority.writeIntents.listByRun(f.run.envelope.runId)[0]?.status, "parked");
-  assert.equal(f.database.authority.runResults.get(f.run.envelope.runId), undefined);
+  assert.equal(f.reads, 3, "initial read, native probe and mandatory native verifier");
+  const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
+  assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "committed");
+  assert.ok(f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "contact-preview"));
+  const date = f.clock.now().toISOString().slice(0, 10);
+  assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows.length, 1);
+  const stored = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(stored);
+  const saved = EmergencyContactMemberResultSchema.parse(stored.result.value);
+  assert.equal(saved.disposition, "committed"); assert.equal(saved.proof.contacts.observation, "persisted");
+  const receipts = createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor] });
+  assert.equal(receipts.ensureReceipt(f.run.envelope.runId).result, "verified-done");
   const retry = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
   await f.execution.execute(retry, world.SIGNAL);
   assert.equal(f.persistence.submissions.length, 1);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
-  assert.match(f.database.authority.failures.listByRun(retry.envelope.runId)[0]?.summary ?? "", /parked/u);
+  assert.deepEqual(f.database.authority.failures.listByRun(retry.envelope.runId), []);
+  const reused = f.database.authority.runResults.get(retry.envelope.runId); assert.ok(reused);
+  assert.equal(EmergencyContactMemberResultSchema.parse(reused.result.value).disposition, "already-present");
 });
 
 it("saves an addition with no demotion when the complete original set has no primary", async () => {
