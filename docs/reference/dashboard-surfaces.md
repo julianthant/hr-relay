@@ -257,13 +257,17 @@ Machine-verified identity is not an approval ceremony. Operator approval binds t
 record/source set, corrected values, and revision. A completed command requires a matching result;
 an optimistic click or navigation cannot certify it.
 
-A served parked decision displays Write parked and offers Check again through the served
-`recheck-write` confirmation. The server's `acceptsTransactionId` field comes from the same
-completion-contract predicate used by the runtime probe. When true, Check result collects Yes
-and a transaction number, or No. Yes requests a read-only recheck of that number; No composes
-`resolve-write-absent`. Otherwise the second choice is It didn't land. Every choice uses its
-served command confirmation and binds the run version, intent, generation, write attempt,
-binding proof digest and occurrence key digest. Superseded choices refuse before dispatch.
+A served parked decision asks "Did the <record> save in <system>?" with the record, system and
+next step declared per write task in the decision catalog. Check again appears only when the held
+`check-parked-write` read is served. Saved sends `recheck-write`: Relay reads the record and settles
+only on valid proof, otherwise the write stays parked. When the server's `acceptsTransactionId`
+(the completion-contract predicate the runtime probe uses) is true, Saved requires the transaction
+number and sends it with the recheck. Not saved composes `resolve-write-absent`. No answer settles a
+write from the operator's statement alone. Every choice uses its served command confirmation and
+binds the run version, intent, generation, write attempt, binding proof digest and occurrence key
+digest. Superseded choices refuse before dispatch.
+A failure after a write the run settled offers Mark as failed or Add note; both send
+`annotate-failure` with the served resolution version and never run, retry or file anything.
 Pending, refused, uncertain with exact replay, and settled feedback use the existing command
 executor. Local result copy describes the request, without claiming verification or continuation.
 

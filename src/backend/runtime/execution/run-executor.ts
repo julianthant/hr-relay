@@ -1037,6 +1037,8 @@ export async function executeClaimedRun(
       ...(taskId === undefined ? {} : { taskId: TaskIdSchema.parse(taskId) }),
       error,
       occurredAt: instant(),
+      writes: deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, getRun().envelope)
+        .writeRunIds().flatMap(id => repositories.writeIntents.listByRun(id))) ?? [],
     }));
 
     const abortReason = (fallback: string): RunAbandonedError => new RunAbandonedError(
@@ -2022,6 +2024,13 @@ export async function executeClaimedRun(
                 intentGeneration: error.intentGeneration,
                 code: error.parkCode,
               });
+            }
+            // An attempting intent means the failure came after the fence: keep the claim for recovery, never pause or fail.
+            // Once recovery has taken the claim, the claim check abandons the run instead.
+            if (deps.authority.withAuthorityTransaction?.(repositories =>
+              repositories.writeIntents.listByRun(runId).some(intent => intent.status === "attempting")) === true) {
+              requireOriginalClaim(getRun());
+              throw error;
             }
             interruptBeforeFence(node.id);
             return await failNode(node, node.commit.uses.id, error);

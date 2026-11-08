@@ -1,4 +1,7 @@
 import { validateCompletedTransactionContinuations } from "../../../../src/backend/runs/start/recovery-plan.js";
+import { failureDecision } from "../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { failureDetailWireFixture } from "../../../support/helpers/trust/trust-wire-fixtures.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -230,6 +233,25 @@ it("enters operator checkpoint recovery across a bounded chain without repeating
   assert.ok(h.database.authority.runCheckpoints.listByAttempt(descriptor.id, continued.envelope.itemId, "finish", continued.envelope.attempt)
     .some(row => row.runId === continued.envelope.runId));
   assert.equal(h.world.events.filter(event => event.startsWith("read:")).length, 2);
+});
+
+it("records a recovered continuation's later failure as after the source run's committed write", async () => {
+  const h = await fixture([2, 3]);
+  const before = effects(h);
+  const next = operatorRecover(h);
+  assert.ok(next.envelope.continuation);
+  assert.equal((await h.execute(next)).state, "failed");
+  assert.deepEqual(h.database.authority.writeIntents.listByRun(next.envelope.runId), []);
+  const failure = h.database.authority.failures.listByRun(next.envelope.runId)[0]; assert.ok(failure);
+  assert.equal(failure.nodeId, "finish");
+  assert.equal(failure.writeState, "committed");
+  const decision = failureDecision(FailureDetailWireSchema.parse({
+    ...failureDetailWireFixture({ runId: next.envelope.runId, failureId: failure.failureId, traceId: failure.traceId, workflowId: descriptor.id }),
+    writeState: failure.writeState,
+    resolution: { capability: { state: "available" }, capture: { failureId: failure.failureId, runId: next.envelope.runId, resolution: { status: "unresolved", version: 1 } } } }));
+  assert.equal(decision.type, "failed-after-write");
+  assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed", "add-note"]);
+  assert.deepEqual(effects(h), before);
 });
 
 it("uses the explicit operator recovery planner and executor for a completed natural-key continuation", async () => {

@@ -3,7 +3,8 @@ import { describe, it } from "vitest";
 import { ActionCommandKeySchema } from "../../../../src/models/dashboard/actions.js";
 import { RunDecisionTypeSchema } from "../../../../src/models/dashboard/run-decision.js";
 import { COMMAND_FAMILY_REGISTRY } from "../../../../src/rules/commands/commands.js";
-import { DECISION_CATALOG } from "../../../../src/backend/runs/decisions/decision-catalog.js";
+import { DECISION_CATALOG, PARKED_WRITE_RECORDS } from "../../../../src/backend/runs/decisions/decision-catalog.js";
+import { TASK_STORES } from "../../../../src/backend/app/registries/task-registry.js";
 import { projectDecision, rowActionOption } from "../../../../src/backend/runs/decisions/project-decision.js";
 
 describe("decision catalog", () => {
@@ -23,18 +24,26 @@ describe("decision catalog", () => {
       for (const { id, send } of declaration.options) {
         if (send.via === "action" || send.via === "row-action") {
           assert.ok(ActionCommandKeySchema.safeParse(send.command).success, `${type}/${id}`);
-          if (send.fallback !== undefined) assert.ok(ActionCommandKeySchema.safeParse(send.fallback).success, `${type}/${id} fallback`);
         }
-        if (send.via === "verification") assert.ok(ActionCommandKeySchema.safeParse(send.present).success && ActionCommandKeySchema.safeParse(send.absent).success, `${type}/${id}`);
         if (send.via === "command") assert.ok(registered.has(`${send.family}/${send.type}`), `${type}/${id}`);
       }
     }
   });
 
-  it("declares Check again as the held check, falling back to recheck-write", () => {
+  it("answers a parked write with the held check, a re-read and a confirmed absence only", () => {
     for (const type of ["write-parked", "write-unknown"] as const) {
-      assert.deepEqual(DECISION_CATALOG[type].options.find(({ id }) => id === "check-again")?.send, { via: "action", command: "check-parked-write", fallback: "recheck-write" });
+      assert.deepEqual(DECISION_CATALOG[type].options.map(({ id, send }) => [id, send]), [
+        ["check-again", { via: "action", command: "check-parked-write" }],
+        ["saved", { via: "action", command: "recheck-write" }],
+        ["not-saved", { via: "action", command: "resolve-write-absent" }],
+      ]);
+      assert.deepEqual(DECISION_CATALOG[type].recommended, ["saved", "check-again"]);
     }
+  });
+
+  it("names the record, system and next step of every registered write task", () => {
+    const commits = TASK_STORES.flatMap(store => Object.values(store.tasks)).filter(({ contract }) => contract.effect === "commit").map(({ contract }) => contract.id);
+    assert.deepEqual(Object.keys(PARKED_WRITE_RECORDS).sort(), [...commits].sort());
   });
 
   it("keeps sign-in and refused catalog-only and cancelling a line", () => {
@@ -49,10 +58,10 @@ describe("decision catalog", () => {
 describe("projectDecision", () => {
   it("orders served options by the catalog and preselects the first recommended one served", () => {
     const decision = projectDecision("write-parked", [
-      { id: "didnt-land", send: { via: "action", actionKey: "resolve-write-absent" } },
-      { id: "check-again", send: { via: "action", actionKey: "recheck-write" } },
+      { id: "not-saved", send: { via: "action", actionKey: "resolve-write-absent" }, label: "Not saved, file it again" },
+      { id: "check-again", send: { via: "action", actionKey: "check-parked-write" } },
     ]);
-    assert.deepEqual(decision.options.map(({ id, recommended }) => [id, recommended]), [["check-again", true], ["didnt-land", undefined]]);
+    assert.deepEqual(decision.options.map(({ id, recommended }) => [id, recommended]), [["check-again", true], ["not-saved", undefined]]);
   });
 
   it("refuses an option the catalog does not declare", () => {

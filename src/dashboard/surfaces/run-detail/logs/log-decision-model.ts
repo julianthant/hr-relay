@@ -1,8 +1,8 @@
 import type { CandidateTableWire, DecisionAnswerWire, DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 
-/** What the operator entered for one served option: a picked row, a typed value, a date, text or a verification outcome. */
-export type LogDecisionAnswer = Readonly<{ outcome?: "present" | "absent"; transaction?: string; candidate?: string; typed?: string; date?: string; text?: string }>;
+/** What the operator entered for one served option: a picked row, a typed value, a date or text. */
+export type LogDecisionAnswer = Readonly<{ candidate?: string; typed?: string; date?: string; text?: string }>;
 export type LogDecision = Readonly<{
   title: string;
   state: "parked" | "failed" | "review" | "held" | "unconfirmed" | "loading" | "recorded" | "resolved";
@@ -44,10 +44,6 @@ export function typedPickRow(table: CandidateTableWire, typed: string): Candidat
 export function decisionAnswerValid(option: DecisionOptionWire, answer: LogDecisionAnswer): boolean {
   const input = option.input;
   switch (input?.kind) {
-    case "verification": {
-      if (option.send.via !== "verification") return false;
-      return answer.outcome === "absent" || (answer.outcome === "present" && new RegExp(option.send.transactionPattern, "u").test(answer.transaction?.trim() ?? ""));
-    }
     case "candidate": {
       const picked = answer.candidate !== undefined && input.table.rows.some(row => row.id === answer.candidate);
       const typed = answer.typed !== undefined && answer.typed.trim() !== "" && typedPickRow(input.table, answer.typed) !== undefined;

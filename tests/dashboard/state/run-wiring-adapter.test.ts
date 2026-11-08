@@ -234,10 +234,10 @@ describe("served Logs wiring", () => {
     const projection = projectRunLogs(snapshot, client);
     const entry = projection.steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
     assert.equal(entry?.id, FIXTURE_PARKED_WRITE.writeIntentId); assert.equal(entry?.kind, "decision");
-    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.served?.options.map(option => option.label), ["Check again", "Check result"]); assert.equal(entry.decision.footer, undefined); }
+    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.served?.options.map(option => option.label), ["Saved", "Not saved, write it again"]); assert.equal(entry.decision.footer, undefined); }
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
-    assert.match(document.body.textContent ?? "", /Check whether the submit went through/);
-    assert.equal(document.querySelector('form[aria-label="Check whether the submit went through"]')?.querySelectorAll("button").length, 2);
+    assert.match(document.body.textContent ?? "", /Did the write save\?/);
+    assert.equal(document.querySelector('form[aria-label="Did the write save?"]')?.querySelectorAll("button").length, 2);
     const jump = [...document.querySelectorAll("button")].find(button => button.textContent === "Resolve");
     assert.ok(jump);
     await act(async () => jump.click());
@@ -261,8 +261,7 @@ describe("served Logs wiring", () => {
     assert.equal(entry?.kind, "decision");
     if (entry?.kind !== "decision") throw new Error("parked decision absent");
     assert.equal(entry.decision.state, "parked");
-    assert.deepEqual(entry.decision.served?.options.map(option => option.label), ["Check again", "Check result"]);
-    assert.equal(entry.decision.served?.options[0].input, undefined);
+    assert.deepEqual(entry.decision.served?.options.map(option => [option.label, option.input?.kind]), [["Saved", "text"], ["Not saved, write it again", undefined]]);
     assert.equal(entry.decision.message, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_OCCURRENCE_UNPROVED", {})).text);
     assert.equal(entry.decision.footer, undefined);
     const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: "local-operator", requestedAt: AT, source: "run-detail",

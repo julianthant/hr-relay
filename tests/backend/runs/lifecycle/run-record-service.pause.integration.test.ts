@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { runClaim } from "../../../../src/models/run/record.js";
+import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
+import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 
 const world = createRunRecordServiceTestWorld();
@@ -68,4 +71,29 @@ for (const state of ["queued", "parked-gate"] as const) it(`acknowledges request
   const resumed = requireLifecycleApplied(f.service.resumePaused({ commandId: randomUUID(), runId: released.envelope.runId, expectedVersion: released.version }));
   assert.equal(resumed.pause, undefined);
   assert.deepEqual(resumed.lifecycle, lifecycle);
+});
+
+it("refuses a pause acknowledgement over an attempting write and leaves the claim and pause request intact", async () => {
+  const f = await world.fixture();
+  const running = world.runningRun(f.service, f.request, f.runtimeConfig);
+  const claim = runClaim(running); assert.ok(claim);
+  const proof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: running.envelope.runId, attempt: running.envelope.attempt,
+    afterPrepareSpanPath: `${running.envelope.traceId}/termination/prepare` };
+  const bindingProofDigest = deriveWriteBindingProofDigest(proof);
+  const intent = { ...WRITE_INTENT_ATTEMPTING, workflowId: running.envelope.workflow, itemId: running.envelope.itemId,
+    runId: running.envelope.runId, runAttempt: running.envelope.attempt, bindingProof: proof, bindingProofDigest };
+  fenceWriteFixture(f.database, { intent, attempt: { ...WRITE_ATTEMPT, writeIntentId: intent.writeIntentId,
+    runId: intent.runId, runAttempt: intent.runAttempt, bindingProof: proof, bindingProofDigest } });
+  const requested = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: running.envelope.runId, expectedVersion: running.version }));
+  assert.equal(requested.pause?.state, "requested");
+  const outcome = f.service.acknowledgePause({ commandId: randomUUID(), runId: running.envelope.runId,
+    claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration } });
+  assert.ok(outcome.state === "refused", JSON.stringify(outcome));
+  assert.deepEqual(outcome.refusal, { reason: "illegal-transition", from: "running", to: "queued",
+    message: "a pause cannot release a claim over an unfinished write" });
+  const after = f.database.authority.runs.get(running.envelope.runId); assert.ok(after);
+  assert.equal(after.lifecycle.state, "running");
+  assert.deepEqual(runClaim(after), claim);
+  assert.equal(after.pause?.state, "requested");
+  assert.equal(f.database.authority.writeIntents.get(intent.writeIntentId)?.status, "attempting");
 });

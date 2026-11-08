@@ -1,6 +1,6 @@
 import type { UcpathFoundPresentation, UcpathFoundDecision } from "./ucpath-found-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Check, Clock, ImageOff, PauseCircle, ScanSearch, TriangleAlert, UserRoundSearch } from "lucide-react";
 import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Field, Input } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
@@ -15,17 +15,9 @@ import "./log-presentation.css";
 export type DecisionAnswerHandler = (option: DecisionOptionWire, answer: LogDecisionAnswer) => void;
 
 function OptionInput({ option, answer, setAnswer, disabled }: { option: DecisionOptionWire; answer: LogDecisionAnswer; setAnswer: (answer: LogDecisionAnswer) => void; disabled: boolean }) {
-  const group = useId();
   const input = option.input;
   if (input === undefined) return null;
   switch (input.kind) {
-    case "verification": return <div className="flex flex-col gap-2">
-      <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0" disabled={disabled}><legend className="mb-1 text-body font-medium">{input.question}</legend>
-        {([["present", "Yes, it was submitted"], ["absent", "No, it was not submitted"]] as const).map(([value, label]) => <label key={value} className="flex items-center gap-2 text-body">
-          <input type="radio" name={group} value={value} checked={answer.outcome === value} onChange={() => setAnswer({ outcome: value })} />{label}</label>)}
-      </fieldset>
-      {answer.outcome === "present" && <Field label="Transaction number" className="w-64"><Input value={answer.transaction ?? ""} disabled={disabled} onChange={event => setAnswer({ ...answer, transaction: event.target.value })} placeholder="Enter the submitted transaction number" /></Field>}
-    </div>;
     case "text": return <Field label={input.label} className="w-64"><Input value={answer.text ?? ""} disabled={disabled} placeholder={input.placeholder} onChange={event => setAnswer({ text: event.target.value })} /></Field>;
     case "date": return <DateInput label={input.label} value={answer.date ?? ""} disabled={disabled} onChange={date => setAnswer({ date })} />;
     case "candidate": return <PickTable table={input.table} disabled={disabled} chosen={answer.typed !== undefined ? TYPED_ROW : answer.candidate} text={answer.typed ?? ""}
