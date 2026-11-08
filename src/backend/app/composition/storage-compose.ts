@@ -125,23 +125,10 @@ function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, 
   } catch { /* best effort */ }
 }
 
-/** Counts, never values: which custody kinds still hold a person's closure open when the drain is refused. */
-export function busyCustodyReason(facts: Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "leases" | "browsers" | "duoLeases" | "exclusiveSessionLeases" | "writeIntents" | "controls">): string {
-  const counts = [
-    ["leases", facts.leases.filter(lease => lease.lifecycle.state !== "stopped").length],
-    ["browsers", facts.browsers.filter(browser => browser.health !== "closed").length],
-    ["duo", facts.duoLeases.filter(lease => lease.state === "held").length],
-    ["sessions", facts.exclusiveSessionLeases.filter(lease => lease.releasedAt === null).length],
-    ["writes", facts.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").length],
-    ["controls", facts.controls.filter(control => control.auditedAt === undefined).length],
-  ] as const;
-  return `busy-${counts.map(([kind, count]) => `${kind}-${String(count)}`).join("-")}`;
-}
-
-function logBusyCustody(stateRoot: string, readFacts: () => ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, clock: Clock): void {
+function logDrainRefusal(stateRoot: string, reason: () => string, clock: Clock): void {
   try {
-    const reason = busyCustodyReason(readFacts());
-    appendEmergencyFault({ stateRoot, build: buildVersion(), code: "RUNTIME_CUSTODY_UNCERTAIN", error: new Error(reason), now: clock.now(), area: "profile-work-drain", reason });
+    const token = reason();
+    appendEmergencyFault({ stateRoot, build: buildVersion(), code: "RUNTIME_CUSTODY_UNCERTAIN", error: new Error(token), now: clock.now(), area: "profile-work-drain", reason: token });
   } catch { /* the drain refusal still reaches the caller */ }
 }
 
@@ -560,14 +547,16 @@ export class RuntimeCustodyUncertainError extends AggregateError {
 }
 bindErrorOrigin(RuntimeCustodyUncertainError, "runtime-custody-uncertain");
 
-function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>,
-  nonBirth?: (slot: typeof before.slots[number]) => boolean): boolean {
+type CustodyHolds = Record<"reservations" | "leases" | "browsers" | "controls" | "runs" | "writes" | "duo" | "artifacts" | "children" | "commands", number>;
+/** Counts, never values, of each custody kind that holds a person's closure open; any count above zero is busy. */
+function profileResourceCustodyHolds(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>,
+  nonBirth?: (slot: typeof before.slots[number]) => boolean): CustodyHolds {
   for (const browser of before.browsers) if (!before.slots.some(slot => slot.workerId === browser.workerId)) throw new Error("profile-browser-membership-unavailable");
-  let busy = false;
+  let reservations = 0, leases = 0;
   for (const slot of before.slots) {
     const reservation = before.reservations.find(value => value.workerId === slot.workerId);
     if (reservation === undefined || reservation.reservationCommandId !== slot.reservationCommandId) throw new Error("profile-worker-reservation-authority-unavailable");
-    if (reservation.state === "pending") busy = true;
+    if (reservation.state === "pending") reservations++;
     const lease = before.leases.find(value => value.workerId === slot.workerId);
     if (lease === undefined && slot.retiredAt === null && !nonBirth?.(slot)) {
       const plan = before.controls.find(control => control.commandId === slot.reservationCommandId);
@@ -577,12 +566,25 @@ function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readPr
         || before.browsers.some(browser => browser.workerId === slot.workerId) || before.runs.some(run => runClaim(run)?.workerId === slot.workerId)
         || before.duoLeases.some(lease => lease.holder.workerId === slot.workerId)) throw new Error("profile-worker-lifetime-unavailable");
     }
-    if (lease !== undefined && lease.lifecycle.state !== "stopped") busy = true;
+    if (lease !== undefined && lease.lifecycle.state !== "stopped") leases++;
   }
   if (before.leases.some(lease => !before.slots.some(slot => slot.workerId === lease.workerId))) throw new Error("profile-worker-membership-unavailable");
-  return busy || before.browsers.some(browser => browser.health !== "closed") || before.controls.some(control => control.auditedAt === undefined)
-    || before.runs.some(run => run.lifecycle.state !== "terminal") || before.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present")
-    || before.duoLeases.some(lease => lease.state === "held") || before.pendingArtifacts.length > 0;
+  return { reservations, leases, browsers: before.browsers.filter(browser => browser.health !== "closed").length,
+    controls: before.controls.filter(control => control.auditedAt === undefined).length,
+    runs: before.runs.filter(run => run.lifecycle.state !== "terminal").length,
+    writes: before.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").length,
+    duo: before.duoLeases.filter(lease => lease.state === "held").length, artifacts: before.pendingArtifacts.length, children: 0, commands: 0 };
+}
+
+function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>,
+  nonBirth?: (slot: typeof before.slots[number]) => boolean): boolean {
+  return Object.values(profileResourceCustodyHolds(before, nonBirth)).some(count => count > 0);
+}
+
+/** A boot-log reason token naming only the kinds that hold the closure open, e.g. busy-runs-1-artifacts-2. */
+export function custodyHoldsReason(holds: CustodyHolds): string {
+  const named = Object.entries(holds).filter(([, count]) => count > 0).map(([kind, count]) => `${kind}-${String(count)}`);
+  return (named.length === 0 ? "busy-none" : `busy-${named.join("-")}`).slice(0, 128).replace(/-+$/u, "");
 }
 
 export interface ProfileCommandActivity {
@@ -603,7 +605,7 @@ export function composeProfileActivity(input: Readonly<{
   const observe = (includeCommands = true) => {
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
-    let busy = profileResourceCustodyBusy(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
+    const holds = profileResourceCustodyHolds(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
       writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before, slot => input.database.hasWorkerNonBirth(slot));
     for (const slot of before.slots) {
       const lease = before.leases.find(value => value.workerId === slot.workerId);
@@ -616,18 +618,24 @@ export function composeProfileActivity(input: Readonly<{
         }
         input.database.assertWorkerLifecycleRelease(lease.workerId);
       }
-      if (evidence !== undefined && (evidence.state !== "exited" || evidence.reportedBy !== "os")) busy = true;
+      if (evidence !== undefined && (evidence.state !== "exited" || evidence.reportedBy !== "os")) holds.children++;
     }
     const after = input.database.readProfileResourceCustody();
     if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-resource-custody-changed");
-    if (includeCommands) for (const activity of input.commandActivities ?? []) if (activity.hasUnquiescedWork(profileId)) busy = true;
-    return busy;
+    if (includeCommands) for (const activity of input.commandActivities ?? []) if (activity.hasUnquiescedWork(profileId)) holds.commands++;
+    return holds;
   };
+  const busy = (includeCommands = true) => Object.values(observe(includeCommands)).some(count => count > 0);
   return Object.freeze({
+    /** The same holds hasUnquiescedWork tests, under the shutdown filter once shutdown is requested. */
+    busyReason(requestedProfileId: string): string {
+      if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
+      return drain?.state === "pending" ? "busy-drain-pending" : custodyHoldsReason(observe());
+    },
     hasUnquiescedWork(requestedProfileId: string): boolean {
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
       if (drain?.state === "failed") throw drain.error;
-      return drain?.state === "pending" || observe();
+      return drain?.state === "pending" || busy();
     },
     requestShutdown(requestedProfileId: string): void {
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
@@ -660,7 +668,7 @@ export function composeProfileActivity(input: Readonly<{
           await new Promise<void>(resolve => setTimeout(resolve, 50));
         }
         if ("state" in input.supervisor) {
-          if (observe(false)) throw new Error("profile-resource-closure-unproved");
+          if (busy(false)) throw new Error("profile-resource-closure-unproved");
         } else await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
           requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: "application-shutdown" });
       })());
@@ -693,7 +701,7 @@ export function composeProfileActivity(input: Readonly<{
       } catch (error) { failures.push(error); }
       try {
         pending.push('state' in input.supervisor
-          ? (observe(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
+          ? (busy(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
           : input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
             requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: 'profile-logout' }));
       } catch (error) { failures.push(error); }
@@ -1169,7 +1177,8 @@ export function composeProfileRuntime(input: Readonly<{
       if (entry?.preparation?.state === "pending") await entry.preparation.completion;
       if (entry?.preparation?.state === "failed") throw entry.preparation.error;
       if (entry?.preparation?.state !== "ready") {
-        if (entry?.context !== undefined) { const database = entry.context.database; logBusyCustody(machine.stateRoot, () => database.readProfileResourceCustody(), input.clock); }
+        const activity = entry?.activity;
+        if (activity !== undefined) logDrainRefusal(machine.stateRoot, () => activity.busyReason(profileId), input.clock);
         throw new Error("profile-work-drain-unproved");
       }
     },
