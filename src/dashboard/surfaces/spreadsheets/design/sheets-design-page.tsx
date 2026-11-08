@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { AlertTriangle, Check, Download, MoreHorizontal } from 'lucide-react';
-import { Badge, Banner, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field, IconButton, Input, Select, Tab, TabList, TabPanel, Tabs } from '../../../ds/ui.js';
+import { Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field, IconButton, Input, Select, Tab, TabList, TabPanel, Tabs } from '../../../ds/ui.js';
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
 import { libraryEntry, sheetsOther, sheetsReferences, sheetsResults, type Reference, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
@@ -51,8 +51,8 @@ function ReferenceCards({ items, actions }: { items: readonly Reference[]; actio
 }
 
 function ReferenceTable({ items, actions }: { items: readonly Reference[]; actions: Actions }) {
-  return <div className="overflow-hidden rounded-[10px] border border-ui-stroke"><table aria-label="Used by workflows" className="hub-sheets-data"><thead><tr><th scope="col" className="w-[26%]">Reference</th><th scope="col" className="w-[24%]">Current file</th><th scope="col">Rows</th><th scope="col">Updated</th><th scope="col" className="w-[22%]">Columns</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>
-    {items.map(item => <tr key={item.id}><td><strong className="font-medium">{item.title}</strong><span className="hub-sheets-caption">{item.note}</span></td>
+  return <div className="overflow-hidden rounded-[10px] border border-ui-stroke"><table aria-label="Used by workflows" className="hub-sheets-data"><thead><tr><th scope="col" className="!w-[28%]">Reference</th><th scope="col" className="w-[20%]">Current file</th><th scope="col">Rows</th><th scope="col">Updated</th><th scope="col" className="w-[19%]">Columns</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>
+    {items.map(item => <tr key={item.id}><td className="!w-[28%]"><strong className="font-medium">{item.title}</strong><span className="hub-sheets-caption">{item.note}</span></td>
       {item.file ? <><td className="!min-w-0"><button type="button" className="text-left font-medium underline-offset-2 hover:underline" onClick={() => actions.open(item.file!)}>{item.file.name}</button></td><td>{item.file.rows.toLocaleString()}</td><td>{when(item.file.updatedAt)}</td>
         <td><ul>{item.file.eid && <ColumnLine match={item.file.eid} />}{item.file.person && <ColumnLine match={item.file.person} />}</ul></td>
         <td><div className="hub-sheets-actions"><Button onClick={() => actions.importFor(item.id)}>Replace</Button><Button onClick={() => actions.open(item.file!)}>Open</Button><FileMenu file={item.file} kind="reference" actions={actions} label={item.file.name} /></div></td></>
@@ -109,11 +109,10 @@ export function SheetsDesignPage({ design }: { design: SheetsDesign }) {
   const [dialog, setDialog] = useState<{ kind: DialogKind; files: readonly SheetFile[] }>();
   const [importOpen, setImportOpen] = useState(startStep !== undefined), [preset, setPreset] = useState<string>();
   const actions: Actions = { versions: (file, kind) => setVersions(libraryEntry(file, kind)), dialog: (kind, files) => setDialog({ kind, files }), open: () => undefined, importFor: id => { setPreset(id); setImportOpen(true); } };
-  const missing = references.filter(item => !item.file);
   const head = <div className="mb-6 flex items-start justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
     <div className="flex items-center gap-2"><Button variant="primary" onClick={() => actions.importFor()}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
   const body = design === 'a' ? <>
-    <Section title="Used by workflows" description="A reference for looking up people. Workflows read it; they never take a spreadsheet as input."><ReferenceCards items={references} actions={actions} /></Section>
+    <Section title="Used by workflows" description="A reference for looking up people."><ReferenceCards items={references} actions={actions} /></Section>
     <Section title="Results"><Results groups={results} layout="disclosure" actions={actions} /></Section>
     <Section title="Other spreadsheets"><OtherTable files={others} actions={actions} /></Section></>
     : design === 'b' ? <>
@@ -121,7 +120,6 @@ export function SheetsDesignPage({ design }: { design: SheetsDesign }) {
     <Section title="Other spreadsheets"><OtherTable files={others} actions={actions} /></Section>
     <Section title="Results" description="Newest first, one workbook for each run."><Results groups={results} layout="columns" actions={actions} /></Section></>
     : <>
-    {missing.length > 0 && <Banner tone="warning" title={missing.length === references.length ? 'No rosters imported yet' : `${missing[0].title} is missing`} action={<Button onClick={() => actions.importFor(missing[0].id)}>Import a roster</Button>} className="mb-4">{missing.map(item => item.workflow).join(', ')} cannot look people up until a roster is imported.</Banner>}
     <Tabs value={tab} onValueChange={setTab}><TabList label="Spreadsheet groups"><Tab value="used" count={references.filter(item => item.file).length || undefined}>Used by workflows</Tab><Tab value="results">Results</Tab><Tab value="other" count={others.length || undefined}>Other spreadsheets</Tab></TabList>
       <TabPanel value="used" className="pt-4"><ReferenceCards items={references} actions={actions} /></TabPanel>
       <TabPanel value="results" className="pt-4"><Results groups={results} layout="disclosure" actions={actions} /></TabPanel>
