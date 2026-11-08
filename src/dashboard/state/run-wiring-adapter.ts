@@ -558,6 +558,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
           workbookWrite: operation, workbookAnswer: envelope.payload }) : undefined;
       return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
     }
+    if (envelope.family === "failure-resolution") {
+      const served = failure?.section === "failure" && failure.payload.state === "available" ? failure.payload.value : undefined;
+      return served?.resolution?.capability.state === "available" && envelope.target.runId === row.runId && envelope.target.failureId === served.failureId
+        && envelope.target.expectedVersion === served.resolution.capture.resolution.version
+        && served.decision?.options.some(option => option.send.via === "command" && option.send.family === envelope.family && option.send.type === envelope.type) === true;
+    }
     if (failure?.section === "failure" && failure.payload.state === "available" && failure.payload.value.recovery !== undefined) {
       const served = failure.payload.value;
       if (envelope.family === "run" && envelope.type === "retry") return envelope.target.runId === row.runId
@@ -702,10 +708,21 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       return;
     }
     const failed = value.snapshot.sections.find(section => section.section === "failure");
-    if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id && failed.payload.value.recovery !== undefined) {
+    if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id) {
       const served = failed.payload.value;
       const recovery = served.recovery;
       const option = servedOption(served.decision, picked);
+      if (option?.send.via === "command") {
+        const resolution = served.resolution;
+        if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution?.capability.state !== "available"
+          || !decisionAnswerValid(option, answer)) return;
+        const note = option.input?.kind === "text" ? answer.text?.trim() : undefined;
+        dispatchIfDecisionCurrent.current(CommandRequestSchema.parse({ family: "failure-resolution", type: "annotate-failure", commandId: crypto.randomUUID(),
+          requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail",
+          target: { runId: row.runId, failureId: served.failureId, expectedVersion: resolution.capture.resolution.version },
+          payload: { action: "resolve", ...(note === undefined ? {} : { note }) } }));
+        return;
+      }
       if (recovery === undefined || option === undefined || !decisionAnswerValid(option, answer)
         || recovery.expectedVersion !== row.rowRevision || confirm === undefined) return;
       const retry = recovery.retry;
@@ -741,14 +758,13 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (write?.section === "parked-write" && write.payload.writeIntentId === id) {
       const option = servedOption(write.payload.decision, picked);
       if (option === undefined || !decisionAnswerValid(option, answer)) return;
-      const send = option.send;
-      const key = send.via === "action" ? send.actionKey : send.via === "verification" ? answer.outcome === "present" ? send.presentActionKey : send.absentActionKey : undefined;
+      const key = option.send.via === "action" ? option.send.actionKey : undefined;
       const descriptor = write.payload.actions.find(candidate => candidate.key === key);
       if (descriptor?.kind !== "command" || descriptor.confirm === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: row.rowRevision },
         { actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, parkedWrite: write.payload,
-          ...(descriptor.command === "recheck-write" && write.payload.acceptsTransactionId && answer.transaction !== undefined
-            ? { transactionId: answer.transaction } : {}) });
+          ...(descriptor.command === "recheck-write" && write.payload.acceptsTransactionId && option.input?.kind === "text"
+            ? { transactionId: answer.text?.trim() } : {}) });
       if (composed.state !== "ready") return;
       const envelope = CommandRequestSchema.parse(composed.request);
       confirm({ action: descriptor, target: { runId: row.runId, expectedVersion: row.rowRevision }, subject: row.title,
@@ -781,10 +797,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const onUcpathDecision = useCallback((decision: UcpathFoundDecision) => {
     if (decision.kind !== "check-again" || parked?.section !== "parked-write" || parked.payload.ucpathFindings === undefined
       || decision.transactionNumber !== undefined && !parked.payload.acceptsTransactionId) return;
-    const wanted = decision.transactionNumber === undefined ? "check-again" : "check-result";
+    const wanted = decision.transactionNumber === undefined ? "check-again" : "saved";
     const option = parked.payload.decision?.options.find(candidate => candidate.id === wanted);
     if (option !== undefined) onDecision(parked.payload.writeIntentId, option,
-      decision.transactionNumber === undefined ? {} : { outcome: "present", transaction: decision.transactionNumber });
+      decision.transactionNumber === undefined ? {} : { text: decision.transactionNumber });
   }, [parked, onDecision]);
   const newest = binding?.executor.retainedAttempts().findLast(attempt => {
     const request = attempt.request;

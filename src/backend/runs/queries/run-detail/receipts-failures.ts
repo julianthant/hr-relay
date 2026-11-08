@@ -110,9 +110,12 @@ export function buildReceiptFailureSection(
   });
 }
 
-/** One decision per failure: a served correction is D10, a failure after a committed or verified write is D8, anything else D7. */
+/** One decision per failure: a served correction is D10, a failure after a committed or verified write is D8 (Mark as failed or a note), anything else D7. */
 export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
-  const addNote = failure.resolution?.capability.state === "available" ? [{ id: "add-note", send: { via: "command" as const, family: "failure-resolution", type: "annotate-failure" } }] : [];
+  // Both close the failure through annotate-failure; neither runs, retries or files anything.
+  const annotate = { via: "command" as const, family: "failure-resolution", type: "annotate-failure" };
+  const resolvable = failure.resolution?.capability.state === "available";
+  const addNote = resolvable ? [{ id: "add-note", send: annotate, input: { kind: "text" as const, label: "Note" } }] : [];
   const recovery = failure.recovery;
   if (recovery !== undefined) {
     // The run's typed input never crosses this wire, except a rejected value the correction declares display-safe.
@@ -123,7 +126,9 @@ export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
       { id: "check-again", send: { via: "action", actionKey: retry.key }, ...(retry.kind === "command" && retry.confirm !== undefined ? { confirm: retry.confirm } : {}) },
     ]);
   }
-  if (failure.writeState === "committed" || failure.writeState === "verified") return projectDecision("failed-after-write", addNote);
+  if (failure.writeState === "committed" || failure.writeState === "verified") {
+    return projectDecision("failed-after-write", [...(resolvable ? [{ id: "mark-as-failed", send: annotate }] : []), ...addNote]);
+  }
   return projectDecision("failed-retryable", addNote);
 }
 
