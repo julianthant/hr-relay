@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check, FileSpreadsheet } from 'lucide-react';
-import { Badge, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, Dropzone, Field, RadioGroup, Select } from '../../../ds/ui.js';
+import { Badge, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, Dropzone, Field, Select } from '../../../ds/ui.js';
 import { IMPORT_COLUMNS, IMPORT_FILE, type Reference } from './sheets-design-fixtures.js';
 import type { SheetsStep } from './sheets-design-mode.js';
 
@@ -24,10 +24,10 @@ export function SheetsImportDialog({ open, onOpenChange, references, startStep, 
     <DialogBody>
       {step !== 'pick' && <div className="mb-4 flex items-center gap-2 rounded-[7px] border border-ui-stroke bg-ui-table px-3 py-2 text-body"><FileSpreadsheet size={16} aria-hidden /><span className="min-w-0 flex-1 truncate">{IMPORT_FILE.name}</span><span className="text-caption text-ui-muted">{IMPORT_FILE.rows} rows · {IMPORT_FILE.sheet}</span></div>}
       {step === 'pick' && <Dropzone label="Choose a spreadsheet" accept=".xlsx,.csv" hint="Excel or CSV file" onFile={next} />}
-      {step === 'purpose' && <RadioGroup label="What is this spreadsheet for?" name="sheet-purpose" value={purpose} onValueChange={setPurpose} options={[
-        ...references.map(item => ({ value: item.id, label: item.title, description: `${item.note}${item.file ? ' It replaces the current file.' : ' None imported yet.'}` })),
-        { value: OTHER, label: 'Other', description: 'Keep it in your library. No workflow uses it.' },
-      ]} />}
+      {step === 'purpose' && <fieldset className="grid gap-2"><legend className="sr-only">What is this spreadsheet for?</legend>{[
+        ...references.map(item => ({ id: item.id, title: item.title, note: `${item.note}${item.file ? ' It replaces the current file.' : ' None imported yet.'}` })),
+        { id: OTHER, title: 'Other', note: 'Keep it in your library. No workflow uses it.' },
+      ].map(option => <label key={option.id} className={`flex cursor-pointer items-start gap-3 rounded-[7px] border px-3 py-2.5 text-left ${purpose === option.id ? 'border-ui-primary bg-ui-table' : 'border-ui-stroke'}`}><input type="radio" name="sheet-purpose" className="mt-1" checked={purpose === option.id} onChange={() => setPurpose(option.id)} /><span className="grid gap-0.5"><span className="text-body font-medium">{option.title}</span><span className="text-caption text-ui-muted">{option.note}</span></span></label>)}</fieldset>}
       {step === 'columns' && <div className="grid gap-4">
         {isReference ? <><p className="text-body text-ui-muted">{reference.workflow} finds people by these columns. We matched them from the headers.</p>
           <Matched label="EID column" value="Employee ID" /><Matched label="Name column" value="Full name" /></> : <p className="text-body text-ui-muted">All columns are kept as they are.</p>}

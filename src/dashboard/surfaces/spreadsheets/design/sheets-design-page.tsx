@@ -27,8 +27,8 @@ function FileMenu({ file, kind, actions, label }: { file: SheetFile; kind: 'refe
 
 function ColumnLine({ match }: { match: NonNullable<SheetFile['eid']> }) {
   return match.header
-    ? <li className="flex items-center gap-1.5 text-caption text-ui-muted"><Check size={12} aria-hidden className="shrink-0" />{match.label}: <span className="text-ui-primary">{match.header}</span></li>
-    : <li className="flex items-center gap-1.5 text-caption text-ui-danger"><AlertTriangle size={12} aria-hidden className="shrink-0" />{match.label}: not found</li>;
+    ? <li className="flex items-center gap-1.5 whitespace-nowrap text-caption text-ui-muted"><Check size={12} aria-hidden className="shrink-0" />{match.label}: <span className="text-ui-primary">{match.header}</span></li>
+    : <li className="flex items-center gap-1.5 whitespace-nowrap text-caption text-ui-danger"><AlertTriangle size={12} aria-hidden className="shrink-0" />{match.label}: not found</li>;
 }
 const needsCheck = (file: SheetFile) => !file.eid?.header || !file.person?.header;
 
@@ -51,8 +51,8 @@ function ReferenceCards({ items, actions }: { items: readonly Reference[]; actio
 }
 
 function ReferenceTable({ items, actions }: { items: readonly Reference[]; actions: Actions }) {
-  return <div className="overflow-hidden rounded-[10px] border border-ui-stroke"><table aria-label="Used by workflows" className="hub-sheets-data"><thead><tr><th scope="col">Reference</th><th scope="col">Current file</th><th scope="col">Rows</th><th scope="col">Updated</th><th scope="col">Columns</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>
-    {items.map(item => <tr key={item.id}><td className="!w-auto"><strong className="font-medium">{item.title}</strong><span className="hub-sheets-caption">{item.note}</span></td>
+  return <div className="overflow-hidden rounded-[10px] border border-ui-stroke"><table aria-label="Used by workflows" className="hub-sheets-data"><thead><tr><th scope="col" className="w-[26%]">Reference</th><th scope="col" className="w-[24%]">Current file</th><th scope="col">Rows</th><th scope="col">Updated</th><th scope="col" className="w-[22%]">Columns</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>
+    {items.map(item => <tr key={item.id}><td><strong className="font-medium">{item.title}</strong><span className="hub-sheets-caption">{item.note}</span></td>
       {item.file ? <><td className="!min-w-0"><button type="button" className="text-left font-medium underline-offset-2 hover:underline" onClick={() => actions.open(item.file!)}>{item.file.name}</button></td><td>{item.file.rows.toLocaleString()}</td><td>{when(item.file.updatedAt)}</td>
         <td><ul>{item.file.eid && <ColumnLine match={item.file.eid} />}{item.file.person && <ColumnLine match={item.file.person} />}</ul></td>
         <td><div className="hub-sheets-actions"><Button onClick={() => actions.importFor(item.id)}>Replace</Button><Button onClick={() => actions.open(item.file!)}>Open</Button><FileMenu file={item.file} kind="reference" actions={actions} label={item.file.name} /></div></td></>

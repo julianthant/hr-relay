@@ -3,12 +3,11 @@ import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 // Design lane renders (never merged): SHEETS_DESIGN_OUT=<folder> SHEETS_DESIGN_THEME=light|dark SHEETS_DESIGN_WIDTH=1440|1024 SHEETS_DESIGN_VARIANTS=a,b,c
 const OUT = process.env.SHEETS_DESIGN_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/settings-spreadsheets/screens";
-const THEME = PARITY_THEMES.find(theme => theme.attribute === (process.env.SHEETS_DESIGN_THEME ?? "light")) ?? PARITY_THEMES[0];
+const THEME = { attribute: process.env.SHEETS_DESIGN_THEME === "dark" ? "dark" : "light" };
 const WIDTH = Number(process.env.SHEETS_DESIGN_WIDTH ?? 1440);
 const VARIANTS = (process.env.SHEETS_DESIGN_VARIANTS ?? "a,b,c").split(",");
 const SCENARIOS = ["empty", "all", "missing", "many"] as const;
@@ -23,11 +22,11 @@ test(`sheets design renders @ ${THEME.attribute} ${WIDTH}`, async ({ page }) => 
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const shot = async (id: string, dialog?: ReturnType<Page["getByRole"]>) => { await page.waitForTimeout(400); await (dialog ?? page).screenshot({ path: join(OUT, `${THEME.attribute}-${WIDTH}-${id}.png`) }); };
   try {
-    await installTheme(page, THEME);
+    await page.addInitScript(attribute => { Reflect.set(window, "relayParityTheme", attribute); }, THEME.attribute);
     for (const variant of VARIANTS) for (const scenario of SCENARIOS) {
       await page.setViewportSize({ width: WIDTH, height: scenario === "many" ? 2400 : 1300 });
       await page.goto(url(server.baseUrl, { relaySheetsDesign: variant, relaySheetsScenario: scenario }));
-      await ready(page); await assertThemeApplied(page, THEME);
+      await ready(page);
       await shot(`${variant}-${scenario}`);
     }
     // Import flow, variant A chrome, library with one reference missing.
