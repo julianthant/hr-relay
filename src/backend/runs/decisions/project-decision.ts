@@ -14,7 +14,8 @@ export type ServedOption = Readonly<{
 }>;
 
 /** Orders served options by the catalog, takes catalog text unless the owner declared its own, and preselects the first recommended one served. */
-export function projectDecision(type: RunDecisionType, served: readonly ServedOption[], extra: Readonly<{ title?: string; context?: string; answer?: DecisionAnswerWire }> = {}): RunDecisionWire {
+export function projectDecision(type: RunDecisionType, served: readonly ServedOption[],
+  extra: Readonly<{ title?: string; context?: string; answer?: DecisionAnswerWire; /** Preselected instead of the catalog's first served recommendation, when served. */ recommend?: string }> = {}): RunDecisionWire {
   const declaration = DECISION_CATALOG[type];
   if (declaration.projected === false) throw new Error(`decision ${type} is catalog-only`);
   const ordered = declaration.gateArms ? served : declaration.options.flatMap(option => {
@@ -22,7 +23,8 @@ export function projectDecision(type: RunDecisionType, served: readonly ServedOp
     return match === undefined ? [] : [{ ...match, label: match.label ?? option.label, hint: match.hint ?? option.hint }];
   });
   if (!declaration.gateArms && ordered.length !== served.length) throw new Error(`decision ${type} served an undeclared option`);
-  const recommended = declaration.gateArms ? ordered[0]?.id : declaration.recommended.find(id => ordered.some(option => option.id === id));
+  const recommended = declaration.gateArms ? ordered[0]?.id
+    : [...(extra.recommend === undefined ? [] : [extra.recommend]), ...declaration.recommended].find(id => ordered.some(option => option.id === id));
   return RunDecisionWireSchema.parse({
     type,
     title: extra.title ?? declaration.title,

@@ -670,7 +670,9 @@ export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCod
     ...sending("saved", find("recheck-write"), record === undefined ? {} : { label: `Saved in ${record.system}`,
       hint: transaction === undefined ? `Relay checks ${record.system}, then the run continues.` : "Relay checks this number, then the run continues." }, transaction),
     ...sending("not-saved", find("resolve-write-absent"), record === undefined ? {} : { label: `Not saved, ${record.again}`, hint: record.againHint }),
-  ], record === undefined ? {} : parkedWriteText(record, parked.readBack, parked.recordId));
+  ], { ...(record === undefined ? {} : parkedWriteText(record, parked.readBack, parked.recordId)),
+    // After a failed read-back the frame preselects the read that files nothing.
+    ...(parked.readBack ? { recommend: "check-again" } : {}) });
 }
 
 /** The question and its context line; a park after the saved-effect read failed says the system accepted the write but its status could not be read. */

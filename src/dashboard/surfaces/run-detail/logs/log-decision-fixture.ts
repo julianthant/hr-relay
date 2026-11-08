@@ -112,7 +112,8 @@ export const logDecisionExamples = [
               "send": {
                 "via": "action",
                 "actionKey": "check-parked-write"
-              }
+              },
+              "recommended": true
             },
             {
               "id": "saved",
@@ -122,7 +123,6 @@ export const logDecisionExamples = [
                 "via": "action",
                 "actionKey": "recheck-write"
               },
-              "recommended": true,
               "input": {
                 "kind": "text",
                 "label": "Transaction number",
