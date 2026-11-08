@@ -721,6 +721,7 @@ timeline from each registered backend definition and preserves existing componen
 ## Removed routes and specimen
 
 Archive has no mounted page, Queue action, search entry, notification shortcut, or version-bump UI.
+The dashboard has no row context menus or mobile capture.
 A legacy Archive URL shows Archive page removed and a guarded Return to dashboard. Existing stored
 run data is not deleted by that notice. `surfaces/archive/archive-model.ts` remains a model; backend
 archival, historical evidence, and upgrade/migration authority remain separate from product navigation.
