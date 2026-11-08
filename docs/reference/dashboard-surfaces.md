@@ -833,7 +833,7 @@ pauses every run in the application lifecycle snapshot, including runs outside t
 When every target is paused it offers Resume all, retaining each command outcome. A single Resume,
 Retry or Recover shows Start's worker warning instead of the confirmed toast when that result
 carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
-runs have no worker. Command-Q opens
+runs have no worker, including when another run keeps the batch from confirming. Command-Q opens
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a
 banner until the runtime settles; no submit is interrupted. Unavailable authority disables controls,
 and unknown closure never becomes a completed pause or clean shutdown. Exact command recovery keeps

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { appliedWorkerStartupToast, workerStartupToast } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
+import { appliedWorkerStartupToast, unconfirmedBulkWorkerToast, workerStartupToast } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
 import { runLaunchAppliedToast } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import type { RunWorkerStartupFailure } from "../../../../src/rules/commands/commands.js";
 
@@ -52,6 +52,15 @@ describe("applied worker startup toast", () => {
     });
     assert.equal(appliedWorkerStartupToast({ family: "run", type: "resume", targets: [{}, {}] }, { state: "vector", results: [{ outcome: "applied" }, { outcome: "applied" }] }), undefined);
     assert.equal(appliedWorkerStartupToast({ family: "run", type: "cancel", targets: [{}] }, { state: "vector", results: [{ outcome: "applied", workerStartup: refused }] }), undefined);
+  });
+
+  it("warns for applied Resume all runs when another run keeps the batch unconfirmed", () => {
+    const request = { family: "run", type: "resume", targets: [{}, {}] };
+    const reply = { state: "vector", results: [{ outcome: "applied", workerStartup: refused }, { outcome: "refused" }] };
+    const warning = { tone: "warning" as const, title: "1 run queued; worker unavailable", description: MESSAGE };
+    assert.deepEqual(unconfirmedBulkWorkerToast(request, reply, false), warning);
+    assert.equal(unconfirmedBulkWorkerToast(request, reply, true), undefined);
+    assert.deepEqual(appliedWorkerStartupToast(request, reply), warning);
   });
 
   it("uses the unknown title when any Resume all run has an unknown worker", () => {

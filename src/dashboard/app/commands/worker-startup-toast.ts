@@ -58,3 +58,9 @@ export function appliedWorkerStartupToast(request: StartupRequest, reply: Startu
   if ((reply.state !== "applied" && reply.state !== "already-applied") || reply.workerStartup === undefined) return undefined;
   return workerStartupToast(reply.workerStartup);
 }
+
+/** Best-effort Resume all still names applied runs with no worker when a sibling keeps the parent unconfirmed. A confirmed parent is already warned. */
+export function unconfirmedBulkWorkerToast(request: StartupRequest, reply: StartupReply | undefined, parentConfirmed: boolean): WorkerStartupToast | undefined {
+  if (parentConfirmed || request.targets === undefined) return undefined;
+  return appliedWorkerStartupToast(request, reply);
+}
