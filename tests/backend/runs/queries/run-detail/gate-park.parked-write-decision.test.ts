@@ -50,21 +50,21 @@ describe("parkedWriteDecision", () => {
   });
 
   it("names the record by its display-safe identifier, like the frames", () => {
-    assert.equal(parkedWriteDecision({ ...TERMINATION, recordId: "10431187" }, [RECHECK, ABSENT]).context, "Submit did not confirm. Check Smart HR Transactions for 10431187.");
+    assert.equal(parkedWriteDecision({ ...TERMINATION, recordId: "10807012" }, [RECHECK, ABSENT]).context, "Submit did not confirm. Check Smart HR Transactions for 10807012.");
     assert.equal(parkedWriteDecision({ ...KUALI, recordId: "SIM-48216" }, [RECHECK, ABSENT]).context, "Save did not confirm. Check document SIM-48216 in Kuali.");
   });
 
   it("says the system accepted the write but its status could not be read when the saved-effect read failed", () => {
-    const decision = parkedWriteDecision({ ...TERMINATION, readBack: true, recordId: "10431187" }, [RECHECK, ABSENT]);
+    const decision = parkedWriteDecision({ ...TERMINATION, readBack: true, recordId: "10807012" }, [RECHECK, ABSENT]);
     assert.equal(decision.title, "Termination saved, but the read-back failed");
-    assert.equal(decision.context, "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions for 10431187.");
+    assert.equal(decision.context, "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions for 10807012.");
     assert.deepEqual(decision.options.map(({ id, recommended }) => [id, recommended]), [["saved", true], ["not-saved", undefined]], "the same answers; the copy changes, not the commands");
     assert.deepEqual(parkedWriteDecision({ ...TERMINATION, readBack: true }, [RECHECK, ABSENT, HELD]).options.map(({ id, recommended }) => [id, recommended]),
       [["check-again", true], ["saved", undefined], ["not-saved", undefined]], "where the held check is served, it is preselected");
   });
 
   it("reads the identifier only from the declared key segment, never a date, and refuses a declared key without it", () => {
-    assert.equal(parkedWriteRecordId("ucpath/create-termination", "ucpath:termination|10431187|2031-04-25"), "10431187");
+    assert.equal(parkedWriteRecordId("ucpath/create-termination", "ucpath:termination|10807012|2031-04-25"), "10807012");
     assert.equal(parkedWriteRecordId("kuali/save-separation-finalization", "kuali:SIM-48216|finalization|T00042871"), "SIM-48216");
     assert.equal(parkedWriteRecordId("ucpath/save-emergency-contact", "ucpath:emergency-contact|" + "a".repeat(64)), undefined);
     assert.equal(parkedWriteRecordId("ucpath/terminate-person", "anything"), undefined);
