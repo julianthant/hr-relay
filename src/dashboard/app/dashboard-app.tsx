@@ -65,7 +65,7 @@ import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
-import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection } from "../surfaces/queue/queue-model.js";
+import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection, queueRenameDraft } from "../surfaces/queue/queue-model.js";
 import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import {
   attentionQueueKeys,
@@ -845,10 +845,30 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
+  const renameQueueTitle = useCallback((runId: string, name: string) => {
+    const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === runId);
+    if (surface === undefined) {
+      toast({
+        tone: "danger",
+        title: "Nothing was sent",
+        description: `run ${runId} is not on the day this panel is showing, so there is no row to `
+          + "name. Open the day it ran on and rename it there.",
+      });
+      return;
+    }
+    const next = queueRenameDraft(surface, name);
+    if (next === undefined) return;
+    const action = surface.actions.find((entry): entry is CommandAction => entry.kind === "command" && entry.command === "rename");
+    if (action === undefined) {
+      toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text });
+      return;
+    }
+    dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
+  }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
     openWells, selectMode, bulkIds, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells, onBulkIds,
-    setBatchGrouping, exitQueueSelection, runQueueAction,
+    setBatchGrouping, exitQueueSelection, runQueueAction, renameTitle: renameQueueTitle,
   });
 
   const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, nowIso).map(entry => [entry.key, entry])), [surfaces, sort, nowIso]);

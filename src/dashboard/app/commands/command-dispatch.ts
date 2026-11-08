@@ -238,8 +238,12 @@ export function composeCommandRequest(
           reason: "no name was supplied; the rename dialog owns that value and nothing here may author one",
         };
       }
-      const problem = renameDraftProblem(answer);
-      if (problem !== undefined) return { state: "refused", reason: problem };
+      const trimmed = answer.trim();
+      // An empty name is the clear: the kernel restores the default title.
+      if (trimmed.length > 0) {
+        const problem = renameDraftProblem(answer);
+        if (problem !== undefined) return { state: "refused", reason: problem };
+      }
       return {
         state: "ready",
         request: {
@@ -247,7 +251,7 @@ export function composeCommandRequest(
           family: "run",
           type: "rename",
           target: { runId: target.runId, expectedVersion: action.expectedVersion },
-          payload: { displayName: answer.trim() },
+          payload: { displayName: trimmed },
         },
       };
     }
@@ -529,9 +533,14 @@ export async function verifyShellCommandEffect(
     }
     return { state: "matched", evidence: rows };
   }
-  if (request.type === "rename") return root.rowRevision === request.target.expectedVersion + 1
-    && root.displayName.state === "present" && root.displayName.value === request.payload.displayName
-    ? { state: "matched", evidence: root } : mismatch(root);
+  if (request.type === "rename") {
+    const name = request.payload.displayName.trim();
+    const nameMatches = name.length === 0
+      ? root.displayName.state === "absent"
+      : root.displayName.state === "present" && root.displayName.value === name;
+    return root.rowRevision === request.target.expectedVersion + 1 && nameMatches
+      ? { state: "matched", evidence: root } : mismatch(root);
+  }
   if (request.type === "pause" || request.type === "resume") {
     const commandId = lifecycleCommandId(`operator-${request.type}`, request.commandId);
     const matches = request.type === "pause" ? root.pause?.commandId === commandId

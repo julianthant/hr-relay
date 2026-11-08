@@ -111,6 +111,29 @@ describe('compact run headers', () => {
     } finally { act(() => root.unmount()); host.remove(); }
   });
 
+  it('shows the served name in the logs header and keeps it on a fresh render', () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), title: 'Jordan',
+      displayName: { state: 'present', value: 'April contacts' } });
+    const snapshot = { detail: { header: { title: 'April contacts' }, availableSections: ['logs'] }, logs: {}, unavailableEvidence: [] };
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    const draw = () => createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } });
+    try {
+      act(() => root.render(draw()));
+      assert.equal(host.querySelector('h2')?.textContent, 'April contacts');
+      act(() => root.unmount());
+      const reloaded = createRoot(host);
+      act(() => reloaded.render(draw()));
+      assert.equal(host.querySelector('h2')?.textContent, 'April contacts');
+      useRunWiring.mockReturnValue({ state: 'loading' });
+      act(() => reloaded.render(draw()));
+      assert.equal(host.querySelector('h2')?.textContent, 'April contacts');
+      act(() => reloaded.unmount());
+    } finally { host.remove(); }
+  });
+
   it('shows the source page and revision when earlier review changes no longer apply', () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
