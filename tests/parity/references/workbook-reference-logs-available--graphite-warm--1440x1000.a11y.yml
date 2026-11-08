@@ -101,22 +101,33 @@
       - region "Look up in roster":
         - time: 10:00:00
         - heading "Look up in roster" [level=3]
-        - group "Look up in roster":
+        - group "Pick the row to use":
           - time: 10:00:00
-          - article "Look up in roster":
-            - heading "Look up in roster" [level=4]
-            - text: Review
-            - paragraph: No unique roster row was found. Choose the matching row to continue.
-            - group "Which roster row belongs to this person?":
-              - text: Which roster row belongs to this person?
-              - 'radio "July 6 · Row 2 Email: example@example.edu · Legal name: Example, Person"'
-              - strong: July 6 · Row 2
-              - text: "Email: example@example.edu · Legal name: Example, Person"
-              - 'radio "August 2 · Row 3 Email: example@example.edu · Legal name: Another, Person"'
-              - strong: August 2 · Row 3
-              - text: "Email: example@example.edu · Legal name: Another, Person"
-            - text: No candidate selected
-            - button "Continue run" [disabled]
+          - form "Pick the row to use":
+            - heading "Roster rows" [level=4]
+            - text: Pick
+            - table "Roster rows":
+              - rowgroup:
+                - row "Choose Row Email fullName":
+                  - columnheader "Choose"
+                  - columnheader "Row"
+                  - columnheader "Email"
+                  - columnheader "fullName"
+              - rowgroup:
+                - row "July 6 · Row 2 July 6 · Row 2 example@example.edu Example, Person":
+                  - cell "July 6 · Row 2":
+                    - radio "July 6 · Row 2"
+                  - cell "July 6 · Row 2"
+                  - cell "example@example.edu"
+                  - cell "Example, Person"
+                - row "August 2 · Row 3 August 2 · Row 3 example@example.edu Another, Person":
+                  - cell "August 2 · Row 3":
+                    - radio "August 2 · Row 3"
+                  - cell "August 2 · Row 3"
+                  - cell "example@example.edu"
+                  - cell "Another, Person"
+            - paragraph: Pick the row to use No unique roster row was found. Choose the matching row to continue.
+            - button "Confirm" [disabled]
       - region "Run notes":
         - time: 10:00:00
         - heading "Run notes" [level=3]

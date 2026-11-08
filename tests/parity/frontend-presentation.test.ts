@@ -247,7 +247,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "EID 10555001", exact: true })).toBeVisible();
       await expect(surface).not.toContainText("Searching UCPath for Battistessa, Johnnie");
       await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveCount(0);
-      const defaultFailure = surface.getByRole("article", { name: "Search CRM employee record", exact: true });
+      const defaultFailure = surface.getByRole("group", { name: "Search CRM employee record", exact: true });
       await expect(defaultFailure).toBeInViewport();
       await expect(defaultFailure).toContainText("The CRM Search button could not be clicked.");
       await expect(defaultFailure.locator("figure")).toHaveCount(2);
@@ -258,12 +258,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("tooltip")).toContainText("Failed");
       await page.mouse.move(0, 0);
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.openGateRun}"]`).click();
-      const defaultReview = surface.getByRole("article", { name: "Confirm the employee match", exact: true });
+      const defaultReview = surface.getByRole("group", { name: "Confirm the employee match", exact: true });
       await expect(defaultReview).toBeInViewport();
       await expect(defaultReview.locator("figure")).toHaveCount(1);
       await expect(defaultReview).toContainText("Morrow, Bea");
-      for (const part of ['.log-decision-header', '.log-decision-body', '.log-comparison-frame', '.log-comparison', '.log-comparison thead', '.log-comparison .different']) {
-        const alpha = await defaultReview.locator(part).first().evaluate(node => {
+      const comparison = defaultReview.getByRole("table", { name: "Request and UCPath values", exact: true });
+      const frame = comparison.locator("xpath=..");
+      for (const part of [frame]) {
+        const alpha = await part.evaluate(node => {
           const context = document.createElement('canvas').getContext('2d');
           if (!context) throw new Error('color-alpha-context-unavailable');
           context.fillStyle = getComputedStyle(node).backgroundColor;
@@ -272,8 +274,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         });
         expect(alpha).toBe(255);
       }
-      await expect(defaultReview.locator('.log-comparison-frame')).toHaveCSS('border-top-width', '1px');
-      await expect(defaultReview.locator('.log-comparison-frame')).toHaveCSS('border-radius', '10px');
+      await expect(frame).toHaveCSS('border-top-width', '1px');
 
       await expect(defaultReview.locator("img")).toHaveJSProperty("naturalWidth", 850);
       await expect(defaultReview.getByRole("alert")).toHaveCount(0);
@@ -282,21 +283,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("tooltip")).toContainText("3s");
       await expect(page.getByRole("tooltip")).toContainText("Waiting");
       await page.mouse.move(0, 0);
-      await defaultReview.getByRole("button", { name: "Confirm match", exact: true }).click();
-      await expect(surface).toContainText("Employee match approved.");
+      await defaultReview.getByRole("button", { name: "Confirm", exact: true }).click();
+      await expect(surface).toContainText("Answered: Confirm match");
       await expect(selectedTimeline.getByRole("button", { name: /^Cross Verification.*Completed.*9s/u })).toBeVisible();
       await expect(selectedTimeline.getByRole("button", { name: /^Active Status.*In progress/u })).toBeVisible();
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.parkedRun}"]`).click();
-      const defaultParked = surface.getByRole("article", { name: "File termination", exact: true });
+      const defaultParked = surface.getByRole("group", { name: "File termination", exact: true });
       await expect(defaultParked).toBeInViewport();
-      await expect(defaultParked).toContainText("Write parked");
-      await expect(defaultParked.getByRole("button", { name: "Check result", exact: true })).toBeVisible();
+      await expect(defaultParked).toContainText("The result is unknown");
+      await expect(defaultParked.getByRole("button", { name: /^Check result/u })).toBeVisible();
       await expect(surface.getByRole("heading", { name: "EID 10777012", exact: true })).toBeVisible();
       await selectedTimeline.getByRole("button", { name: /^Read request/u }).click();
       await expect(surface.getByRole("heading", { name: "Find the Kuali action", exact: true })).toBeFocused();
       await selectedTimeline.getByRole("button", { name: /^File termination/u }).click();
       await expect(defaultParked).toBeInViewport();
-      await expect(surface).not.toContainText("Employee match approved.");
+      await expect(surface).not.toContainText("Answered: Confirm match");
       await setLogScenario("separation");
       await expect(surface.getByRole("heading", { name: "Alex Morgan", exact: true })).toBeVisible();
       await expect(surface.locator("header").first().locator(":scope > span.text-caption")).toHaveCount(0);

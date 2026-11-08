@@ -695,30 +695,28 @@
         - time: 09:32:39
         - heading "Run decision" [level=3]
         - group "Finalize Kuali document":
-          - article "Finalize Kuali document":
+          - figure "Last browser view":
+            - text: UCPath
+            - button "Enlarge screenshot captured at 09:32:39":
+              - img "Last browser view"
+            - text: Last browser view
+          - figure "Failed action":
+            - text: Kuali
+            - button "Enlarge screenshot captured at 09:32:39":
+              - img "Failed action"
+            - text: Failed action
+          - figure "Last browser view":
+            - text: Kronos
+            - button "Enlarge screenshot captured at 09:32:39":
+              - img "Last browser view"
+            - text: Last browser view
+          - form "Finalize Kuali document":
             - heading "Finalize Kuali document" [level=4]
-            - text: Failed
-            - paragraph: The comments field could not be found.
+            - paragraph: The comments field could not be found. UCPath termination already verified
             - paragraph:
               - text: While trying to
               - strong: fill timekeeper comments
             - paragraph: Last completed · UCPath termination verified
-            - figure "Last browser view":
-              - text: UCPath
-              - button "Enlarge screenshot captured at 09:32:39":
-                - img "Last browser view"
-              - text: Last browser view
-            - figure "Failed action":
-              - text: Kuali
-              - button "Enlarge screenshot captured at 09:32:39":
-                - img "Failed action"
-              - text: Failed action
-            - figure "Last browser view":
-              - text: Kronos
-              - button "Enlarge screenshot captured at 09:32:39":
-                - img "Last browser view"
-              - text: Last browser view
-            - text: UCPath termination already verified
             - button "Retry Kuali step"
     - group:
       - searchbox "Search logs"

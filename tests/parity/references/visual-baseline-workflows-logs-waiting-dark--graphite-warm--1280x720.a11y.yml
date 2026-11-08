@@ -524,17 +524,21 @@
         - time: 09:32:39
         - heading "Run decision" [level=3]
         - group "Confirm the last day worked":
-          - article "Confirm the last day worked":
+          - figure "Source request":
+            - text: Kuali Browser
+            - button "Enlarge screenshot captured at 09:31:10":
+              - img "Source request"
+            - text: Source request
+          - form "Confirm the last day worked":
             - heading "Confirm the last day worked" [level=4]
-            - text: Review
             - paragraph: The last day worked is unclear on the request.
-            - figure "Source request":
-              - text: Kuali Browser
-              - button "Enlarge screenshot captured at 09:31:10":
-                - img "Source request"
-              - text: Source request
-            - text: Kuali · source request
-            - button "Enter date"
+            - text: Last day worked
+            - group "Last day worked":
+              - spinbutton "month, Last day worked": mm
+              - spinbutton "day, Last day worked": dd
+              - spinbutton "year, Last day worked": yyyy
+              - button "Choose last day worked date Last day worked"
+            - button "Enter date" [disabled]
     - group:
       - searchbox "Search logs"
     - status: 38 actions
