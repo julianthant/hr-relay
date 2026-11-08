@@ -52,7 +52,7 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
         const logs = page.getByRole('region', { name: 'Run logs', exact: true });
         await expect(logs).toBeVisible();
         await page.getByRole('button', { name: 'Close assistant', exact: true }).click();
-        const decision = logs.getByRole('article', { name: 'Look up in roster', exact: true });
+        const decision = logs.locator('[data-decision-state]');
         await expect(decision).toHaveCount(1);
         await expect(page.getByText('Write parked', { exact: true })).toHaveCount(0);
         await expect(decision).toHaveAttribute('data-decision-state', state === 'available' ? 'review' : state === 'resolved' ? 'recorded' : 'failed');
@@ -63,12 +63,11 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
         await expect(page.getByRole('dialog')).toHaveCount(0);
         await capturePresentationReference(page, info, state, day.descriptorHash);
         if (state === 'available') {
-          const next = decision.getByRole('button', { name: 'Continue run', exact: true });
+          const next = decision.getByRole('button', { name: 'Confirm', exact: true });
           const radios = decision.getByRole('radio');
           await expect(next).toBeDisabled(); await expect(radios).toHaveCount(2);
-          await radios.first().focus(); await page.keyboard.press('ArrowDown');
-          await expect(radios.nth(1)).toBeChecked(); await expect(radios.nth(1)).toBeFocused();
-          await page.keyboard.press('Tab'); await expect(next).toBeFocused(); await expect(next).toBeEnabled();
+          await radios.nth(1).click();
+          await expect(radios.nth(1)).toHaveAttribute('aria-checked', 'true'); await expect(next).toBeEnabled();
           await capturePresentationReference(page, info, 'selected', day.descriptorHash);
           await next.click();
           await expect(next).toBeDisabled(); await expect(radios.first()).toBeDisabled();

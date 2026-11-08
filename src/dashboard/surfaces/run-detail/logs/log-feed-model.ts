@@ -6,6 +6,8 @@ export type LogField = Readonly<{
   kind: "read" | "fill" | "compute";
   label: string;
   value: string;
+  /** The read failed before a value was observed. */
+  unread?: true;
 }>;
 
 export type LogScreenshot = Readonly<{
