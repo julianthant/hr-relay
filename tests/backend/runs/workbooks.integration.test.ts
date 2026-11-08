@@ -5,6 +5,7 @@ import { afterAll, afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { buildRunWorkbookSection, createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
+import { decisionAnswerer } from "../../../src/backend/runs/decisions/decision-answer.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookLibraryAdapter } from "../../../src/backend/processing/providers/workbook-library-adapter.js";
 import { createProviderClient } from "../../../src/backend/processing/providers/provider-client.js";
@@ -213,6 +214,10 @@ it("serves a resolve-required Logs row choice and applies only the retained valu
   expect(result.state).toBe("applied");
   const after = f.section(run);
   expect(after.operations[0].resolution).toEqual({ state: "resolved" });
+  const answered = f.database.withAuthorityReadSnapshot(() => buildRunWorkbookSection(f.database.authority, run,
+    decisionAnswerer(f.database.authority.commands, () => "Fixture Operator")));
+  expect(answered.operations[0].resolution).toEqual({ state: "resolved", answer: { optionId: "confirm", label: "Confirm row", at: NOW,
+    actor: { kind: "person", name: "Fixture Operator" } } });
   expect(after.operations[1].receipt).toMatchObject({ state: "applied", changes: [{ newValue: "complete" }] });
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBe("complete");
   expect(f.library.read(f.id).workbook.sheets[1].rows[1].cells[1].value).toBeNull();
@@ -254,6 +259,12 @@ it("requires a choice after master changes and never offers a worksheet added af
   const section = f.section(run), resolution = section.operations[0].resolution;
   assert.equal(resolution.state, "available"); if (resolution.state !== "available") return;
   expect(resolution.candidates.map(value => value.sheetId)).toEqual(["people"]);
+  const pick = resolution.decision?.options[0];
+  expect([resolution.decision?.type, pick?.send]).toEqual(["workbook-row", { via: "action", actionKey: "resolve-workbook-row" }]);
+  const table = pick?.input?.kind === "candidate" ? pick.input.table : undefined;
+  expect(table?.rows.map(({ sheetId, rowId }) => ({ sheetId, rowId }))).toEqual(resolution.candidates.map(({ sheetId, rowId }) => ({ sheetId, rowId })));
+  expect(table?.rows.every(({ rowNumber }) => rowNumber !== undefined && rowNumber > 0)).toBe(true);
+  expect(table?.typed?.pattern).toBe("^[1-9]\\d*$");
   const command = f.choice(run);
   expect(f.kernel.execute({ ...command, payload: { sheetId: "new-sheet", rowId: "people-person" } }).state).toBe("rejected");
   expect(f.kernel.execute({ ...command, commandId: world.nextCommandId(), target: { ...command.target, receiptDigest: "f".repeat(64) },

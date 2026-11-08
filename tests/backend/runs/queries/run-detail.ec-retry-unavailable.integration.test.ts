@@ -43,6 +43,9 @@ function retryFromLogs(f: Awaited<ReturnType<typeof world.fixture>>, failed: Run
   assert.equal(detail.rowRevision, failed.version);
   assert.deepEqual(detail.childRetry, { key: "retry-child", label: "Retry", kind: "command", command: "retry",
     expectedVersion: failed.version, intent: "neutral", icon: "retry", placement: ["banner"] });
+  // D9: the member decision sends exactly the served child retry.
+  assert.equal(detail.decision?.type, "member-failed");
+  assert.deepEqual(detail.decision?.options.map(({ id, send }) => [id, send]), [["retry", { via: "action", actionKey: "retry-child" }]]);
   const action = detail.childRetry; assert.ok(action);
   const command = retryCommand(f, detail.runId, action.expectedVersion);
   const parent = repos.runs.get(f.parentRun.envelope.runId); assert.ok(parent);

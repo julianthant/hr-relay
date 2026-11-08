@@ -1,6 +1,9 @@
 // Serve each section through its own evidence state; absent sections never look like empty successful reads.
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js";
+import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
+import type { RunDecisionWire } from "../../../models/dashboard/run-decision.js";
+import { projectDecision, rowActionOption } from "../decisions/project-decision.js";
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
 import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
@@ -353,17 +356,22 @@ export function buildRunDetail(
   const review = authority.envelope.workflow === "ocr" && canonical !== undefined
     ? canonical.database.withAuthorityReadSnapshot(() => readOcrReviewAuthority(canonical.database.authority, canonical.reader, runId)) : undefined;
   const reviewAvailable = review !== undefined;
+  const childRetry = canonical === undefined || !(ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
+      workflowId => canonical.descriptors.resolve(workflowId)) || aggregateMemberRetryAvailable(canonical.database.authority, canonical.reader, authority,
+      workflowId => canonical.descriptors.resolve(workflowId))) ? undefined : {
+    key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: authority.version,
+    intent: "neutral", icon: "retry", placement: ["banner"],
+  };
+  const surface = deps.projection.queueSurface(runId);
+  const decision = runLevelDecision({ status, childRetryKey: childRetry?.key, paused: surface?.pauseControl?.state === "paused",
+    stalled: lifecycle.state === "terminal" && lifecycle.outcome === "interrupted", rowActions: surface?.actions });
   return RunDetailWireSchema.parse({
     runId,
     rowRevision: authority.version,
     ...(review === undefined ? {} : { ocrRecordCount: review.revision.records.length }),
     ...(review === undefined || review.invalidatedCorrections.length === 0 ? {} : { ocrReviewChanges: review.invalidatedCorrections }),
-    ...(canonical === undefined || !(ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
-      workflowId => canonical.descriptors.resolve(workflowId)) || aggregateMemberRetryAvailable(canonical.database.authority, canonical.reader, authority,
-      workflowId => canonical.descriptors.resolve(workflowId))) ? {} : {
-      childRetry: { key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: authority.version,
-        intent: "neutral", icon: "retry", placement: ["banner"] },
-    }),
+    ...(childRetry === undefined ? {} : { childRetry }),
+    ...(decision === undefined ? {} : { decision }),
     panelKind: panelKindOf(authority.envelope.shape, reviewAvailable),
     header: {
       runId,
@@ -413,6 +421,15 @@ export function buildRunDetail(
     ...(omittedSteps.length === 0 ? {} : { omittedSteps }),
     availableSections: availableSections(row, authority, deps.trust, captures, reviewAvailable),
   });
+}
+
+/** The run-level decision: a failed member's own retry (D9), a cancel that has not settled (D16), a paused run (D13) or an interrupted one (D14); run controls send the queue row's own descriptors. */
+export function runLevelDecision(facts: Readonly<{ status: string; childRetryKey?: string; paused: boolean; stalled: boolean; rowActions?: readonly ActionDescriptorWire[] }>): RunDecisionWire | undefined {
+  if (facts.childRetryKey !== undefined) return projectDecision("member-failed", [{ id: "retry", send: { via: "action", actionKey: facts.childRetryKey } }]);
+  if (facts.status === "cancelling") return projectDecision("cancelling", []);
+  if (facts.paused) return projectDecision("paused", [...rowActionOption("resume", "resume", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
+  if (facts.stalled) return projectDecision("stalled", [...rowActionOption("recover", "recover-run", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
+  return undefined;
 }
 
 /** The live route adds async capture verification; Archive's synchronous `buildRunDetail` freeze does not inspect that authority. */
