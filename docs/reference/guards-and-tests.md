@@ -490,7 +490,7 @@ and its own violating scratch fixture. The scanners are not separate inventory g
 | `import-cycles` | `src` | Runtime import cycles. Erased type imports are excluded; value, mixed-value, side-effect imports and exports remain covered. |
 | `control-layering` | `src` | Lower-to-higher imports against its current layer classification, including type imports. |
 | `code-conventions` | `src` | Disallowed default exports, filenames, non-dashboard TSX, console calls, and raw control bytes. |
-| `frontend-tailwind-compliance` | `src/dashboard` | Palette literals, arbitrary z-index, motion without reduced-motion handling, and images without alt text. |
+| `frontend-tailwind-compliance` | `src/dashboard` | Palette literals, raw hex colors, arbitrary z-index, motion without reduced-motion handling, and images without alt text. `#245d9e` and `#ffffff` are allowed only in `src/dashboard/surfaces/shell/app-logo.ts`: they are the Baton app icon's fixed plate and white glyph. Any other hex there, or either color in another dashboard file, still fails. |
 
 The catch scanner's reviewed exceptions live in
 `tests/architecture/tooling/helpers/reviewed-catch-defaults.ts`. Each file keeps its reviewed reason
