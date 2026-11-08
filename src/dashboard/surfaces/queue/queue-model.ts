@@ -191,7 +191,7 @@ export const BAND_LABEL: Record<QueueBandKey, string> = {
 
 /** Bands count drawn rows; only the served status projection reports day totals. */
 export function bandOf(status: ProposedStatus): QueueBandKey {
-  if (status === "waiting" || status === "parked") return "attention";
+  if (status === "waiting" || status === "parked" || status === "failed") return "attention";
   if (status === "running" || status === "cancelling") return "active";
   if (status === "queued") return "queued";
   return "finished";
@@ -224,6 +224,13 @@ function elapsedMs(surface: QueueSortRow, nowIso: string): number {
 /** Keep operator displayName separate from system title so renamed subjects remain identifiable. */
 export function queueRowTitle(surface: QueueSurfaceWire): string {
   return surface.displayName.state === "present" ? surface.displayName.value : surface.title;
+}
+
+/** What an in-place rename sends. Empty clears a custom name; an unchanged visible name is not a command. */
+export function queueRenameDraft(surface: QueueSurfaceWire, draft: string): string | undefined {
+  const trimmed = draft.trim();
+  if (trimmed.length === 0) return surface.displayName.state === "present" ? "" : undefined;
+  return trimmed === queueRowTitle(surface) ? undefined : trimmed;
 }
 
 /** Renamed rows disclose their original subject; unchanged titles need no explanatory tooltip. */
