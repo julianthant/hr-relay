@@ -24,6 +24,13 @@ export const GateDecisionArmSchema = z.strictObject({
   outcome: GateDecisionOutcomeSchema,
   /** The receipt sentence this arm leads with, in the operator's language. */
   summary: z.string().min(1),
+  /** The option the operator picks, and its one-line hint; served as the run decision's text. */
+  label: z.string().min(1),
+  hint: z.string().min(1),
+  /** The fixed reason a rejection records, because the decision asks for no typed reason. */
+  rejectReason: z.string().min(1).optional(),
+}).superRefine((arm, context) => {
+  if ((arm.outcome === "rejected") !== (arm.rejectReason !== undefined)) context.addIssue({ code: "custom", path: ["rejectReason"], message: "a rejected arm, and only a rejected arm, declares its recorded reason" });
 });
 
 export const GateResolutionPolicySchema = z.union([
@@ -61,19 +68,23 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
   ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].map(workflowId => ({
     workflowId, gateId: "document-row-choice", decisionPath: "decision", boundEvidencePath: "referenceDigest",
     resolution: { source: "workbook-reference", boundNodeId: "document-rows", boundOutputPath: "referenceDigest" },
-    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the CRM document batch" }],
+    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the CRM document batch",
+      label: "Use the selected rows", hint: "Download documents for the rows picked for each person." }],
   })),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].map(workflowId => ({
     workflowId, gateId: "roster-choice", decisionPath: "decision", boundEvidencePath: "row.binding.referenceDigest",
     resolution: { source: "workbook-reference", boundInputPath: "roster.binding.referenceDigest",
       inputCondition: { path: "roster.state", equals: "resolve-required" } },
-    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected this roster row for the hire review" }],
+    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected this roster row for the hire review",
+      label: "Use this roster row", hint: "Continue the hire review with the picked roster row." }],
   })),
   ...["onboarding", "onboarding-hire-writes"].map(workflowId => ({
     workflowId, gateId: "hire-review", decisionPath: "decision", resolution: { source: "operator" },
     arms: [
-      { value: "new-hire", outcome: "approved", summary: "an operator reviewed the complete transaction findings and approved a new hire" },
-      { value: "existing-person", outcome: "approved", summary: "an operator selected an independently confirmed existing EID for a concurrent hire" },
+      { value: "new-hire", outcome: "approved", summary: "an operator reviewed the complete transaction findings and approved a new hire",
+        label: "Approve new hire", hint: "The findings show no existing record. Relay files a new hire." },
+      { value: "existing-person", outcome: "approved", summary: "an operator selected an independently confirmed existing EID for a concurrent hire",
+        label: "Use existing employee", hint: "Hire under the confirmed existing employee ID." },
     ],
   })),
     /* The name-resolved identity approval: a supplied EID creates no gate row, and when this gate does open, `rejected` terminalizes the run, so both arms are real outcomes. */
@@ -86,11 +97,16 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       {
         value: "approved",
         outcome: "approved",
+        label: "Approve match",
+        hint: "The person found is the one the request means.",
         summary: "an operator approved this name-resolved identity",
       },
       {
         value: "rejected",
         outcome: "rejected",
+        label: "Reject match",
+        hint: "This is not the right person. The run stops.",
+        rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this name-resolved identity",
       },
     ],
@@ -106,11 +122,16 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       {
         value: "approved",
         outcome: "approved",
+        label: "Approve match",
+        hint: "The person found is the one the request means.",
         summary: "an operator approved this identity before the UCPath termination was filed",
       },
       {
         value: "rejected",
         outcome: "rejected",
+        label: "Reject match",
+        hint: "This is not the right person. The run stops.",
+        rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this identity, so no UCPath termination was filed",
       },
     ],
@@ -126,11 +147,16 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       {
         value: "approved",
         outcome: "approved",
+        label: "Approve match",
+        hint: "The person found is the one the request means.",
         summary: "an operator approved this identity before the Kuali document was finalized",
       },
       {
         value: "rejected",
         outcome: "rejected",
+        label: "Reject match",
+        hint: "This is not the right person. The run stops.",
+        rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this identity, so the Kuali document was not finalized",
       },
     ],
@@ -146,12 +172,17 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       {
         value: "approved",
         outcome: "approved",
+        label: "Approve match",
+        hint: "The person found is the one the request means.",
         summary: "an operator approved this identity, and the write plan it consumes, before any "
           + "termination was filed",
       },
       {
         value: "rejected",
         outcome: "rejected",
+        label: "Reject match",
+        hint: "This is not the right person. The run stops.",
+        rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this identity, so no termination was filed and the Kuali "
           + "document was left untouched",
       },

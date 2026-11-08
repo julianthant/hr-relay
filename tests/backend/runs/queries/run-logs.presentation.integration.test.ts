@@ -32,8 +32,8 @@ it("labels every observed candidate by exact declared container paths while omit
   const fields = row.displayFields ?? [];
   assert.equal(fields.length, 9);
   for (const label of ["Employee ID", "Name", "Job title", "HR status"]) assert.equal(fields.filter(field => field.label === label).length, 2);
-  assert.deepEqual(fields.filter(field => field.label === "Department").map(field => field.value), ["CAMPUS DINING OPERATIONS"]);
-  assert.deepEqual(fields.filter(field => field.label === "Name").map(field => field.value), ["Quillan, Petra A.", "Fable, Rowan B."]);
+  assert.deepEqual(fields.filter(field => field.label === "Department").map(field => "value" in field ? field.value : "unread"), ["CAMPUS DINING OPERATIONS"]);
+  assert.deepEqual(fields.filter(field => field.label === "Name").map(field => "value" in field ? field.value : "unread"), ["Quillan, Petra A.", "Fable, Rowan B."]);
   assert.doesNotMatch(JSON.stringify(fields), /results|selection\.|internalKey|null|input ·|output ·/u);
   assert.equal(row.points.length, 9);
   assert.doesNotMatch(JSON.stringify(row.points), /internalKey/u);
@@ -98,7 +98,7 @@ it("lists retained M1b hits and each dropped candidate with its reason through s
   const detail = buildRunDetail(deps, run.envelope.runId);
   const section = buildRunLogsSection(deps, run.envelope.runId, w.projection.runFold(run.envelope.runId), run); assert.ok(section.section === "logs");
   const row = section.payload.rows?.find(row => row.kind === "observed"); assert.ok(row?.kind === "observed", "retained M1b candidates must enter served Logs");
-  assert.deepEqual(row.displayFields?.map(field => [field.label, field.value]), [
+  assert.deepEqual(row.displayFields?.map(field => [field.label, "value" in field ? field.value : "unread"]), [
     ...hits.flatMap(hit => [["Employee ID", hit.emplId], ["Name", hit.name]]),
     ...dropped.flatMap(hit => [["Employee ID", hit.emplId], ["Name", hit.name], ["Drop reason", hit.reason]]),
   ]);

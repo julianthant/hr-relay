@@ -101,6 +101,18 @@ hdh: false,
           tone: disagreements.length === 0 ? "neutral" : "destructive",
         },
       },
+      {
+        key: "resolve-gate-rejected",
+        label: "Reject match",
+        detail: "This is not the right person. The run stops.",
+        intent: "destructive",
+        icon: "cancel",
+        placement: ["footer"],
+        kind: "command",
+        command: "resolve-gate",
+        expectedVersion,
+        resolution: "rejected",
+      },
     ];
   }
 
@@ -129,6 +141,7 @@ hdh: false,
       options: optionsOf(packet),
       approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
       actions: fixtureIdentityGateActions(packet, input.expectedVersion),
+      rejectReason: "Rejected in Logs",
     });
   }
 

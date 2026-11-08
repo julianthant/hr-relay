@@ -359,6 +359,7 @@ function logRowOf(
   sequence: number,
   authority?: RunRecord,
   operatorOnly = false,
+  unreadLabels: readonly string[] = [],
 ): unknown {
   const logId = logIdOf(entry);
   const identity = entry.kind === "note" ? entry.note : entry.event;
@@ -414,7 +415,8 @@ function logRowOf(
       spanPath: entry.event.spanPath,
       producer,
       points: fields?.map(field => field.point) ?? entry.event.points,
-      ...(fields === undefined ? {} : { displayFields: fields.map(({ point: _point, ...field }) => field) }),
+      ...(fields === undefined ? {} : { displayFields: [...fields.map(({ point: _point, ...field }) => field),
+        ...unreadLabels.map(label => ({ direction: "read" as const, label, unread: true as const }))] }),
     };
   }
   return {
@@ -460,6 +462,27 @@ function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
   }) });
 }
 
+/** When the run failed on a read, the node's declared output fields it never observed in that attempt, carried on its last observed row. A read that observed nothing has no row to carry them. */
+function unreadReadFields(deps: RunDetailQueryDeps, authority: RunRecord, entries: readonly RunLogScanEntry[]) {
+  const { lifecycle } = authority;
+  if (lifecycle.state !== "terminal" || lifecycle.outcome !== "failed" || lifecycle.failureId === undefined) return undefined;
+  const failure = deps.trust?.getFailure(lifecycle.failureId);
+  if (failure?.nodeId === undefined || failure.taskId === undefined) return undefined;
+  const origin = deps.descriptors.resolve(authority.envelope.workflow)?.dataOrigins
+    ?.find(entry => entry.nodeId === failure.nodeId && entry.taskId === failure.taskId);
+  if (origin?.dir !== "read") return undefined;
+  const observed = entries.filter((entry): entry is Extract<RunLogScanEntry, { kind: "observed" }> => entry.kind === "observed"
+    && entry.producer.nodeId === failure.nodeId && entry.producer.taskId === failure.taskId && entry.event.attempt === failure.attempt);
+  const last = observed.at(-1);
+  if (last === undefined) return undefined;
+  const keys = observed.flatMap(entry => entry.event.points.flatMap(point => point.values.map(({ key }) => key)));
+  const outputs = (last.producer.operatorFields ?? []).filter(field => field.kind === "output");
+  const seen = new Set(outputs.filter(field => keys.some(key => field.fieldPath === key || field.fieldPath.startsWith(`${key}.`)))
+    .map(({ label }) => label));
+  const labels = [...new Set(outputs.map(({ label }) => label))].filter(label => !seen.has(label));
+  return labels.length === 0 ? undefined : { logId: logIdOf(last), labels };
+}
+
 export function buildRunLogsSection(
   deps: RunDetailQueryDeps,
   runId: string,
@@ -484,11 +507,13 @@ export function buildRunLogsSection(
   }
   const all = snapshot.entries;
   const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
+  const unread = unreadReadFields(deps, authority, all);
   const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
     entry,
     offset + index,
     authority,
     true,
+    unread?.logId === logIdOf(entry) ? unread.labels : [],
   )));
   return RunDetailSectionResponseSchema.parse({
     section,

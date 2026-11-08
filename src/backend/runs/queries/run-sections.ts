@@ -1,3 +1,4 @@
+import { decisionAnswerer } from "../decisions/decision-answer.js";
 import {
   type RunDetailSectionResponse,
 } from "../../../models/dashboard/run-detail.js";
@@ -44,7 +45,8 @@ export function buildRunSection(
       return { section, payload: canonical.database.withAuthorityReadSnapshot(() => {
         const run = requireTrustRun(deps.runReader, runId);
         if (run.input.workbookReferences === undefined) throw new SectionUnavailableError("Workbook reference authority is unavailable.");
-        return buildRunWorkbookSection(canonical.database.authority, run);
+        return buildRunWorkbookSection(canonical.database.authority, run,
+          deps.operatorName === undefined ? undefined : decisionAnswerer(canonical.database.authority.commands, deps.operatorName));
       }) };
     }
     case "context-data":
