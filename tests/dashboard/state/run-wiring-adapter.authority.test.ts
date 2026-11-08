@@ -9,7 +9,9 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient,type DashboardClient } from "../../../src/dashboard/client/index.js";
-import { projectRunLogs, failureLogActions, gateLogActions, parkedWriteLogActions, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { failureDecision } from "../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { parkedWriteDecision } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { projectRunLogs, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/actions/actions.js";
@@ -29,7 +31,7 @@ import { separationsDescriptor } from "../../support/helpers/registered-workflow
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 import { UcpathReadTransactionFindings } from "../../../src/models/systems/ucpath/read-transaction-findings.js";
 import { workbookReferenceChoice, workbookReferenceDetail } from "../../support/fixtures/workbook-reference-choice.js";
-import { workbookReferenceChoiceId, workbookReferenceLogActions, workbookRowChoiceId } from "../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
+import { workbookReferenceChoiceId } from "../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -208,9 +210,9 @@ it("continues a reference choice inline and retains its exact uncertain command 
   } as unknown as DashboardClient;
   let confirmations = 0;
   const h = await harness(client, () => { confirmations++; }); await h.render(selected);
-  const id = workbookReferenceChoiceId(f.choice), action = workbookReferenceLogActions(f.choice)[0];
+  const id = workbookReferenceChoiceId(f.choice), action = servedReferenceOption(f);
   await act(async () => h.state?.onDecision?.(id, action, { candidate: 'foreign' })); assert.equal(sent.length, 0);
-  await act(async () => h.state?.onDecision?.(id, action, { candidate: workbookRowChoiceId(f.candidates[1]) }));
+  await act(async () => h.state?.onDecision?.(id, action, { candidate: `${f.candidates[1].sheetId}/${f.candidates[1].rowId}` }));
   assert.equal(confirmations, 0); assert.equal(sent.length, 1);
   assert.equal(sent[0].type, 'resolve-workbook-reference-row');
   assert.deepEqual(sent[0].payload, { sheetId: f.candidates[1].sheetId, rowId: f.candidates[1].rowId });
@@ -283,7 +285,7 @@ describe("served Logs decision authority", () => {
     const sent: CommandRequest[] = [];
     const h = await harness(gateClient(gate, selected, sent), (pending, onConfirmed) => { requested.push({ pending, onConfirmed }); });
     await h.render(selected);
-    const approve = gateLogActions(gate)[0];
+    const approve = gate.decision!.options[0];
     assert.ok(approve); assert.ok(h.state?.onDecision);
     await act(async () => h.state?.onDecision?.(gate.gateId, approve, {}));
     assert.equal(sent.length, 0);
@@ -310,7 +312,7 @@ describe("served Logs decision authority", () => {
     const sent: CommandRequest[] = [];
     const h = await harness(gateClient(gate, selected, sent), (_pending, onConfirmed) => { requested.push(onConfirmed); });
     await h.render(selected);
-    const approve = gateLogActions(gate)[0];
+    const approve = gate.decision!.options[0];
     assert.ok(approve); assert.equal(approve.input?.kind, "candidate");
     await act(async () => h.state?.onDecision?.(gate.gateId, approve, { candidate: gate.options[1].eid }));
     assert.equal(sent.length, 0);
@@ -326,7 +328,7 @@ describe("served Logs decision authority", () => {
     const sent: CommandRequest[] = [];
     const h = await harness(gateClient(gate, selected, sent), (_pending, onConfirmed) => { requested.push(onConfirmed); });
     await h.render(selected);
-    await act(async () => h.state?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {}));
+    await act(async () => h.state?.onDecision?.(gate.gateId, gate.decision!.options[0], {}));
     await h.render(selectionAt(4));
     await act(async () => { requested[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.equal(sent.length, 0);
@@ -339,8 +341,8 @@ describe("served Logs decision authority", () => {
     const sent: CommandRequest[] = [];
     const h = await harness(gateClient(gate, selected, sent));
     await h.render(selected);
-    assert.ok(h.state?.onDecision); assert.ok(gateLogActions(gate)[0]);
-    await act(async () => h.state?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {}));
+    assert.ok(h.state?.onDecision); assert.ok(gate.decision!.options[0]);
+    await act(async () => h.state?.onDecision?.(gate.gateId, gate.decision!.options[0], {}));
     assert.equal(sent.length, 0);
   });
 
@@ -351,7 +353,7 @@ describe("served Logs decision authority", () => {
     const sent: CommandRequest[] = [];
     const h = await harness(gateClient(gate, selected, sent), (_pending, onConfirmed) => { requested.push(onConfirmed); });
     await h.render(selected);
-    await act(async () => h.state?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {}));
+    await act(async () => h.state?.onDecision?.(gate.gateId, gate.decision!.options[0], {}));
     assert.equal(requested.length, 1);
     await act(async () => root?.unmount());
     root = undefined;
@@ -361,9 +363,9 @@ describe("served Logs decision authority", () => {
   });
 
   it("offers a name-mismatch gate as a pick and never a rejection", () => {
-    assert.equal(gateLogActions(servedGate(fixtures.NAME_MISMATCH))[0]?.input?.kind, "candidate");
-    const oneClick = servedGate(fixtures.ONE_CLICK);
-    assert.deepEqual(gateLogActions({ ...oneClick, actions: [{ ...identityApprovalAction("Reject"), key: "resolve-gate-rejected", resolution: "rejected", confirm: CONFIRM }] }), []);
+    const pick = servedGate(fixtures.NAME_MISMATCH).decision;
+    assert.equal(pick?.type, "pick-person"); assert.equal(pick.options[0]?.input?.kind, "candidate");
+    assert.deepEqual(pick.options.filter(option => option.id === "reject"), []);
   });
 
   it("waits for the selected row to catch up when run detail is a newer revision", async () => {
@@ -407,16 +409,28 @@ describe("served Logs decision authority", () => {
   });
 });
 
+function withParkedDecision(write: ReturnType<typeof ParkedWriteDetailWireSchema.parse>) {
+  return ParkedWriteDetailWireSchema.parse({ ...write, decision: parkedWriteDecision(write.parkedCode, write.acceptsTransactionId, write.actions) });
+}
 function parkedAt(revision = 3, acceptsTransactionId = true) {
-  return ParkedWriteDetailWireSchema.parse({ ...FIXTURE_PARKED_WRITE, acceptsTransactionId, runId: RUN,
-    native: native(50), actions: FIXTURE_PARKED_WRITE.actions.map(action => ({ ...action, expectedVersion: revision })) });
+  return withParkedDecision(ParkedWriteDetailWireSchema.parse({ ...FIXTURE_PARKED_WRITE, acceptsTransactionId, runId: RUN,
+    native: native(50), actions: FIXTURE_PARKED_WRITE.actions.map(action => ({ ...action, expectedVersion: revision })) }));
+}
+function withFailureDecision(failure: ReturnType<typeof FailureDetailWireSchema.parse>) {
+  return FailureDetailWireSchema.parse({ ...failure, decision: failureDecision(failure) });
+}
+const failureOption = (failure: ReturnType<typeof FailureDetailWireSchema.parse>, id: string) => {
+  const option = failure.decision?.options.find(candidate => candidate.id === id); assert.ok(option, id); return option;
+};
+function servedReferenceOption(f: ReturnType<typeof workbookReferenceChoice>) {
+  assert.ok(f.choice.resolution.state === "available" && f.choice.resolution.decision?.options[0]); return f.choice.resolution.decision.options[0];
 }
 function parkedClient(selected: LogSelection, sent: CommandRequest[], options: {
   write?: ReturnType<typeof parkedAt>;
   execute?: (request: CommandRequest) => Promise<unknown>;
 } = {}) {
   let version = selected.row.rowRevision.valueOf();
-  let write = options.write ?? parkedAt(version);
+  let write = withParkedDecision(options.write ?? parkedAt(version));
   const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
     runDetail: async () => detailAt(selected, version, { availableSections: ["logs", "parked-write"] }),
     runSection: async (_run: string, section: string) => section === "logs" ? logs()
@@ -434,7 +448,7 @@ function parkedClient(selected: LogSelection, sent: CommandRequest[], options: {
       return CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }] });
     },
   } as unknown as DashboardClient;
-  return { client, setWrite: (next: typeof write, revision = version) => { write = next; version = revision; } };
+  return { client, setWrite: (next: typeof write, revision = version) => { write = withParkedDecision(next); version = revision; } };
 }
 
 describe("served parked-write Logs decisions", () => {
@@ -583,7 +597,7 @@ describe("served parked-write Logs decisions", () => {
     const { client } = parkedClient(selected, sent, { write });
     const h = await harness(client, (pending, send) => confirmations.push({ pending, send }));
     await h.render(selected);
-    const action = parkedWriteLogActions(write)[choice]; assert.ok(action);
+    const action = write.decision!.options[choice]; assert.ok(action);
     await act(async () => h.state?.onDecision?.(write.writeIntentId, action, answer));
     assert.equal(sent.length, 0); assert.equal(confirmations.length, 1);
     const expected = write.actions.find(action => action.kind === "command" && action.command === verb); assert.ok(expected?.kind === "command");
@@ -601,7 +615,7 @@ describe("served parked-write Logs decisions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
     const write = parkedAt(); const fixture = parkedClient(selected, sent);
     const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
-    await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
     const next = { ...write, ...(change === "generation" ? { generation: 2 } : {}),
       ...(change === "intent" ? { writeIntentId: NOTE } : {}),
       actions: write.actions.map(action => action.kind !== "command" ? action : { ...action, expectedVersion: change === "version" ? 4 : 3,
@@ -618,7 +632,7 @@ describe("served parked-write Logs decisions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
     const fixture = parkedClient(selected, sent, { execute: () => new Promise(resolve => { release = resolve; }) });
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(), action = parkedWriteLogActions(write)[0];
+    const write = parkedAt(), action = write.decision!.options[0];
     await act(async () => h.state?.onDecision?.(write.writeIntentId, action, {}));
     await act(async () => confirms[0]());
     assert.equal(h.state?.command?.state, "pending"); assert.equal(h.state?.onDecision, undefined);
@@ -639,7 +653,7 @@ describe("served parked-write Logs decisions", () => {
       return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }] });
     } });
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
     await act(async () => confirms[0]());
     assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.state?.onDecision, undefined);
     await h.render(selectionAt(3), 1);
@@ -652,7 +666,7 @@ describe("served parked-write Logs decisions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
     const fixture = parkedClient(selected, sent, { execute: async () => { throw new Error("reply lost"); } });
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
     await act(async () => confirms[0]());
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2, actions: write.actions.map(action => action.kind === "command"
       ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 } } : action) }));
@@ -665,18 +679,18 @@ describe("served parked-write Logs decisions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
     const fixture = parkedClient(selected, sent);
     const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
     await act(async () => confirms[0]()); assert.equal(h.state?.command?.state, "settled");
     fixture.setWrite(parkedAt(4), 4); await h.render(selectionAt(4));
     assert.ok(h.state?.onDecision); assert.equal(h.state?.command, undefined);
-    await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(parkedAt(4))[0], {}));
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedAt(4).decision!.options[0], {}));
     await act(async () => confirms[1]()); assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
   });
 
   it("sends nothing without the served confirmation port", async () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [];
     const h = await harness(parkedClient(selected, sent).client); await h.render(selected);
-    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, write.decision!.options[0], {}));
     assert.equal(sent.length, 0);
   });
 });
@@ -684,7 +698,7 @@ describe("served parked-write Logs decisions", () => {
 const FAILURE = "00000000-0000-4000-8000-000000000004";
 
 function failedAt(selected: LogSelection) {
-  return FailureDetailWireSchema.parse({ runId: RUN, traceId: selected.row.traceId, attempt: 1, workflowId: "separations",
+  return withFailureDecision(FailureDetailWireSchema.parse({ runId: RUN, traceId: selected.row.traceId, attempt: 1, workflowId: "separations",
     failureId: FAILURE, nodeId: "job-summary", taskId: "ucpath/read-job-summary", fingerprint: "a".repeat(64), code: "EMPLOYEE_NOT_FOUND",
     summary: "Employee absent", transient: false, writeState: "not-attempted", subject: { state: "absent", reason: "No subject" },
     causeChain: [{ code: "EMPLOYEE_NOT_FOUND", summary: "Employee absent", role: "primary", transient: false }],
@@ -696,7 +710,7 @@ function failedAt(selected: LogSelection) {
       confirm: { title: "Enter EID", confirmLabel: "Enter EID", tone: "neutral" },
       request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check", "job-summary"],
         rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check", "job-summary"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
-    } });
+    } }));
 }
 function failureClient(selected: LogSelection, sent: CommandRequest[], planned: unknown[], execute: (command: CommandRequest) => Promise<unknown>, failed = failedAt(selected)) {
   const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
@@ -728,17 +742,17 @@ describe("served not-found failure actions", () => {
     assert.ok(original.recovery);
     const correction = separationsDescriptor.failureCorrections?.find(entry => entry.inputField === "documentNumber");
     assert.ok(correction);
-    const failed = FailureDetailWireSchema.parse({ ...original, nodeId: correction.nodeId, taskId: "kuali/search-separation-action",
+    const failed = withFailureDecision(FailureDetailWireSchema.parse({ ...original, nodeId: correction.nodeId, taskId: "kuali/search-separation-action",
       code: "DOCUMENT_NOT_IN_ACTION_LIST", native: native(5, correction.nodeId), recovery: { ...original.recovery, correction,
         confirm: { title: correction.actionLabel, confirmLabel: correction.actionLabel, tone: "neutral" },
         request: { ...original.recovery.request, rerunSource: { ...original.recovery.request.rerunSource,
-          failureCorrection: { failureId: FAILURE, inputField: correction.inputField } } } } });
+          failureCorrection: { failureId: FAILURE, inputField: correction.inputField } } } } }));
     const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); }, failed);
     const snapshot = await readRunLogs(fixture.client, selected, new AbortController().signal);
     const decision = projectRunLogs(snapshot, fixture.client).steps.flatMap(step => step.entries).find(entry => entry.kind === "decision");
     assert.ok(decision?.kind === "decision");
-    assert.deepEqual(decision.decision.actions?.map(action => action.label), ["Check again", "Enter document number"]);
-    const action = failureLogActions(failed)[1];
+    assert.deepEqual(decision.decision.served?.options.map(option => option.label), ["Enter document number", "Check again"]);
+    const action = failureOption(failed, "retry-with-value");
     assert.equal(action.input?.kind, "text");
     const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
     await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "4502" }); await new Promise(resolve => setTimeout(resolve, 0)); });
@@ -755,9 +769,9 @@ describe("served not-found failure actions", () => {
     const snapshot = await readRunLogs(fixture.client, selected, new AbortController().signal);
     const decision = projectRunLogs(snapshot, fixture.client).steps.flatMap(step => step.entries).find(entry => entry.kind === "decision");
     assert.ok(decision?.kind === "decision");
-    assert.deepEqual(decision.decision.actions?.map(action => action.label), ["Check again", "Enter EID"]);
+    assert.deepEqual(decision.decision.served?.options.map(option => option.label), ["Enter EID", "Check again"]);
     assert.equal(decision.decision.footer, "No changes were made.");
-    assert.deepEqual(failureLogActions(FailureDetailWireSchema.parse({ ...fixture.failed, recovery: undefined })), []);
+    assert.equal(failureDecision(FailureDetailWireSchema.parse({ ...fixture.failed, recovery: undefined, decision: undefined })).type, "failed-retryable");
     assert.equal(FailureDetailWireSchema.safeParse({ ...fixture.failed, code: "another-failure" }).success, false);
     assert.equal(FailureDetailWireSchema.safeParse({ ...fixture.failed, recovery: { ...fixture.failed.recovery, expectedVersion: 4 } }).success, false);
   });
@@ -767,7 +781,7 @@ describe("served not-found failure actions", () => {
     let release: ((value: unknown) => void) | undefined;
     const fixture = failureClient(selected, sent, planned, () => new Promise(resolve => { release = resolve; }));
     const h = await harness(fixture.client, (pending, send) => { confirms.push(pending); callbacks.push(send); }); await h.render(selected);
-    const action = failureLogActions(fixture.failed)[actionIndex];
+    const action = failureOption(fixture.failed, actionIndex === 0 ? "check-again" : "retry-with-value");
     await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.equal(sent.length, 0); assert.equal(confirms.length, 1);
     assert.deepEqual(confirms[0].target, { runId: RUN, expectedVersion: 3 });
@@ -785,7 +799,7 @@ describe("served not-found failure actions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
     const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); });
     const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
-    const action = failureLogActions(fixture.failed)[1];
+    const action = failureOption(fixture.failed, "retry-with-value");
     await act(async () => h.state?.onDecision?.(FAILURE, action, { text: "bad" }));
     assert.equal(planned.length, 0); assert.equal(callbacks.length, 0);
     await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
@@ -799,7 +813,7 @@ describe("served not-found failure actions", () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
     const fixture = failureClient(selected, sent, planned, async () => { throw new Error("reply lost"); });
     const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
-    await act(async () => { h.state?.onDecision?.(FAILURE, failureLogActions(fixture.failed)[1], { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => { h.state?.onDecision?.(FAILURE, failureOption(fixture.failed, "retry-with-value"), { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
     await act(async () => callbacks[0]());
     assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.state?.onDecision, undefined);
     await h.render(selectionAt(3), 1);

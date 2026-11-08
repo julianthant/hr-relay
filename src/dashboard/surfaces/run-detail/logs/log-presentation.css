@@ -69,28 +69,9 @@
 .log-failed-field > span:first-child { color: var(--ui-secondary); }
 .log-failed-field > span:last-child { margin-left: auto; color: var(--ui-danger); }
 .log-capture-unavailable { display: flex; align-items: center; gap: 9px; padding: 12px; margin-top: 14px; border: 1px dashed var(--ui-stroke); border-radius: 6px; font-size: 11px; color: var(--ui-muted); }
-.log-comparison-frame { overflow: hidden; margin-top: 14px; border: 1px solid var(--ui-stroke); border-radius: 10px; background: var(--ui-panel); }
-.log-comparison { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--ui-panel); }
-.log-comparison th, .log-comparison td { padding: 8px 10px; border-bottom: 1px solid var(--ui-stroke); text-align: left; font-weight: 400; }
-.log-comparison thead { color: var(--ui-muted); font-size: 10px; background: var(--ui-hover); }
-.log-comparison tbody tr:last-child > * { border-bottom: 0; }
-.log-comparison tbody th { color: var(--ui-secondary); }
-.log-comparison .different { background: color-mix(in srgb, var(--ui-info) 6%, var(--ui-panel)); }
-.log-comparison .different td:last-child { color: var(--ui-info); font-weight: 500; }
 .log-decision-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-top: 1px solid var(--ui-stroke); background: var(--ui-table); }
 .log-decision-footer > span { color: var(--ui-muted); font-size: 11px; }
 .log-decision-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.log-decision-form { display: flex; flex-direction: column; gap: 14px; font-size: 12px; }
-.log-decision-form p { margin: 0; }
-.log-decision-form fieldset { display: flex; flex-direction: column; gap: 8px; border: 0; padding: 0; margin: 0; }
-.log-decision-form legend { margin-bottom: 12px; font-size: 12px; font-weight: 500; }
-.log-decision-choice { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--ui-stroke); border-radius: 6px; padding: 12px; }
-.log-decision-choice:has(input:checked) { border-color: var(--ui-info); background: color-mix(in srgb, var(--ui-info) 5%, var(--ui-panel)); }
-.log-decision-choice input { margin-top: 3px; accent-color: var(--ui-info); }
-.log-decision-choice strong, .log-decision-choice span span { display: block; }
-.log-decision-choice span span { margin-top: 3px; color: var(--ui-secondary); font-size: 11px; }
-.log-decision-form-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid var(--ui-stroke); }
-.log-decision-form-actions > span { color: var(--ui-muted); font-size: 11px; }
 .log-decision-loading { display: flex; flex-direction: column; gap: 10px; }
 @media (max-width: 1100px) { .log-viewer-toolbar { gap: 3px; padding-inline: 8px; } .log-viewer-toolbar button { padding-inline: 4px; } .log-capture-group--browsers { gap: 8px; } }
 @media (prefers-reduced-motion: reduce) { .log-capture-expand { transition: none; } }

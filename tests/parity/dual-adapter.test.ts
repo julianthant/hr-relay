@@ -101,7 +101,7 @@ for (const pair of ROLE_PAIRS) {
       await expect(page.getByRole("region", { name: "Run status", exact: true })).toBeVisible();
     }
     const fixtureTree = await readA11yTree(page);
-    if (pair.id === "open-gate-run") await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("article", { name: "Confirm the employee match", exact: true })).toBeVisible();
+    if (pair.id === "open-gate-run") await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("group", { name: "Confirm the employee match", exact: true })).toBeVisible();
 
     const seededRunId = pair.seededRun === undefined ? undefined : seeded.runIds[pair.seededRun];
     if (pair.seededRun !== undefined && seededRunId === undefined) {
@@ -117,7 +117,7 @@ for (const pair of ROLE_PAIRS) {
       await expect(page.getByRole("region", { name: "Run status", exact: true })).toBeVisible();
     }
     const seededTree = await readA11yTree(page);
-    if (pair.id === "open-gate-run") await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("article", { name: "Confirm the employee match", exact: true })).toBeVisible();
+    if (pair.id === "open-gate-run") await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("group", { name: "Confirm the employee match", exact: true })).toBeVisible();
     await test.info().attach("fixture-tree", { body: fixtureTree, contentType: "text/plain" });
     await test.info().attach("seeded-tree", { body: seededTree, contentType: "text/plain" });
 
