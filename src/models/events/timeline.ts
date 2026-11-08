@@ -96,7 +96,9 @@ export const DebugEventSchema = z.strictObject({
 });
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
-export function debugEventLevel(event: Pick<DebugEvent, "phase" | "reason" | "status">): "error" | "warn" | "info" {
+export function debugEventLevel(event: Pick<DebugEvent, "phase" | "reason" | "status"> & Partial<Pick<DebugEvent, "code">>): "error" | "warn" | "info" {
+  // A request the page closed, or a ChatGPT call it cancelled, is a cancellation, not a failure.
+  if (event.code === "CHATGPT_OCR_CANCELLED" || event.reason === "request-disconnected") return "info";
   if (event.reason === "outcome-unknown" || event.status !== undefined && event.status >= 500) return "error";
   if (event.reason === "operation-refused" || event.reason === "remote-revocation-unconfirmed"
     || event.phase === "expired" || event.phase === "reset" || event.status !== undefined && event.status >= 400) return "warn";

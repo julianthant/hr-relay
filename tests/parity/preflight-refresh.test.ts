@@ -74,7 +74,7 @@ for (const scene of ["healthy", "secret-missing"] as const) for (const theme of 
       await expect(run).toHaveAttribute("aria-busy", "true");
       await expect(summary).toContainText("Checking readiness");
       await expect(summary).not.toContainText("Ready to run");
-      await expect(page.getByText("Previous result", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Readiness check is out of date", { exact: true })).toHaveCount(0);
       await expect(setup.getByRole("status", { name: /Loading/u })).toHaveCount(0);
       expect(await rows.allTextContents()).toEqual(rowText);
       await expect(setup.locator("time")).toHaveAttribute("datetime", timestamp ?? "");
@@ -115,19 +115,19 @@ for (const theme of PARITY_THEMES) test(`Preflight refresh retains its existing 
     await expect(setup).toContainText("Previous check");
     await expect(setup.locator(".workflow-operations-card").first()).toBeVisible();
     const before = await geometry(setup);
-    const notice = await page.getByRole("status").filter({hasText:"Previous result"}).textContent();
+    const notice = await page.getByRole("status").filter({hasText:"Readiness check is out of date"}).textContent();
     held = await holdRefresh(page);
     await setup.getByRole("button", { name: /^(Run checks again|Run preflight)$/u }).click();
     await held.commandStarted.promise;
     await expect(setup.getByRole("group", { name: "Readiness summary", exact: true })).toContainText("Checking readiness");
     expect(await geometry(setup)).toEqual(before);
-    expect(await page.getByRole("status").filter({hasText:"Previous result"}).textContent()).toBe(notice);
+    expect(await page.getByRole("status").filter({hasText:"Readiness check is out of date"}).textContent()).toBe(notice);
     await expect(setup).not.toContainText("Ready to run");
     held.command.resolve(); await held.readbackStarted.promise;
     expect(await geometry(setup)).toEqual(before);
     held.readback.resolve();
     await expect(setup.getByRole("button", { name: "Run preflight", exact: true })).toBeEnabled();
     await expect(setup).toContainText("Ready to run");
-    await expect(page.getByText("Previous result", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Readiness check is out of date", { exact: true })).toHaveCount(0);
   } finally { await held?.close(); await server.close(); }
 });

@@ -379,7 +379,7 @@ separate filtered states.
 live in memory. Read is separate from urgency resolution. Opening a valid target marks read and
 closes the inbox; a missing target reports refusal without navigating to an approximate workflow.
 Escape returns focus to the bell unless an inner dialog/menu owns it. A removed read control
-restores focus to a reachable filter. A ping uses the shared toast and Open notifications action.
+restores focus to a reachable filter. A ping uses the shared toast; the bell opens the inbox.
 
 Durable delivery, read state, and full cross-day search still need producer replacement. The typed
 notification snapshot/status/target queries and command families exist, but the mounted inbox does
