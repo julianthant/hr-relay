@@ -18,8 +18,20 @@ describe("approved mixed queue presentation", () => {
     const pending = renderToStaticMarkup(createElement(StatusBadge, { status: "running",
       pauseControl: { state: "pause-pending", expectedVersion: PositiveIntSchema.parse(7) } }));
     assert.match(pending, /Pausing/u);
-    assert.match(pending, /submit is never interrupted/u);
+    assert.match(pending, /Pause requested/u);
+    assert.doesNotMatch(pending, /never interrupted|after this step/u);
     assert.doesNotMatch(pending, /Pause recorded/u);
+    const labels = [
+      [{ action: "pause", step: "cancel" }, "This step will restart"],
+      [{ action: "stop", step: "cancel" }, "This step is cancelled"],
+      [{ action: "pause", step: "finish-write" }, "Finishing the save first"],
+      [{ action: "stop", step: "finish-write" }, "Finishing the save first"],
+    ] as const;
+    for (const [interrupt, label] of labels) {
+      const markup = renderToStaticMarkup(createElement(StatusBadge, { status: "running", interrupt,
+        pauseControl: { state: "pause-pending", expectedVersion: PositiveIntSchema.parse(7) } }));
+      assert.match(markup, new RegExp(`title="${label}"`, "u"));
+    }
   });
   it("scopes the revised attention treatments to queue pills", () => {
     for (const status of ["waiting", "failed"] as const) {
