@@ -29,7 +29,8 @@ import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
 import { randomUUID } from "node:crypto";
-import { existsSync,readdirSync } from "node:fs";
+import { existsSync,readdirSync,readFileSync } from "node:fs";
+import { appendEmergencyFault } from "../../logs/emergency-faults.js";
 import { join,resolve } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
@@ -107,6 +108,20 @@ function causedByUnresolvedWrites(error: unknown): boolean {
     if (cause.message === "authority-upgrade-unresolved-writes") return true;
   }
   return false;
+}
+
+/** Error text can carry input, so only a leading kebab-case token from the cause chain reaches the boot log. */
+function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
+  let reason = "unnamed-cause";
+  for (let cause: unknown = refusal.cause; cause instanceof Error; cause = cause.cause) {
+    const token = /^([a-z0-9]+(?:-[a-z0-9]+)+)(?:[: {]|$)/u.exec(cause.message)?.[1];
+    if (token !== undefined && token.length <= 128) { reason = token; break; }
+  }
+  // The refusal is already held for the person; a boot log that cannot be written must not turn it into a boot failure.
+  try {
+    const build = z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
+    appendEmergencyFault({ stateRoot, build, code: refusal.code, error: new Error(reason), now: clock.now(), area, reason });
+  } catch { /* best effort */ }
 }
 
 /** One person whose startup inspection, repair, upgrade or recovery was refused; boot continues for the others. */
@@ -258,7 +273,10 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
   const held = heldPeopleFor(lifetime);
   const hold = (profileId: string, error: unknown): void => {
     if (machineWideStartupFailure(error)) throw error;
-    if (!held.has(profileId)) held.set(profileId, new RegisteredPersonUpgradeRefusedError(error));
+    if (held.has(profileId)) return;
+    const refusal = new RegisteredPersonUpgradeRefusedError(error);
+    held.set(profileId, refusal);
+    logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), refusal, "profile-startup-upgrade", clock);
   };
   try {
     const profiles = await withStoppedMachineStorage(workspace, lifetime, async machine => {
