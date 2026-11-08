@@ -1,7 +1,7 @@
 import type { DashboardClient } from '../../client/index.js';
 import type { DashboardDayState } from '../../state/use-dashboard-day.js';
 import type { DashboardDayWire } from '../../../models/dashboard/projection.js';
-import { CommandRequestSchema, type CommandRequest } from '../../../rules/commands/commands.js';
+import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from '../../../rules/commands/commands.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptions, type CommandOutcome } from '../../app/commands/command-executor.js';
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
@@ -22,6 +22,8 @@ export interface SessionPreviewCommandPort {
   retained?(): readonly SessionPreviewOperation[];
   /** The operation once its in-flight attempt settles; undefined when the attempt is gone or belongs to another scope. */
   afterSettled?(request: SessionPreviewRequest): Promise<SessionPreviewOperation | undefined>;
+  /** Reads an uncertain control's audited outcome without the operator or a resend; only an authority-backed port can. */
+  audited?(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
 }
 
 export interface SessionCommandBinding {
@@ -112,7 +114,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       state: attempt.commands.length === 1 && (outcome?.kind === "refused" || outcome?.kind === "conflict" || outcome?.kind === "confirmation-required" || outcome?.kind === "failed") ? "refused" : "uncertain",
       message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN"), data };
   };
-  return {
+  const port: SessionPreviewCommandPort = {
     retained() {
       const binding = current().binding;
       return binding === undefined ? [] : binding.executor.retainedAttempts().flatMap(retained => retainedOperation(binding, retained) ?? []);
@@ -181,7 +183,10 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
           if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
           // The audited outcome, read without resending; a command with no audit stays unproved.
           const checked = retained.outcome?.kind === "uncertain";
+          const reply = checked ? CommandResultSchema.safeParse(retained.outcome.reply) : undefined;
           const settled = !checked ? retained.outcome : await binding.executor.check(command.commandId, { ...options(attempt, binding), observe: async sent => {
+            // The command's own applied reply still proves it; a lost or unapplied reply falls back to the audit.
+            if (reply?.success && (reply.data.state === "applied" || reply.data.state === "already-applied")) return reply.data;
             const record = await binding.client.workerCommandResult(sent.commandId);
             return record.state === "recorded" && canonicalJsonStringify(record.request) === canonicalJsonStringify(sent) ? record.result : undefined;
           } });
@@ -197,6 +202,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       }
     },
   };
+  return { ...port, audited: request => port.check(request) };
 }
 
 const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Workers added' : request.action === 'refresh' ? 'Idle sessions refreshed' : ({ pause: 'Pause', resume: 'Resume', retry: 'Retry', stop: 'Stop', remove: 'Remove' }[request.action]);
@@ -212,7 +218,7 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>(() => Object.fromEntries((port.retained?.() ?? []).map(operation => [operation.request.target, operation])));
   const operationsRef = useRef<Record<string, SessionPreviewOperation>>(operations);
   const onRefused = useRef(source?.onRefused); onRefused.current = source?.onRefused;
-  const reconciling = useRef(new Set<string>());
+  const reconciling = useRef(new Map<string, Promise<void>>());
   const live = useRef(true);
   const ordinal = useRef(5);
   const idle = useRef<((request: SessionPreviewRequest, data?: SessionsViewState) => void) | undefined>(undefined);
@@ -233,30 +239,31 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       });
     }
   }, [port, retain]);
-  // A proven outcome after uncertainty releases the control; a refusal toasts once.
+  // A proven outcome after uncertainty releases the control: a confirmation stays as any confirmation does, a refusal clears and toasts once.
   const settleProven = useCallback((request: SessionPreviewRequest, result: SessionPreviewResult) => {
+    if (result.state === 'confirmed') { retain({ request, state: 'confirmed', message: request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` }); return; }
     const next = { ...operationsRef.current }; delete next[request.target];
     operationsRef.current = next; setOperations(next);
-    if (result.state === 'refused') onRefused.current?.(request.action === 'retry' ? "Couldn't restart this worker." : result.message);
-  }, []);
+    onRefused.current?.(request.action === 'retry' ? "Couldn't restart this worker." : result.message);
+  }, [retain]);
   // Reads an uncertain control's audited outcome without resending; an unproved outcome stays uncertain.
   const reconcile = useCallback((operation: SessionPreviewOperation) => {
     const { request } = operation;
-    if (operation.state !== 'uncertain' || reconciling.current.has(request.id)) return;
+    if (port.audited === undefined || operation.state !== 'uncertain' || reconciling.current.has(request.id)) return;
     const attemptEpoch = epoch.current;
-    reconciling.current.add(request.id);
-    void port.check(request).then(result => {
+    reconciling.current.set(request.id, port.audited(request).then(result => {
       if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
       settleProven(request, result);
-    }, () => undefined).finally(() => { reconciling.current.delete(request.id); });
+    }, () => undefined).finally(() => { reconciling.current.delete(request.id); }));
   }, [port, settleProven]);
   // A later served day may follow a settlement whose reply never arrived.
   useEffect(() => { for (const operation of Object.values(operationsRef.current)) reconcile(operation); }, [sourceKey, reconcile]);
     const perform = useCallback(async (request: SessionPreviewRequest, checking = false) => {
     const current = operationsRef.current[request.target];
-    if (checking && reconciling.current.has(request.id)) return;
     if (current && ['pending', 'checking'].includes(current.state) || !checking && current?.state === 'uncertain') return;
     retain({ request, state: checking ? 'checking' : 'pending', message: checking ? 'Checking command…' : `${request.action === 'add' ? 'Adding workers' : `${label(request)} requested`}…` });
+    // A manual Check waits for an automatic read already in flight, then settles from what it left.
+    if (checking) await reconciling.current.get(request.id);
     const attemptEpoch = epoch.current;
     const snapshot = latestSource.current;
     let result: SessionPreviewResult;
@@ -269,11 +276,11 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     if (result.id !== request.id) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_RESULT_IDENTITY_MISMATCH') }; }
     if (result.data !== undefined && snapshot === latestSource.current && attemptEpoch === epoch.current) setReadback({ key: snapshot, data: result.data });
     if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
-    if (checking && result.state !== 'uncertain') { settleProven(request, result); return; }
-    const operation: SessionPreviewOperation = { request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message };
-    retain(operation);
+    if (checking && result.state === 'refused') { settleProven(request, result); return; }
+    retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
     // A lost reply is read back at once; the audit is committed before the server replies.
-    if (result.state === 'uncertain' && !checking) reconcile(operation);
+    const retained = operationsRef.current[request.target];
+    if (result.state === 'uncertain' && !checking && retained !== undefined) reconcile(retained);
   }, [port, retain, settleProven, reconcile]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
   idle.current = keepAlive.confirmed;
