@@ -501,7 +501,7 @@ for (const [phase, move] of [["prepared", false], ["commit-intent", false], ["do
       const fingerprint = withReadonlyAuthoritySnapshot(f.path, database => inspectOpenDatabase(database, 10).authorityContentFingerprint);
       const operation = LogoutOperationSchema.parse({ ...old, settlement: { phase, stoppedAt: old.at, processId: process.pid,
         before: phase === "done" ? "a".repeat(64) : fingerprint,
-        ...(phase === "prepared" ? {} : { after: phase === "done" ? fingerprint : "b".repeat(64) }), requests: [], workers: [] } });
+        ...(phase === "prepared" ? {} : { after: phase === "done" ? fingerprint : "b".repeat(64) }), requests: [] } });
       f.machine.publishProfileOperation(operation);
       session.close(); sourceAdmission.release(); await f.closeController();
       await lifetime.close(); lifetime = await RuntimeLifetimeLock.acquire(0);

@@ -10,6 +10,8 @@ import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  // Rebuilding worker_slots briefly orphans the Duo and exclusive-session leases that reference it; the caller's transaction checks them at commit.
+  database.exec("PRAGMA defer_foreign_keys=ON");
   const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),
     created_at: z.string(), updated_at: z.string() })).parse(database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all());
   const reference = new DatabaseSync(":memory:");
