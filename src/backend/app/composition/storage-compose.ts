@@ -237,7 +237,9 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
     await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       const operation = machine.maintenanceOperation(); operation.consume();
       const registry = machine.readProfileRegistry();
-      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved");
+      // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
+      const held = heldPeople.get(lifetime);
+      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
       if (ready.length !== 0) assertMaintenanceCustodyAvailable("backup");
       for (const row of ready) {
         if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", row.profileId))) {

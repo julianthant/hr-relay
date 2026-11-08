@@ -68,7 +68,7 @@ import { FakeKeyringEntry } from "../../../../support/helpers/credential-keychai
 import { runCredentialSourceRetentionCase } from "../../../../support/helpers/credential-source-retention.js";
 
 import { readLocalDebugLog } from "../../../../../src/backend/storage/events/local-debug-log.js";
-import { initializeRegisteredPersonStores,RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { backupRegisteredPeopleAtCleanShutdown,initializeRegisteredPersonStores,RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { AuthorityBackupService } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { migrationTableNames } from "../../../../../src/backend/storage/sqlite/migrations.js";
 
@@ -162,6 +162,17 @@ it("keeps failed pre-upgrade backups before HTTP, notification producers, accoun
     assert.equal(start.mock.calls.length, 0); assert.equal(network.mock.calls.length, 0); assert.equal(notifications.mock.calls.length, 0);
     const owner = acquireSharedRuntimeAdmission(profile.workspace, profile.lifetime); owner.release();
   } finally { backup.mockRestore(); network.mockRestore(); start.mockRestore(); await profile.close(); }
+});
+
+it("finishes a clean shutdown without backing up a person whose startup upgrade was held", async () => {
+  const profile = await createHistoricalRegisteredProfileFixture({ sourceVersion: 8 }), before = readFileSync(profile.path);
+  const backup = vi.spyOn(AuthorityBackupService.prototype, "request").mockRejectedValueOnce(new Error("required-startup-backup-failed"));
+  try {
+    await upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts);
+    backup.mockRestore();
+    await backupRegisteredPeopleAtCleanShutdown(profile.workspace, profile.lifetime);
+    assert.deepEqual(readFileSync(profile.path), before); assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, 8);
+  } finally { backup.mockRestore(); await profile.close(); }
 });
 
 it("refuses an actual competing shared owner without backup or source effects", async () => {
