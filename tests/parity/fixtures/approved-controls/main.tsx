@@ -16,7 +16,7 @@ import './style.css';
 const query = new URLSearchParams(location.search);
 const surface = query.get('surface') ?? 'save';
 const mode = query.get('mode') ?? 'confirmed';
-if (surface === 'sessions-bar') await import('../../../../src/dashboard/surfaces/shell/permanent-shell.css');
+if (surface === 'sessions-bar') { await import('../../../../src/dashboard/surfaces/shell/permanent-shell.css'); await import('../../../../src/dashboard/ds/theme/hub-theme.css'); }
 const theme = query.get('theme') ?? 'dark';
 document.documentElement.setAttribute('data-demo-theme', theme);
 document.body.setAttribute('data-demo-theme', theme);
