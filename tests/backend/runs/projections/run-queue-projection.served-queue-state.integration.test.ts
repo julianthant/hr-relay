@@ -170,7 +170,7 @@ describe("THE run/queue projection", () => {
     assert.equal(card.leaseVersion, 7);
     assert.notEqual(Number(card.leaseVersion), Number(card.revision));
     assert.deepEqual(card.browsers, []);
-    assert.deepEqual(card.browserRequirements, { state: "present", systems: ["kuali"] });
+    assert.deepEqual(card.browserRequirements, { state: "present", systems: ["kuali"], missing: ["kuali"] });
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });
   });
 

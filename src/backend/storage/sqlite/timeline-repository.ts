@@ -183,6 +183,14 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         return Object.freeze(rows.map(timelineEventFromRow));
       });
     },
+    lastWorkerClaim(workerId: string) {
+      // shortcut: unindexed json_extract scan from the newest cursor; add an expression index if worker cards slow the day read.
+      return ports.read(() => {
+        const row = prepare(`SELECT * FROM timeline_events WHERE kind='run.claimed'
+          AND json_extract(payload_json,'$.payload.event.workerId')=? ORDER BY cursor DESC LIMIT 1`).get(z.string().min(1).parse(workerId));
+        return row === undefined ? undefined : timelineEventFromRow(row);
+      });
+    },
     highWaterMark() {
       return ports.read(() => HighWaterMarkSchema.parse(prepare(
         "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'timeline_events'), 0) AS cursor",

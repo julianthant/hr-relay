@@ -3727,6 +3727,13 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  /** Systems whose live Duo ceremony lease this worker holds. */
+  heldDuoSystems(workerId: string): readonly string[] {
+    return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)
+      .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema))
+      .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => lease.holder.system));
+  }
+
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
     return this.#withReadSnapshot(read);
   }

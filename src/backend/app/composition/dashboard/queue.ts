@@ -43,6 +43,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
       workerBrowsers: workerId => database.authority.workerControls.browsers(workerId),
+      heldDuoSystems: workerId => database.heldDuoSystems(workerId),
       workerControls: () => database.authority.workerControls.list(),
       ownsWorker: lease => input.ownsWorker?.(lease) === true,
       listWorkerPools: () => database.authority.workerPools.list(),
