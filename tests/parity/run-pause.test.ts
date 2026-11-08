@@ -13,7 +13,8 @@ test("Pause and Resume distinguish requests from recorded pauses", async ({ page
   await expect(page.getByRole("region", { name: "Queue", exact: true }).getByText("Paused", { exact: true }).locator("svg")).toHaveCount(1);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByRole("button", { name: "Pausing…", exact: true })).toBeDisabled();
-  await expect(page.getByText("Finishing the current step; a submit is never interrupted. Pause is not yet recorded.", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("status").filter({ hasText: "This step will restart" })).toHaveCount(1);
+  await expect(page.getByRole("navigation", { name: "Run timeline", exact: true }).getByText("This step will restart", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByText("Paused", { exact: true })).toHaveCount(0);
   await page.goto(`${servers.server.baseUrl}/?fixture=run-pause&state=paused`);
   await page.getByRole("button", { name: "Resume", exact: true }).click();
@@ -29,7 +30,7 @@ test("Quit confirms and waits for pause and resource settlement", async ({ page 
   await expect(page.getByRole("button", { name: "Pause all runs", exact: true })).toBeFocused();
   await page.keyboard.press("Control+q");
   await dialog.getByRole("button", { name: "Pause all and quit", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByText("Finishing current steps; pauses and shutdown are not yet confirmed.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByText("Pauses are not yet confirmed. A save in progress finishes first.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Pause all runs", exact: true })).toBeDisabled();
   await page.goto(`${servers.server.baseUrl}/?fixture=run-pause&state=closure-unknown`);
   await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByText("Closure is unknown. Keep Relay open and check active runs.", { exact: true })).toBeVisible();

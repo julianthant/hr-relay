@@ -232,6 +232,7 @@ function HeaderChips({
       <StatusBadge
         status={status}
         pauseControl={surface.pauseControl}
+        interrupt={surface.interrupt}
         outcome={outcome}
         cancelledBy={surface.cancelledBy}
         presentation="queue"

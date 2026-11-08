@@ -128,7 +128,11 @@ describe("the exact current worker authority card", () => {
     assert.equal(workerDirectiveNote(value), undefined);
     assert.equal(canStopWorker(value), true);
     const pausing = card({ lease: leaseOf({ control: { directive: "pause", requestedAt: STARTED, requestedBy: "local-operator" } }) });
-    assert.equal(workerDirectiveNote(pausing), "Pausing: this step will restart");
+    assert.equal(workerDirectiveNote(pausing), undefined);
+    assert.equal(workerDirectiveNote({ ...pausing, interrupt: { action: "pause", step: "cancel" } }), "This step will restart");
+    assert.equal(workerDirectiveNote({ ...pausing, interrupt: { action: "stop", step: "cancel" } }), "This step is cancelled");
+    assert.equal(workerDirectiveNote({ ...pausing, interrupt: { action: "pause", step: "finish-write" } }), "Finishing the save first");
+    assert.equal(workerDirectiveNote({ ...pausing, state: "failed", interrupt: { action: "pause", step: "cancel" } }), undefined);
     assert.equal(canStopWorker(card({ lease: leaseOf({ control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" } }) })), false);
   });
 
