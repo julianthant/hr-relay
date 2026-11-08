@@ -1,7 +1,7 @@
 # picked-a-dry-run--dark--1280x720
 # adapter: fixture
 # fixture: picked-dashboard-a
-# descriptorHash: bb4e6205beffa33f37bd41e635894074c0bc49937b14d51119ae2e411e89e30f
+# descriptorHash: ab758fc761b1f705ae10c541197ec5250898da197195c52e06fed64c7bd9bdeb
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: dark  variant: default
 # capturedAt: 2026-08-03
@@ -16,49 +16,49 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup 0 · 0
+        - button "Person Lookup"
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup 0 · 1
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations 0 · 1
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check 1 · 1
+        - button "I-9 Check"
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
-        - button "Onboarding": Onboarding 0 · 0
+        - button "Onboarding"
       - listitem:
-        - button "Oath Signature": Oath Signature 1 · 1
+        - button "Emergency Contact"
       - listitem:
-        - button "Oath Upload": Oath Upload 1 · 1
+        - button "Oath Signature": Oath Signature 1
       - listitem:
-        - button "Emergency Contact": Emergency Contact 1 · 1
+        - button "Oath Upload": Oath Upload 1
     - heading "Work Study" [level=3]
     - list:
       - listitem:
-        - button "Work-Study": Work-Study 0 · 1
+        - button "Work-Study"
     - heading "Payroll" [level=3]
     - list:
       - listitem:
-        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+        - button "Kronos Pay Rule"
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR": OCR 0 · 5
+        - button "CRM Document Download"
       - listitem:
-        - button "CRM Doc Download": CRM Doc Download 0 · 1
+        - button "OCR"
       - listitem:
-        - button "SharePoint Download": SharePoint Download 0 · 1
+        - button "SharePoint Download"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1 · 1
+        - button "OnBase": OnBase 1
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:
-        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+        - button "Old Kronos Reports"
 - main:
   - heading "Separations queue" [level=1]
   - region "Queue":
