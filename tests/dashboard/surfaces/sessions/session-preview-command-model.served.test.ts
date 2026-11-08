@@ -395,6 +395,7 @@ it.each(["present", "unavailable"] as const)("renders starting browser requireme
       assert.equal(h.day().workerCards[0].browsers.length, 0, "required slots never mint physical sessions");
     } else {
       assert.doesNotMatch(article.textContent ?? "", /Launch-time browser requirements are unavailable/);
+      assert.match(article.textContent ?? "", /No browser sessions open/);
       assert.equal(article.querySelectorAll("li").length, 0);
     }
     assert.equal(h.sent.length, 0);
@@ -533,4 +534,30 @@ it("distinguishes an intentionally stopped worker after restart from a crashed w
     assert.equal(view.workers[0].state, stopReason === "crashed" ? "failed" : "stopped");
     assert.equal(view.workers[0].problem, { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly." }[stopReason]);
   }
+});
+
+it("clears an uncertain Retry once the served day shows its command audited, so Retry and Stop apply again", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const failed = { ...h.day().workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" };
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [failed] }));
+  let original: CommandRequest | undefined;
+  h.effect(command => {
+    original = command;
+    const pending = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), command), auditedAt: undefined, phase: { state: "executing", startedAt: now } });
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [pending] }));
+    return { state: "pending", commandId: command.commandId };
+  });
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const button = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  try {
+    await act(async () => render());
+    await act(async () => button("Retry")!.click());
+    assert.equal(h.sent.length, 1); assert(original);
+    assert.match(document.body.textContent ?? "", /Check outcome/); assert(button("Retry")!.disabled);
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [lifecycleRecord(h.day(), original)] }));
+    await act(async () => render());
+    assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(button("Retry")!.disabled, false);
+    assert.equal(h.sent.length, 1, "clearing is a read of the served day, never a resend");
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
