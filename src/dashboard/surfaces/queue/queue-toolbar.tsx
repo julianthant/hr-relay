@@ -23,6 +23,8 @@ import {
 import { toolbarControl } from "../shell/shell-model.js";
 import { OperationsToolbarRow } from '../shell/operations-toolbar.js';
 import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
+import { PAUSE_ALL_EFFECT, PAUSE_ALL_PENDING_STATUS, stepInterruptLabel } from "../shared/status/status-model.js";
+import type { StepInterruptWire } from "../../../models/dashboard/projection.js";
 import {
   BULK_RESULT_OUTCOMES,
   bulkClosingAssurance,
@@ -456,17 +458,19 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
   </>;
 }
 
-export function RunPauseControl({ runLabel, state, onAction }: {
+export function RunPauseControl({ runLabel, state, interrupt, onAction }: {
   runLabel: string;
   state: "running" | "pause-pending" | "paused" | "resume-pending" | "unavailable";
+  interrupt?: StepInterruptWire;
   onAction?: (action: "pause" | "resume") => void;
 }) {
   const resumable = state === "paused";
   const pending = state === "pause-pending" || state === "resume-pending";
+  const pendingStatus = stepInterruptLabel(interrupt) ?? "Pause is not yet recorded.";
   return <div className="flex items-center gap-2" aria-label={`${runLabel} pause controls`}>
 
     <Button size="sm" variant="secondary" disabled={pending || state === "unavailable" || onAction === undefined} onClick={() => onAction?.(resumable ? "resume" : "pause")}>{state === "pause-pending" ? "Pausing…" : state === "resume-pending" ? "Resuming…" : resumable ? "Resume" : "Pause"}</Button>
-    {(pending || resumable || state === "unavailable") && <span className="sr-only" role="status">{state === "pause-pending" ? "Finishing the current step; a submit is never interrupted. Pause is not yet recorded." : resumable ? "Pause recorded. Resume explicitly after restart." : state === "resume-pending" ? "Validating finished work. Resume is not yet confirmed." : "Run pause authority is unavailable."}</span>}
+    {(pending || resumable || state === "unavailable") && <span className="sr-only" role="status">{state === "pause-pending" ? pendingStatus : resumable ? "Pause recorded. Resume explicitly after restart." : state === "resume-pending" ? "Validating finished work. Resume is not yet confirmed." : "Run pause authority is unavailable."}</span>}
   </div>;
 }
 
@@ -483,9 +487,9 @@ export function PauseAllQuitControls({ state, activeCount, onPauseAll, onResumeA
   const enabled = state === "ready" || state === "paused";
   const resume = state === "paused";
   return <>
-    <Button ref={pauseAll} size="sm" variant="secondary" className="size-8 p-0" aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : "Pause all runs after their current step"} icon={resume ? <Play aria-hidden className={dsIcon.sm} /> : <Pause aria-hidden className={dsIcon.sm} />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
-    {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? "Finishing current steps; pauses and shutdown are not yet confirmed." : state === "paused" ? "All runs paused. Resume them next time." : state === "blocked" ? "Closure is unknown. Keep Relay open and check active runs." : "Pause all is unavailable. Check the connection."}</p>}
-    <Dialog open={quitRequested} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description="Each run finishes its current step, then pauses. Resume them next time." onCloseAutoFocus={event => { event.preventDefault(); if (pauseAll.current?.disabled === false) pauseAll.current.focus(); else document.getElementById("dashboard-main-region")?.focus(); }}>
+    <Button ref={pauseAll} size="sm" variant="secondary" className="size-8 p-0" aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : PAUSE_ALL_EFFECT} icon={resume ? <Play aria-hidden className={dsIcon.sm} /> : <Pause aria-hidden className={dsIcon.sm} />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
+    {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? PAUSE_ALL_PENDING_STATUS : state === "paused" ? "All runs paused. Resume them next time." : state === "blocked" ? "Closure is unknown. Keep Relay open and check active runs." : "Pause all is unavailable. Check the connection."}</p>}
+    <Dialog open={quitRequested} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description={`${PAUSE_ALL_EFFECT} Resume them next time.`} onCloseAutoFocus={event => { event.preventDefault(); if (pauseAll.current?.disabled === false) pauseAll.current.focus(); else document.getElementById("dashboard-main-region")?.focus(); }}>
       <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!enabled || !onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
     </DialogContent></Dialog>
   </>;
