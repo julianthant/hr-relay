@@ -1,14 +1,18 @@
 import type { DatabaseSync } from "node:sqlite";
 import { settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { WORKER_CUSTODY_CONVERSION_ID, WORKER_CUSTODY_MIGRATION_STATEMENTS, WORKER_CUSTODY_SCAN_ID, WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, WORKER_CUSTODY_CONVERSION_ID, WORKER_CUSTODY_MIGRATION_STATEMENTS, WORKER_CUSTODY_SCAN_ID, WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "../../../../src/backend/storage/sqlite/worker-custody-migration.js";
 
 type CaptureFile = Parameters<typeof convertWorkerCustody>[2];
 
-/** Runs the custody statements and their markers and sets the custody schema version in one transaction, as the stopped upgrader does. */
+/** Runs the migrations the store still lacks before custody, then the custody statements and their markers, and sets the custody schema version in one transaction, as the stopped upgrader does. */
 export function migrateWorkerCustody(database: DatabaseSync, now: string, captureFile: CaptureFile = () => { throw new Error("artifact-unexpected"); }): void {
   database.exec("BEGIN EXCLUSIVE");
   try {
+    const from = Number(database.prepare("PRAGMA user_version").get()?.user_version);
+    for (const migration of SQLITE_MIGRATIONS.filter(item => item.version > from && item.version < WORKER_CUSTODY_SCHEMA_VERSION)) {
+      for (const statement of migration.statements) database.exec(statement);
+    }
     for (const statement of WORKER_CUSTODY_MIGRATION_STATEMENTS) {
       if (statement.includes(WORKER_CUSTODY_CONVERSION_ID)) convertWorkerCustody(database, now, captureFile, (record, run) => settlePredecessorRunEvidence(database, record, run));
       execMigrationStatement(database, statement);
