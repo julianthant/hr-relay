@@ -9,7 +9,7 @@ import { ReadApprovedOcrSnapshot } from "../../../src/models/processing/ocr/read
 import { OCR_INPUT_EXAMPLE } from "../../../src/models/workflows/ocr/input.js";
 import { ReadOcrResult } from "../../../src/models/workflows/ocr/read-result.js";
 import { OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
-import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowPlanning } from "../../../src/workflow-kit/workflow.js";
 import type { RuntimeScope } from "../../../src/models/workflow/graph.js";
 import { TaskError } from "../../../src/workflow-kit/errors.js";
 import { ApprovedOcrRecordInputSchema } from "../../../src/models/workflows/ocr/approved-record.js";
@@ -54,4 +54,11 @@ it("binds a three-record approved subset in selected order through the registere
   assert.deepEqual(bound.map(member => member.record.assertedEid), ["10800002", "10800000"]);
   assert.ok(bound.every(member => member.record.recordId !== records[1]?.recordId));
   assert.ok(bound.every(member => JSON.stringify(member.approval) === JSON.stringify(EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval)));
+});
+
+it("titles an Emergency Contact run by its PDF name, else the generic PDF title", () => {
+  const { title } = workflowPlanning(compileWorkflow(emergencyContactWorkflow).descriptor);
+  const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
+  assert.equal(title({ ...input, fileName: "Contacts.pdf" }), "Contacts.pdf");
+  assert.equal(title(input), "Emergency Contact PDF");
 });

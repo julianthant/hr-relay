@@ -189,6 +189,33 @@ describe("run arms", () => {
     assert.equal(run?.lifecycle.state, "queued");
   });
 
+  it("an empty or blank rename clears the name, and every clear bumps the version", async () => {
+    const harness = await createHarness();
+    const runId = startOne(harness, rejectActiveDescriptor, "10800002");
+    const current = () => {
+      const run = harness.database.authority.runs.get(runId);
+      assert.ok(run);
+      return run;
+    };
+    const rename = (displayName: string) => harness.kernel.execute(runCommand("rename", runId, current().version, { payload: { displayName } }));
+
+    for (const blank of ["", "   "]) {
+      assert.equal(rename("  Kernel case ").state, "applied");
+      assert.equal(current().displayName, "Kernel case", "the kernel trims the name");
+      const before = current().version;
+      assert.equal(rename(blank).state, "applied");
+      assert.equal(Object.hasOwn(current(), "displayName"), false, `${JSON.stringify(blank)} leaves no displayName key`);
+      assert.equal(current().version, before + 1);
+    }
+    const unnamed = current().version;
+    assert.equal(rename("").state, "applied");
+    assert.equal(current().version, unnamed + 1, "clearing an unnamed run still bumps the version");
+
+    const tooLong = rename("x".repeat(121));
+    assert.equal(tooLong.state, "rejected");
+    if (tooLong.state === "rejected") assert.equal(tooLong.code, "invalid-value");
+  });
+
 
   it("refuses a stale rename with the live version", async () => {
     const harness = await createHarness();

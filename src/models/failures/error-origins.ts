@@ -16,12 +16,15 @@ const ORIGINS = {
   "client-schema": { name: "DashboardClientError", code: "SCHEMA_INVALID", reason: "schema-invalid" },
   "client-network": { name: "DashboardClientError", code: "DASHBOARD_READ_FAILED", reason: "network-failed" },
   aggregate: { name: "AggregateError", code: "INTERNAL_FAILURE", reason: "aggregate-cause" },
+  "worker-refusal": { name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "cause-unavailable" },
   "unknown-error": { name: "UnknownError", code: "INTERNAL_FAILURE", reason: "cause-unavailable" },
   "unknown-cause": { name: "UnknownCause", code: "INTERNAL_FAILURE", reason: "cause-unavailable" },
   truncated: { name: "UnknownCause", code: "INTERNAL_FAILURE", reason: "cause-chain-truncated" },
 } as const satisfies Record<string, OriginRow>;
 export type ErrorOriginKey = keyof typeof ORIGINS;
-export type ErrorOriginSelection = ErrorOriginKey | Readonly<{ key: "client-http"; code: string | undefined }>;
+export type ErrorOriginSelection = ErrorOriginKey | Readonly<{ key: "client-http"; code: string | undefined }>
+  /** Its binding supplies the reason from a closed list, never free runtime text. */
+  | Readonly<{ key: "worker-refusal"; reason: string }>;
 
 export type ErrorCause = Readonly<{ name: string; code: string; reason: string; stack: string }>;
 
@@ -48,6 +51,10 @@ function row(selection: ErrorOriginSelection): Omit<ErrorCause, "stack"> {
   if (typeof selection === "string") {
     const origin: OriginRow = ORIGINS[selection];
     return { name: origin.name, code: origin.code === "parsed" ? "INTERNAL_FAILURE" : origin.code, reason: origin.reason };
+  }
+  if (selection.key === "worker-refusal") {
+    const origin = ORIGINS["worker-refusal"];
+    return { name: origin.name, code: origin.code, reason: selection.reason };
   }
   return { name: ORIGINS["client-http"].name, code: httpCode(selection.code), reason: ORIGINS["client-http"].reason };
 }

@@ -55,35 +55,52 @@ it("maps only the real doctor observation race into the preflight refusal type",
   await assert.rejects(checking, PreflightObservationChangedError);
 });
 
-it("stops the real worker loop before claim and browser preparation when the doctor observes a concurrent write", async () => {
+async function racingClaim(world: ReturnType<typeof createWorkerDirectiveTestWorld>, racedObservations: number) {
+  const h = await world.loopHarness(), a = h.authority;
+  const scope = PreflightAdmissionScopeSchema.parse({ configSnapshotId: QUEUED_RUN.envelope.configSnapshotId,
+    configFingerprint: QUEUED_RUN.envelope.configFingerprint, descriptorFingerprint: QUEUED_RUN.envelope.contractFingerprint, requestedCapabilities: ["executor.run"] });
+  const doctor = new AuthorityHealthPreflightRunner(a.profile.admission, { stateRootTrustAnchor: a.profile.workspace, stateRoot: a.stateRoot,
+    authorityPath: a.path, backupDirectory: join(a.stateRoot, "backups", "authority"), busyTimeoutMs: 250 }, a.clock, boundProfileCredentials(a.profile.admission));
+  const counts = { observations: 0, preparations: 0, claims: 0, reprepared: [] as number[] };
+  const admission = createPreflightAdmission({ clock: a.clock, scheduler: h.scheduler, validate() {},
+    runners: () => PREFLIGHT_CHECKS.filter(spec => requiredPreflightChecks(["executor.run"]).includes(spec.id)).map(spec => ({ check: spec.id, kind: spec.runner,
+      async run(check) {
+        if (spec.id !== "authority.health") return { check: spec.id, state: "healthy", summary: "Fixture healthy" };
+        counts.observations++;
+        const checking = doctor.run(check);
+        if (counts.observations <= racedObservations) a.database.authority.notifications.create({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: randomUUID().replaceAll("-", "").padEnd(64, "e"), trigger: "failed", channel: "ping",
+          status: "unread", snooze: { state: "not-snoozed" }, title: "Fixture notice", summary: "Concurrent fixture write", links: [{ kind: "run", runId: UUID_1 }],
+          count: 1, lastSeenAt: NOW, version: 1, createdAt: NOW, updatedAt: NOW });
+        return checking;
+      },
+    })) });
+  const claimNext = () => claimWithPreflight({ signal: h.stop.signal, onObservationChanged: attempt => { counts.reprepared.push(attempt); },
+    preflight: { admission, currentScope: () => scope, runScope: () => scope, descriptor: () => personLookupDescriptor,
+      prepareSession: async () => { throw new Error("no session should prepare"); } },
+    prepareRun: async () => { counts.preparations++; }, claim: admit => { admit(RunRecordSchema.parse(QUEUED_RUN)); counts.claims++; throw new Error("no claim should commit"); } });
+  return { h, counts, claimNext };
+}
+
+it("stops the real worker loop before claim and browser preparation when every bounded re-preparation observes a concurrent write", async () => {
   const world = createWorkerDirectiveTestWorld();
   try {
-    const h = await world.loopHarness(), a = h.authority;
-    const scope = PreflightAdmissionScopeSchema.parse({ configSnapshotId: QUEUED_RUN.envelope.configSnapshotId,
-      configFingerprint: QUEUED_RUN.envelope.configFingerprint, descriptorFingerprint: QUEUED_RUN.envelope.contractFingerprint, requestedCapabilities: ["executor.run"] });
-    const doctor = new AuthorityHealthPreflightRunner(a.profile.admission, { stateRootTrustAnchor: a.profile.workspace, stateRoot: a.stateRoot,
-      authorityPath: a.path, backupDirectory: join(a.stateRoot, "backups", "authority"), busyTimeoutMs: 250 }, a.clock, boundProfileCredentials(a.profile.admission));
-    let observations = 0, preparations = 0, claims = 0;
-    const admission = createPreflightAdmission({ clock: a.clock, scheduler: h.scheduler, validate() {},
-      runners: () => PREFLIGHT_CHECKS.filter(spec => requiredPreflightChecks(["executor.run"]).includes(spec.id)).map(spec => ({ check: spec.id, kind: spec.runner,
-        async run(check) {
-          if (spec.id !== "authority.health") return { check: spec.id, state: "healthy", summary: "Fixture healthy" };
-          observations++;
-          const checking = doctor.run(check);
-          a.database.authority.notifications.create({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "e".repeat(64), trigger: "failed", channel: "ping",
-            status: "unread", snooze: { state: "not-snoozed" }, title: "Fixture notice", summary: "Concurrent fixture write", links: [{ kind: "run", runId: UUID_1 }],
-            count: 1, lastSeenAt: NOW, version: 1, createdAt: NOW, updatedAt: NOW });
-          return checking;
-        },
-      })) });
-    const report = await runWorkerLoop({ ...h.deps, claimNext: () => claimWithPreflight({ signal: h.stop.signal,
-      preflight: { admission, currentScope: () => scope, runScope: () => scope, descriptor: () => personLookupDescriptor,
-        prepareSession: async () => { throw new Error("no session should prepare"); } },
-      prepareRun: async () => { preparations++; }, claim: admit => { admit(RunRecordSchema.parse(QUEUED_RUN)); claims++; throw new Error("no claim should commit"); } }) });
+    const { h, counts, claimNext } = await racingClaim(world, Number.POSITIVE_INFINITY);
+    const report = await runWorkerLoop({ ...h.deps, claimNext });
     assert.equal(report.stopped, "preflight-refused"); assert.equal(report.closure, "proved");
     assert.equal(report.preflightRefusal?.runId, QUEUED_RUN.envelope.runId); assert.deepEqual(report.outcomes, []);
-    assert.equal(observations, 1); assert.equal(preparations, 0); assert.equal(claims, 0);
+    assert.equal(counts.observations, 4); assert.deepEqual(counts.reprepared, [1, 2, 3]);
+    assert.equal(counts.preparations, 0); assert.equal(counts.claims, 0);
     assert.equal(h.sessions.opens("ucpath"), 0); assert.equal(h.sessions.opens("crm"), 0);
+  } finally { await world.cleanup(); }
+});
+
+it("re-prepares after one concurrent write during the doctor's backup check and admits the claim", async () => {
+  const world = createWorkerDirectiveTestWorld();
+  try {
+    const { counts, claimNext } = await racingClaim(world, 1);
+    await assert.rejects(claimNext(), /no claim should commit/u);
+    assert.equal(counts.observations, 2); assert.deepEqual(counts.reprepared, [1]);
+    assert.equal(counts.preparations, 1); assert.equal(counts.claims, 1);
   } finally { await world.cleanup(); }
 });
 

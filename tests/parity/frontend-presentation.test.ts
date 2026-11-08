@@ -429,7 +429,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const requests = surfaceRequests(page);
       await page.goto(`${server.baseUrl}/?activity=`);
       const panel = page.getByRole("region", { name: "Session Panel", exact: true });
-      const toggle = panel.getByRole("button", { name: "Sessions", exact: true });
+      const toggle = panel.getByRole("button", { name: /^Sessions\b/ });
       const bar = panel.getByRole("group", { name: "Session actions", exact: true });
       const showScenario = async (scenario: string) => {
         await page.goto(`${server.baseUrl}/?activity=&sessionsPreview=${scenario}`);
@@ -438,10 +438,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await expect(panel.getByRole("article")).toHaveCount(0);
       const barBox = (await bar.boundingBox())!;
-      expect((await toggle.boundingBox())!.width).toBe(barBox.width - 104);
+      const toggleBox = (await toggle.boundingBox())!;
+      const iconGroupLeft = (await panel.getByRole("button", { name: "Add workers", exact: true }).boundingBox())!.x;
+      expect(iconGroupLeft - (toggleBox.x + toggleBox.width)).toBeLessThanOrEqual(8);
+      expect(iconGroupLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
       await bar.click({ position: { x: barBox.width / 2, y: barBox.height / 2 } });
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
-      const countsBox = (await bar.getByText("running", { exact: true }).boundingBox())!;
+      const countsBox = (await bar.getByText(/running/).boundingBox())!;
       await bar.click({ position: { x: countsBox.x - barBox.x + countsBox.width / 2, y: barBox.height / 2 } });
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await expect(panel.getByRole("article")).toHaveCount(0);
@@ -480,7 +483,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "11 of 22 nodes complete");
       await expect(first.locator("[data-session-node]")).toHaveCount(22);
       await expect(second.locator("[data-session-node]")).toHaveCount(4);
-      expect((await first.boundingBox())!.height).toBeLessThan(250);
+      expect((await first.boundingBox())!.height).toBeLessThan(280);
       const firstFooter = (await first.locator("footer").boundingBox())!;
       const secondFooter = (await second.locator("footer").boundingBox())!;
       expect(Math.abs(firstFooter.y - secondFooter.y)).toBeLessThanOrEqual(1);

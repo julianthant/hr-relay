@@ -227,6 +227,13 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     setOperations(operationsRef.current);
   }, []);
   useEffect(() => {
+    const audited = new Set<string>((source?.records ?? []).filter(record => record.auditedAt !== undefined).map(record => record.commandId));
+    const settled = Object.entries(operationsRef.current).filter(([, operation]) => operation.state === "uncertain" && operation.request.action !== "add" && audited.has(operation.request.id));
+    if (settled.length > 0) {
+      const next = { ...operationsRef.current };
+      for (const [target] of settled) delete next[target];
+      operationsRef.current = next; setOperations(next);
+    }
     for (const record of source?.records ?? []) {
       if (record.auditedAt !== undefined || record.request.requestedBy !== source?.actorId || !("workerId" in record.request.target)) continue;
       const actions: Readonly<Record<string, SessionControl | "refresh" | undefined>> = { "stop-worker": "stop", "remove-worker": "remove", "retry-worker": "retry", "pause-worker": "pause", "resume-worker": "resume", "refresh-browser": "refresh" };

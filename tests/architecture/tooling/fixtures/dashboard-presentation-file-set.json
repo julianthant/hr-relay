@@ -68,6 +68,7 @@
   "src/dashboard/surfaces/sessions/session-panel.tsx",
   "src/dashboard/surfaces/sessions/session-timeline.tsx",
   "src/dashboard/surfaces/sessions/sessions-view.tsx",
+  "src/dashboard/surfaces/sessions/worker-card.tsx",
   "src/dashboard/surfaces/settings/editor/settings-authorities.tsx",
   "src/dashboard/surfaces/settings/editor/settings-controls.tsx",
   "src/dashboard/surfaces/settings/editor/settings-editor.tsx",

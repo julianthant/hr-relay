@@ -2,7 +2,7 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../m
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_LABEL } from "../shared/status/system-chip-model.js";
-import { workerBrowserView, workerElapsedSeconds, WORKER_STOP_REASON_LABEL } from "./session-panel-model.js";
+import { workerBrowserView, workerDirectiveNote, workerElapsedSeconds, workerRetryProblem } from "./session-panel-model.js";
 
 type WorkerCardWire = DashboardDayWire["workerCards"][number];
 
@@ -22,7 +22,8 @@ export type SessionWorker = Readonly<{
   elapsed?: string;
   timeline?: readonly SessionNode[];
   problem?: string;
-  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "closed" | "unavailable" }>[];
+  note?: string;
+  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "closed" | "unavailable" | "failed" }>[];
 }>;
 export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[] }>
   | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string; diagnostic?: unknown }>;
@@ -30,6 +31,8 @@ export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
   return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("SESSIONS_UNAVAILABLE", {})).text,
     ...(diagnostic === undefined ? {} : { diagnostic }) };
 }
+/** One plain sentence for how a settled lease ended; a deliberate stop is not an error. */
+const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly." };
 export const SESSION_STATE_LABELS: Readonly<Record<SessionWorkerState, string>> = {
   running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", stopped: "Stopped", failed: "Failed",
 };
@@ -67,27 +70,29 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       : row.pipeline.length === 0 ? "No steps are served for this run"
       : row.pipeline.some(step => step.state === "skipped" || step.state === "cancelled") ? "The current timeline contains states unavailable in this view" : undefined;
     const timeline: SessionNode[] | undefined = timelineUnavailable === undefined ? row?.pipeline.map(step => ({ id: step.id, label: step.label,
-      state: step.state === "done" ? "completed" : step.state === "blocked" ? "waiting" : step.state === "active" && card.state === "paused" ? "paused"
+      state: step.state === "done" ? "completed" : step.state === "blocked" ? "waiting" : step.state === "active" && (card.state === "paused" || card.state === "failed" && card.stopReason !== "crashed") ? "paused"
+        : step.state === "active" && card.state === "failed" ? "failed"
         : step.state === "active" ? "active" : step.state === "failed" ? "failed" : "pending" })) : undefined;
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
-    const problem = card.stopReason === undefined ? browserView.unavailableReason : WORKER_STOP_REASON_LABEL[card.stopReason];
+    const problem = workerRetryProblem(card) ?? (card.stopReason === undefined ? undefined : SETTLED_LINE[card.stopReason]);
     const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state,
       ...(row === undefined ? {} : { subject: row.title }),
-      action: currentRun.state === "present" && ["running", "waiting", "paused"].includes(card.state) && timelineUnavailable !== undefined ? timelineUnavailable
-        : row?.liveMessage.state === "present" ? row.liveMessage.value : row?.pipeline.find(step => step.state === "active" || step.state === "blocked")?.label
-        ?? (card.state === "idle" ? "Ready for the next run" : card.state === "starting" ? "Preparing worker" : SESSION_STATE_LABELS[card.state]),
+      action: row?.liveMessage.state === "present" ? row.liveMessage.value : row?.pipeline.find(step => step.state === "active" || step.state === "blocked")?.label
+        ?? (card.state === "idle" ? "Ready for the next run" : card.state === "starting" ? "Preparing worker" : ""),
       ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
       ...(problem === undefined ? {} : { problem }),
+      ...(workerDirectiveNote(card) === undefined ? {} : { note: workerDirectiveNote(card) }),
       browsers: browserView.slots.map((slot, index) => slot.state !== "open"
         ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: slot.state === "closed" ? "closed" : card.state === "starting" ? "starting" : "unopened" }
         : { id: slot.browser.sessionId, label: SYSTEM_LABEL[slot.browser.system],
           state: slot.browser.observation?.state !== "present" ? "unavailable"
             : slot.browser.observation.health === "starting" ? "starting"
             : slot.browser.observation.health === "authenticated" ? "ready"
+            : slot.browser.observation.health === "failed" ? "failed"
             : slot.browser.observation.health === "unknown" && card.state === "running" ? "active" : "unavailable" }),
     });
   }
