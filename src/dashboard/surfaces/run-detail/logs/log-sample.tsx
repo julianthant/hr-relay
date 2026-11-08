@@ -42,8 +42,8 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const projection = useMemo<ReturnType<typeof projectRunLogs>>(() => {
     if (resource.snapshot === undefined) return { steps: [], timeline: [] };
     const logs = projectRunLogs(resource.snapshot, client);
-    return { ...logs, timeline: pauseTimeline(logs.timeline, selection.row.pauseControl?.state) };
-  }, [resource.snapshot, client, selection.row.pauseControl?.state]);
+    return { ...logs, timeline: pauseTimeline(logs.timeline, selection.row.pauseControl?.state, selection.row.interrupt) };
+  }, [resource.snapshot, client, selection.row.pauseControl?.state, selection.row.interrupt]);
   const failureMissing = resource.snapshot !== undefined && initialStepId !== undefined && !projection.steps.some(step => step.id === initialStepId);
   const preview = resource.snapshot?.logs.dryRunPreview;
   const lastStepId = projection.steps.at(-1)?.id;
@@ -87,7 +87,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     onReview={reviewAvailable ? onReview : undefined}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
-    status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} presentation="queue" />}
+    status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} interrupt={selection.row.interrupt} presentation="queue" />}
     toolbar={toolbar}
     content={reviewOpen ? <RunReview selection={selection} focus={reviewFocus} /> : content}
     afterStep={afterStep} />;

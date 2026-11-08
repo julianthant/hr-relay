@@ -27,7 +27,7 @@
   - region "Queue":
     - text: ACTIVE · 2
     - button "Pause all runs" [disabled]
-    - status: Finishing current steps; pauses and shutdown are not yet confirmed.
+    - status: Pauses are not yet confirmed. A save in progress finishes first.
     - strong: Alex Morgan
     - text: Pausing
     - paragraph: Verifying employee
@@ -40,13 +40,13 @@
     - heading "Alex Morgan" [level=2]
     - text: Pausing
     - button "Pausing…" [disabled]
-    - status: Finishing the current step; a submit is never interrupted. Pause is not yet recorded.
+    - status: Finishing the save first
     - navigation "Run timeline":
       - list:
         - listitem:
           - button "Read request · Completed · 14s" [disabled]: Read request 14s
         - listitem:
-          - button "Verify employee · Pauses after this step": Verify employee Pauses after this step
+          - button "Verify employee · Finishing the save first": Verify employee Finishing the save first
         - listitem:
           - button "Read timecard · Upcoming" [disabled]: Read timecard
         - listitem:
@@ -61,7 +61,7 @@
         - time: 09:31:09
         - paragraph: Read job record
         - time: 09:31:10
-        - paragraph: Finishing current steps; pauses and shutdown are not yet confirmed.
+        - paragraph: Pauses are not yet confirmed. A save in progress finishes first.
     - group:
       - searchbox "Search logs"
     - status: 3 actions
