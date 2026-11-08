@@ -1,3 +1,5 @@
+import { failureDecision } from "../../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { FailureDetailWireSchema } from "../../../../../../src/models/dashboard/run-detail.js";
 import { uuidOf } from "../../../../fixtures/dashboard/fixture-identity.js";
 import { sectionResponse } from "../../../../fixtures/dashboard/run-detail/section-wire.js";
 import type * as FixtureIdentityTypes from "../../../../fixtures/dashboard/fixture-identity.js";
@@ -59,6 +61,8 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
     };
   }
 
+  const withFailureDecision = (value: ReturnType<typeof failureDetail>) => ({ ...value, decision: failureDecision(FailureDetailWireSchema.parse(value)) });
+
   const runIds = [
     FIXTURE_IDS.queuedRun,
     FIXTURE_IDS.runningRun,
@@ -80,7 +84,7 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
     [FIXTURE_IDS.failedRun]: Object.freeze({
       failure: sectionResponse({
         section: "failure",
-        payload: { state: "available", value: failureDetail(FIXTURE_IDS.failedRun, FIXTURE_IDS.failureId, 4) },
+        payload: { state: "available", value: withFailureDecision(failureDetail(FIXTURE_IDS.failedRun, FIXTURE_IDS.failureId, 4)) },
       }),
     }),
   });

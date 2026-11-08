@@ -416,7 +416,7 @@ type PickCandidate = Readonly<{ sheetId: string; rowId: string; label: string; r
   values?: z.infer<typeof WorkbookReferenceRowCandidateWireSchema>["values"] }>;
 
 /** D3 / D11: confirm one served candidate row. A typed row number is offered only when every candidate's row number is known and unique. */
-function rowPickDecision(type: "pick-row" | "workbook-row", title: string, action: ActionDescriptorWire, candidates: readonly PickCandidate[]): RunDecisionWire {
+export function rowPickDecision(type: "pick-row" | "workbook-row", title: string, action: ActionDescriptorWire, candidates: readonly PickCandidate[]): RunDecisionWire {
   const fields = candidates[0]?.values?.map(({ fieldId }) => fieldId) ?? [];
   const numbers = candidates.flatMap(({ rowNumber }) => rowNumber === undefined ? [] : [rowNumber]);
   const typed = numbers.length === candidates.length && new Set(numbers).size === numbers.length;
