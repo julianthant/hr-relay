@@ -8,14 +8,16 @@ import type { RuntimePreflight } from "./runtime-admission.js";
 class PreparationRequired extends Error {
   constructor(readonly scope: PreflightAdmissionScope, readonly run: RunRecord) { super("Selected run needs preflight preparation."); }
 }
-/** Selection and assertion are atomic. A thrown preparation request rolls back before the claim write. */
+const CLAIM_ATTEMPTS = 4;
+/** Selection and assertion are atomic. A thrown preparation request rolls back before the claim write. An authority write during preparation re-prepares within the attempt bound. */
 export async function claimWithPreflight(input: Readonly<{
   preflight: RuntimePreflight; signal: AbortSignal;
   prepareRun(run: RunRecord, signal: AbortSignal): Promise<void>;
   claim(admit: (run: RunRecord) => void): RunMutationOutcome;
+  onObservationChanged?(attempt: number): void;
 }>): Promise<RunMutationOutcome | WorkerPreflightRefusal> {
   let prepared: Readonly<{ runId: string; version: number }> | undefined;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
     if (input.signal.aborted) throw input.signal.reason;
     try {
       return input.claim(run => {
@@ -35,7 +37,9 @@ export async function claimWithPreflight(input: Readonly<{
         input.preflight.admission.assertReady(error.scope);
       } catch (preparationError) {
         if (!(preparationError instanceof PreflightObservationChangedError)) throw preparationError;
-        return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
+        if (attempt === CLAIM_ATTEMPTS - 1) return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
+        input.onObservationChanged?.(attempt + 1);
+        continue;
       }
       if (prepared?.runId !== error.run.envelope.runId || prepared.version !== error.run.version) {
         await input.prepareRun(error.run, input.signal);
