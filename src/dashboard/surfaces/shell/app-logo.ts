@@ -1,6 +1,6 @@
 /**
  * The Relay app logo, Baton: two bars in adjacent lanes tilted 30°, the front bar ahead of the back one, the moment one runner
- * hands on to the next. Plain SVG strings on a 24 grid, so the sidebar header and the favicon and app icon sources share one source.
+ * hands on to the next. Plain SVG strings on a 24 grid, so the sign-up and login title and the favicon and app icon sources share one source.
  * At 24 px and below the bars thicken so the 16 px favicon still shows both.
  */
 /** App icon plate: the light-theme accent, fixed in both themes like any app icon. */

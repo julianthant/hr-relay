@@ -93,7 +93,7 @@ hold aligned peer facts, and short chips carry facts that tolerate truncation.
 The workflow rail is narrow (`clamp(176px, 25vw - 128px, 232px)`); the Queue keeps its width and the Logs panel takes the rest.
 Each rail row shows one number, its runs running now, as a green pill with a live dot left of the name,
 hidden at 0 and read out as the row's description ("2 running").
-The sidebar header and the login and sign-up headers share one Baton lockup: the 24 px accent symbol, then "Relay" at 23 px medium. Larger sign-up headers scale that pair together. `favicon.svg` and the desktop icon sources come from `shell/app-logo.ts`.
+The Baton mark appears only in the sign-up and login title: the 24 px accent symbol, then "Relay" at 23 px medium. Larger sign-up headers scale that pair together. The sidebar header is the Relay wordmark alone, at 23 px medium, beside the notifications bell and search. `favicon.svg` and the desktop icon sources come from `shell/app-logo.ts`.
 
 Waiting, parked and failed runs sit under Needs you. Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same served name: Enter or blur saves, Escape cancels, and an empty name restores the default name (the PDF or run name).
 
