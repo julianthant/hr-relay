@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { i9CheckStartWorkflow } from "../../../src/workflows/i9-check-start/workflow.js";
 import { I9CheckStartInput, i9CheckStartMatchKey } from "../../../src/models/workflows/i9-check/start.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
-import { descriptorRuntimeNodes, workflowProjections, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { i9ApprovedSource } from "../../support/fixtures/i9-check-start.js";
 
@@ -25,6 +25,10 @@ it("compiles one PDF batch with admitted OCR and existing person children, one w
   const children = OcrInputSchema.array().parse(documents.bind({ input, outputs: {} }));
   expect(children.map(child => child.document.id)).toEqual(input.documents.map(source => source.document.id));
   expect(children.every(child => child.formType === "i9" && child.approval === "release" && child.sourceRunId === undefined)).toBe(true);
+  expect(children.map(child => child.fileName)).toEqual(input.documents.map(source => source.fileName));
+  const { title } = workflowPlanning(descriptor);
+  expect(title({ ...input, documents: [input.documents[0]] })).toBe(input.documents[0]?.fileName);
+  expect(title(input)).toBe("I-9 Check · 2 PDFs");
   expect(i9CheckStartMatchKey(input)).toBe(i9CheckStartMatchKey({ ...input, documents: input.documents.toReversed() }));
   expect(I9CheckStartInput.safeParse({ ...input, documents: [input.documents[0], input.documents[0]] }).success).toBe(false);
 });

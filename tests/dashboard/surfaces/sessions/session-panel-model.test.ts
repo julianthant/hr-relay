@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { type Root } from "react-dom/client";
 import { afterEach,it } from "vitest";
-import { workerTimelineView,type WorkerCardWire } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
+import { workerRetryProblem,workerTimelineView,type WorkerCardWire } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { CommandIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { FIXTURE_DAY_WIRE } from "../../../parity/helpers/fixture-day.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -26,4 +27,19 @@ it("the worker timeline uses only the claimed run's served queue steps", () => {
   assert.deepEqual(workerTimelineView(working, FIXTURE_DAY_WIRE.queueSurfaces), { state: "present", steps: row.pipeline });
   assert.deepEqual(workerTimelineView(working, []), { state: "absent", reason: "Run timeline is not served on this day" });
   assert.equal(workerTimelineView(card(), FIXTURE_DAY_WIRE.queueSurfaces).state, "absent");
+});
+
+it("a refused or unconfirmed worker restart names its cause in plain words", () => {
+  const base = card(), at = IsoInstantSchema.parse("2026-11-07T20:42:09.011Z"), commandId = CommandIdSchema.parse("c315aed9-3f00-42fa-a1be-e39516602924");
+  const retry = (state: "uncertain" | "refused" | "succeeded", message?: string): WorkerCardWire => ({ ...base, controls: { ...base.controls!,
+    operation: { commandId, type: "retry-worker", state, at, unresolved: true, ...(message === undefined ? {} : { message }) } } });
+  assert.equal(workerRetryProblem(retry("uncertain", "worker-retirement-child-close-unproved")), "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.");
+  assert.equal(workerRetryProblem(retry("refused", "worker-lifecycle-effect-or-settlement-unproved")), "Couldn't restart this worker.");
+  assert.equal(workerRetryProblem(retry("succeeded")), undefined);
+  const stop = (state: "uncertain" | "refused", message: string): WorkerCardWire => ({ ...base, controls: { ...base.controls!,
+    operation: { commandId, type: "stop-worker", state, at, unresolved: false, message } } });
+  assert.equal(workerRetryProblem(stop("uncertain", "worker-retirement-child-close-unproved")), "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.");
+  assert.equal(workerRetryProblem(stop("refused", "worker-retry-never-started")), "The last restart never started. Use Retry.");
+  assert.equal(workerRetryProblem(stop("uncertain", "worker-lifecycle-effect-or-settlement-unproved")), undefined);
+  assert.equal(workerRetryProblem(base), undefined);
 });

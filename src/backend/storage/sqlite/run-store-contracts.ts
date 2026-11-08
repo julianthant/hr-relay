@@ -169,11 +169,11 @@ export const RunInjectPatchesRequestSchema = z.strictObject({
   now: IsoInstantSchema,
 });
 
-// Presentation requires a display name; it changes no execution authority.
+// Presentation sets or (null) clears the display name; it changes no execution authority.
 export const RunPresentationRequestSchema = z.strictObject({
   runId: RunIdSchema,
   expectedVersion: PositiveIntSchema,
-  displayName: RunDisplayNameSchema,
+  displayName: RunDisplayNameSchema.nullable(),
   now: IsoInstantSchema,
 });
 
@@ -271,7 +271,7 @@ export const CanonicalTransitionRequestSchema = z.union([
   CanonicalWriteResolutionTransitionRequestSchema,
   z.strictObject({ ...CanonicalVersionIdentityFields, lifecycle: RunLifecycleSchema,
     cancellationSource: CancellationSourceSchema.optional() }),
-  z.strictObject({ ...CanonicalVersionIdentityFields, displayName: RunDisplayNameSchema }),
+  z.strictObject({ ...CanonicalVersionIdentityFields, displayName: RunDisplayNameSchema.nullable() }),
   z.strictObject({ ...CanonicalVersionIdentityFields, priority: z.literal("interactive") }),
 ]);
 
