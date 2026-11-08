@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
-import { failureDecision } from "../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
-import { failureDetailWireFixture } from "../../../support/helpers/trust/trust-wire-fixtures.js";
+import { FailureDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
+import { failureDecision } from "../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { failureDetailWireFixture } from "../../../../support/helpers/trust/trust-wire-fixtures.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001", FAILURE = "00000000-0000-4000-8000-000000000004";
 const base = failureDetailWireFixture({ runId: RUN, failureId: FAILURE, traceId: "sep-101500-0001", workflowId: "separations" });

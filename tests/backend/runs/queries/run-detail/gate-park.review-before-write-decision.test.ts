@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { hireReviewDecision } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
-import { gateDecisionFor } from "../../../../src/models/trust/gate-decisions.js";
-import { SearchPersonMatchOutputSchema } from "../../../../src/models/systems/ucpath/search-person-match.js";
+import { hireReviewDecision } from "../../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { gateDecisionFor } from "../../../../../src/models/trust/gate-decisions.js";
+import { SearchPersonMatchOutputSchema } from "../../../../../src/models/systems/ucpath/search-person-match.js";
 
 const ARMS = gateDecisionFor("onboarding", "hire-review").arms;
 const PERSON = { emplId: "10001234", name: "Fixture Person" };

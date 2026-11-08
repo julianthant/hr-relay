@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { ActionDescriptorWireSchema } from "../../../../src/models/dashboard/actions.js";
-import { parkedWriteDecision } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/actions.js";
+import { parkedWriteDecision } from "../../../../../src/backend/runs/queries/run-detail/gate-park.js";
 
 const writeTarget = { writeIntentId: "11111111-1111-4111-8111-111111111111", intentGeneration: 1, writeAttemptId: "22222222-2222-4222-8222-222222222222",
   bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
