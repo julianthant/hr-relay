@@ -81,3 +81,4 @@ judging a visual difference.
   assertions, tolerances, membership and deadlines.
 - Assigned targeted local parity and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
+- A declared workflow scenario ID alone proves no execution.

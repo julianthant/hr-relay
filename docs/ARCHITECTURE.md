@@ -117,4 +117,4 @@ At whole-app freeze, recheck workflow ports and served activation, OCR and Recor
 
 **How do you prevent duplicate submissions?** Persist the intent before the click, bind authority to a generation, retain uncertain outcomes, and refuse generic retry until the exact write is resolved. [Sequencer](../src/backend/runtime/writes/write-sequencer.ts), [intent policy](../src/backend/runtime/policies/durable-intent.ts).
 
-**What is complete?** Separate implemented code, integrated composition, verified behavior, and operator acceptance. Person Lookup being served does not certify other workflows or the current availability of external systems. [Source policy](../config/dashboard-workflow-sources.json), [activation requirements](../AGENTS.md#what-to-build).
+**What is complete?** Separate implemented code, integrated composition, verified behavior, and operator acceptance. Person Lookup being served does not certify other workflows or the current availability of external systems. [Source policy](../config/dashboard-workflow-sources.json), [activation requirements](roadmap/roadmap.md#dashboard-ready-on-the-mac).

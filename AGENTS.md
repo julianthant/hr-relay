@@ -11,14 +11,6 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Keep briefs, receipts, review notes and handoffs in the assigned evidence folder under the main
   checkout's ignored `.work/`, using absolute paths from worktrees. Never commit them.
   Read the assigned local operations note for machine constraints.
-- Complete shared dashboard wiring before sequential workflow activation. Approved workflow maps
-  A and B, including their safety corrections, authorize workflow coding and own its inputs,
-  steps, Logs timelines, results and scenarios. Present generated Explorer timelines and dry-run
-  Logs for operator review.
-- Wire each workflow across Run, Rerun, Queue delegated rows, Logs, Explorer, OCR/Records where
-  present, notifications and Analytics. Activation requires a live dry run and operator sign-off.
-- Activate in order: Person Lookup, Separations, OCR/Emergency Contact, OnBase, then Onboarding.
-  Isolated workflow implementation may run in parallel.
 
 ## Codebase
 
@@ -86,8 +78,9 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 ### Review before push
 
-- Easy lanes assigned to a Cursor coder have no reviewer unless the brief requires one. The coder
-  completes focused checks, typecheck and lint, publishes the PR, enables auto-merge and owns CI fixes.
+- Easy lanes assigned to a Cursor coder on a small UI tweak or a one-file fix have no reviewer.
+  That coder runs focused checks, typecheck and lint, publishes the PR, enables auto-merge, and
+  on red reads the failing job log, fixes that cause, and pushes.
 - Other lanes use one coder and one loop reviewer, taking turns. The orchestrator launches the
   reviewer at the first local SHA. Both may run together only while earlier fixes overlap the
   end of that same review; never put three agents on one lane.
@@ -106,6 +99,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   `git rev-list --left-right --count origin/staging...HEAD`. Review the resulting SHA before push.
 - At the first ready feature/fix push, open a PR into `staging`. Keep its title and description
   current on every push or merge. Enable `gh pr merge <N> --auto --merge --match-head-commit <sha>` after clearance.
+  Green required checks merge that cleared SHA; there is no final reviewer pass.
   Workflow behavior PRs wait for a live dry run and operator sign-off; the orchestrator enables
   their auto-merge. Required check names live in [repository governance](docs/repository-governance.md).
 - Batch fixes on the PR branch. While its CI runs, push again only after that run fails.
@@ -158,12 +152,15 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 - Fail loud on missing or corrupt data and failed checks. Throw a named error or propagate a
   distinct unknown that the caller checks. A fallback needs a valid expected case and recorded
-  verification: live evidence for selectors or page state, tests for pure logic. Never turn a
+  verification: live evidence for selectors or page state, tests for pure logic. When the expected
+  case and the recorded verification are not both clearly met, throw. The error names the
+  offending field or value. Never turn a
   failed check into a default, cached result, alternate selector or swallowed success.
   Retry the same transient operation only where its write policy permits it. Swallow an optional
   failure only when no caller depends on its success.
 - Preserve dry runs, write intents, parked writes, receipts, evidence and UNKNOWN/no-retry behavior.
   Transaction verification uses `dryRun=true`: no UCPath submit or Kuali finalization.
+  A transaction-free live read creates no transactions and no durable effects.
 - Port workflow behavior by copying production reference code and recording its commit and path
   in task evidence, then verify live. Prefix cross-repo paths `legacy:`. Never import, invoke,
   proxy or read production state, delete production files, or make committed gates depend on legacy.
@@ -171,8 +168,9 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   `config/runtime-isolation.json`. Preserve database/settings coupling, terminal tombstones,
   verified backups and boot/upgrade authority. Never discard one authority half to hide a mismatch.
 - Before configuration or live work, read the operating reference's Environment section.
-  Preserve existing `.env` files. Reject unavailable subjects before secret reads or browser launch;
-  never substitute canaries or use settings/credentials as test-input fallbacks. Never log secrets.
+  Preserve existing `.env` files. Do not print credentials. Reject unavailable subjects before
+  secret reads or browser launch; never substitute canaries or use settings/credentials as
+  test-input fallbacks. Never log secret or canary values.
 - Read-only selectors, login checks, collectors and live dry runs are pre-authorized. Use headless
   sessions by default and snapshot before choosing locators. Fast Duo requires full Chromium;
   read `fast-duo/README.md`.
@@ -191,14 +189,15 @@ client code or wiring.
 ## Context, reports and delegation
 
 - Each Codex brief selects its route. Claude and Cursor use their launch settings, without routes.
-  Codex lane workers launch no separate worker sessions; in-session subagents follow their brief.
-  Opus 5.5 xhigh coders delegate through `/delegate` and report counts per tier in READY.
+  Codex lane workers do not launch workers. Opus 5.5 xhigh coders delegate through `/delegate`
+  and report counts per tier in READY.
 - At each finished concern, record its commits in the assigned `<lane>-report.md`. Include changes,
   check results, CI obligations and open decisions. Prefix terminal reports `REPORT: <lane>` and
   send them to the orchestrator, then stop at the brief's boundary.
-- Before context exhaustion, finish the current step and write `<lane>-resume.md` beside the brief:
-  brief path, branch, HEAD, dirty paths, open review verdicts and next step. Claude workers do this
-  above 300k context tokens. Send `CONTEXT HANDOFF <note path>` to the orchestrator and stop.
+- Claude workers above 300k tokens finish the current step and write `<lane>-resume.md` beside
+  the brief: brief path, branch, HEAD, dirty paths, open review verdicts and next step. Send
+  `CONTEXT HANDOFF <note path>` to the orchestrator and stop. The orchestrator closes the session
+  and starts a fresh one on the brief and the note.
 
 ## Read by task
 

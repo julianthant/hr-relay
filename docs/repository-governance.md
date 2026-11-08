@@ -25,7 +25,7 @@ performance. The [release instructions](../AGENTS.md#pr-and-release-flow) own pr
 
 ## Merge train and automatic fixes
 
-Roadmap-only pushes (`docs/roadmap/**`) are excluded from CI and the merge train; this filter does not authorize direct publication.
+Push roadmap-only commits (`docs/roadmap/**`) straight to `staging` to skip staging CI and the merge train.
 `.github/workflows/merge-train.yml` runs on other pushes to `staging`, and CI calls it as its final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
 `staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
