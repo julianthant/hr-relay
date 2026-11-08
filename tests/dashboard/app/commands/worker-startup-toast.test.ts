@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workerStartupToast } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
+import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workerStartupToast, workflowWorkersStopped } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../parity/helpers/fixture-day.js";
 import { runLaunchAppliedToast } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
@@ -96,5 +96,11 @@ describe("stopped worker toast", () => {
     assert.deepEqual(stoppedWorkerToasts(day("crashed", []), label), []);
     const paused = queued.map(row => ({ ...row, pause: { state: "paused", commandId: "00000000-0000-4000-8000-000000000123", requestedAt: FIXTURE_NOW, pausedAt: FIXTURE_NOW } }));
     assert.deepEqual(stoppedWorkerToasts(day("crashed", DashboardDayWireSchema.shape.queueSurfaces.parse(paused)), label), []);
+  });
+
+  it("reports the stop reason only while every worker of the workflow has stopped", () => {
+    assert.equal(workflowWorkersStopped(day("crashed"), "person-lookup"), "crashed");
+    assert.equal(workflowWorkersStopped(day(undefined), "person-lookup"), undefined);
+    assert.equal(workflowWorkersStopped(day("crashed"), "no-such-workflow"), undefined);
   });
 });

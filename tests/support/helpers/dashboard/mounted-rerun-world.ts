@@ -47,11 +47,11 @@ async function fill(node: HTMLInputElement | HTMLTextAreaElement, value: string)
   const setter: { set?: (this: unknown, value: string) => void } | undefined = Object.getOwnPropertyDescriptor(node instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, "value");
   assert.ok(setter?.set); await act(async () => { setter.set?.call(node, value); node.dispatchEvent(new Event("input", { bubbles: true })); });
 }
-async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.client) {
+async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.client, workersStopped?: (workflowId: string) => boolean) {
   const workflows = [h.workflow]; const sourceRef = { runId: source.envelope.runId, expectedVersion: source.version };
   function Launcher({ actorId }: { actorId: string }) { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => controller.openRerun(sourceRef) }, "Rerun source"),
-    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
+    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, workersStopped, onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   async function replaceBinding(nextClient: DashboardClient, { actorId = "local-operator", requestKey = 0, nowIso = h.clock.now().toISOString(), bound = true } = {}) {
     const launcher = createElement(Launcher, { actorId });

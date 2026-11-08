@@ -67,13 +67,18 @@ export function unconfirmedBulkWorkerToast(request: StartupRequest, reply: Start
   return appliedWorkerStartupToast(request, reply);
 }
 
+/** Why no worker of a workflow can take a run: every one has stopped. Undefined while any can. */
+export function workflowWorkersStopped(day: DashboardDayWire, workflowId: string): DashboardDayWire["workerCards"][number]["stopReason"] {
+  const workers = day.workerCards.filter(card => card.workflowId === workflowId);
+  return workers.some(card => card.state !== "failed") ? undefined : workers[0]?.stopReason;
+}
+
 /** Queued runs no worker can take: every worker of their workflow has stopped. Sticky while that holds. */
 export function stoppedWorkerToasts(day: DashboardDayWire, workflowLabel: (workflowId: string) => string): WorkerStartupToast[] {
   const waiting = day.queueSurfaces.filter(row => row.status === "queued" && row.pause === undefined);
   return [...new Set(waiting.map(row => row.workflowId))].flatMap(workflowId => {
-    const workers = day.workerCards.filter(card => card.workflowId === workflowId);
-    const stopped = workers[0]?.stopReason;
-    if (stopped === undefined || workers.some(card => card.state !== "failed")) return [];
+    const stopped = workflowWorkersStopped(day, workflowId);
+    if (stopped === undefined) return [];
     const runs = waiting.filter(row => row.workflowId === workflowId).length;
     return [{ tone: "warning" as const, title: queuedWorkerTitle("refused", runs === 1 ? undefined : runs),
       description: `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];

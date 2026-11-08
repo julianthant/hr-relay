@@ -305,5 +305,6 @@ export function useSessionAddFeedback(operation?: SessionPreviewOperation) {
       return () => dismiss(id);
     }
     if (operation?.state === 'confirmed') toast({ tone: 'success', title: operation.message });
+    if (operation?.state === 'refused') toast({ tone: 'danger', title: "Couldn't add workers", description: operation.message, duration: 6000 });
   }, [operation, toast, dismiss]);
 }
