@@ -1,4 +1,4 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { QueueSurfaceWire } from "../shell/shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
@@ -110,15 +110,18 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
     const stepLabel = row?.pipeline.find(step => atStep(step) || step.state === "blocked" || step.state === "failed")?.label;
+    // How a settled lease ended: a crash names its recorded refusal when there is one (long, so it wraps under the bar).
+    const failureLine = card.failureCode === undefined ? undefined : operatorFailureSentence(card.failureCode);
+    const settledLine = card.stopReason === undefined ? undefined : failureLine ?? SETTLED_LINE[card.stopReason];
     // A settled worker whose run left the day says what happened in the top line and why the step is unknown below the bar.
     const recordGone = settled && row === undefined;
-    const problem = workerRetryProblem(card) ?? (recordGone ? "Its run is no longer on record." : card.stopReason === undefined ? card.state === "idle" && lastRun?.outcome !== undefined ? LAST_RUN_LINE[lastRun.outcome] : undefined : SETTLED_LINE[card.stopReason]);
+    const problem = workerRetryProblem(card) ?? (recordGone ? failureLine ?? "Its run is no longer on record." : settledLine ?? (card.state === "idle" && lastRun?.outcome !== undefined ? LAST_RUN_LINE[lastRun.outcome] : undefined));
     const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
     const note = workerDirectiveNote(card) ?? (card.waitingActivity === undefined ? undefined : WAITING_LINE[card.waitingActivity]);
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state,
       ...(row === undefined ? {} : { subject: row.title }),
-      action: recordGone ? card.stopReason === undefined ? "Last step unknown" : SETTLED_LINE[card.stopReason] : settled ? stepLabel ?? "Last step unknown" : row?.liveMessage.state === "present" ? row.liveMessage.value : stepLabel
+      action: recordGone ? card.stopReason === undefined ? RUNLESS_LINE.failed : SETTLED_LINE[card.stopReason] : settled ? stepLabel ?? "Last step unknown" : row?.liveMessage.state === "present" ? row.liveMessage.value : stepLabel
         ?? RUNLESS_LINE[card.state],
       ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),

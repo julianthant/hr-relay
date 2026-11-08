@@ -526,6 +526,16 @@ it("shows Opening during login, In use during a callback, and Closed after a CRM
   assert.deepEqual(closed.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "closed"], ["UCPath", "unopened"]]);
 });
 
+it("shows a crashed worker's catalog failure text and falls back to the generic line without a code", () => {
+  const day = dayWith(); const card = { ...day.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed", browsers: [] };
+  const bottomLine = (extra: object) => {
+    const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, ...extra }] }), catalog, now);
+    assert.ok(view.state === "ready"); return view.workers[0].problem;
+  };
+  assert.equal(bottomLine({ failureCode: "BROWSER_ROOT_UNAVAILABLE" }), ERROR_CATALOG.BROWSER_ROOT_UNAVAILABLE.text);
+  assert.equal(bottomLine({}), "Its run is no longer on record.");
+});
+
 it("distinguishes an intentionally stopped worker after restart from a crashed worker", () => {
   const day = dayWith(); const card = day.workerCards[0];
   for (const stopReason of ["operator", "shutdown", "crashed"] as const) {

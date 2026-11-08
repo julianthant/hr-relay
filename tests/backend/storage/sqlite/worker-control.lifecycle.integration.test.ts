@@ -254,6 +254,25 @@ describe("exact lifecycle reservation", () => {
     expect(h.database.authority.workerControls.get(f.record.commandId)?.phase.state).toBe("succeeded");
   });
 
+  it("Retry initialization probes each system's browser profile before its warm sign-in", async () => {
+    const h = await fixture(), f = await retryStarting(h, "initialize", true);
+    if (f.binding.operation.kind !== "retry") throw new Error("missing retry");
+    const configFingerprint = f.binding.operation.configFingerprint;
+    const calls: string[] = [];
+    const sessionFactory = { ...h.deps.sessionFactory,
+      probeProfile: async (input: Parameters<typeof h.deps.sessionFactory.probeProfile>[0]) => { calls.push(`probe:${input.system}`); return h.deps.sessionFactory.probeProfile(input); },
+      open: async (input: Parameters<typeof h.deps.sessionFactory.open>[0]) => { calls.push(`open:${input.system}`); return h.deps.sessionFactory.open(input); } };
+    await runWorkerLoop({ ...h.deps, sessionFactory,
+      browserObservation: observation => { h.database.authority.workerControls.observe({ ...observation, leaseGeneration: f.lease.leaseGeneration }); },
+      initialize: async (sessions, signal) => {
+        await initializeRetryWorker({ database: h.database, commandId: f.record.commandId, leaseGeneration: f.lease.leaseGeneration,
+          descriptor: personLookupDescriptor, configFingerprint, sessions, signal, clock: h.authority.clock, scheduler: h.scheduler });
+      },
+    });
+    expect(calls).toEqual(["probe:ucpath", "open:ucpath", "probe:crm", "open:crm"]);
+    expect(h.database.authority.workerControls.get(f.record.commandId)?.readiness?.state).toBe("ready");
+  });
+
   it("Stop aborts actual Retry authentication and durably releases readiness before the next real claim", async () => {
     const h = await fixture(), f = await retryStarting(h, "initialize", true);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry");

@@ -173,6 +173,14 @@ describe("sessions panel card data", () => {
   const stopped = leaseOf({ lifecycle: { state: "stopped", startedAt: STARTED, stoppedAt: STARTED, reason: "crashed" },
     control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" } });
 
+  it("serves a crashed lease's failure code and omits the key without one", () => {
+    const crashed = (failureCode?: "BROWSER_ROOT_UNAVAILABLE") => card({ ownerAlive: false, lease: leaseOf({ control: stopped.control,
+      lifecycle: { state: "stopped", startedAt: STARTED, stoppedAt: STARTED, reason: "crashed", ...(failureCode === undefined ? {} : { failureCode }) } }) });
+    const withCode = crashed("BROWSER_ROOT_UNAVAILABLE");
+    assert.equal(withCode.stopReason, "crashed"); assert.equal(withCode.failureCode, "BROWSER_ROOT_UNAVAILABLE");
+    assert.equal("failureCode" in crashed(), false);
+  });
+
   it("keeps a stopped card's final-generation sessions as lastBrowsers while browsers stays empty", () => {
     const value = card({ ownerAlive: false, lease: stopped, observations: [observed("authenticated"), observed("closed", "ucpath", SESSION_B),
       observed("authenticated", "crm", "00000000-0000-4000-8000-00000000000c", 2)] });

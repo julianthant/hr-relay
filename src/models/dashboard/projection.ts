@@ -9,6 +9,7 @@ import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifica
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../rules/notifications/notification-triggers.js";
 /** The two worker vocabularies are IMPORTED, not mirrored; the queue's priority enum is a copy only because the envelope module reaches a checkpoint module. */
 import { WorkerControlBasisSchema, WorkerDirectiveSchema, WorkerStopReasonSchema } from "../run/worker.js";
+import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import { RunSessionOriginSchema } from "../run/session.js";
 import {
@@ -453,6 +454,8 @@ export const WorkerCardWireSchema = z.strictObject({
   endedAt: IsoInstantSchema.optional(),
   /** Present iff the lease is terminal — the recorded reason, never inferred. */
   stopReason: WorkerStopReasonSchema.optional(),
+  /** Present iff the crashed lease recorded its named refusal. */
+  failureCode: ErrorCatalogCodeSchema.optional(),
   currentRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),

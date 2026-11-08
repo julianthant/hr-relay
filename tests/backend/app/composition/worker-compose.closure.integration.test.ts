@@ -17,6 +17,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import * as workerLoop from "../../../../src/backend/runtime/workers/worker-loop.js";
 import * as debugEvents from "../../../../src/backend/logs/debug-events.js";
+import { BrowserRootUnavailableError } from "../../../../src/backend/storage/browser-roots.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -37,6 +38,7 @@ for (const { mode: failure, name } of [
   { mode: "close", name: "retains an unproved closure report while settling the worker lease as crashed" },
   { mode: "close-log", name: "retains unproved closure when its diagnostic fails and the next diagnostic succeeds" },
   { mode: "runtime-log", name: "retains the original session closure failure when runtime diagnostics fail" },
+  { mode: "runtime-code", name: "records the refusal's catalog code on the crashed lease and rethrows the refusal" },
   { mode: "launch", name: "reports launch-uncertain with custody held and leaves the worker lease unchanged" },
 ] as const) it(name, async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
@@ -73,6 +75,7 @@ for (const { mode: failure, name } of [
   const store = credentialStores.createCredentialStore;
   vi.spyOn(workerLoop, "runWorkerLoop").mockImplementation(async input => {
     if (failure === "runtime-log") { failedWorkerId = input.workerId; throw runtimeFailure; }
+    if (failure === "runtime-code") { failedWorkerId = input.workerId; throw new BrowserRootUnavailableError(); }
     report = await run(input); return report;
   });
   vi.spyOn(credentialStores, "createCredentialStore").mockImplementation(input => { issued = input.admission; return store(input); });
@@ -117,7 +120,7 @@ for (const { mode: failure, name } of [
       ...(failure !== "launch" ? { sessionFactory: happySessionHarness().factory } : {}),
       stopSignal: new AbortController().signal, write: () => undefined,
       closeDatabase: database => { database.close(); closedWorkerDatabase = database; } }), error => {
-      assert.ok(error instanceof RuntimeCustodyUncertainError);
+      assert.ok(failure === "runtime-code" ? error instanceof BrowserRootUnavailableError : error instanceof RuntimeCustodyUncertainError);
       if (failure === "runtime-log") {
         const contains = (value: unknown, target: unknown): boolean => value === target
           || value instanceof AggregateError && value.errors.some(member => contains(member, target));
@@ -132,10 +135,11 @@ for (const { mode: failure, name } of [
       const lease = context.database.authority.workerLeases.get(report.workerId);
       assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
     }
-    else if (failure === "runtime-log") {
+    else if (failure === "runtime-log" || failure === "runtime-code") {
       assert.equal(report, undefined); assert.ok(failedWorkerId);
       const lease = context.database.authority.workerLeases.get(failedWorkerId);
       assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
+      if (failure === "runtime-code") assert.equal(lease.lifecycle.failureCode, "BROWSER_ROOT_UNAVAILABLE");
     }
     else {
       assert.equal(report, undefined); assert.ok(launchReport); assert.ok(beforeLaunch);
@@ -163,7 +167,9 @@ for (const { mode: failure, name } of [
       assert.ok(launchFailure); await assert.rejects(launchFailure);
     }
     if (failure === "close-log" || failure === "runtime-log") assert.equal(injectedLoggingFailures, 1);
-    assert.ok(issued); issued.assertLive(); lifetimeLock.assertHeld();
+    assert.ok(issued); const admitted = issued;
+    if (failure === "runtime-code") assert.throws(() => { admitted.assertLive(); }, /released admission/u); else admitted.assertLive();
+    lifetimeLock.assertHeld();
     assert.ok(closedWorkerDatabase);
     const closed = closedWorkerDatabase;
     assert.throws(() => closed.getMeta(), /closed/u);
