@@ -54,8 +54,8 @@ function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: Lo
   const disabled = onAnswer === undefined;
   const pick = option?.input?.kind === "candidate";
   const named = choices.length === 1 && option !== undefined && (option.input === undefined || option.input.kind === "text" || option.input.kind === "date");
-  // The write outcome is the caution, or the footer note on a failure.
-  const context = [decision.message, decision.caution ?? (decision.state === "failed" ? decision.footer : undefined)].filter(Boolean).join(" ") || undefined;
+  // The served context line names what is asked; without one, the write outcome is the caution, or the footer note on a failure.
+  const context = served.context ?? ([decision.message, decision.caution ?? (decision.state === "failed" ? decision.footer : undefined)].filter(Boolean).join(" ") || undefined);
   return <div className="flex min-w-0 flex-col gap-3" data-decision-state={decision.state}>
     {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
     <DecisionCard title={decision.title} context={context} tone={decision.state === "failed" ? "danger" : undefined} inline={pick}
@@ -65,7 +65,7 @@ function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: Lo
       {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}
       {decision.field && <div className="log-failed-field"><span>{decision.field.label}</span><strong>{decision.field.value}</strong><span>{decision.field.outcome}</span></div>}
       {decision.comparison && <Compare rows={decision.comparison} />}
-      {choices.length > 1 && option !== undefined && <DecisionChoice label="Next step" value={option.id} disabled={disabled} onChange={setSelected}
+      {choices.length > 1 && option !== undefined && served.choiceLabel !== undefined && <DecisionChoice label={served.choiceLabel} value={option.id} disabled={disabled} onChange={setSelected}
         options={choices.map(candidate => ({ value: candidate.id, label: candidate.label, hint: candidate.hint }))} />}
       {option !== undefined && <OptionInput option={option} answer={answer} disabled={disabled} setAnswer={next => setAnswers({ ...answers, [option.id]: next })} />}
     </DecisionCard>

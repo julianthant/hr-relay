@@ -114,7 +114,7 @@ hdh: true,
       options,
       approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
       actions,
-      decision: identityGateDecision(options, actions, [], undefined),
+      decision: identityGateDecision(options, actions, [], undefined, { documentName: packet.documentName }),
       ...overrides,
     });
   }

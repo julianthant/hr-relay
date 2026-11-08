@@ -122,6 +122,10 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       assert.equal(result.state, "parked-gate"); assert.equal(downloads, 0);
       const parked = f.db.authority.runs.get(runId); assert.ok(parked);
       const choices = buildRunWorkbookSection(f.db.authority, parked).referenceChoices; assert.equal(choices?.length, 2); assert.ok(choices);
+      for (const choice of choices) {
+        const table = choice.resolution.state === "available" ? choice.resolution.decision?.options[0]?.input : undefined;
+        assert.ok(table?.kind === "candidate" && table.table.typed?.label === "Enter row number" && table.table.rows.every(row => row.rowNumber !== undefined), "each ambiguous pick serves a typed row number");
+      }
       const checkpoint = f.db.authority.runCheckpoints.latest(descriptor.id, entry.itemId, "document-rows"); assert.ok(checkpoint);
       const rows = ReadCrmDocumentRows.output.parse(checkpoint.output.value);
       const attempted = CrmDocumentRowChoiceSchema.parse({ ...rows, decision: "selected", state: "resolved", people: rows.people.map(person => {

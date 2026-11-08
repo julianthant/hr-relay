@@ -17,6 +17,8 @@ export type DeclaredOption = Readonly<{ id: string; label: string; hint: string;
 export type DecisionDeclaration = Readonly<{
   title: string;
   options: readonly DeclaredOption[];
+  /** The dropdown's label when the decision offers more than one choice. */
+  choiceLabel?: string;
   /** The first of these the instance serves is preselected. */
   recommended: readonly string[];
   /** Options come from the gate's declared arms, not this catalog. */
@@ -29,7 +31,7 @@ const cancelRun: DeclaredOption = { id: "cancel-run", label: "Cancel run", hint:
 const addNote: DeclaredOption = { id: "add-note", label: "Add note", hint: "Record what you found. The run stays failed.", send: { via: "command", family: "failure-resolution", type: "annotate-failure" } };
 
 export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclaration>> = Object.freeze({
-  "identity-mismatch": { title: "Check the person this run found", recommended: ["approve"], options: [
+  "identity-mismatch": { choiceLabel: "Next step", title: "Is this the right person?", recommended: ["approve"], options: [
     { id: "approve", label: "Approve match", hint: "The person found is the one the request means.", send: { via: "action", command: "resolve-gate" } },
     { id: "reject", label: "Reject match", hint: "This is not the right person. The run stops.", send: { via: "action", command: "resolve-gate" } },
   ] },
@@ -40,18 +42,18 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
   "pick-row": { title: "Pick the row to use", recommended: ["confirm"], options: [
     { id: "confirm", label: "Confirm row", hint: "Use the picked row.", send: { via: "action", command: "resolve-workbook-reference-row" } },
   ] },
-  "review-before-write": { title: "Review before Relay writes", recommended: [], gateArms: true, options: [] },
-  "write-parked": { title: "Check whether the submit went through", recommended: ["check-result", "check-again"], options: [
+  "review-before-write": { choiceLabel: "Next step", title: "Review before Relay writes", recommended: [], gateArms: true, options: [] },
+  "write-parked": { choiceLabel: "Answer", title: "Check whether the submit went through", recommended: ["check-result", "check-again"], options: [
     { id: "check-again", label: "Check again", hint: "Read the target system again. Nothing is submitted.", send: { via: "action", command: "check-parked-write", fallback: "recheck-write" } },
     { id: "check-result", label: "Check result", hint: "Tell Relay what you found in the target system.", send: { via: "verification", present: "recheck-write", absent: "resolve-write-absent" } },
     { id: "didnt-land", label: "It didn't land", hint: "You checked and nothing was sent. Relay may submit again.", send: { via: "action", command: "resolve-write-absent" } },
   ] },
-  "write-unknown": { title: "Check whether the submit went through", recommended: ["check-result", "check-again"], options: [
+  "write-unknown": { choiceLabel: "Answer", title: "Check whether the submit went through", recommended: ["check-result", "check-again"], options: [
     { id: "check-again", label: "Check again", hint: "Read the target system again. Nothing is submitted.", send: { via: "action", command: "check-parked-write", fallback: "recheck-write" } },
     { id: "check-result", label: "Check result", hint: "Tell Relay what you found in the target system.", send: { via: "verification", present: "recheck-write", absent: "resolve-write-absent" } },
     { id: "didnt-land", label: "It didn't land", hint: "You checked and nothing was sent. Relay may submit again.", send: { via: "action", command: "resolve-write-absent" } },
   ] },
-  "failed-retryable": { title: "A step failed", recommended: ["retry", "add-note"], options: [
+  "failed-retryable": { choiceLabel: "Next step", title: "A step failed", recommended: ["retry", "add-note"], options: [
     { id: "retry", label: "Retry step", hint: "Nothing was written, so the step can run again.", send: { via: "action", command: "retry" } },
     addNote,
   ] },
@@ -59,14 +61,14 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
   "member-failed": { title: "This member failed", recommended: ["retry"], options: [
     { id: "retry", label: "Retry member", hint: "Run this member again. The rest of the batch is unchanged.", send: { via: "action", command: "retry" } },
   ] },
-  "correct-value": { title: "Correct the value and retry", recommended: ["retry-with-value"], options: [
+  "correct-value": { choiceLabel: "Next step", title: "Correct the value and retry", recommended: ["retry-with-value"], options: [
     { id: "retry-with-value", label: "Retry with this value", hint: "Start again with the corrected value.", send: { via: "start-plan" } },
     { id: "check-again", label: "Check again", hint: "Run the step again with the same value.", send: { via: "action", command: "retry" } },
   ] },
   "workbook-row": { title: "Pick the workbook row to write", recommended: ["confirm"], options: [
     { id: "confirm", label: "Confirm row", hint: "Write to the picked row.", send: { via: "action", command: "resolve-workbook-row" } },
   ] },
-  "sign-in": { title: "Sign in to continue", recommended: [], projected: false, options: [
+  "sign-in": { choiceLabel: "Next step", title: "Sign in to continue", recommended: [], projected: false, options: [
     { id: "sign-in-again", label: "Sign in again", hint: "Refresh the browser session and approve Duo.", send: { via: "command", family: "worker-browser", type: "refresh-browser" } },
     { id: "reopen-browser", label: "Reopen browser", hint: "Open a new browser session.", send: { via: "command", family: "worker-browser", type: "reopen-browser" } },
   ] },

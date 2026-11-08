@@ -31,6 +31,7 @@ export const logDecisionExamples = [
         "served": {
           "type": "write-parked",
           "title": "File termination",
+          "choiceLabel": "Answer",
           "options": [
             {
               "id": "parked-check",
@@ -269,6 +270,7 @@ export const logDecisionExamples = [
         "served": {
           "type": "correct-value",
           "title": "Look up employee",
+          "choiceLabel": "Next step",
           "options": [
             {
               "id": "employee-not-found-check",
@@ -292,7 +294,8 @@ export const logDecisionExamples = [
                 "kind": "text",
                 "label": "Employee ID",
                 "placeholder": "8-digit EID from UCPath",
-                "pattern": "^\\d{8}$"
+                "pattern": "^\\d{8}$",
+                "prefill": "1003187"
               }
             }
           ]
@@ -317,6 +320,7 @@ export const logDecisionExamples = [
         "served": {
           "type": "correct-value",
           "title": "Read separation document",
+          "choiceLabel": "Next step",
           "options": [
             {
               "id": "document-not-found-check",
@@ -1026,6 +1030,7 @@ export const logDecisionExamples = [
         "served": {
           "type": "pick-person",
           "title": "Which Alex Morgan is this run about?",
+          "context": "UCPath found 3 people with this name.",
           "options": [
             {
               "id": "review-candidates-0",
@@ -1196,6 +1201,7 @@ export const logDecisionExamples = [
         "served": {
           "type": "identity-mismatch",
           "title": "Confirm the employment record",
+          "choiceLabel": "Next step",
           "options": [
             {
               "id": "review-employment-0",

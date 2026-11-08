@@ -636,6 +636,8 @@ export const FailureDetailWireSchema = z.strictObject({
   display: FailureDisplaySchema.optional(),
   recovery: z.strictObject({
     correction: FailureCorrectionSchema, expectedVersion: z.number().int().positive(),
+    /* The rejected value; served only when the correction is declared display-safe. */
+    prefill: z.string().min(1).optional(),
     retry: ActionDescriptorWireSchema, confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
   }).optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),

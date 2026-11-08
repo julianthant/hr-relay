@@ -908,13 +908,13 @@ const ANSWER_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
 ];
 /** A served run decision's free-text leaves: catalog and workflow-declared text, served keys, and the HR values a pick or prefill shows. */
 const DECISION_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
-  ...["title", "options[].id", "options[].label", "options[].hint", "options[].confirm.body", "options[].confirm.confirmLabel", "options[].confirm.title",
+  ...["context", "choiceLabel", "options[].id", "options[].label", "options[].hint", "options[].confirm.body", "options[].confirm.confirmLabel", "options[].confirm.title",
     "options[].input.label", "options[].input.pattern", "options[].input.placeholder", "options[].input.question",
     "options[].input.table.columns[].id", "options[].input.table.columns[].label", "options[].input.table.rows[].cells[].columnId",
     "options[].input.table.typed.label", "options[].input.table.typed.pattern", "options[].input.table.typed.placeholder",
     "options[].send.absentActionKey", "options[].send.actionKey", "options[].send.arm", "options[].send.family", "options[].send.gateNodeId",
     "options[].send.presentActionKey", "options[].send.transactionPattern", "options[].send.type"].map(path => [path, "repository-authored"] as const),
-  ...["options[].input.prefill", "options[].input.table.title", "options[].input.table.rows[].cells[].value", "options[].input.table.rows[].id",
+  ...["title", "options[].input.prefill", "options[].input.table.title", "options[].input.table.rows[].cells[].value", "options[].input.table.rows[].id",
     "options[].input.table.rows[].name", "options[].input.table.rows[].rowId", "options[].input.table.rows[].sheetId"].map(path => [path, "captured-hr-value"] as const),
   ...ANSWER_LEAF_ORIGINS.map(([path, origin]) => [`answer.${path}`, origin] as const),
 ];
@@ -1025,6 +1025,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     ...['versionId', 'libraryId', 'typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.value.recovery.request.workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
     { surface: 'wire/run-detail-section', path: 'payload.value.recovery.request.workbookReferences[].selectedRow.sheetId', origin: 'captured-hr-value' },
     { surface: 'wire/run-detail-section', path: 'payload.value.recovery.request.workbookReferences[].selectedRow.rowId', origin: 'captured-hr-value' },
+    { surface: 'wire/run-detail-section', path: 'payload.value.recovery.prefill', origin: 'captured-hr-value' },
     ...['name', 'sheetId'].map(path => ({ surface: 'wire/workbook-reference', path: `worksheets[].${path}`, origin: 'captured-hr-value' as const })),
     ...['action', 'displayedName'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.ucpathFindings.findings.rows[].${path}`, origin: 'captured-hr-value' as const })),
   {"surface": "wire/run-detail-section", "path": "payload.dryRunPreview.stages[].detail", "origin": "repository-authored"},
