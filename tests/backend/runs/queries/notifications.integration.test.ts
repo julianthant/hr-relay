@@ -14,6 +14,14 @@ describe("notification destinations", () => {
     expect(query(row.notificationId, row.actorId)).toMatchObject({ kind: "refused", reason: "run-unavailable" });
     expect(() => query("malformed", row.actorId)).toThrow();
   });
+  it("opens the host row for a hidden run", () => {
+    const hidden = runRecordOf({ seed: 3, enqueuedAt: "2026-07-03T18:00:00.000Z" });
+    const host = runRecordOf({ seed: 4, enqueuedAt: "2026-07-04T18:00:00.000Z" });
+    const row = notificationRecordOf({ seed: 3, title: "Records ready", lastSeenAt: hidden.createdAt });
+    const query = createNotificationTargetQuery({ get: () => row, read: () => ({ state: "present", disposition: "live", run: hidden }), failure: () => undefined,
+      host: run => run === hidden ? host : undefined });
+    expect(query(row.notificationId, row.actorId)).toEqual({ kind: "run", runId: host.envelope.runId, day: "2026-07-04" });
+  });
   it("preserves exact failure identity and Storage", () => {
     const failure = failureRecordOf({ seed: 2, code: "TEST_FAILURE" });
     const run = runRecordOf({ seed: 2, enqueuedAt: failure.occurredAt, lifecycle: { state: "terminal", outcome: "failed", failureId: failure.failureId, endedAt: failure.occurredAt } });

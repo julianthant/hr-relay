@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { scaledMs } from "../../../support/time-scale.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import { afterEach, it } from "vitest";
-import { readOcrRecordBindings, readOcrQueueMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
+import { ocrHostRun, readOcrRecordBindings, readOcrQueueMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import type { DelegatedRecordBinding } from "../../../../src/models/workflow/delegated-record.js";
 import { readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { OcrReviewSeedSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
@@ -20,6 +20,9 @@ import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/modu
 import { defineWorkflow, composeWorkflowModule, compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { compileFixtureWorkflow } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { FingerprintSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { createNotificationTargetQuery } from "../../../../src/backend/runs/queries/notifications.js";
+import { notificationRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 import { queueKeyboardEntries } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { ocrReviewCards } from "../../../../src/dashboard/surfaces/run-detail/review/review-model.js";
 import { ocrWorkflow } from "../../../../src/workflows/ocr/workflow.js";
@@ -56,7 +59,7 @@ const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
   steps: ({ delegate, result }) => {
     const source = delegate({ id: "read-documents", target: { id: WorkflowIdSchema.parse("ocr"), input: OcrInputSchema, result: OcrWorkflowResultSchema },
       edgeId: "documents", cardinality: "many", await: "terminal", join: "all-settled",
-      policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "linked" },
+      policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "hidden-unless-failed" },
     }, [], { bind: ({ input }) => [input], deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     return { steps: [[{ key: "documents", label: "Documents" }, [source]]], result: result(OcrCanonicalInputSchema, [], ({ input }) => input) };
   },
@@ -178,7 +181,7 @@ it("keeps unidentified records without inventing a lookup child or changing nati
     && member.target.section === "review" && member.target.record.recordId === member.record.recordId));
 });
 
-it("keeps the parent reading while the linked OCR row owns person records and its review gate", async () => {
+it("presents the hosted OCR run through its host: one visible row, the host serving the review and its members", async () => {
   const f = await world.fixture({ record: true, release: true, pageCount: 2, parent });
   const { database, clock } = f;
   const descriptors = { resolve: f.resolve };
@@ -199,8 +202,10 @@ it("keeps the parent reading while the linked OCR row owns person records and it
   assert.equal(parentRow.surfaceKind, "operation");
   assert.equal(childRow.surfaceKind, "operation");
   if (parentRow.surfaceKind !== "operation" || childRow.surfaceKind !== "operation") assert.fail("Missing record presentations");
-  assert.equal(childRow.parent?.visibility, "linked");
-  assert.ok(parentRow.linkedRuns.some(link => link.runId === childRow.runId && link.panelKind === "review"));
+  assert.equal(childRow.parent?.visibility, "hidden-unless-failed");
+  assert.equal(isQueueTopLevel(childRow), false);
+  assert.deepEqual(parentRow.linkedRuns, []);
+  assert.equal(parentRow.panelKind, "review");
   assert.deepEqual(parentRow.recordMembers?.members.map(member => ({ kind: member.kind, title: member.title,
     statusLabel: member.statusLabel, runId: member.target.runId })), [
     { kind: "reading", title: "2 pages", statusLabel: "Reading", runId: childRow.runId },
@@ -213,13 +218,29 @@ it("keeps the parent reading while the linked OCR row owns person records and it
     return member.record;
   });
   assert.equal(refs?.length, 2);
+  assert.ok(wire.workflowCounts.every(count => count.workflowId !== "ocr"));
   const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: f.canonical.lifecycle,
     canonical: { database, reader: f.canonical.lifecycle, descriptors } });
   const detail = buildRunDetail(deps, childRow.runId);
   assert.equal(detail.panelKind, "review");
-  assert.equal(parentRow.recordMembers?.members[0]?.target.panelKind, childRow.panelKind);
-  assert.equal(parentRow.recordMembers?.members[0]?.target.panelKind, detail.panelKind);
   assert.equal(detail.header.workflowId, "ocr");
+  const hostDetail = buildRunDetail(deps, parentRow.runId);
+  assert.equal(hostDetail.panelKind, "review");
+  assert.equal(hostDetail.ocrRecordCount, 2);
+  assert.ok(hostDetail.availableSections.includes("review"));
+  assert.equal(parentRow.recordMembers?.members[0]?.target.panelKind, detail.panelKind);
+  const hostSection = await readRunSection(deps, parentRow.runId, "review");
+  assert.deepEqual(hostSection, await readRunSection(deps, childRow.runId, "review"));
+  if (hostSection.section !== "review") assert.fail("Expected the hosted OCR review");
+  assert.equal(hostSection.payload.runId, childRow.runId);
+  assert.equal(hostSection.payload.ocr?.approval?.runId, childRow.runId);
+  assert.equal(database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, f.run))?.envelope.runId, parentRow.runId);
+  assert.equal(database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, f.parentRun)), undefined);
+  const notification = notificationRecordOf({ seed: 7, title: "Records ready", lastSeenAt: f.run.createdAt });
+  notification.links = [{ kind: "run", runId: f.run.envelope.runId }];
+  const target = createNotificationTargetQuery({ get: () => notification, read: id => f.canonical.lifecycle.read(id), failure: () => undefined,
+    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)) });
+  assert.deepEqual(target(notification.notificationId, notification.actorId), { kind: "run", runId: parentRow.runId, day: clock.todayLocal() });
   const steps = detail.timeline.steps; assert.ok(steps);
   assert.ok(steps.some(step => step.key === "approval"));
   assert.ok(!steps.some(step => step.key === "documents"));

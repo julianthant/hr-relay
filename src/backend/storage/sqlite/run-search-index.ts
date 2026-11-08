@@ -271,6 +271,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       const clauses: string[] = [], parameters: (string | number)[] = [];
       const add = (sql: string, ...values: (string | number)[]) => { clauses.push(sql); parameters.push(...values); };
       const { facets, q } = request;
+      add("NOT (s.workflow='ocr' AND EXISTS(SELECT 1 FROM runs r WHERE r.id=s.id AND r.parent_id IS NOT NULL))");
       if (q.length > 0) add("(instr(lower(s.id),?)>0 OR instr(s.trace,?)>0 OR instr(lower(s.workflow),?)>0 OR instr(s.subject,?)>0 OR instr(lower(s.actor),?)>0)", q,q,q,q,q);
       for (const [field, value] of Object.entries({ workflow: facets.workflow, state: facets.state, shape: facets.shape, actor: facets.actor, version: facets.version, failure: facets.failure })) if (value !== undefined) add(`s.${field}=?`, value);
       if (facets.from !== undefined) add("s.local_day>=?", facets.from);
