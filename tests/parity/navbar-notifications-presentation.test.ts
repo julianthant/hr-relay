@@ -286,7 +286,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(ping).toContainText("EID 10101010");
 
       await captureSemanticEvidence(page, info, `notification-ping-${size}`);
-      await ping.getByRole("button", { name: "Open notifications", exact: true }).click();
+      await expect(ping.getByRole("button")).toHaveAccessibleName("Dismiss");
+      await page.getByRole("button", { name: /^Notifications/u }).click();
       await expect(ping).toHaveCount(0);
       await expect(page.locator(".notification-rail")).toBeVisible();
       await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);

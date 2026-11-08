@@ -80,9 +80,9 @@ export function NotificationsView({ state, filter, onFilter, category, onCategor
   </section>;
 }
 
-export function NotificationPing({ item, onOpen }: { item: NotificationItem; onClose: () => void; onOpen: () => void }) {
+export function NotificationPing({ item }: { item: NotificationItem }) {
   const { toast } = useToasts();
   const sent = useRef(false);
-  useEffect(() => { if (sent.current) return; sent.current = true; toast({ tone: "success", title: item.title, description: `${item.subject} · ${item.workflow}`, action: { label: "Open notifications", onAction: onOpen } }); }, [item, onOpen, toast]);
+  useEffect(() => { if (sent.current) return; sent.current = true; toast({ tone: "success", title: item.title, description: `${item.subject} · ${item.workflow}`}); }, [item, toast]);
   return null;
 }

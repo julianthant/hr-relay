@@ -1,4 +1,4 @@
-import { Notice, dsText } from "../../../ds/ui.js";
+import { Button, Notice, dsText } from "../../../ds/ui.js";
 import { settingsSaveProblem, type SettingsSaveState } from "./settings-attempt-model.js";
 export function SettingsSaveFeedback({ save, protectedStore = false, retry, retryConflict, restartRequired = false }: { save: SettingsSaveState; protectedStore?: boolean; retry: () => void; retryConflict?: () => void; restartRequired?: boolean }) {
   if (save.state === "idle") return null;
@@ -7,5 +7,5 @@ export function SettingsSaveFeedback({ save, protectedStore = false, retry, retr
   const problem = settingsSaveProblem(save, protectedStore);
   if (problem === undefined) return null;
   const action = save.state === "unconfirmed" ? { label: "Retry exact attempt", onAction: retry } : retryConflict === undefined ? undefined : { label: "Retry edit", onAction: retryConflict };
-  return <Notice sticky {...problem} action={action} />;
+  return <><Notice sticky {...problem} />{action && <Button size="sm" variant="secondary" className="self-start" onClick={action.onAction}>{action.label}</Button>}</>;
 }

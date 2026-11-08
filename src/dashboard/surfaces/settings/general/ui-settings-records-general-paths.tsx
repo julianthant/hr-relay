@@ -109,7 +109,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance, deleteAc
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
-    {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />}
+    {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
       : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section={sectionId} contentOnly />}
@@ -123,7 +123,7 @@ function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId:
   const document = editor.editor.document;
   return <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
-      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={editor.readProblem} action={{ label: "Refresh", onAction: editor.reload }} />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} />}</div>
     </Form>;
