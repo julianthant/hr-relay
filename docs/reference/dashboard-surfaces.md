@@ -835,7 +835,9 @@ Retry or Recover shows Start's worker warning instead of the confirmed toast whe
 carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
 runs have no worker, including when another run keeps the batch from confirming. While a workflow
 has unpaused queued runs and every one of its workers has stopped, a sticky warning names how the
-worker stopped and points to Retry in Sessions. Command-Q opens
+worker stopped and points to Retry in Sessions. Queue rows serve `cancelledBy` for a cancelled run:
+the Cancelled pill credits the operator only for their own cancel and otherwise shows Relay's reason
+(the profile logged out, or a never-claimed run from a previous day was cancelled at startup). Command-Q opens
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a
 banner until the runtime settles; no submit is interrupted. Unavailable authority disables controls,
 and unknown closure never becomes a completed pause or clean shutdown. Exact command recovery keeps

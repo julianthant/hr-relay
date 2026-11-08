@@ -1,6 +1,7 @@
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
-import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { isDeepStrictEqual } from "node:util";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import assert from "node:assert/strict";
@@ -89,6 +90,20 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
     await activity.awaitCancellation();
     assert.equal(activity.hasUnquiescedWork(profileId), false);
   } finally { settle?.(); await f.cleanup(); }
+});
+
+it("records that the logout drain, not the operator, cancelled a live run", async () => {
+  const f = await fixture();
+  try {
+    const runtime = f.context.database.authority.runtimeConfig.get(); assert.ok(runtime);
+    f.context.database.authority.runs.enqueue(RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+      configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint } }));
+    const activity = composeProfileActivity(f.input), profileId = f.admission.profileBinding.profileId;
+    activity.requestCancellation(profileId); await activity.awaitCancellation();
+    const lifecycle = f.context.database.authority.runs.get(QUEUED_RUN.envelope.runId)?.lifecycle;
+    assert.ok(lifecycle?.state === "terminal");
+    assert.deepEqual([lifecycle.outcome, lifecycle.errorSummary], ["cancelled", `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}`]);
+  } finally { await f.cleanup(); }
 });
 
 it("holds shutdown admission before awaiting children and rejects a late enqueue", async () => {

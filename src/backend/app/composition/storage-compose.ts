@@ -646,7 +646,8 @@ export function composeProfileActivity(input: Readonly<{
             if (current.state !== 'present') throw new Error('profile-run-custody-unavailable');
             if (current.run.lifecycle.state === 'terminal' || current.run.lifecycle.state === 'parked-write') continue;
             requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
-              expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString() } }));
+              expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString(),
+                errorSummary: `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}` } }));
           } catch (error) { failures.push(error); }
         }
       } catch (error) { failures.push(error); }
