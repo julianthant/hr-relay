@@ -480,7 +480,7 @@ it("shows a crashed worker's catalog failure text and falls back to the generic 
   const day = dayWith(); const card = { ...day.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed", browsers: [] };
   const bottomLine = (extra: object) => {
     const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, ...extra }] }), catalog, now);
-    assert.ok(view.state === "ready"); return view.workers[0].problem;
+    assert.ok(view.state === "ready"); assert.equal(view.workers[0].state, "failed"); return view.workers[0].problem;
   };
   assert.equal(bottomLine({ failureCode: "BROWSER_ROOT_UNAVAILABLE" }), ERROR_CATALOG.BROWSER_ROOT_UNAVAILABLE.text);
   assert.equal(bottomLine({}), "Its run is no longer on record.");

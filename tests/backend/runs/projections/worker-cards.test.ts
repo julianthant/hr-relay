@@ -89,6 +89,7 @@ describe("the worker card from the pool member and its slot", () => {
       assert.equal(canStopWorker(value), false);
       assert.equal(workerDirectiveNote(value), undefined);
     }
+    assert.equal(workerDirectiveNote(card()), undefined);
     assert.equal(canStopWorker(card()), true);
   });
 
