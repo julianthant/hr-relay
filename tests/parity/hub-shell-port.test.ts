@@ -84,6 +84,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("heading", { name: "Start with your details", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Log in", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Log in to Relay", exact: true })).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      const brand = page.locator(".hub-onboarding .brand");
+      await expect(brand).toContainText("Relay");
+      await expect(brand.locator("svg")).toHaveCount(1);
       await capture(page, info, "login", theme);
       await page.getByRole("button", { name: "Log in", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Work email (required)", exact: true })).toBeFocused();
@@ -92,6 +95,7 @@ for (const theme of ["light", "dark"] as const) {
       await capture(page, info, "login-fields", theme);
       await page.getByRole("link", { name: "Sign up", exact: true }).click();
       await page.getByRole("button", { name: "Create profile", exact: true }).click();
+      await expect(page.locator(".hub-onboarding .brand").locator("svg")).toHaveCount(1);
       await capture(page, info, "signup-fields", theme);
       for (const [name, value] of [["firstName", "Alex"], ["lastName", "Rivera"], ["email", "alex.rivera@ucsd.edu"], ["password", "Relay-demo-42"]]) await page.locator(`input[name="${name}"]`).fill(value);
       await page.getByRole("button", { name: "Create profile", exact: true }).click();
