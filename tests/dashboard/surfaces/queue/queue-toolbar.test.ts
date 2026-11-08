@@ -243,5 +243,8 @@ describe("pause labels", () => {
     assert.match(pausing, /Pauses are not yet confirmed\. A save in progress finishes first\./u);
     assert.match(pausing, /A save in progress finishes first\. Other steps restart on Resume\./u);
     assert.doesNotMatch(pausing, /after their current step|Finishing current steps/u);
+    const quit = renderToStaticMarkup(createElement(PauseAllQuitControls, { state: "ready", activeCount: 2, quitRequested: true }));
+    assert.match(quit, /A save in progress finishes first\. Other steps restart on Resume\./u);
+    assert.doesNotMatch(quit, /Resume them next time/u);
   });
 });
