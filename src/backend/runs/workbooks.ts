@@ -429,7 +429,7 @@ export function rowPickDecision(type: "pick-row" | "workbook-row", title: string
         ...(candidate.rowNumber === undefined ? {} : { rowNumber: candidate.rowNumber }),
         cells: [{ columnId: "row", value: candidate.label }, ...(candidate.values ?? []).map(({ fieldId, value }) => ({ columnId: fieldId, value: value === null ? "" : typeof value === "object" ? value.value : String(value) }))] })),
       ...(typed ? { typed: { label: "Enter row number", placeholder: "Row number", pattern: "^[1-9]\\d*$" } } : {}),
-    } } }]);
+    } } }], { title: type === "pick-row" ? "Which row should Relay use?" : "Which row should Relay update?", context: `${candidates.length} rows match this person.` });
 }
 
 function crmCandidateWire(candidate: z.infer<typeof CrmDocumentRowCandidateSchema>) {
@@ -480,8 +480,14 @@ function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunR
     });
     const candidates = person.resolution.candidates.map(crmCandidateWire);
     const legal = person.resolution.candidates[0]?.row.names.legalName;
+    // Row numbers come from the retained workbook version the rows were read from.
+    const numbered = repositories.workbooks.libraryVersion(base.libraryId, data.reference.value.snapshot.versionId).workbook;
+    const picks = candidates.map(candidate => {
+      const index = numbered.sheets.find(sheet => sheet.id === candidate.sheetId)?.rows.findIndex(row => row.id === candidate.rowId);
+      return index === undefined || index < 0 ? candidate : { ...candidate, rowNumber: index + 1 };
+    });
     return [{ ...base, native, resolution: { state: "available", target, candidates, action,
-      decision: rowPickDecision("pick-row", legal === undefined ? "Worksheet rows" : `${legal.firstName} ${legal.lastName}`, action, candidates) } }];
+      decision: rowPickDecision("pick-row", legal === undefined ? "Worksheet rows" : `${legal.firstName} ${legal.lastName}`, action, picks) } }];
   }).map(choice => RunWorkbookReferenceChoiceWireSchema.parse(choice));
 }
 
