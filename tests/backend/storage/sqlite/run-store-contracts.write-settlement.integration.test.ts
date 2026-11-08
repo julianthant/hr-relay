@@ -99,6 +99,19 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 });
 
 describe("beat ⑦ — the whole bundle commits once or not at all", () => {
+  // The bundle leaves nothing behind; the sequencer then parks the proven save UNKNOWN in one transition.
+  function assertRolledBackAndParked(h: Awaited<ReturnType<typeof harness>>, versionBefore: number | undefined): void {
+    const intent = intentByKey(h.database);
+    assert.ok(intent?.status === "parked" && intent.parkedCode === "unknown", JSON.stringify(intent?.status));
+    assert.equal(
+      h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID),
+      undefined,
+    );
+    const run = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(run?.lifecycle.state === "parked-write" && run.lifecycle.writeIntentId === intent.writeIntentId);
+    assert.equal(run.version, (versionBefore ?? 0) + 1);
+  }
+
   for (const step of AtomicWriteCommitStorageStepSchema.options) {
     it(`rolls back everything when the inner primitive fails after ${step}`, async () => {
       const h = await harness({
@@ -115,13 +128,7 @@ describe("beat ⑦ — the whole bundle commits once or not at all", () => {
         h.execute(contextFor(run, claim)),
         new RegExp(`injected failure after ${step}`),
       );
-      const intent = intentByKey(h.database);
-      assert.ok(intent && intent.status === "attempting", "the intent stays attempting for §4 recovery");
-      assert.equal(
-        h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID),
-        undefined,
-      );
-      assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.version, versionBefore);
+      assertRolledBackAndParked(h, versionBefore);
       assert.equal(h.database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
     });
   }
@@ -142,13 +149,7 @@ describe("beat ⑦ — the whole bundle commits once or not at all", () => {
         h.execute(contextFor(run, claim)),
         new RegExp(`injected outer failure after ${step}`),
       );
-      const intent = intentByKey(h.database);
-      assert.ok(intent && intent.status === "attempting");
-      assert.equal(
-        h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID),
-        undefined,
-      );
-      assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.version, versionBefore);
+      assertRolledBackAndParked(h, versionBefore);
     });
   }
 });
