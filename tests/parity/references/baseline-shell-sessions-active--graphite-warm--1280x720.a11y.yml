@@ -373,9 +373,9 @@
       - listitem: Kuali Ready
       - listitem: UCPath Ready
       - listitem: Kronos In use
-    - paragraph: Read the timecard
-    - text: 11 / 22 nodes
-    - progressbar "Worker 1 node timeline"
+    - paragraph: Kronos timecard
+    - text: 1 / 5 steps
+    - progressbar "Worker 1 step timeline"
     - paragraph
     - text: 2m 14s
     - button "Pause"
@@ -386,9 +386,9 @@
     - paragraph: Jordan Lee
     - list "Worker 2 systems":
       - listitem: UCPath In use
-    - paragraph: Read the job summary
-    - text: 3 / 4 nodes
-    - progressbar "Worker 2 node timeline"
+    - paragraph: Read CRM dates
+    - text: 3 / 4 steps
+    - progressbar "Worker 2 step timeline"
     - paragraph
     - text: 41s
     - button "Pause"
@@ -401,8 +401,8 @@
       - listitem: Kuali Ready
       - listitem: UCPath Opening
     - paragraph: Open browser sessions
-    - text: 0 / 22 nodes
-    - progressbar "Worker 3 node timeline"
+    - text: 0 / 5 steps
+    - progressbar "Worker 3 step timeline"
     - paragraph
     - text: 12s
     - button "Stop"
