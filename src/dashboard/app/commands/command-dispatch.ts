@@ -101,6 +101,13 @@ function composeGateResult(
     };
   }
   const served = gate.value;
+  if (action.resolution === "rejected") {
+    const reason = served.rejectReason;
+    if (reason === undefined) return { state: "refused", reason: `the served rejection ${action.key} carries no recorded reason` };
+    return { state: "ready", request: { ...envelope, family: "gate", type: "resolve-gate",
+      target: { runId: served.runId, gateId: served.gateId, expectedVersion: action.expectedVersion },
+      payload: { result: { schemaHash: served.resultSchemaHash, value: { decision: "rejected", reason, evidenceDigest: served.evidenceDigest } } } } };
+  }
   if (action.resolution !== "approved") {
     return {
       state: "refused",
