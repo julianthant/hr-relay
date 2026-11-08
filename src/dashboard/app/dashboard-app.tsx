@@ -113,6 +113,7 @@ composeCommandRequest, verifyShellCommandEffect,
 type CommandAction,
 } from "./commands/command-dispatch.js";
 import { settleCommandResult } from "./commands/command-result.js";
+import { appliedWorkerStartupToast, unconfirmedBulkWorkerToast } from "./commands/worker-startup-toast.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
 } from "./dashboard-app-model.js";
@@ -485,7 +486,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       dismiss(warningId);
       unknownWarnings.current.delete(outcome.commandId);
     }
-    if (outcome.kind === "confirmed") return;
+    if (outcome.kind === "confirmed") {
+      const request = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
+      const warning = request === undefined ? undefined : appliedWorkerStartupToast(request, outcome.reply);
+      if (warning !== undefined) toast(warning);
+      return;
+    }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
     const toastId = toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
@@ -674,6 +680,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             return { ...child, detail: verified !== undefined ? verified.feedback.text : formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text };
           }) };
           setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response });
+          const bulkWarning = unconfirmedBulkWorkerToast(request, reply, outcome.kind === "confirmed");
+          if (bulkWarning !== undefined) toast(bulkWarning);
         }
         if (outcome.kind !== "confirmed") {
           if (!("targets" in request) && (request.family === "run" || request.family === "gate") && outcome.reply !== undefined && "state" in outcome.reply && "commandId" in outcome.reply) {
@@ -689,7 +697,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           }
           return;
         }
-        toast({ tone: "success", title: label, description: "Command confirmed." });
+        const warning = appliedWorkerStartupToast(request, outcome.reply);
+        if (warning === undefined || "targets" in request) toast({ tone: "success", title: label, description: "Command confirmed." });
         if (!("targets" in request) && request.family === "run" && request.type === "delete" && outcome.reply !== undefined && "affectedTargets" in outcome.reply) {
           const removed = new Set<string>(outcome.reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []));
           if (routeRef.current.run !== undefined && removed.has(routeRef.current.run)) setRoute({ ...routeRef.current, run: undefined, section: undefined });
