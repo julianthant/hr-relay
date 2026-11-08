@@ -279,14 +279,12 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await capture(page, info, theme, width, "spreadsheet-mock-preview");
       await dialog.getByRole("button", { name: /^Import / }).click();
       await expect(page).toHaveURL(/spreadsheetPreviewOutcome=failure/u);
-      await expect(dialog).toHaveCount(0);
       const failedImport = page.locator('[data-slot="toast"]').filter({ hasText: "couldn’t be imported" });
       await expect(failedImport).toBeVisible();
       await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
       await page.evaluate(() => (window as Window & { restoreSpreadsheetFault?: () => void }).restoreSpreadsheetFault?.());
       await expect(page).not.toHaveURL(/spreadsheetPreviewOutcome/u);
-      await failedImport.hover();
-      await page.getByRole("button", { name: "Try again", exact: true }).click();
+      await expect(failedImport.getByRole("button", { name: "Try again" })).toHaveCount(0);
       await expect(dialog).toBeVisible();
       await dialog.getByRole("button", { name: /^Import / }).click();
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Roster imported" })).toBeVisible();
@@ -434,7 +432,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(setupRegion.getByRole("group", { name: "Readiness summary", exact: true })).toContainText("Checking readiness");
 
         gate.resolve();
-        await expect(page.getByText("Previous result", { exact: true })).toBeVisible();
+        await expect(page.getByText("Readiness check is out of date", { exact: true })).toBeVisible();
         await expect(setupRegion.getByRole("button", { name: "Run preflight", exact: true })).toBeEnabled();
 
         await attachTree(page, info, evidence(`preflight-${scene}-coverage`, theme, width));

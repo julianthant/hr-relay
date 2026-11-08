@@ -87,10 +87,11 @@ test("Setup keeps an expired check visible as a previous result",async({page},_i
     await page.setViewportSize({width:1280,height:720});await page.clock.setFixedTime(new Date(server.now));
     await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,settings:"preflight"});await dismissWorkflowWindow(page);
     const setup=page.getByRole("region",{name:"Preflight",exact:true});
-    await expect(page.getByText("Previous result", { exact: true })).toBeVisible();
+    await expect(page.getByText("Readiness check is out of date", { exact: true })).toBeVisible();
     await expect(setup).toContainText("Previous check");
     await expect(setup.locator("time")).toHaveCount(1);
-    await expect(page.getByRole("status").filter({hasText:"Previous result"}).getByRole("button",{name:"Run preflight",exact:true})).toBeVisible();
+    await expect(page.getByRole("status").filter({hasText:"Readiness check is out of date"}).getByRole("button")).toHaveCount(0);
+    await expect(setup.getByRole("button",{name:"Run preflight",exact:true})).toBeVisible();
     await expect(setup).not.toContainText("Ready to run");
     await expect(setup.locator(".diagnostic-check-entry")).not.toHaveCount(0);
   }finally{await server.close();}

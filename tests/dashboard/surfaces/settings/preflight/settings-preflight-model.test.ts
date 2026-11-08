@@ -72,7 +72,7 @@ for(const presentation of ["settings","compact"] as const)for(const outcome of [
   const copy=[...host.querySelectorAll(rowSelector)].map(row=>row.textContent);
   const assertPending=()=>{
     assert.equal(button.disabled,true);assert.equal(button.getAttribute("aria-busy"),"true");assert.equal(button.textContent,"Run preflight");
-    assert.match(host?.textContent??"",/Checking readiness/u);assert.doesNotMatch(host?.textContent??"",/Ready to run|Previous result|Loading readiness/u);
+    assert.match(host?.textContent??"",/Checking readiness/u);assert.doesNotMatch(host?.textContent??"",/Ready to run|Readiness check is out of date|Loading readiness/u);
     assert.deepEqual([...host?.querySelectorAll(selector)??[]],retained);
     assert.deepEqual([...host?.querySelectorAll(rowSelector)??[]].map(row=>row.textContent),copy);
     assert.equal(host?.querySelector("time")?.getAttribute("datetime"),served.checkedAt);
@@ -83,10 +83,10 @@ for(const presentation of ["settings","compact"] as const)for(const outcome of [
   assert.equal(button.disabled,false);assert.notEqual(button.getAttribute("aria-busy"),"true");
   assert.deepEqual([...host.querySelectorAll(selector)],retained);
   if(outcome==="failure"){
-    assert.match(host.textContent??"",/Previous result|Readback unavailable/u);
+    assert.match(host.textContent??"",/Readiness check is out of date|Readback unavailable/u);
     assert.match(host.textContent??"",/Previous check/u);
     assert.doesNotMatch(host.textContent??"",/Ready to run/u);
-  }else assert.doesNotMatch(host.textContent??"",/Previous result|Checking readiness/u);
+  }else assert.doesNotMatch(host.textContent??"",/Readiness check is out of date|Checking readiness/u);
 });
 it("Setup and doctor subscribers show the same report and command readback, then expire together",async()=>{
   vi.useFakeTimers();vi.setSystemTime(now);

@@ -67,7 +67,7 @@
 #hub-panel-assistant.hub-assistant-panel{left:auto;right:auto;bottom:auto;height:100%;max-height:none;max-width:100%}
 #hub-panel-assistant>.hub-panel-header{display:flex}
 #hub-panel-assistant .hub-panel-title{flex:1;font-weight:600}
-#hub-panel-assistant :is(button,a):focus-visible{background:var(--focus-fill,#949494)!important;color:var(--focus-ink,#151515)!important;outline:none;box-shadow:none}
+#hub-panel-assistant :is(button,a):focus-visible{background:var(--hub-focus-fill)!important;color:var(--hub-focus-ink)!important;outline:none;box-shadow:none}
 #hub-panel-assistant button:disabled{cursor:default;opacity:.45}
 #hub-panel-assistant .hub-chat-title:disabled,#hub-panel-assistant .hub-header-actions button:disabled{opacity:1}
 #hub-panel-assistant .hub-thread-wrap>.hub-transcript{width:100%}
@@ -88,9 +88,8 @@ html[data-motion=off] :is(#hub-panel-assistant,.hub-assistant-menu,.hub-assistan
 
 .hub-assistant-detail{display:block!important;max-height:calc(100dvh - 48px);overflow:auto}
 .hub-assistant-detail>header,.hub-assistant-detail>header>div{display:block;border:0;padding:0}
-.hub-assistant-detail button:focus-visible{background:var(--focus-fill,#949494)!important;color:var(--focus-ink,#151515)!important;box-shadow:none;outline:none}
+.hub-assistant-detail button:focus-visible{background:var(--hub-focus-fill)!important;color:var(--hub-focus-ink)!important;box-shadow:none;outline:none}
 
-html[data-demo-theme=dark] :is(#hub-panel-assistant,.hub-assistant-detail){--focus-fill:#b0b0b0}
 
 .hub-assistant-detail .hub-btn.primary{background:#202020;color:#fafafa}
 

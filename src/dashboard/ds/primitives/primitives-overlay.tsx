@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
-import { ToastIcon as BaseToastIcon, Toast as BaseToast, ToastContent as BaseToastContent, ToastTitle as BaseToastTitle, ToastDescription as BaseToastDescription, ToastAction as BaseToastAction, ToastClose as BaseToastClose, ToastViewport as BaseToastViewport } from "./base-toast.js";
+import { ToastIcon as BaseToastIcon, Toast as BaseToast, ToastContent as BaseToastContent, ToastTitle as BaseToastTitle, ToastDescription as BaseToastDescription, ToastClose as BaseToastClose, ToastViewport as BaseToastViewport } from "./base-toast.js";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
@@ -18,7 +18,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { dsElev, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
-import { Button, IconButton } from "./primitives-core.js";
+import { IconButton } from "./primitives-core.js";
 import { FloatingSurface } from "./primitives-layout.js";
 
 /** Floating surfaces: Dialog, Drawer, Popover, Tooltip, Toast. */
@@ -712,11 +712,9 @@ export interface DsToast {
   tone: DsToastTone;
   title: string;
   description?: string;
-  /** a single recovery action — "Retry", "Undo", "Open the run" */
-  action?: { label: string; onAction: () => void };
   /** ms before auto-dismiss; default 3000. `danger` never auto-dismisses unless a duration is given. */
   duration?: number;
-  /** stays until its owner dismisses it; its action does not close it */
+  /** stays until its owner dismisses it or the operator closes it */
   sticky?: boolean;
 }
 
@@ -744,7 +742,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       manager.add({ id, title: input.title, description: input.description,
         type: input.tone === "danger" ? "error" : input.tone,
         timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 0 : 3000),
-        actionProps: input.action ? { children: input.action.label, onClick: () => { input.action?.onAction(); if (!input.sticky) manager.close(id); } } : undefined,
       });
       return id;
     },
@@ -756,30 +753,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 /** A toast tied to the surface that renders it: shown while mounted, withdrawn when the state clears.
- * `sticky` is for a state the operator must act on; otherwise it dismisses itself. Without a `ToastProvider` it renders inline. */
-export function Notice({ tone, title, description, action, sticky = false }: Pick<DsToast, "tone" | "title" | "description" | "action" | "sticky">) {
+ * `sticky` is for a state the operator must act on elsewhere; otherwise it dismisses itself. Without a `ToastProvider` it renders inline. */
+export function Notice({ tone, title, description, sticky = false }: Pick<DsToast, "tone" | "title" | "description" | "sticky">) {
   const toasts = useContext(ToastContext);
-  const onAction = useRef(action?.onAction);
-  onAction.current = action?.onAction;
-  const label = action?.label;
   useEffect(() => {
     if (toasts === null) return;
-    const id = toasts.toast({ tone, title, description, sticky, duration: 6000, action: label === undefined ? undefined : { label, onAction: () => onAction.current?.() } });
+    const id = toasts.toast({ tone, title, description, sticky, duration: 6000 });
     return () => toasts.dismiss(id);
-  }, [toasts, tone, title, description, label, sticky]);
+  }, [toasts, tone, title, description, sticky]);
   if (toasts !== null) return null;
-  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span>{action && <Button size="sm" variant="secondary" onClick={() => action.onAction()}>{action.label}</Button>}</div>;
+  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span></div>;
 }
 
 function ToastViewport() {
   const { toasts } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
-    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success" && !item.actionProps) && "pointer-events-none")}>
+    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success") && "pointer-events-none")}>
       <BaseToastContent><BaseToastIcon type={item.type} />
-        <div className="flex min-w-0 flex-1 flex-col items-start gap-[var(--ds-space-snug)]"><div><BaseToastTitle /><BaseToastDescription /></div>
-          {item.actionProps && <BaseToastAction disabled={inert} />}</div>
-        <BaseToastClose disabled={inert} className={!inert && item.type === "success" && !item.actionProps ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
+        <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
+        <BaseToastClose disabled={inert} className={!inert && item.type === "success" ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
       </BaseToastContent>
     </BaseToast>)}
   </BaseToastViewport>;

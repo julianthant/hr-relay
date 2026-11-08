@@ -128,14 +128,16 @@ afterEach_m0(_afterEachFixture0);
     assert_m0.equal(page.querySelectorAll('a[href^="?settings="]').length, 10);
     assert_m0.ok(page.textContent?.includes("Settings unavailable"), page.textContent ?? "");
     assert_m0.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert_m0.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
+    assert_m0.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");
+    assert_m0.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
   });
 
   it_m0("reports a credential read failure instead of leaving its loading spinner", async () => {
     const page = await mountFailedRead("credentials");
     assert_m0.ok(page.textContent?.includes("Credentials unavailable"), page.textContent ?? "");
     assert_m0.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert_m0.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
+    assert_m0.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");
+    assert_m0.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert_m0.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
   });
 
