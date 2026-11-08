@@ -131,8 +131,9 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
           "}",
           "",
         ].join("\n"),
+        "src/dashboard/surfaces/shell/app-logo.ts": "export const plate = \"#245d9e\", glyph = \"#ffffff\", stray = \"#123456\";\n",
       },
-      expected: /(?=[\s\S]*palette color)(?=[\s\S]*arbitrary z-index)(?=[\s\S]*reduced-motion)(?=[\s\S]*image without alt)/,
+      expected: /(?=[\s\S]*palette color)(?=[\s\S]*raw hex color)(?=[\s\S]*arbitrary z-index)(?=[\s\S]*reduced-motion)(?=[\s\S]*image without alt)/,
     },
   },
 };
@@ -471,6 +472,9 @@ function auditConventions(files: readonly string[], root: string): string[] {
 }
 
 
+const APP_ICON_FILE = "src/dashboard/surfaces/shell/app-logo.ts";
+const APP_ICON_COLORS = /#245d9e|#ffffff/gi;
+
 function auditFrontend(files: readonly string[]): string[] {
   const palette = /\b(?:bg|text|border|ring|from|to|via|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)\b/;
   const hex = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b/;
@@ -479,7 +483,8 @@ function auditFrontend(files: readonly string[]): string[] {
     visit(parse(file), (node) => {
       if (ts.isStringLiteralLike(node) || ts.isJsxText(node)) {
         if (palette.test(node.text)) violations.push(`${file}: palette color class`);
-        if (hex.test(node.text.replace(/#4ade80|#fbbf24/gi, ""))) violations.push(`${file}: raw hex color`);
+        const allowed = normalize(file).endsWith(APP_ICON_FILE) ? APP_ICON_COLORS : /#4ade80|#fbbf24/gi;
+        if (hex.test(node.text.replace(allowed, ""))) violations.push(`${file}: raw hex color`);
         return;
       }
       // Inspect image elements through the AST so prose mentioning an img tag cannot count as a client.

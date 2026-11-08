@@ -383,7 +383,6 @@
 - region "Assistant panel":
   - region "Relay assistant":
     - button "Update Alex Rivera work email"
-    - button "Chat files"
     - button "Chats"
     - button "New chat"
     - button "Close assistant"

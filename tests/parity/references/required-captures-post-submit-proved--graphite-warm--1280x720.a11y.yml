@@ -14,15 +14,15 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup …
+        - button "Person Lookup"
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup …
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations …
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check …
+        - button "I-9 Check"
 - main:
   - region "Queue":
     - text: DONE · 1
