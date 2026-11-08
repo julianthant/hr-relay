@@ -868,4 +868,21 @@ describe("failure resolution from the decision card", () => {
     await act(async () => h.state?.onDecision?.(FAILURE, { ...failureOption(fixture.failed, "mark-as-failed"), id: "retry" }, {}));
     assert.equal(sent.length, 0);
   });
+
+  it("serves nothing after the failure is resolved, and a stale Mark as failed sends no second resolve", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [];
+    const unresolved = failureClient(selected, sent, [], applied, committedAt(selected));
+    const first = await harness(unresolved.client); await first.render(selected);
+    const stale = failureOption(unresolved.failed, "mark-as-failed");
+    await act(async () => first.state?.onDecision?.(FAILURE, stale, {}));
+    assert.equal(sent.length, 1);
+    const { decision: _decision, ...open } = committedAt(selected);
+    const resolved = withFailureDecision(FailureDetailWireSchema.parse({ ...open, resolution: { capability: { state: "available" },
+      capture: { failureId: FAILURE, runId: RUN, resolution: { status: "resolved", version: 3, by: "local-operator", at: "2026-08-03T12:00:00.000Z" } } } }));
+    assert.deepEqual(resolved.decision?.options, []);
+    const refreshed = failureClient(selected, sent, [], applied, resolved);
+    const second = await harness(refreshed.client); await second.render(selected);
+    await act(async () => second.state?.onDecision?.(FAILURE, stale, {}));
+    assert.equal(sent.length, 1);
+  });
 });

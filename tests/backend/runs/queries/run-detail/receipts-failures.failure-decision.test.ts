@@ -62,4 +62,17 @@ describe("failureDecision", () => {
     assert.deepEqual(decision.options.map(({ id, recommended, input }) => [id, recommended, input]), [["add-note", true, { kind: "text", label: "Note" }]]);
     assert.deepEqual(failureDecision(base).options, [], "no note option without the resolution capability");
   });
+
+  it("serves no annotate option once the capture is resolved, because a second resolve is refused", () => {
+    const resolved = { resolution: { ...capable.resolution, capture: { ...capable.resolution.capture,
+      resolution: { status: "resolved" as const, version: 3, by: "local-operator", at: "2026-08-03T12:00:00.000Z", note: "Checked" } } } };
+    for (const writeState of ["committed", "verified"] as const) {
+      const decision = failureDecision(FailureDetailWireSchema.parse({ ...base, ...resolved, writeState }));
+      assert.equal(decision.type, "failed-after-write");
+      assert.deepEqual(decision.options, []);
+    }
+    const retryable = failureDecision(FailureDetailWireSchema.parse({ ...base, ...resolved, writeState: "not-attempted" }));
+    assert.equal(retryable.type, "failed-retryable");
+    assert.deepEqual(retryable.options, []);
+  });
 });
