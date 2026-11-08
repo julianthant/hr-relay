@@ -133,23 +133,21 @@ describe_m1("frontend workflow catalog", () => {
       expect_m1(() => buildWorkflowCatalog_m1(bootstrap, true, policy)).not.toThrow();
       const entries = buildWorkflowCatalog_m1(bootstrap, true, policy);
       expect_m1(entries.find(entry => entry.id === custom.workflowId)).toMatchObject({ source: "served", served: custom });
-      for (const id of Object.keys(WORKFLOW_SOURCES_m1)) expect_m1(policy?.[id]).toBe("mock");
+      for (const [id, source] of Object.entries(WORKFLOW_SOURCES_m1)) expect_m1(policy?.[id]).toBe(source === "hidden" ? "hidden" : "mock");
       expect_m1(entries.find(entry => entry.id === "person-lookup")?.source).toBe("preview");
     }
   });
-  it_m1("retains explicit mock fixtures while production selects Person Lookup, Separations and OCR served", () => {
-    expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.map(flow => flow.id).sort()).toEqual(Object.keys(WORKFLOW_SOURCES_m1).sort());
-    expect_m1(Object.keys(WORKFLOW_SOURCES_m1).sort()).toEqual(catalog.map(entry => entry.id).sort());
-    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup", "ocr"]);
+  it_m1("retains explicit mock fixtures while production selects Person Lookup and Separations served and keeps OCR hidden", () => {
+    const listed = Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source !== "hidden").map(([id]) => id).sort();
+    expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.map(flow => flow.id).sort()).toEqual(listed);
+    expect_m1(listed).toEqual(catalog.map(entry => entry.id).sort());
+    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup"]);
     const product = buildWorkflowCatalog_m1(served, true);
     expect_m1(product.find(entry => entry.id === "separations")).toMatchObject({ source: "served" });
     expect_m1(product.find(entry => entry.id === "person-lookup")).toMatchObject({ source: "served" });
-    const ocr = product.find(entry => entry.id === "ocr");
-    expect_m1(ocr).toMatchObject({ source: "served", role: { kind: "composition" }, launch: { state: "unavailable", label: "No direct start" } });
-    if (ocr?.launch.state !== "unavailable") throw new Error("missing OCR direct-start explanation");
-    expect_m1(ocr.launch.reason).toContain("no standalone launch input");
-    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", false)).toBe("served");
-    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", true)).toBe("served");
+    expect_m1(product.find(entry => entry.id === "ocr")).toBeUndefined();
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", false)).toBe("hidden");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", true)).toBe("hidden");
     expect_m1(explorerRecoveryWorkflow_m1(product)).toBe("separations");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", false)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", true)).toBe("served");
@@ -174,7 +172,7 @@ describe_m1("frontend workflow catalog", () => {
     const future = { ...served[0], workflowId: "new-workflow", label: "New workflow", categoryId: "Payroll", code: "NW" };
     const renamed = { ...served[0], label: "Registered name" };
     const entries = buildWorkflowCatalog_m1([renamed, served[1], future], true, servedFixtureSources_m1([renamed, served[1], future]));
-    expect_m1(entries).toHaveLength(16);
+    expect_m1(entries).toHaveLength(15);
     expect_m1(new Set(entries.map(entry => entry.id)).size).toBe(entries.length);
     expect_m1(entries.find(entry => entry.id === renamed.workflowId)).toMatchObject({ label: "Registered name", source: "served", launch: { state: "served" }, served: renamed });
     expect_m1(entries.find(entry => entry.id === future.workflowId)).toMatchObject({ label: future.label, code: "NW", launch: { state: "served" }, served: future });
@@ -194,8 +192,11 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(picker.match(/disabled=""/gu) ?? []).toHaveLength(0);
     expect_m1(picker).not.toContain("Started by a parent workflow.");
   });
-  it_m1("admits standalone OCR and limits parent-only launches to I-9 Lookup and SharePoint Download", () => {
-    expect_m1(catalog.find(entry => entry.id === "ocr")?.launch.state).toBe("preview");
+  it_m1("keeps hidden OCR out of the catalog and limits parent-only launches to I-9 Lookup and SharePoint Download", () => {
+    expect_m1(WORKFLOW_SOURCES_m1.ocr).toBe("hidden");
+    expect_m1(catalog.find(entry => entry.id === "ocr")).toBeUndefined();
+    const hiddenOcr = { ...served[0], workflowId: "ocr", label: "OCR" };
+    expect_m1(buildWorkflowCatalog_m1([hiddenOcr, ...served], true, { ...servedFixtureSources_m1(served), ocr: "hidden" }).some(entry => entry.id === "ocr")).toBe(false);
     expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
   });
 });

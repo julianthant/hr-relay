@@ -52,13 +52,20 @@
           - text: Packet identity
           - combobox "Packet identity preview": Section 1 and Section 2 paired
         - listitem:
-          - heading "OCR extraction" [level=2]
+          - heading "Read forms" [level=2]
           - text: OCR
-          - paragraph: Extract and pair the I-9 pages.
-          - text: Delegate to OCR; preserve its separate outcome.
+          - paragraph: Run the form spec over each page, pull the fields it defines, and flag anything illegible.
           - group:
-            - strong: OCR extraction
-            - text: Read and process People found 1
+            - strong: Read forms
+            - text: Read and process Records read 1 Records reported 1 Completeness gaps 0
+        - listitem:
+          - heading "Match extracted people" [level=2]
+          - text: UCPath
+          - paragraph: Look up everybody the roster did not settle. The child keeps its own row in the Person Lookup panel.
+          - text: Delegate to Person Lookup; preserve its separate outcome.
+          - group:
+            - strong: Match extracted people
+            - text: Read and process Active people 1 People resolved 1
         - listitem:
           - heading "Roster match" [level=2]
           - text: OCR

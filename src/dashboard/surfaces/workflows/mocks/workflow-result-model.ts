@@ -79,7 +79,15 @@ export function mockDetailEntries(run: MockRun, step: MockStep, state: LogTimeli
     const proofs = [...new Set(contract.filter(item => item.proof).map(item => item.proof))];
     if (proofs.length) entries.push({ kind: "note", id: `${run.id}:${step.key}:proof`, time, message: `Readback: ${proofs.join("; ")}.`, tone: "positive" });
   }
+  if (run.ocrRunId !== undefined && step.key === "read-document") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : "Review extracted rows", state: run.approved ? "resolved" : "review", message: "Review records before processing." } });
   if (step.key === "prep:awaiting-approval" && run.workflowId === "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : run.draft.ocrMode === "manual" ? "Review records" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review records before processing." } });
+  if (state === "failed") {
+    const page = run.role !== "person";
+    const retry = { id: "retry-step", label: "Retry step", hint: "Reads only the failed page again. The other pages are kept.", recommended: true as const, send: { via: "action" as const, actionKey: "retry-step" } };
+    entries.push({ kind: "decision", id: `${run.id}:${step.key}:failure`, time, decision: { title: step.label, state: "failed", footer: "No write attempted",
+      message: page ? "Page 2 could not be read." : "UCPath did not confirm the save.", attemptedAction: page ? "read page 2" : "save the contact",
+      ...(page ? { served: { type: "failed-retryable" as const, title: step.label, options: [retry] } } : {}) } });
+  }
   if (run.workflowId === "oath-upload" && step.key === "fill-form") entries.push({ kind: "fields", id: `${run.id}:ticket-form`, fields: [["Subject", "HDH New Hire Oaths"], ["Attachment", run.draft.files.map(file => file.name).join(", ")]].map(([label, value], index) => ({ id: `${run.id}:ticket-field:${index}`, time, kind: "fill", label, value })) });
   return entries;
 }

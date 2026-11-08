@@ -24,9 +24,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
-      await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("heading", { name: "OCR", exact: true })).toHaveCount(0);
-      await expect(rail.getByRole("button", { name: "OCR", exact: true })).toHaveAttribute("aria-current", "page");
+      await expect(logs.getByRole("button", { name: "Open OCR", exact: true })).toHaveCount(0);
+      await expect(rail.getByRole("button", { name: "OCR", exact: true })).toHaveCount(0);
+      await expect(rail.getByRole("button", { name: "Oath Upload", exact: true })).toHaveAttribute("aria-current", "page");
       const logsUrl = page.url();
       await logs.locator("header").first().getByRole("button", { name: "Review", exact: true }).click();
       await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "true");
@@ -120,7 +120,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
       info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
       await rail.getByRole("button", { name: "I-9 Check", exact: true }).click();
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const i9 = drawer.getByRole("region", { name: "Record person-1", exact: true });
       const pager = i9.getByRole("combobox", { name: "Source page", exact: true });
@@ -146,7 +145,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
 
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const contact = drawer.getByRole("region", { name: "Record person-1", exact: true });
       await expect(contact.getByRole("textbox", { name: "Notes", exact: true })).toHaveCount(0);
@@ -175,7 +173,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
         await expect(deletes).toHaveCount(remaining - 1);
       }
-      await expect(queue).toContainText("No OCR runs");
+      await expect(queue).toContainText("No Emergency Contact runs");
       await expect(queue).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);

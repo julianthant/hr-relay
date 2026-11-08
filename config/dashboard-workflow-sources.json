@@ -5,7 +5,7 @@
   "i9-lookup": "mock",
   "work-study": "mock",
   "kronos-pay-rule": "mock",
-  "ocr": "served",
+  "ocr": "hidden",
   "oath-signature": "mock",
   "oath-upload": "mock",
   "emergency-contact": "mock",

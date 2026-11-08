@@ -16,7 +16,7 @@ it("generates only the canonical bounded plain knowledge and rejects missing, st
     assert.throws(() => generateAssistantKnowledge(root, true));
     generateAssistantKnowledge(root, false);
     generateAssistantKnowledge(root, true);
-    const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
+    const sources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources);
     const artifact = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => sources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
     assert.equal(readFileSync(path, "utf8"), `${artifact.bytes}\n`);
     const context = loadProductionAssistantContext(root, artifact);

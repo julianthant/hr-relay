@@ -14,15 +14,15 @@ const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => gro
 
 describe("shared run catalog", () => {
   it("omits only parent-only previews from the picker while retaining the complete catalog", () => {
-    const visible = ["crm-doc-download", "emergency-contact", "i9-check-start", "kronos-pay-rule", "oath-signature", "oath-upload", "ocr", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "work-study"];
+    const visible = ["crm-doc-download", "emergency-contact", "i9-check-start", "kronos-pay-rule", "oath-signature", "oath-upload", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "work-study"];
     expect(ids().sort()).toEqual(visible);
     expect(catalog.map(flow => flow.id).sort()).toEqual([...visible, "i9-lookup", "sharepoint-download"].sort());
     expect(ids()).not.toContain("i9-lookup"); expect(ids()).not.toContain("sharepoint-download");
-    expect(ids("OCR")).toEqual(["ocr"]); expect(ids("i-9")).toEqual(["i9-check-start"]);
+    expect(ids("OCR")).toEqual([]); expect(ids("i-9")).toEqual(["i9-check-start"]);
     expect(ids("I-9 Lookup")).toEqual([]); expect(ids("SharePoint")).toEqual([]);
     expect(ids("Download")).toEqual(["crm-doc-download"]); expect(ids("Search")).toEqual(["person-lookup"]);
-    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup", "ocr", "sharepoint-download"]);
-    expect(catalog.find(flow => flow.id === "ocr")).toMatchObject({ source: "served", role: { kind: "composition" }, launch: { state: "unavailable" } });
+    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
+    expect(catalog.find(flow => flow.id === "ocr")).toBeUndefined();
   });
   it("uses served capability instead of restoring a preview launch when served input is absent", () => {
     const absent: RunStartWorkflow = { ...served[0], inputRun: { state: "absent", reason: "Delegation only" } };

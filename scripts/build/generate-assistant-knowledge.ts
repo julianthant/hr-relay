@@ -8,7 +8,7 @@ import { ASSISTANT_KNOWLEDGE_PATH, assistantKnowledgeArtifact } from "../../src/
 
 export function generateAssistantKnowledge(repoRoot: string, check: boolean): void {
   const target = resolve(repoRoot, ASSISTANT_KNOWLEDGE_PATH);
-  const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
+  const sources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources);
   const artifact = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => sources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
   const document = resolve(repoRoot, artifact.reference.files[0].path);
   const bytes = `${artifact.bytes}\n`, documentBytes = `${artifact.reference.files[0].text}\n`;

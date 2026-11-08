@@ -3,6 +3,7 @@ import { installFrozenMonotonic } from "./helpers/app-driver.js";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { OCR_DOCUMENT_FIXTURES } from "../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
+import { mockWorkflow } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -14,7 +15,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const queueEvidence = `ocr-queue-${theme.attribute}-${width}.a11y.yml`;
   const inputEvidence = `run-pdf-inputs-${theme.attribute}-${width}.a11y.yml`;
   const documentEvidence = (name: string) => `ocr-${name}-${theme.attribute}-${width}.a11y.yml`;
-  test(`document-complete OCR queue, viewer and actions @ ${theme.attribute}-${width}`, {
+  test(`document-complete inline OCR records, viewer and actions @ ${theme.attribute}-${width}`, {
     annotation: [queueEvidence, inputEvidence, ...OCR_DOCUMENT_FIXTURES.map(doc => documentEvidence(doc.name))].map(description => ({ type: "required-a11y-evidence", description })),
   }, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
@@ -26,18 +27,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-      await rail.getByRole("button", { name: "OCR", exact: true }).click();
       const queue = page.getByRole("region", { name: "Queue", exact: true }), logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-      await expect(queue.getByRole("button", { name: "Retry", exact: true })).toHaveCount(5);
-      await expect(queue.getByRole("button", { name: "Delete", exact: true })).toHaveCount(5);
+      await expect(rail.getByRole("button", { name: "OCR", exact: true })).toHaveCount(0);
+      await rail.getByRole("button", { name: mockWorkflow(OCR_DOCUMENT_FIXTURES[0].parent).label, exact: true }).click();
       await expect(queue).not.toContainText("sick-hours.pdf");
       const queueBox = (await queue.boundingBox())!, logsBox = (await logs.boundingBox())!;
       expect(Math.abs(queueBox.y + queueBox.height - logsBox.y - logsBox.height)).toBeLessThan(1);
-      const aliases = await queue.locator("span[title]").allTextContents();
-      expect(aliases.filter(value => /^OCR\d{8}$/u.test(value))).toHaveLength(5);
-
       await attachShellA11y(page, info, queueEvidence);
       for (const doc of OCR_DOCUMENT_FIXTURES) {
+        await rail.getByRole("button", { name: mockWorkflow(doc.parent).label, exact: true }).click();
         await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll("./", "\\.")} —`, "u") }).click();
         await logs.getByRole("button", { name: `Records ${doc.records.length}`, exact: true }).click();
         const editor = logs.getByRole("region", { name: "OCR records", exact: true });
@@ -91,6 +89,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect(overflow).toEqual([]);
         await logs.getByRole("button", { name: `Records ${doc.records.length}`, exact: true }).click();
       }
+      await rail.getByRole("button", { name: mockWorkflow("oath-signature").label, exact: true }).click();
       const single = queue.getByRole("button", { name: /^single-oath.pdf —/u });
       await single.getByRole("button", { name: "Retry", exact: true }).focus(); await page.keyboard.press("Enter");
       const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
@@ -104,8 +103,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await deletion.getByRole("button", { name: "Cancel", exact: true }).click(); await expect(single).toBeVisible();
       await expect(single.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
       await single.getByRole("button", { name: "Delete", exact: true }).click(); await deletion.getByRole("button", { name: "Delete", exact: true }).click();
-      await expect(single).toHaveCount(0); await expect(queue.getByRole("button", { name: "Retry", exact: true })).toHaveCount(4);
-      await expect(queue.locator("[data-demo-row-id]").first()).toBeFocused();
+      await expect(single).toHaveCount(0); await expect(queue.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
       await rail.getByRole("button", { name: "I-9 Lookup", exact: true }).click();
       const lookupRetry = queue.getByRole("button", { name: "Retry", exact: true });
       await lookupRetry.click();

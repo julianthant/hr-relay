@@ -28,11 +28,10 @@ test("mounted launch pickers and queue overlays", async ({ page }, info) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-    await rail.getByRole("button", { name: "OCR", exact: true }).click();
+    await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await expect(dialog).toBeVisible();
-    await menu(page, info, /Form type$/u, "run-form-type-menu");
     await menu(page, info, /Roster$/u, "run-roster-menu");
     await dialog.locator('input[type="file"]').setInputFiles({ name: "fixture.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF") });
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
