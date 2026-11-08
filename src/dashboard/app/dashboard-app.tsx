@@ -113,7 +113,7 @@ composeCommandRequest, verifyShellCommandEffect,
 type CommandAction,
 } from "./commands/command-dispatch.js";
 import { settleCommandResult } from "./commands/command-result.js";
-import { appliedWorkerStartupToast, unconfirmedBulkWorkerToast } from "./commands/worker-startup-toast.js";
+import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast } from "./commands/worker-startup-toast.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
 } from "./dashboard-app-model.js";
@@ -1150,6 +1150,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         />
         {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">Each run finishes its current step first. A submit in progress is never interrupted.</Banner>}
         {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held. Reload Relay to check the connection." />}
+        {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
+          .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
 
         <div className="flex min-h-0 flex-1">
 

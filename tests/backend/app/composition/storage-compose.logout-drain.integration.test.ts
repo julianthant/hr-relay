@@ -10,6 +10,8 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 async function fixture(drain: () => Promise<void> = async () => undefined) {
   const profile = await createBoundProfileFixture({ sharedMachine: true }), clock = manualClock(new Date("2026-11-04T12:00:00Z"));
@@ -172,4 +174,22 @@ it("retains a genuine UNKNOWN submit and its exact attempt without revoking the 
     if (context !== undefined) { await context.account.close(); context.database.close(); context.admission.release(); }
     await world.cleanup();
   }
+});
+
+it("signs out with a never-claimed run kept paused for the next sign-in", async () => {
+  const f = await fixture();
+  try {
+    const runtime = f.context.database.authority.runtimeConfig.get(); assert.ok(runtime);
+    f.context.database.authority.runs.enqueue(RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+      configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint } }));
+    await f.runtime.drainForLogout(f.active.token);
+    const result = f.logout();
+    if (result.state !== "cancelling" || result.operationId === undefined) throw new Error("completed drain must admit logout");
+    await f.runtime.awaitClosurePreparation(f.active.profileId);
+    assert.equal(f.runtime.session.resumeLogout(result.operationId).state, "signed-out");
+    const again = f.runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    if (again.state !== "active") throw new Error("signed-out profile must sign in again");
+    const run = f.runtime.selectedContext(again.token).database.authority.runs.get(QUEUED_RUN.envelope.runId);
+    assert.deepEqual([run?.lifecycle.state, run?.pause?.state], ["queued", "paused"]);
+  } finally { await f.close(); }
 });

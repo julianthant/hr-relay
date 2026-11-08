@@ -475,6 +475,7 @@ export class RunRecordService {
         && current.run.envelope.parent === undefined
         && current.run.envelope.shape === "operation") {
         const members: RunRecord[] = [];
+        const summary = request.lifecycle.errorSummary === undefined ? {} : { errorSummary: request.lifecycle.errorSummary };
         const collect = (runId: string): void => {
           for (const child of repositories.runs.listChildren(runId)) {
             const edge = repositories.dependencies.lifecycleEdgeForChild(runId, child.envelope.runId);
@@ -493,6 +494,7 @@ export class RunRecordService {
                 runId: member.envelope.runId,
                 expectedVersion: member.version,
                 now: this.dependencies.clock.now().toISOString(),
+                ...summary,
               });
               if (requested.state !== "applied") {
                 throw new Error(`cancel tree lost member version fence for ${member.envelope.runId}`);
@@ -508,6 +510,7 @@ export class RunRecordService {
               state: "terminal",
               outcome: "cancelled",
               endedAt: request.lifecycle.endedAt,
+              ...summary,
             },
           });
           if (cancelled.state !== "applied") {
@@ -521,7 +524,7 @@ export class RunRecordService {
           let anchor = current.run;
           if (runClaim(anchor) !== undefined && anchor.cancelRequested !== true) {
             const requested = repositories.runs.requestCancellation({ runId: anchor.envelope.runId,
-              expectedVersion: anchor.version, now: this.dependencies.clock.now().toISOString() });
+              expectedVersion: anchor.version, now: this.dependencies.clock.now().toISOString(), ...summary });
             if (requested.state !== "applied") throw new Error("cancel tree lost anchor version fence");
             anchor = requested.run;
           }
@@ -559,7 +562,8 @@ export class RunRecordService {
         }
         if (current.run.cancelRequested === true) return { state: "applied-already" as const, run: current.run };
         const requested = repositories.runs.requestCancellation({ runId: request.runId,
-          expectedVersion: request.expectedVersion, now: this.dependencies.clock.now().toISOString() });
+          expectedVersion: request.expectedVersion, now: this.dependencies.clock.now().toISOString(),
+          ...(request.lifecycle.errorSummary !== undefined && { errorSummary: request.lifecycle.errorSummary }) });
         if (requested.state !== "applied") throw new Error("cancel request lost its transaction-local version fence");
         this.recordJournal(repositories, journal.command, journalRun(requested.run), current.run.lifecycle);
         return { state: "applied" as const, run: requested.run };
@@ -921,7 +925,8 @@ export class RunRecordService {
     const dependencyRefusal = terminalDependencyRefusal(repositories, request.runId, "cancel", this.dependencies.clock.now().toISOString());
     if (dependencyRefusal !== undefined) return refused(dependencyRefusal);
     const outcome = repositories.runs.transition({ runId: request.runId, expectedVersion: request.expectedVersion,
-      claim: request.claim, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: request.endedAt },
+      claim: request.claim, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: request.endedAt,
+        ...(current.run.cancelSummary !== undefined && { errorSummary: current.run.cancelSummary }) },
       now: this.dependencies.clock.now().toISOString() });
     if (outcome.state !== "applied") return refused({ reason: "lost" });
     return { state: "applied", run: outcome.run };

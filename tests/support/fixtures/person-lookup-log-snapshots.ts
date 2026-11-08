@@ -39,7 +39,7 @@ const crmCheck = (found: boolean): readonly Step[] => [
   gesture("cross-verify", "crm", "read", "crm.onboarding.record", "CRM onboarding record"),
   ...(found ? [{ kind: "capture", node: "cross-verify" } as const] : []),
   observed("crm-identity", "Cross-check identity", "crm", [["read", "CRM", found ? "Found" : "Not found"], ["read", "How found", found ? "Employee ID agrees with CRM" : "No match"]]),
-  { kind: "log", node: "crm-identity", message: "Identity cross-check", fields: { method: found ? "eid-match" : "no-match", candidateEids: "10000001" } },
+  { kind: "log", node: "crm-identity", message: "Identity cross-check", fields: { method: found ? "eid-match" : "no-match", candidates: "1" } },
 ];
 const status = (state: string, crm: string, note?: string): readonly Step[] => [
   observed("active-status", "Read employment status", "local", [["read", "Employment status", state], ["read", "UCPath", state === "Not found" ? "Not found" : "Found"], ["read", "CRM", crm], ...(note === undefined ? [] : [["read", "Status note", note] as const])]),
