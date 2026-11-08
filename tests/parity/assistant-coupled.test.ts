@@ -35,7 +35,7 @@ test('coupled synthetic proposal preserves conversation, holds confirmation and 
   for (const width of [1440, 1920, 2560]) {
     await page.setViewportSize({ width, height: 900 });
     for (const expanded of [false, true]) {
-      const sessions = page.getByRole('button', { name: 'Sessions', exact: true });
+      const sessions = page.getByRole('button', { name: /^Sessions\b/ });
       if (await sessions.getAttribute('aria-expanded') !== String(expanded)) await sessions.click();
       await expect.poll(async () => {
         const hit = await launcher.boundingBox(), panelBounds = await page.getByRole('region', { name: 'Session Panel', exact: true }).boundingBox();
