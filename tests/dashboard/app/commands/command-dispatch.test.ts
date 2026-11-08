@@ -239,12 +239,25 @@ describe("composeCommandRequest — the identity gate (ref write-safety §14.4)"
     assert.equal(result.evidenceDigest, section.value.evidenceDigest);
   });
 
-  it("REFUSES a served rejection action — the gate composes approvals only", () => {
-    const composed = composeCommandRequest(
-      REJECT,
-      { runId: runId(1), expectedVersion: 3 },
-      { ...CONTEXT, gate: gateSection() },
-    );
+  it("composes a served rejection with the gate's recorded reason, and refuses one served without it", () => {
+    const rejectAction = { ...REJECT, key: "resolve-gate-rejected" };
+    const unserved = composeCommandRequest(rejectAction, { runId: runId(1), expectedVersion: 3 }, { ...CONTEXT, gate: gateSection() });
+    assert.equal(unserved.state, "refused");
+    assert.match(unserved.state === "refused" ? unserved.reason : "", /no recorded reason/);
+
+    const section = gateSection({ rejectReason: "Rejected in Logs", actions: [...gateSection().value.actions, {
+      key: "resolve-gate-rejected", label: "Reject match", intent: "destructive", placement: ["footer"], kind: "command",
+      command: "resolve-gate", expectedVersion: 3, resolution: "rejected" }] });
+    const composed = composeCommandRequest(rejectAction, { runId: runId(1), expectedVersion: 3 }, { ...CONTEXT, gate: section });
+    assert.equal(composed.state, "ready");
+    if (composed.state !== "ready") return;
+    const parsed = CommandRequestSchema.parse(composed.request);
+    if (parsed.family !== "gate") throw new Error("a rejection is a gate command");
+    assert.deepEqual(IdentityApprovalResultSchema.parse(parsed.payload.result.value), { decision: "rejected", reason: "Rejected in Logs", evidenceDigest: section.value.evidenceDigest });
+  });
+
+  it("REFUSES a served gate action with an unknown resolution", () => {
+    const composed = composeCommandRequest(commandAction({ command: "resolve-gate" }), { runId: runId(1), expectedVersion: 3 }, { ...CONTEXT, gate: gateSection() });
     assert.equal(composed.state, "refused");
     assert.match(composed.state === "refused" ? composed.reason : "", /not an approval/);
   });
