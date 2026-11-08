@@ -1,7 +1,27 @@
 # Backend compositions, runtime and BFF
 
-Root instructions apply. Read this file before backend or CLI composition changes, even when the
-task starts at the repository root.
+Read [the architecture](../../docs/ARCHITECTURE.md) and
+[codebase map](../../docs/reference/codebase-structure.md#backend) for composition and module owners.
+
+## Product boundaries
+
+- Build for one operator on one machine. Add no multi-user, remote-client or hosting layer.
+- Admit backend use only through the operator's dashboard. The dashboard assistant may use
+  allowlisted reads and propose actions through the dashboard-owned typed client. Dispatch a
+  validated proposal only after explicit operator confirmation. Give the assistant no arbitrary
+  backend, shell, HTTP or credential access, gate approval or safety bypass. Allow no other agent
+  or external API access.
+- Limit product AI to OCR and the dashboard assistant through the operator's ChatGPT subscription.
+  Connect Settings with OpenAI's open-source "Sign in with ChatGPT" flow: OAuth with PKCE, a
+  loopback redirect and the Responses API. Store tokens only in the local credential store.
+  Add no other AI provider.
+- Keep HTTP parsing and application composition thin; repositories own durable storage.
+- Publish workflow outputs through the Spreadsheets library, never loose files.
+- List used task contracts without a store implementation in
+  `src/backend/app/registries/pending-impl-bindings.json`; keep the correspondence exact.
+- Bind browser tasks to the store's exact `DriverDeclaration<ConcreteDriver>` with
+  `defineTask(driver, contract, impl)`. Do not narrow a driver to `{system}` or create another
+  declaration for the same store. Service/workflow tasks use `defineTask(contract, impl)`.
 
 ## Invariants
 
@@ -29,7 +49,7 @@ task starts at the repository root.
   backup preserving current write evidence and credentials; missing, foreign, future, version-skewed or
   unprovable authority holds only that person's admission. Ordinary readers accept only the current schema.
 
-Before changing a seam, read the relevant
-`docs/reference/frontend-backend-integration.md`, `dashboard-surfaces.md`, and
-`clock-config-secrets.md` contract before changing behavior. Exact routes and composition order
-belong in source and their tests.
+Before changing behavior, read the relevant [frontend/backend contract](../../docs/reference/frontend-backend-integration.md),
+[dashboard contract](../../docs/reference/dashboard-surfaces.md), and
+[configuration contract](../../docs/reference/clock-config-secrets.md).
+Keep exact routes and composition order in source and tests.
