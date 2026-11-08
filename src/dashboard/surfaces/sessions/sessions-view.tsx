@@ -72,12 +72,12 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
         </Dialog>;
   const settingsControl = onSettings && <Button id={SETTINGS_GEAR_ID} size="sm" variant="ghost" className="sessions-bar-icon" aria-label="Settings" title="Settings" aria-pressed={settingsOpen} onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} />;
   return <section aria-label="Session Panel" className="ui-theme-scope shrink-0 border-t border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    <ActionBarRow label="Session actions" className="h-11 gap-0 px-0">
+    <ActionBarRow label="Session actions" className="sessions-bar h-11 gap-0 px-0">
       <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title={open ? "Hide sessions" : "Show sessions"} onClick={() => onOpenChange(!open)} className="sessions-bar-toggle">
         {open ? <ChevronDown aria-hidden className="size-3.5 shrink-0 text-ui-muted" /> : <ChevronUp aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}<UsersRound aria-hidden className="size-3.5 shrink-0 text-ui-muted" /><span className="text-heading">Sessions</span>
         <span className="ml-1 flex min-w-0 items-center border-l border-ui-stroke pl-3"><BarCounts data={data} /></span>
       </button>
-      <span className="flex shrink-0 items-center gap-1 pl-2 pr-3">{addControl}{settingsControl}</span>
+      <span className="sessions-bar-actions flex shrink-0 items-center gap-1 pl-2 pr-3">{addControl}{settingsControl}</span>
     </ActionBarRow>
     {operations.add && ['refused', 'uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'refused' || operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 border-t border-ui-stroke px-4 py-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}
     {open && <div id={contentId} className="max-h-[24rem] overflow-y-auto border-t border-ui-stroke bg-ui-canvas p-3">
