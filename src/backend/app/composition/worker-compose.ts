@@ -795,9 +795,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         resetControl: createWorkerResetControl({ database, workerId, leaseGeneration, clock, lifecycle: runRecordService }),
         pendingReset: resetObserver,
         activeWorkReset: (run, claim) => {
-          const observed = resetObserver();
           const record = database.authority.workerControls.resetForWorker(workerId, leaseGeneration);
-          if (observed === undefined || record === undefined) return false;
+          if (record === undefined || resetObserver() === undefined) return false;
           const reset = record.reset;
           const slot = database.authority.workerSlots.get(workerId);
           const lease = database.authority.workerLeases.get(workerId);
