@@ -99,9 +99,15 @@ export type DecisionAnswerWire = z.infer<typeof DecisionAnswerWireSchema>;
 export const RunDecisionWireSchema = z.strictObject({
   type: RunDecisionTypeSchema,
   title: Text,
+  /* The line after the title that names what is asked about this person or row. */
+  context: Text.optional(),
+  /* The dropdown's label; served whenever the decision offers more than one choice. */
+  choiceLabel: Text.optional(),
   options: z.array(DecisionOptionWireSchema),
   answer: DecisionAnswerWireSchema.optional(),
 }).superRefine((decision, context) => {
+  const choices = decision.options.filter(option => !(option.send.via === "row-action" && option.id === "cancel-run"));
+  if (choices.length > 1 && decision.choiceLabel === undefined) context.addIssue({ code: "custom", path: ["choiceLabel"], message: "a decision with several choices serves its choiceLabel" });
   const ids = decision.options.map(({ id }) => id);
   if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["options"], message: "decision option ids must be unique" });
   const keys = decision.options.flatMap(({ send }) => send.via === "action" ? [send.actionKey] : []);

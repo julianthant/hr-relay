@@ -453,7 +453,7 @@ function buildIdentityGatePayload(
       approvalShape: options.length > 1 ? "choose-a-candidate" : "one-click",
       actions,
       ...(rejected?.rejectReason === undefined ? {} : { rejectReason: rejected.rejectReason }),
-      decision: identityGateDecision(options, actions, arms, deps.projection.queueSurface(runId)?.actions),
+      decision: identityGateDecision(options, actions, arms, deps.projection.queueSurface(runId)?.actions, { documentName: packet.documentName }),
     }),
   };
 }
@@ -467,6 +467,7 @@ export function identityGateDecision(
   actions: readonly ActionDescriptorWire[],
   arms: readonly Readonly<{ outcome: string; label: string; hint: string }>[],
   rowActions: readonly ActionDescriptorWire[] | undefined,
+  subject?: Readonly<{ documentName: string }>,
 ): RunDecisionWire {
   const find = (resolution: "approved" | "rejected") => actions.find(action => action.kind === "command" && action.resolution === resolution);
   const approved = find("approved"), approve = approved?.key, reject = find("rejected")?.key;
@@ -489,7 +490,7 @@ export function identityGateDecision(
       typed: { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$" },
     } } }]),
     ...rowActionOption("cancel-run", "cancel", rowActions),
-  ]);
+  ], subject === undefined ? {} : { title: `Which ${subject.documentName} is this run about?`, context: `UCPath found ${options.length} people with this name.` });
 }
 
 function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacket, rejected: Readonly<{ label: string; hint: string }> | undefined): unknown[] {

@@ -146,7 +146,7 @@ hdh: false,
       approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
       actions,
       rejectReason: "Rejected in Logs",
-      decision: identityGateDecision(options, actions, [], undefined),
+      decision: identityGateDecision(options, actions, [], undefined, { documentName: input.documentName }),
     });
   }
 

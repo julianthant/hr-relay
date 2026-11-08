@@ -62,7 +62,7 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
   const servedLogs = (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => { const composition = PARITY_WORKFLOW_COMPOSITION(workflows); return Object.freeze({ ...composition, logsSources: composition.sources }); };
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-  const block = host.querySelector('form[aria-label="Identity Approval"]');
+  const block = host.querySelector('form[aria-label="Is this the right person?"]');
   assert(block, host.querySelector('.dashboard-log-column')?.textContent ?? '');
   const approve = [...block.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Confirm');
   assert(approve); assert.equal(approve.disabled, false);
@@ -128,7 +128,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
   };
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-  const block = host.querySelector('form[aria-label="Identity Approval"]');
+  const block = host.querySelector('form[aria-label="Is this the right person?"]');
   assert(block);
   const approve = [...block.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Confirm');
   assert(approve); assert.equal(approve.disabled, false);
@@ -139,7 +139,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
     await new Promise(resolve => setTimeout(resolve, 20));
   });
   assert.equal(subscriptions.length, 2, 'one new day subscription is the admitted refresh');
-  assert.equal(host.querySelector('form[aria-label="Identity Approval"]'), block, 'the loaded Logs mount survives loading');
+  assert.equal(host.querySelector('form[aria-label="Is this the right person?"]'), block, 'the loaded Logs mount survives loading');
   assert.ok(host.querySelector('.dashboard-log-column')?.textContent?.includes('Refreshing'));
   assert.equal(approve.disabled, true, 'stale authority cannot approve a gate');
   await act(async () => approve.click());

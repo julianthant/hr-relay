@@ -103,6 +103,21 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     } finally { snapshot.mockRestore(); }
   });
 
+  it("serves the rejected employee ID as the prefill, and no value for a field not declared display-safe", async () => {
+    const h = await fixture(), descriptor = separationsModule.descriptor;
+    const [eid, document] = descriptor.failureCorrections ?? []; assert.ok(eid?.displaySafe && document && document.displaySafe === undefined);
+    const run = (value: Record<string, string>) => RunRecordSchema.parse({ ...h.run, envelope: { ...h.run.envelope, workflow: descriptor.id,
+      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint }, input: { ...h.run.input, parsed: { ...h.run.input.parsed, value } } });
+    const failureOf = (correction: typeof eid) => FailureRecordSchema.parse({ ...h.failure, nodeId: correction.nodeId, code: failureCodeFromTaskCode(correction.code), writeState: "not-attempted" });
+    const deps = { ...h.f.deps, canonical: { reader: h.f.reader, database: h.f.database, descriptors: { resolve: () => descriptor } } };
+    const snapshot = vi.spyOn(h.f.database, "withAuthorityReadSnapshot").mockImplementation(() => ({ warnings: [] }));
+    try {
+      const value = { operatorEmployeeId: "1003187", documentNumber: "SIM-48216" };
+      assert.equal((failureRecovery(deps, run(value), failureOf(eid)) as { recovery: { prefill?: string } }).recovery.prefill, "1003187");
+      assert.equal((failureRecovery(deps, run(value), failureOf(document)) as { recovery: { prefill?: string } }).recovery.prefill, undefined);
+    } finally { snapshot.mockRestore(); }
+  });
+
   it("does not offer document correction for an unavailable Kuali page or uncertain write", async () => {
     const h = await fixture();
     const descriptor = separationsModule.descriptor;

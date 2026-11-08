@@ -402,7 +402,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected }) }) }));
-    const block = document.querySelector('form[aria-label="Identity Approval"]'); assert.ok(block);
+    const block = document.querySelector('form[aria-label="Is this the right person?"]'); assert.ok(block);
     const text = block.textContent ?? "";
     for (const target of [gate.options[0].eid, gate.options[0].displayName, gate.options[0].chosenFrom, gate.options[0].origin]) assert.ok(text.includes(target), target);
     for (const comparison of gate.packet.comparisons) for (const basis of [comparison.documentValue, comparison.ucpathValue, comparison.note]) assert.ok(text.includes(basis), basis);

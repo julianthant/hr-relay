@@ -115,11 +115,11 @@ export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
   const addNote = failure.resolution?.capability.state === "available" ? [{ id: "add-note", send: { via: "command" as const, family: "failure-resolution", type: "annotate-failure" } }] : [];
   const recovery = failure.recovery;
   if (recovery !== undefined) {
-    // The run's typed input never crosses this wire, so the corrected value is entered fresh.
+    // The run's typed input never crosses this wire, except a rejected value the correction declares display-safe.
     const { correction, retry } = recovery;
     return projectDecision("correct-value", [
       { id: "retry-with-value", send: { via: "start-plan" }, label: correction.actionLabel, confirm: recovery.confirm,
-        input: { kind: "text", label: correction.label, ...(correction.pattern === undefined ? {} : { pattern: correction.pattern }) } },
+        input: { kind: "text", label: correction.label, ...(correction.pattern === undefined ? {} : { pattern: correction.pattern }), ...(recovery.prefill === undefined ? {} : { prefill: recovery.prefill }) } },
       { id: "check-again", send: { via: "action", actionKey: retry.key }, ...(retry.kind === "command" && retry.confirm !== undefined ? { confirm: retry.confirm } : {}) },
     ]);
   }
@@ -144,7 +144,8 @@ export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failur
     if (error instanceof RerunRefusedError) return {};
     throw error;
   }
-  return { recovery: { correction, expectedVersion: run.version,
+  const rejected = correction.displaySafe === true ? (run.input.parsed.value as Record<string, unknown> | null)?.[correction.inputField] : undefined;
+  return { recovery: { correction, expectedVersion: run.version, ...(typeof rejected === "string" && rejected !== "" ? { prefill: rejected } : {}),
     retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: run.version,
       confirm: { title: "Check again", body: "Retry this run from its retained checkpoints.", confirmLabel: "Check again", tone: "neutral" } },
     confirm: { title: correction.actionLabel, body: "Relay reads the entered value in the real system before continuing. Identity still requires operator approval.", confirmLabel: correction.actionLabel, tone: "neutral" },
