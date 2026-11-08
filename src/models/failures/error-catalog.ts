@@ -310,6 +310,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Duo refused the sign-in. Run it again; if it repeats, check Fast Duo.",
     EmptyParametersSchema,
   ),
+  UCPATH_MAINTENANCE: catalogEntry(
+    "UCPath is down for maintenance. Try again later.",
+    EmptyParametersSchema,
+  ),
   UCPATH_SIGN_IN_FAILED: catalogEntry(
     "UCPath sign-in failed.",
     EmptyParametersSchema,
