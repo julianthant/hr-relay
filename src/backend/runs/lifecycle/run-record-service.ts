@@ -738,6 +738,10 @@ export class RunRecordService {
       const source = this.read(request.runId);
       if (source.state !== "present" || source.run.pause?.state !== "requested") return refused({ reason: "invalid-state" });
       this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
+      if (repositories.writeIntents.listByRun(request.runId).some(intent => intent.status === "attempting")) {
+        return refused({ reason: "illegal-transition", from: source.run.lifecycle.state, to: "queued",
+          message: "a pause cannot release a claim over an unfinished write" });
+      }
       const now = this.dependencies.clock.now().toISOString();
       const result = repositories.runs.setPause({ runId: request.runId, claim: request.claim, expectedVersion: source.run.version, now, acknowledge: true,
         pause: { ...source.run.pause, state: "paused", pausedAt: now } });
