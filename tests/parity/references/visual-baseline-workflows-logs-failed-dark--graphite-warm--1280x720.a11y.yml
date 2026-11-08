@@ -718,6 +718,7 @@
               - strong: fill timekeeper comments
             - paragraph: Last completed · UCPath termination verified
             - button "Retry Kuali step"
+            - button "Cancel run"
     - group:
       - searchbox "Search logs"
     - status: 71 actions

@@ -539,6 +539,7 @@
               - spinbutton "year, Last day worked": yyyy
               - button "Choose last day worked date Last day worked"
             - button "Enter date" [disabled]
+            - button "Cancel run"
     - group:
       - searchbox "Search logs"
     - status: 38 actions
