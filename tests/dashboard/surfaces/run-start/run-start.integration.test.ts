@@ -30,6 +30,19 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(text().includes("Rerun started"), false);
     assert.equal(window.sessionStorage.length, 0); assert.equal(h.finalCommands.length, 1); assert.equal(h.queueRoots.length, 2);
   });
+  for (const stopped of [true, false]) it(`${stopped ? "leaves" : "raises"} the refused worker-start toast ${stopped ? "to the sticky stopped-worker notice" : "once"} when workers ${stopped ? "are" : "are not"} stopped`, async () => {
+    const h = await setup(), source = await h.completeSource();
+    const client = { ...h.client, executeCommand: async (input: unknown) => {
+      const reply = await h.client.executeCommand(input);
+      if (reply.state !== "applied" && reply.state !== "already-applied") return reply;
+      return { ...reply, workerStartup: { state: "refused" as const, code: "RUN_QUEUED_WORKER_UNAVAILABLE" as const,
+        message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail: "Fixture readiness changed." } };
+    } };
+    await mount(h, source, client, stopped ? () => true : undefined); await press("Continue"); await press("Confirm"); await press("Continue");
+    await act(async () => checkbox("Dry run").click()); await press("Continue"); await press("Start dry run");
+    assert.equal(h.finalCommands.length, 1);
+    assert.equal(text().split("Run queued; worker unavailable").length - 1, stopped ? 0 : 1);
+  });
   it("lost response survives unmount and exact replay without a second run", async () => {
     const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm");
     assert.equal(field("Employee ID").value, "10812345"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");

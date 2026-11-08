@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../../src/dashboard/app/commands/command-executor.js";
-import { createSessionPreviewPort, sessionCommandApplication, type SessionCommandBinding, type SessionPreviewRequest } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
+import { createSessionPreviewPort, sessionCommandApplication, useSessionPreviewCommands, type SessionCommandBinding, type SessionPreviewRequest, type SessionPreviewResult } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { sessionsFromDay, sessionWorkerAuthorityKey } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
@@ -587,4 +587,32 @@ it("toasts a Retry the served day shows refused before its worker started", asyn
     await act(async () => render());
     assert.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(item => /Couldn't restart this worker\./.test(item.textContent ?? "")).length, 1, "one toast per settlement");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("drops a Check outcome that finishes after the served day settled the command, instead of re-locking the card", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness();
+  h.effect(command => {
+    const pending = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), command), auditedAt: undefined, phase: { state: "executing", startedAt: now } });
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [pending] }));
+    return { state: "pending", commandId: command.commandId };
+  });
+  const view = sessionsFromDay(h.day(), catalog, now); const target = h.day().workerCards[0].workerId;
+  await h.port.send({ id: uuidOf(8700), target, action: "stop" });
+  const pending = h.day().workerOperations; const settled = [lifecycleRecord(h.day(), h.sent[0])];
+  let release!: (result: SessionPreviewResult) => void; let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
+  const port = { send: async (request: SessionPreviewRequest) => ({ id: request.id, state: "uncertain" as const, message: "unused" }),
+    check: (request: SessionPreviewRequest) => new Promise<SessionPreviewResult>(done => { release = result => done({ ...result, id: request.id }); }) };
+  const snapshot = {}; const scope = {};
+  function Host({ records }: { records: typeof pending }) { commands = useSessionPreviewCommands(view, catalog, port, { snapshot, scope, actorId: "local-operator", records }); return null; }
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(Host, { records: pending })));
+    assert.equal(commands?.operations[target]?.state, "uncertain");
+    await act(async () => commands?.check(target));
+    assert.equal(commands?.operations[target]?.state, "checking");
+    await act(async () => root.render(createElement(Host, { records: settled })));
+    await act(async () => release({ id: h.sent[0].commandId, state: "uncertain", message: "Still unknown" }));
+    assert.equal(commands?.operations[target], undefined);
+  } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
 });

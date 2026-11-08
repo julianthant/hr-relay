@@ -1588,7 +1588,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -3725,6 +3725,13 @@ export class AuthorityDatabase implements Disposable {
       if(run===undefined) return {state:"unavailable" as const,reason:"canonical-live-run-unavailable"};
       return deriveCanonicalPerson(run,this.authority.runResults.get(runId) ?? null);
     });
+  }
+
+  /** Systems whose live Duo ceremony lease this worker holds. */
+  heldDuoSystems(workerId: string): readonly string[] {
+    return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)
+      .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema))
+      .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => lease.holder.system));
   }
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
@@ -7060,6 +7067,7 @@ export class AuthorityDatabase implements Disposable {
   reconcileWorkerControlMilestones(now: string): void {
     for (const record of this.authority.workerControls.list()) {
       if (record.auditedAt !== undefined) continue;
+      if (record.request.type === "refresh-browser" || record.request.type === "reopen-browser") { if (this.#browserLifetimeEnded(record)) this.#refuseEndedBrowserControl(record.commandId, now); continue; }
       if ((record.request.type === "stop-worker" || record.lifecycle !== undefined) && ["admitted", "ready", "executing"].includes(record.phase.state)
         && Date.parse(record.expiresAt) <= Date.parse(now)) this.authority.workerControls.transition(record.commandId, record.phase.state, {
           state: "uncertain", startedAt: "startedAt" in record.phase ? record.phase.startedAt : record.admittedAt,
@@ -7075,6 +7083,26 @@ export class AuthorityDatabase implements Disposable {
           state: "uncertain", startedAt: current.phase.startedAt, observedAt: now, message: error.message });
       }
     }
+  }
+
+  #browserLifetimeEnded(record: z.infer<typeof WorkerControlRecordSchema>): boolean {
+    const control = record.control;
+    if (control === undefined || record.auditedAt !== undefined || record.phase.state === "succeeded") return false;
+    const lease = this.#readWorkerLease(control.member.workerId), lifetime = control.lifetime;
+    return lease !== undefined && (lease.leaseGeneration > lifetime.leaseGeneration || lease.leaseGeneration === lifetime.leaseGeneration
+      && lease.lifecycle.state === "stopped" && lease.processId === lifetime.processId && lease.lifecycle.startedAt === lifetime.startedAt);
+  }
+
+  /** A browser control bound to a stopped worker lifetime can take no further effect; refuse and audit it so it stops holding the pool. */
+  #refuseEndedBrowserControl(commandId: string, now: string): void {
+    this.withAuthorityTransaction(repositories => {
+      const current = repositories.workerControls.get(commandId);
+      if (current === undefined || !this.#browserLifetimeEnded(current)) return;
+      const message = "worker-browser-lifetime-ended";
+      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+      repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+        result: { state: "rejected", commandId, code: "invalid-state", message } });
+    });
   }
 
   /** Startup only: a Retry, or a stop-worker restart with no run work, whose reserved old lifetime is still exact never birthed; refuse it and release the reservation. */

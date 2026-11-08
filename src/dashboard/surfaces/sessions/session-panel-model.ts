@@ -361,6 +361,10 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
   crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
 };
 
+/** The card control a served worker operation answers; while unaudited it locks that card behind Check outcome. */
+export const WORKER_OPERATION_CONTROL: Readonly<Record<string, "stop" | "remove" | "retry" | "pause" | "resume" | "refresh" | undefined>> = {
+  "stop-worker": "stop", "remove-worker": "remove", "retry-worker": "retry", "pause-worker": "pause", "resume-worker": "resume", "refresh-browser": "refresh" };
+
 const RETRY_REFUSAL_LABEL: Readonly<Record<string, string>> = {
   "worker-retirement-child-close-unproved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",
   "worker-retirement-closure-not-proved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",

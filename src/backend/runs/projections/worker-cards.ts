@@ -5,10 +5,13 @@ import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../mod
 import {
   WorkerBrowserWireSchema,
   WorkerCardWireSchema,
+  WorkerLastRunWireSchema,
 } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import type { RunFoldRecord } from "./run-queue-projection.js";
+import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
-import { isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
+import { isDrainStopReason, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
 
@@ -53,6 +56,39 @@ function currentRunOf(lease: WorkerLeaseRecord, member: WorkerSlotRecord,
   return { state: "present", runId, traceId: run.envelope.traceId };
 }
 
+type WorkerLastRun = NonNullable<WorkerCardWire["lastRun"]>;
+
+/** The run this worker last claimed: the run's own terminal facts, and its last task span on the claimed attempt (an open span wins). */
+export function lastRunOf(input: Readonly<{
+  claim: Readonly<{ runId: string; attempt: number }> | undefined;
+  run: RunRecord | undefined;
+  spans: RunFoldRecord["taskSpans"] | undefined;
+  taskIdOf: (nodeId: string, spanPath: string) => string | undefined;
+}>): WorkerLastRun {
+  if (input.claim === undefined) return { state: "unavailable", reason: "no-run-recorded" };
+  const { run } = input;
+  if (run?.envelope.runId !== input.claim.runId) return { state: "unavailable", reason: "run-unavailable" };
+  const claimed = (input.spans ?? []).filter(span => span.attempt === input.claim?.attempt && span.startedAt !== undefined);
+  const span = claimed.findLast(candidate => candidate.endedAt === undefined) ?? claimed.at(-1);
+  const nodeId = span === undefined ? undefined : nodeIdOfTaskSpanPath(span.spanPath);
+  const taskId = span === undefined || nodeId === undefined ? undefined : input.taskIdOf(nodeId, span.spanPath);
+  return WorkerLastRunWireSchema.parse({
+    state: "present", runId: run.envelope.runId, traceId: run.envelope.traceId,
+    ...(run.lifecycle.state === "terminal" ? { outcome: run.lifecycle.outcome, endedAt: run.lifecycle.endedAt } : {}),
+    ...(span?.startedAt === undefined || nodeId === undefined ? {} : { step: { nodeId, ...(taskId === undefined ? {} : { taskId }),
+      state: span.outcome === undefined ? "open" : span.outcome === "done" || span.outcome === "skipped" ? "done" : "failed", startedAt: span.startedAt } }),
+  });
+}
+
+function signInOf(lease: WorkerLeaseRecord, observed: WorkerBrowserObservation, duoSystems: readonly string[]): NonNullable<WorkerCardWire["browsers"][number]["signIn"]> {
+  if (observed.health === "authenticated") return "signed-in";
+  // Closed and failed rows keep no authentication history, so signed-out is not provable.
+  if (observed.health === "closed" || observed.health === "failed") return "unknown";
+  if (duoSystems.includes(observed.system)) return "needs-duo";
+  if (observed.health === "starting" || lease.lifecycle.state === "waiting" && lease.lifecycle.activity !== "closing") return "signing-in";
+  return "unknown";
+}
+
 export function workerCardOf(input: Readonly<{
   lease: WorkerLeaseRecord;
   member: WorkerSlotRecord;
@@ -62,6 +98,10 @@ export function workerCardOf(input: Readonly<{
   observations?: readonly WorkerBrowserObservation[];
   operations?: readonly WorkerControlRecord[];
   owned?: boolean;
+  /** Systems whose live Duo lease this worker holds. */
+  duoSystems?: readonly string[];
+  lastRun?: WorkerLastRun;
+  timeline?: WorkerCardWire["timeline"];
 }>): WorkerCardWire {
   const { lease, fold, member } = input;
   if (member.retiredAt !== null || member.workerId !== lease.workerId || member.workflow !== lease.workflow) throw new Error("worker-member-authority-unavailable");
@@ -91,6 +131,16 @@ export function workerCardOf(input: Readonly<{
   }
   const closedBrowserSystems = [...new Set(observations?.filter(value => value.health === "closed"
     && ![...browsers.values()].some(browser => browser.system === value.system)).map(value => value.system))];
+  const browserWire = (browser: WorkerBrowserFold) => {
+    const observed = observations?.find(value => value.sessionId === browser.sessionId);
+    return WorkerBrowserWireSchema.parse({ ...browser, observation: observed === undefined || observed.health === "closed"
+      ? { state: "unavailable", reason: "No current owner observation." }
+      : { state: "present", health: observed.health, observedAt: observed.observedAt, instance: observed.instance,
+        browserMode: observed.browserMode, configFingerprint: observed.configFingerprint },
+    ...(observed === undefined ? {} : { signIn: signInOf(lease, observed, input.duoSystems ?? []) }) });
+  };
+  // A settled lease owns no live browser; open span evidence does not prove a surviving process.
+  const served = terminal ? [] : [...browsers.values()].map(browserWire);
   return WorkerCardWireSchema.parse({
     member: workerPoolMember(member),
     workerId: lease.workerId,
@@ -109,7 +159,8 @@ export function workerCardOf(input: Readonly<{
     },
     startedAt: lease.lifecycle.startedAt,
     ...(lease.lifecycle.state === "stopped"
-      ? { endedAt: lease.lifecycle.stoppedAt, stopReason: lease.lifecycle.reason }
+      ? { endedAt: lease.lifecycle.stoppedAt,
+        stopReason: lease.lifecycle.reason === "operator" && isDrainStopReason(lease.control.reason) ? "shutdown" : lease.lifecycle.reason }
       : {}),
     currentRun: currentRunOf(lease, member, input.resolveRun),
     browserRequirements: lease.browserSystems === undefined
@@ -117,18 +168,15 @@ export function workerCardOf(input: Readonly<{
         state: "unavailable",
         reason: `worker ${lease.workerId} lease predates launch-time browser requirements`,
       }
-      : { state: "present", systems: lease.browserSystems },
+      : { state: "present", systems: lease.browserSystems, missing: lease.browserSystems.filter(system =>
+        !served.some(browser => browser.system === system && browser.signIn === "signed-in")) },
     ...(closedBrowserSystems.length === 0 ? {} : { closedBrowserSystems }),
-    // A settled lease owns no live browser; open span evidence does not prove a surviving process.
-    browsers: terminal
-      ? []
-      : [...browsers.values()].map((browser) => {
-        const observed = observations?.find(value => value.sessionId === browser.sessionId);
-        return WorkerBrowserWireSchema.parse({ ...browser, observation: observed === undefined || observed.health === "closed"
-          ? { state: "unavailable", reason: "No current owner observation." }
-          : { state: "present", health: observed.health, observedAt: observed.observedAt, instance: observed.instance,
-            browserMode: observed.browserMode, configFingerprint: observed.configFingerprint } });
-      }),
+    browsers: served,
+    ...(terminal ? { lastBrowsers: (observations ?? []).map(value => browserWire({ sessionId: value.sessionId, system: value.system, openedAt: value.openedAt })) } : {}),
+    ...(lease.lifecycle.state === "waiting" ? { waitingActivity: lease.lifecycle.activity } : {}),
+    ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }),
+    ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
+    availability: { state: "available" },
     leaseVersion: lease.version,
     // Revision 1 is the wire minimum when a lease has emitted no stream event.
     revision: fold?.revision ?? 1,

@@ -110,3 +110,16 @@ it("preserves the actual lifecycle command's claimed and failed completion pair 
     assert.deepEqual(f.db.authority.timelineEvents.page({ runId: current.envelope.runId }), before);
   } finally { await f.dispose(); }
 });
+
+it("finds a worker's last claim by index seek, including for a worker with no claim", () => {
+  const { database, repository } = fixture();
+  const prepared: string[] = [];
+  const prepare = database.prepare.bind(database);
+  database.prepare = (sql: string) => { prepared.push(sql); return prepare(sql); };
+  assert.equal(repository.lastWorkerClaim("person-lookup-worker-1"), undefined);
+  const sql = prepared.find(text => text.includes("run.claimed"));
+  assert(sql);
+  const plan = JSON.stringify(prepare(`EXPLAIN QUERY PLAN ${sql}`).all("person-lookup-worker-1"));
+  assert.match(plan, /SEARCH timeline_events USING INDEX timeline_worker_claim_idx/u);
+  assert.doesNotMatch(plan, /SCAN timeline_events/u);
+});
