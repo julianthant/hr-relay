@@ -2,7 +2,7 @@ import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../..
 import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { workerCardOf } from "../../../../src/backend/runs/projections/worker-cards.js";
+import { lastRunOf, workerCardOf } from "../../../../src/backend/runs/projections/worker-cards.js";
 import { WorkerSlotRecordSchema } from "../../../../src/models/run/worker-slot.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { canStopWorker, workerDirectiveNote, workerElapsedSeconds } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
@@ -111,7 +111,7 @@ describe("the exact current worker authority card", () => {
     const value = card({ lease: leaseOf({ lifecycle: { state: "starting", startedAt: STARTED }, browserSystems: ["ucpath", "crm"] }) });
     assert.equal(value.state, "starting");
     assert.equal(value.revision, 1);
-    assert.deepEqual(value.browserRequirements, { state: "present", systems: ["ucpath", "crm"] });
+    assert.deepEqual(value.browserRequirements, { state: "present", systems: ["ucpath", "crm"], missing: ["ucpath", "crm"] });
     assert.deepEqual(value.browsers, []);
   });
 
@@ -154,4 +154,60 @@ it("projects ordinary controls only for their authenticated exact member and ful
   assert.equal(card({ lease: leaseOf({ leaseGeneration: 2 }), operations: [record] }).controls?.operation, undefined);
   const { control: _control, ...historical } = record;
   assert.equal(card({ operations: [historical] }).controls?.operation, undefined);
+});
+
+describe("sessions panel card data", () => {
+  const SESSION_A = "00000000-0000-4000-8000-00000000000a", SESSION_B = "00000000-0000-4000-8000-00000000000b";
+  const observed = (health: "starting" | "authenticated" | "unknown" | "failed" | "closed", system = "crm", sessionId = SESSION_A, leaseGeneration = 1) =>
+    WorkerBrowserObservationSchema.parse({ workerId: member.workerId, leaseGeneration, sessionId, system, configFingerprint: "a".repeat(64),
+      signInFingerprint: "b".repeat(64), browserMode: "headless", acceptDownloads: false, exclusive: false,
+      health, observedAt: STARTED, openedAt: STARTED, profileRevision: 1 });
+  const stopped = leaseOf({ lifecycle: { state: "stopped", startedAt: STARTED, stoppedAt: STARTED, reason: "crashed" },
+    control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" } });
+
+  it("keeps a stopped card's final-generation sessions as lastBrowsers while browsers stays empty", () => {
+    const value = card({ ownerAlive: false, lease: stopped, observations: [observed("authenticated"), observed("closed", "ucpath", SESSION_B),
+      observed("authenticated", "crm", "00000000-0000-4000-8000-00000000000c", 2)] });
+    assert.deepEqual(value.browsers, []);
+    assert.deepEqual(value.lastBrowsers?.map(browser => [browser.sessionId, browser.system, browser.signIn]),
+      [[SESSION_A, "crm", "signed-in"], [SESSION_B, "ucpath", "unknown"]]);
+    assert.equal(card({ observations: [observed("authenticated")] }).lastBrowsers, undefined);
+  });
+
+  it("serves missing as the required systems minus open, authenticated sessions", () => {
+    const lease = leaseOf({ browserSystems: ["ucpath", "crm", "kuali"] });
+    const value = card({ lease, observations: [observed("authenticated", "crm"), observed("starting", "ucpath", SESSION_B)] });
+    assert.deepEqual(value.browserRequirements, { state: "present", systems: ["ucpath", "crm", "kuali"], missing: ["ucpath", "kuali"] });
+    assert.deepEqual(card({ ownerAlive: false, lease: stopped, observations: [observed("authenticated")] }).browserRequirements,
+      { state: "present", systems: ["ucpath"], missing: ["ucpath"] });
+  });
+
+  it("serves one sign-in state per session and the lease's waiting activity", () => {
+    const signIn = (input: Partial<Parameters<typeof workerCardOf>[0]>) => card(input).browsers.map(browser => browser.signIn);
+    assert.deepEqual(signIn({ observations: [observed("authenticated")] }), ["signed-in"]);
+    assert.deepEqual(signIn({ observations: [observed("starting")] }), ["signing-in"]);
+    assert.deepEqual(signIn({ observations: [observed("unknown")] }), ["unknown"]);
+    const authenticating = leaseOf({ lifecycle: { state: "waiting", startedAt: STARTED, heartbeatAt: STARTED, activity: "authenticating" } });
+    assert.deepEqual(signIn({ lease: authenticating, observations: [observed("unknown")] }), ["signing-in"]);
+    assert.deepEqual(signIn({ observations: [observed("starting"), observed("starting", "ucpath", SESSION_B)], duoSystems: ["ucpath"] }), ["signing-in", "needs-duo"]);
+    assert.equal(card({ lease: authenticating }).waitingActivity, "authenticating");
+    assert.equal(card().waitingActivity, undefined);
+  });
+
+  it("serves the last run's terminal outcome and the step its worker last ran on that claimed attempt", () => {
+    const terminal = RunRecordSchema.parse({ ...running, version: 3, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: "2026-08-20T16:09:00.000Z" } });
+    const span = (spanPath: string, startedAt: string, outcome?: "done" | "failed" | "skipped" | "interrupted", attempt = 1) =>
+      ({ attempt, spanPath, name: spanPath, startedAt, ...(outcome === undefined ? {} : { endedAt: startedAt, outcome }) });
+    const spans = [span(`${TRACE}/lookup#1`, "2026-08-20T16:01:00.000Z", "done"), span(`${TRACE}/verify#1`, "2026-08-20T16:02:00.000Z", "failed"),
+      span(`${TRACE}/later#1`, "2026-08-20T16:03:00.000Z", "done", 2)];
+    const taskIdOf = (nodeId: string) => nodeId === "verify" ? "crm/verify-record" : undefined;
+    assert.deepEqual(lastRunOf({ claim: { runId: RUN, attempt: 1 }, run: terminal, spans, taskIdOf }), { state: "present", runId: RUN, traceId: TRACE,
+      outcome: "cancelled", endedAt: "2026-08-20T16:09:00.000Z", step: { nodeId: "verify", taskId: "crm/verify-record", state: "failed", startedAt: "2026-08-20T16:02:00.000Z" } });
+    const crashed = lastRunOf({ claim: { runId: RUN, attempt: 1 }, run: running, taskIdOf,
+      spans: [span(`${TRACE}/lookup#1`, "2026-08-20T16:01:00.000Z"), span(`${TRACE}/verify#1`, "2026-08-20T16:02:00.000Z", "interrupted")] });
+    assert.deepEqual(crashed, { state: "present", runId: RUN, traceId: TRACE, step: { nodeId: "lookup", state: "open", startedAt: "2026-08-20T16:01:00.000Z" } });
+    assert.deepEqual(lastRunOf({ claim: undefined, run: undefined, spans: undefined, taskIdOf }), { state: "unavailable", reason: "no-run-recorded" });
+    assert.deepEqual(lastRunOf({ claim: { runId: RUN, attempt: 1 }, run: undefined, spans, taskIdOf }), { state: "unavailable", reason: "run-unavailable" });
+    assert.deepEqual(card({ lastRun: crashed }).lastRun, crashed);
+  });
 });

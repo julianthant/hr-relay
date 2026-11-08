@@ -1,21 +1,22 @@
 import { isQueueMember, isQueueTopLevel, type QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
-import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
+import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { displayScalar } from "../queries/data.js";
 import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationDisplayContext } from "../queries/notification-display.js";
-import type { RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
+import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
 
 import { z } from "zod";
-import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import {
   DashboardDayWireSchema,
+  WorkerCardUnavailableReasonSchema,
   notificationWireOf,
   notificationSourceEventOf,
   QueueSurfaceWireSchema,
@@ -59,13 +60,13 @@ import type { RunSessionRecord } from "../../../models/run/session.js";
 import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { allowsSubjectIdentity, resolveResultTitle, verifiedResultDisplayValue, resolveSubjectTitle } from "./run-subject-title.js";
-import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
+import { lastRunOf, workerCardOf, type WorkerBrowserFold, type WorkerCardWire } from "./worker-cards.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskExecutionState } from "../../../rules/runs/run-status.js";
-import { ProjectionDegradedError } from "../commands/refusals.js";
+import { LogIdentityRefusedError, ProjectionDegradedError } from "../commands/refusals.js";
 
 /* ── the in-memory evidence fold shape ─ */
 
@@ -161,6 +162,7 @@ export interface RunQueueProjectionDeps {
     listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
     workerBrowsers?(workerId: string): readonly WorkerBrowserObservation[];
+    heldDuoSystems?(workerId: string): readonly string[];
     workerControls?(): readonly WorkerControlRecord[];
     ownsWorker?(lease: WorkerLeaseRecord): boolean;
 
@@ -525,6 +527,47 @@ export class RunQueueProjection {
         return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, children.get(runId) ?? [], context)];
       });
     });
+  }
+
+  #workerLastRun(workerId: string): NonNullable<WorkerCardWire["lastRun"]> {
+    const record = this.#deps.timeline.lastWorkerClaim(workerId);
+    const claim = record?.payload.kind === "span" && record.payload.event.t === "run.claimed" ? record.payload.event : undefined;
+    const read = claim === undefined ? undefined : this.#deps.reader.read(claim.runId);
+    const run = read?.state === "present" && read.disposition === "live" ? read.run : undefined;
+    return lastRunOf({ claim: claim === undefined ? undefined : { runId: claim.runId, attempt: claim.attempt }, run,
+      spans: claim === undefined ? undefined : this.#rows.get(claim.runId)?.taskSpans,
+      taskIdOf: (nodeId, spanPath) => run === undefined ? undefined : this.#taskIdOf(run, nodeId, spanPath) });
+  }
+
+  /** The task contract a span ran, read from the run's own descriptor version only. */
+  #taskIdOf(run: RunRecord, nodeId: string, spanPath: string): string | undefined {
+    const descriptor = this.#deps.descriptors.resolve(run.envelope.workflow);
+    if (descriptor === undefined || descriptor.version !== run.envelope.descriptorVersion) return undefined;
+    const node = descriptorRuntimeNodes(descriptor).find(candidate => String(candidate.id) === nodeId);
+    if (node?.kind === "task") return String(node.uses.id);
+    if (node?.kind !== "transaction") return undefined;
+    const completion = node.commit.uses.writeSafety.completion;
+    const contract = { probe: node.commit.uses.writeSafety.idempotency.probe, prepare: node.prepare.uses, commit: node.commit.uses,
+      verify: completion.kind === "receipt" ? undefined : completion.verify }[spanPath.split("/")[2] ?? ""];
+    return contract === undefined ? undefined : "id" in contract ? String(contract.id) : String(contract.taskId);
+  }
+
+  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[]): NonNullable<WorkerCardWire["timeline"]> {
+    const read = this.#deps.reader.read(runId);
+    if (read.state !== "present" || read.disposition !== "live") return { state: "unavailable", reason: "run-unavailable" };
+    const descriptor = this.#deps.descriptors.resolve(read.run.envelope.workflow);
+    if (descriptor !== undefined && (descriptor.version !== read.run.envelope.descriptorVersion
+      || descriptor.contractFingerprint !== read.run.envelope.contractFingerprint)) {
+      try {
+        assertRunTimelineCompatible(read.run, descriptor.timeline, { timeline: this.#deps.timeline, authority: this.#deps.authority }, this.#rows.get(runId));
+      } catch (error) {
+        if (error instanceof LogIdentityRefusedError) return { state: "unavailable", reason: "timeline-incompatible" };
+        throw error;
+      }
+    }
+    const surface = surfaces.find(candidate => candidate.runId === runId);
+    if (surface === undefined) return { state: "unavailable", reason: "run-not-in-day" };
+    return surface.pipeline.length === 0 ? { state: "unavailable", reason: "no-steps-recorded" } : { state: "present" };
   }
 
   #canonicalSnapshot(): CanonicalProjectionSnapshot {
@@ -1478,6 +1521,7 @@ export class RunQueueProjection {
     let workerOperations: readonly WorkerControlRecord[] | undefined;
     let workerAuthority: DashboardDayWire["workerAuthority"];
     const workerCards: DashboardDayWire["workerCards"] = [];
+    const unavailableWorkerCards: NonNullable<DashboardDayWire["unavailableWorkerCards"]> = [];
     try {
       members = this.#deps.authority.listWorkerSlots?.().filter(member => member.retiredAt === null);
       workerOperations = this.#deps.authority.workerControls?.();
@@ -1491,7 +1535,7 @@ export class RunQueueProjection {
       try {
         const lease = this.#deps.authority.getWorkerLease(member.workerId);
         if (lease === undefined) throw new Error("worker-lifetime-unavailable");
-        if (this.#deps.authority.listWorkerRuns === undefined) throw new Error("worker-run-authority-unavailable");
+        if (this.#deps.authority.listWorkerRuns === undefined) throw new Error("worker-current-run-authority-unavailable");
         const active = this.#deps.authority.listWorkerRuns(member.workerId);
         const heldRunId = "runId" in lease.lifecycle ? lease.lifecycle.runId : undefined;
         const runIds = new Set<string>();
@@ -1515,9 +1559,15 @@ export class RunQueueProjection {
           throw new Error("worker-current-run-authority-unavailable");
         }
         const fold = this.#workers.get(lease.workerId);
+        const lastRun = heldRunId === undefined && (lease.lifecycle.state === "idle" || lease.lifecycle.state === "stopped")
+          ? this.#workerLastRun(lease.workerId) : undefined;
+        const timelineRunId = heldRunId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
         workerCards.push(workerCardOf({ lease, member, ownerAlive: this.#ownerFact(lease).state === "alive",
           observations: this.#deps.authority.workerBrowsers?.(lease.workerId), operations: workerOperations,
-          owned: this.#deps.authority.ownsWorker?.(lease),
+          owned: this.#deps.authority.ownsWorker?.(lease), duoSystems: this.#deps.authority.heldDuoSystems?.(lease.workerId),
+          ...(lastRun === undefined ? {} : { lastRun }),
+          ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
+            : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
           fold: fold === undefined ? undefined : { revision: fold.eventCount, browsers: [...fold.browsers.values()] },
           resolveRun: runId => {
             const read = this.#deps.reader.read(runId);
@@ -1525,8 +1575,9 @@ export class RunQueueProjection {
           },
         }));
       } catch (error) {
-        workerAuthority = { state: "unavailable", members: [...(members ?? [])],
-          reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
+        const reason = WorkerCardUnavailableReasonSchema.safeParse(error instanceof Error ? error.message : undefined);
+        unavailableWorkerCards.push({ member: workerPoolMember(member), workerId: member.workerId,
+          availability: { state: "unavailable", reason: reason.success ? reason.data : "worker-card-unavailable" } });
       }
     }
 
@@ -1553,6 +1604,7 @@ export class RunQueueProjection {
       queueSurfaces: surfaces,
       attemptHistory,
       workerCards,
+      ...(unavailableWorkerCards.length === 0 ? {} : { unavailableWorkerCards }),
       workerAuthority,
       workerOperations: (workerOperations ?? []).map(record => record.phase.state === "succeeded" && record.phase.acknowledgement.kind === "parked-write-check"
         ? { ...record, phase: { ...record.phase, acknowledgement: { kind: "parked-write-check", result: record.phase.acknowledgement.result } } } : record),

@@ -58,6 +58,7 @@ function owner(database: DatabaseSync) {
 function upgrade(database: DatabaseSync): void {
   database.exec("BEGIN EXCLUSIVE");
   deletePreBuildRuns(database, NOW, () => { throw new Error("artifact-unexpected"); }, owner(database));
+  for (const migration of SQLITE_MIGRATIONS.filter(row => row.version > BUILD_ID_ENVELOPE_SCHEMA_VERSION)) for (const statement of migration.statements) database.exec(statement);
   database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
   database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   database.exec("COMMIT");
@@ -88,7 +89,8 @@ it("deletes a predecessor queued run through the cancel door without inserting a
     assert.equal("buildId" in terminal.envelope, false);
     assert.equal(inspectNativeAuthority(database, SHAPE_VERSION).schemaVersion, SHAPE_VERSION);
     deletePreBuildRuns(database, NOW, () => { throw new Error("artifact-unexpected"); }, owner(database));
-    database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+    for (const migration of SQLITE_MIGRATIONS.filter(row => row.version > BUILD_ID_ENVELOPE_SCHEMA_VERSION)) for (const statement of migration.statements) database.exec(statement);
+  database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
     database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
     database.exec("COMMIT");
     assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);

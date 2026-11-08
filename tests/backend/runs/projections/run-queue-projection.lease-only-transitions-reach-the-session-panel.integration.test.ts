@@ -50,18 +50,12 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId }));
     w.authority.workerOwners.clear();
-    let day = w.projection.buildDashboardDayWire(DAY);
-    assert.equal(day.workerAuthority.state, "unavailable");
-    assert.equal(day.workerAuthority.members.length, 1);
-    assert.deepEqual(day.workerCards, []);
+    assertWorkerUnavailable(w, "worker-current-owner-unavailable");
     declareProjectionWorker(w.authority, workerId, 1);
     const event = queuedEventOf(w, { seed: 52, lifecycle: { state: "running", workerId, claimedAt: startedAt,
       heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 2 } }, claimGeneration: 1, version: 2 });
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "busy", startedAt, heartbeatAt: startedAt, runId: event.runId } }));
-    day = w.projection.buildDashboardDayWire(DAY);
-    assert.equal(day.workerAuthority.state, "unavailable");
-    assert.equal(day.workerAuthority.members.length, 1);
-    assert.deepEqual(day.workerCards, []);
+    assertWorkerUnavailable(w);
   });
 
   async function busyWorld() {
@@ -82,11 +76,12 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     return { w, run };
   }
 
-  function assertWorkerUnavailable(w: Awaited<ReturnType<typeof world>>): void {
+  function assertWorkerUnavailable(w: Awaited<ReturnType<typeof world>>, reason = "worker-current-run-authority-unavailable"): void {
     const day = w.projection.buildDashboardDayWire(DAY);
-    assert.equal(day.workerAuthority.state, "unavailable");
+    assert.equal(day.workerAuthority.state, "present");
     assert.equal(day.workerAuthority.members.length, 1);
     assert.deepEqual(day.workerCards, []);
+    assert.deepEqual(day.unavailableWorkerCards?.map(card => [card.workerId, card.availability]), [[workerId, { state: "unavailable", reason }]]);
   }
 
   it("serves a busy member with worker-indexed reads and never lists whole history", async () => {
@@ -156,7 +151,7 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(snapshots(w), 1);
     const [card] = w.projection.buildDashboardDayWire(DAY).workerCards;
     assert.equal(card?.state, "starting");
-    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
+    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"], missing: ["crm", "ucpath"] });
     w.projection.reconcileWorkerAuthority();
     w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 1);

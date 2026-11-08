@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { afterEach, describe, it } from "vitest";
 import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
@@ -13,6 +14,29 @@ const world = createRunRecordServiceTestWorld();
 afterEach(world.cleanup);
 
 describe("Sessions follows child-exit recovery", () => {
+  it("serves needs-duo from the held auth_leases row for that worker and system", async () => {
+    const f = await ownedWorkerLifetimeFixture(world);
+    try {
+      f.observe("idle");
+      const now = f.clock.now().toISOString(), workerId = f.slot.workerId;
+      for (const [system, sessionId] of [["ucpath", randomUUID()], ["crm", randomUUID()]] as const) {
+        f.database.authority.workerControls.observe({ workerId, leaseGeneration: f.started.leaseGeneration, sessionId, system,
+          configFingerprint: "a".repeat(64), signInFingerprint: "b".repeat(64), browserMode: "headless", acceptDownloads: false,
+          exclusive: false, health: "starting", observedAt: now, openedAt: now, profileRevision: 1 });
+      }
+      const acquired = f.database.authority.duoCeremonyLeases.acquire({ credentialKey: "ab".repeat(32), workerId, system: "ucpath", ttlMs: 60_000, now });
+      assert.equal(acquired.state, "acquired");
+      const projection = createOperatorProjection({ database: f.database, reader: f.service,
+        stateRoot: f.root, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+        ownsWorker: lease => lease.processId === f.old.pid, ledger: createTransactionHistory(f.database.authority),
+        descriptors: { resolve: () => personLookupDescriptor } });
+      const card = projection.buildDashboardDayWire(now.slice(0, 10)).workerCards[0];
+      assert.deepEqual(card?.browsers.map(browser => [browser.system, browser.signIn]), [["ucpath", "needs-duo"], ["crm", "signing-in"]]);
+      f.clock.advanceWall(60_000);
+      assert.deepEqual(projection.buildDashboardDayWire(now.slice(0, 10)).workerCards[0]?.browsers.map(browser => browser.signIn), ["signing-in", "signing-in"]);
+    } finally { await f.dispose(); }
+  });
+
   it.each(["starting", "idle"] as const)("settles an exited %s lease before another Run", async phase => {
     const f = await ownedWorkerLifetimeFixture(world), lock = f.lifetime;
     try {

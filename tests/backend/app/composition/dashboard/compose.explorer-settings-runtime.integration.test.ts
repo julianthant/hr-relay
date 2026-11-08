@@ -203,7 +203,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.ok(card);
     assert.ok(card.controls);
     assert.deepEqual(card.controls.ownership, { state: "owned" });
-    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
+    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"], missing: ["crm", "ucpath"] });
     assert.deepEqual(card?.browsers, []);
     assert.equal(records[0]?.exited, false);
   }, scaledMs(20_000));
