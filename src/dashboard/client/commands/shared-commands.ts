@@ -6,6 +6,7 @@ BulkRunCommandResponseSchema,
 CommandRequestSchema,
 CommandResultSchema,
 commandNoChangeResultMatches,
+needsWorkerCapacity,
 type BulkRunCommandRequest,
 type BulkRunCommandResponse,
 type CommandRequest,
@@ -25,7 +26,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
   const result = parseOrThrow(CommandResultSchema, "POST /api/v1/commands", response);
   if (result.commandId !== command.commandId || result.state === "pending" && command.family !== "worker-browser") identityMismatch(response);
   if (result.state !== "applied" && result.state !== "already-applied") return result;
-  if (result.workerStartup !== undefined && command.family !== "start") identityMismatch(response);
+  if (result.workerStartup !== undefined && !needsWorkerCapacity(command)) identityMismatch(response);
   if (!commandNoChangeResultMatches(command, result)) identityMismatch(response);
   const targets = result.affectedTargets;
   if (command.family === "run" && command.type === "resolve-workbook-reference-row" && targets.length !== 2) identityMismatch(response);

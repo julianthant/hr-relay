@@ -1,15 +1,16 @@
 import type { CommandKernel } from "./command-kernel.js";
-import { WorkerBrowserCommandRequestSchema, type CommandRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import { WorkerBrowserCommandRequestSchema, type CapacityRequest, type CommandRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-type StartRequest = Extract<CommandRequest, { family: "start" }>;
+
 type WorkerRequest = Extract<CommandRequest, { family: "worker-browser" }>;
-type CapacityAuthority = Pick<AuthorityRepositories, "startPlans" | "workerPools" | "workerSlots" | "workerControls" | "commands">;
+type CapacityAuthority = Pick<AuthorityRepositories, "runs" | "startPlans" | "workerPools" | "workerSlots" | "workerControls" | "commands">;
 
 export interface RunWorkerCapacity {
-  ensure(request: StartRequest, result: CommandResult): Promise<void>;
+  workflowOf(request: CapacityRequest): string | undefined;
+  ensure(request: CapacityRequest, result: CommandResult): Promise<void>;
 }
 
 export class RunWorkerStartupError extends Error {
@@ -21,17 +22,22 @@ export function runCapacityCommandId(parentId: string, type: "plan-worker-count"
 }
 
 export function createRunWorkerCapacity(deps: { kernel: CommandKernel; authority: CapacityAuthority; reconcileWorker(workerId: string): boolean }): RunWorkerCapacity {
+  const workflowOf = (request: CapacityRequest) => request.family === "start" ? request.target.workflowId : deps.authority.runs.get(request.target.runId)?.envelope.workflow;
   return Object.freeze({
-    async ensure(request: StartRequest, result: CommandResult): Promise<void> {
+    workflowOf,
+    async ensure(request: CapacityRequest, result: CommandResult): Promise<void> {
       if (result.state !== "applied" && result.state !== "already-applied") return;
       const fail = (detail: string, state: RunWorkerStartupFailure["state"] = "unknown", commandId?: RunWorkerStartupFailure["commandId"]): never => {
         throw new RunWorkerStartupError({ state, code: "RUN_QUEUED_WORKER_UNAVAILABLE", message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text,
           detail, ...(commandId === undefined ? {} : { commandId }) });
       };
-      const { workflowId } = request.target;
-      const startPlan = deps.authority.startPlans.get(request.target.startPlanId);
-      if (startPlan === undefined || startPlan.workflowId !== workflowId) return fail("start plan is missing or mismatched");
-      if (startPlan.shape === "preview" || startPlan.planned.length === 0) return;
+      const workflowId = workflowOf(request);
+      if (workflowId === undefined) return fail("run is missing");
+      if (request.family === "start") {
+        const startPlan = deps.authority.startPlans.get(request.target.startPlanId);
+        if (startPlan === undefined || startPlan.workflowId !== workflowId) return fail("start plan is missing or mismatched");
+        if (startPlan.shape === "preview" || startPlan.planned.length === 0) return;
+      }
       const wanted = 1;
       const slots = deps.authority.workerSlots.list(workflowId);
       const read = (type: "plan-worker-count" | "spawn-worker", index: number) => {

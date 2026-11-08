@@ -7073,13 +7073,14 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  /** Startup only: a Retry whose reserved old lifetime is still exact never birthed; refuse it and release the reservation. */
+  /** Startup only: a Retry, or a stop-worker restart with no run work, whose reserved old lifetime is still exact never birthed; refuse it and release the reservation. */
   settleUnbornWorkerRetries(now: string): void {
     // A bound supervisor may own an unregistered child; before it, the held lifetime lock excludes every prior child.
     if (this.#nonBirthOwner !== undefined) throw new Error("worker-retry-startup-settlement-refused");
     for (const record of this.authority.workerControls.list()) {
       const binding = record.lifecycle;
-      if (record.auditedAt !== undefined || record.request.type !== "retry-worker" || record.phase.state !== "uncertain"
+      const restart = record.request.type === "retry-worker" || record.request.type === "stop-worker" && record.reset?.work.kind === "absent";
+      if (record.auditedAt !== undefined || !restart || record.phase.state !== "uncertain"
         || record.effect !== undefined || binding?.operation.kind !== "retry") continue;
       try {
         this.withAuthorityTransaction(repositories => {
