@@ -1508,21 +1508,31 @@ export async function composeStorageCommand(
     return { output: STORAGE_USAGE, exitCode: subcommand === undefined ? 1 : 2 };
   }
   const json = rest.includes("--json");
-  const stateRoot = admission.stateRoot;
-  const report = await doctorAuthorityStorage(admission, {
-    stateRootTrustAnchor: resolve(stateRoot, ".."),
-    stateRoot,
-    authorityPath: join(stateRoot, "state.db"),
-    backupDirectory: join(stateRoot, "backups", "authority"),
+  const doctor = (owner: RuntimeAdmission, store: CredentialStore | undefined) => doctorAuthorityStorage(owner, {
+    stateRootTrustAnchor: resolve(owner.stateRoot, ".."),
+    stateRoot: owner.stateRoot,
+    authorityPath: join(owner.stateRoot, "state.db"),
+    backupDirectory: join(owner.stateRoot, "backups", "authority"),
     busyTimeoutMs: 5000,
-  }, clock, credentials);
-  const healthy = report.authority.state === "healthy"
+  }, clock, store);
+  const healthy = (report: StorageDoctorReport) => report.authority.state === "healthy"
     && report.recovery.state === "clear"
     && report.spanAuthority.state === "reconciled"
     && report.protectedSettings.state === "available";
+  if (!admission.isInstallation()) {
+    const report = await doctor(admission, credentials);
+    return { output: json ? JSON.stringify(report, null, 2) : formatReport(report), exitCode: healthy(report) ? 0 : 1 };
+  }
+  // Each person keeps their own store under the machine root, so the machine admission checks every ready person in turn.
+  const profiles: Array<{ profileId: string; report: StorageDoctorReport }> = [];
+  for (const { profileId } of admission.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready")) {
+    const owner = admission.admitProfile(profileId);
+    try { profiles.push({ profileId, report: await doctor(owner, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot })) }); }
+    finally { owner.release(); }
+  }
   return {
-    output: json ? JSON.stringify(report, null, 2) : formatReport(report),
-    exitCode: healthy ? 0 : 1,
+    output: json ? JSON.stringify({ profiles }, null, 2) : profiles.map(({ profileId, report }) => `person ${profileId}\n${formatReport(report)}`).join("\n\n"),
+    exitCode: profiles.every(({ report }) => healthy(report)) ? 0 : 1,
   };
 }
 

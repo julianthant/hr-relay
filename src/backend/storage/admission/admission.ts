@@ -336,6 +336,7 @@ export class RuntimeAdmission {
     if (path !== this.#flatBackup.sourcePath || processLockRoot !== this.#flatBackup.processLockRoot) throw new Error("flat-backup-source-refused");
   }
   isFlatBackup(): boolean { this.assertLive(); return this.#scope === "flat-backup"; }
+  isInstallation(): boolean { this.assertLive(); return this.#scope === "installation"; }
   flatBackupTiming() {
     this.assertLive();
     const parent = this.#profileParent;
