@@ -6,10 +6,15 @@ import {
   probeAbsentControl,
   probeSessionCookie,
 } from "../browser-shared/authenticated-application.js";
-import { BrowserLoginError, BrowserLandingStallError } from "../browser-shared/login-contract.js";
+import {
+  BrowserLoginError,
+  BrowserLandingStallError,
+  ucpathMaintenanceFailureCode,
+} from "../browser-shared/login-contract.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
+  BrowserLoginStep,
   SystemLoginContext,
 } from "../browser-shared/login-contract.js";
 import {
@@ -86,6 +91,17 @@ export const verifyUcpathAuthenticatedApplication: AuthenticatedApplicationVerif
   ],
 });
 
+function throwUcpathLoginFailure(step: BrowserLoginStep, detail: string, observedUrl: string, cause?: unknown): never {
+  const maintenance = ucpathMaintenanceFailureCode(observedUrl);
+  const options = cause === undefined ? undefined : { cause };
+  if (maintenance !== undefined) {
+    throw new BrowserLoginError(
+      SYSTEM, step, "UCPath redirected to its maintenance page", observedUrl, options, maintenance,
+    );
+  }
+  throw new BrowserLoginError(SYSTEM, step, detail, observedUrl, options);
+}
+
 function campusLink(page: SystemLoginContext["page"]): ReturnType<SystemLoginContext["page"]["getByRole"]> {
   return page.getByRole("link", { name: CAMPUS_LINK_NAME });
 }
@@ -106,12 +122,11 @@ async function selectUcSanDiego(context: SystemLoginContext): Promise<void> {
   } catch (error) {
     context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
-    throw new BrowserLoginError(
-      SYSTEM,
+    throwUcpathLoginFailure(
       "campus-discovery",
       "the UC San Diego campus link could not be selected",
       context.page.url(),
-      { cause: error },
+      error,
     );
   }
 }
@@ -135,12 +150,11 @@ async function clickPortalLoginControl(context: SystemLoginContext): Promise<voi
   } catch (error) {
     context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
-    throw new BrowserLoginError(
-      SYSTEM,
+    throwUcpathLoginFailure(
       "navigate-login-entry",
       "the portal's log-in control could not be clicked",
       page.url(),
-      { cause: error },
+      error,
     );
   }
 }
@@ -168,18 +182,28 @@ async function awaitLoginGate(
     if (error instanceof BrowserLoginError) throw error;
 
     context.assertCurrent();
+    if (ucpathMaintenanceFailureCode(page.url()) !== undefined) {
+      throwUcpathLoginFailure(
+        "navigate-login-entry",
+        "UCPath redirected to its maintenance page",
+        page.url(),
+        error,
+      );
+    }
     if (isAuthenticatedUcpathAppUrl(page.url()) || await isSsoFormPresent(page, context.assertCurrent)) {
       return isAuthenticatedUcpathAppUrl(page.url()) ? "application" : "sso-form";
     }
-    throw new BrowserLoginError(
-      SYSTEM,
+    throwUcpathLoginFailure(
       "navigate-login-entry",
       "the portal presented neither campus discovery, nor the SSO form, nor the authenticated application",
       page.url(),
-      { cause: error },
+      error,
     );
   }
   context.assertCurrent();
+  if (ucpathMaintenanceFailureCode(page.url()) !== undefined) {
+    throwUcpathLoginFailure("navigate-login-entry", "UCPath redirected to its maintenance page", page.url());
+  }
   const count = await campus.count();
   context.assertCurrent();
   return count > 0 ? "campus-discovery" : "sso-form";
@@ -226,12 +250,11 @@ async function enterAuthenticatedApplication(context: SystemLoginContext): Promi
   } catch (error) {
     context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
-    throw new BrowserLoginError(
-      SYSTEM,
+    throwUcpathLoginFailure(
       "verify-landing",
       "the authenticated UCPath application route did not load after SSO cleared",
       page.url(),
-      { cause: error },
+      error,
     );
   }
 }
@@ -254,12 +277,11 @@ async function navigateUcpathLoginEntry(context: SystemLoginContext): Promise<vo
   } catch (error) {
     context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
-    throw new BrowserLoginError(
-      SYSTEM,
+    throwUcpathLoginFailure(
       "navigate-login-entry",
       "the UCPath portal did not load",
       page.url(),
-      { cause: error },
+      error,
     );
   }
 }
