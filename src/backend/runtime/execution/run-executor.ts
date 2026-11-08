@@ -39,7 +39,7 @@ import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../.
 import { RunLifecycleSchema, RunRecordSchema, runClaim, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
 import type { RunResultRecord, TerminalDependencyEvidence } from "../../../models/run/result.js";
 import type { SessionNeed } from "../../../models/sessions/session.js";
-import { FailureRecordSchema, settledWriteRunIds, type FailureRecord } from "../../../models/trust/failure.js";
+import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
@@ -1037,7 +1037,8 @@ export async function executeClaimedRun(
       ...(taskId === undefined ? {} : { taskId: TaskIdSchema.parse(taskId) }),
       error,
       occurredAt: instant(),
-      writes: deps.authority.withAuthorityTransaction?.(repositories => settledWriteRunIds(getRun().envelope).flatMap(id => repositories.writeIntents.listByRun(id))) ?? [],
+      writes: deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, getRun().envelope)
+        .writeRunIds().flatMap(id => repositories.writeIntents.listByRun(id))) ?? [],
     }));
 
     const abortReason = (fallback: string): RunAbandonedError => new RunAbandonedError(

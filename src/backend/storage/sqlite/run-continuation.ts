@@ -92,6 +92,14 @@ export function readContinuationGate(repositories: ContinuationRepositories, env
   return retained;
 }
 
+/** A checkpoint a continuation retains, read back by its owner run and digest. */
+export function retainedCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints">, envelope: RunEnvelope,
+  reference: NonNullable<RunEnvelope["continuation"]>["checkpoints"][number]) {
+  const row = repositories.runCheckpoints.get(envelope.workflow, envelope.itemId, reference.nodeId, reference.attempt, reference.claimGeneration);
+  if (row === undefined || row.runId !== reference.runId || continuationEvidenceDigest(row) !== reference.digest) throw new RunContinuationRefusedError("run-continuation-checkpoint-unavailable");
+  return row;
+}
+
 /** Fresh executions may resume their own checkpoints, never another run's latest row. */
 export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints"> & { readonly runs?: Pick<AuthorityRepositories["runs"], "get">; readonly lifecycleJournal?: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue">; readonly gateResults?: AuthorityRepositories["gateResults"] }, envelope: RunEnvelope, nodeId: string, freshTasks = false) {
   if (envelope.continuation !== undefined) {
@@ -101,10 +109,7 @@ export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "run
       .filter(row => row.runId === envelope.runId).at(-1);
     if (own !== undefined) return own;
     const reference = envelope.continuation.checkpoints.find(row => row.nodeId === nodeId);
-    if (reference === undefined) return undefined;
-    const row = repositories.runCheckpoints.get(envelope.workflow, envelope.itemId, nodeId, reference.attempt, reference.claimGeneration);
-    if (row === undefined || row.runId !== reference.runId || continuationEvidenceDigest(row) !== reference.digest) throw new RunContinuationRefusedError("run-continuation-checkpoint-unavailable");
-    return row;
+    return reference === undefined ? undefined : retainedCheckpoint(repositories, envelope, reference);
   }
   if (envelope.sourceBound !== undefined || freshTasks && envelope.recovery === "restart-from-start") {
     return repositories.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, nodeId, envelope.attempt)

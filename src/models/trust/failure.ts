@@ -123,11 +123,6 @@ export function settledWriteState(intents: readonly Readonly<{ status: string }>
   return settled.length === 0 ? "not-attempted" : settled.some(({ status }) => status === "observed-present") ? "verified" : "committed";
 }
 
-/** The runs whose writes a run settled: itself and the runs its continuation retains checkpoints from. */
-export function settledWriteRunIds<Id extends string>(envelope: Readonly<{ runId: Id; continuation?: Readonly<{ checkpoints: readonly Readonly<{ runId: Id }>[] }> }>): Id[] {
-  return [...new Set([envelope.runId, ...(envelope.continuation?.checkpoints.map(({ runId }) => runId) ?? [])])];
-}
-
 function subjectEvidence(evidence: z.infer<typeof SubjectEvidenceWireSchema>) {
   return { kind: evidence.kind, digest: evidence.digest };
 }

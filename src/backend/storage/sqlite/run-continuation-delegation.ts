@@ -2,7 +2,7 @@ import { authenticateDelegationGroup, childTerminalSettlement, delegationCancell
 import { DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
-import { RunContinuationRefusedError, validateRunContinuation, readContinuationGate } from "./run-continuation.js";
+import { RunContinuationRefusedError, validateRunContinuation, readContinuationGate, retainedCheckpoint } from "./run-continuation.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
@@ -30,6 +30,12 @@ export class AuthenticatedRunContinuation {
   static authenticate(repositories: AuthorityRepositories, envelope: RunEnvelope) {
     validateRunContinuation(repositories, envelope);
     return new AuthenticatedRunContinuation(repositories, envelope);
+  }
+
+  /** The run and every run whose retained checkpoint it carries; each reference is read back first. */
+  writeRunIds(): RunEnvelope["runId"][] {
+    const retained = this.envelope.continuation?.checkpoints.map(reference => retainedCheckpoint(this.repositories, this.envelope, reference).runId) ?? [];
+    return [...new Set([this.envelope.runId, ...retained])];
   }
 
   permitsGate(gate: GateResultRecord): boolean {
