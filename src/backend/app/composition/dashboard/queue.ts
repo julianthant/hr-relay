@@ -40,6 +40,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listWorkerSlots: () => database.authority.workerSlots.list(),
       listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
+      heldDuoSystems: workerId => database.heldDuoSystems(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),

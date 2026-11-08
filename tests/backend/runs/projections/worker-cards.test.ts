@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { workerCardOf } from "../../../../src/backend/runs/projections/worker-cards.js";
+import { lastRunOf, workerCardOf } from "../../../../src/backend/runs/projections/worker-cards.js";
 import type { WorkerMemberView } from "../../../../src/backend/runtime/workers/worker-pool.js";
 import { WorkerBrowserObservationSchema } from "../../../../src/models/run/worker-control.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../../src/models/run/worker-slot.js";
@@ -25,8 +25,10 @@ function memberView(input: Partial<WorkerMemberView> = {}): WorkerMemberView {
   return { member: workerPoolMember(slot), lifetimeId: LIFETIME, version: 0, state: "running", directive: "run", pid: 4242, startedAt: STARTED,
     activity: { state: "idle" }, browsers: [], exit: undefined, held: undefined, ...input };
 }
-function card(input: Readonly<{ view?: WorkerMemberView | undefined; slot?: typeof slot; foldRevision?: number; resolveRun?: (runId: string) => typeof running | undefined }> = {}) {
-  return workerCardOf({ slot: input.slot ?? slot, view: "view" in input ? input.view : memberView(), foldRevision: input.foldRevision ?? 0, resolveRun: input.resolveRun ?? (() => undefined) });
+function card(input: Readonly<{ view?: WorkerMemberView | undefined; slot?: typeof slot; foldRevision?: number; resolveRun?: (runId: string) => typeof running | undefined;
+  duoSystems?: readonly string[]; lastRun?: Parameters<typeof workerCardOf>[0]["lastRun"] }> = {}) {
+  return workerCardOf({ slot: input.slot ?? slot, view: "view" in input ? input.view : memberView(), foldRevision: input.foldRevision ?? 0, resolveRun: input.resolveRun ?? (() => undefined),
+    ...(input.duoSystems === undefined ? {} : { duoSystems: input.duoSystems }), ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }) });
 }
 
 describe("the worker card from the pool member and its slot", () => {
@@ -101,5 +103,54 @@ describe("the worker card from the pool member and its slot", () => {
     const dead = card({ view: memberView({ state: "exited", exit: { code: 0, signal: null, at: "2026-08-20T16:01:00.000Z", outcome: "stopped", settlement: "settled" } }) });
     assert.equal(workerElapsedSeconds(dead, "2026-08-20T18:00:00.000Z"), 60);
     assert.equal(workerElapsedSeconds(card(), "2026-08-20T16:00:45.000Z"), 45);
+  });
+});
+
+describe("sessions panel card data", () => {
+  const SESSION_A = BrowserSessionIdSchema.parse("00000000-0000-4000-8000-00000000000a"), SESSION_B = BrowserSessionIdSchema.parse("00000000-0000-4000-8000-00000000000b");
+  const observed = (health: "starting" | "authenticated" | "unknown" | "failed" | "closed", system: WorkerMemberView["browsers"][number]["system"] = "crm", sessionId = SESSION_A) =>
+    ({ ...observation, health, system, sessionId });
+  const exited = { code: 1, signal: null, at: STARTED, outcome: "crashed", settlement: "settled" } as const;
+
+  it("keeps an exited member's last reported sessions as lastBrowsers while browsers stays empty", () => {
+    const value = card({ view: memberView({ state: "exited", exit: exited, browsers: [observed("authenticated"), observed("failed", "ucpath", SESSION_B)] }) });
+    assert.deepEqual(value.browsers, []);
+    assert.deepEqual(value.lastBrowsers?.map(browser => [browser.sessionId, browser.system, browser.signIn]),
+      [[SESSION_A, "crm", "signed-in"], [SESSION_B, "ucpath", "unknown"]]);
+    assert.equal(card({ view: memberView({ browsers: [observed("authenticated")] }) }).lastBrowsers, undefined);
+  });
+
+  it("serves one sign-in state per session from its health, a held Duo lease and the member's waiting activity", () => {
+    const signIn = (browsers: WorkerMemberView["browsers"], input: Partial<Parameters<typeof card>[0]> & { activity?: WorkerMemberView["activity"] } = {}) =>
+      card({ ...input, view: memberView({ browsers, ...(input.activity === undefined ? {} : { activity: input.activity }) }) }).browsers.map(browser => browser.signIn);
+    assert.deepEqual(signIn([observed("authenticated")]), ["signed-in"]);
+    assert.deepEqual(signIn([observed("starting")]), ["signing-in"]);
+    assert.deepEqual(signIn([observed("unknown")]), ["unknown"]);
+    assert.deepEqual(signIn([observed("failed")]), ["unknown"]);
+    assert.deepEqual(signIn([observed("unknown")], { activity: { state: "waiting" } }), ["signing-in"]);
+    assert.deepEqual(signIn([observed("starting"), observed("starting", "ucpath", SESSION_B)], { duoSystems: ["ucpath"] }), ["signing-in", "needs-duo"]);
+    assert.deepEqual(signIn([observed("authenticated", "ucpath")], { duoSystems: ["ucpath"] }), ["signed-in"]);
+  });
+
+  it("serves the last run's terminal outcome and the step its worker last ran on that claimed attempt", () => {
+    const terminal = RunRecordSchema.parse({ ...running, version: 3, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: "2026-08-20T16:09:00.000Z" } });
+    const span = (spanPath: string, startedAt: string, outcome?: "done" | "failed" | "skipped" | "interrupted", attempt = 1) =>
+      ({ attempt, spanPath, name: spanPath, startedAt, ...(outcome === undefined ? {} : { endedAt: startedAt, outcome }) });
+    const spans = [span(`${TRACE}/lookup#1`, "2026-08-20T16:01:00.000Z", "done"), span(`${TRACE}/verify#1`, "2026-08-20T16:02:00.000Z", "failed"),
+      span(`${TRACE}/later#1`, "2026-08-20T16:03:00.000Z", "done", 2)];
+    const taskIdOf = (nodeId: string) => nodeId === "verify" ? "crm/verify-record" : undefined;
+    assert.deepEqual(lastRunOf({ claim: { runId: RUN, attempt: 1 }, run: terminal, spans, taskIdOf }), { state: "present", runId: RUN, traceId: TRACE,
+      outcome: "cancelled", endedAt: "2026-08-20T16:09:00.000Z", step: { nodeId: "verify", taskId: "crm/verify-record", state: "failed", startedAt: "2026-08-20T16:02:00.000Z" } });
+    const crashed = lastRunOf({ claim: { runId: RUN, attempt: 1 }, run: running, taskIdOf,
+      spans: [span(`${TRACE}/lookup#1`, "2026-08-20T16:01:00.000Z"), span(`${TRACE}/verify#1`, "2026-08-20T16:02:00.000Z", "interrupted")] });
+    assert.deepEqual(crashed, { state: "present", runId: RUN, traceId: TRACE, step: { nodeId: "lookup", state: "open", startedAt: "2026-08-20T16:01:00.000Z" } });
+    assert.deepEqual(lastRunOf({ claim: undefined, run: undefined, spans: undefined, taskIdOf }), { state: "unavailable", reason: "no-run-recorded" });
+    assert.deepEqual(lastRunOf({ claim: { runId: RUN, attempt: 1 }, run: undefined, spans, taskIdOf }), { state: "unavailable", reason: "run-unavailable" });
+    assert.deepEqual(card({ lastRun: crashed }).lastRun, crashed);
+  });
+
+  it("serves every built card as available, with or without a process", () => {
+    assert.deepEqual(card().availability, { state: "available" });
+    assert.deepEqual(card({ view: undefined }).availability, { state: "available" });
   });
 });

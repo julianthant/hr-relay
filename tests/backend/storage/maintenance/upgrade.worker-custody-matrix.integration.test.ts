@@ -31,7 +31,7 @@ import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/work
 import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture, restoreSchema23WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { rebindPredecessorResultDigest, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
@@ -42,7 +42,7 @@ import { createCredentialStore } from "../../../support/helpers/synthetic-storag
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 
-type SourceVersion = 20 | 21 | 22;
+type SourceVersion = 20 | 21 | 22 | 23;
 type Variant = "converted" | "attempting-write" | "kept-reference";
 const hostFacts = { primaryDisplay: null };
 // Tables the conversion (and on 20/21 the pre-build run deletion) rewrites; every other table must come through byte for byte.
@@ -155,7 +155,8 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
       assert.notEqual(childDigest, previousDigest);
       assert.equal(rebindPredecessorResultDigest(raw, previousDigest, childDigest).length, 2);
     }
-    restoreSchema22WorkerCustodyFixture(raw);
+    if (version === 23) restoreSchema23WorkerCustodyFixture(raw);
+    else restoreSchema22WorkerCustodyFixture(raw);
     if (version === 20) restoreSchema20CompletionFixture(raw);
     else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
     raw.exec("COMMIT");
@@ -185,7 +186,7 @@ function read(path: string) {
 
 const upgrade = (s: Awaited<ReturnType<typeof predecessorStore>>) => upgradeProfileAtStartup(profileBrowserClosure, s.profile.machine, s.profileId, hostFacts, systemClock);
 
-it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-crash closure from a verified backup and reads the kept store back strictly", async version => {
+it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-crash closure from a verified backup and reads the kept store back strictly", async version => {
   const s = await predecessorStore(version, "converted");
   const before = read(s.path), keptRun = before.run(s.keptRunId);
   assert.equal(keptRun[2]?.length, 1, "the kept run carries its receipt");
@@ -204,6 +205,8 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   assert.deepEqual([settlement.request.runId, settlement.request.resultDigest, settlement.request.state], [s.childId, digest, "cancelled"]);
   assert.deepEqual([retry.request.previousRunId, retry.request.resultDigest, retry.request.dependencyId], [s.childId, digest, settlement.request.dependencyId]);
   for (const journal of journals) assert.equal(before.count("SELECT count(*) AS count FROM command_audits WHERE command_id=? AND json_extract(payload_json,'$.request.request.resultDigest')=?", journal.id, digest), 1, journal.operation);
+  // Only a schema-23 store already carries the worker-claim index; the upgrade leaves it exactly once.
+  assert.equal(before.count("SELECT count(*) AS count FROM sqlite_schema WHERE type='index' AND name='timeline_worker_claim_idx'"), version === 23 ? 1 : 0);
   assert.equal((await upgrade(s)).state, "upgraded");
 
   const backups = join(s.stateRoot, "backups", "authority");
@@ -218,21 +221,22 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   assert.deepEqual(unchanged(after.triggers), unchanged(before.triggers));
   assert.ok(after.triggers.some(row => row.name === "runs_completion_immutable"));
   assert.deepEqual(after.foreignKeys, []);
+  assert.equal(after.count("SELECT count(*) AS count FROM sqlite_schema WHERE type='index' AND name='timeline_worker_claim_idx'"), 1);
   for (const runId of s.closure) {
     assert.equal(after.count("SELECT count(*) AS count FROM runs WHERE id=?", runId), 0, runId);
     assert.equal(after.count("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?", runId), 1, runId);
   }
   // On 20 and 21 the pre-build deletion clears history like the operator's Clear history: notifications and journals keep naming the tombstones.
-  const runOwned = ["run_delegations", "delegation_dependencies", "run_results", "run_receipts", "run_failures", "timeline_events", ...version === 22 ? ["notifications"] : []];
+  const runOwned = ["run_delegations", "delegation_dependencies", "run_results", "run_receipts", "run_failures", "timeline_events", ...version >= 22 ? ["notifications"] : []];
   for (const table of runOwned) {
     assert.ok(after.everyRow().filter(row => row.table === table).every(row => s.closure.every(runId => !row.json.includes(runId))), table);
   }
-  assert.deepEqual(after.everyRow().filter(row => (version === 22 || runOwned.includes(row.table)) && row.json.includes(digest)).map(row => row.table), []);
+  assert.deepEqual(after.everyRow().filter(row => (version >= 22 || runOwned.includes(row.table)) && row.json.includes(digest)).map(row => row.table), []);
   assert.ok(after.everyRow().every(row => !row.json.includes("workerLifetime") && !row.json.includes("membershipRevision") && !row.json.includes("controlBasis")),
     "the removed custody grammar is gone");
   assert.equal(after.count("SELECT count(*) AS count FROM commands WHERE family='worker-browser'"), 0);
   // Schema 22 keeps every run built by this release; 20 and 21 tombstone the pre-build runs, the kept one among them.
-  if (version === 22) assert.deepEqual(after.run(s.keptRunId), keptRun);
+  if (version >= 22) assert.deepEqual(after.run(s.keptRunId), keptRun);
   else assert.equal(after.count("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?", s.keptRunId), 1);
 
   const admission = s.profile.machine.admitProfile(s.profileId);
@@ -242,7 +246,7 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
     try {
       const raw = new DatabaseSync(s.path, { readOnly: true });
       try { assert.equal(inspectNativeAuthority(raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { raw.close(); }
-      if (version === 22) {
+      if (version >= 22) {
         const run = database.authority.runs.get(s.keptRunId);
         assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
         assert.equal(database.authority.runResults.get(s.keptRunId)?.runId, s.keptRunId);
@@ -253,7 +257,7 @@ it.each([20, 21, 22] as const)("deletes the schema %s digest-linked recover-cras
   } finally { admission.release(); }
 });
 
-it.each([...([20, 21, 22] as const).map(version => ({ version, variant: "attempting-write" as const })), { version: 22 as const, variant: "kept-reference" as const }])(
+it.each([...([20, 21, 22, 23] as const).map(version => ({ version, variant: "attempting-write" as const })), ...([22, 23] as const).map(version => ({ version, variant: "kept-reference" as const }))])(
   "refuses a schema $version closure with $variant and leaves the store byte-identical", async ({ version, variant }) => {
     const s = await predecessorStore(version, variant);
     const bytes = readFileSync(s.path), before = read(s.path);

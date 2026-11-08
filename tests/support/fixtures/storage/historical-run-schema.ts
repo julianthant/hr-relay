@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -19,7 +19,7 @@ export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): voi
     .map(row => [`${String(row.type)}:${String(row.name)}`, { type: String(row.type), name: String(row.name), sql: String(row.sql) }]));
   let prior: ReturnType<typeof objects>;
   try {
-    for (const migration of SQLITE_MIGRATIONS.filter(item => item.version < WORKER_CUSTODY_SCHEMA_VERSION)) for (const statement of migration.statements) reference.exec(statement);
+    for (const migration of SQLITE_MIGRATIONS.filter(item => item.version <= 22)) for (const statement of migration.statements) reference.exec(statement);
     prior = objects(reference);
   } finally { reference.close(); }
   const current = objects(database);
@@ -37,13 +37,19 @@ export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): voi
   }
 }
 
+/** Returns a current store to the schema-23 shape: schema 22 plus the worker-claim index; the schema version is left to the caller. */
+export function restoreSchema23WorkerCustodyFixture(database: DatabaseSync): void {
+  restoreSchema22WorkerCustodyFixture(database);
+  for (const statement of SQLITE_MIGRATIONS.find(migration => migration.version === 23)?.statements ?? []) database.exec(statement);
+}
+
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
   if (database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='worker_leases'").get() === undefined) restoreSchema22WorkerCustodyFixture(database);
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));
   assert.ok(trigger);
-  database.exec(`DROP TRIGGER runs_completion_immutable; ${trigger}`);
+  database.exec(`DROP INDEX IF EXISTS timeline_worker_claim_idx; DROP TRIGGER runs_completion_immutable; ${trigger}`);
   database.exec("UPDATE database_states SET schema_version=20; PRAGMA user_version=20");
 }
 

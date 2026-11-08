@@ -10,7 +10,7 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture, restoreSchema23WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { rewritePredecessorCommand, writePredecessorWorkerLifetimes } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
@@ -19,11 +19,12 @@ import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-cu
 const world = createRunRecordServiceTestWorld();
 afterEach(() => world.cleanup());
 
-type SourceVersion = 20 | 21 | 22;
+type SourceVersion = 20 | 21 | 22 | 23;
 
 function toSourceVersion(raw: DatabaseSync, version: SourceVersion): void {
   raw.exec("BEGIN EXCLUSIVE");
-  restoreSchema22WorkerCustodyFixture(raw);
+  if (version === 23) restoreSchema23WorkerCustodyFixture(raw);
+  else restoreSchema22WorkerCustodyFixture(raw);
   if (version === 20) restoreSchema20CompletionFixture(raw);
   else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
   raw.exec("COMMIT");
@@ -70,12 +71,13 @@ async function predecessorStore(version: SourceVersion, write?: "attempting") {
   return { raw, path, runId, keptRunId: kept.envelope.runId, keptCancel, recoverId: f.recoveryRequest.commandId, now };
 }
 
-it.each([20, 21, 22] as const)("admits schema %s worker-lifetime journals and their cancelled recover-crash evidence only through the predecessor reader", async version => {
+it.each([20, 21, 22, 23] as const)("admits schema %s worker-lifetime journals and their cancelled recover-crash evidence only through the predecessor reader", async version => {
   const s = await predecessorStore(version);
   try {
     assert.equal(s.raw.prepare("SELECT count(*) AS count FROM run_results WHERE run_id=? AND json_extract(payload_json,'$.result.value.kind')='lifecycle-evidence'").get(s.runId)?.count, 1);
     assert.equal(s.raw.prepare("SELECT count(*) AS count FROM run_receipts WHERE run_id=?").get(s.runId)?.count, 1);
     assert.equal(inspectNativeAuthority(s.raw, version).schemaVersion, version);
+    assert.equal(s.raw.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name='timeline_worker_claim_idx'").get()?.count, version === 23 ? 1 : 0);
   } finally { s.raw.close(); }
   const variants: [string, (raw: DatabaseSync) => void][] = [
     ["malformed lifetime", raw => { rewritePredecessorCommand(raw, s.recoverId, (_operation, request) => ({ ...request, workerLifetime: { membershipRevision: 0, leaseGeneration: 1 } })); }],

@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { WorkerBrowserWireSchema, WorkerCardWireSchema } from "../../../models/dashboard/projection.js";
+import { WorkerBrowserWireSchema, WorkerCardWireSchema, WorkerLastRunWireSchema } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
+import type { WorkerChildBrowserObservation } from "../../runtime/workers/worker-messages.js";
 import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
+import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
+import type { RunFoldRecord } from "./run-queue-projection.js";
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
 
@@ -25,6 +28,39 @@ function workerCardState(view: WorkerMemberView): WorkerCardWire["state"] {
   }
 }
 
+type WorkerLastRun = NonNullable<WorkerCardWire["lastRun"]>;
+
+/** The run this worker last claimed: the run's own terminal facts, and its last task span on the claimed attempt (an open span wins). */
+export function lastRunOf(input: Readonly<{
+  claim: Readonly<{ runId: string; attempt: number }> | undefined;
+  run: RunRecord | undefined;
+  spans: RunFoldRecord["taskSpans"] | undefined;
+  taskIdOf: (nodeId: string, spanPath: string) => string | undefined;
+}>): WorkerLastRun {
+  if (input.claim === undefined) return { state: "unavailable", reason: "no-run-recorded" };
+  const { run } = input;
+  if (run?.envelope.runId !== input.claim.runId) return { state: "unavailable", reason: "run-unavailable" };
+  const claimed = (input.spans ?? []).filter(span => span.attempt === input.claim?.attempt && span.startedAt !== undefined);
+  const span = claimed.findLast(candidate => candidate.endedAt === undefined) ?? claimed.at(-1);
+  const nodeId = span === undefined ? undefined : nodeIdOfTaskSpanPath(span.spanPath);
+  const taskId = span === undefined || nodeId === undefined ? undefined : input.taskIdOf(nodeId, span.spanPath);
+  return WorkerLastRunWireSchema.parse({
+    state: "present", runId: run.envelope.runId, traceId: run.envelope.traceId,
+    ...(run.lifecycle.state === "terminal" ? { outcome: run.lifecycle.outcome, endedAt: run.lifecycle.endedAt } : {}),
+    ...(span?.startedAt === undefined || nodeId === undefined ? {} : { step: { nodeId, ...(taskId === undefined ? {} : { taskId }),
+      state: span.outcome === undefined ? "open" : span.outcome === "done" || span.outcome === "skipped" ? "done" : "failed", startedAt: span.startedAt } }),
+  });
+}
+
+function signInOf(view: WorkerMemberView, observed: WorkerChildBrowserObservation, duoSystems: readonly string[]): NonNullable<WorkerCardWire["browsers"][number]["signIn"]> {
+  if (observed.health === "authenticated") return "signed-in";
+  // Closed and failed rows keep no authentication history, so signed-out is not provable.
+  if (observed.health === "closed" || observed.health === "failed") return "unknown";
+  if (duoSystems.includes(observed.system)) return "needs-duo";
+  if (observed.health === "starting" || view.activity?.state === "waiting") return "signing-in";
+  return "unknown";
+}
+
 /** A card is the pool's in-memory member joined with its durable slot; the fence it serves is the member's lifetime and version. */
 export function workerCardOf(input: Readonly<{
   slot: WorkerSlotRecord;
@@ -33,12 +69,18 @@ export function workerCardOf(input: Readonly<{
   /** Span events folded for this worker; a patch cursor, never a CAS token. */
   foldRevision: number;
   resolveRun: (runId: string) => RunRecord | undefined;
+  /** Systems whose live Duo lease this worker holds. */
+  duoSystems?: readonly string[];
+  lastRun?: WorkerLastRun;
+  timeline?: WorkerCardWire["timeline"];
 }>): WorkerCardWire {
   const { slot, view } = input;
   if (slot.retiredAt !== null || (view !== undefined && (view.member.workerId !== slot.workerId || view.member.workflowId !== slot.workflow))) {
     throw new Error("worker-member-authority-unavailable");
   }
-  const base = { member: workerPoolMember(slot), workerId: slot.workerId, workflowId: slot.workflow, directive: slot.paused ? "pause" : "run" } as const;
+  const base = { member: workerPoolMember(slot), workerId: slot.workerId, workflowId: slot.workflow, directive: slot.paused ? "pause" : "run",
+    ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }), ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
+    availability: { state: "available" } } as const;
   if (view === undefined) {
     return WorkerCardWireSchema.parse({ ...base, state: "failed", stopReason: "not-started", startedAt: slot.createdAt,
       controls: { basis: { state: "present", value: { lifetimeId: null, version: 0 } } },
@@ -46,21 +88,25 @@ export function workerCardOf(input: Readonly<{
   }
   const runId = view.activity?.runId, run = runId === undefined ? undefined : input.resolveRun(runId);
   const exit = view.state === "exited" ? view.exit : undefined;
+  const browserWire = (browser: WorkerChildBrowserObservation) => WorkerBrowserWireSchema.parse({
+    sessionId: browser.sessionId, system: browser.system, openedAt: browser.openedAt,
+    observation: { state: "present", health: browser.health, observedAt: browser.observedAt, instance: browser.instance,
+      browserMode: browser.browserMode, configFingerprint: browser.configFingerprint },
+    signIn: signInOf(view, browser, input.duoSystems ?? []) });
   return WorkerCardWireSchema.parse({
     ...base,
     state: workerCardState(view),
     controls: { basis: { state: "present", value: { lifetimeId: view.lifetimeId, version: view.version } } },
     startedAt: view.startedAt,
     ...(view.state === "exited"
-      ? { endedAt: exit?.at ?? view.startedAt, stopReason: exit?.outcome === "stopped" ? "operator" : "crashed" }
+      ? { endedAt: exit?.at ?? view.startedAt, stopReason: exit?.outcome === "stopped" ? "operator" : "crashed",
+        // An exited member holds no live browser; its last reported sessions stay readable.
+        lastBrowsers: view.browsers.map(browserWire) }
       : {}),
     currentRun: run === undefined || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== slot.workerId
       ? { state: "absent", reason: "no current claimed run" }
       : { state: "present", runId: run.envelope.runId, traceId: run.envelope.traceId },
-    browsers: view.state === "exited" ? [] : view.browsers.filter(browser => browser.health !== "closed").map(browser => WorkerBrowserWireSchema.parse({
-      sessionId: browser.sessionId, system: browser.system, openedAt: browser.openedAt,
-      observation: { state: "present", health: browser.health, observedAt: browser.observedAt, instance: browser.instance,
-        browserMode: browser.browserMode, configFingerprint: browser.configFingerprint } })),
+    browsers: view.state === "exited" ? [] : view.browsers.filter(browser => browser.health !== "closed").map(browserWire),
     revision: input.foldRevision + view.version + 1,
   });
 }

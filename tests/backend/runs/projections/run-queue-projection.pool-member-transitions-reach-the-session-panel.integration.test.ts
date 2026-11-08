@@ -34,6 +34,8 @@ describe("pool member transitions reach the Session Panel without a span", () =>
       const day = w.projection.buildDashboardDayWire(DAY);
       assert.equal(day.workerAuthority.state, "present");
       assert.equal(day.workerCards[0]?.state, phase);
+      assert.deepEqual(day.workerCards[0]?.availability, { state: "available" });
+      assert.equal(day.unavailableWorkerCards, undefined);
       assert.equal(day.workerCards[0]?.currentRun.state, phase === "running" ? "present" : "absent");
       assert.deepEqual(day.workerCards[0]?.controls?.basis, { state: "present", value: { lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: 0 } });
     });

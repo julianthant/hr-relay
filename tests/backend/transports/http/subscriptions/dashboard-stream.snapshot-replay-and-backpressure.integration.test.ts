@@ -253,7 +253,7 @@ describe("dashboard stream hub", () => {
     if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.deepEqual(latest.payload.workerCards[0]?.browsers, [
       { sessionId: uuidOf(50), system: "ucpath", openedAt: w.clock.now().toISOString(), observation: { state: "present", health: "unknown", instance: "prod", observedAt: w.clock.now().toISOString(),
-        browserMode: "headless", configFingerprint: runtime.configFingerprint } },
+        browserMode: "headless", configFingerprint: runtime.configFingerprint }, signIn: "unknown" },
     ]);
     connection.close();
   });

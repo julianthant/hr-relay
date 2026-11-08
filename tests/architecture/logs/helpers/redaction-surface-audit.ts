@@ -1506,6 +1506,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // Sessions: projector-authored reasons, parsed prod/test instance, and bounded worker-control outcomes.
   { surface: "wire/dashboard-day", path: "workerCards[].browsers[].observation.instance", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "workerCards[].browsers[].observation.reason", origin: "repository-authored" },
+  { surface: "wire/dashboard-day", path: "workerCards[].lastBrowsers[].observation.instance", origin: "repository-authored" },
+  { surface: "wire/dashboard-day", path: "workerCards[].lastBrowsers[].observation.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "workerCards[].controls.basis.reason", origin: "repository-authored" },
 
 
@@ -1559,6 +1561,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // Sessions: projector-authored reasons, parsed prod/test instance, and bounded worker-control outcomes.
   { surface: "wire/stream-envelope", path: "payload.workerCards[].browsers[].observation.instance", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].browsers[].observation.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.workerCards[].lastBrowsers[].observation.instance", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.workerCards[].lastBrowsers[].observation.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].controls.basis.reason", origin: "repository-authored" },
 
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].runNumber.reason", origin: "repository-authored" },
