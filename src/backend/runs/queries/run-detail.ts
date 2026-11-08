@@ -8,6 +8,7 @@ import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
 import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import { aggregateMemberRetryAvailable } from "./run-retry.js";
+import { hostedOcrRun } from "./ocr-record-members.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -353,8 +354,10 @@ export function buildRunDetail(
     : { state: "absent", reason: `run is ${status}` };
 
   const canonical = deps.canonical;
-  const review = authority.envelope.workflow === "ocr" && canonical !== undefined
-    ? canonical.database.withAuthorityReadSnapshot(() => readOcrReviewAuthority(canonical.database.authority, canonical.reader, runId)) : undefined;
+  const review = canonical === undefined ? undefined : canonical.database.withAuthorityReadSnapshot(() => {
+    const ocrRunId = authority.envelope.workflow === "ocr" ? runId : hostedOcrRun(canonical.database.authority, authority)?.envelope.runId;
+    return ocrRunId === undefined ? undefined : readOcrReviewAuthority(canonical.database.authority, canonical.reader, ocrRunId);
+  });
   const reviewAvailable = review !== undefined;
   const childRetry = canonical === undefined || !(ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
       workflowId => canonical.descriptors.resolve(workflowId)) || aggregateMemberRetryAvailable(canonical.database.authority, canonical.reader, authority,

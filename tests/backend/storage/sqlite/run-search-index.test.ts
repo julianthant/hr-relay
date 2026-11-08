@@ -45,6 +45,19 @@ describe("native one-row search", () => {
     expect(prepare.mock.calls.filter(([sql]) => sql.includes("FROM command_audits"))).toHaveLength(0);
     expect(f.index.search(query, 2).rows[0]?.metadata.actor).toEqual({ state: "unavailable", reason: "not-recorded" });
   });
+  it("serves a hosted OCR run through its host: the child is not a search row, count or cursor anchor", () => {
+    const f = fixture(); const host = f.add(1, "2026-10-01T12:00:00.000Z"), other = f.add(2, "2026-10-01T13:00:00.000Z");
+    const row = runRecordColumns(RunRecordSchema.parse({ ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, workflow: "ocr", runId: "10000000-0000-4000-8000-000000000003", itemId: "20000000-0000-4000-8000-000000000003",
+        enqueuedAt: "2026-10-01T14:00:00.000Z", parent: { runId: host, edgeId: "document-ocr", tracePrefix: QUEUED_RUN.envelope.traceId } },
+      createdAt: "2026-10-01T14:00:00.000Z", updatedAt: "2026-10-01T14:00:00.000Z" }));
+    f.db.prepare(`INSERT INTO runs (${Object.keys(row).join(",")}) VALUES (${Object.keys(row).map(() => "?").join(",")})`).run(...Object.values(row));
+    f.publish();
+    const all = f.index.search({ ...query, limit: 10 }, 1);
+    expect(all.totalMatches).toBe(2);
+    expect(all.rows.map(entry => entry.record.envelope.runId)).toEqual([other, host]);
+    expect(f.index.search({ ...query, q: "ocr", limit: 10 }, 1).totalMatches).toBe(0);
+  });
   it("invalidates actor provenance for contributing audit insert, update and deletion including old bindings", () => {
     const f = fixture(); const id = f.add(1, "2026-10-01T12:00:00.000Z"), other = f.add(2, "2026-10-01T13:00:00.000Z"); f.publish();
     const payload = (runId: string) => JSON.stringify({ request: { family: "start" }, result: { state: "applied", affectedTargets: [{ family: "run", runId }] } });

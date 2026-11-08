@@ -30,6 +30,7 @@ import { createApplicationLifecycle } from "../../../runs/lifecycle/application-
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
+import { ocrHostRun } from "../../../runs/queries/ocr-record-members.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { createRunHistoryService } from "../../../runs/commands/run-history-service.js";
 import { createCommandBrowserManager } from "../../../runtime/browser/command-browser.js";
@@ -308,7 +309,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     );
   }
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
+  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
+    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)) });
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {
     const reader = createChatGptOcrPageReader({ account: chatGptAccount, artifacts: source, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
     const { submitted } = await reader.readPage({ ...input, instruction: buildExtractionInstruction(input.formType) }, signal);
