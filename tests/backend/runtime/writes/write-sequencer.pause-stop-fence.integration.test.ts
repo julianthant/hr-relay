@@ -302,6 +302,29 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assert.equal(h.world.events.filter((event) => event.startsWith("commit-click")).length, 1);
   });
 
+  /** Admits worker Stop as the dashboard does; the worker's 250 ms observer then aborts the run's work signal. */
+  async function admitStop(h: Harness, held: ReturnType<typeof claimOnly>, workSignal: AbortController) {
+    const slot = h.database.authority.workerSlots.get(held.claim.workerId), lease = h.database.authority.workerLeases.get(held.claim.workerId);
+    assert.ok(slot && lease);
+    const now = h.clock.now().toISOString();
+    const admitted = h.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+      commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now,
+      target: { workerId: slot.workerId, membershipRevision: slot.membershipRevision,
+        controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
+    }, randomUUID(), now));
+    workSignal.abort(new Error("worker-reset-current-work"));
+    await yieldToEventLoop();
+    return admitted;
+  }
+
+  function settleStop(h: Harness, admitted: ReturnType<typeof admitWorkerReset> | undefined): void {
+    const reset = admitted?.reset;
+    assert.ok(admitted && reset?.work.kind === "current");
+    h.database.withAuthorityTransaction(repositories => repositories.workerControls.transition(admitted.commandId, "admitted",
+      { state: "executing", startedAt: h.clock.now().toISOString() }));
+    testRunService(h.database, h.clock).settleResetWork(reset);
+  }
+
   it("Stop admitted after the fence settles the save once, then cancels the run before its next step", async () => {
     const probe = createCommitProbe();
     const h = await harness();
@@ -310,19 +333,7 @@ describe("pause around a transaction node in a whole claimed run", () => {
     const held = claimOnly(h);
     const workSignal = new AbortController();
     let admitted: ReturnType<typeof admitWorkerReset> | undefined;
-    probe.afterClick = async () => {
-      const slot = h.database.authority.workerSlots.get(held.claim.workerId), lease = h.database.authority.workerLeases.get(held.claim.workerId);
-      assert.ok(slot && lease);
-      const now = h.clock.now().toISOString();
-      admitted = h.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-        commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now,
-        target: { workerId: slot.workerId, membershipRevision: slot.membershipRevision,
-          controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
-      }, randomUUID(), now));
-      // The worker's 250 ms observer aborts the run's work signal once it sees the admitted reset.
-      workSignal.abort(new Error("worker-reset-current-work"));
-      await yieldToEventLoop();
-    };
+    probe.afterClick = async () => { admitted = await admitStop(h, held, workSignal); };
 
     const outcome = await runWhole(h, probe, held, workSignal.signal, writeFixtureTraversalDescriptor);
 
@@ -332,12 +343,7 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assert.equal(probe.calls, 1);
     assert.equal(attemptsOf(h), 1);
     assert.equal(h.database.authority.writeIntents.listByRun(WRITE_FIXTURE_RUN_ID).length, 1);
-    const reset = admitted?.reset;
-    assert.ok(admitted && reset?.work.kind === "current");
-    const record = admitted;
-    h.database.withAuthorityTransaction(repositories => repositories.workerControls.transition(record.commandId, "admitted",
-      { state: "executing", startedAt: h.clock.now().toISOString() }));
-    testRunService(h.database, h.clock).settleResetWork(reset);
+    settleStop(h, admitted);
 
     const settled = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(settled?.lifecycle.state === "terminal" && settled.lifecycle.outcome === "cancelled");
@@ -358,8 +364,8 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, parked.envelope.itemId, "submit-write"), undefined);
   }
 
-  function assertNothingClaimable(h: Harness): void {
-    const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, 1);
+  function assertNothingClaimable(h: Harness, poolIndex = 1): void {
+    const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, poolIndex);
     const next = h.database.authority.runs.claimNext({ workerLifetime: lifetime.workerLifetime,
       workflow: WRITE_FIXTURE_WORKFLOW_ID, workerId: lifetime.workerId, now: h.clock.now().toISOString() });
     assert.notEqual(next.state, "claimed", "no worker can retry the unresolved save");
@@ -405,7 +411,7 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assertNothingClaimable(h);
   });
 
-  it("Stop admitted during the save plus a beat-7 rollback never cancels the unresolved save", async () => {
+  it("row Cancel admitted during the save plus a beat-7 rollback never cancels the unresolved save", async () => {
     const probe = createCommitProbe();
     const h = await harness();
     h.database.authority.runs.enqueue(writeFixtureQueuedRun());
@@ -419,6 +425,28 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assert.equal(probe.calls, 1);
     assert.equal(attemptsOf(h), 1);
     assertNothingClaimable(h);
+  });
+
+  it("worker Stop admitted during the save plus a beat-7 rollback parks the save and reset settlement keeps it parked", async () => {
+    const probe = createCommitProbe();
+    const h = await harness();
+    h.admitWorker(2); // a second member proves no retry; pool admission is closed once Stop is pending
+    h.database.authority.runs.enqueue(writeFixtureQueuedRun());
+    h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    const held = claimOnly(h);
+    const workSignal = new AbortController();
+    let admitted: ReturnType<typeof admitWorkerReset> | undefined;
+    probe.afterClick = async () => { admitted = await admitStop(h, held, workSignal); };
+
+    const outcome = await runWhole(h, probe, held, workSignal.signal, writeFixtureDescriptor, rejectBeatSeven(h));
+
+    assertParkedUnknown(h, outcome);
+    assert.equal(probe.signalAbortedAfterHook, false);
+    settleStop(h, admitted);
+    assertParkedUnknown(h, outcome);
+    assert.equal(probe.calls, 1);
+    assert.equal(attemptsOf(h), 1);
+    assertNothingClaimable(h, 2);
   });
 
   it("a failure before the fence under a requested pause still pauses and the step runs once after resume", async () => {
