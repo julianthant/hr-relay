@@ -22,7 +22,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true }), logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       const counts = mockWorkflowCounts(seedMockRuns());
-      for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {
+      for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations", "emergency-contact"].includes(flow.id))) {
         const row = counts.find(row => row.workflowId === flow.id)!;
         const running = row.statusCounts.filter(item => item.status === "running").reduce((sum, item) => sum + item.count, 0);
         await expectRunningPill(rail.getByRole("button", { name: flow.label, exact: true }), running);

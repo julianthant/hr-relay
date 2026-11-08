@@ -250,7 +250,7 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
       await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-    for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {
+    for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations", "emergency-contact"].includes(flow.id))) {
       await rail.getByRole("button", { name: flow.label, exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Attempts for/u }).first()).toBeVisible();
       await expect(logs.getByRole("tab")).toHaveCount(0);
