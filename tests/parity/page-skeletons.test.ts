@@ -108,7 +108,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(inbox.getByRole("button", { name: "Read all", exact: true })).toBeDisabled();
       const rowsBefore = await bounds(inbox.locator(".notification-row"));
       const tabsBefore = await bounds(inbox.locator(".notification-filter-bar"));
-      await expect(page.getByRole("button", { name: "Sessions", exact: true })).toHaveAttribute("aria-expanded", "true");
+      await expect(page.getByRole("button", { name: /^Sessions\b/ })).toHaveAttribute("aria-expanded", "true");
       const sessions = page.getByRole("status", { name: "Loading sessions", exact: true });
       await expect(sessions).toBeVisible();
       const cardsBefore = await bounds(sessions.locator(":scope > div"));
@@ -120,7 +120,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const rowsAfter = await bounds(inbox.locator(".notification-row"));
       expect(rowsBefore[0].x).toBe(rowsAfter[0].x);
       expect(rowsBefore[0].width).toBe(rowsAfter[0].width);
-      await page.getByRole("button", { name: "Sessions", exact: true }).click();
+      await page.getByRole("button", { name: /^Sessions\b/ }).click();
       const cardsAfter = await bounds(page.locator("[data-session-strip] > article"));
       expect(cardsAfter.length).toBeGreaterThanOrEqual(cardsBefore.length);
       cardsBefore.forEach((card, index) => { expect(card.x).toBe(cardsAfter[index].x); expect(card.width).toBe(cardsAfter[index].width); });
