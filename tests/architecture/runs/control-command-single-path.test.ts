@@ -26,6 +26,8 @@ import { QUEUED_RUN,sequentialIdFactory } from "../../support/fixtures/phase1f-r
 import { boundProfileCredentials,createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 
+/** Read-only command receipt queries: each may reach exactly one commandAudits.findByCommand(id) inside an authority read snapshot. */
+const RECEIPT_QUERIES: readonly string[] = ["src/backend/runs/queries/intake-command-result.ts", "src/backend/runs/queries/worker-command-result.ts"];
 function withoutIntakeCommandReceiptRead(content: string): string {
   const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
   const auditUses: ts.PropertyAccessExpression[] = [];
@@ -873,8 +875,8 @@ describe("control-command-single-path", () => {
     }
   });
 
-  it("admits only the intake receipt query's snapshot-bound audit read", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/runs/queries/intake-command-result.ts"), "utf8");
+  it.each(RECEIPT_QUERIES)("admits only %s's snapshot-bound audit read", path => {
+    const source = readFileSync(join(REPO_ROOT, path), "utf8");
     assert.ok(!withoutIntakeCommandReceiptRead(source).includes("commandAudits"));
     for (const bad of [
       source.replace("commandAudits.findByCommand(id)", "commandAudits.insert(id)"),
@@ -912,8 +914,8 @@ describe("control-command-single-path", () => {
       if (allowed.has(path)) continue;
       for (const token of tokens) {
         const expectedSettingsAuditReads = settingsAuditReaders.get(path);
-        if (path === "src/backend/runs/queries/intake-command-result.ts" && token === "commandAudits") {
-          if (withoutIntakeCommandReceiptRead(content).includes(token)) violations.push(`${path} may only read its actual intake receipt in an authority snapshot`);
+        if (RECEIPT_QUERIES.includes(path) && token === "commandAudits") {
+          if (withoutIntakeCommandReceiptRead(content).includes(token)) violations.push(`${path} may only read its actual command receipt in an authority snapshot`);
           continue;
         }
         if (path === "src/backend/runs/queries/run-detail/gate-park.ts" && token === "commandAudits") {

@@ -233,21 +233,25 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       });
     }
   }, [port, retain]);
-  // Each served-day change re-reads an uncertain control's audited outcome; only a proven outcome releases it, and a refusal toasts once.
-  useEffect(() => {
-    for (const operation of Object.values(operationsRef.current)) {
-      const { request } = operation;
-      if (operation.state !== 'uncertain' || reconciling.current.has(request.id)) continue;
-      const attemptEpoch = epoch.current;
-      reconciling.current.add(request.id);
-      void port.check(request).then(result => {
-        if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
-        const next = { ...operationsRef.current }; delete next[request.target];
-        operationsRef.current = next; setOperations(next);
-        if (result.state === 'refused') onRefused.current?.(request.action === 'retry' ? "Couldn't restart this worker." : result.message);
-      }, () => undefined).finally(() => { reconciling.current.delete(request.id); });
-    }
-  }, [sourceKey, port]);
+  // A proven outcome after uncertainty releases the control; a refusal toasts once.
+  const settleProven = useCallback((request: SessionPreviewRequest, result: SessionPreviewResult) => {
+    const next = { ...operationsRef.current }; delete next[request.target];
+    operationsRef.current = next; setOperations(next);
+    if (result.state === 'refused') onRefused.current?.(request.action === 'retry' ? "Couldn't restart this worker." : result.message);
+  }, []);
+  // Reads an uncertain control's audited outcome without resending; an unproved outcome stays uncertain.
+  const reconcile = useCallback((operation: SessionPreviewOperation) => {
+    const { request } = operation;
+    if (operation.state !== 'uncertain' || reconciling.current.has(request.id)) return;
+    const attemptEpoch = epoch.current;
+    reconciling.current.add(request.id);
+    void port.check(request).then(result => {
+      if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
+      settleProven(request, result);
+    }, () => undefined).finally(() => { reconciling.current.delete(request.id); });
+  }, [port, settleProven]);
+  // A later served day may follow a settlement whose reply never arrived.
+  useEffect(() => { for (const operation of Object.values(operationsRef.current)) reconcile(operation); }, [sourceKey, reconcile]);
     const perform = useCallback(async (request: SessionPreviewRequest, checking = false) => {
     const current = operationsRef.current[request.target];
     if (checking && reconciling.current.has(request.id)) return;
@@ -265,8 +269,12 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     if (result.id !== request.id) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_RESULT_IDENTITY_MISMATCH') }; }
     if (result.data !== undefined && snapshot === latestSource.current && attemptEpoch === epoch.current) setReadback({ key: snapshot, data: result.data });
     if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
-    retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
-  }, [port, retain]);
+    if (checking && result.state !== 'uncertain') { settleProven(request, result); return; }
+    const operation: SessionPreviewOperation = { request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message };
+    retain(operation);
+    // A lost reply is read back at once; the audit is committed before the server replies.
+    if (result.state === 'uncertain' && !checking) reconcile(operation);
+  }, [port, retain, settleProven, reconcile]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
   idle.current = keepAlive.confirmed;
   return { data, operations, idleCountdowns: keepAlive.countdowns,
