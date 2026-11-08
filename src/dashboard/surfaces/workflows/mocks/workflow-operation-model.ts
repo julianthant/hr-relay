@@ -26,7 +26,7 @@ export function mockOperationValue(run: MockRun, value: string): string {
     pdf: run.draft.files.map(file => file.name).join(", "), formType: run.parentWorkflowId === "onbase" ? run.draft.documentType : MOCK_FORM_TYPES.find(item => item.value === run.draft.formType)?.label ?? run.draft.formType, sourcePage: String(record.page),
     documentType: run.draft.documentType, documentName: run.draft.documentType === "Emergency Contact" ? "EMERGENCY CONTACT INFORMATION" : run.draft.documentType.toUpperCase(),
     roster: run.draft.formType === "i9" ? "Action History" : "Onboarding Roster", rosterMode: run.draft.roster === "download" ? "Fresh SharePoint download" : "Registered local workbook",
-    recordCount: String(reviewRecords(run).length), approvedCount: String(run.approvedCount ?? 0), approval: run.approved ? "Approved" : "Waiting for review",
+    recordCount: String((run.records ?? reviewRecords(run)).length), approvedCount: String(run.approvedCount ?? 0), approval: run.approved ? "Approved" : "Waiting for review",
     signedDate: displayExtractedDate(field("dateSigned")),
     contactName: field("contactName"), relationship: field("relationship"), phone: field("cellPhone"), sameAddress: field("sameAddress") === "true" ? "Yes" : "No",
     street: field("street"), city: field("city"), state: field("state"), zip: field("zip"), country: field("country"), section1: field("section1"), section2: field("section2"),
@@ -73,6 +73,8 @@ export function mockOperations(run: MockRun, step: MockStep): readonly MockOpera
     return exact;
   }
   if (key.includes("auth") || key === "authenticate") return [click(`Open ${step.system ?? "the system"}`), read("Session", [["System", step.system ?? "OnBase"], ["Authentication", "Authenticated"], ["Identity", "Demo operator"]])];
+  const child = MOCK_OPERATION_CATALOG.ocr[key === "read-document" ? "prep:awaiting-approval" : key];
+  if (child) return child;
   if (key === "read-document") return [read("Document delegation", [["PDF", "$pdf"], ["Form type", "$formType"], ["OCR run", run.ocrRunId ?? "Not created"]])];
   if (key === "members" || key === "rollup") return [read(key === "members" ? "Approved person runs" : "Person outcomes", [["People", "$approvedCount"], ["Workflow", run.workflowId], ["Failed", "0"], ["Cancelled", "0"]])];
   throw new Error(`MOCK_OPERATION_STEP_UNKNOWN: ${run.workflowId}:${key}`);

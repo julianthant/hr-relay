@@ -23,7 +23,7 @@ import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { dsLayer } from "../ds/theme/tokens.js";
-import { productWorkflowComposition, workflowSource, type WorkflowComposition, type WorkflowSource } from "./workflow-sources.js";
+import { productWorkflowComposition, workflowSource, type WorkflowComposition, type SurfaceSource, surfaceSource } from "./workflow-sources.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
@@ -90,7 +90,7 @@ DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, mockRunSubset, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockReviewRun, mockRunsForDraft, retryMockFault, mockRunSubset, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
 import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
@@ -970,8 +970,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
     setMockRuns(previous => [...created, ...previous]);
     setMockNotificationTimes(previous => ({ ...previous, ...Object.fromEntries(created.map(run => [run.id, servedNowRef.current])) }));
-    const review = draft.ocrMode === "manual" ? created.find(run => run.workflowId === "ocr") : undefined;
-    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: review ? "ocr" : id, mockRun: review?.id ?? created[0]?.id, records: review?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
+    const ocrRun = draft.ocrMode === "manual" ? created.find(run => run.workflowId === "ocr") : undefined;
+    const review = ocrRun ? created.find(run => run.ocrRunId === ocrRun.id) : undefined;
+    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: id, mockRun: review?.id ?? created[0]?.id, records: review?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
     setLaunchOpen(false);
     toast({ tone: "success", title: sourceId ? "Rerun created" : "Run started", description: `${created.filter(run => !run.parentId).length} ${mockWorkflow(id).label} ${created.filter(run => !run.parentId).length === 1 ? "run" : "runs"} created.` });
   }, [mockRuns.length, setLaunchOpen, setRoute, toast]);
@@ -1003,7 +1004,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
-  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: WorkflowSource) => {
+  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
     if (source === "mock" && destination.kind === "run") {
       const validate = () => {
@@ -1239,14 +1240,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} anchorIso={boot.serverClock.now} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => completeReview(railRow.id, "approve")}
+            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} anchorIso={boot.serverClock.now} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onRetry={() => setMockRuns(previous => retryMockFault(previous, [railRow.id, ...(railRow.ocrRunId ? [railRow.ocrRunId] : [])]))} onApprove={() => completeReview(mockReviewRun(railRow, mockRuns).id, "approve")}
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
-              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
+              onChange={records => setMockRuns(previous => updateMockReview(previous, mockReviewRun(railRow, previous).id, records))} onDiscard={() => completeReview(mockReviewRun(railRow, mockRuns).id, "discard")} onRestore={() => completeReview(mockReviewRun(railRow, mockRuns).id, "restore")}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} onAction={runLogAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
-                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={logRow.parent === null && workflowComposition.logsSources ? workflowSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
+                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={logRow.parent === null && workflowComposition.logsSources ? surfaceSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}

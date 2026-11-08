@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import { mockWorkflow } from "../workflows/mocks/workflow-mock-catalog.js";
-import { mockNeedsReview,mockRunStatus,mockWaitsForOcr,type MockRun } from "../workflows/mocks/workflow-mock-model.js";
+import { mockNeedsReview,mockReviewRun,mockRunStatus,mockWaitsForOcr,type MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { mockQueueSurfaces } from "../workflows/mocks/workflow-queue-model.js";
 import { reviewRecords } from "../workflows/mocks/workflow-review-model.js";
 import { notificationsSample,previewNotificationReads } from "./notifications-fixture.js";
@@ -49,12 +49,13 @@ function mockItem(run: MockRun, read: boolean, input: PreviewInput): Notificatio
   const waiting = mockNeedsReview(run);
   const count = records ? reviewRecords(run).length : 0;
   const row = mockQueueSurfaces([run], input.anchorIso, input.runs)[0];
+  const host = input.runs.find(item => item.id === run.parentId) ?? run;
   const instant = input.eventTimes?.[run.id] ?? (waiting && row.gateOpenedAt.state === "present" ? row.gateOpenedAt.value : row.endedAt.state === "present" ? row.endedAt.value : undefined);
-  return { id: `preview:${input.day}:${run.id}`, subject: row.title, workflow: mockWorkflow(run.workflowId).label, read,
+  return { id: `preview:${input.day}:${run.id}`, subject: host.title, workflow: mockWorkflow(host.workflowId).label, read,
     title: waiting ? "Records ready for approval" : run.discarded ? "Records discarded" : records ? "Records approved" : "Run completed",
     detail: waiting && row.liveMessage.state === "present" ? row.liveMessage.value : records ? `${count} ${count === 1 ? "record" : "records"} · ${mockRunStatus(run)}` : mockRunStatus(run),
     tone: waiting ? "warning" : run.discarded ? "info" : "positive", age: instant ? age(instant, input.nowIso) : "",
-    action: records ? waiting ? "Review records" : "View records" : "Open log", destination: { kind: "preview-run", runId: run.id, day: input.day, records } };
+    action: records ? waiting ? "Review records" : "View records" : "Open log", destination: { kind: "preview-run", runId: host.id, day: input.day, records } };
 }
 
 export function notificationPreviewState(scenario: string, input: PreviewInput): NotificationsState {
@@ -78,6 +79,6 @@ export function notificationDestinationRefusal(destination: NotificationDestinat
   if (destination.day !== input.day) return "The notification's day is no longer open. Reopen the notification from that day.";
   if (destination.kind === "run") return input.rows?.some(row => row.runId === destination.runId) ? undefined : "This run is no longer available. Refresh the run list and try again.";
   const run = input.runs.find(item => item.id === destination.runId);
-  if (!run || (destination.records && run.records === undefined)) return "The linked preview is unavailable. Reopen the notification list.";
+  if (!run || (destination.records && mockReviewRun(run, input.runs).records === undefined)) return "The linked preview is unavailable. Reopen the notification list.";
   return undefined;
 }

@@ -1,10 +1,10 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, GitBranch, ListChecks } from "lucide-react";
+import { ArrowUpRight, GitBranch, ListChecks, RotateCcw } from "lucide-react";
 import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
 import { queueRunHeader } from "../../run-detail/run-header-model.js";
-import { mockApprovalError, mockNeedsReview, mockQueueStatus, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
+import { mockApprovalError, mockFailedStepKey, mockNeedsReview, mockQueueStatus, mockReviewRun, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
 import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
@@ -77,15 +77,16 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   </div>;
 }
 
-export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange, nowIso, anchorIso }: {
-  run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onApprove: () => void;
+export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange, nowIso, anchorIso }: {
+  run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onRetry: () => void; onApprove: () => void;
   onChange: (records: readonly ReviewRecord[]) => void; onDiscard: () => void; onRestore: () => void; onSelect: (id: string) => void;
   reviewOpen?: boolean; onReviewOpenChange?: (open: boolean) => void;
   nowIso: string; anchorIso: string;
 }) {
   const [localReviewOpen, setLocalReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
-  const hasRecords = run.workflowId === "ocr";
+  const reviewRun = mockReviewRun(run, runs);
+  const hasRecords = reviewRun.workflowId === "ocr";
   const recordsVisible = hasRecords && (reviewOpen ?? localReviewOpen);
   const setRecordsVisible = onReviewOpenChange ?? setLocalReviewOpen;
   const recordsButton = useRef<HTMLButtonElement>(null);
@@ -96,23 +97,24 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
     previousRecordsVisible.current = recordsVisible;
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); };
   }, [recordsVisible]);
-  const { workflowId, draft } = run;
+  const { workflowId, draft } = reviewRun;
   const surface = useMemo(() => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : runs.find(parent => parent.id === run.parentId)), [run, runs, anchorIso]);
   const sourcePages = useMemo(() => {
     if (!hasRecords) return {};
     const originals = seedReviewRecords({ workflowId, draft });
-    return Object.fromEntries(reviewRecords(run).map(record => {
+    return Object.fromEntries(reviewRecords(reviewRun).map(record => {
       const original = originals.find(item => item.id === record.id) ?? originals[0];
       if (!original) throw new Error("MOCK_REVIEW_SHAPE_MISSING");
       return [record.id, documentSourcePages(draft, original) ?? reviewSourcePages(original)];
     }));
-  }, [hasRecords, workflowId, draft, run]);
-  const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(run);
-  const linked = useMemo(() => runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id), [runs, run]);
+  }, [hasRecords, workflowId, draft, reviewRun]);
+  const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(reviewRun === run ? run : { ...run, records: reviewRun.records });
+  const linked = useMemo(() => runs.filter(item => item.id !== run.ocrRunId && (item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.ocrRunId === run.id)), [runs, run]);
   const openRecords = useCallback(() => setRecordsVisible(true), [setRecordsVisible]);
+  const decide = useCallback((_id: string, option: { id: string }) => { if (option.id === "retry-step") onRetry(); }, [onRetry]);
   const toolbar = useMemo(() => <span className="flex items-center gap-2">
-        {hasRecords && <Button ref={recordsButton} size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(run).length}</Button>}
-        {run.workflowId !== "ocr" && run.ocrRunId && <Button size="sm" onClick={() => onSelect(run.ocrRunId!)}>Open OCR</Button>}
+        {hasRecords && <Button ref={recordsButton} size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(reviewRun).length}</Button>}
+        {run.role === "person" && mockFailedStepKey(run) !== undefined && <IconButton size="sm" variant="outline" label="Retry" icon={<RotateCcw aria-hidden className="size-4" />} onClick={onRetry} />}
         {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
           <PopoverTrigger asChild><IconButton size="sm" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
@@ -125,12 +127,12 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
             </li>)}</ul>
           </PopoverContent>
         </Popover>}
-      </span>, [hasRecords, recordsVisible, recordsButton, run, linked, linksOpen, setLinksOpen, setRecordsVisible, onSelect, onRerun]);
+      </span>, [hasRecords, recordsVisible, recordsButton, run, reviewRun, linked, linksOpen, setLinksOpen, setRecordsVisible, onSelect, onRerun, onRetry]);
   const reviewContent = useMemo(() => recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
-    <RecordReview key={run.id} {...mockReviewProps({ approvalError: mockApprovalError(run), run, sourcePages, onChange, onApprove: mockNeedsReview(run) ? onApprove : undefined, onDiscard: mockNeedsReview(run) || run.workflowId === "ocr" && !run.parentId && !run.discarded ? onDiscard : undefined, onRestore })} />
-  </div> : undefined, [recordsVisible, run, sourcePages, onChange, onApprove, onDiscard, onRestore]);
+    <RecordReview key={reviewRun.id} {...mockReviewProps({ approvalError: mockApprovalError(reviewRun), run: reviewRun, sourcePages, onChange, onApprove: mockNeedsReview(reviewRun) ? onApprove : undefined, onDiscard: mockNeedsReview(reviewRun) || reviewRun.workflowId === "ocr" && !reviewRun.parentId && !reviewRun.discarded ? onDiscard : undefined, onRestore })} />
+  </div> : undefined, [recordsVisible, run, reviewRun, sourcePages, onChange, onApprove, onDiscard, onRestore]);
   return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
-      onReview={hasRecords ? openRecords : undefined}
+      onReview={hasRecords ? openRecords : undefined} onDecision={decide}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={toolbar}
       content={reviewContent} />;

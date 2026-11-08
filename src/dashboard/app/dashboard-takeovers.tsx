@@ -1,4 +1,4 @@
-import type { WorkflowSource, WorkflowSourcePolicy } from "./workflow-sources.js";
+import type { SurfaceSource, WorkflowSourcePolicy } from "./workflow-sources.js";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
 import {
@@ -24,7 +24,7 @@ type AppRouteState
 } from "./navigation/url-state.js";
 export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,spreadsheetSource,onOpenRun,deleteAccount,children}: {
- activitySource?: WorkflowSource; today: string; workflowSources: WorkflowSourcePolicy;
+ activitySource?: SurfaceSource; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];

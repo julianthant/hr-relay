@@ -47,6 +47,9 @@ export function workflowNodes(id: MockWorkflowId, values: WorkflowChoices): read
   if (key === "fixture-oath-signature" && values.input !== "pdf") nodes = nodes.filter(node => node.lane === "Per signer");
   if (key === "fixture-oath-upload" && values.mode === "upload-only") nodes = nodes.filter(node => node.id === "File ticket");
   if (key === "fixture-ocr") nodes = nodes.filter(node => node.id !== "Done");
+  // A host shows its hidden OCR child's read and match steps in place of the delegation node.
+  const hostedRead = workflowPreviewGraph("ocr").nodes.filter(node => node.id === "Read forms" || node.id === "Person lookup");
+  nodes = nodes.flatMap(node => node.delegatesTo === "fixture-ocr" ? hostedRead.map(item => ({ ...item, lane: node.lane })) : [node]);
   // A packet's terminal rollup follows its per-person lane, never precedes it.
   return [...nodes.filter(node => node.id !== "Rollup" && node.id !== "Report back"), ...nodes.filter(node => node.id === "Rollup" || node.id === "Report back")];
 }
