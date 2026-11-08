@@ -114,7 +114,7 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
   const ocr = delegate({ id: "read-document", label: "Read and approve PDF",
     target: { id: WorkflowIdSchema.parse("ocr"), input: OcrInputSchema, result: OcrWorkflowResultSchema },
     edgeId: "document-ocr", cardinality: "one", await: "terminal", join: "one",
-    policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume", visibility: "linked" },
+    policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume", visibility: "hidden-unless-failed" },
   }, [], { bind: ({ input }) => ({ ...options.ocrInput(input), approval: "release" as const }), deriveChildItemId: (_input, context) => context.canonicalItemId });
   const approved = task({ id: "approved-records", label: "Read approved records", contract: ReadApprovedOcrSnapshot, replay: "always-rerun" }, [ocr], ({ outputs }) => {
     const child = outputs["read-document"];

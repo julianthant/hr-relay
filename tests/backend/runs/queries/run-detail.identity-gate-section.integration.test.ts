@@ -189,7 +189,9 @@ function depsOf(
       resolve: (workflowId: string) => String(IDENTITY_DESCRIPTOR.id) === workflowId ? IDENTITY_DESCRIPTOR : undefined,
     },
     database: {
+      withAuthorityReadSnapshot: <Result>(read: () => Result) => read(),
       authority: {
+        runs: { listChildren: () => [] },
         runCheckpoints: {
           latest: (workflowId: string, itemId: string, nodeId: string) =>
             w.authority.latestCheckpoint(workflowId, itemId, nodeId),
