@@ -9,6 +9,8 @@ export const FailureCorrectionSchema = z.strictObject({
   label: z.string().min(1),
   actionLabel: z.string().min(1),
   pattern: z.string().min(1).optional(),
+  /** The rejected value is already shown elsewhere on the wire, so the correction card may prefill it. */
+  displaySafe: z.literal(true).optional(),
 });
 export type FailureCorrection = z.infer<typeof FailureCorrectionSchema>;
 

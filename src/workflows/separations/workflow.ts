@@ -84,7 +84,7 @@ export const separationsWorkflow = defineWorkflow({
   canonicalInput: SeparationsCanonicalInput,
   failureCorrections: [{
     nodeId: JOB_SUMMARY_NODE, code: "employee-not-found", inputField: "operatorEmployeeId",
-    label: "Employee ID", actionLabel: "Enter EID", pattern: EID_PATTERN.source
+    label: "Employee ID", actionLabel: "Enter EID", pattern: EID_PATTERN.source, displaySafe: true
   },
   {
     nodeId: ACTION_NODE, code: "document-not-in-action-list", inputField: "documentNumber",

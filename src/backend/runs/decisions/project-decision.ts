@@ -14,7 +14,7 @@ export type ServedOption = Readonly<{
 }>;
 
 /** Orders served options by the catalog, takes catalog text unless the owner declared its own, and preselects the first recommended one served. */
-export function projectDecision(type: RunDecisionType, served: readonly ServedOption[], extra: Readonly<{ title?: string; answer?: DecisionAnswerWire }> = {}): RunDecisionWire {
+export function projectDecision(type: RunDecisionType, served: readonly ServedOption[], extra: Readonly<{ title?: string; context?: string; answer?: DecisionAnswerWire }> = {}): RunDecisionWire {
   const declaration = DECISION_CATALOG[type];
   if (declaration.projected === false) throw new Error(`decision ${type} is catalog-only`);
   const ordered = declaration.gateArms ? served : declaration.options.flatMap(option => {
@@ -26,6 +26,8 @@ export function projectDecision(type: RunDecisionType, served: readonly ServedOp
   return RunDecisionWireSchema.parse({
     type,
     title: extra.title ?? declaration.title,
+    ...(extra.context === undefined ? {} : { context: extra.context }),
+    ...(declaration.choiceLabel === undefined ? {} : { choiceLabel: declaration.choiceLabel }),
     options: ordered.map(option => {
       if (option.label === undefined || option.hint === undefined) throw new Error(`decision ${type} option ${option.id} has no text`);
       return {

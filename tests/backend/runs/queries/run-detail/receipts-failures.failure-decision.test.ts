@@ -8,10 +8,12 @@ const RUN = "00000000-0000-4000-8000-000000000001", FAILURE = "00000000-0000-400
 const base = failureDetailWireFixture({ runId: RUN, failureId: FAILURE, traceId: "sep-101500-0001", workflowId: "separations" });
 const capable = { resolution: { capability: { state: "available" as const }, capture: { failureId: FAILURE, runId: RUN, resolution: { status: "unresolved" as const, version: 1 } } } };
 
-function corrected() {
+function corrected(prefill?: string) {
   return FailureDetailWireSchema.parse({ ...base, nodeId: "job-summary", code: "EMPLOYEE_NOT_FOUND",
     causeChain: [{ code: "EMPLOYEE_NOT_FOUND", summary: base.summary, role: "primary", transient: false }], recovery: {
-      correction: { nodeId: "job-summary", code: "employee-not-found", inputField: "operatorEmployeeId", label: "Employee ID", actionLabel: "Enter EID", pattern: "^10\\d{6}$" },
+      correction: { nodeId: "job-summary", code: "employee-not-found", inputField: "operatorEmployeeId", label: "Employee ID", actionLabel: "Enter EID", pattern: "^10\\d{6}$",
+        ...(prefill === undefined ? {} : { displaySafe: true }) },
+      ...(prefill === undefined ? {} : { prefill }),
       expectedVersion: 3, retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: 3,
         confirm: { title: "Check again", confirmLabel: "Check again", tone: "neutral" } },
       confirm: { title: "Enter EID", confirmLabel: "Enter EID", tone: "neutral" },
@@ -30,6 +32,10 @@ describe("failureDecision", () => {
     ]);
     assert.deepEqual(decision.options[0]?.input, { kind: "text", label: "Employee ID", pattern: "^10\\d{6}$" }, "no prefill: the run's typed input never crosses this wire");
     assert.deepEqual(decision.options.map(({ confirm }) => confirm?.title), ["Enter EID", "Check again"]);
+  });
+
+  it("prefills the correction input with the rejected value only for a display-safe field", () => {
+    assert.deepEqual(failureDecision(corrected("1003187")).options[0]?.input, { kind: "text", label: "Employee ID", pattern: "^10\\d{6}$", prefill: "1003187" });
   });
 
   it("serves a failure after a committed or verified write as D8 with only a note", () => {
