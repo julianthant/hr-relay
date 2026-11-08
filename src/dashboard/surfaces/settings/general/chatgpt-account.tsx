@@ -1,11 +1,11 @@
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { BodySection, Button, ButtonLink, FormGroup, ResultRow, Skeleton, dsIcon, Notice } from "../../../ds/ui.js";
 import { LoadingRegion, SkeletonText } from "../../shared/loading/loading.js";
 import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatGptAccountPort } from "./chatgpt-account-model.js";
 
-export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccountPort }) {
+export function ChatGptAccountSettings({ port: override, footer }: { port?: ChatGptAccountPort; footer?: ReactNode }) {
   const contextPort = useContext(ChatGptAccountContext);
   const port = override ?? contextPort;
   const account = useChatGptAccount(port);
@@ -82,6 +82,6 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : displayed.state === "expired" ? "Reconnect" : "Connect ChatGPT"}</Button>}
             {(connected || displayed.state === "expired") && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Disconnect</Button>}
           </div>} />}
-    </div></FormGroup>
+    </div>{footer}</FormGroup>
   </BodySection>;
 }

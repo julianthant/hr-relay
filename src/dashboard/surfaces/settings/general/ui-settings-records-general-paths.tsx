@@ -12,6 +12,8 @@ import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { settingNote,settingPlaceholderCopy,settingTitle } from "../settings-presentation.js";
+import { StatusMockCheckConnection, StatusMockStorageLine } from "../status-mock/status-mock.js";
+import { statusMock } from "../status-mock/status-mock-model.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { HubBrowserWindowSettings } from "./hub-preferences.js";
@@ -105,9 +107,11 @@ function PathsContent({ editor }: { editor: Editor }) {
 }
 
 export function CompactSettingsSection({ editor, sectionId, appearance, deleteAccount }: { editor: Editor; sectionId: "general" | "paths"; appearance?: ReactNode; deleteAccount?: ReactNode }) {
+  const mock = statusMock();
   return <section className="settings-compact-page">
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
-    {sectionId === "general" && <ChatGptAccountSettings />}
+    {sectionId === "general" && mock?.startsWith("general") === true && <StatusMockStorageLine variant={mock.startsWith("general-b") ? "b" : "a"} problem={mock.endsWith("problem")} />}
+    {sectionId === "general" && <ChatGptAccountSettings footer={mock?.startsWith("general") ? <StatusMockCheckConnection checked={mock.endsWith("problem")} /> : undefined} />}
     {sectionId === "general" && appearance}
     {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />

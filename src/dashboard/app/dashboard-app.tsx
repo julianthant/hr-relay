@@ -44,6 +44,7 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
+import { StatusMockHost } from "../surfaces/settings/status-mock/status-mock.js";
 import { Banner,Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
@@ -265,6 +266,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onBulkIds={setBulkIds}
         /></DashboardPageBoundary></ViewNavigationProvider>
       )}
+      <StatusMockHost />
     </ToastProvider>
     </TooltipProvider>
     </PreflightAssistantContext.Provider>
