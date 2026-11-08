@@ -17,6 +17,8 @@ type StartupRequest = {
 
 type StartupReply = {
   readonly state?: string;
+  // Bulk child results carry outcome and none of the other fields, so an all-optional shape rejects them.
+  readonly outcome?: string;
   readonly workerStartup?: RunWorkerStartupFailure;
   readonly results?: readonly {
     readonly outcome: string;
