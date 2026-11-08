@@ -153,10 +153,11 @@ export class CommandExecutor {
         : await this.settle(request, checkedCommandResult(request, observed), options);
     } catch (cause) { outcome = uncertain(commandId, cause); }
     if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
-    if (outcome.kind !== "confirmed") outcome = uncertain(commandId, outcome, outcome.reply);
+    // An observed rejection is the recorded proof that no effect happened; anything else short of confirmation stays checkable.
+    if (outcome.kind !== "confirmed" && outcome.kind !== "refused") outcome = uncertain(commandId, outcome, outcome.reply);
     attempt.state = "settled"; attempt.release?.();
     attempt.outcome = Object.freeze(outcome);
-    if (outcome.kind === "confirmed" && this.reservations.get(key) === held) this.reservations.delete(key);
+    if ((outcome.kind === "confirmed" || outcome.kind === "refused") && this.reservations.get(key) === held) this.reservations.delete(key);
     return this.publish(outcome, options);
   }
 

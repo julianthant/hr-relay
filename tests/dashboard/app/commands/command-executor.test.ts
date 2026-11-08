@@ -413,6 +413,24 @@ it("checks an uncertain original without POST and releases only exact confirmed 
   assert.equal(h.sent.length, 2);
 });
 
+it("settles an exact recorded rejection as refused without POST and releases its lock; an authority-uncertain rejection stays checkable", async () => {
+  const h = harness(); const request = command();
+  h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  assert.equal((await h.executor.execute(request, h.options())).kind, "uncertain");
+  const rejected = (code: string) => ({ ...h.options(), observe: async () => CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code, message: "diagnostic" }) });
+  assert.equal((await h.executor.check(request.commandId, rejected("authority-uncertain"))).kind, "uncertain");
+  assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
+  const outcome = await h.executor.check(request.commandId, rejected("invalid-state"));
+  assert.equal(outcome.kind, "refused");
+  assert.equal(outcome.kind === "refused" ? outcome.reason : "unexpected", undefined);
+  assert.equal(h.executor.retainedAttempts().find(attempt => attempt.request.commandId === request.commandId)?.outcome?.kind, "refused");
+  const again = await h.executor.check(request.commandId, rejected("invalid-state"));
+  assert.equal(again.kind === "refused" ? again.reason : again.kind, "locked", "a settled refusal is not checked again");
+  assert.equal(h.sent.length, 1, "checking reads the recorded outcome and never resends");
+  assert.equal((await h.executor.execute(command(12), h.options())).kind, "uncertain");
+  assert.equal(h.sent.length, 2, "the released lock admits the next command");
+});
+
 it("keeps mismatch checkable and rejects concurrent checks and A to B to A late publication", async () => {
   const h = harness(); const request = command();
   h.setReply(() => ({ state: "pending", commandId: request.commandId }));

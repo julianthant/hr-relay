@@ -1,7 +1,8 @@
 import type { DashboardClient } from '../../client/index.js';
 import type { DashboardDayState } from '../../state/use-dashboard-day.js';
 import type { DashboardDayWire } from '../../../models/dashboard/projection.js';
-import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from '../../../rules/commands/commands.js';
+import { CommandRequestSchema, type CommandRequest } from '../../../rules/commands/commands.js';
+import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptions, type CommandOutcome } from '../../app/commands/command-executor.js';
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
 import { sessionsFromDay } from './sessions-view-model.js';
@@ -174,19 +175,20 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       const attempt = attempts.get(request.id);
       if (attempt === undefined || attempt.body !== JSON.stringify(request) || !valid(attempt, binding)) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
       try {
-        await read(attempt, binding);
         for (const command of attempt.commands) {
           const retained = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === command.commandId);
-          if (retained !== undefined) {
-            if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
-            if (retained.outcome?.kind === "uncertain") {
-              const reply = CommandResultSchema.safeParse(retained.outcome.reply);
-              const outcome = await binding.executor.check(command.commandId, { ...options(attempt, binding),
-                observe: async () => reply.success ? reply.data : undefined });
-              if (outcome.kind !== "confirmed") return { id: request.id, state: "uncertain", message: outcome.feedback.text };
-            } else if (retained.outcome?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
-          }
+          if (retained === undefined) continue;
+          if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+          // The audited outcome, read without resending; a command with no audit stays unproved.
+          const checked = retained.outcome?.kind === "uncertain";
+          const settled = !checked ? retained.outcome : await binding.executor.check(command.commandId, { ...options(attempt, binding), observe: async sent => {
+            const record = await binding.client.workerCommandResult(sent.commandId);
+            return record.state === "recorded" && canonicalJsonStringify(record.request) === canonicalJsonStringify(sent) ? record.result : undefined;
+          } });
+          if (settled?.kind === "refused" && settled.reason === undefined) return { id: request.id, state: "refused", message: settled.feedback.text };
+          if (settled?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: checked && settled !== undefined ? settled.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
         }
+        await read(attempt, binding);
         if (!valid(attempt, binding)) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
         return result(request, attempt);
       } catch (cause) {
@@ -199,7 +201,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
 
 const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Workers added' : request.action === 'refresh' ? 'Idle sessions refreshed' : ({ pause: 'Pause', resume: 'Resume', retry: 'Retry', stop: 'Stop', remove: 'Remove' }[request.action]);
 
-export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string }>) {
+export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; onRefused?: (problem: string) => void }>) {
   const sourceKey = source?.snapshot ?? port;
   const [readback, setReadback] = useState<{ key: object; data: SessionsViewState }>(() => ({ key: sourceKey, data: initial }));
   const data = readback.key === sourceKey ? readback.data : initial;
@@ -209,6 +211,8 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const latestSource = useRef(sourceKey); latestSource.current = sourceKey;
   const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>(() => Object.fromEntries((port.retained?.() ?? []).map(operation => [operation.request.target, operation])));
   const operationsRef = useRef<Record<string, SessionPreviewOperation>>(operations);
+  const onRefused = useRef(source?.onRefused); onRefused.current = source?.onRefused;
+  const reconciling = useRef(new Set<string>());
   const live = useRef(true);
   const ordinal = useRef(5);
   const idle = useRef<((request: SessionPreviewRequest, data?: SessionsViewState) => void) | undefined>(undefined);
@@ -229,8 +233,24 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       });
     }
   }, [port, retain]);
+  // Each served-day change re-reads an uncertain control's audited outcome; only a proven outcome releases it, and a refusal toasts once.
+  useEffect(() => {
+    for (const operation of Object.values(operationsRef.current)) {
+      const { request } = operation;
+      if (operation.state !== 'uncertain' || reconciling.current.has(request.id)) continue;
+      const attemptEpoch = epoch.current;
+      reconciling.current.add(request.id);
+      void port.check(request).then(result => {
+        if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
+        const next = { ...operationsRef.current }; delete next[request.target];
+        operationsRef.current = next; setOperations(next);
+        if (result.state === 'refused') onRefused.current?.(request.action === 'retry' ? "Couldn't restart this worker." : result.message);
+      }, () => undefined).finally(() => { reconciling.current.delete(request.id); });
+    }
+  }, [sourceKey, port]);
     const perform = useCallback(async (request: SessionPreviewRequest, checking = false) => {
     const current = operationsRef.current[request.target];
+    if (checking && reconciling.current.has(request.id)) return;
     if (current && ['pending', 'checking'].includes(current.state) || !checking && current?.state === 'uncertain') return;
     retain({ request, state: checking ? 'checking' : 'pending', message: checking ? 'Checking command…' : `${request.action === 'add' ? 'Adding workers' : `${label(request)} requested`}…` });
     const attemptEpoch = epoch.current;

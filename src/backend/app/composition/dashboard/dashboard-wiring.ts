@@ -29,6 +29,7 @@ import { createStartPlanService } from "../../../runs/commands/start-plan-servic
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { createApplicationLifecycle } from "../../../runs/lifecycle/application-lifecycle.js";
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
+import { createWorkerCommandResultQuery } from "../../../runs/queries/worker-command-result.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
@@ -342,6 +343,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     intake,
     ocr: createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
+    workerCommandResult: createWorkerCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),

@@ -4,8 +4,10 @@ import { SessionsView } from "./sessions-view.js";
 import { createFixtureSessionPort, sessionsSample } from "./sessions-fixture.js";
 import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewCommands, type SessionCommandBinding } from "./session-preview-command-model.js";
 import { sessionsFromDay, sessionsUnavailable, type SessionsViewState } from "./sessions-view-model.js";
+import { useToasts } from "../../ds/ui.js";
 
 export function SessionPanel({ catalog, open, onOpenChange, settingsOpen, onSettings, source = "served", binding }: { catalog: readonly WorkflowCatalogEntry[]; open: boolean; onOpenChange: (open: boolean) => void; settingsOpen?: boolean; onSettings?: () => void; source?: "served" | "mock"; binding?: SessionCommandBinding }) {
+  const { toast } = useToasts();
   const fixture = useMemo(() => source === "mock" ? sessionsSample(typeof window === "undefined" ? "active" : new URLSearchParams(window.location.search).get("sessionsPreview") ?? "active") : undefined, [source]);
   const initial = useMemo((): SessionsViewState => source === "mock" ? fixture! : binding?.dayState.day.state === "loaded"
     ? sessionsFromDay(binding.dayState.day.value, catalog, binding.nowIso) : binding === undefined ? sessionsUnavailable() : binding.dayState.day.state === "failed"
@@ -19,7 +21,8 @@ export function SessionPanel({ catalog, open, onOpenChange, settingsOpen, onSett
     if (scenario !== null && scenario !== 'refused' && scenario !== 'uncertain') throw new Error('SESSION_COMMAND_SCENARIO_INVALID');
     return createFixtureSessionPort(fixture!, catalog, scenario ?? 'normal');
   }, [source, fixture, catalog]);
-  const commands = useSessionPreviewCommands(initial, catalog, source === "served" ? servedPort : fixturePort!, binding === undefined || source === "mock" ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId });
+  const commands = useSessionPreviewCommands(initial, catalog, source === "served" ? servedPort : fixturePort!, binding === undefined || source === "mock" ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId,
+    onRefused: title => toast({ tone: "danger", title, duration: 6000 }) });
   useSessionAddFeedback(commands.operations.add);
   const data = commands.data;
   const display = useMemo((): SessionsViewState => {

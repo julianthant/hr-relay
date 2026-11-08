@@ -62,12 +62,13 @@ function effectOf(day: DashboardDayWire, command: CommandRequest): DashboardDayW
     : command.type === "stop-worker" || command.type === "retry-worker" ? { ...card, controls: basis(NEXT_LIFETIME) } : card) });
 }
 function harness(initial = dayWith()) {
-  let day = initial; const sent: CommandRequest[] = []; const gets: string[] = [];
+  let day = initial; const sent: CommandRequest[] = []; const gets: string[] = []; let audit: unknown = { state: "unavailable" };
   let effect: (command: CommandRequest) => unknown = command => { day = effectOf(day, command); return applied(command); };
   const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async (url, init) => {
     if (init?.method === "POST") { assert.equal(typeof init.body, "string");
       if (typeof init.body !== "string") throw new Error("JSON body missing");
       const command = CommandRequestSchema.parse(JSON.parse(init.body)); sent.push(command); return Response.json(await effect(command)); }
+    if (String(url).includes("/api/v1/worker-commands/")) return Response.json(audit);
     gets.push(String(url)); return Response.json(day);
   } });
   let scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
@@ -76,7 +77,7 @@ function harness(initial = dayWith()) {
     dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog }));
   return { port, client, executor, sent, gets, binding, day: () => day, setDay: (next: DashboardDayWire) => { day = next; },
-    effect: (next: typeof effect) => { effect = next; }, scope: () => scope, setScope: (next: CommandExecutionScope) => { scope = next; } };
+    effect: (next: typeof effect) => { effect = next; }, audit: (next: unknown) => { audit = next; }, scope: () => scope, setScope: (next: CommandExecutionScope) => { scope = next; } };
 }
 
 it("serves all six phases from exact current rows, omits unsupported timelines and never invents subject", () => {
@@ -483,4 +484,74 @@ it("distinguishes an intentionally stopped worker after restart from a crashed w
     assert.equal(view.workers[0].state, stopReason === "crashed" ? "failed" : "stopped");
     assert.equal(view.workers[0].problem, { operator: "You stopped this worker.", crashed: "Worker stopped unexpectedly." }[stopReason]);
   }
+});
+
+/** A failed card whose Retry reply is lost in transit: the command reached the server, the answer never came back. */
+async function lostRetry() {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const card = h.day().workerCards[0];
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "failed", endedAt: now, stopReason: "crashed" }] }));
+  h.effect(() => { throw new Error("connection reset"); });
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const render = () => act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+  const text = () => document.body.textContent ?? "";
+  const retry = () => document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]');
+  const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(toast => (toast.textContent ?? "").includes("Couldn't restart this worker."));
+  await render();
+  const button = retry(); assert(button && !button.disabled);
+  await act(async () => button.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert.match(text(), /Check outcome/); assert(retry()?.disabled, "the uncertain Retry locks the control"); assert.equal(h.sent.length, 1);
+  const command = h.sent[0]; assert(command.family === "worker-browser" && command.type === "retry-worker");
+  const finish = async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); };
+  return { h, card, command, render, text, retry, toasts, finish };
+}
+async function publishChange(h: ReturnType<typeof harness>, render: () => Promise<void>) {
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day() })); await render();
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+}
+
+it("recovers a Retry whose reply was lost from its audited rejection: one toast, controls released, no resend", async () => {
+  const { h, command, render, text, retry, toasts, finish } = await lostRetry();
+  try {
+    h.audit({ state: "recorded", request: command, result: { state: "rejected", commandId: command.commandId, code: "invalid-state", message: "WORKER_START_FAILED" } });
+    await publishChange(h, render);
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled, false);
+    assert.equal(toasts().length, 1); assert.equal(document.querySelectorAll('[data-slot="toast"]').length, 1); assert.equal(h.sent.length, 1);
+    await publishChange(h, render);
+    assert.equal(toasts().length, 1); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
+});
+
+it("recovers a lost Retry reply from its audited success without resending", async () => {
+  const { h, card, command, render, text, retry, finish } = await lostRetry();
+  try {
+    h.audit({ state: "recorded", request: command, result: applied(command) });
+    const { endedAt: _endedAt, stopReason: _stopReason, ...running } = h.day().workerCards[0];
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...running, workerId: card.workerId, state: "idle", controls: basis(NEXT_LIFETIME) }] }));
+    await render(); await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled ?? false, false);
+    assert.equal(document.querySelectorAll('[data-slot="toast"]').length, 0); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
+});
+
+it("keeps a lost Retry unproved while no audit is recorded", async () => {
+  const { h, render, text, retry, finish } = await lostRetry();
+  try {
+    await publishChange(h, render);
+    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
+    assert.equal(document.querySelectorAll('[data-slot="toast"]').length, 0); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
+});
+
+it("does not adopt another command's recorded outcome for a lost Retry", async () => {
+  const { h, command, render, text, retry, finish } = await lostRetry();
+  try {
+    const other = structuredClone(command); assert(other.family === "worker-browser" && other.type === "retry-worker");
+    other.target.lifetimeId = uuidOf(7999);
+    h.audit({ state: "recorded", request: other, result: { state: "rejected", commandId: command.commandId, code: "invalid-state", message: "WORKER_START_FAILED" } });
+    await publishChange(h, render);
+    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
+    assert.equal(document.querySelectorAll('[data-slot="toast"]').length, 0); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
 });
