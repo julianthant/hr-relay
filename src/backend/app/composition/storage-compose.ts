@@ -110,6 +110,8 @@ function causedByUnresolvedWrites(error: unknown): boolean {
   return false;
 }
 
+const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
+
 /** Error text can carry input, so only a leading kebab-case token from the cause chain reaches the boot log. */
 function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
   let reason = "unnamed-cause";
@@ -119,9 +121,28 @@ function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, 
   }
   // The refusal is already held for the person; a boot log that cannot be written must not turn it into a boot failure.
   try {
-    const build = z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
-    appendEmergencyFault({ stateRoot, build, code: refusal.code, error: new Error(reason), now: clock.now(), area, reason });
+    appendEmergencyFault({ stateRoot, build: buildVersion(), code: refusal.code, error: new Error(reason), now: clock.now(), area, reason });
   } catch { /* best effort */ }
+}
+
+/** Counts, never values: which custody kinds still hold a person's closure open when the drain is refused. */
+export function busyCustodyReason(facts: Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "leases" | "browsers" | "duoLeases" | "exclusiveSessionLeases" | "writeIntents" | "controls">): string {
+  const counts = [
+    ["leases", facts.leases.filter(lease => lease.lifecycle.state !== "stopped").length],
+    ["browsers", facts.browsers.filter(browser => browser.health !== "closed").length],
+    ["duo", facts.duoLeases.filter(lease => lease.state === "held").length],
+    ["sessions", facts.exclusiveSessionLeases.filter(lease => lease.releasedAt === null).length],
+    ["writes", facts.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").length],
+    ["controls", facts.controls.filter(control => control.auditedAt === undefined).length],
+  ] as const;
+  return `busy-${counts.map(([kind, count]) => `${kind}-${String(count)}`).join("-")}`;
+}
+
+function logBusyCustody(stateRoot: string, readFacts: () => ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, clock: Clock): void {
+  try {
+    const reason = busyCustodyReason(readFacts());
+    appendEmergencyFault({ stateRoot, build: buildVersion(), code: "RUNTIME_CUSTODY_UNCERTAIN", error: new Error(reason), now: clock.now(), area: "profile-work-drain", reason });
+  } catch { /* the drain refusal still reaches the caller */ }
 }
 
 /** One person whose startup inspection, repair, upgrade or recovery was refused; boot continues for the others. */
@@ -1147,7 +1168,10 @@ export function composeProfileRuntime(input: Readonly<{
       if (entry?.context !== undefined && entry.state !== "closed") prepareClosure(profileId);
       if (entry?.preparation?.state === "pending") await entry.preparation.completion;
       if (entry?.preparation?.state === "failed") throw entry.preparation.error;
-      if (entry?.preparation?.state !== "ready") throw new Error("profile-work-drain-unproved");
+      if (entry?.preparation?.state !== "ready") {
+        if (entry?.context !== undefined) { const database = entry.context.database; logBusyCustody(machine.stateRoot, () => database.readProfileResourceCustody(), input.clock); }
+        throw new Error("profile-work-drain-unproved");
+      }
     },
     async close(purpose: "logout" | "shutdown" = closePurpose): Promise<void> {
       beginClose(purpose);
