@@ -579,7 +579,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "reading.kind"), ...ocrPrivateLeaves(workflowInput(id), "readingId", "reading.actorId", "reading.assertions"),
+    ...open(workflowInput(id), "reading.kind"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
     ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
@@ -638,7 +638,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),
     ...open(workflowInput(id), "approval", "formType", "reading.kind"),
-    ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "readingId", "reading.actorId", "reading.assertions"),
+    ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...["ocr-page", "ocr-page-reading"].flatMap(id => [
     ...ocrPageInputLeaves(workflowInput(id), "page."),

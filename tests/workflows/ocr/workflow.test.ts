@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { auditWorkflowModuleRoles } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
-import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowPlanning, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { DESCRIPTORS, workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { ocrWorkflow } from "../../../src/workflows/ocr/workflow.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
@@ -11,7 +11,7 @@ import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/re
 import { OcrResultSchema, OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
 import { ReadOcrResult } from "../../../src/models/workflows/ocr/read-result.js";
 import { readOcrResultTask } from "../../../src/workflows/ocr/tasks/read-result.js";
-import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
+import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "../../../src/models/workflows/ocr/input.js";
 import { ReadOcrSourcePages } from "../../../src/models/workflows/ocr/read-source-pages.js";
 import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
 import { readOcrSourcePagesTask } from "../../../src/workflows/ocr/tasks/read-source-pages.js";
@@ -183,4 +183,10 @@ describe("child-only OCR document graph", () => {
     const result = await finishFixture({ input: request, outputs: { "build-review": review, "lookup-identities": [], "lookup-signers": [] } });
     assert.deepEqual(result.identities, []);
   });
+});
+
+it("titles an OCR run by its PDF name, else its form type", () => {
+  const { title } = workflowPlanning(descriptor);
+  assert.equal(title({ ...OCR_INPUT_EXAMPLE, fileName: "Scan_0042.pdf" }), "Scan_0042.pdf");
+  assert.equal(title(OCR_INPUT_EXAMPLE), OCR_INPUT_EXAMPLE.formType);
 });
