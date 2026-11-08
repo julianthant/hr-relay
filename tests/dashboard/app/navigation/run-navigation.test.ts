@@ -27,7 +27,7 @@ describe("notification composition and canonical navigation", () => {
   it("selects served product and explicit mock parity inbox/search independently of workflows", () => {
     expect(PRODUCT_WORKFLOW_COMPOSITION.inbox).toBe("served");
     expect(PRODUCT_WORKFLOW_COMPOSITION.search).toBe("served");
-    expect(PRODUCT_WORKFLOW_COMPOSITION.sources["emergency-contact"]).toBe("mock");
+    expect(PRODUCT_WORKFLOW_COMPOSITION.sources["onbase"]).toBe("mock");
     const parity = PARITY_WORKFLOW_COMPOSITION([]);
     expect(parity.inbox).toBe("mock");
     expect(parity.search).toBe("mock");
