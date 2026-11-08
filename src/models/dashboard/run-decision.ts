@@ -12,7 +12,12 @@ export const RunDecisionTypeSchema = z.enum([
 export type RunDecisionType = z.infer<typeof RunDecisionTypeSchema>;
 
 const Text = z.string().min(1);
-const Pattern = Text.refine(pattern => { try { new RegExp(pattern, "u"); return true; } catch { return false; } }, "pattern must compile");
+const Pattern = Text.superRefine((pattern, ctx) => {
+  try { new RegExp(pattern, "u"); } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    ctx.addIssue({ code: "custom", message: "pattern must compile" });
+  }
+});
 
 export const DecisionSendSchema = z.discriminatedUnion("via", [
   /* The section's own served action descriptor. */
