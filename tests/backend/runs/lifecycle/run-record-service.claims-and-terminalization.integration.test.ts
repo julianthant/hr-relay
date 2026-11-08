@@ -12,10 +12,12 @@ import { deriveTerminalFailureDigest } from "../../../../src/models/run/result.j
 import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, LATER, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 
 const {fixture, created, runningRun, parkedWriteIntent, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
 const executorWorld = createRunExecutorTestWorld();
+const LOGOUT_CANCELLED = `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}`;
 afterEach(cleanup);
 afterEach(executorWorld.cleanup);
 
@@ -210,6 +212,32 @@ describe("canonical run-record service", () => {
     if (renewed.state !== "applied") throw new Error("renew refused");
     assert.equal(renewed.run.cancelRequested, true);
     assert.equal(renewed.run.lifecycle.state, "claimed");
+  });
+
+  it("settles a claimed run's Relay cancel with the summary it was requested with", async () => {
+    const { service, request, runtimeConfig } = await fixture();
+    const run = runningRun(service, request, runtimeConfig);
+    const requested = requireLifecycleApplied(service.transition({ commandId: randomUUID(), runId: run.envelope.runId,
+      expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED } }));
+    assert.equal(requested.lifecycle.state, "running");
+    const settled = requireLifecycleApplied(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: run.envelope.runId,
+      expectedVersion: requested.version, claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration }, endedAt: LATER }, personLookupDescriptor));
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: LATER, errorSummary: LOGOUT_CANCELLED });
+  });
+
+  it("carries a Relay cancel's summary to cascaded members and the claimed anchor", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, { ...request, commandId: randomUUID(), matchKey: "cascade-summary-member",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "summary-member" } });
+    const requested = requireLifecycleApplied(service.transition({ commandId: randomUUID(), runId: anchor.envelope.runId,
+      expectedVersion: anchor.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED } }));
+    assert.deepEqual(database.authority.runs.get(member.envelope.runId)?.lifecycle,
+      { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED });
+    const settled = requireLifecycleApplied(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: anchor.envelope.runId,
+      expectedVersion: requested.version, claim: { workerId: WORKER_ID, claimGeneration: anchor.claimGeneration }, endedAt: LATER }, personLookupDescriptor));
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: LATER, errorSummary: LOGOUT_CANCELLED });
   });
 
   it("#5 a generation advance refuses the next claim without invalidating the held claim", async () => {

@@ -410,7 +410,7 @@ type RunRepository = Readonly<{
   requeue(input: unknown): RunUpdateOutcome;
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
-  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
+  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; errorSummary?: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
 
   setPause(input: unknown, accountingAuthorization?: object): RunUpdateOutcome;
@@ -6727,7 +6727,7 @@ export class AuthorityDatabase implements Disposable {
           },
         );
       },
-      requestCancellation: ({ runId, expectedVersion, now, cancellationSource }) => this.#mutateRun(
+      requestCancellation: ({ runId, expectedVersion, now, errorSummary, cancellationSource }) => this.#mutateRun(
         RunIdSchema.parse(runId), z.number().int().positive().parse(expectedVersion), IsoInstantSchema.parse(now),
         undefined, (current) => {
           if (runClaim(current) === undefined) {
@@ -6736,7 +6736,7 @@ export class AuthorityDatabase implements Disposable {
             authenticateCancellationSource(this.authority, current, cancellationSource);
             for (const manifest of this.authority.delegationManifests.listByParentRun(runId)) authenticateDelegationGroup(this.authority, manifest);
           }
-          return RunRecordSchema.parse({ ...current, cancelRequested: true });
+          return RunRecordSchema.parse({ ...current, cancelRequested: true, ...(errorSummary !== undefined && { cancelSummary: errorSummary }) });
         },
       ),
       advanceRevision: ({ runId, expectedVersion, now }) => this.#mutateRun(
