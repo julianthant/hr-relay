@@ -42,9 +42,10 @@ function failAfterTransaction(h: Harness, run: RunRecord) {
   assert.equal(current.lifecycle.state, "running");
   assert.ok(current.lifecycle.state === "running" && current.lifecycle.currentNodeId === WRITE_FIXTURE_NODE_ID);
   const now = h.clock.now().toISOString();
-  const failure = FailureRecordSchema.parse({ ...buildNodeFailureRecord({ writes: [], run: current, failureId: randomUUID(),
+  const failure = FailureRecordSchema.parse(buildNodeFailureRecord({ writes: h.database.authority.writeIntents.listByRun(current.envelope.runId), run: current, failureId: randomUUID(),
     nodeId: NodeIdSchema.parse(WRITE_FIXTURE_NODE_ID), taskId: WriteFixtureCommit.id,
-    error: new Error("Synthetic failure after the settled transaction"), occurredAt: now }), writeState: "committed" });
+    error: new Error("Synthetic failure after the settled transaction"), occurredAt: now }));
+  assert.equal(failure.writeState, "committed");
   const failed = h.database.terminalizeFailure(writeFixtureDescriptor, { failure,
     authorization: { kind: "failed", runId: current.envelope.runId, workflowId: current.envelope.workflow,
       attempt: current.envelope.attempt, descriptorVersion: current.envelope.descriptorVersion,

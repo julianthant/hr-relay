@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
+import { settledWriteState } from "../../../../src/models/trust/failure.js";
+import { ATOMIC_WRITE_COMMIT, LEDGER_PAYLOAD, SPAN_OUTBOX_PAYLOAD } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { atomicWriteCheckpoint } from "../../../support/helpers/timeline-write-fixture.js";
 
 const world = createRunRecordServiceTestWorld();
 afterEach(() => world.cleanup());
@@ -45,4 +48,23 @@ it("parks an unfinished attempt unchanged without a terminal result or a retry",
   assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
   assert.equal(f.database.authority.runResults.get(f.run.envelope.runId), undefined);
   assert.equal(f.service.recoverCrash(f.recoveryRequest, f.lock).state, "applied-already");
+});
+
+it("records a crash after the run's own committed write as a failure after that write", async () => {
+  const f = await world.interruptedFixture();
+  const intent = await attemptingOwnedWrite({ database: f.database, fence: async input => f.database.authority.writeIntents.fenceAttempt(input) }, f.run);
+  const owner = { writeIntentId: intent.writeIntentId, workflowId: intent.workflowId, itemId: intent.itemId, runId: f.run.envelope.runId,
+    traceId: f.run.envelope.traceId, attempt: intent.runAttempt, bindingProofDigest: intent.bindingProofDigest };
+  const commit = { ...ATOMIC_WRITE_COMMIT, writeIntentId: intent.writeIntentId, generation: intent.generation,
+    transaction: { ...LEDGER_PAYLOAD, ...owner, configFingerprint: f.run.envelope.configFingerprint, fencedAt: intent.fencedAt },
+    committedSpan: { ...SPAN_OUTBOX_PAYLOAD, ...owner } };
+  f.database.commitWriteAttempt(commit, atomicWriteCheckpoint(commit));
+  const committed = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
+  assert.deepEqual(committed.map(({ status }) => status), ["committed"]);
+  assert.equal(f.service.recoverCrash(f.recoveryRequest, f.lock).state, "applied");
+  const failure = f.database.authority.failures.listByRun(f.run.envelope.runId)[0]; assert.ok(failure);
+  assert.equal(failure.code, "RUN_INTERRUPTED_BY_CRASH");
+  assert.equal(failure.writeState, settledWriteState(committed));
+  assert.equal(failure.writeState, "committed");
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), committed);
 });
