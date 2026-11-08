@@ -87,12 +87,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await captureSemanticEvidence('ocr-dates');
       await page.clock.install();
-      await page.goto(`${server.baseUrl}/?day=2026-08-03`); await page.getByRole('button', { name: 'Sessions', exact: true }).click();
+      await page.goto(`${server.baseUrl}/?day=2026-08-03`); await page.getByRole('button', { name: /^Sessions\b/ }).click();
       const idle = page.getByRole('article', { name: 'Worker 4 · Person Lookup', exact: true }); await expect(idle).toBeVisible();
       const ring = idle.getByRole('img', { name: /^Session refresh in/ }); await expect(ring).toBeVisible();
-      await page.getByRole('button', { name: 'Sessions', exact: true }).click();
+      await page.getByRole('button', { name: /^Sessions\b/ }).click();
       await page.clock.fastForward(300_000); await page.clock.fastForward(1000);
-      await page.getByRole('button', { name: 'Sessions', exact: true }).click();
+      await page.getByRole('button', { name: /^Sessions\b/ }).click();
       await expect(idle).not.toContainText('Idle sessions refreshed'); await expect(ring).toHaveAccessibleName(/^Session refresh in 4:5\d/);
       const date = page.getByRole('group', { name: 'Log date controls', exact: true });
       await expect(date.getByRole('spinbutton', { name: /month/ })).toHaveText('08'); await expect(date.getByRole('spinbutton', { name: /day/ })).toHaveText('03'); await expect(date.getByRole('spinbutton', { name: /year/ })).toHaveText('2026');
