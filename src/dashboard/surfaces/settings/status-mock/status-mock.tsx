@@ -10,6 +10,7 @@ import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_CHECKS, STATUS
 
 const noop = () => undefined;
 
+
 /** Run dialog frames: the reason a workflow cannot start, with its fix next to it. */
 function RunDialogMock({ variant }: { variant: "a" | "b" }) {
   const confirm = variant === "b";
@@ -20,7 +21,8 @@ function RunDialogMock({ variant }: { variant: "a" | "b" }) {
           <FormGroup label="Run summary">
             <ResultRow label="Workflow" value="Emergency Contact" />
             <ResultRow label="Scan" value="Scan_0412.pdf" />
-            <ResultRow label="People" value="12" />
+            <ResultRow label="People in scan" value="12" />
+            <ResultRow label="Dry run" value="On" />
           </FormGroup>
           <BodySection title="Before you start"><FormGroup label="Before you start">
             {STATUS_MOCK_BLOCKERS.map(blocker => <ResultRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}
@@ -30,14 +32,14 @@ function RunDialogMock({ variant }: { variant: "a" | "b" }) {
             Import the roster, then choose the scans.
           </Banner>
           <FormGroup label="Scan">
-            <ResultRow label="Scan PDFs" description="Choose the scans to read." value={<Button variant="secondary" disabled>Choose files</Button>} />
+            <ResultRow label="Scan PDFs" description="Scan_0412.pdf" value={<Button variant="secondary">Choose files</Button>} />
           </FormGroup>
         </DsBodyScope>}
       </DialogBody>
-      <DialogFooter meta={<MetaLine tone="faint" items={confirm ? ["12 runs", "Emergency Contact", "Fix 2 things to start"] : ["0 runs", "Emergency Contact", "Import the roster first"]} />}>
+      <DialogFooter meta={<MetaLine tone="faint" items={confirm ? ["1 run", "Emergency Contact", "Fix 2 things first"] : ["1 run", "Emergency Contact", "Import the roster first"]} />}>
         {confirm && <Button variant="ghost">Back</Button>}
         <Button variant="secondary">Cancel</Button>
-        <Button variant="primary" disabled>{confirm ? "Start 12 runs" : "Continue"}</Button>
+        <Button variant="primary" disabled>{confirm ? "Start dry run" : "Continue"}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>;
@@ -71,7 +73,7 @@ export function StatusMockStorageLine({ variant, problem }: { variant: "a" | "b"
   if (variant === "a") return <BodySection title="Storage"><FormGroup label="Storage">
     <ResultRow label={problem ? "Saved data needs attention" : "Saved on this computer"} description={problem ? "Last backup 12 min ago" : "Last backup 12 min ago"} value={actions || <StatusDot status="verifiedDone" />} />
   </FormGroup></BodySection>;
-  return <div role="status" className="flex items-center justify-between gap-3 rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel px-4 py-2.5 text-body">
+  return <div role="status" className="mb-[var(--ds-space-page)] flex items-center justify-between gap-3 rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel px-4 py-2.5 text-body">
     <span className="inline-flex items-center gap-2"><StatusDot status={problem ? "failed" : "verifiedDone"} />{text}</span>{actions}
   </div>;
 }
