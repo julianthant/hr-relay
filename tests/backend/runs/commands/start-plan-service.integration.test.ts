@@ -18,6 +18,11 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
+import { createWorkbookLibraryService, type WorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
+import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
+import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -33,7 +38,8 @@ afterEach(async () => {
   for (const profile of profiles.splice(0)) await profile.close();
 });
 
-async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true) {
+async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true,
+  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">) {
   const profile = await profileFixtures.create(); profiles.push(profile);
   const database = AuthorityDatabase.open(profile.admission,
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
@@ -53,6 +59,7 @@ async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart
       },
     },
     authorityRead: database,
+    ...(workbooksFor === undefined ? {} : { workbooks: workbooksFor(database) }),
     descriptors: {
       resolve: (workflowId) => (workflowId === String(descriptor.id) ? descriptor : undefined),
     },
@@ -276,4 +283,20 @@ it("rolls a canonical plan back with its enclosing transaction and retains the e
   assert.deepEqual(h.database.authority.runs.listByWorkflow(String(h.descriptor.id)), []);
   const accepted = h.service.plan(request(h.descriptor, {}));
   assert.ok(h.database.authority.startPlans.get(accepted.startPlanId));
+});
+
+it("plans one dry-run Emergency Contact PDF start against a header-only ocr-roster", async () => {
+  const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
+  let library: WorkbookLibraryService | undefined;
+  const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }));
+  assert.ok(library);
+  const roster = library.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
+    columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+    rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
+  library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+  const wire = h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
+    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" } }],
+    workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] });
+  assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
+  assert.equal(wire.planned.length, 1);
 });
