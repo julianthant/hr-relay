@@ -11,6 +11,6 @@ export function PARITY_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow
   const sources = servedFixtureSources(workflows);
   const previewSources = Object.freeze({ ...sources, ...servedFixtureSources([]) });
   return Object.freeze({ sources, initialMockRuns: seedMockRuns, assistant: "mock" as const, inbox: "mock" as const, search: "mock" as const, explorerSources: previewSources, logsSources: previewSources, sessions: "mock" as const, activity: "mock" as const, spreadsheets: "mock" as const, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }),
-    sourceForRoute: (id: string, requestedPreview: boolean) => requestedPreview && id in WORKFLOW_SOURCES ? "mock" : workflowSource(id, sources),
+    sourceForRoute: (id: string, requestedPreview: boolean) => requestedPreview && id in WORKFLOW_SOURCES && WORKFLOW_SOURCES[id] !== "hidden" ? "mock" : workflowSource(id, sources),
   });
 }

@@ -34,6 +34,17 @@ describe_m0("complete workflow presentation mocks", () => {
     expect_m0(waiting.steps.find(step => step.number === waiting.stopAfter)!.title).toBe("Your review");
     expect_m0(() => updateWorkflowChoice_m0("ocr", initialWorkflowChoices_m0("ocr"), "form", "invented")).toThrow("EXPLORER_CHOICE_INVALID");
   });
+  it_m0("expands a host's OCR delegation into its read and match steps without duplicate titles", () => {
+    for (const id of ["i9-check-start", "emergency-contact", "onbase", "oath-upload"] as const) {
+      const titles = buildWorkflowMock_m0(id, initialWorkflowChoices_m0(id)).steps.map(step => step.title);
+      expect_m0(titles).toContain("Read forms"); expect_m0(titles).not.toContain("OCR extraction");
+      expect_m0(new Set(titles).size).toBe(titles.length);
+    }
+    const i9 = buildWorkflowMock_m0("i9-check-start", initialWorkflowChoices_m0("i9-check-start"));
+    expect_m0(i9.steps.map(step => step.title)).toContain("Roster match");
+    const missing = buildWorkflowMock_m0("i9-check-start", updateWorkflowChoice_m0("i9-check-start", initialWorkflowChoices_m0("i9-check-start"), "pair", "missing"));
+    expect_m0(missing.steps.find(step => step.number === missing.stopAfter)!.title).toBe("Read forms");
+  });
 });
 }
 
