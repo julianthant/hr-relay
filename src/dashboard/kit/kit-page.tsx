@@ -1109,7 +1109,6 @@ function OverlaysSection() {
               tone: "danger",
               title: "Write parked",
               description: "UCPath did not confirm the read-back. This stays until you dismiss it.",
-              action: { label: "Open the run", onAction: () => undefined },
             })
           }
         >
