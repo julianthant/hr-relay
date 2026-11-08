@@ -18,7 +18,7 @@ import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from ".
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
 import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
@@ -1940,10 +1940,11 @@ function workerPauseCommandId(workerId: string, run: RunRecord): string {
   return lifecycleCommandId("worker-pause", { workerId, runId: run.envelope.runId, claimGeneration: run.claimGeneration });
 }
 
+/** A worker also runs delegated children of other workflows, so its held runs are found by pause id across its descendant home. */
 function workerPauseHeldRuns(repositories: AuthorityRepositories, workerId: string, state: "requested" | "paused"): readonly RunRecord[] {
   const workflow = repositories.workerSlots.get(workerId)?.workflow;
-  return workflow === undefined ? [] : repositories.runs.listCurrentByWorkflow(workflow)
-    .filter(run => run.pause?.state === state && run.pause.commandId === workerPauseCommandId(workerId, run));
+  return workflow === undefined ? [] : repositories.runs.listByPauseState(state)
+    .filter(run => run.pause?.commandId === workerPauseCommandId(workerId, run) && authenticateDescendantHome(repositories, run, workflow));
 }
 
 function auditWorkerCommand(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories, request: WorkerBrowserCommand,

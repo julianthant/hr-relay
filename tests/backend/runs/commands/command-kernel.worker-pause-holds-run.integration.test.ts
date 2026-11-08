@@ -32,6 +32,18 @@ function workerCommand(type: string, target: Record<string, unknown>) {
   return { commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type, target };
 }
 
+type KernelDeps = Parameters<typeof createCommandKernel>[0];
+
+function poolKernel(base: Pick<KernelDeps, "authority" | "lifecycle" | "clock" | "descriptors">) {
+  const unused = (): never => { throw new Error("unrequested worker effect"); };
+  const member = { lifetimeId: UUID_4, version: 3, state: "running" as const };
+  return createCommandKernel({ ...base, ids: { uuid: randomUUID },
+    appVersion: "0.1.0", configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
+    workerRuntime: { pool: { admit: async () => undefined, assertMember: () => member.state, start: async () => undefined, ensure: unused,
+      stop: async () => undefined, remove: unused, direct: async () => undefined, browser: unused, checkParkedWrite: unused } } });
+}
+
 async function world() {
   const harness = await createHarness();
   const { workerId } = testAdmittedWorker(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), workflow: parallelDescriptor.id, poolIndex: 1, browserSystems: [] });
@@ -180,13 +192,7 @@ describe("worker pause holds the run the worker claimed", () => {
     requireLifecycleApplied(execution.lifecycle.pause({ runId: parentId, expectedVersion: parent.version,
       commandId: lifecycleCommandId("worker-pause", { workerId, runId: parentId, claimGeneration: parent.claimGeneration }) }));
     assert.equal(database.authority.runs.get(parentId)?.pause?.state, "paused");
-    const unused = (): never => { throw new Error("unrequested worker effect"); };
-    const member = { lifetimeId: UUID_4, version: 3, state: "running" as const };
-    const kernel = createCommandKernel({ authority: database, lifecycle: execution.lifecycle, clock: h.deps.clock, ids: { uuid: randomUUID },
-      appVersion: "0.1.0", descriptors: { resolve }, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
-      intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
-      workerRuntime: { pool: { admit: async () => undefined, assertMember: () => member.state, start: async () => undefined, ensure: unused,
-        stop: async () => undefined, remove: unused, direct: async () => undefined, browser: unused, checkParkedWrite: unused } } });
+    const kernel = poolKernel({ authority: database, lifecycle: execution.lifecycle, clock: h.deps.clock, descriptors: { resolve } });
     const slot = database.authority.workerSlots.get(workerId);
     assert.ok(slot);
 
@@ -198,6 +204,80 @@ describe("worker pause holds the run the worker claimed", () => {
       assert.ok(cancelled?.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled", runId);
     }
     assert.equal(database.authority.runs.get(independentChildId)?.lifecycle.state, "queued");
+  });
+
+  it("worker pause, resume and stop also govern a descendant-workflow child the worker claimed", async () => {
+    const h = await delegationWorld.executorHarness({ descriptor: childMixedPolicyRoot.descriptor, stores: plan1Stores });
+    const { database, path } = h.authority;
+    const resolve = (id: string) => childMixedPolicyModules.find(module => module.descriptor.id === id)?.descriptor;
+    const execution = canonicalChildExecution(h.deps, database, path, resolve);
+    const root = execution.start(childMixedPolicyRoot.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+    const stepped = await execution.step(root, delegationWorld.SIGNAL);
+    assert.equal(stepped.outcome.state, "yielded-delegation");
+    const { workerId } = stepped.claim;
+    const rootId = root.envelope.runId;
+    const children = database.authority.runs.listChildren(rootId);
+    const childId = children.find(child => child.envelope.parent?.edgeId === "cascade")?.envelope.runId;
+    const otherChildId = children.find(child => child.envelope.parent?.edgeId === "independent")?.envelope.runId;
+    assert.ok(childId && otherChildId);
+    const get = (runId: string) => {
+      const record = database.authority.runs.get(runId);
+      assert.ok(record);
+      return record;
+    };
+    // Exclusions: the home run holds a row pause, the other child a pause that belongs to another worker.
+    requireLifecycleApplied(execution.lifecycle.pause({ runId: rootId, expectedVersion: get(rootId).version, commandId: randomUUID() }));
+    requireLifecycleApplied(execution.lifecycle.pause({ runId: otherChildId, expectedVersion: get(otherChildId).version,
+      commandId: lifecycleCommandId("worker-pause", { workerId: "another-worker", runId: otherChildId, claimGeneration: 0 }) }));
+    const excluded = [get(rootId), get(otherChildId)];
+    const runtime = database.authority.runtimeConfig.get();
+    assert.ok(runtime);
+    const claimChild = () => {
+      const claimed = execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: get(rootId).envelope.workflow, workerId,
+        runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+          settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+      assert.ok(claimed.state === "applied" && claimed.run.envelope.runId === childId, JSON.stringify(claimed));
+      assert.notEqual(claimed.run.envelope.workflow, get(rootId).envelope.workflow);
+      return { workerId, claimGeneration: claimed.run.claimGeneration };
+    };
+    const kernel = poolKernel({ authority: database, lifecycle: execution.lifecycle, clock: h.deps.clock, descriptors: { resolve } });
+    const target = { workerId, workflowId: get(rootId).envelope.workflow, lifetimeId: UUID_4, expectedVersion: 3 };
+    const acknowledge = (claim: { workerId: string; claimGeneration: number }) =>
+      requireLifecycleApplied(execution.lifecycle.acknowledgePause({ commandId: randomUUID(), runId: childId, claim }));
+
+    let claim = claimChild();
+    assert.equal((await kernel.executeWorkerPool(workerCommand("pause-worker", target))).state, "applied");
+    assert.equal(get(childId).pause?.state, "requested");
+    assert.equal(get(childId).pause?.commandId, lifecycleCommandId("worker-pause", { ...claim, runId: childId }));
+
+    const refused = await kernel.executeWorkerPool(workerCommand("resume-worker", target));
+    assert.equal(refused.state, "rejected");
+    if (refused.state !== "rejected") throw new Error("resume was admitted while the descendant child's pause was settling");
+    assert.equal(refused.code, "invalid-state");
+    assert.equal(refused.message, "worker-pause-settling");
+    assert.equal(database.authority.workerSlots.get(workerId)?.paused, true);
+
+    acknowledge(claim);
+    assert.equal(get(childId).lifecycle.state, "queued");
+    assert.equal(get(childId).pause?.state, "paused");
+    assert.equal((await kernel.executeWorkerPool(workerCommand("resume-worker", target))).state, "applied");
+    assert.equal(get(childId).lifecycle.state, "queued");
+    assert.equal(get(childId).pause, undefined);
+    assert.deepEqual([get(rootId), get(otherChildId)], excluded);
+
+    claim = claimChild();
+    assert.equal((await kernel.executeWorkerPool(workerCommand("pause-worker", target))).state, "applied");
+    acknowledge(claim);
+    assert.equal(get(childId).pause?.state, "paused");
+    const stop = workerCommand("stop-worker", target);
+    const stopped = await kernel.executeWorkerPool(stop);
+    assert.equal(stopped.state, "applied", JSON.stringify(stopped));
+    const cancelId = lifecycleCommandId("worker-stop-held-cancel", { commandId: stop.commandId, runId: childId });
+    assert.equal(database.authority.commands.get(cancelId)?.type, "cancel");
+    assert.equal(database.authority.commandAudits.findByCommand(cancelId)?.result.state, "applied");
+    const cancelled = get(childId);
+    assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled");
+    assert.deepEqual([get(rootId), get(otherChildId)], excluded);
   });
 
   it("stop-worker during the claimed run's fenced write is admitted and lets the write finish", async () => {

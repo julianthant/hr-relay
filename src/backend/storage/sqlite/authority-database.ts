@@ -399,6 +399,7 @@ type RunRepository = Readonly<{
   listPage(input: Readonly<{ workflow?: string; offset: number; limit: number }>): readonly RunRecord[];
 
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
+  listByPauseState(state: "requested" | "paused"): readonly RunRecord[];
 
   listWorkflows(): readonly string[];
   claimNext(input: unknown): RunClaimOutcome;
@@ -6235,6 +6236,9 @@ export class AuthorityDatabase implements Disposable {
           AND 1=1
         ORDER BY t.created_at, t.id
       `).all(workflow).map((row) => runRecordFromRow(row))),
+      listByPauseState: (state: "requested" | "paused") => Object.freeze(this.#database.prepare(`
+        SELECT * FROM runs WHERE pause_state = ? ORDER BY created_at, id
+      `).all(state).map((row) => runRecordFromRow(row))),
       listWorkflows: () => Object.freeze(
         z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
           SELECT DISTINCT workflow AS workflow FROM runs ORDER BY workflow
