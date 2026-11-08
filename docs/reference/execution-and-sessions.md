@@ -663,11 +663,13 @@ retained birth custody, and released process, browser, Duo and write custody. A 
 logical slot and advances its lease generation, using the admitted current descriptor and effective
 settings. Actual supervised birth produces the starting acknowledgement and application/audit;
 a separate same-generation initialization barrier prevents claims until required browser systems
-are physically authenticated. Initialization uses registered session needs without creating a run,
-releases its config binding on success or failure and retains warm resource provenance. Authentication
-failure remains a worker lifetime failure, independent of the starting acknowledgement. Stop can
-abort initialization work and, after actual closure, atomically cancel its readiness barrier while
-recording reusable browserless idle. Browserless replacement mode opens no session. Public Stop
+are physically authenticated. Initialization probes each required profile as a claim does, so the
+new lease takes over its predecessor's closed browser roots, then uses registered session needs
+without creating a run, releases its config binding on success or failure and retains warm resource
+provenance. Authentication failure remains a worker lifetime failure, independent of the starting
+acknowledgement. Stop can abort initialization work and, after actual closure, atomically cancel
+its readiness barrier while recording reusable browserless idle. Browserless replacement mode opens
+no session. Public Stop
 recovery for a dead failed lifetime retains its original reset binding and adds an exact browserless
 replacement binding. The supervisor records actual replacement birth before the fresh new owner
 can finalize original-to-replacement idle, application and audit. Missing effect evidence retains the

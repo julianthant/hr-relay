@@ -12,6 +12,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { createDurableChildRunExecutor } from "../../runtime/execution/durable-child-executor.js";
 import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
 import { isDrainStopReason, isLiveWorker, type WorkerStopReason } from "../../../models/run/worker.js";
+import { ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
@@ -129,6 +130,7 @@ export async function initializeRetryWorker(input: Readonly<{
       for (const need of needs) {
         if (systems.has(need.system)) continue;
         systems.add(need.system);
+        await sessions.prepareProfile(need, "prod", signal);
         await sessions.withDriver({ ...need, access: "read", session: "reuse-worker" }, "prod", signal, async () => undefined);
       }
     });
@@ -999,6 +1001,7 @@ function settleLease(
   log: TaskLogger,
 ): void {
   const now = clock.now().toISOString();
+  const failureCode = reason === "crashed" && original instanceof Error && "code" in original ? ErrorCatalogCodeSchema.safeParse(original.code).data : undefined;
   try {
     const lease = database.authority.workerLeases.get(workerId);
     if (lease === undefined) throw new Error(`worker ${workerId} lease disappeared before it could settle`);
@@ -1020,6 +1023,7 @@ function settleLease(
         startedAt: lease.lifecycle.startedAt,
         stoppedAt: now,
         reason: reason !== "stop-directive" ? reason : isDrainStopReason(lease.control.reason) ? "shutdown" : "operator",
+        ...(failureCode === undefined ? {} : { failureCode }),
       },
       now,
     });
