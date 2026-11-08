@@ -571,7 +571,7 @@ function profileResourceCustodyHolds(before: ReturnType<AuthorityDatabase["readP
   if (before.leases.some(lease => !before.slots.some(slot => slot.workerId === lease.workerId))) throw new Error("profile-worker-membership-unavailable");
   return { reservations, leases, browsers: before.browsers.filter(browser => browser.health !== "closed").length,
     controls: before.controls.filter(control => control.auditedAt === undefined).length,
-    runs: before.runs.filter(run => run.lifecycle.state !== "terminal").length,
+    runs: before.runs.filter(run => run.lifecycle.state !== "terminal" && run.pause?.state !== "paused").length,
     writes: before.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").length,
     duo: before.duoLeases.filter(lease => lease.state === "held").length, artifacts: before.pendingArtifacts.length, children: 0, commands: 0 };
 }
@@ -694,17 +694,26 @@ export function composeProfileActivity(input: Readonly<{
             const current = input.lifecycle.read(run.envelope.runId);
             if (current.state !== 'present') throw new Error('profile-run-custody-unavailable');
             if (current.run.lifecycle.state === 'terminal' || current.run.lifecycle.state === 'parked-write') continue;
-            requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
-              expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString() } }));
+            if (current.run.cancelRequested === true) continue;
+            // Logout cancels a claimed run that stands alone; any other run pauses, so never-claimed work and run graphs resume after the next sign-in.
+            const standalone = current.run.envelope.parent === undefined
+              && input.database.authority.runs.listChildren(current.run.envelope.runId).every(child => child.lifecycle.state === 'terminal');
+            if (runClaim(current.run) !== undefined && standalone) requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
+              expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString(),
+                errorSummary: `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}` } }));
+            else if (current.run.pause === undefined) requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: current.run.envelope.runId, expectedVersion: current.run.version }));
           } catch (error) { failures.push(error); }
         }
       } catch (error) { failures.push(error); }
-      try {
-        pending.push('state' in input.supervisor
-          ? (busy(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
-          : input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-            requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: 'profile-logout' }));
-      } catch (error) { failures.push(error); }
+      pending.push((async () => {
+        // A paused claim settles at its worker's next step boundary, as on shutdown.
+        while (input.database.readProfileResourceCustody().runs.some(run => runClaim(run) !== undefined && run.pause !== undefined)) {
+          await new Promise<void>(resolve => setTimeout(resolve, 50));
+        }
+        if ('state' in input.supervisor) { if (busy(false)) throw new Error('profile-resource-closure-unproved'); }
+        else await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
+          requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: 'profile-logout' });
+      })());
       const completion = Promise.allSettled(pending).then(results => {
         const errors: unknown[] = [...failures];
         for (const result of results) if (result.status === 'rejected') { const reason: unknown = result.reason; errors.push(reason); }

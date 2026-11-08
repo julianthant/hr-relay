@@ -31,3 +31,14 @@ describe("approved mixed queue presentation", () => {
     }
   });
 });
+
+describe("cancelled attribution", () => {
+  it("shows the served Relay reason instead of crediting the operator", () => {
+    const relay = renderToStaticMarkup(createElement(StatusBadge, { status: "cancelled", presentation: "queue",
+      cancelledBy: "logout" }));
+    assert.match(relay, /title="Relay cancelled this run when the profile logged out\."/u);
+    assert.doesNotMatch(relay, /You stopped it/u);
+    const operator = renderToStaticMarkup(createElement(StatusBadge, { status: "cancelled", presentation: "queue", cancelledBy: "operator" }));
+    assert.match(operator, /title="You stopped it\./u);
+  });
+});

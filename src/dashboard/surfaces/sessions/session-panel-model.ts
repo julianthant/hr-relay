@@ -372,9 +372,13 @@ const RETRY_REFUSAL_LABEL: Readonly<Record<string, string>> = {
 export function workerRetryProblem(card: WorkerCardWire): string | undefined {
   const operation = card.controls?.operation;
   if (operation === undefined || (operation.state !== "refused" && operation.state !== "uncertain")) return undefined;
-  const named = RETRY_REFUSAL_LABEL[operation.message ?? ""];
-  if (operation.type === "stop-worker") return named ?? (operation.message === "worker-retry-never-started" ? "The last restart never started. Use Retry." : undefined);
-  return operation.type === "retry-worker" ? named ?? "Couldn't restart this worker." : undefined;
+  return workerRestartProblem(operation.type, operation.message);
+}
+
+export function workerRestartProblem(type: string, message: string | undefined): string | undefined {
+  const named = RETRY_REFUSAL_LABEL[message ?? ""];
+  if (type === "stop-worker") return named ?? (message === "worker-retry-never-started" ? "The last restart never started. Use Retry." : undefined);
+  return type === "retry-worker" ? named ?? "Couldn't restart this worker." : undefined;
 }
 
 
