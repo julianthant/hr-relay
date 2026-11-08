@@ -160,7 +160,8 @@ export function workerCardOf(input: Readonly<{
     startedAt: lease.lifecycle.startedAt,
     ...(lease.lifecycle.state === "stopped"
       ? { endedAt: lease.lifecycle.stoppedAt,
-        stopReason: lease.lifecycle.reason === "operator" && isDrainStopReason(lease.control.reason) ? "shutdown" : lease.lifecycle.reason }
+        stopReason: lease.lifecycle.reason === "operator" && isDrainStopReason(lease.control.reason) ? "shutdown" : lease.lifecycle.reason,
+        ...(lease.lifecycle.failureCode === undefined ? {} : { failureCode: lease.lifecycle.failureCode }) }
       : {}),
     currentRun: currentRunOf(lease, member, input.resolveRun),
     browserRequirements: lease.browserSystems === undefined

@@ -10,6 +10,7 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
+import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 
 /** What the operator has asked this worker to do; only commands write it. */
 export const WorkerDirectiveSchema = z.enum(["run", "pause", "stop"]);
@@ -55,6 +56,8 @@ export const WorkerLifecycleSchema = z.discriminatedUnion("state", [
     startedAt: IsoInstantSchema,
     stoppedAt: IsoInstantSchema,
     reason: WorkerStopReasonSchema,
+    /** A crashed lifetime's named refusal, shown on its card. */
+    failureCode: ErrorCatalogCodeSchema.optional(),
   }),
 ]);
 export type WorkerLifecycle = z.infer<typeof WorkerLifecycleSchema>;
