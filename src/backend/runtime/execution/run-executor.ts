@@ -2023,6 +2023,9 @@ export async function executeClaimedRun(
                 code: error.parkCode,
               });
             }
+            // An attempting intent means the failure came after the fence: keep the claim for recovery, never pause or fail.
+            if (deps.authority.withAuthorityTransaction?.(repositories =>
+              repositories.writeIntents.listByRun(runId).some(intent => intent.status === "attempting")) === true) throw error;
             interruptBeforeFence(node.id);
             return await failNode(node, node.commit.uses.id, error);
           }
