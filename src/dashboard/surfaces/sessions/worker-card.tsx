@@ -7,27 +7,27 @@ import type { SessionPreviewOperation } from "./session-preview-command-model.js
 import { SessionTimeline } from "./session-timeline.js";
 
 type WorkerBrowser = SessionWorker["browsers"][number];
-const BROWSER_WORD: Record<WorkerBrowser["state"], string> = { ready: "Ready", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed" };
-const BROWSER_TONE: Record<WorkerBrowser["state"], string> = { ready: "text-ui-secondary", active: "text-ui-info", starting: "text-ui-warning", unopened: "text-ui-muted", closed: "text-ui-muted", unavailable: "text-ui-warning", failed: "text-ui-danger" };
+const BROWSER_WORD: Record<WorkerBrowser["state"], string> = { ready: "Ready", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed", "needs-duo": "Needs Duo", "signed-out": "Signed out" };
+const BROWSER_TONE: Record<WorkerBrowser["state"], string> = { ready: "text-ui-secondary", active: "text-ui-info", starting: "text-ui-warning", unopened: "text-ui-muted", closed: "text-ui-muted", unavailable: "text-ui-warning", failed: "text-ui-danger", "needs-duo": "text-ui-warning", "signed-out": "text-ui-warning" };
 const MAX_ROWS = 4;
 
 /** The one note line under the step bar: why a settled worker ended, a failed step, or a pending pause or stop. Red only for a failed step. */
 function cardNote(worker: SessionWorker): { text: string; tone: string } | undefined {
-  if (worker.state === "failed" || worker.state === "stopped") return worker.problem ? { text: worker.problem, tone: "text-ui-secondary" } : undefined;
+  if (worker.state === "failed" || worker.state === "stopped" || worker.state === "idle" || worker.state === "unavailable") return worker.problem ? { text: worker.problem, tone: "text-ui-secondary" } : undefined;
   if (worker.timeline?.some(node => node.state === "failed")) return { text: "This step failed.", tone: "text-ui-danger" };
   return worker.note ? { text: worker.note, tone: "text-ui-warning" } : undefined;
 }
 
 function BrowserRow({ browser }: { browser: WorkerBrowser }) {
-  return <li className="flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-md bg-ui-table px-1 py-1 text-caption last:odd:col-span-2"><span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span><span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}</span></li>;
+  return <li className="flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-md bg-ui-table px-1 py-1 text-caption last:odd:col-span-2"><span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span><span className={cn("shrink-0", BROWSER_TONE[browser.state])} title={browser.reason}>{BROWSER_WORD[browser.state]}</span></li>;
 }
 
 /** Up to four sessions are rows; more are compact chips, so every name reads in full. The area grows to take the card's spare height. */
 function Browsers({ worker }: { worker: SessionWorker }) {
   const label = `${worker.label} systems`;
-  if (worker.browsers.length === 0) return <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">No browser sessions open</p>;
+  if (worker.browsers.length === 0) return worker.state === "unavailable" ? <div className="min-h-[4.5rem] flex-1 py-3" /> : <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">No browser sessions open</p>;
   if (worker.browsers.length <= MAX_ROWS) return <ul aria-label={label} className="m-0 min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0 grid grid-cols-2">{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul>;
-  return <ul aria-label={label} className="m-0 flex min-h-[4.5rem] flex-1 list-none flex-wrap content-start gap-x-3 gap-y-1.5 py-3 pl-0 text-caption">{worker.browsers.map(browser => <li key={browser.id} className="flex items-center gap-1.5"><span aria-hidden className={cn("size-1.5 shrink-0 rounded-full bg-current", BROWSER_TONE[browser.state])} /><span>{browser.label}</span>{browser.state !== "ready" && <span className={BROWSER_TONE[browser.state]}>{BROWSER_WORD[browser.state]}</span>}</li>)}</ul>;
+  return <ul aria-label={label} className="m-0 flex min-h-[4.5rem] flex-1 list-none flex-wrap content-start gap-x-3 gap-y-1.5 py-3 pl-0 text-caption">{worker.browsers.map(browser => <li key={browser.id} className="flex items-center gap-1.5"><span aria-hidden className={cn("size-1.5 shrink-0 rounded-full bg-current", BROWSER_TONE[browser.state])} /><span>{browser.label}</span>{browser.state !== "ready" && <span className={BROWSER_TONE[browser.state]} title={browser.reason}>{BROWSER_WORD[browser.state]}</span>}</li>)}</ul>;
 }
 
 export function WorkerCard({ worker, countdown, operation, onControl, onCheck }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void; onCheck?: (id: string) => void }) {
@@ -44,10 +44,10 @@ export function WorkerCard({ worker, countdown, operation, onControl, onCheck }:
       <p className={cn("mb-0 mt-1.5 min-h-4 break-words text-caption", note?.tone)}>{note?.text}</p>
     </div>
     <WorkerOperationNote operation={operation} worker={worker} onCheck={onCheck} />
-    <footer className="mt-2 flex min-h-10 items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="text-caption tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : "Not measured")}</span><span className="flex items-center gap-1">
+    <footer className="mt-2 flex min-h-10 items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="text-caption tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span><span className="flex items-center gap-1">
       {settled ? <Button size="sm" variant="secondary" className="h-8 gap-1 px-3" disabled={locked} aria-label="Retry" title="Retry" icon={<RotateCw aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "retry")}>Retry</Button>
         : <>{worker.state === "running" && icon("Pause", "pause", Pause)}{worker.state === "paused" && icon("Resume", "resume", Play)}
-          {worker.state !== "idle" ? icon("Stop", "stop", Square) : icon("Remove worker", "remove", Trash2)}</>}
+          {worker.state === "unavailable" ? null : worker.state !== "idle" ? icon("Stop", "stop", Square) : icon("Remove worker", "remove", Trash2)}</>}
     </span></footer>
   </article>;
 }

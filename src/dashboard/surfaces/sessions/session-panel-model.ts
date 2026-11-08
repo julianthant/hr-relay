@@ -44,7 +44,7 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   slots: readonly WorkerBrowserSlot[];
   unavailableReason?: string;
 }> {
-  if (card.state === "failed") return { slots: [] };
+  if (card.state === "failed") return { slots: [...new Set((card.lastBrowsers ?? []).map(browser => browser.system))].map(system => ({ state: "closed" as const, system })) };
   const open = [...card.browsers];
   const requirements = card.browserRequirements;
   if (requirements === undefined) {
