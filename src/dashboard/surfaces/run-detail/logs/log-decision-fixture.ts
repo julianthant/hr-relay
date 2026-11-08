@@ -28,34 +28,37 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Alex Morgan · DEMO-1042",
-        "actions": [
-          {
-            "id": "parked-check",
-            "label": "Check again",
-            "primary": false,
-            "result": {
-              "title": "Record check finished",
-              "message": "The termination is still not where Relay looked. The run remains held.",
-              "tone": "info",
-              "continues": false
-            }
-          },
-          {
-            "id": "parked-0",
-            "label": "Check result",
-            "primary": true,
-            "input": {
-              "kind": "verification",
-              "question": "Is the termination present in UCPath for Alex Morgan?"
+        "served": {
+          "type": "write-parked",
+          "title": "File termination",
+          "options": [
+            {
+              "id": "parked-check",
+              "label": "Check again",
+              "hint": "The termination is still not where Relay looked. The run remains held.",
+              "send": {
+                "via": "action",
+                "actionKey": "parked-check"
+              }
             },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+            {
+              "id": "parked-0",
+              "label": "Check result",
+              "hint": "Continued from the held step.",
+              "recommended": true,
+              "input": {
+                "kind": "verification",
+                "question": "Is the termination present in UCPath for Alex Morgan?"
+              },
+              "send": {
+                "via": "verification",
+                "presentActionKey": "recheck-write",
+                "absentActionKey": "resolve-write-absent",
+                "transactionPattern": "^[A-Za-z0-9-]+$"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -72,23 +75,28 @@ export const logDecisionExamples = [
         "state": "parked",
         "message": "Termination for Alex Morgan · effective 09/26/2026",
         "footer": "No further submission while held",
-        "actions": [
-          {
-            "id": "verification-0",
-            "label": "Check result",
-            "primary": true,
-            "input": {
-              "kind": "verification",
-              "question": "Is the termination present in UCPath for Alex Morgan?"
-            },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+        "served": {
+          "type": "write-parked",
+          "title": "Continue the parked run",
+          "options": [
+            {
+              "id": "verification-0",
+              "label": "Check result",
+              "hint": "Continued from the held step.",
+              "recommended": true,
+              "input": {
+                "kind": "verification",
+                "question": "Is the termination present in UCPath for Alex Morgan?"
+              },
+              "send": {
+                "via": "verification",
+                "presentActionKey": "recheck-write",
+                "absentActionKey": "resolve-write-absent",
+                "transactionPattern": "^[A-Za-z0-9-]+$"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -117,19 +125,22 @@ export const logDecisionExamples = [
         "state": "resolved",
         "message": "No matching termination was found. The transaction can be retried.",
         "footer": "Alex Morgan · DEMO-1042",
-        "actions": [
-          {
-            "id": "write-absent-0",
-            "label": "Retry termination",
-            "primary": true,
-            "result": {
-              "title": "Termination retry started",
-              "message": "Continued to File termination.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "paused",
+          "title": "Termination not submitted",
+          "options": [
+            {
+              "id": "write-absent-0",
+              "label": "Retry termination",
+              "hint": "Continued to File termination.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "write-absent-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -146,19 +157,21 @@ export const logDecisionExamples = [
         "state": "parked",
         "message": "UCPath could not be checked. The result is still unknown.",
         "footer": "Run remains held",
-        "actions": [
-          {
-            "id": "park-unavailable-0",
-            "label": "Check again",
-            "primary": false,
-            "result": {
-              "title": "Record check finished",
-              "message": "The record is still unavailable. The run remains held.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "write-parked",
+          "title": "Termination result unavailable",
+          "options": [
+            {
+              "id": "park-unavailable-0",
+              "label": "Check again",
+              "hint": "The record is still unavailable. The run remains held.",
+              "send": {
+                "via": "action",
+                "actionKey": "park-unavailable-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -208,19 +221,22 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "No write attempted",
-        "actions": [
-          {
-            "id": "failure-no-write-0",
-            "label": "Retry step",
-            "primary": true,
-            "result": {
-              "title": "Step retry started",
-              "message": "Continued from the failed action.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "failed-retryable",
+          "title": "Read separation document",
+          "options": [
+            {
+              "id": "failure-no-write-0",
+              "label": "Retry step",
+              "hint": "Continued from the failed action.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "failure-no-write-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -250,37 +266,37 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "No write attempted",
-        "actions": [
-          {
-            "id": "employee-not-found-check",
-            "label": "Check again",
-            "primary": false,
-            "result": {
-              "title": "Step retry started",
-              "message": "Looking up the employee again.",
-              "tone": "info",
-              "continues": false
-            }
-          },
-          {
-            "id": "employee-not-found-enter",
-            "label": "Enter EID",
-            "primary": true,
-            "input": {
-              "kind": "text",
-              "label": "Employee ID",
-              "placeholder": "8-digit EID from UCPath",
-              "hint": "Relay reads this EID in UCPath before continuing",
-              "pattern": "^\\d{8}$"
+        "served": {
+          "type": "correct-value",
+          "title": "Look up employee",
+          "options": [
+            {
+              "id": "employee-not-found-check",
+              "label": "Check again",
+              "hint": "Looking up the employee again.",
+              "send": {
+                "via": "action",
+                "actionKey": "employee-not-found-check"
+              }
             },
-            "result": {
-              "title": "Employee ID entered",
-              "message": "Reading this employee in UCPath.",
-              "tone": "info",
-              "continues": true
+            {
+              "id": "employee-not-found-enter",
+              "label": "Enter EID",
+              "hint": "Reading this employee in UCPath.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "employee-not-found-enter"
+              },
+              "input": {
+                "kind": "text",
+                "label": "Employee ID",
+                "placeholder": "8-digit EID from UCPath",
+                "pattern": "^\\d{8}$"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -298,36 +314,36 @@ export const logDecisionExamples = [
         "message": "Kuali has no separation document 48216 where Relay looked.",
         "attemptedAction": "open the separation document",
         "footer": "No write attempted",
-        "actions": [
-          {
-            "id": "document-not-found-check",
-            "label": "Check again",
-            "primary": false,
-            "result": {
-              "title": "Step retry started",
-              "message": "Looking for the document again.",
-              "tone": "info",
-              "continues": false
-            }
-          },
-          {
-            "id": "document-not-found-enter",
-            "label": "Enter document number",
-            "primary": true,
-            "input": {
-              "kind": "text",
-              "label": "Document number",
-              "placeholder": "Kuali document number",
-              "hint": "Relay opens this document in Kuali before continuing"
+        "served": {
+          "type": "correct-value",
+          "title": "Read separation document",
+          "options": [
+            {
+              "id": "document-not-found-check",
+              "label": "Check again",
+              "hint": "Looking for the document again.",
+              "send": {
+                "via": "action",
+                "actionKey": "document-not-found-check"
+              }
             },
-            "result": {
-              "title": "Document number entered",
-              "message": "Opening this document in Kuali.",
-              "tone": "info",
-              "continues": true
+            {
+              "id": "document-not-found-enter",
+              "label": "Enter document number",
+              "hint": "Opening this document in Kuali.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "document-not-found-enter"
+              },
+              "input": {
+                "kind": "text",
+                "label": "Document number",
+                "placeholder": "Kuali document number"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -383,23 +399,26 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Not submitted",
-        "actions": [
-          {
-            "id": "failure-prepared-0",
-            "label": "Correct date",
-            "primary": true,
-            "input": {
-              "kind": "date",
-              "label": "Last day worked"
-            },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+        "served": {
+          "type": "failed-retryable",
+          "title": "File termination",
+          "options": [
+            {
+              "id": "failure-prepared-0",
+              "label": "Correct date",
+              "hint": "Continued from the held step.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "failure-prepared-0"
+              },
+              "input": {
+                "kind": "date",
+                "label": "Last day worked"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -450,23 +469,28 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Result unknown · do not submit again",
-        "actions": [
-          {
-            "id": "failure-attempting-0",
-            "label": "Check result",
-            "primary": true,
-            "input": {
-              "kind": "verification",
-              "question": "Is the termination present in UCPath for Alex Morgan?"
-            },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+        "served": {
+          "type": "failed-retryable",
+          "title": "File termination",
+          "options": [
+            {
+              "id": "failure-attempting-0",
+              "label": "Check result",
+              "hint": "Continued from the held step.",
+              "recommended": true,
+              "input": {
+                "kind": "verification",
+                "question": "Is the termination present in UCPath for Alex Morgan?"
+              },
+              "send": {
+                "via": "verification",
+                "presentActionKey": "recheck-write",
+                "absentActionKey": "resolve-write-absent",
+                "transactionPattern": "^[A-Za-z0-9-]+$"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -516,19 +540,22 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Submitted · do not submit again",
-        "actions": [
-          {
-            "id": "failure-committed-0",
-            "label": "Retry verification",
-            "primary": true,
-            "result": {
-              "title": "Verification retry started",
-              "message": "Reading the submitted transaction again.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "failed-retryable",
+          "title": "Verify termination",
+          "options": [
+            {
+              "id": "failure-committed-0",
+              "label": "Retry verification",
+              "hint": "Reading the submitted transaction again.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "failure-committed-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -579,19 +606,22 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "UCPath termination already verified",
-        "actions": [
-          {
-            "id": "failure-verified-0",
-            "label": "Retry Kuali step",
-            "primary": true,
-            "result": {
-              "title": "Kuali retry started",
-              "message": "Continued to Finalize Kuali document.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "failed-retryable",
+          "title": "Finalize Kuali document",
+          "options": [
+            {
+              "id": "failure-verified-0",
+              "label": "Retry Kuali step",
+              "hint": "Continued to Finalize Kuali document.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "failure-verified-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -641,23 +671,28 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Result unknown · do not submit again",
-        "actions": [
-          {
-            "id": "failure-unknown-0",
-            "label": "Check result",
-            "primary": true,
-            "input": {
-              "kind": "verification",
-              "question": "Is the termination present in UCPath for Alex Morgan?"
-            },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+        "served": {
+          "type": "failed-retryable",
+          "title": "Verify termination",
+          "options": [
+            {
+              "id": "failure-unknown-0",
+              "label": "Check result",
+              "hint": "Continued from the held step.",
+              "recommended": true,
+              "input": {
+                "kind": "verification",
+                "question": "Is the termination present in UCPath for Alex Morgan?"
+              },
+              "send": {
+                "via": "verification",
+                "presentActionKey": "recheck-write",
+                "absentActionKey": "resolve-write-absent",
+                "transactionPattern": "^[A-Za-z0-9-]+$"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -707,40 +742,82 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "No write attempted",
-        "actions": [
-          {
-            "id": "identity-mismatch-0",
-            "label": "Select employee",
-            "primary": true,
-            "input": {
-              "kind": "candidate",
-              "question": "Which Alex Morgan should this run use?",
-              "candidates": [
-                {
-                  "id": "DEMO-1042",
-                  "name": "Morgan, Alex",
-                  "description": "Campus Services · Student Assistant"
-                },
-                {
-                  "id": "DEMO-2196",
-                  "name": "Morgan, Alex",
-                  "description": "Library · Student Assistant"
-                },
-                {
-                  "id": "DEMO-3094",
-                  "name": "Morgan, Alex",
-                  "description": "Facilities · Staff"
+        "served": {
+          "type": "pick-person",
+          "title": "Confirm employee identity",
+          "options": [
+            {
+              "id": "identity-mismatch-0",
+              "label": "Select employee",
+              "hint": "Continued from the held step.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "identity-mismatch-0"
+              },
+              "input": {
+                "kind": "candidate",
+                "table": {
+                  "title": "Search results",
+                  "columns": [
+                    {
+                      "id": "name",
+                      "label": "Name"
+                    },
+                    {
+                      "id": "detail",
+                      "label": "Details"
+                    }
+                  ],
+                  "rows": [
+                    {
+                      "id": "DEMO-1042",
+                      "name": "Morgan, Alex",
+                      "cells": [
+                        {
+                          "columnId": "name",
+                          "value": "Morgan, Alex"
+                        },
+                        {
+                          "columnId": "detail",
+                          "value": "Campus Services · Student Assistant"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "DEMO-2196",
+                      "name": "Morgan, Alex",
+                      "cells": [
+                        {
+                          "columnId": "name",
+                          "value": "Morgan, Alex"
+                        },
+                        {
+                          "columnId": "detail",
+                          "value": "Library · Student Assistant"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "DEMO-3094",
+                      "name": "Morgan, Alex",
+                      "cells": [
+                        {
+                          "columnId": "name",
+                          "value": "Morgan, Alex"
+                        },
+                        {
+                          "columnId": "detail",
+                          "value": "Facilities · Staff"
+                        }
+                      ]
+                    }
+                  ]
                 }
-              ]
-            },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -809,19 +886,22 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Not submitted",
-        "actions": [
-          {
-            "id": "implementation-0",
-            "label": "Retry step",
-            "primary": true,
-            "result": {
-              "title": "Step retry started",
-              "message": "Continued from the failed action.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "failed-retryable",
+          "title": "File termination",
+          "options": [
+            {
+              "id": "implementation-0",
+              "label": "Retry step",
+              "hint": "Continued from the failed action.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "implementation-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -840,19 +920,21 @@ export const logDecisionExamples = [
         "attemptedAction": "last action unavailable",
         "unavailableCapture": "The browser captures could not be loaded.",
         "footer": "Write state unavailable · run held",
-        "actions": [
-          {
-            "id": "failure-unavailable-0",
-            "label": "Refresh",
-            "primary": false,
-            "result": {
-              "title": "Run refreshed",
-              "message": "The retained result is still unavailable. The run remains held.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "failed-retryable",
+          "title": "File termination",
+          "options": [
+            {
+              "id": "failure-unavailable-0",
+              "label": "Refresh",
+              "hint": "The retained result is still unavailable. The run remains held.",
+              "send": {
+                "via": "action",
+                "actionKey": "failure-unavailable-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -897,19 +979,22 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Run is waiting for the employee decision",
-        "actions": [
-          {
-            "id": "review-identity-0",
-            "label": "Continue with Alex",
-            "primary": true,
-            "result": {
-              "title": "Employee match approved",
-              "message": "Alex Morgan · DEMO-1042. Continued to Read Workforce Job Summary.",
-              "tone": "positive",
-              "continues": true
+        "served": {
+          "type": "identity-mismatch",
+          "title": "Confirm the employee match",
+          "options": [
+            {
+              "id": "review-identity-0",
+              "label": "Continue with Alex",
+              "hint": "Alex Morgan · DEMO-1042. Continued to Read Workforce Job Summary.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "review-identity-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -922,9 +1007,9 @@ export const logDecisionExamples = [
       "kind": "decision",
       "time": "09:31:17",
       "decision": {
-        "title": "Choose the employee",
+        "title": "Which Alex Morgan is this run about?",
         "state": "review",
-        "message": "3 matches for Alex Morgan · Campus Services, Library and Facilities",
+        "message": "UCPath found 3 people with this name.",
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-person.svg",
@@ -938,40 +1023,132 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Employee selection required",
-        "actions": [
-          {
-            "id": "review-candidates-0",
-            "label": "Choose employee",
-            "primary": true,
-            "input": {
-              "kind": "candidate",
-              "question": "Which Alex Morgan should this run use?",
-              "candidates": [
-                {
-                  "id": "DEMO-1042",
-                  "name": "Morgan, Alex",
-                  "description": "Campus Services · Student Assistant"
-                },
-                {
-                  "id": "DEMO-2196",
-                  "name": "Morgan, Alex",
-                  "description": "Library · Student Assistant"
-                },
-                {
-                  "id": "DEMO-3094",
-                  "name": "Morgan, Alex",
-                  "description": "Facilities · Staff"
+        "served": {
+          "type": "pick-person",
+          "title": "Which Alex Morgan is this run about?",
+          "options": [
+            {
+              "id": "review-candidates-0",
+              "label": "Confirm",
+              "hint": "Continue with the picked person.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "review-candidates-0"
+              },
+              "input": {
+                "kind": "candidate",
+                "table": {
+                  "title": "Search results",
+                  "columns": [
+                    {
+                      "id": "name",
+                      "label": "Name"
+                    },
+                    {
+                      "id": "eid",
+                      "label": "Employee ID"
+                    },
+                    {
+                      "id": "department",
+                      "label": "Department"
+                    },
+                    {
+                      "id": "status",
+                      "label": "HR status"
+                    }
+                  ],
+                  "rows": [
+                    {
+                      "id": "10000001",
+                      "name": "Morgan, Alex A.",
+                      "eid": "10000001",
+                      "cells": [
+                        {
+                          "columnId": "name",
+                          "value": "Morgan, Alex A."
+                        },
+                        {
+                          "columnId": "eid",
+                          "value": "10000001"
+                        },
+                        {
+                          "columnId": "department",
+                          "value": "Campus Dining Operations"
+                        },
+                        {
+                          "columnId": "status",
+                          "value": "Active"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "10000042",
+                      "name": "Morgan, Alex",
+                      "eid": "10000042",
+                      "cells": [
+                        {
+                          "columnId": "name",
+                          "value": "Morgan, Alex"
+                        },
+                        {
+                          "columnId": "eid",
+                          "value": "10000042"
+                        },
+                        {
+                          "columnId": "department",
+                          "value": "Housing Operations"
+                        },
+                        {
+                          "columnId": "status",
+                          "value": "Active"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "10000077",
+                      "name": "Morgan, Alexis",
+                      "eid": "10000077",
+                      "cells": [
+                        {
+                          "columnId": "name",
+                          "value": "Morgan, Alexis"
+                        },
+                        {
+                          "columnId": "eid",
+                          "value": "10000077"
+                        },
+                        {
+                          "columnId": "department",
+                          "value": "HDH Catering"
+                        },
+                        {
+                          "columnId": "status",
+                          "value": "On leave",
+                          "tone": "attention"
+                        }
+                      ]
+                    }
+                  ],
+                  "typed": {
+                    "label": "Enter employee ID",
+                    "placeholder": "8 digits",
+                    "pattern": "^\\d{8}$"
+                  }
                 }
-              ]
+              }
             },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+            {
+              "id": "cancel-run",
+              "label": "Cancel run",
+              "hint": "Stop this run. Nothing more is written.",
+              "send": {
+                "via": "row-action",
+                "actionKey": "cancel"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -1016,30 +1193,31 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Employment status differs from the request",
-        "actions": [
-          {
-            "id": "review-employment-0",
-            "label": "Use record 0",
-            "primary": true,
-            "result": {
-              "title": "Employment record approved",
-              "message": "Continued with employment record 0.",
-              "tone": "positive",
-              "continues": true
+        "served": {
+          "type": "identity-mismatch",
+          "title": "Confirm the employment record",
+          "options": [
+            {
+              "id": "review-employment-0",
+              "label": "Use record 0",
+              "hint": "Continued with employment record 0.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "review-employment-0"
+              }
+            },
+            {
+              "id": "review-employment-1",
+              "label": "Reject record",
+              "hint": "This run stopped before any write.",
+              "send": {
+                "via": "action",
+                "actionKey": "review-employment-1"
+              }
             }
-          },
-          {
-            "id": "review-employment-1",
-            "label": "Reject record",
-            "primary": false,
-            "result": {
-              "title": "Employment record rejected",
-              "message": "This run stopped before any write.",
-              "tone": "danger",
-              "continues": true
-            }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -1068,23 +1246,26 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Kuali · source request",
-        "actions": [
-          {
-            "id": "review-fields-0",
-            "label": "Enter date",
-            "primary": true,
-            "input": {
-              "kind": "date",
-              "label": "Last day worked"
-            },
-            "result": {
-              "title": "Run continued",
-              "message": "Continued from the held step.",
-              "tone": "info",
-              "continues": true
+        "served": {
+          "type": "identity-mismatch",
+          "title": "Confirm the last day worked",
+          "options": [
+            {
+              "id": "review-fields-0",
+              "label": "Enter date",
+              "hint": "Continued from the held step.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "review-fields-0"
+              },
+              "input": {
+                "kind": "date",
+                "label": "Last day worked"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -1101,19 +1282,21 @@ export const logDecisionExamples = [
         "state": "review",
         "message": "The employee record could not be loaded. The run remains held.",
         "footer": "",
-        "actions": [
-          {
-            "id": "review-held-0",
-            "label": "Check again",
-            "primary": false,
-            "result": {
-              "title": "Record check finished",
-              "message": "The record is still unavailable. The run remains held.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "identity-mismatch",
+          "title": "Employee decision unavailable",
+          "options": [
+            {
+              "id": "review-held-0",
+              "label": "Check again",
+              "hint": "The record is still unavailable. The run remains held.",
+              "send": {
+                "via": "action",
+                "actionKey": "review-held-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -1142,19 +1325,22 @@ export const logDecisionExamples = [
         "state": "held",
         "message": "The record changed while you reviewed it. Your selection is preserved.",
         "footer": "Run remains held",
-        "actions": [
-          {
-            "id": "authority-changed-0",
-            "label": "Reload record",
-            "primary": true,
-            "result": {
-              "title": "Record reloaded",
-              "message": "The updated employee record is ready for review.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "paused",
+          "title": "Employee record changed",
+          "options": [
+            {
+              "id": "authority-changed-0",
+              "label": "Reload record",
+              "hint": "The updated employee record is ready for review.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "authority-changed-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -1171,19 +1357,22 @@ export const logDecisionExamples = [
         "state": "unconfirmed",
         "message": "No response was received. Check the run before sending another decision.",
         "footer": "",
-        "actions": [
-          {
-            "id": "transport-unknown-0",
-            "label": "Refresh run",
-            "primary": true,
-            "result": {
-              "title": "Run refreshed",
-              "message": "Continuation is still unconfirmed. The run remains held.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "write-unknown",
+          "title": "Continuation not confirmed",
+          "options": [
+            {
+              "id": "transport-unknown-0",
+              "label": "Refresh run",
+              "hint": "Continuation is still unconfirmed. The run remains held.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "transport-unknown-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -1236,19 +1425,21 @@ export const logDecisionExamples = [
         "state": "failed",
         "message": "Last action · Click Save and Submit",
         "footer": "Result unknown · run held",
-        "actions": [
-          {
-            "id": "screenshot-unavailable-0",
-            "label": "Refresh",
-            "primary": false,
-            "result": {
-              "title": "Run refreshed",
-              "message": "The retained result is still unavailable. The run remains held.",
-              "tone": "info",
-              "continues": false
+        "served": {
+          "type": "failed-retryable",
+          "title": "File termination",
+          "options": [
+            {
+              "id": "screenshot-unavailable-0",
+              "label": "Refresh",
+              "hint": "The retained result is still unavailable. The run remains held.",
+              "send": {
+                "via": "action",
+                "actionKey": "screenshot-unavailable-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   },
@@ -1411,19 +1602,22 @@ export const logDecisionExamples = [
           }
         ],
         "footer": "Alex Morgan · DEMO-1042",
-        "actions": [
-          {
-            "id": "screenshot-person-0",
-            "label": "Continue with Alex",
-            "primary": true,
-            "result": {
-              "title": "Employee match approved",
-              "message": "Alex Morgan · DEMO-1042. Continued to Read Workforce Job Summary.",
-              "tone": "positive",
-              "continues": true
+        "served": {
+          "type": "identity-mismatch",
+          "title": "Confirm employee identity",
+          "options": [
+            {
+              "id": "screenshot-person-0",
+              "label": "Continue with Alex",
+              "hint": "Alex Morgan · DEMO-1042. Continued to Read Workforce Job Summary.",
+              "recommended": true,
+              "send": {
+                "via": "action",
+                "actionKey": "screenshot-person-0"
+              }
             }
-          }
-        ]
+          ]
+        }
       }
     }
   }

@@ -9,7 +9,9 @@ import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { LogPanel } from "../log-panel.js";
-import { decisionActionResult, type LogDecisionAction, type LogDecisionAnswer } from "./log-decision-model.js";
+import type { LogDecisionHandler } from "./log-feed.js";
+import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import { answeredRow, type LogDecision } from "./log-decision-model.js";
 import type { LogStep } from "./log-feed-model.js";
 import { decisionScenarios, previewScenarios } from "./log-fixture.js";
 import { selectedLogPresentation, selectedLogSample, type LogSelection } from "./log-selection-model.js";
@@ -49,6 +51,16 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const retry = selection.row.parent === null || resource.snapshot?.detail.childRetry !== undefined ? undefined : selection.row.actions.find(action => action.kind === "command" && action.command === "retry");
   const retryEnabled = resource.state === "loaded" && binding?.authority.dayState.day.state === "loaded"
     && (resource.command === undefined || resource.command.state === "refused") && onAction !== undefined;
+  const target = useMemo(() => ({ runId: selection.row.runId, expectedVersion: selection.row.rowRevision }), [selection.row.runId, selection.row.rowRevision]);
+  const cancel = selection.row.actions.find(action => action.kind === "command" && action.command === "cancel");
+  const cancelRun = cancel !== undefined && onAction !== undefined ? () => onAction(cancel, target) : undefined;
+  // A run control sends the queue row's own descriptor; every other option goes through the served-decision dispatch.
+  const decide = useCallback<LogDecisionHandler>((id, option, answer) => {
+    if (option.send.via !== "row-action") { resource.onDecision?.(id, option, answer); return; }
+    const key = option.send.actionKey;
+    const action = selection.row.actions.find(candidate => candidate.key === key);
+    if (action !== undefined) onAction?.(action, target);
+  }, [resource, selection.row.actions, onAction, target]);
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description={resource.error} /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
   const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Notice tone="danger" title={logsUnavailableTitle} description={resource.error} /> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error]);
   const afterStep = useCallback((id: string) => {
@@ -71,7 +83,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
     icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewAvailable && resource.snapshot?.detail.ocrRecordCount !== undefined && onReview !== undefined && <Button size="sm" variant={reviewOpen ? "secondary" : "outline"} aria-pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={reviewOpen ? onLogs : onReview}>Records {resource.snapshot.detail.ocrRecordCount}</Button>}
       {batchRetry !== undefined && <IconButton size="sm" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
       {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,reviewOpen,onLogs,reviewAvailable,onReview,retry,onAction,retryEnabled,retryRun,feedback]);
-  return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
+  return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     onReview={reviewAvailable ? onReview : undefined}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} presentation="queue" />}
@@ -93,25 +105,22 @@ function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; now
   const basis = scenarioId === "preview" && selection ? `${scenarioId}:${selection.row.updatedAt}:${selection.row.status}` : scenarioId;
   const steps = edited?.basis === basis ? edited.steps : scenario.steps;
   const timeline = edited?.basis === basis ? edited.timeline : scenario.timeline;
-  const decide = (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
-    const result = decisionActionResult(action, answer);
+  // A fixture has no server: answering records a preview answer on the decision, and the lookup preview continues past its approval.
+  const decide: LogDecisionHandler = (id, option, answer) => {
+    const label = answeredRow(option, answer)?.name ?? option.label;
     setEdited(current => {
-      const nextSteps = (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.flatMap(entry => {
-      if (entry.id !== id || entry.kind !== "decision") return [entry];
-      const latest = step.entries.reduce((time, row) => row.kind !== "fields" && row.time > time ? row.time : time, entry.time);
-      const seconds = Number(latest.slice(0, 2)) * 3600 + Number(latest.slice(3, 5)) * 60 + Number(latest.slice(6)) + 1;
-      const time = new Date(seconds * 1000).toISOString().slice(11, 19);
-      const event = { kind: "note" as const, id: `${id}-${step.entries.length}`, time, message: `${result.title}. ${result.message}`, tone: result.tone, announce: true };
-      return result.continues ? [{ ...entry, decision: { ...entry.decision, actions: undefined, footer: result.title } }, event] : [entry, event];
-      }) }));
-      if (scenarioId === "preview" && action.id === "approve-lookup-match" && !nextSteps.some(step => step.id === "lookup-job")) {
+      const nextSteps = (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.map(entry => entry.id !== id || entry.kind !== "decision" ? entry
+        : { ...entry, decision: { ...withoutServed(entry.decision), answered: { optionId: option.id, label, at: IsoInstantSchema.parse(new Date().toISOString()), actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
+      if (scenarioId === "preview" && option.id === "approve-lookup-match" && !nextSteps.some(step => step.id === "lookup-job")) {
         nextSteps.push({ id: "lookup-job", time: "09:40:20", title: "Read employment record", system: "UCPath", entries: [{ kind: "note", id: "lookup-job-started", time: "09:40:20", message: `Reading the employment record for ${preview?.subject}.`, tone: "info" }] });
       }
-      return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, action.id) : scenario.timeline, steps: nextSteps };
+      return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, option.id) : scenario.timeline, steps: nextSteps };
     });
   };
   return <LogPanel key={basis} context={selection && (scenarioId === 'preview' || scenarioId === 'selected') ? queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt) : undefined} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} />;
 }
+
+const withoutServed = ({ served: _served, ...rest }: LogDecision): LogDecision => rest;
 
 export function FullDryRunPreview({ stages, facts }: { stages: readonly DryRunPreviewStage[]; facts: readonly { label: string; value: string; sample?: boolean }[] }) {
   const applicable = stages.filter(stage => stage.state !== "skipped");

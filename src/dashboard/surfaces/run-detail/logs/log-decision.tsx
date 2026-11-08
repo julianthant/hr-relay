@@ -1,35 +1,84 @@
 import type { UcpathFoundPresentation, UcpathFoundDecision } from "./ucpath-found-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Check, Clock, ImageOff, PauseCircle, ScanSearch, TriangleAlert, UserRoundSearch } from "lucide-react";
-import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Dialog, DialogBody, DialogContent, Field, Input } from "../../../ds/ui.js";
+import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Field, Input } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
-import { decisionAnswerValid, LOG_DECISION_STATUS, type LogDecision, type LogDecisionAction, type LogDecisionAnswer } from "./log-decision-model.js";
+import type { DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import { fmtActionClock } from "../../shared/status/format.js";
+import { DecisionCard, DecisionChoice } from "./decision-card.js";
+import { choiceOptions, decisionAnswerValid, LOG_DECISION_STATUS, recommendedOption, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
+import { PickTable, TYPED_ROW } from "./pick-table.js";
 import "./log-presentation.css";
 
-function DecisionForm({ action, onSubmit, onCalendarOpenChange, disabled = false }: { disabled?: boolean; action: LogDecisionAction; onSubmit: (answer: LogDecisionAnswer) => void; onCalendarOpenChange: (open: boolean) => void }) {
-  const [answer, setAnswer] = useState<LogDecisionAnswer>({});
+export type DecisionAnswerHandler = (option: DecisionOptionWire, answer: LogDecisionAnswer) => void;
+
+function OptionInput({ option, answer, setAnswer, disabled }: { option: DecisionOptionWire; answer: LogDecisionAnswer; setAnswer: (answer: LogDecisionAnswer) => void; disabled: boolean }) {
   const group = useId();
-  const input = action.input;
-  if (!input) throw new Error("log-decision-form-input-missing");
-  return <form className="log-decision-form" onSubmit={event => { event.preventDefault(); if (decisionAnswerValid(action, answer)) onSubmit(answer); }}>
-    {input.kind === "verification" && <><fieldset><legend>{input.question}</legend>{([["present", "Yes, it was submitted"], ["absent", "No, it was not submitted"]] as const).map(([value, label]) => <label key={value} className="log-decision-choice"><input type="radio" name="outcome" value={value} checked={answer.outcome === value} required onChange={() => setAnswer({ outcome: value })} /><span><strong>{label}</strong></span></label>)}</fieldset>{answer.outcome === "present" && <Field label="Transaction number" required><Input value={answer.transaction ?? ""} required onChange={event => setAnswer({ ...answer, transaction: event.target.value })} placeholder="Enter the submitted transaction number" /></Field>}</>}
-    {input.kind === "candidate" && <fieldset disabled={disabled}><legend>{input.question}</legend>{input.candidates.map(candidate => <label key={candidate.id} className="log-decision-choice"><input type="radio" name={input.presentation === "inline" ? group : "candidate"} value={candidate.id} checked={answer.candidate === candidate.id} required onChange={() => setAnswer({ candidate: candidate.id })} /><span><strong>{candidate.name}{input.presentation !== "inline" && ` · ${candidate.id}`}</strong><span>{candidate.description}</span></span></label>)}</fieldset>}
-    {input.kind === "text" && <Field label={input.label} required><Input value={answer.text ?? ""} required placeholder={input.placeholder} onChange={event => setAnswer({ text: event.target.value })} /></Field>}
-    {input.kind === "date" && <DateInput label={input.label} value={answer.date ?? ""} required onOpenChange={onCalendarOpenChange} onChange={date => setAnswer({ date })} />}
-    <div className="log-decision-form-actions"><span>{input.kind === "text" ? (decisionAnswerValid(action, answer) ? input.hint ?? "Ready to continue" : `${input.label} required`) : decisionAnswerValid(action, answer) ? "Ready to continue" : input.kind === "date" ? "Date required" : input.kind === "candidate" ? "No candidate selected" : "Choose the result to continue"}</span><Button type="submit" variant="primary" disabled={disabled || !decisionAnswerValid(action, answer)}>Continue run</Button></div>
-  </form>;
+  const input = option.input;
+  if (input === undefined) return null;
+  switch (input.kind) {
+    case "verification": return <div className="flex flex-col gap-2">
+      <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0" disabled={disabled}><legend className="mb-1 text-body font-medium">{input.question}</legend>
+        {([["present", "Yes, it was submitted"], ["absent", "No, it was not submitted"]] as const).map(([value, label]) => <label key={value} className="flex items-center gap-2 text-body">
+          <input type="radio" name={group} value={value} checked={answer.outcome === value} onChange={() => setAnswer({ outcome: value })} />{label}</label>)}
+      </fieldset>
+      {answer.outcome === "present" && <Field label="Transaction number" className="w-64"><Input value={answer.transaction ?? ""} disabled={disabled} onChange={event => setAnswer({ ...answer, transaction: event.target.value })} placeholder="Enter the submitted transaction number" /></Field>}
+    </div>;
+    case "text": return <Field label={input.label} className="w-64"><Input value={answer.text ?? ""} disabled={disabled} placeholder={input.placeholder} onChange={event => setAnswer({ text: event.target.value })} /></Field>;
+    case "date": return <DateInput label={input.label} value={answer.date ?? ""} onChange={date => setAnswer({ date })} />;
+    case "candidate": return <PickTable table={input.table} disabled={disabled} chosen={answer.typed !== undefined ? TYPED_ROW : answer.candidate} text={answer.typed ?? ""}
+      onChoose={id => setAnswer(id === TYPED_ROW ? { typed: answer.typed ?? "" } : { candidate: id })} onText={typed => setAnswer({ typed })} />;
+  }
 }
-export function LogDecisionBlock({ decision, onAction }: { decision: LogDecision; onAction?: (action: LogDecisionAction, answer: LogDecisionAnswer) => void }) {
-  const [active, setActive] = useState<LogDecisionAction>();
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  const opener = useRef<HTMLButtonElement>(null);
-  const inline = decision.actions?.filter(action => action.input?.kind === "candidate" && action.input.presentation === "inline") ?? [];
-  const buttons = decision.actions?.filter(action => !inline.includes(action));
+
+function Compare({ rows }: { rows: NonNullable<LogDecision["comparison"]> }) {
+  return <div className="overflow-hidden rounded-lg border border-ui-stroke bg-ui-table"><table aria-label="Request and UCPath values" className="w-full border-collapse text-left text-body">
+    <thead><tr className="text-caption text-ui-muted"><th className="px-3 py-2 font-normal"><span className="sr-only">Field</span></th><th className="px-3 py-2 font-normal">Request</th><th className="px-3 py-2 text-right font-normal">UCPath</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.label} className="border-t border-ui-stroke"><th scope="row" className="px-3 py-2.5 text-left font-medium">{row.label}</th><td className="px-3 py-2.5 tabular-nums text-ui-secondary">{row.expected}</td>
+      <td className={cn("px-3 py-2.5 text-right tabular-nums", row.expected === row.observed ? "text-ui-secondary" : "font-semibold text-ui-warning")}>{row.observed}{row.expected !== row.observed && <span className="sr-only"> (differs)</span>}</td></tr>)}</tbody>
+  </table></div>;
+}
+
+const answeredLine = (answer: NonNullable<LogDecision["answered"]>) => ({ choice: answer.label, time: fmtActionClock(answer.at),
+  by: answer.actor.kind === "person" ? answer.actor.name : `assistant on behalf of ${answer.actor.onBehalfOf.name}` });
+
+/** One served decision as a DecisionCard: its options, hints, recommended option and inputs all come from the wire. */
+function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: LogDecision; served: RunDecisionWire; onAnswer?: DecisionAnswerHandler; onCancel?: () => void }) {
+  const choices = choiceOptions(served);
+  const [selected, setSelected] = useState(recommendedOption(served)?.id);
+  const [answers, setAnswers] = useState<Readonly<Record<string, LogDecisionAnswer>>>({});
+  const option = choices.find(candidate => candidate.id === selected) ?? recommendedOption(served);
+  const answer = option === undefined ? {} : answers[option.id] ?? (option.input?.kind === "text" && option.input.prefill !== undefined ? { text: option.input.prefill } : {});
+  const disabled = onAnswer === undefined;
+  const pick = option?.input?.kind === "candidate";
+  const named = choices.length === 1 && option !== undefined && (option.input === undefined || option.input.kind === "text" || option.input.kind === "date");
+  // The write outcome is the caution, or the footer note on a failure.
+  const context = [decision.message, decision.caution ?? (decision.state === "failed" ? decision.footer : undefined)].filter(Boolean).join(" ") || undefined;
+  return <div className="flex min-w-0 flex-col gap-3" data-decision-state={decision.state}>
+    {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
+    <DecisionCard title={decision.title} context={context} tone={decision.state === "failed" ? "danger" : undefined} inline={pick}
+      confirmLabel={named ? option.label : "Confirm"} confirmDisabled={disabled || (option !== undefined && !decisionAnswerValid(option, answer))}
+      onConfirm={() => { if (option !== undefined && decisionAnswerValid(option, answer)) onAnswer?.(option, answer); }} onCancel={onCancel}>
+      {decision.attemptedAction && <p className="log-attempted">While trying to <strong>{decision.attemptedAction}</strong></p>}
+      {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}
+      {decision.field && <div className="log-failed-field"><span>{decision.field.label}</span><strong>{decision.field.value}</strong><span>{decision.field.outcome}</span></div>}
+      {decision.comparison && <Compare rows={decision.comparison} />}
+      {choices.length > 1 && option !== undefined && <DecisionChoice label="Next step" value={option.id} disabled={disabled} onChange={setSelected}
+        options={choices.map(candidate => ({ value: candidate.id, label: candidate.label, hint: candidate.hint }))} />}
+      {option !== undefined && <OptionInput option={option} answer={answer} disabled={disabled} setAnswer={next => setAnswers({ ...answers, [option.id]: next })} />}
+    </DecisionCard>
+  </div>;
+}
+
+export function LogDecisionBlock({ decision, onAnswer, onCancel }: { decision: LogDecision; onAnswer?: DecisionAnswerHandler; onCancel?: () => void }) {
+  if (decision.answered) return <DecisionCard title={decision.title} answered={answeredLine(decision.answered)} />;
+  // A new served revision resets the operator's selection.
+  if (decision.served) return <ServedDecision key={JSON.stringify(decision.served)} decision={decision} served={decision.served} onAnswer={onAnswer} onCancel={onCancel} />;
   const status = LOG_DECISION_STATUS[decision.state];
   const Icon = decision.state === "parked" ? PauseCircle : decision.state === "failed" ? TriangleAlert : decision.state === "review" ? UserRoundSearch : decision.state === "loading" ? Clock : ScanSearch;
-  return <Dialog open={active !== undefined} onOpenChange={open => { if (!open) { setActive(undefined); setCalendarOpen(false); } }}><article className="log-decision" aria-label={decision.title} data-decision-state={decision.state}>
+  return <article className="log-decision" aria-label={decision.title} data-decision-state={decision.state}>
     <header className="log-decision-header"><h4>{decision.title}</h4><span className={cn("log-decision-badge", status.className)}><Icon aria-hidden className="size-3.5" />{status.label}</span></header>
     <div className="log-decision-body">
       {decision.state === "loading" ? <div className="log-decision-loading" role="status" aria-label={decision.title}><SkeletonText className="w-4/5 text-body" /><SkeletonText className="w-3/5 text-body" /></div> : <>
@@ -38,14 +87,13 @@ export function LogDecisionBlock({ decision, onAction }: { decision: LogDecision
         {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}
         {decision.field && <div className="log-failed-field"><span>{decision.field.label}</span><strong>{decision.field.value}</strong><span>{decision.field.outcome}</span></div>}
         {decision.caution && <p className="log-caution">{decision.caution}</p>}
-        {decision.comparison && <div className="log-comparison-frame"><table className="log-comparison" aria-label="Expected and observed values"><thead><tr><th scope="col">Field</th><th scope="col">Expected</th><th scope="col">Observed</th></tr></thead><tbody>{decision.comparison.map(row => <tr key={row.label} className={row.expected !== row.observed ? "different" : undefined}><th scope="row">{row.label}</th><td>{row.expected}</td><td>{row.observed}</td></tr>)}</tbody></table></div>}
+        {decision.comparison && <Compare rows={decision.comparison} />}
         {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
-        {inline.map(action => <DecisionForm key={action.id} action={action} disabled={onAction === undefined} onCalendarOpenChange={setCalendarOpen} onSubmit={answer => onAction?.(action, answer)} />)}
         {decision.unavailableCapture && <div className="log-capture-unavailable"><ImageOff aria-hidden className="size-4" />{decision.unavailableCapture}</div>}
       </>}
     </div>
-    {!!(decision.footer || buttons?.length) && <footer className="log-decision-footer"><span>{decision.footer}</span><div className="log-decision-actions">{buttons?.map(action => <Button key={action.id} size="sm" variant={action.primary ? "primary" : "secondary"} disabled={onAction === undefined} onClick={event => { opener.current = event.currentTarget; if (action.input) setActive(action); else onAction?.(action, {}); }}>{action.label}</Button>)}</div></footer>}
-  </article><DialogContent title={active?.label ?? decision.title} description={<span className="sr-only">Run continuation</span>} className="ui-theme-scope font-ui text-ui-primary" onEscapeKeyDown={event => { if (calendarOpen) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><DialogBody>{active && <DecisionForm key={active.id} action={active} onCalendarOpenChange={setCalendarOpen} onSubmit={answer => { onAction?.(active, answer); setActive(undefined); }} />}</DialogBody></DialogContent></Dialog>;
+    {decision.footer && <footer className="log-decision-footer"><span>{decision.footer}</span></footer>}
+  </article>;
 }
 
 export function UcpathFoundTransactions({ attemptLabel, presentation, onDecision }: {

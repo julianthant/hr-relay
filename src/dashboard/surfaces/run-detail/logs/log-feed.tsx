@@ -5,14 +5,14 @@ import { ArrowDownToLine, Check, Copy, Cpu, Eye, GitBranch, Info, Monitor, Mouse
 import { Button, IconButton, SearchInput } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { filterLogSteps, logPlainText, logRowCount, visualLogSteps, type LogEntry, type LogStep } from "./log-feed-model.js";
-import { LogDecisionBlock } from "./log-decision.js";
-import type { LogDecisionAction, LogDecisionAnswer } from "./log-decision-model.js";
+import { LogDecisionBlock, type DecisionAnswerHandler } from "./log-decision.js";
 import { LogScreenshots, RequiredCaptureStatus } from "./log-screenshots.js";
 
-function Entry({ entry, onDecision, timeInStep = false }: { entry: LogEntry; timeInStep?: boolean; onDecision?: (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => void }) {
+function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: LogEntry; timeInStep?: boolean; onDecision?: LogDecisionHandler; onCancelRun?: () => void }) {
+  const block = entry.kind === "decision" ? <LogDecisionBlock decision={entry.decision} onAnswer={onDecision ? (option, answer) => onDecision(entry.id, option, answer) : undefined} onCancel={onCancelRun} /> : undefined;
   if (entry.kind === "decision" && entry.decision.title === "Screenshot" && entry.decision.state === "recorded" && entry.decision.screenshots) return <LogScreenshots screenshots={entry.decision.screenshots} presentation={entry.decision.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />;
-  if (entry.kind === "decision" && timeInStep) return <LogDecisionBlock decision={entry.decision} onAction={onDecision ? (action, answer) => onDecision(entry.id, action, answer) : undefined} />;
-  if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-3"><time className="pt-4 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time><LogDecisionBlock decision={entry.decision} onAction={onDecision ? (action, answer) => onDecision(entry.id, action, answer) : undefined} /></div>;
+  if (block && timeInStep) return block;
+  if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-3"><time className="pt-4 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time>{block}</div>;
   if (entry.kind === "fields") return <div className={cn("overflow-hidden rounded-lg border border-ui-stroke bg-ui-table", entry.title === undefined && entry.result === undefined && "px-3")}>
     {entry.title && <div className="flex items-center gap-2.5 border-b border-ui-stroke px-3 py-3"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-semibold">{entry.title}</h4></div>}
     <dl className={cn("m-0", (entry.title !== undefined || entry.result !== undefined) && "px-3")}>
@@ -46,10 +46,13 @@ function FieldValue({ value }: { value: string }) {
   return <>{displayExtractedDate(value).split(/(\b[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+\b)/gu).map((part, index) => /^[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+$/u.test(part) && part.length < 80 ? <span key={index} className="whitespace-nowrap">{part}</span> : part)}</>;
 }
 
+export type LogDecisionHandler = (id: string, option: Parameters<DecisionAnswerHandler>[0], answer: Parameters<DecisionAnswerHandler>[1]) => void;
+
 /** Shared presentation for the operator stream and the isolated design preview. */
-export function LogFeed({ steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, onDecision, initialStepId, loading = false }: {
+export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, onDecision, initialStepId, loading = false }: {
   steps: readonly LogStep[];
-  onDecision?: (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => void;
+  onDecision?: LogDecisionHandler;
+  onCancelRun?: () => void;
   label?: string;
   embedded?: boolean;
   loading?: boolean;
@@ -132,7 +135,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
             role={entry.kind === "decision" || (step.header === false && index === 0) ? "group" : undefined}
             aria-label={entry.kind === "decision" ? entry.decision.title : step.header === false && index === 0 ? step.title : undefined}
             tabIndex={entry.kind === "decision" || (step.header === false && index === 0) ? -1 : undefined}
-            className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}</div>
+            className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} onCancelRun={onCancelRun} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}</div>
         </div>
         {afterStep?.(step.id)}
       </section>)}

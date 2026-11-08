@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { composeCommandRequest, verifyShellCommandEffect } from "../../../../src/dashboard/app/commands/command-dispatch.js";
-import { parkedWriteLogActions } from "../../../../src/dashboard/state/run-wiring-adapter.js";
 import { ParkedWriteDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { FIXTURE_PARKED_WRITE } from "../../../support/fixtures/dashboard/run-detail/gates-park.js";
@@ -16,13 +15,6 @@ function descriptor(verb: "recheck-write" | "resolve-write-absent") {
 }
 
 describe("parked-write command composition and projection", () => {
-  for (const acceptsTransactionId of [false, true]) it(`projects served choices with acceptsTransactionId=${acceptsTransactionId}`, () => {
-    const actions = parkedWriteLogActions({ ...parked, acceptsTransactionId });
-    assert.deepEqual(actions.map(action => [action.label, action.input?.kind]), acceptsTransactionId
-      ? [["Check again", undefined], ["Check result", "verification"]]
-      : [["Check again", undefined], ["It didn't land", undefined]]);
-    assert.deepEqual(parkedWriteLogActions({ ...parked, actions: [] }), []);
-  });
   for (const [verb, transactionId] of [["recheck-write", undefined], ["recheck-write", " T123456 "], ["resolve-write-absent", undefined]] as const) {
     it(`composes ${verb} with transactionId=${transactionId}`, () => {
       const action = descriptor(verb);
