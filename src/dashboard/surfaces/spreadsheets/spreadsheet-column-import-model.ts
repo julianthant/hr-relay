@@ -63,6 +63,15 @@ export function spreadsheetColumnValueIssues(document: EditableWorkbook): readon
       : [`${sheet.name}, ${row.sourceRow === undefined ? 'current row' : 'row'} ${row.sourceRow ?? spreadsheetHeaderRow(sheet) + index + 1}, column ${columnName(binding.sourceColumn ?? column)}: does not match ${field.label}.`]);
   }) ?? []);
 }
+/** Non-empty rows whose kept Employee ID is blank or unusable; a roster reads those IDs as missing. */
+export function spreadsheetRowsWithoutEid(document: EditableWorkbook): number {
+  return document.sheets.reduce((total, sheet) => {
+    const column = sheet.columnBindings?.findIndex((binding, index) => binding.fieldId === 'eid' && !sheet.hidden.includes(index)) ?? -1;
+    if (column < 0) return total;
+    return total + sheet.rows.slice(spreadsheetHeaderRow(sheet)).filter(row => row.cells.some(cell => cellText(cell).trim())
+      && (!cellText(row.cells[column]).trim() || !spreadsheetValueMatches('eid', cellText(row.cells[column])))).length;
+  }, 0);
+}
 export function selectSpreadsheetColumns(document: EditableWorkbook): EditableWorkbook {
   const errors = spreadsheetColumnErrors(document);
   if (errors.length) throw new Error(`SPREADSHEET_COLUMNS_INVALID: ${errors.join(' ')}`);

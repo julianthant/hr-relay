@@ -3,7 +3,7 @@ import { useViewState } from '../../app/navigation/view-route-model.js';
 import { Banner, Button, Checkbox, ChoicePicker, Dialog, DialogBody, DialogContent, DialogFooter, SearchInput, Select } from '../../ds/ui.js';
 import { columnName } from './spreadsheet-editor-model.js';
 import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
-import { setSpreadsheetColumnField, setSpreadsheetHeaderRow, spreadsheetColumnErrors, spreadsheetColumnValueErrors, spreadsheetColumnValueIssues, spreadsheetHeaderRow } from './spreadsheet-column-import-model.js';
+import { setSpreadsheetColumnField, setSpreadsheetHeaderRow, spreadsheetColumnErrors, spreadsheetColumnValueErrors, spreadsheetColumnValueIssues, spreadsheetHeaderRow, spreadsheetRowsWithoutEid } from './spreadsheet-column-import-model.js';
 import { SPREADSHEET_FIELDS, spreadsheetField } from './spreadsheet-fields-model.js';
 import '../run-start/launch-presentation.css';
 
@@ -23,6 +23,7 @@ export function SpreadsheetColumnImport({ open, document, onOpenChange, onChange
   const visible = matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const errors = useMemo(() => spreadsheetColumnErrors(document), [document]);
   const issues = useMemo(() => spreadsheetColumnValueIssues(document), [document]);
+  const withoutEid = useMemo(() => spreadsheetRowsWithoutEid(document), [document]);
   const selected = document.sheets.reduce((total, entry) => total + entry.width - entry.hidden.length, 0);
   const keptSheets = document.sheets.filter(entry => entry.width > entry.hidden.length).length;
   const updateSheet = (next: EditableSheet) => onChange({ ...document, sheets: document.sheets.map(entry => entry.id === next.id ? next : entry) });
@@ -42,6 +43,7 @@ export function SpreadsheetColumnImport({ open, document, onOpenChange, onChange
         <div className="flex shrink-0 items-center justify-between gap-3 text-caption text-ui-muted"><span>{sheet.width - sheet.hidden.length} of {sheet.width} columns selected · {Math.max(0, sheet.rows.length - spreadsheetHeaderRow(sheet)).toLocaleString()} rows</span><div className="flex items-center gap-2"><Button variant="ghost" size="sm" disabled={!page} onClick={() => setPage(page - 1)} aria-label="Previous import columns">Previous</Button><span>{matches.length ? page * PAGE_SIZE + 1 : 0}–{Math.min(matches.length, (page + 1) * PAGE_SIZE)} of {matches.length}</span><Button variant="ghost" size="sm" disabled={(page + 1) * PAGE_SIZE >= matches.length} onClick={() => setPage(page + 1)} aria-label="Next import columns">Next</Button></div></div>
       </>}
       {issues.length > 0 && <p role="status" className="shrink-0 text-caption text-ui-danger">{issues[0]}{issues.length > 1 ? ` ${issues.length - 1} more to review.` : ''} Values will be kept. Correct execution fields before running a workflow.</p>}
+      {withoutEid > 0 && <p role="status" className="shrink-0 text-caption text-ui-muted">{withoutEid.toLocaleString()} {withoutEid === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.</p>}
       {errors.length > 0 && <p role="status" className="shrink-0 text-caption text-ui-danger">{errors[0]}{errors.length > 1 ? ` ${errors.length - 1} more to review.` : ''}</p>}
     </DialogBody><DialogFooter meta={`${selected} ${selected === 1 ? "column" : "columns"} selected across ${keptSheets} ${keptSheets === 1 ? "sheet" : "sheets"}`}><Button variant="muted" onClick={onCancel}>Cancel import</Button><Button variant="primary" disabled={errors.length > 0} onClick={onConfirm}>Import selected columns</Button></DialogFooter>
   </DialogContent></Dialog>;
