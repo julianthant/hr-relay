@@ -10,6 +10,8 @@ import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adap
 import { plural } from "../shared/status/format.js";
 import type { EditableWorkbook } from "../../../rules/spreadsheets/workbook-io.js";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
+import { SheetsDesignPage } from "../spreadsheets/design/sheets-design-page.js";
+import { sheetsDesign } from "../spreadsheets/design/sheets-design-mode.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
@@ -312,7 +314,7 @@ export function SettingsPage({
           <Notice tone="warning" title="No settings sections" />
         )}
         {isDataSection && dataContent}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (sheetsDesign() ? <SheetsDesignPage design={sheetsDesign()!} /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
