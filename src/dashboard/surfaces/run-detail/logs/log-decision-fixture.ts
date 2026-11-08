@@ -31,7 +31,78 @@ export const logDecisionExamples = [
         "served": {
           "type": "write-parked",
           "title": "Did the termination save in UCPath?",
-          "context": "Submit did not confirm. Check Smart HR Transactions in UCPath.",
+          "context": "Submit did not confirm. Check Smart HR Transactions for DEMO-1042.",
+          "choiceLabel": "Answer",
+          "options": [
+            {
+              "id": "check-again",
+              "label": "Check again",
+              "hint": "Reads Smart HR Transactions again; files nothing.",
+              "send": {
+                "via": "action",
+                "actionKey": "check-parked-write"
+              }
+            },
+            {
+              "id": "saved",
+              "label": "Saved in UCPath",
+              "hint": "Relay checks this number, then the run continues.",
+              "send": {
+                "via": "action",
+                "actionKey": "recheck-write"
+              },
+              "recommended": true,
+              "input": {
+                "kind": "text",
+                "label": "Transaction number",
+                "placeholder": "T00000000",
+                "pattern": "^T\\d+$"
+              }
+            },
+            {
+              "id": "not-saved",
+              "label": "Not saved, file it again",
+              "hint": "Relay files the termination once more.",
+              "send": {
+                "via": "action",
+                "actionKey": "resolve-write-absent"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "parked-read-back",
+    "label": "Saved, read-back failed",
+    "category": "Write parked",
+    "entry": {
+      "id": "parked-read-back",
+      "kind": "decision",
+      "time": "09:32:39",
+      "decision": {
+        "title": "Termination saved, but the read-back failed",
+        "state": "parked",
+        "message": "Clicked Save and Submit, but no confirmation returned.",
+        "caution": "The result is unknown. Check UCPath before continuing.",
+        "screenshots": [
+          {
+            "src": "/logs-preview/ucpath-form.svg",
+            "alt": "Form after Submit",
+            "time": "09:32:38",
+            "width": 850,
+            "height": 1050,
+            "label": "Form after Submit",
+            "kind": "form",
+            "system": "UCPath"
+          }
+        ],
+        "footer": "Alex Morgan · DEMO-1042",
+        "served": {
+          "type": "write-unknown",
+          "title": "Termination saved, but the read-back failed",
+          "context": "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions for DEMO-1042.",
           "choiceLabel": "Answer",
           "options": [
             {
@@ -89,7 +160,7 @@ export const logDecisionExamples = [
         "served": {
           "type": "write-unknown",
           "title": "Did the separation document save in Kuali?",
-          "context": "Save did not confirm. Check the separation document in Kuali.",
+          "context": "Save did not confirm. Check document SIM-48216 in Kuali.",
           "choiceLabel": "Answer",
           "options": [
             {

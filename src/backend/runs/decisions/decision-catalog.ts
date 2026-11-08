@@ -37,13 +37,18 @@ const parkedWrite: readonly DeclaredOption[] = [
 ];
 
 /** How a parked write of each registered write task is asked about: the record, its system, what Relay clicked, where to check and what Not saved does next. */
-export type ParkedWriteRecord = Readonly<{ record: string; system: string; act: "Submit" | "Save" | "Import"; check: string; again: string; againHint: string }>;
+export type ParkedWriteRecord = Readonly<{ record: string; system: string; act: "Submit" | "Save" | "Import"; check: string; again: string; againHint: string;
+  /** The display-safe identifier in the write's natural key (an EID or document number, never a date) and where the operator checks it. */
+  id?: Readonly<{ segment: number; prefix?: string; where: (id: string) => string }> }>;
 export const PARKED_WRITE_RECORDS: Readonly<Record<string, ParkedWriteRecord>> = Object.freeze({
-  "ucpath/create-termination": { record: "termination", system: "UCPath", act: "Submit", check: "Smart HR Transactions", again: "file it again", againHint: "Relay files the termination once more." },
-  "ucpath/delete-pending-terminations": { record: "pending termination removal", system: "UCPath", act: "Save", check: "Smart HR Transactions", again: "remove them again", againHint: "Relay removes the pending terminations once more." },
+  "ucpath/create-termination": { record: "termination", system: "UCPath", act: "Submit", check: "Smart HR Transactions", again: "file it again", againHint: "Relay files the termination once more.",
+    id: { segment: 1, where: id => `Smart HR Transactions for ${id}` } },
+  "ucpath/delete-pending-terminations": { record: "pending termination removal", system: "UCPath", act: "Save", check: "Smart HR Transactions", again: "remove them again", againHint: "Relay removes the pending terminations once more.",
+    id: { segment: 1, where: id => `Smart HR Transactions for ${id}` } },
   "ucpath/create-hire": { record: "hire", system: "UCPath", act: "Submit", check: "Smart HR Transactions", again: "file it again", againHint: "Relay files the hire once more." },
   "ucpath/save-emergency-contact": { record: "emergency contact", system: "UCPath", act: "Save", check: "the employee's emergency contacts", again: "save it again", againHint: "Relay saves the emergency contact once more." },
-  "kuali/save-separation-finalization": { record: "separation document", system: "Kuali", act: "Save", check: "the separation document", again: "save it again", againHint: "Relay saves the document once more." },
+  "kuali/save-separation-finalization": { record: "separation document", system: "Kuali", act: "Save", check: "the separation document", again: "save it again", againHint: "Relay saves the document once more.",
+    id: { segment: 0, prefix: "kuali:", where: id => `document ${id} in Kuali` } },
   "i9/create-profile": { record: "I-9 profile", system: "I-9", act: "Save", check: "the employee's I-9 profile", again: "save it again", againHint: "Relay saves the profile once more." },
   "i9/create-remote-record": { record: "remote I-9 record", system: "I-9", act: "Submit", check: "the employee's I-9 records", again: "submit it again", againHint: "Relay submits the record once more." },
   "onbase/upload-import": { record: "document", system: "OnBase", act: "Import", check: "the employee's documents", again: "import it again", againHint: "Relay imports the document once more." },
@@ -97,3 +102,13 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
   refused: { title: "Command refused", recommended: [], projected: false, options: [] },
   cancelling: { title: "Cancelling this run", recommended: [], options: [] },
 });
+
+/** The declared identifier of a parked write, read from its natural key; a declared key that lacks it is corrupt. */
+export function parkedWriteRecordId(taskId: string, idempotencyKey: string): string | undefined {
+  const declared = PARKED_WRITE_RECORDS[taskId]?.id;
+  if (declared === undefined) return undefined;
+  const segment = idempotencyKey.split("|")[declared.segment];
+  const id = declared.prefix === undefined ? segment : segment?.startsWith(declared.prefix) === true ? segment.slice(declared.prefix.length) : undefined;
+  if (id === undefined || id === "") throw new Error(`PARKED_WRITE_KEY_IDENTIFIER_MISSING: ${taskId}`);
+  return id;
+}

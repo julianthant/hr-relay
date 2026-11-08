@@ -44,7 +44,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await chooseScenario( "parked");
       const parked = surface.getByRole("group", { name: "Did the termination save in UCPath?", exact: true });
       await parked.scrollIntoViewIfNeeded();
-      await expect(parked).toContainText("Submit did not confirm. Check Smart HR Transactions in UCPath.");
+      await expect(parked).toContainText("Submit did not confirm. Check Smart HR Transactions for DEMO-1042.");
       const confirm = parked.getByRole("button", { name: "Confirm", exact: true });
       const transaction = parked.getByRole("textbox", { name: /^Transaction number/u });
       await expect(confirm).toBeDisabled();

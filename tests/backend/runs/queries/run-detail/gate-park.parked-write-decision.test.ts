@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/actions.js";
 import { parkedWriteDecision } from "../../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { parkedWriteRecordId } from "../../../../../src/backend/runs/decisions/decision-catalog.js";
 
 const writeTarget = { writeIntentId: "11111111-1111-4111-8111-111111111111", intentGeneration: 1, writeAttemptId: "22222222-2222-4222-8222-222222222222",
   bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
@@ -48,9 +49,24 @@ describe("parkedWriteDecision", () => {
     assert.deepEqual(decision.options[0]?.confirm, confirmOf("check-parked-write"));
   });
 
-  it("says the read-back failed when the park came after the click", () => {
-    assert.equal(parkedWriteDecision({ ...TERMINATION, readBack: true }, [RECHECK, ABSENT]).context,
-      "Relay could not read Smart HR Transactions after the submit. Check it in UCPath.");
+  it("names the record by its display-safe identifier, like the frames", () => {
+    assert.equal(parkedWriteDecision({ ...TERMINATION, recordId: "10431187" }, [RECHECK, ABSENT]).context, "Submit did not confirm. Check Smart HR Transactions for 10431187.");
+    assert.equal(parkedWriteDecision({ ...KUALI, recordId: "SIM-48216" }, [RECHECK, ABSENT]).context, "Save did not confirm. Check document SIM-48216 in Kuali.");
+  });
+
+  it("says the system accepted the write but its status could not be read when the saved-effect read failed", () => {
+    const decision = parkedWriteDecision({ ...TERMINATION, readBack: true, recordId: "10431187" }, [RECHECK, ABSENT]);
+    assert.equal(decision.title, "Termination saved, but the read-back failed");
+    assert.equal(decision.context, "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions for 10431187.");
+    assert.deepEqual(decision.options.map(({ id }) => id), ["saved", "not-saved"], "the same answers; the copy changes, not the commands");
+  });
+
+  it("reads the identifier only from the declared key segment, never a date, and refuses a declared key without it", () => {
+    assert.equal(parkedWriteRecordId("ucpath/create-termination", "ucpath:termination|10431187|2031-04-25"), "10431187");
+    assert.equal(parkedWriteRecordId("kuali/save-separation-finalization", "kuali:SIM-48216|finalization|T00042871"), "SIM-48216");
+    assert.equal(parkedWriteRecordId("ucpath/save-emergency-contact", "ucpath:emergency-contact|" + "a".repeat(64)), undefined);
+    assert.equal(parkedWriteRecordId("ucpath/terminate-person", "anything"), undefined);
+    assert.throws(() => parkedWriteRecordId("kuali/save-separation-finalization", "other:SIM-48216|finalization"), /PARKED_WRITE_KEY_IDENTIFIER_MISSING/u);
   });
 
   it("never settles from the answer alone, marks a parked write failed, or retries it", () => {

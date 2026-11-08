@@ -290,7 +290,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.parkedRun}"]`).click();
       const defaultParked = surface.getByRole("group", { name: "Did the termination save in UCPath?", exact: true });
       await expect(defaultParked).toBeInViewport();
-      await expect(defaultParked).toContainText("Submit did not confirm. Check Smart HR Transactions in UCPath.");
+      await expect(defaultParked).toContainText(/Submit did not confirm\. Check Smart HR Transactions for DEMO-\w{4}\./u);
       await expect(defaultParked.getByRole("button", { name: /^Saved in UCPath/u })).toBeVisible();
       await expect(defaultParked.getByRole("textbox", { name: /^Transaction number/u })).toBeVisible();
       await expect(surface.getByRole("heading", { name: "EID 10777012", exact: true })).toBeVisible();
