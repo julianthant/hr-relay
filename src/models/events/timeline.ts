@@ -246,6 +246,8 @@ export interface TimelineRepository {
   page(input: z.input<typeof TimelinePageRequestSchema>): readonly TimelineEventRecord[];
   highWaterMark(): number;
   confirmedActionHeads(input: Readonly<{ workerStreamIds: readonly string[]; before: number }>): readonly TimelineEventRecord[];
+  /** The newest `run.claimed` span naming this worker. */
+  lastWorkerClaim(workerId: string): TimelineEventRecord | undefined;
   pruneBefore(retentionDate: string): number;
 }
 
