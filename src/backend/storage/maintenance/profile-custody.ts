@@ -86,6 +86,11 @@ export function assertCredentialCopyResourcesClosed(facts: ReturnType<AuthorityD
     || facts.runs.some(run => run.lifecycle.state !== "terminal")) throw new Error("credential-maintenance-custody-unproved");
 }
 
+/** Logout keeps paused runs for the next sign-in; everything else closes as for a credential copy. */
+export function assertLogoutResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
+  assertCredentialCopyResourcesClosed({ ...facts, runs: facts.runs.filter(run => run.pause?.state !== "paused") });
+}
+
 export function assertShutdownResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
   assertStoppedProfileResourcesClosed(facts);
   const unresolved = facts.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present");

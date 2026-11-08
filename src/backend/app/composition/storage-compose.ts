@@ -571,7 +571,7 @@ function profileResourceCustodyHolds(before: ReturnType<AuthorityDatabase["readP
   if (before.leases.some(lease => !before.slots.some(slot => slot.workerId === lease.workerId))) throw new Error("profile-worker-membership-unavailable");
   return { reservations, leases, browsers: before.browsers.filter(browser => browser.health !== "closed").length,
     controls: before.controls.filter(control => control.auditedAt === undefined).length,
-    runs: before.runs.filter(run => run.lifecycle.state !== "terminal").length,
+    runs: before.runs.filter(run => run.lifecycle.state !== "terminal" && run.pause?.state !== "paused").length,
     writes: before.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").length,
     duo: before.duoLeases.filter(lease => lease.state === "held").length, artifacts: before.pendingArtifacts.length, children: 0, commands: 0 };
 }
@@ -694,6 +694,11 @@ export function composeProfileActivity(input: Readonly<{
             const current = input.lifecycle.read(run.envelope.runId);
             if (current.state !== 'present') throw new Error('profile-run-custody-unavailable');
             if (current.run.lifecycle.state === 'terminal' || current.run.lifecycle.state === 'parked-write') continue;
+            // Logout cancels only claimed work; a run no worker holds stays paused for the next sign-in.
+            if (runClaim(current.run) === undefined) {
+              if (current.run.pause?.state !== 'paused') requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: current.run.envelope.runId, expectedVersion: current.run.version }));
+              continue;
+            }
             requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
               expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString(),
                 errorSummary: `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}` } }));

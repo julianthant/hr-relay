@@ -390,17 +390,19 @@ Confirmed application quit and whole-runtime shutdown first hold new-work admiss
 pause on every nonterminal run except parked UNKNOWN writes. Active callbacks, including an in-flight
 submit, settle before claim release and worker drainage. Queued, gate and delegation holds retain
 their exact state. Shutdown closure proves stopped resources and unchanged browser and credential
-membership while retaining paused runs and their exact parked write intents; credential-copy and
-logout closure still require settled writes and terminal runs. Settings saves cannot advance
+membership while retaining paused runs and their exact parked write intents. A failed profile
+activation closes the same way. Credential-copy closure requires settled writes and terminal runs;
+logout closure requires settled writes and accepts paused runs. Settings saves cannot advance
 the runtime generation while update or shutdown admission is held. Startup recovery classifies an
 interrupted read as failed with structured failure evidence; an unfinished submit remains parked
 UNKNOWN and is never automatically retried.
 
 Logout holds new-run admission and drains workers, command activity and account resources before
-publishing the logout operation or revoking the profile epoch. Worker cleanup and lease settlement
-retain their admitted generation throughout that drain. Revocation requires the completed
-controller-owned proof of the exact epoch and native custody snapshot; changed or unproved custody
-and UNKNOWN writes refuse logout. The hold stays bound to its runtime generation, and fresh dashboard
+publishing the logout operation or revoking the profile epoch. The drain cancels claimed runs with
+Relay's logout reason and pauses every run no worker holds, keeping it for the next sign-in. Worker
+cleanup and lease settlement retain their admitted generation throughout that drain. Revocation
+requires the completed controller-owned proof of the exact epoch and native custody snapshot;
+changed or unproved custody and UNKNOWN writes refuse logout. The hold stays bound to its runtime generation, and fresh dashboard
 activation advances that generation before admitting new work.
 
 The application lifecycle query reports `installer-unavailable` without an update host and defers

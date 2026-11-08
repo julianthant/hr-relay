@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { composeProfileRuntime, composeProfileActivity, composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { requireLifecycleApplied, RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { CommandResultSchema, WorkerBrowserCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { admitWorkerPoolRoster, admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -27,7 +27,9 @@ import { systemClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { scaledMs } from "../../../support/time-scale.js";
-import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 async function fixture() {
   const f = await createBoundProfileFixture();
@@ -92,17 +94,55 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
   } finally { settle?.(); await f.cleanup(); }
 });
 
-it("records that the logout drain, not the operator, cancelled a live run", async () => {
+function enqueueQueuedRun(f: Awaited<ReturnType<typeof fixture>>) {
+  const runtime = f.context.database.authority.runtimeConfig.get(); assert.ok(runtime);
+  f.context.database.authority.runs.enqueue(RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+    configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint } }));
+  return runtime;
+}
+
+async function drainLogout(f: Awaited<ReturnType<typeof fixture>>) {
+  const activity = composeProfileActivity(f.input), profileId = f.admission.profileBinding.profileId;
+  activity.requestCancellation(profileId); await activity.awaitCancellation();
+  assert.equal(activity.hasUnquiescedWork(profileId), false);
+  const run = f.context.database.authority.runs.get(QUEUED_RUN.envelope.runId); assert.ok(run);
+  return run;
+}
+
+it("pauses a never-claimed queued run on logout instead of cancelling it", async () => {
   const f = await fixture();
   try {
-    const runtime = f.context.database.authority.runtimeConfig.get(); assert.ok(runtime);
-    f.context.database.authority.runs.enqueue(RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
-      configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint } }));
-    const activity = composeProfileActivity(f.input), profileId = f.admission.profileBinding.profileId;
-    activity.requestCancellation(profileId); await activity.awaitCancellation();
-    const lifecycle = f.context.database.authority.runs.get(QUEUED_RUN.envelope.runId)?.lifecycle;
-    assert.ok(lifecycle?.state === "terminal");
-    assert.deepEqual([lifecycle.outcome, lifecycle.errorSummary], ["cancelled", `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}`]);
+    enqueueQueuedRun(f);
+    const run = await drainLogout(f);
+    assert.equal(run.lifecycle.state, "queued"); assert.equal(run.pause?.state, "paused");
+  } finally { await f.cleanup(); }
+});
+
+it("leaves an already paused run as it was on logout", async () => {
+  const f = await fixture();
+  try {
+    enqueueQueuedRun(f);
+    const paused = requireLifecycleApplied(f.input.lifecycle.pause({ commandId: randomUUID(), runId: QUEUED_RUN.envelope.runId, expectedVersion: QUEUED_RUN.version }));
+    assert.deepEqual(await drainLogout(f), paused);
+  } finally { await f.cleanup(); }
+});
+
+it("records that the logout drain, not the operator, cancelled a claimed run", async () => {
+  const f = await fixture();
+  try {
+    const runtime = enqueueQueuedRun(f);
+    const { workerId, workerLifetime } = testAdmittedWorker(f.context.database, f.input.clock,
+      { path: join(f.admission.stateRoot, "state.db"), workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: [] });
+    const claimed = requireLifecycleApplied(f.input.lifecycle.claimNext({ commandId: randomUUID(), workflow: WORKFLOW_ID, workerId, workerLifetime,
+      runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }));
+    const activity = composeProfileActivity(f.input);
+    activity.requestCancellation(f.admission.profileBinding.profileId); await activity.awaitCancellation();
+    const requested = f.context.database.authority.runs.get(QUEUED_RUN.envelope.runId); assert.ok(requested);
+    assert.deepEqual([requested.lifecycle.state, requested.cancelRequested], ["claimed", true]);
+    const settled = requireLifecycleApplied(f.input.lifecycle.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: QUEUED_RUN.envelope.runId,
+      expectedVersion: requested.version, claim: { workerId, claimGeneration: claimed.claimGeneration }, endedAt: f.input.clock.now().toISOString() }, personLookupDescriptor));
+    assert.ok(settled.lifecycle.state === "terminal");
+    assert.deepEqual([settled.lifecycle.outcome, settled.lifecycle.errorSummary], ["cancelled", `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}`]);
   } finally { await f.cleanup(); }
 });
 
