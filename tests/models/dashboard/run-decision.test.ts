@@ -6,7 +6,7 @@ const option = (id: string, actionKey = id) => ({ id, label: id, hint: `${id} hi
 
 describe("RunDecisionWireSchema", () => {
   it("accepts a served decision and rejects duplicate ids, duplicate action keys and two recommendations", () => {
-    assert.ok(RunDecisionWireSchema.safeParse({ type: "paused", title: "Paused", options: [option("resume"), option("cancel-run")] }).success);
+    assert.ok(RunDecisionWireSchema.safeParse({ type: "paused", title: "Paused", options: [option("resume"), { ...option("cancel-run"), send: { via: "row-action" as const, actionKey: "cancel-run" } }] }).success);
     assert.ok(!RunDecisionWireSchema.safeParse({ type: "paused", title: "Paused", options: [option("resume"), option("resume", "other")] }).success);
     assert.ok(!RunDecisionWireSchema.safeParse({ type: "paused", title: "Paused", options: [option("a", "k"), option("b", "k")] }).success);
     assert.ok(!RunDecisionWireSchema.safeParse({ type: "paused", title: "Paused", options: [{ ...option("a"), recommended: true }, { ...option("b"), recommended: true }] }).success);
