@@ -19,7 +19,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-it.each(["normal", "refused", "uncertain"] as const)("keeps add progress and success in toasts while preserving %s recovery", async outcome => {
+it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, success and refusal in toasts while preserving %s recovery", async outcome => {
   vi.useFakeTimers();
   window.history.replaceState(null, "", `/?sessionsPreview=empty${outcome === "normal" ? "" : `&workerCommandPreview=${outcome}`}`);
   const host = document.createElement("div"); document.body.append(host);
@@ -46,8 +46,14 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress and suc
     await act(async () => render());
     assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1, "rerender does not repeat confirmed feedback");
   } else {
-    assert.match(panel.querySelector('[role="alert"]')?.textContent ?? "", outcome === "refused" ? /Worker control was refused/ : /Response unavailable/);
-    assert.equal(document.querySelector('[data-slot="toast-title"]'), null, "settlement dismisses progress");
+    if (outcome === "refused") {
+      assert.equal(panel.querySelector('[role="alert"]')?.textContent, undefined, "a refusal is a toast, not an inline panel");
+      assert.deepEqual([...document.querySelectorAll('[data-slot="toast-title"]')].map(title => title.textContent), ["Couldn't add workers"]);
+      assert.match(document.querySelector('[data-slot="toast-description"]')?.textContent ?? "", /Worker control was refused/);
+    } else {
+      assert.match(panel.querySelector('[role="alert"]')?.textContent ?? "", /Response unavailable/);
+      assert.equal(document.querySelector('[data-slot="toast-title"]'), null, "settlement dismisses progress");
+    }
     assert.equal(panel.querySelectorAll("article").length, 0);
     assert.equal(trigger.disabled, outcome === "uncertain");
     if (outcome === "uncertain") {
