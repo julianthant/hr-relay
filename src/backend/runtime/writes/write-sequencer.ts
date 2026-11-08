@@ -15,7 +15,7 @@ import { runMandatorySavedVerification, completeProtectedWrite } from "./mandato
 
 import { z } from "zod";
 import { TaskError } from "../../../workflow-kit/errors.js";
-import type { AnyTask, BrowserDriver, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
+import type { AnyTask, BrowserDriver, TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
@@ -95,8 +95,6 @@ import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-schedule
 import type { SpanEmitter } from "../../logs/span-emitter.js";
 import { ExecutorSpanEventSchema } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
-import { withBrowserActionBinding } from "../../systems/browser-shared/action-notes.js";
-import type { BrowserActionBinder } from "../../systems/browser-shared/action-notes.js";
 import { WriteParkedError } from "../execution/run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "../execution/run-executor.js";
 
@@ -519,8 +517,6 @@ export async function executeIdempotencyProbe(
     screenshotOwner?: Readonly<{ nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
     onTaskSignal?: (signal: AbortSignal) => void;
-    actionBinderForInput?: (taskId: string, parsedInput: unknown) => BrowserActionBinder;
-    confirmedForInput?: (taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
   }>,
 ): Promise<z.output<ReturnType<typeof probeVerdictSchema>>> {
   const { commitContract } = input;
@@ -555,12 +551,10 @@ export async function executeIdempotencyProbe(
     const invocation = beginBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
       input.onTaskSignal?.(innerSignal);
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
-      const confirmed = input.confirmedForInput?.(probeRef.taskId, probeInput);
-      return withBrowserActionBinding(input.actionBinderForInput?.(probeRef.taskId, probeInput), () => run({
+      return run({
         input: probeInput,
-        ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver,
-          ...(confirmed === undefined ? {} : { confirmed }) },
-      }));
+        ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver },
+      });
     }, input.onRecord === undefined ? undefined : (batch) => input.onRecord?.(probeRef.taskId, batch));
     deps.retainCallback?.(invocation.settlement);
     const { raw: output } = await invocation.bounded;
@@ -851,8 +845,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     signal: AbortSignal,
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
     context?: WriteSequencerContext,
-    role?: "prepare" | "verify",
-    parsedInput?: unknown,
     bufferedLogs?: BufferedCommitLog[],
   ) => ({ ...taskCtx(taskId, signal, recordData, bufferedLogs === undefined ? context === undefined ? deps.log : {
     debug(message, fields) { try { deps.log.debug(message, fields); } catch { reportDiagnosticFailure(context); } },
@@ -862,8 +854,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     debug(message, fields) { bufferedLogs.push({ level: "debug", message, ...(fields === undefined ? {} : { fields }) }); },
     info(message, fields) { bufferedLogs.push({ level: "info", message, ...(fields === undefined ? {} : { fields }) }); },
     warn(message, fields) { bufferedLogs.push({ level: "warn", message, ...(fields === undefined ? {} : { fields }) }); },
-  }), ...(context !== undefined && role !== undefined && context.confirmedForRole !== undefined
-    ? { confirmed: context.confirmedForRole(role, taskId, parsedInput) } : {}) });
+  }) });
 
   function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
     return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}`;
@@ -1133,8 +1124,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         signal: context.signal,
         screenshotOwner: { nodeId: String(context.node.id), attempt: context.run.envelope.attempt, log: context.captureLog ?? deps.log },
         onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
-        actionBinderForInput: context.operationReadBinder === undefined ? undefined : (taskId, parsedInput) => context.operationReadBinder!("probe", taskId, parsedInput),
-        confirmedForInput: context.confirmedForRole === undefined ? undefined : (taskId, parsedInput) => context.confirmedForRole!("probe", taskId, parsedInput),
       });
       emitTaskSpan(context, "probe", "span.ended", "done");
       return verdict;
@@ -1494,10 +1483,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         input.context.signal,
         (innerSignal, recordData) => {
           const run = RunnableTaskSchema.parse(verifyTask.impl.run);
-          return withBrowserActionBinding(input.context.operationReadBinder?.("verify", completion.verify.taskId, verifyInput), () => run({
+          return run({
             input: verifyInput,
-            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData, input.context, "verify", verifyInput), driver: input.driver },
-          }));
+            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData, input.context), driver: input.driver },
+          });
         },
       );
       await input.captureScreenshot();
@@ -1981,11 +1970,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             context.signal,
             (innerSignal, recordData) => {
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-              return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
+              return runImpl({
                 input: prepareInput,
-                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver,
+                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context), driver,
                   captureScreenshot: () => captureScreenshot("step") },
-              }));
+              });
             },
           );
           await captureScreenshot("step");
@@ -2132,10 +2121,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           context.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
-            return withBrowserActionBinding(context.operationActionBinders?.commit, () => runImpl({
+            return runImpl({
               input: commitInput,
-              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context, undefined, undefined, bufferedCommitLogs), driver, mutation: capability },
-            }));
+              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context, bufferedCommitLogs), driver, mutation: capability },
+            });
           },
           (batch) => bufferedCommitObservations.push(batch),
         );
@@ -2550,11 +2539,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           context.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-            return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
+            return runImpl({
               input: prepareInput,
-              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver,
+              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context), driver,
                 captureScreenshot: () => captureScreenshot() },
-            }));
+            });
           },
         );
         prepareOutput = prepareContract.output.parse(raw);

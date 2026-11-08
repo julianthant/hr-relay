@@ -156,10 +156,6 @@ not force a reconnect or discard another row's patch.
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
 exclusive startup; workers do not reclaim each other's runs or leases.
-`runWorkerLoop` creates one confirmed-action publisher with a fresh stream id and capacity 256.
-It assigns sequence numbers within that incarnation. On exit it closes the publisher before
-browser teardown and warns about pending events. Publication health does not settle a run or an
-external write.
 
 An uncertain browser launch throws `WorkerLaunchUncertainError` with a strict report containing
 `state: "launch-uncertain"`, `custody: "held"`, worker and workflow identity. It retains root and
@@ -394,18 +390,23 @@ Confirmed application quit and whole-runtime shutdown first hold new-work admiss
 pause on every nonterminal run except parked UNKNOWN writes. Active callbacks, including an in-flight
 submit, settle before claim release and worker drainage. Queued, gate and delegation holds retain
 their exact state. Shutdown closure proves stopped resources and unchanged browser and credential
-membership while retaining paused runs and their exact parked write intents; credential-copy and
-logout closure still require settled writes and terminal runs. Settings saves cannot advance
+membership while retaining paused runs and their exact parked write intents. A failed profile
+activation closes the same way. Credential-copy closure requires settled writes and terminal runs;
+logout closure requires settled writes and accepts paused runs. Settings saves cannot advance
 the runtime generation while update or shutdown admission is held. Startup recovery classifies an
 interrupted read as failed with structured failure evidence; an unfinished submit remains parked
 UNKNOWN and is never automatically retried.
 
 Logout holds new-run admission and drains workers, command activity and account resources before
-publishing the logout operation or revoking the profile epoch. Worker cleanup and lease settlement
-retain their admitted generation throughout that drain. Revocation requires the completed
-controller-owned proof of the exact epoch and native custody snapshot; changed or unproved custody
-and UNKNOWN writes refuse logout. The hold stays bound to its runtime generation, and fresh dashboard
-activation advances that generation before admitting new work.
+publishing the logout operation or revoking the profile epoch. The drain cancels a claimed run that
+stands alone (no parent, no live children) with Relay's logout reason. It pauses every other live
+run, including claimed members of an operation or delegation, so never-claimed work and run graphs
+resume after the next sign-in; each worker settles its paused claim at a step boundary before it
+exits, as on quit. Worker cleanup and lease settlement retain their admitted
+generation throughout that drain. Revocation requires the completed controller-owned proof of the
+exact epoch and native custody snapshot; changed or unproved custody and UNKNOWN writes refuse
+logout. The hold stays bound to its runtime generation, and fresh dashboard activation advances
+that generation before admitting new work.
 
 The application lifecycle query reports `installer-unavailable` without an update host and defers
 updates while run, worker, browser, write, Duo, control or artifact owners remain. The tested idle

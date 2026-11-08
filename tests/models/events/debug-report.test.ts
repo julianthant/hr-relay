@@ -28,6 +28,7 @@ describe("metadata-only failure reports", () => {
   it("keeps request values out of diagnostic routes", () => {
     assert.equal(diagnosticRequestRoute("/api/v1/runs/PRIVATE_NAME/ocr?eid=PRIVATE_EID#token=PRIVATE_TOKEN"), "/api/v1/runs");
     assert.equal(diagnosticRequestRoute("/api/v1/PRIVATE_NAME/PRIVATE_EID"), "/api/v1");
+    assert.equal(diagnosticRequestRoute("/api/v1/dashboard?day=2026-11-07"), "/api/v1/dashboard");
   });
   it("records failed bulk children by command identity and warns when remote revocation is unconfirmed", () => {
     const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

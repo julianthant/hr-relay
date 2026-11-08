@@ -222,7 +222,7 @@ describe("separations — the identity-gate wire", () => {
         expectedVersion: number;
         options: readonly { eid: string; chosenFrom: string }[];
         packet: { plan: { state: string } };
-        actions: readonly { command: string }[];
+        actions: readonly { key: string; command: string }[];
       };
     };
     assert.equal(payload.state, "available", JSON.stringify(payload));
@@ -253,8 +253,11 @@ describe("separations — the identity-gate wire", () => {
     assert.equal(payload.value.approvalShape, "one-click");
 
     assert.deepEqual(
-      payload.value.actions.map(({ command }) => command),
-      ["resolve-gate"],
+      payload.value.actions.map(({ key, command }) => ({ key, command })),
+      [
+        { key: "resolve-gate-approved", command: "resolve-gate" },
+        { key: "resolve-gate-rejected", command: "resolve-gate" },
+      ],
     );
     const command = CommandRequestSchema.parse({
       commandId: uuidOf(31),

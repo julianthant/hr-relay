@@ -3,7 +3,6 @@ import type { RunRecordRefusal } from "../../../models/config/authority.js";
 import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, type RelatedRunChange, type RunRecordService } from "./run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../../models/run/envelope.js";
@@ -97,11 +96,6 @@ export function fanOutQueuedRuns(
   origin: string,
 ): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[]; runs: readonly RunRecord[] }> {
   if (envelope.relaunch !== undefined) refuse("archive relaunch is retired", { reason: "invalid-state" });
-  const operationDisplaySnapshot = freezeWorkflowOperationDisplaySnapshot({
-    workflowId: descriptor.id,
-    definitionFingerprint: descriptor.contractFingerprint,
-    display: descriptor.operationDisplay,
-  });
   const runs: RunRecord[] = [];
   const activeConfig = repositories.runtimeConfig.get();
   if (activeConfig === undefined) throw new Error("fan-out has no active runtime config");
@@ -157,8 +151,6 @@ export function fanOutQueuedRuns(
       commandId: lifecycleCommandId("operator-create", { commandId: envelope.commandId, entry: runs.length }),
       code: descriptor.code, matchKey: entry.matchKey, workflow: envelope.workflow,
       descriptorVersion: envelope.descriptorVersion, contractFingerprint: envelope.contractFingerprint,
-      operationDisplayCapability: operationDisplaySnapshot === undefined ? "legacy" : "complete",
-      operationDisplaySnapshot,
       requestedInstance: envelope.requestedInstance, resolvedInstance: envelope.resolvedInstance,
       configFingerprint: envelope.configFingerprint, configSnapshotId: envelope.configSnapshotId,
       shape: envelope.shape, priority: envelope.priority, dryRun: envelope.dryRun, recovery: envelope.recovery,

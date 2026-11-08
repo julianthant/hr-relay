@@ -724,7 +724,8 @@ command replay, refuses divergent replay, and caps the command namespace at 256 
 eviction. Its last-completed report cache separately retains at most 256 selections with oldest
 entry eviction. Dashboard report evidence expires after 60 seconds or a config change.
 `storage doctor` is a read-only storage inspection; it does not repair authority or substitute an
-empty inventory. Protected presence comes from the exact constructor-owned profile store through a passive fixed-name/boolean observer. It authenticates the complete current envelope, key and external erasure head across both observations and refuses missing, pending or repair-needed authority without rewriting bytes. It never creates a credential store or an empty baseline for inspection. [Execution and sessions](execution-and-sessions.md) owns workflow admission and
+empty inventory. Run from the CLI, it inspects each ready person's store in turn and `--json` prints
+`{ profiles: [{ profileId, report }] }`; the Settings storage section reads the selected person's report directly. Protected presence comes from the exact constructor-owned profile store through a passive fixed-name/boolean observer. It authenticates the complete current envelope, key and external erasure head across both observations and refuses missing, pending or repair-needed authority without rewriting bytes. It never creates a credential store or an empty baseline for inspection. [Execution and sessions](execution-and-sessions.md) owns workflow admission and
 worker readiness details.
 `backup-service.ts` removes only its owned read-only inspection companions and refuses nonempty WAL; live database companions are never cleanup targets.
 `storage-doctor.ts` reconciles exact run/root, attempt, path, and terminal identities in one inspection; malformed authority withholds absence classifications and never selects a substitute database or row.

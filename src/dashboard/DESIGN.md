@@ -90,6 +90,12 @@ Settings owns its rail and guarded back arrow. Analytics and Explorer mount insi
 the last item is passive text. Wizard Back changes stages, while dismissal closes the layer.
 `DsBodyScope` supplies a shared content width and body rhythm. Tables hold dense records, grids
 hold aligned peer facts, and short chips carry facts that tolerate truncation.
+The workflow rail is narrow (`clamp(176px, 25vw - 128px, 232px)`); the Queue keeps its width and the Logs panel takes the rest.
+Each rail row shows one number, its runs running now, as a green pill with a live dot left of the name,
+hidden at 0 and read out as the row's description ("2 running").
+The sidebar header and the login and sign-up headers share one Baton lockup: the 24 px accent symbol, then "Relay" at 23 px medium. Larger sign-up headers scale that pair together. `favicon.svg` and the desktop icon sources come from `shell/app-logo.ts`.
+
+Waiting, parked and failed runs sit under Needs you. Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same served name: Enter or blur saves, Escape cancels, and an empty name restores the default name (the PDF or run name).
 
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
@@ -105,10 +111,9 @@ Settings navigation uses the workflow rail's row height, spacing, padding, and h
 Storage's Clear run history row uses the existing destructive dialog with Cancel focused first. Active runs disable it with a visible reason; uncertain results offer a result-only Check clear result for the original action. Not recorded requires a new destructive confirmation. The Run picker hides parent-only previews; Explorer keeps them available for inspection.
 Assistant proposals use a card with a tinted title row: the workflow, the served plan title (Name and Employee ID rows appear only when the proposal serves them), the mode, then Cancel and Confirm. Plan ids, fingerprints and stop-point text stay in logs. Confirmed and cancelled proposals collapse to a resolved line; unknown outcomes keep the disabled card.
 The assistant is a floating, draggable bottom-right panel: tinted header (history, new chat, close), flat replies, filled operator bubbles with name-only attachment pills, a rounded composer and a quiet status strip above it. The strip shows the served account reason with its action (Sign in, Open Settings or Open Preflight) and never blocks the dashboard or the composer. Replies show only the answer, with no sources or failure codes. Test assistant lives in Settings › Preflight, and its result clears on account change or after 15 minutes. Served model and effort labels use the selected person’s preference. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
-Browser captures stay inline. A verified before/after pair sits under its declared submit action,
-with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
+Browser captures stay inline as their own screenshot rows, with equal cards and captions below. Before- and after-submit captures each keep their boundary caption.
 
-Warnings and failures are toasts (`Notice`, or `useToasts`): a title and at most one short line, with no code, outcome or explanatory paragraph. A one-off result (an action failed or was refused) dismisses itself. A state the operator must act on (unavailable storage, unread settings, a pending check) is `sticky`, carries one action button, and shows again whenever its surface mounts while the state still holds. These stay inline: field validation beside its input, anything inside a dialog or drawer (toasts are inert while one is open; the Start run dialog uses `Banner`/`Refusal`), confirmations that need two choices, empty states, and the run log failure card.
+Warnings and failures are toasts (`Notice`, or `useToasts`): a title and at most one short line, with no code, outcome or explanatory paragraph. A one-off result (an action failed or was refused) dismisses itself. A state the operator must act on (unavailable storage, unread settings, a pending check) is `sticky`, stays until closed, and shows again whenever its surface mounts while the state still holds. A toast only notifies: a title, an optional one-line detail and a close X, never a button. It names where to act in plain words ("Run it again in Settings > Preflight."); the control lives on that surface. These stay inline: field validation beside its input, anything inside a dialog or drawer (toasts are inert while one is open; the Start run dialog uses `Banner`/`Refusal`), confirmations that need two choices, empty states, and the run log failure card.
 Required browser slots without an observed session read “Not opened”; observed health failures stay “Unavailable”.
 
 ## Run logs
@@ -145,6 +150,8 @@ status fill changes without changing the information's position.
 - Use defined tokens for color, size, radius, depth, and duration; verify any runtime custom property has an actual writer.
 - Keep the theme root above Tooltip and Toast providers so their fragment siblings inherit tokens.
 - Reserve the toast viewport's bottom inset for the Sessions bar; panel notices belong to their panel's coordinate space.
+- The whole Sessions bar opens and closes the sessions panel: one real button (chevron, people icon, "Sessions", then one quiet summary line "2 running · 1 starting · 1 idle", only the running count green like the rail's running pill) fills the bar up to the icon group and carries `aria-expanded`; the counts are text, not controls. The icon group (Add workers, Settings, Log out) sits outside that button and never toggles. Hover tints the whole toggling area and not the icon group; icon controls are 32px targets with their own hover, press is a darker tint, and nothing moves, scales or glows; colour transitions last at most 120 ms and stop with reduced motion.
+- Every worker card in the strip has one height and the same sections: header (workflow, person or "No run assigned", status dot and word), browser sessions (up to four rows, then chips; takes the spare height), step (title, node count, node bar, one note line) and footer (time left; Pause or Resume and Stop on live cards, Remove on idle cards, a labelled secondary Retry on failed and stopped cards). Settled cards keep their last values: Closed sessions and the frozen step. Red appears once per card: the status word and step segment of a crashed worker, or the "This step failed." note on a running one. A deliberate stop shows "You stopped this worker." or "Relay shut down." in normal text with nothing red. Pausing and Stopping after this item are an amber note line. Missing served data (run timeline, browser requirements) is never explained on the card.
 - Let a segmented frame own its height and make segments fill it; give free space to the control group rather than multiple `ml-auto` siblings.
 - Use `CardBase` with a growing body for aligned card bottoms and `CompareGrid` for peer records that share row tracks.
 - Put facts shared by every row on the group heading; show per-row departures next to the affected value.
@@ -184,7 +191,7 @@ status fill changes without changing the information's position.
 - Preserve complete accessible names, copy, search, and selection when clipping paint or deferring offscreen layout.
 - Do not duplicate a visible reason in a tooltip that makes assistive technology announce it twice.
 - Use live regions for changes, not every standing fact rendered on mount.
-- Keep focus rings on interactive controls; programmatic takeover focus does not draw an extra default browser ring.
+- Keyboard focus fills the control with one light tint (`--hub-focus-fill`, one step stronger than hover) and ink (`--hub-focus-ink`) on every control, in both themes; pointer focus draws nothing, and programmatic takeover focus draws no extra default browser ring.
 
 Read [PARITY.md](PARITY.md) before judging a visual difference and
 [the wiring contract](../../docs/reference/frontend-backend-integration.md) before replacing a producer.

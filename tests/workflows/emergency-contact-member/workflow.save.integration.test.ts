@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach,it } from "vitest";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
-import { createConfirmedActionPublisher } from "../../../src/backend/logs/confirmed-action-publisher.js";
 import { readApprovedOcrRecordTask } from "../../../src/backend/processing/ocr/tasks/read-approved-record.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
@@ -130,9 +129,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
     operator: "local-operator", log: h.deps.log });
   const taskNotes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
-  const publisher = createConfirmedActionPublisher({ workerId: "fixture-worker-1", streamId: randomUUID(), clock, capacity: 256,
-    append: event => { const authority = database.authority.runs.get(event.action.runId); assert.ok(authority); taskNotes.emitConfirmedAction(event, authority); } });
-  const execution = canonicalChildExecution({ ...h.deps, taskNotes, confirmedActionPublisher: publisher, writeSequencer: sequencer, providers: {
+  const execution = canonicalChildExecution({ ...h.deps, taskNotes, writeSequencer: sequencer, providers: {
     configSnapshots: database.authority.configSnapshots, idFactory: { next: () => randomUUID() }, adapters: {
       "ocr.approved-snapshot": { capability: "ocr.approved-snapshot", async invoke(_request, options) {
         providerCalls++;

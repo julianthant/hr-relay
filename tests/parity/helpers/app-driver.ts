@@ -1,5 +1,5 @@
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export interface AppRoute {
   readonly day: string;
@@ -96,4 +96,11 @@ export async function moveAssistantLauncherAboveFooter(page: Page): Promise<void
   await launcher.focus();
   for (let step = 0; step < 4; step++) await launcher.press("Alt+ArrowUp");
   await expect.poll(async () => (await launcher.boundingBox())?.y).toBe(before.y - 64);
+}
+
+/** A rail row shows its running count as a pill (empty slot at 0) and describes it as "N running". */
+export async function expectRunningPill(row: Locator, running: number): Promise<void> {
+  await expect(row.locator(".workflow-rail-running")).toHaveText(running > 0 ? String(running) : "");
+  if (running > 0) await expect(row).toHaveAttribute("aria-description", `${running} running`);
+  else await expect(row).not.toHaveAttribute("aria-description");
 }

@@ -261,18 +261,6 @@ describe("redaction surface scan — the declaration audit", () => {
       ["wire/run-detail-section", "payload.rows[].displayFields[].label", "repository-authored"],
       ["wire/workflow-explorer", "workflows[].timeline[].operatorFields[].example", "repository-authored"],
       ["wire/workflow-explorer", "workflows[].definitionPreview.groups[].description", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.choices[].key", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.choices[].label", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.choices[].options[][]", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.completion", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.sources", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.sourceVariants[].sources", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.sourceVariants[].when", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].nodes[]", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].parts[]", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].stopWhen", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].title", "repository-authored"],
-      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].when", "repository-authored"],
     ] as const;
     for (const [surface, path, origin] of reviewed) {
       const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path);
@@ -384,16 +372,6 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/activity-population-export|csv",
       "durable/failure-record|debug.stack",
       "durable/failure-record|debug.causes[]",
-      "wire/operation-source|structure.definition.invocations[].label",
-      "wire/run-detail-section|payload.confirmedActions[].action.value.consumed.value",
-      "wire/run-detail-section|payload.confirmedActions[].durableProof.checkpointNodeId",
-      "wire/run-detail-section|payload.confirmedActions[].durableProof.writeIntentId",
-      "wire/run-detail-section|payload.confirmedActions[].eventId",
-      "wire/run-detail-section|payload.confirmedActions[].proof.verifier.value.consumed.value",
-      "wire/run-detail-section|payload.confirmedActions[].reason",
-      "wire/run-detail-section|payload.confirmedActions[].stepOccurrence",
-      "wire/run-detail-section|payload.confirmedActions[].workerStreamId",
-      "wire/run-detail-section|payload.operationStructure.definition.invocations[].label",
       "wire/run-detail-section|payload.value.display.observation",
       "wire/run-detail-section|payload.value.display.title",
       "wire/dashboard-day|notifications[].context.subject",
@@ -403,7 +381,6 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].key",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].label",
       "wire/workflow-explorer|workflows[].definitionPreview.reason",
-      "wire/workflow-explorer|workflows[].operationStructure.definition.invocations[].label",
     ];
     assert.equal(new Set(currentLeaves).size, currentLeaves.length);
     for (const identity of currentLeaves) {

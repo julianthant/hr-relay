@@ -271,17 +271,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     ]
   },
   {
-    "path": "src/backend/logs/confirmed-action-publisher.ts",
-    "reason": "A failing health observer sets diagnosticFailure and keeps the publisher's own state; queue acceptance is still never reported as durable delivery.",
-    "statements": [
-      {
-        "kind": "try",
-        "sha256": "e1c1ca8f727e55aefc871a199f0b574059b295321e27d3421729cc8a2e9816e4",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
     "path": "src/dashboard/app/navigation/view-route-model.ts",
     "reason": "Oversized or invalid view-route JSON returns null; the caller treats the route as unreadable instead of rebuilding shell navigation from a default.",
     "statements": [

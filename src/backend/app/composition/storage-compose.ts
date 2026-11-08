@@ -6,6 +6,7 @@ import type { CredentialStore } from "../../../models/config/credential-store.js
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
+import { runClaim } from "../../../models/run/record.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
@@ -29,7 +30,8 @@ import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
 import { randomUUID } from "node:crypto";
-import { existsSync,readdirSync } from "node:fs";
+import { existsSync,readdirSync,readFileSync } from "node:fs";
+import { appendEmergencyFault } from "../../logs/emergency-faults.js";
 import { join,resolve } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
@@ -107,6 +109,28 @@ function causedByUnresolvedWrites(error: unknown): boolean {
     if (cause.message === "authority-upgrade-unresolved-writes") return true;
   }
   return false;
+}
+
+const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
+
+/** Error text can carry input, so only a leading kebab-case token from the cause chain reaches the boot log. */
+function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
+  let reason = "unnamed-cause";
+  for (let cause: unknown = refusal.cause; cause instanceof Error; cause = cause.cause) {
+    const token = /^([a-z0-9]+(?:-[a-z0-9]+)+)(?:[: {]|$)/u.exec(cause.message)?.[1];
+    if (token !== undefined && token.length <= 128) { reason = token; break; }
+  }
+  // The refusal is already held for the person; a boot log that cannot be written must not turn it into a boot failure.
+  try {
+    appendEmergencyFault({ stateRoot, build: buildVersion(), code: refusal.code, error: new Error(reason), now: clock.now(), area, reason });
+  } catch { /* best effort */ }
+}
+
+function logDrainRefusal(stateRoot: string, reason: () => string, clock: Clock): void {
+  try {
+    const token = reason();
+    appendEmergencyFault({ stateRoot, build: buildVersion(), code: "RUNTIME_CUSTODY_UNCERTAIN", error: new Error(token), now: clock.now(), area: "profile-work-drain", reason: token });
+  } catch { /* the drain refusal still reaches the caller */ }
 }
 
 /** One person whose startup inspection, repair, upgrade or recovery was refused; boot continues for the others. */
@@ -222,7 +246,9 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
     await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       const operation = machine.maintenanceOperation(); operation.consume();
       const registry = machine.readProfileRegistry();
-      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved");
+      // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
+      const held = heldPeople.get(lifetime);
+      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
       if (ready.length !== 0) assertMaintenanceCustodyAvailable("backup");
       for (const row of ready) {
         if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", row.profileId))) {
@@ -258,7 +284,10 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
   const held = heldPeopleFor(lifetime);
   const hold = (profileId: string, error: unknown): void => {
     if (machineWideStartupFailure(error)) throw error;
-    if (!held.has(profileId)) held.set(profileId, new RegisteredPersonUpgradeRefusedError(error));
+    if (held.has(profileId)) return;
+    const refusal = new RegisteredPersonUpgradeRefusedError(error);
+    held.set(profileId, refusal);
+    logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), refusal, "profile-startup-upgrade", clock);
   };
   try {
     const profiles = await withStoppedMachineStorage(workspace, lifetime, async machine => {
@@ -518,9 +547,22 @@ export class RuntimeCustodyUncertainError extends AggregateError {
 }
 bindErrorOrigin(RuntimeCustodyUncertainError, "runtime-custody-uncertain");
 
+type CustodyHolds = Record<"runs" | "writes" | "duo" | "artifacts" | "children" | "commands", number>;
+/** Counts, never values, of each custody kind that holds a person's closure open; any count above zero is busy. */
+function profileResourceCustodyHolds(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>): CustodyHolds {
+  return { runs: before.runs.filter(run => run.lifecycle.state !== "terminal" && run.pause?.state !== "paused").length,
+    writes: before.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").length,
+    duo: before.duoLeases.filter(lease => lease.state === "held").length, artifacts: before.pendingArtifacts.length, children: 0, commands: 0 };
+}
+
 function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>): boolean {
-  return before.runs.some(run => run.lifecycle.state !== "terminal") || before.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present")
-    || before.duoLeases.some(lease => lease.state === "held") || before.pendingArtifacts.length > 0;
+  return Object.values(profileResourceCustodyHolds(before)).some(count => count > 0);
+}
+
+/** A boot-log reason token naming only the kinds that hold the closure open, e.g. busy-runs-1-artifacts-2. */
+export function custodyHoldsReason(holds: CustodyHolds): string {
+  const named = Object.entries(holds).filter(([, count]) => count > 0).map(([kind, count]) => `${kind}-${String(count)}`);
+  return (named.length === 0 ? "busy-none" : `busy-${named.join("-")}`).slice(0, 128).replace(/-+$/u, "");
 }
 
 /** The profile runtime's worker pool, or none before the dashboard composition builds it (then no worker process exists). */
@@ -544,19 +586,25 @@ export function composeProfileActivity(input: Readonly<{
   const observe = (includeCommands = true) => {
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
-    let busy = profileResourceCustodyBusy(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
+    const holds = profileResourceCustodyHolds(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
       writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before);
-    if (!("state" in input.supervisor) && input.supervisor.snapshot().some(member => member.state !== "exited")) busy = true;
+    if (!("state" in input.supervisor)) holds.children = input.supervisor.snapshot().filter(member => member.state !== "exited").length;
     const after = input.database.readProfileResourceCustody();
     if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-resource-custody-changed");
-    if (includeCommands) for (const activity of input.commandActivities ?? []) if (activity.hasUnquiescedWork(profileId)) busy = true;
-    return busy;
+    if (includeCommands) for (const activity of input.commandActivities ?? []) if (activity.hasUnquiescedWork(profileId)) holds.commands++;
+    return holds;
   };
+  const busy = (includeCommands = true) => Object.values(observe(includeCommands)).some(count => count > 0);
   return Object.freeze({
+    /** The same holds hasUnquiescedWork tests, under the shutdown filter once shutdown is requested. */
+    busyReason(requestedProfileId: string): string {
+      if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
+      return drain?.state === "pending" ? "busy-drain-pending" : custodyHoldsReason(observe());
+    },
     hasUnquiescedWork(requestedProfileId: string): boolean {
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
       if (drain?.state === "failed") throw drain.error;
-      return drain?.state === "pending" || observe();
+      return drain?.state === "pending" || busy();
     },
     requestShutdown(requestedProfileId: string): void {
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
@@ -581,7 +629,7 @@ export function composeProfileActivity(input: Readonly<{
         });
         // Each child finishes or parks its run and its exit settles it; stopAll owns every wait.
         if ("state" in input.supervisor) {
-          if (observe(false)) throw new Error("profile-resource-closure-unproved");
+          if (busy(false)) throw new Error("profile-resource-closure-unproved");
         } else requireStoppedPool(await input.supervisor.stopAll("shutdown"));
       })());
       const completion = Promise.allSettled(pending).then(results => {
@@ -606,14 +654,21 @@ export function composeProfileActivity(input: Readonly<{
             const current = input.lifecycle.read(run.envelope.runId);
             if (current.state !== 'present') throw new Error('profile-run-custody-unavailable');
             if (current.run.lifecycle.state === 'terminal' || current.run.lifecycle.state === 'parked-write') continue;
-            requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
-              expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString() } }));
+            if (current.run.cancelRequested === true) continue;
+            // Logout cancels a claimed run that stands alone; any other run pauses, so never-claimed work and run graphs resume after the next sign-in.
+            const standalone = current.run.envelope.parent === undefined
+              && input.database.authority.runs.listChildren(current.run.envelope.runId).every(child => child.lifecycle.state === 'terminal');
+            if (runClaim(current.run) !== undefined && standalone) requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
+              expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString(),
+                errorSummary: `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}` } }));
+            else if (current.run.pause === undefined) requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: current.run.envelope.runId, expectedVersion: current.run.version }));
           } catch (error) { failures.push(error); }
         }
       } catch (error) { failures.push(error); }
+      // Paused claims settle at their worker's next step boundary before it exits; stopAll owns every wait, as on shutdown.
       try {
         pending.push('state' in input.supervisor
-          ? (observe(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
+          ? (busy(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
           : input.supervisor.stopAll('logout').then(requireStoppedPool));
       } catch (error) { failures.push(error); }
       const completion = Promise.allSettled(pending).then(results => {
@@ -1077,7 +1132,11 @@ export function composeProfileRuntime(input: Readonly<{
       if (entry?.context !== undefined && entry.state !== "closed") prepareClosure(profileId);
       if (entry?.preparation?.state === "pending") await entry.preparation.completion;
       if (entry?.preparation?.state === "failed") throw entry.preparation.error;
-      if (entry?.preparation?.state !== "ready") throw new Error("profile-work-drain-unproved");
+      if (entry?.preparation?.state !== "ready") {
+        const activity = entry?.activity;
+        if (activity !== undefined) logDrainRefusal(machine.stateRoot, () => activity.busyReason(profileId), input.clock);
+        throw new Error("profile-work-drain-unproved");
+      }
     },
     async close(purpose: "logout" | "shutdown" = closePurpose): Promise<void> {
       beginClose(purpose);
@@ -1437,21 +1496,31 @@ export async function composeStorageCommand(
     return { output: STORAGE_USAGE, exitCode: subcommand === undefined ? 1 : 2 };
   }
   const json = rest.includes("--json");
-  const stateRoot = admission.stateRoot;
-  const report = await doctorAuthorityStorage(admission, {
-    stateRootTrustAnchor: resolve(stateRoot, ".."),
-    stateRoot,
-    authorityPath: join(stateRoot, "state.db"),
-    backupDirectory: join(stateRoot, "backups", "authority"),
+  const doctor = (owner: RuntimeAdmission, store: CredentialStore | undefined) => doctorAuthorityStorage(owner, {
+    stateRootTrustAnchor: resolve(owner.stateRoot, ".."),
+    stateRoot: owner.stateRoot,
+    authorityPath: join(owner.stateRoot, "state.db"),
+    backupDirectory: join(owner.stateRoot, "backups", "authority"),
     busyTimeoutMs: 5000,
-  }, clock, credentials);
-  const healthy = report.authority.state === "healthy"
+  }, clock, store);
+  const healthy = (report: StorageDoctorReport) => report.authority.state === "healthy"
     && report.recovery.state === "clear"
     && report.spanAuthority.state === "reconciled"
     && report.protectedSettings.state === "available";
+  if (!admission.isInstallation()) {
+    const report = await doctor(admission, credentials);
+    return { output: json ? JSON.stringify(report, null, 2) : formatReport(report), exitCode: healthy(report) ? 0 : 1 };
+  }
+  // Each person keeps their own store under the machine root, so the machine admission checks every ready person in turn.
+  const profiles: Array<{ profileId: string; report: StorageDoctorReport }> = [];
+  for (const { profileId } of admission.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready")) {
+    const owner = admission.admitProfile(profileId);
+    try { profiles.push({ profileId, report: await doctor(owner, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot })) }); }
+    finally { owner.release(); }
+  }
   return {
-    output: json ? JSON.stringify(report, null, 2) : formatReport(report),
-    exitCode: healthy ? 0 : 1,
+    output: json ? JSON.stringify({ profiles }, null, 2) : profiles.map(({ profileId, report }) => `person ${profileId}\n${formatReport(report)}`).join("\n\n"),
+    exitCode: profiles.every(({ report }) => healthy(report)) ? 0 : 1,
   };
 }
 

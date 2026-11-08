@@ -65,7 +65,7 @@ import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
-import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection } from "../surfaces/queue/queue-model.js";
+import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection, queueRenameDraft } from "../surfaces/queue/queue-model.js";
 import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import {
   attentionQueueKeys,
@@ -113,6 +113,7 @@ composeCommandRequest, verifyShellCommandEffect,
 type CommandAction,
 } from "./commands/command-dispatch.js";
 import { settleCommandResult } from "./commands/command-result.js";
+import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast } from "./commands/worker-startup-toast.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
 } from "./dashboard-app-model.js";
@@ -485,7 +486,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       dismiss(warningId);
       unknownWarnings.current.delete(outcome.commandId);
     }
-    if (outcome.kind === "confirmed") return;
+    if (outcome.kind === "confirmed") {
+      const request = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
+      const warning = request === undefined ? undefined : appliedWorkerStartupToast(request, outcome.reply);
+      if (warning !== undefined) toast(warning);
+      return;
+    }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
     const toastId = toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
@@ -674,6 +680,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             return { ...child, detail: verified !== undefined ? verified.feedback.text : formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text };
           }) };
           setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response });
+          const bulkWarning = unconfirmedBulkWorkerToast(request, reply, outcome.kind === "confirmed");
+          if (bulkWarning !== undefined) toast(bulkWarning);
         }
         if (outcome.kind !== "confirmed") {
           if (!("targets" in request) && (request.family === "run" || request.family === "gate") && outcome.reply !== undefined && "state" in outcome.reply && "commandId" in outcome.reply) {
@@ -689,7 +697,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           }
           return;
         }
-        toast({ tone: "success", title: label, description: "Command confirmed." });
+        const warning = appliedWorkerStartupToast(request, outcome.reply);
+        if (warning === undefined || "targets" in request) toast({ tone: "success", title: label, description: "Command confirmed." });
         if (!("targets" in request) && request.family === "run" && request.type === "delete" && outcome.reply !== undefined && "affectedTargets" in outcome.reply) {
           const removed = new Set<string>(outcome.reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []));
           if (routeRef.current.run !== undefined && removed.has(routeRef.current.run)) setRoute({ ...routeRef.current, run: undefined, section: undefined });
@@ -836,10 +845,30 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
+  const renameQueueTitle = useCallback((runId: string, name: string) => {
+    const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === runId);
+    if (surface === undefined) {
+      toast({
+        tone: "danger",
+        title: "Nothing was sent",
+        description: `run ${runId} is not on the day this panel is showing, so there is no row to `
+          + "name. Open the day it ran on and rename it there.",
+      });
+      return;
+    }
+    const next = queueRenameDraft(surface, name);
+    if (next === undefined) return;
+    const action = surface.actions.find((entry): entry is CommandAction => entry.kind === "command" && entry.command === "rename");
+    if (action === undefined) {
+      toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text });
+      return;
+    }
+    dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
+  }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
     openWells, selectMode, bulkIds, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells, onBulkIds,
-    setBatchGrouping, exitQueueSelection, runQueueAction,
+    setBatchGrouping, exitQueueSelection, runQueueAction, renameTitle: renameQueueTitle,
   });
 
   const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, nowIso).map(entry => [entry.key, entry])), [surfaces, sort, nowIso]);
@@ -963,8 +992,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
   const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
-  const openInbox = useCallback(() => setRoute(current => ({ ...current, view: { ...current.view, notifications: true } })), [setRoute]);
-  const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast, openInbox });
+  const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
   const notifications = useWorkspaceNotifications(notificationScenario, {
     day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: mockRuns,
@@ -1119,10 +1147,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         <StorageNotice
           key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
-          onOpenSettings={openSettings}
         />
         {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">Each run finishes its current step first. A submit in progress is never interrupted.</Banner>}
-        {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held." action={{ label: "Check connection", onAction: lifecycle.refresh }} />}
+        {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held. Reload Relay to check the connection." />}
+        {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
+          .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
 
         <div className="flex min-h-0 flex-1">
 

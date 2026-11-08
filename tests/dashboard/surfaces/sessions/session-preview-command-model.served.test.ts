@@ -344,7 +344,8 @@ it.each(["present", "unavailable"] as const)("renders starting browser requireme
       assert(view.workers[0].browsers.every(browser => browser.state === "starting"));
       assert.equal(h.day().workerCards[0].browsers.length, 0, "required slots never mint physical sessions");
     } else {
-      assert.match(article.textContent ?? "", /Launch-time browser requirements are unavailable/);
+      assert.doesNotMatch(article.textContent ?? "", /Launch-time browser requirements are unavailable/);
+      assert.match(article.textContent ?? "", /No browser sessions open/);
       assert.equal(article.querySelectorAll("li").length, 0);
     }
     assert.equal(h.sent.length, 0);
@@ -383,11 +384,11 @@ it("refreshes only observed physical sessions through required presentation slot
       ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] });
     const view = sessionsFromDay(day, catalog, now); assert(view.state === "ready");
     assert.deepEqual(view.workers[0].browsers, []);
-    assert.equal(view.workers[0].problem, state === "failed" ? WORKER_STOP_REASON_LABEL.crashed : undefined);
+    assert.equal(view.workers[0].problem, state === "failed" ? "Worker stopped unexpectedly." : undefined);
   }
 });
 
-it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("shows the served current-run timeline refusal for %s on the mounted active worker", async scenario => {
+it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("keeps the served current-run timeline refusal off the mounted active worker for %s", async scenario => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); const row = h.day().queueSurfaces.find(row => row.workflowId === h.day().workerCards[0].workflowId); assert(row);
   const pipeline = scenario === "empty" ? [] : [{ id: "served-step", label: "Served step", state: scenario === "outside-day" ? "active" : scenario }];
@@ -398,7 +399,8 @@ it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("shows the se
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
     const article = host.querySelector("article"); assert(article);
-    assert(article.textContent?.includes(reason), "the active worker must visibly explain its exact served timeline refusal");
+    assert(!article.textContent?.includes(reason), "the served timeline refusal is a data gap, not card text");
+    assert.equal((sessionsFromDay(h.day(), catalog, now) as Extract<ReturnType<typeof sessionsFromDay>, { state: "ready" }>).workers[0].timelineUnavailable, reason);
     assert.equal(article.querySelector('[role="progressbar"]'), null);
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
@@ -423,7 +425,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
       assert.equal(host.querySelector('[role="progressbar"]'), null);
       if (state === "idle") assert.match(host.textContent ?? "", /Ready for the next run/);
       if (state === "starting") assert.match(host.textContent ?? "", /Preparing worker/);
-      if (state === "failed") assert(host.textContent?.includes(WORKER_STOP_REASON_LABEL.crashed));
+      if (state === "failed") assert(host.textContent?.includes("Worker stopped unexpectedly."));
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -447,9 +449,9 @@ it("distinguishes unopened browser requirements from observed unavailable health
       h.setDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card,
         browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [{ sessionId: uuidOf(9200), system: "crm", openedAt: now, observation }] }] }));
       const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
-      assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "unavailable"], ["UCPATH", "unopened"]]);
+      assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPATH", "unopened"]]);
       await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
-      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), ["CRMUnavailable", "UCPATHNot opened"]);
+      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : "CRMUnavailable", "UCPATHNot opened"]);
       assert.match(host.querySelector("article")?.textContent ?? "", /No run assigned.*Ready for the next run/s);
       assert.equal(h.sent.length, 0);
     }
@@ -479,6 +481,6 @@ it("distinguishes an intentionally stopped worker after restart from a crashed w
       state: "failed", endedAt: now, stopReason, browsers: [] }] }), catalog, now);
     assert.ok(view.state === "ready");
     assert.equal(view.workers[0].state, stopReason === "crashed" ? "failed" : "stopped");
-    assert.equal(view.workers[0].problem, WORKER_STOP_REASON_LABEL[stopReason]);
+    assert.equal(view.workers[0].problem, { operator: "You stopped this worker.", crashed: "Worker stopped unexpectedly." }[stopReason]);
   }
 });

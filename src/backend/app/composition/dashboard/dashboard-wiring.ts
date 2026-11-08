@@ -36,7 +36,7 @@ import { createRunHistoryService } from "../../../runs/commands/run-history-serv
 import { createCommandBrowserManager } from "../../../runtime/browser/command-browser.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { activeSettingsConfig,activeSettingsRuntimeIdentity } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsConfig,activeSettingsRuntimeIdentity, readAdmittedProfileIdentity } from "../../../runtime/settings/settings-runtime.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
@@ -140,7 +140,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     admission,
   });
   await artifactReader.ready;
-  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, stateRoot, projection, workerMembers, artifacts, artifactReader });
+  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, stateRoot, projection, workerMembers, artifacts, artifactReader,
+    operatorName: () => { assertCurrent(); return readAdmittedProfileIdentity(machineAdmission, admission).displayName; } });
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 

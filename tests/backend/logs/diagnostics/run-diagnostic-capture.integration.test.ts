@@ -1,6 +1,5 @@
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { withBrowserActionBinding, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
-import { createDeclaredActionBinder } from "../../../../src/backend/runtime/writes/operation-action-binding.js";
+import { withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
@@ -554,28 +553,23 @@ describe("task screenshot persistence before checkpoint", () => {
   });
 });
 
-it("persists a task screenshot through a complete frozen binder into Logs without operation proof", async () => {
+it("persists a task screenshot into Logs without operation proof", async () => {
   const world = createRunExecutorTestWorld();
   try {
     const harness = await world.executorHarness({ descriptor: world.actionBindingCompiled.descriptor });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, world.actionBindingQueuedRun(clock.now().toISOString()), clock.now().toISOString(), world.ACTION_BINDING_WORKFLOW_ID);
-    const snapshot = claimed.run.envelope.operationDisplaySnapshot;
-    assert.ok(snapshot);
-    const binder = createDeclaredActionBinder({ snapshot, runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt,
-      claimGeneration: claimed.claim.claimGeneration, taskAttempt: 1, nodeId: "search", taskId: SearchPersonOrg.id, contractRole: "task",
-      parsedInput: { kind: "by-eid", emplId: "10873698" }, protectedBindings: [] });
     const { service } = captureService(database);
     const capture = createRunBrowserScreenshotCapture({ service });
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const sessionId = BrowserSessionIdSchema.parse("00000000-0000-4000-8000-000000000003");
     const address = { runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt, traceId: claimed.run.envelope.traceId,
       spanPath: taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("search"), 1, claimed.claim.claimGeneration) };
-    await withBrowserActionNotes(clock, () => withBrowserActionSession(sessionId, () => withBrowserActionBinding(binder, () => capture.capture({
+    await withBrowserActionNotes(clock, () => withBrowserActionSession(sessionId, () => capture.capture({
       runId: claimed.run.envelope.runId, configFingerprint: claimed.run.envelope.configFingerprint, descriptorFingerprint: claimed.run.envelope.contractFingerprint,
       system: "ucpath", trigger: { kind: "task-point", nodeId: "search", attempt: claimed.run.envelope.attempt },
       screenshot: { state: "available", sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 },
-    }))), actions => { for (const action of actions) notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action }, claimed.run); });
+    })), actions => { for (const action of actions) notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action }, claimed.run); });
     const stored = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).filter(row => row.payload.kind === "note");
     assert.equal(stored.length, 1);
     assert.ok(stored[0].payload.kind === "note");

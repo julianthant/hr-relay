@@ -28,7 +28,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
   options?: Readonly<{ poolIndex?: number; workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
-    resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes" | "confirmedActionPublisher"> }>) {
+    resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes"> }>) {
   const { clock } = deps;
   const poolIndex = options?.poolIndex ?? 1;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });

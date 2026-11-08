@@ -141,7 +141,7 @@
       "file": "tests/architecture/workflow-kit/strict-boundary-schemas.test.ts",
       "status": "active",
       "owner": "docs/reference/guards-and-tests.md",
-      "invariant": "Every cataloged external or durable boundary is schema-derived, recursively strict across object/union/lazy members, and rejects nested unknown keys and unsafe type/parser escape hatches. C catalogs strict RunCompletion and explicitly historical receipt schemas; nested unknown-key negative fixtures remain. 3.1.9 A adds recursively strict Explorer import source/receipt fixtures; only the schema-valued in-process reader/repository methods are operational interfaces. admits exactly 27 authoring/compiler and validated snapshot-identity symbols as in-process operational types; same-file injected new interface/type, open schema, any, assertion and malformed parse fallback controls retain source guard strength. The active workflow-operation-display-boundary guard proves the schema-validated durable crossing and compiler provenance. relocated pure events/validation modules into domain: seven exact in-process port/schema-walk types are classified operational, existing Zod-introspection/generic-freezing assertions are allowed only in canonical-input-schema, contract-boundary, proof-shape and schema-path, and only proof-shape may hold Record<string, unknown> for schema introspection. An unlisted new-boundary fixture still refuses the same types, assertions, open Record, any, open schema and parse fallback.",
+      "invariant": "Every cataloged external or durable boundary is schema-derived, recursively strict across object/union/lazy members, and rejects nested unknown keys and unsafe type/parser escape hatches. C catalogs strict RunCompletion and explicitly historical receipt schemas; nested unknown-key negative fixtures remain. 3.1.9 A adds recursively strict Explorer import source/receipt fixtures; only the schema-valued in-process reader/repository methods are operational interfaces. relocated pure events/validation modules into domain: seven exact in-process port/schema-walk types are classified operational, existing Zod-introspection/generic-freezing assertions are allowed only in canonical-input-schema, contract-boundary, proof-shape and schema-path, and only proof-shape may hold Record<string, unknown> for schema introspection. An unlisted new-boundary fixture still refuses the same types, assertions, open Record, any, open schema and parse fallback.",
       "replacementRequired": true
     },
     {
@@ -440,7 +440,7 @@
       "file": "tests/architecture/dashboard/explorer-prose-declared.test.ts",
       "status": "active",
       "owner": "docs/reference/operator-trust.md",
-      "invariant": "\u2014 every REGISTERED workflow serves the descriptor's own `summary` and every node its own `purpose`, asserted over the REAL composition root through `buildWorkflowExplorer`, with each served sentence compared byte-for-byte against the descriptor's declaration so the projection cannot compose one from a label or a contract title. The wire carries an `absent` arm rather than throwing \u2014 the explorer serves every workflow in ONE document, so refusing the whole surface over a missing sentence would take the operator's index of the system down for a piece of prose \u2014 and this guard is what makes that arm unreachable in the product. Three negative controls run through `defineWorkflowDescriptor` itself: a partial node-purpose list, a purpose naming an undeclared node, and a node named twice are each refused by name; a descriptor declaring nothing is accepted, which is the arm a fixture graph legitimately takes. A fixture descriptor is deliberately out of scope \u2014 it is not in the composition root, and prose about a graph nobody runs is prose nobody reads.",
+      "invariant": "\u2014 every REGISTERED workflow serves the descriptor's own `summary` and every node its own `purpose` or its timeline group's `description`, asserted over the REAL composition root through `buildWorkflowExplorer`, with each served sentence compared byte-for-byte against the descriptor's declaration so the projection cannot compose one from a label or a contract title. The wire carries an `absent` arm rather than throwing \u2014 the explorer serves every workflow in ONE document, so refusing the whole surface over a missing sentence would take the operator's index of the system down for a piece of prose \u2014 and this guard is what makes that arm unreachable in the product. Three negative controls run through `defineWorkflowDescriptor` itself: a partial node-purpose list, a purpose naming an undeclared node, and a node named twice are each refused by name; a descriptor declaring nothing is accepted, which is the arm a fixture graph legitimately takes. A fixture descriptor is deliberately out of scope \u2014 it is not in the composition root, and prose about a graph nobody runs is prose nobody reads.",
       "replacementRequired": true
     },
     {
@@ -536,7 +536,7 @@
       "file": "tests/architecture/tooling/dashboard-presentation-inventory.test.ts",
       "status": "active",
       "owner": "src/dashboard/PARITY.md",
-      "invariant": "The frozen set is every .tsx under src/dashboard/surfaces/** and src/dashboard/ds/**, all stylesheet files under src/dashboard/**, every supported token source in src/dashboard/ds/theme/** except its runtime theme.ts, and token-named design-token files in the supported source formats. The current exact set is stored in tests/architecture/tooling/fixtures/dashboard-presentation-file-set.json (107 components, 22 stylesheets, src/dashboard/ds/theme/tokens.ts and motion.ts; 131 files total). Added or removed presentation paths fail with an actionable message requiring operator approval before adding or removing a component and citing the operator-approved HUB-WIRE-1 brief; content edits to frozen paths remain legal.",
+      "invariant": "The frozen set is every .tsx under src/dashboard/surfaces/** and src/dashboard/ds/**, all stylesheet files under src/dashboard/**, every supported token source in src/dashboard/ds/theme/** except its runtime theme.ts, and token-named design-token files in the supported source formats. The current exact set is stored in tests/architecture/tooling/fixtures/dashboard-presentation-file-set.json (108 components, 21 stylesheets, src/dashboard/ds/theme/tokens.ts and motion.ts; 131 files total). Added or removed presentation paths fail with an actionable message requiring operator approval before adding or removing a component and citing the operator-approved HUB-WIRE-1 brief; content edits to frozen paths remain legal.",
       "replacementRequired": true
     },
     {
@@ -612,14 +612,6 @@
       "status": "active",
       "owner": "docs/reference/clock-config-secrets.md",
       "invariant": "Config modules never read process.env. Hostile unrelated noise cannot change config or provenance. Every cataloged refused key blocks dashboard, worker and dry-run composition before value reads or authority, browser or spawn effects. The canonical credential reader is the only config scan exclusion; neighboring environment readers and aliased or computed resolver access remain forbidden.",
-      "replacementRequired": true
-    },
-    {
-      "name": "workflow-operation-display-boundary",
-      "file": "tests/architecture/runs/workflow-operation-display-boundary.test.ts",
-      "status": "active",
-      "owner": "docs/reference/workflow-model.md; docs/reference/guards-and-tests.md",
-      "invariant": "'s in-process operation-display vocabulary retains a browser-safe runtime import closure, with no Node builtin, browser runtime or store/driver implementation reach. Only compiler-produced complete displays freeze into recursively strict serializable snapshots; the real reader validates envelope identity and content digest, refuses missing complete structure, nested unknown keys and executable values, and never substitutes a current descriptor. Legacy capability remains active for definitions without complete declarations. Positive compiler/freeze/read round-trip and Node/store, forged projection, nested unknown/function, wrong identity, missing snapshot and changed payload/digest negative controls prove both boundaries.",
       "replacementRequired": true
     },
     {

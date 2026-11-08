@@ -6,7 +6,6 @@ import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema
   WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, IntakeCommandResultWireSchema,
   WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookOperationSchema, WorkbookOperatorOperationRequestSchema,
   WorkbookOperationReceiptSchema, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
-import { OperationSourceResponseSchema } from "../../../../src/models/dashboard/operation-structure.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
 import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema,
   WorkbookLibraryStateSchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionRecordSchema } from "../../../../src/models/dashboard/workbook-library.js";
@@ -760,7 +759,6 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/rerun-values", egress: "operator-loopback", module: "src/models/dashboard/rerun-values.ts", schema: RerunValuesResponseSchema },
   { id: "wire/rerun-warning", egress: "operator-loopback", module: "src/models/dashboard/rerun-warning.ts", schema: RerunWarningWireSchema },
   { id: "wire/run-detail", egress: "operator-loopback", module: "src/models/dashboard/run-detail.ts", schema: RunDetailWireSchema },
-  { id: "wire/operation-source", egress: "operator-loopback", module: "src/models/dashboard/operation-structure.ts", schema: OperationSourceResponseSchema },
   { id: "wire/run-detail-section", egress: "operator-loopback", module: "src/models/dashboard/run-detail.ts", schema: RunDetailSectionResponseSchema },
   { id: "wire/queue-surface", egress: "operator-loopback", module: "src/models/dashboard/projection.ts", schema: QueueSurfaceWireSchema },
   { id: "wire/dashboard-day", egress: "operator-loopback", module: "src/models/dashboard/projection.ts", schema: DashboardDayWireSchema },
@@ -902,8 +900,34 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.review.roster.rows[].name", origin: "captured-hr-value" },
 ];
 
+/* The answered option's label may be a picked row's name; the actor names are the local profile's own display name. */
+const ANSWER_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ["optionId", "repository-authored"], ["label", "captured-hr-value"], ["actor.name", "operator-authored"], ["actor.onBehalfOf.name", "operator-authored"],
+];
+/** A served run decision's free-text leaves: catalog and workflow-declared text, served keys, and the HR values a pick or prefill shows. */
+const DECISION_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ...["title", "options[].id", "options[].label", "options[].hint", "options[].confirm.body", "options[].confirm.confirmLabel", "options[].confirm.title",
+    "options[].input.label", "options[].input.pattern", "options[].input.placeholder", "options[].input.question",
+    "options[].input.table.columns[].id", "options[].input.table.columns[].label", "options[].input.table.rows[].cells[].columnId",
+    "options[].input.table.typed.label", "options[].input.table.typed.pattern", "options[].input.table.typed.placeholder",
+    "options[].send.absentActionKey", "options[].send.actionKey", "options[].send.arm", "options[].send.family", "options[].send.gateNodeId",
+    "options[].send.presentActionKey", "options[].send.transactionPattern", "options[].send.type"].map(path => [path, "repository-authored"] as const),
+  ...["options[].input.prefill", "options[].input.table.title", "options[].input.table.rows[].cells[].value", "options[].input.table.rows[].id",
+    "options[].input.table.rows[].name", "options[].input.table.rows[].rowId", "options[].input.table.rows[].sheetId"].map(path => [path, "captured-hr-value"] as const),
+  ...ANSWER_LEAF_ORIGINS.map(([path, origin]) => [`answer.${path}`, origin] as const),
+];
+
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+    ...([
+      ["wire/run-detail", "decision."], ["wire/run-detail", "gate.decision."], ["wire/run-detail-section", "payload.decision."],
+      ["wire/run-detail-section", "payload.value.decision."], ["wire/run-detail-section", "payload.referenceChoices[].resolution.decision."],
+      ["wire/run-detail-section", "payload.operations[].resolution.decision."],
+    ] as const).flatMap(([surface, prefix]) => DECISION_LEAF_ORIGINS.map(([path, origin]) => ({ surface, path: `${prefix}${path}`, origin }))),
+    ...([
+      ["wire/run-detail", "gate.answer."], ["wire/run-detail-section", "payload.referenceChoices[].resolution.answer."],
+      ["wire/run-detail-section", "payload.operations[].resolution.answer."],
+    ] as const).flatMap(([surface, prefix]) => ANSWER_LEAF_ORIGINS.map(([path, origin]) => ({ surface, path: `${prefix}${path}`, origin }))),
     ...([
       ["wire/queue-surface", "recordMembers.members[]."],
       ["wire/dashboard-day", "queueSurfaces[].recordMembers.members[]."],
@@ -1021,8 +1045,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   {"surface": "wire/workflow-explorer", "path": "workflows[].timeline[].operatorFields[].example", "origin": "repository-authored"},
   {"surface": "wire/workflow-explorer", "path": "workflows[].timeline[].operatorFields[].label", "origin": "repository-authored"},
   {"surface": "wire/run-detail", "path": "timeline.events[].native.spanPath", "origin": "repository-authored"},
-  {"surface": "wire/run-detail-section", "path": "payload.confirmedActionBindings[].eventId", "origin": "repository-authored"},
-  {"surface": "wire/run-detail-section", "path": "payload.confirmedActionBindings[].native.spanPath", "origin": "repository-authored"},
   {"surface": "wire/run-detail-section", "path": "payload.native.spanPath", "origin": "repository-authored"},
   {"surface": "wire/run-detail-section", "path": "payload.notes[].native.spanPath", "origin": "repository-authored"},
   {"surface": "wire/run-detail-section", "path": "payload.observations[].native.spanPath", "origin": "repository-authored"},
@@ -1200,16 +1222,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/chatgpt-completion", path: "message", origin: "repository-authored" },
   { surface: "wire/chatgpt-cancel", path: "message", origin: "repository-authored" },
   { surface: "wire/chatgpt-signout", path: "message", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.definition.invocations[].label", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].action.value.consumed.value", origin: "captured-hr-value" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].durableProof.checkpointNodeId", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].durableProof.writeIntentId", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].eventId", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].proof.verifier.value.consumed.value", origin: "captured-hr-value" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].reason", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].stepOccurrence", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.confirmedActions[].workerStreamId", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.definition.invocations[].label", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.display.observation", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.display.title", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "notifications[].context.subject", origin: "captured-hr-value" },
@@ -1219,16 +1231,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].definitionPreview.groups[].key", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].definitionPreview.groups[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].definitionPreview.reason", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].operationStructure.definition.invocations[].label", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.observations[].occurrence.value.value", origin: "captured-hr-value" },
-  { surface: "wire/operation-source", path: "structure.definition.invocations[].operation.actions[]", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.definition.invocations[].operation.templates[].join.separator", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.definition.invocations[].operation.templates[].segments[]", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.definition.invocations[].outcomes[].label", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.definition.presentation[]", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.observations[].targetId", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.observations[].occurrence.value.reason", origin: "repository-authored" },
-  { surface: "wire/operation-source", path: "structure.observations[].occurrence.value.value", origin: "captured-hr-value" },
   { surface: "wire/bootstrap", path: "serverClock.zone", origin: "external-text" },
   { surface: "wire/activity-report", path: "volume.timeZone", origin: "external-text" },
   { surface: "wire/activity-report", path: "volume.interval.start", origin: "repository-authored" },
@@ -1300,14 +1302,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/editable-settings", path: "sections[].leaves[].unit", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.rows[].producer.step", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.rows[].spanPath", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.definition.invocations[].operation.actions[]", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.definition.invocations[].operation.templates[].join.separator", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.definition.invocations[].operation.templates[].segments[]", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.definition.invocations[].outcomes[].label", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.definition.presentation[]", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.observations[].targetId", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.observations[].occurrence.value.reason", origin: "repository-authored" },
-  { surface: "wire/run-detail-section", path: "payload.operationStructure.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.records[].label", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.causeChain[].summary", origin: "external-text" },
@@ -1326,12 +1320,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.warnings[].summary", origin: "external-text" },
 
 
-  { surface: "wire/workflow-explorer", path: "workflows[].operationStructure.definition.invocations[].operation.actions[]", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].operationStructure.definition.invocations[].operation.templates[].join.separator", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].operationStructure.definition.invocations[].operation.templates[].segments[]", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].operationStructure.definition.invocations[].outcomes[].label", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].operationStructure.definition.presentation[]", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].operationStructure.reason", origin: "repository-authored" },
 
 
 
@@ -1360,6 +1348,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.actions[].label", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.actions[].navigate.runId", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.options[].displayName", origin: "captured-hr-value" },
+  { surface: "wire/run-detail-section", path: "payload.value.rejectReason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.options[].origin", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.documentNumber", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.documentName", origin: "captured-hr-value" },
@@ -1739,18 +1728,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/storage-doctor-latest", path: "report.service.reason", origin: "repository-authored" },
   { surface: "wire/storage-doctor-latest", path: "report.spanAuthority.problems[].recordKey", origin: "repository-authored" },
 
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.choices[].key", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.choices[].label", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.choices[].options[][]", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.completion", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.sources", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.sourceVariants[].sources", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.sourceVariants[].when", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.steps[].nodes[]", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.steps[].parts[]", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.steps[].stopWhen", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.steps[].title", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].walkthrough.steps[].when", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].actions[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].category", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].edges[].label", origin: "repository-authored" },
@@ -1907,6 +1884,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/dashboard-frontend-owner.ts", state: "no-surface", reason: "Declares a closed launch nonce and probe pathname; no wire or durable free-text schema." },
     { module: "src/models/dashboard/failure-display.ts", state: "audited", reason: "Repository-authored failure title and observation are embedded in run detail and archived failure values." },
     { module: "src/models/dashboard/actions.ts", state: "audited", reason: "the action descriptor and its confirmation copy ride the queue row" },
+    { module: "src/models/dashboard/run-decision.ts", state: "audited", reason: "Served run decisions carry catalog and workflow-declared option text, served action keys, candidate rows (names, last-4 EIDs, workbook cells) and the answer actor's profile name; loopback only." },
     { module: "src/models/dashboard/run-history.ts", state: "audited", reason: "Loopback request/status/result surfaces carry UUID command identity, nonnegative counts and closed states/refusals; no HR text or protected values." },
     { module: "src/models/dashboard/application-lifecycle.ts", state: "audited", reason: "the queue projection embeds only closed application/update states, runtime generation and opaque run/version targets; no free text or HR values" },
     { module: "src/models/dashboard/activity-population.ts", state: "audited", reason: "Loopback Analytics population, selected browse and CSV export retain captured run titles, operator-authored query text and nested report origins under exact snapshot identity." },
@@ -1916,7 +1894,6 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
     { module: "src/models/dashboard/diagnostic-bundle.ts", state: "audited", reason: "Diagnostic-bundle readback carries only verified attachment metadata and capture-time redaction facts" },
     { module: "src/models/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and semantic UI task links" },
-    { module: "src/models/dashboard/operation-structure.ts", state: "audited", reason: "shared Explorer and Logs structure carries only canonical frozen declarations and already-redacted action provenance" },
     { module: "src/models/dashboard/item-attempt-history.ts", state: "audited", reason: "the attempt-history wire serves retained per-item status and dates" },
     { module: "src/models/dashboard/native-path-picker.ts", state: "audited", reason: "the local native picker returns an operator-selected absolute pathname, never file contents" },
     { module: "src/models/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },

@@ -128,7 +128,6 @@ const sharedConfig = defineConfig({
         "src/backend/runtime/scheduling/deadline-scheduler.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/gates/duo-ceremony-gate.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/gates/gate-source-runtime.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/writes/operation-action-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/writes/receipt-derivation-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/gates/repeat-proof.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/storage/sqlite/run-continuation.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

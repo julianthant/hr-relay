@@ -15,7 +15,7 @@ import { ConfigSchema } from "../../../models/config/schema.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,removeExactPath,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
 import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
@@ -1056,6 +1056,7 @@ function captureProfileRegistryWitness(control: string, locator: RuntimeLocator)
   if (membership !== profileRegistryStatWitness(control, locator, directories)) fail("profile-registry-observation-changed");
   return { paths, witness };
 }
+const BROWSER_ROOTS_STAGE = /^\.browser-roots\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u;
 function profileRegistryStatWitness(control: string, locator: RuntimeLocator, paths: readonly string[]): string {
   for (const directory of [control, locator.stateRoot, locator.artifactRoot]) assertNoSymlinkComponents(directory);
   return paths.map(path => {
@@ -1064,7 +1065,7 @@ function profileRegistryStatWitness(control: string, locator: RuntimeLocator, pa
     if (stat !== undefined && path === control) return [stat.dev, stat.ino, stat.mode, stat.uid].join(":");
     if (stat !== undefined && path === join(locator.stateRoot, "machine")) {
       const members = readdirSync(path).filter(name => name !== ".browser-roots.lock"
-        && !/^\.browser-roots\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u.test(name)).sort();
+        && !BROWSER_ROOTS_STAGE.test(name)).sort();
       return [stat.dev, stat.ino, stat.mode, stat.uid, JSON.stringify(members)].join(":");
     }
     return stat === undefined ? "absent" : [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
@@ -1474,6 +1475,15 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         } else readMachineRegistry(control, priorLocator, false);
         const remove = capturePriorPrivateFileLock(machine, name);
         if (remove !== undefined) removals.push(remove);
+      }
+      // Startup custody admits no live browser-registry writer, so its lock is a dead holder's and a remaining stage was never renamed in.
+      if (lstatMaybe(machine) !== undefined) {
+        const rootsLock = capturePriorPrivateFileLock(machine, ".browser-roots.lock");
+        if (rootsLock !== undefined) removals.push(rootsLock);
+        for (const name of readdirSync(machine)) if (BROWSER_ROOTS_STAGE.test(name)) {
+          const path = join(machine, name), stage = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
+          if (stage !== undefined) removals.push(() => { removeExactPath(path, stage.identity, false, "directory-integrity: browser-roots stage changed"); fsyncPath(machine); });
+        }
       }
     }
     for (const remove of removals) { lifetime.assertStartupWorkspace(workspace); remove(); }

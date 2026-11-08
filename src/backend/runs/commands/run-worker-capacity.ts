@@ -1,13 +1,12 @@
 import type { CommandKernel } from "./command-kernel.js";
-import { type CommandRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import { type CapacityRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-type StartRequest = Extract<CommandRequest, { family: "start" }>;
-
 export interface RunWorkerCapacity {
-  ensure(request: StartRequest, result: CommandResult): Promise<void>;
+  workflowOf(request: CapacityRequest): string | undefined;
+  ensure(request: CapacityRequest, result: CommandResult): Promise<void>;
 }
 
 export class RunWorkerStartupError extends Error {
@@ -18,23 +17,28 @@ export function runCapacityCommandId(parentId: string, type: "plan-worker-count"
   return lifecycleCommandId(`run-start-${type}`, [parentId, index]);
 }
 
-/** A start needs one live member of its workflow; a replayed start asks again, which is idempotent by pool state. */
+/** A start, or a run command that queues work, needs one live member of its workflow; a replayed command asks again, which is idempotent by pool state. */
 export function createRunWorkerCapacity(deps: {
   kernel: CommandKernel;
-  authority: Pick<AuthorityRepositories, "startPlans" | "workerPools" | "workerSlots">;
+  authority: Pick<AuthorityRepositories, "runs" | "startPlans" | "workerPools" | "workerSlots">;
   running(workflowId: string): boolean;
   ensureRunning(workflowId: string): Promise<void>;
 }): RunWorkerCapacity {
+  const workflowOf = (request: CapacityRequest) => request.family === "start" ? request.target.workflowId : deps.authority.runs.get(request.target.runId)?.envelope.workflow;
   return Object.freeze({
-    async ensure(request: StartRequest, result: CommandResult): Promise<void> {
+    workflowOf,
+    async ensure(request: CapacityRequest, result: CommandResult): Promise<void> {
       if (result.state !== "applied" && result.state !== "already-applied") return;
       const fail = (detail: string, state: RunWorkerStartupFailure["state"]): never => {
         throw new RunWorkerStartupError({ state, code: "RUN_QUEUED_WORKER_UNAVAILABLE", message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail });
       };
-      const { workflowId } = request.target;
-      const startPlan = deps.authority.startPlans.get(request.target.startPlanId);
-      if (startPlan === undefined || startPlan.workflowId !== workflowId) return fail("start plan is missing or mismatched", "unknown");
-      if (startPlan.shape === "preview" || startPlan.planned.length === 0) return;
+      const workflowId = workflowOf(request);
+      if (workflowId === undefined) return fail("run is missing", "unknown");
+      if (request.family === "start") {
+        const startPlan = deps.authority.startPlans.get(request.target.startPlanId);
+        if (startPlan === undefined || startPlan.workflowId !== workflowId) return fail("start plan is missing or mismatched", "unknown");
+        if (startPlan.shape === "preview" || startPlan.planned.length === 0) return;
+      }
       if (deps.authority.workerSlots.active(workflowId).length === 0) {
         const outcome = await deps.kernel.executeWorkerPool({ commandId: runCapacityCommandId(request.commandId, "plan-worker-count", 1),
           requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source, family: "worker-browser", type: "plan-worker-count",

@@ -57,3 +57,12 @@ it('binds assistant preference receipts to the exact profile and next revision',
     { ...result, affectedTargets: [{ ...target, epoch: 2 }] }, { ...result, commandId: UUID_2 },
   ]) assert.throws(() => checkedCommandResult(request, invalid));
 });
+
+it("accepts a worker startup failure only on commands that ensure a worker", () => {
+  const workerStartup = { state: "refused", code: "RUN_QUEUED_WORKER_UNAVAILABLE", message: "Run queued; no worker could start.", detail: "fixture" };
+  const run = (type: string) => CommandRequestSchema.parse({ commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+    family: "run", type, target: { runId: UUID_2, expectedVersion: 1 } });
+  const result = { state: "applied", commandId: UUID_1, affectedTargets: [{ family: "run", runId: UUID_2 }], workerStartup };
+  for (const type of ["resume", "retry", "recover-run"]) assert.deepEqual(checkedCommandResult(run(type), result), result);
+  for (const type of ["pause", "cancel"]) assert.throws(() => checkedCommandResult(run(type), result));
+});

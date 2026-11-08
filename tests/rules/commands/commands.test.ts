@@ -164,7 +164,8 @@ describe("authority classification and command families", () => {
     assert.notEqual(rename, undefined);
     assert.equal(CommandRequestSchema.safeParse({ ...priority as object, family: "version-archive" }).success, false);
     assert.equal(CommandRequestSchema.safeParse({ ...priority as object, payload: { targetVersion: "2.0.0" } }).success, false);
-    assert.equal(CommandRequestSchema.safeParse({ ...rename as object, payload: { displayName: " Run name" } }).success, false);
+    // The kernel trims the name; an empty result clears it.
+    for (const displayName of [" Run name", ""]) assert.equal(CommandRequestSchema.safeParse({ ...rename as object, payload: { displayName } }).success, true);
     assert.equal(CommandRequestSchema.safeParse({ ...rename as object, payload: { displayName: "Run name", alias: "other" } }).success, false);
     assert.equal(RunDisplayNameSchema.safeParse("e\u0301").success, false);
     assert.equal(RunDisplayNameSchema.safeParse(`valid\u0000name`).success, false);

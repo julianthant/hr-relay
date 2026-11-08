@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
-import { UcpathContactReadOutputSchema,completeExample,contactOperation,scenarios,subject } from "./contact-contract.js";
+import { UcpathContactReadOutputSchema,completeExample,scenarios,subject } from "./contact-contract.js";
 import {
 UCPATH_CONTACT_REFUSAL_CODES,
 UcpathContactWriteTargetSchema
 } from "./emergency-contacts.js";
 export const UcpathStageEmergencyContact = defineTaskContract({
-  id: taskId("ucpath/stage-emergency-contact"), title: "Stage Emergency Contact", effect: "prepare", operation: contactOperation("prepare-contact-plan", "Verify all prepared primary contact changes"),
+  id: taskId("ucpath/stage-emergency-contact"), title: "Stage Emergency Contact", effect: "prepare",
   input: UcpathContactWriteTargetSchema, output: UcpathContactReadOutputSchema.extend({ stagedPageState: z.literal("ucpath.emergency-contact.editor-ready") }),
   errorCodes: UCPATH_CONTACT_REFUSAL_CODES,
   subject: { ...subject, requiredAt: "after-prepare-before-fence" }, scenarios, checkpoint: "in-memory-only",

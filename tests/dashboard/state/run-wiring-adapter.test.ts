@@ -10,12 +10,8 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../s
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { RunDetailWireSchema, NativeRunEventWireSchema, ConfirmedActionBindingWireSchema, IdentityGateDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
-import { ConfirmedActionEventSchema } from "../../../src/models/events/confirmed-action.js";
+import { RunDetailWireSchema, NativeRunEventWireSchema, IdentityGateDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/models/workflow/operation-display-snapshot.js";
-import { plan1Leaf } from "../../support/fixtures/plan1-operation-workflows.js";
-import { OperationActionObservationWireSchema } from "../../../src/models/dashboard/operation-structure.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
@@ -56,20 +52,13 @@ function page(runId = RUN, sequence = 0, cursor?: string) {
   const noteId = sequence === 0 ? NOTE : OTHER;
   const native = nativeOf(runId, sequence + 1);
   const note = { native, noteId, runId, sequence, at: AT, level: "info", message: `Authoritative note ${sequence}` };
-  return NotePageSchema.parse({ runId, rows: [{ kind: "note", native, logId: noteId, sequence, note }], notes: [note], confirmedActions: [], confirmedActionBindings: [],
-    operationStructure: { state: "observed", runId, definition, observations: sequence === 0 ? [{
-      logId: noteId, at: AT, action: "read", targetId: "consume-text", occurrence: { ...action(runId).action, value: { slot: "text", fieldPath: "text", producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } },
-    }] : [] },
+  return NotePageSchema.parse({ runId, rows: [{ kind: "note", native, logId: noteId, sequence, note }], notes: [note],
     nextCursor: cursor === undefined ? { state: "absent", reason: "end-of-page" } : { state: "present", value: cursor } });
 }
 function nativeOf(runId = RUN, order = 1, nodeId = "first") {
   return NativeRunEventWireSchema.parse({ eventId: `10000000-0000-4000-8000-${String(order).padStart(12, "0")}`,
     order, runId: RunIdSchema.parse(runId), attempt: 1, traceId: selection(runId).row.traceId,
     nodeId, spanPath: "first/span" });
-}
-function confirmationEvidence(owner: ReturnType<typeof page>, events: readonly ReturnType<typeof action>[]) {
-  return { confirmedActions: [...events], confirmedActionBindings: events.map(event => ConfirmedActionBindingWireSchema.parse({ eventId: event.eventId,
-    logId: NOTE, native: owner.rows?.[0].native })) };
 }
 function identityFixtures(...args: Parameters<typeof createIdentityCeremonyFixtures>) {
   const fixture = createIdentityCeremonyFixtures(...args);
@@ -101,14 +90,6 @@ beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGloba
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); window.history.replaceState(null, "", "/"); vi.unstubAllGlobals(); });
 async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); }
 
-const definition = freezeWorkflowOperationDisplaySnapshot({ display: plan1Leaf.descriptor.operationDisplay, workflowId: plan1Leaf.descriptor.id, definitionFingerprint: plan1Leaf.descriptor.contractFingerprint })!;
-function action(runId = RUN) {
-  const selected = selection(runId);
-  return ConfirmedActionEventSchema.parse({ version: 1, kind: "trace", state: "completed", eventId: "stream/1", workerId: "fixture-worker", workerStreamId: "stream", sequence: 1,
-    traceId: selected.row.traceId, stepOccurrence: `${runId}/1/1/1/first`, source: { kind: "headless", system: "service" }, occurredAt: AT, recordedAt: AT,
-    action: { runId, attempt: 1, claimGeneration: 1, taskAttempt: 1, definitionFingerprint: definition.definitionFingerprint,
-      invocationId: "first-operation", occurrencePath: ["first"], nodeId: "first", taskId: "ocr/extract-form-page", logicalActionId: "consume-text", logicalSessionId: "plan1-local", occurrence: 1, state: "completed" } });
-}
 
 describe("served Logs wiring", () => {
   it("keeps child Retry in its own header and locks it to the exact pending or uncertain command", async () => {
@@ -155,81 +136,34 @@ describe("served Logs wiring", () => {
     await act(async () => replay.click());
     assert.equal(sent.length, 2);
   });
-  it("reads exact detail and every immutable log cursor, preserving confirmed actions", async () => {
+  it("reads exact detail and every immutable log cursor", async () => {
     const cursor = `lc:${"a".repeat(64)}:1`;
     const seen: string[] = [];
     const client = { runDetail: async () => detail(), artifactUrl: (id: string) => `/artifacts/${id}`, runSection: async (_run: string, section: string, token?: string) => {
       seen.push(`${section}:${token ?? "initial"}`);
-      const payload = token === undefined ? page(RUN, 0, cursor) : { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), [action()]) };
+      const payload = token === undefined ? page(RUN, 0, cursor) : page(RUN, 1);
       return RunDetailSectionResponseSchema.parse({ section: "logs", payload });
     } };
     const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
     assert.deepEqual(seen, ["logs:initial", `logs:${cursor}`]);
-    assert.deepEqual(snapshot.logs.confirmedActions, [action()]);
+    assert.deepEqual(snapshot.logs.notes.map(note => note.noteId), [NOTE, OTHER]);
     const projection = projectRunLogs(snapshot, client);
-    assert.equal(projection.steps.filter(step => step.id === "stream/1").length, 0);
     assert.equal(projection.timeline.find(stage => stage.id === "first")?.stepId, NOTE);
     assert.deepEqual(projection.steps.map(step => step.entries[0].id), [NOTE]);
-    assert.equal(projection.steps[0].entries[1].id, "stream/1");
   });
-  it("refuses wrong run/revision/attempt and foreign action evidence", async () => {
+  it("refuses wrong run/revision/attempt", async () => {
     for (const changed of [detail(selection(OTHER)), { ...detail(), header: { ...detail().header, attempt: 2 } }]) {
       const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : changed);
       await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /IDENTITY_MISMATCH/);
     }
     const ahead = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : { ...detail(), rowRevision: selection().row.rowRevision + 1 });
     await assert.rejects(() => readRunLogs(ahead, selection(), new AbortController().signal), /RUN_DETAIL_REVISION_AHEAD/);
-    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), confirmedActions: [action(OTHER)] } } : detail());
-    await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /ACTION_IDENTITY_MISMATCH/);
   });
-  it("refuses a foreign section and distinguishes missing action evidence from valid notes", async () => {
+  it("refuses a foreign section and reads valid notes", async () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), runId: OTHER, rows: [], notes: [] } } : detail());
     await assert.rejects(() => client.runSection(RUN, "logs"), /RUN_SECTION_IDENTITY_MISMATCH/);
-    const missing = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), confirmedActions: undefined } } : detail());
-    const snapshot = await readRunLogs(missing, selection(), new AbortController().signal);
-    assert.equal(snapshot.actionEvidence?.state, "unavailable");
-    assert.deepEqual(snapshot.actionEvidence?.missingPages, ["initial"]);
-    assert.equal(snapshot.logs.notes.length, 1);
-  });
-  it("retains known events across mixed pages while keeping aggregate action evidence unavailable", async () => {
-    const cursor = `lc:${"b".repeat(64)}:1`;
-    for (const missingFirst of [true, false]) {
-      const initial = { ...page(RUN, 0, cursor), ...confirmationEvidence(page(RUN, 0, cursor), missingFirst ? [] : [action()]), confirmedActions: missingFirst ? undefined : [action()] };
-      const next = { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), missingFirst ? [action()] : []), confirmedActions: missingFirst ? [action()] : undefined };
-      const client = { runDetail: async () => detail(), runSection: async (_run: string, _section: string, token?: string) =>
-        RunDetailSectionResponseSchema.parse({ section: "logs", payload: token === undefined ? initial : next }) };
-      const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
-      assert.equal(snapshot.actionEvidence?.state, "unavailable");
-      assert.deepEqual(snapshot.actionEvidence?.events, [action()]);
-      assert.deepEqual(snapshot.actionEvidence?.missingPages, [missingFirst ? "initial" : cursor]);
-      assert.equal(snapshot.logs.confirmedActions, undefined);
-      assert.equal(projectRunLogs(snapshot, { artifactUrl: () => "unused" }).steps.flatMap(step => step.entries).filter(entry => entry.id === action().eventId).length, 1);
-    }
-    const initial = { ...page(RUN, 0, cursor), ...confirmationEvidence(page(RUN, 0, cursor), [action()]) };
-    const repeated = { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), [action()]) };
-    const client = { runDetail: async () => detail(), runSection: async (_run: string, _section: string, token?: string) =>
-      RunDetailSectionResponseSchema.parse({ section: "logs", payload: token === undefined ? initial : repeated }) };
-    await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /duplicate/);
-  });
-  it("retains historical actions and observations within current run authority and refuses future or foreign history", async () => {
-    const selected = { ...selection(), row: { ...selection().row, attempt: 2 } };
-    const historical = action();
-    const observation = OperationActionObservationWireSchema.parse({ logId: NOTE, at: AT, action: "read", targetId: "consume-text", occurrence: { ...historical.action, value: { slot: "text", fieldPath: "text", producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } } });
-    const payload = { ...page(), ...confirmationEvidence(page(), [historical]), operationStructure: { state: "observed", runId: RUN, definition, observations: [observation] } };
-    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload } : detail(selected));
-    const snapshot = await readRunLogs(client, selected, new AbortController().signal);
-    assert.equal(snapshot.actionEvidence?.events[0].action.attempt, 1);
-    assert.equal(snapshot.logs.operationStructure?.state, "observed");
-    for (const change of [
-      { traceId: "zz-090000-0001" },
-      { action: { ...historical.action, attempt: 3 }, stepOccurrence: `${RUN}/3/1/1/first` },
-    ]) {
-      const bad = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...payload, confirmedActions: [ConfirmedActionEventSchema.parse({ ...historical, ...change })] } } : detail(selected));
-      await assert.rejects(() => readRunLogs(bad, selected, new AbortController().signal), /ACTION_IDENTITY_MISMATCH/);
-    }
-    const futureObservation = OperationActionObservationWireSchema.parse({ ...observation, occurrence: { ...observation.occurrence, attempt: 3 } });
-    const future = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...payload, operationStructure: { ...payload.operationStructure, observations: [futureObservation] } } } : detail(selected));
-    await assert.rejects(() => readRunLogs(future, selected, new AbortController().signal), /ACTION_IDENTITY_MISMATCH/);
+    const valid = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : detail());
+    assert.equal((await readRunLogs(valid, selection(), new AbortController().signal)).logs.notes.length, 1);
   });
   it("preserves admitted historical span rows while rejecting future attempts and foreign traces", async () => {
     const selected = { ...selection(), row: { ...selection().row, attempt: 2 } };
@@ -251,35 +185,15 @@ describe("served Logs wiring", () => {
     });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } }) }));
     assert.match(document.body.textContent ?? "", /Searching UCPath directory for Morrow, Bea/);
-    assert.match(document.body.textContent ?? "", /Confirmed actions unavailable/);
     assert.match(document.body.textContent ?? "", /Capture availability not supplied/);
     assert.match(document.body.textContent ?? "", /Identity Approval/);
     assert.doesNotMatch(document.body.textContent ?? "", /Identity decision join not supplied/);
     assert.doesNotMatch(document.body.textContent ?? "", /Logs unavailable|Reading the employment record/);
     assert.ok(document.querySelectorAll('section[aria-labelledby]').length > 1);
   });
-  it("does not discard or duplicate confirmed actions across cursor pages", () => {
+  it("refuses to append another run's cursor page", () => {
     const cursor = `lc:${"a".repeat(64)}:1`;
-    assert.throws(() => appendLogPage({ ...page(RUN, 0, cursor), ...confirmationEvidence(page(RUN, 0, cursor), [action()]) }, cursor, { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), [action()]) }), /duplicate/);
     assert.throws(() => appendLogPage(page(RUN, 0, cursor), cursor, page(OTHER, 1)), /cannot append logs/);
-  });
-  it("attaches captures only to their exact action occurrence and resource", () => {
-    const event = action();
-    const observation = OperationActionObservationWireSchema.parse({ logId: NOTE, at: AT, action: "read", targetId: "consume-text", occurrence: { ...event.action, value: { slot: "text", fieldPath: "text", producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } } });
-    const captureSection = RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId: RUN, artifacts: [{
-      artifact: { mediaKind: "image", mediaType: "image/png", artifactId: OTHER, sha256: "a".repeat(64), byteLength: 1, sensitivity: "safe", redaction: "not-required", width: 120, height: 80 },
-      origins: [{ bundleId: NOTE, originKind: "operator-request", operation: event.action, capturedAt: AT }],
-    }] } });
-    const snapshot = { detail: detail(), logs: { ...page(), operationStructure: { state: "observed" as const, runId: selection().row.runId, definition, observations: [observation] } }, sections: [captureSection], actionEvidence: { state: "available" as const, events: [], missingPages: [] }, unavailableEvidence: [] };
-    const urls: string[] = [];
-    const client = { artifactUrl: (id: string) => { urls.push(id); return `/exact/${id}`; } };
-    const projection = projectRunLogs(snapshot, client);
-    const captures = projection.steps[0].entries.find(entry => entry.kind === "decision");
-    assert.equal(captures?.kind, "decision");
-    if (captures?.kind === "decision") assert.deepEqual(captures.decision.screenshots?.map(capture => [capture.src, capture.width, capture.height]), [[`/exact/${OTHER}`, 120, 80]]);
-    assert.deepEqual(new Set(urls), new Set([OTHER]));
-    const mismatch = { ...snapshot, logs: { ...snapshot.logs, operationStructure: { ...snapshot.logs.operationStructure, observations: [{ ...observation, occurrence: OperationActionObservationWireSchema.parse({ ...observation, occurrence: { ...observation.occurrence, occurrence: 2 } }).occurrence }] } } };
-    assert.equal(projectRunLogs(mismatch, client).steps[0].entries.length, 1);
   });
   it("exposes gate approvals as a pick or a confirm, with or without served confirmation, and never a rejection", () => {
     const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
@@ -645,20 +559,10 @@ describe("served Logs wiring", () => {
     await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: replacement })));
     assert.equal(current?.command, undefined); assert.equal(current?.replay, undefined);
   });
-  it("displays omitted evidence explicitly and never substitutes verified-empty actions", async () => {
-    for (const supplied of [false, true]) {
-      const logs = { ...page(), rows: [], notes: [], confirmedActions: supplied ? [] : undefined };
-      const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: logs } : detail());
-      await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
-      const text = document.body.textContent ?? "";
-      if (supplied) { assert.match(text, /No actions yet/); assert.doesNotMatch(text, /Confirmed actions unavailable/); }
-      else {
-        assert.ok(text.includes(formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text));
-        assert.ok(text.includes(formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE", {})).text));
-        assert.doesNotMatch(text, /No actions yet/);
-      }
-      await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
-    }
+  it("shows an empty log as no actions", async () => {
+    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), rows: [], notes: [] } } : detail());
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
+    assert.match(document.body.textContent ?? "", /No actions yet/);
   });
   it("retains supplied notes and locks decision controls when gate/capture authority is omitted", async () => {
     const h = commandBindingFixture();
@@ -670,7 +574,7 @@ describe("served Logs wiring", () => {
         gate: { state: "open", gateId: NOTE, ...(omitted === "node" ? {} : { nodeId: gate.gateId }), label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
       let submissions = 0;
       const client: DashboardClient = { ...h.client, runDetail: async () => open,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: { ...page(), confirmedActions: undefined } }
+        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() }
           : { section: "identity-gate", payload: { state: "available", value: gate } }),
         executeCommand: () => { submissions++; throw new Error("unbound decision"); },
       };
@@ -913,7 +817,7 @@ it("joins task screenshots by exact bundle, artifact, node, attempt and browser 
   const sessionId = "20000000-0000-4000-8000-000000000001";
   const initial = page();
   const rows = initial.rows!.map(row => row.kind === "note" ? { ...row, note: { ...row.note, screenshot: { bundleId: NOTE, artifactId: OTHER, sessionId } } } : row);
-  const logs = NotePageSchema.parse({ ...initial, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []), operationStructure: undefined });
+  const logs = NotePageSchema.parse({ ...initial, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []) });
   const captures = RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId: RUN, artifacts: [{
     artifact: { mediaKind: "image", mediaType: "image/png", artifactId: OTHER, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
     origins: [{ bundleId: NOTE, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "first", attempt: 1, sessionId } }],

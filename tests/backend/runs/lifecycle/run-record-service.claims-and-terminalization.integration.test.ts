@@ -12,10 +12,15 @@ import { deriveTerminalFailureDigest } from "../../../../src/models/run/result.j
 import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, LATER, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { composeProfileActivity } from "../../../../src/backend/app/composition/storage-compose.js";
 
 const {fixture, created, runningRun, parkedWriteIntent, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
 const executorWorld = createRunExecutorTestWorld();
+const LOGOUT_CANCELLED = `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}`;
+const logoutActivity = (input: Pick<Parameters<typeof composeProfileActivity>[0], "admission" | "database" | "clock" | "lifecycle">) =>
+  composeProfileActivity({ ...input, supervisor: { snapshot: () => [], stopAll: async () => [] } });
 afterEach(cleanup);
 afterEach(executorWorld.cleanup);
 
@@ -209,6 +214,80 @@ describe("canonical run-record service", () => {
     if (renewed.state !== "applied") throw new Error("renew refused");
     assert.equal(renewed.run.cancelRequested, true);
     assert.equal(renewed.run.lifecycle.state, "claimed");
+  });
+
+  it("pauses a claimed operation and its never-claimed member on logout instead of cascading a cancel", async () => {
+    const { service, request, runtimeConfig, database, admission, clock } = await fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, { ...request, commandId: randomUUID(), matchKey: "logout-paused-member",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "logout-member" } });
+    const activity = logoutActivity({ admission, database, clock, lifecycle: service });
+    activity.requestCancellation(admission.profileBinding.profileId);
+    assert.equal(database.authority.runs.get(anchor.envelope.runId)?.pause?.state, "requested");
+    requireLifecycleApplied(service.acknowledgePause({ commandId: randomUUID(), runId: anchor.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: anchor.claimGeneration } }));
+    await activity.awaitCancellation();
+    for (const run of [anchor, member].map(run => database.authority.runs.get(run.envelope.runId))) {
+      assert.deepEqual([run?.lifecycle.state, run?.pause?.state, run?.cancelRequested], ["queued", "paused", undefined]);
+    }
+    assert.equal(database.authority.runs.get(member.envelope.runId)?.claimGeneration, 0);
+  });
+
+  it("keeps an awaited delegation resumable after a logout pauses its claimed child", async () => {
+    const { root: compiled, modules } = childPolicyModules("cascade");
+    const h = await executorWorld.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
+    const { database, clock, path } = h.authority;
+    const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor);
+    const service = execution.lifecycle;
+    const parent = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+    assert.equal((await execution.step(parent, executorWorld.SIGNAL)).outcome.state, "yielded-delegation");
+    const [child] = database.authority.runs.listChildren(parent.envelope.runId); assert.ok(child);
+    const active = database.authority.runtimeConfig.get(); assert.ok(active);
+    const runtimeConfig = { generation: active.generation, settingsRevision: active.settingsRevision,
+      settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint };
+    const owner = testWorkerLifetime(database, compiled.descriptor.id, 1);
+    const claim = () => requireLifecycleApplied(service.claimNext({ commandId: randomUUID(), workflow: compiled.descriptor.id,
+      workerId: owner.workerId, runtimeConfig }));
+    const claimed = claim(); assert.equal(claimed.envelope.runId, child.envelope.runId);
+    const admission = h.authority.profile.admission, activity = logoutActivity({ admission, database, clock, lifecycle: service });
+    activity.requestCancellation(admission.profileBinding.profileId);
+    requireLifecycleApplied(service.acknowledgePause({ commandId: randomUUID(), runId: child.envelope.runId,
+      claim: { workerId: owner.workerId, claimGeneration: claimed.claimGeneration } }));
+    await activity.awaitCancellation();
+    for (const runId of [child.envelope.runId, parent.envelope.runId]) {
+      const run = database.authority.runs.get(runId); assert.ok(run);
+      assert.deepEqual([run.lifecycle.state, run.pause?.state, run.cancelRequested], ["queued", "paused", undefined]);
+      requireLifecycleApplied(service.resumePaused({ commandId: randomUUID(), runId, expectedVersion: run.version }));
+    }
+    assert.equal(database.authority.dependencies.readiness(parent.envelope.runId, "join").state, "waiting");
+    assert.equal(claim().envelope.runId, child.envelope.runId);
+  });
+
+  it("settles a claimed run's Relay cancel with the summary it was requested with", async () => {
+    const { service, request, runtimeConfig } = await fixture();
+    const run = runningRun(service, request, runtimeConfig);
+    const requested = requireLifecycleApplied(service.transition({ commandId: randomUUID(), runId: run.envelope.runId,
+      expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED } }));
+    assert.equal(requested.lifecycle.state, "running");
+    const settled = requireLifecycleApplied(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: run.envelope.runId,
+      expectedVersion: requested.version, claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration }, endedAt: LATER }, personLookupDescriptor));
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: LATER, errorSummary: LOGOUT_CANCELLED });
+  });
+
+  it("carries a Relay cancel's summary to cascaded members and the claimed anchor", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, { ...request, commandId: randomUUID(), matchKey: "cascade-summary-member",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "summary-member" } });
+    const requested = requireLifecycleApplied(service.transition({ commandId: randomUUID(), runId: anchor.envelope.runId,
+      expectedVersion: anchor.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED } }));
+    assert.deepEqual(database.authority.runs.get(member.envelope.runId)?.lifecycle,
+      { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED });
+    const settled = requireLifecycleApplied(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: anchor.envelope.runId,
+      expectedVersion: requested.version, claim: { workerId: WORKER_ID, claimGeneration: anchor.claimGeneration }, endedAt: LATER }, personLookupDescriptor));
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: LATER, errorSummary: LOGOUT_CANCELLED });
   });
 
   it("#5 a generation advance refuses the next claim without invalidating the held claim", async () => {
@@ -565,7 +644,21 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("refuses a display-name self-edge on a terminal run", async () => {
+  it("a null display name drops the key and bumps the version, named or not", async () => {
+    const { service, request } = await fixture();
+    const run = created(service, request);
+    const named = service.transition({ commandId: "84000000-0000-4000-8000-000000000017", runId: run.envelope.runId, expectedVersion: run.version, displayName: "Named" });
+    if (named.state !== "applied") throw new Error("rename refused");
+    const cleared = service.transition({ commandId: "84000000-0000-4000-8000-000000000018", runId: run.envelope.runId, expectedVersion: named.run.version, displayName: null });
+    if (cleared.state !== "applied") throw new Error("clear refused");
+    assert.equal(Object.hasOwn(cleared.run, "displayName"), false);
+    assert.equal(cleared.run.version, named.run.version + 1);
+    const again = service.transition({ commandId: "84000000-0000-4000-8000-000000000019", runId: run.envelope.runId, expectedVersion: cleared.run.version, displayName: null });
+    if (again.state !== "applied") throw new Error("second clear refused");
+    assert.equal(again.run.version, cleared.run.version + 1);
+  });
+
+  it("renames and clears a terminal run but still refuses its priority bump", async () => {
     const { service, request } = await fixture();
     const run = created(service, request);
     const settled = service.transition({
@@ -574,14 +667,23 @@ describe("canonical run-record service", () => {
       expectedVersion: run.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     });
-    assert.equal(settled.state, "applied");
     if (settled.state !== "applied") throw new Error("settlement refused");
 
+    const renamed = service.transition({ commandId: "84000000-0000-4000-8000-000000000016", runId: run.envelope.runId, expectedVersion: settled.run.version, displayName: "Late rename" });
+    if (renamed.state !== "applied") throw new Error("terminal rename refused");
+    assert.equal(renamed.run.displayName, "Late rename");
+    assert.equal(renamed.run.version, settled.run.version + 1);
+    assert.deepEqual(renamed.run.lifecycle, settled.run.lifecycle);
+    const cleared = service.transition({ commandId: "84000000-0000-4000-8000-000000000020", runId: run.envelope.runId, expectedVersion: renamed.run.version, displayName: null });
+    if (cleared.state !== "applied") throw new Error("terminal clear refused");
+    assert.equal(Object.hasOwn(cleared.run, "displayName"), false);
+    assert.equal(cleared.run.version, renamed.run.version + 1);
+
     assert.deepEqual(service.transition({
-      commandId: "84000000-0000-4000-8000-000000000016",
+      commandId: "84000000-0000-4000-8000-000000000021",
       runId: run.envelope.runId,
-      expectedVersion: settled.run.version,
-      displayName: "Late rename",
+      expectedVersion: cleared.run.version,
+      priority: "interactive",
     }), {
       state: "refused",
       refusal: {
@@ -591,6 +693,15 @@ describe("canonical run-record service", () => {
         message: "terminal has no self-edge; a settled outcome is settled",
       },
     });
+  });
+
+  it("refuses a rename while a worker owns the run", async () => {
+    const { service, request, runtimeConfig } = await fixture();
+    created(service, request);
+    const claimed = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    if (claimed.state !== "applied") throw new Error("claim refused");
+    assert.deepEqual(service.transition({ commandId: "84000000-0000-4000-8000-000000000022", runId: claimed.run.envelope.runId, expectedVersion: claimed.run.version, displayName: "Mid-run" }),
+      { state: "refused", refusal: { reason: "owned-by-worker" } });
   });
 
   it("#10 journals only request commitments and returns the current version on exact replay", async () => {

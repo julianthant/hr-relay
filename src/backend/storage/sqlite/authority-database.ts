@@ -25,7 +25,6 @@ import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
-import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
 import { TimelineEventRecordSchema,TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
@@ -50,7 +49,6 @@ import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { CanonicalCrashRecoveryRequestSchema,RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
-import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -58,7 +56,6 @@ import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationManifest,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
-import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { authenticateAuditedParkedWriteResolution,authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -120,7 +117,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
+import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
 import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
@@ -412,7 +409,7 @@ type RunRepository = Readonly<{
   requeue(input: unknown): RunUpdateOutcome;
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
-  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
+  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; errorSummary?: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
 
   setPause(input: unknown, accountingAuthorization?: object): RunUpdateOutcome;
@@ -431,7 +428,6 @@ type FailureRepository = Readonly<{
 
 
 type DiagnosticBundleRepository = Readonly<{
-  validateOperation(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<DiagnosticBundle>;
   insertPrepared(input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>): ImmutableInsertResult<DiagnosticBundle>;
   get(bundleId: string): DiagnosticBundle | undefined;
@@ -2035,7 +2031,8 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
           }
         }
       }
-      return Object.freeze([...references.values()].map(reference => Object.freeze(reference)));
+      // Table scans return rows in storage order, which a rebuild can change; inventories compare this list, so order it by content.
+      return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
 export class AuthorityDatabase implements Disposable {
@@ -3016,10 +3013,10 @@ export class AuthorityDatabase implements Disposable {
         const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
         if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
         const { probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
-        assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
+        assertLogoutResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
         const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-        assertCredentialCopyResourcesClosed(facts);
+        assertLogoutResourcesClosed(facts);
         const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
           : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
         const { resolveConfigWithProvenance } = await import("../../app/config/resolve.js");
@@ -4627,38 +4624,8 @@ export class AuthorityDatabase implements Disposable {
       const rows = this.#database.prepare(sql).all(parameter);
       return Object.freeze(rows.map((row) => this.#parseNativeRow("diagnostic_files",row,DiagnosticAttachmentStorageRecordSchema)));
     };
-    const validateOperation = (input: unknown): void => {
-      const identity = DeclaredActionIdentitySchema.parse(input);
-      const run = readTimelineRun(this.#database, identity.runId);
-      if (run === undefined || identity.attempt !== run.envelope.attempt
-        || Number(identity.claimGeneration) !== Number(run.claimGeneration)
-        || identity.definitionFingerprint !== run.envelope.contractFingerprint) throw new Error("diagnostic-operation-owner-execution-mismatch");
-      const definition = requireWorkflowOperationDisplaySnapshot(run.envelope.operationDisplaySnapshot, { workflowId: run.envelope.workflow, definitionFingerprint: run.envelope.contractFingerprint });
-      requireOperationSourceDeclaration(definition, identity);
-      if (run.envelope.parent === undefined ? identity.childInvocation !== undefined : identity.childInvocation?.parentRunId !== run.envelope.parent.runId || identity.childInvocation.edgeId !== run.envelope.parent.edgeId) throw new Error("diagnostic-operation-child-identity-mismatch");
-      const expected = canonicalJsonStringify(identity);
-      let cursor = 0;
-      for (;;) {
-        const rows = this.#database.prepare("SELECT * FROM timeline_events WHERE run_id=? AND cursor>? ORDER BY cursor LIMIT 500").all(identity.runId, cursor);
-        for (const raw of rows) {
-          const record = timelineEventFromRow(raw);
-          cursor = record.cursor;
-          if (record.payload.kind !== "note") continue;
-          const note = record.payload.note;
-          const occurrence = note.action?.operation;
-          if (occurrence === undefined) continue;
-          const { value: _value, ...retained } = occurrence;
-          if (canonicalJsonStringify(retained) !== expected) continue;
-          if (!("runId" in note) || note.runId !== identity.runId || note.workflow !== run.envelope.workflow || note.attempt !== identity.attempt || note.traceId !== run.envelope.traceId) throw new Error("diagnostic-operation-note-owner-mismatch");
-          return;
-        }
-        if (rows.length < 500) break;
-      }
-      throw new Error("diagnostic-operation-exact-occurrence-not-retained");
-    };
     const insert = (input: unknown, publication?: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => {
         let record = DiagnosticBundleSchema.parse(input);
-        if (record.operation !== undefined) validateOperation(record.operation);
         let json = canonicalJsonStringify(record);
         return this.#authorityWrite("diagnostic_snapshots", () => {
           const existing = this.#readRecord("diagnostic_snapshots", record.bundleId, DiagnosticBundleSchema);
@@ -4737,7 +4704,6 @@ export class AuthorityDatabase implements Disposable {
         });
       };
     return Object.freeze({
-      validateOperation,
       insert: (input: unknown) => insert(input),
       insertPrepared: (input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => insert(input, publication),
       get: (bundleId: string) => this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema),
@@ -6420,7 +6386,7 @@ export class AuthorityDatabase implements Disposable {
           },
         );
       },
-      requestCancellation: ({ runId, expectedVersion, now, cancellationSource }) => this.#mutateRun(
+      requestCancellation: ({ runId, expectedVersion, now, errorSummary, cancellationSource }) => this.#mutateRun(
         RunIdSchema.parse(runId), z.number().int().positive().parse(expectedVersion), IsoInstantSchema.parse(now),
         undefined, (current) => {
           if (runClaim(current) === undefined) {
@@ -6429,7 +6395,7 @@ export class AuthorityDatabase implements Disposable {
             authenticateCancellationSource(this.authority, current, cancellationSource);
             for (const manifest of this.authority.delegationManifests.listByParentRun(runId)) authenticateDelegationGroup(this.authority, manifest);
           }
-          return RunRecordSchema.parse({ ...current, cancelRequested: true });
+          return RunRecordSchema.parse({ ...current, cancelRequested: true, ...(errorSummary !== undefined && { cancelSummary: errorSummary }) });
         },
       ),
       advanceRevision: ({ runId, expectedVersion, now }) => this.#mutateRun(
@@ -6443,7 +6409,10 @@ export class AuthorityDatabase implements Disposable {
           request.expectedVersion,
           request.now,
           undefined,
-          (current) => RunRecordSchema.parse({ ...current, displayName: request.displayName }),
+          (current) => {
+            const { displayName: _previous, ...rest } = current;
+            return RunRecordSchema.parse(request.displayName === null ? rest : { ...rest, displayName: request.displayName });
+          },
         );
       },
       setPause: (input: unknown, accountingAuthorization?: object) => {

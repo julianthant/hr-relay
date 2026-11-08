@@ -59,7 +59,7 @@ export function debugFailureOutcomes(value: unknown, status = 200): (NonNullable
   return failure === undefined ? [] : [failure];
 }
 
-const DIAGNOSTIC_ROUTE_ROOTS = new Set(["application-lifecycle", "bootstrap", "calendar", "search", "exports", "commands", "settings", "preflight", "profile", "runs", "queue", "start-plans", "rerun-warnings", "intake", "ocr", "workbooks", "assistant", "storage", "notifications", "explorer", "reports", "data", "trust"]);
+const DIAGNOSTIC_ROUTE_ROOTS = new Set(["application-lifecycle", "bootstrap", "calendar", "dashboard", "search", "exports", "commands", "settings", "preflight", "profile", "runs", "queue", "start-plans", "rerun-warnings", "intake", "ocr", "workbooks", "assistant", "storage", "notifications", "explorer", "reports", "data", "trust"]);
 
 export function diagnosticRequestRoute(path: string): string {
   const root = path.split(/[?#]/u)[0]?.split("/")[3];

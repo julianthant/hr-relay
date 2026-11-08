@@ -180,10 +180,7 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
       ...(h.failure.nodeId === undefined ? {} : { nodeId: h.failure.nodeId }) });
     const logs = buildRunSection(deps, runId, "logs");
     assert.ok(logs.section === "logs");
-    assert.ok(logs.payload.confirmedActions !== undefined);
-    const projected = projectRunLogs({ detail, logs: logs.payload, sections: [failureSection],
-      actionEvidence: { state: "available", events: logs.payload.confirmedActions, missingPages: [] },
-      confirmedActionBindings: logs.payload.confirmedActionBindings, unavailableEvidence: [] },
+    const projected = projectRunLogs({ detail, logs: logs.payload, sections: [failureSection], unavailableEvidence: [] },
     { artifactUrl: () => { throw new Error("early failure has no artifacts"); } });
     const failureStep = projected.steps.find(step => step.id === h.failure.failureId);
     assert.ok(failureStep);

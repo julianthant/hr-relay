@@ -294,6 +294,44 @@ for (const state of ["launching", "open", "closed"] as const)
     } finally { await w.close(); }
   });
 
+async function restoredProfileFixture(row: "closed" | "open" | "native") {
+  const w = await fixture();
+  const launch = w.roots.beginLaunch(w.input);
+  if (row !== "open") { launch.closing(); launch.closed(); }
+  mkdirSync(w.input.profileDirectory, { recursive: true, mode: 0o700 });
+  const document = BrowserRootsSchema.parse(JSON.parse(readFileSync(w.path, "utf8")));
+  const [registered] = document.roots; assert.ok(registered?.owner.kind === "worker");
+  assert.ok(registered.sessionGeneration > 0);
+  const native = row !== "native" ? {} : { native: { operationId: randomUUID(), launchId: randomUUID(), generation: document.nextGeneration,
+    source: { device: 1, inode: 1 }, priorLaunchDigest: "0".repeat(64), phase: "observed" as const } };
+  writeFileSync(w.path, JSON.stringify({ ...document, nextGeneration: document.nextGeneration + 1,
+    roots: [{ ...registered, ...native, sessionGeneration: registered.sessionGeneration - 1 }] }), { mode: 0o600 });
+  return w;
+}
+
+it("admits a restored profile's worker to its closed browser root", async () => {
+  const w = await restoredProfileFixture("closed");
+  try {
+    const native = browser.fakeLauncher();
+    await w.roots.probe(w.input, w.options(native.launcher));
+    assert.equal(native.launches().length, 1);
+    const row = w.roots.inventory().roots[0]; assert.ok(row?.owner.kind === "worker");
+    assert.equal(row.owner.workerId, w.input.owner.kind === "worker" ? w.input.owner.workerId : undefined);
+    assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
+    const launch = w.roots.beginLaunch(w.input); launch.closing(); launch.closed();
+  } finally { await w.close(); }
+});
+
+for (const state of ["open", "native"] as const)
+  it(`still refuses a restored profile's worker while its browser root is ${state}`, async () => {
+    const w = await restoredProfileFixture(state);
+    try {
+      const native = browser.fakeLauncher(), before = readFileSync(w.path);
+      await assert.rejects(w.roots.withUnused(w.input.profileDirectory, w.options(native.launcher), async () => assert.fail("unclosed root cannot be adopted"), w.input));
+      assert.equal(native.launches().length, 0); assert.deepEqual(readFileSync(w.path), before);
+    } finally { await w.close(); }
+  });
+
 it("excludes another registry factory throughout the body of the same genuine offline maintenance operation", async () => {
   const w = await fixture(); let resume = () => {};
   try {

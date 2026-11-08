@@ -3,7 +3,6 @@ import type { StartPlanWire } from "../../models/dashboard/start-plan.js";
 import { createRunLaunchService } from "../surfaces/run-start/run-launch-model.js";
 import type { FailureDetailWire } from "../../models/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/errors.js";
-import type { ConfirmedActionEvent } from "../../models/events/confirmed-action.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandExecutionScope } from "../app/commands/command-executor.js";
@@ -12,10 +11,9 @@ import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/
 import { decisionAnswerValid, type LogDecisionAction, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
-import { DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
-import type { ConfirmedActionBindingWire, NativeRunEventWire, IdentityGateDetailWire, ParkedWriteDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
+import type { NativeRunEventWire, IdentityGateDetailWire, ParkedWriteDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { appendLogPage, logRowsOf, type NotePage } from "../surfaces/run-detail/logs-model.js";
 import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
@@ -56,8 +54,6 @@ export interface RunLogSnapshot {
   readonly detail: RunDetailWire;
   readonly logs: NotePage;
   readonly sections: readonly RunDetailSectionResponse[];
-  readonly actionEvidence: Readonly<{ state: "available" | "unavailable"; events: readonly ConfirmedActionEvent[]; missingPages: readonly string[] }>;
-  readonly confirmedActionBindings?: readonly ConfirmedActionBindingWire[];
   readonly unavailableEvidence: readonly string[];
 }
 
@@ -73,9 +69,6 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   if (section.section !== "logs" || section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   let logs = section.payload;
   logRowsOf(logs, "initial");
-  const missingPages: string[] = logs.confirmedActions === undefined ? ["initial"] : [];
-  const actions: ConfirmedActionEvent[] = logs.confirmedActions === undefined ? [] : [...logs.confirmedActions];
-  const confirmedActionBindings = [...(logs.confirmedActionBindings ?? [])];
   const cursors = new Set<string>();
   while (logs.nextCursor.state === "present") {
     signal.throwIfAborted();
@@ -84,21 +77,12 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
     cursors.add(cursor);
     const next = await client.runSection(row.runId, "logs", cursor, signal);
     if (next.section !== "logs") throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
-    if (next.payload.confirmedActions === undefined) missingPages.push(cursor);
-    else actions.push(...next.payload.confirmedActions);
-    confirmedActionBindings.push(...(next.payload.confirmedActionBindings ?? []));
     logs = appendLogPage(logs, cursor, next.payload);
   }
-  if (actions.some(event => event.action.runId !== row.runId
-    || event.action.attempt > row.attempt || event.traceId !== row.traceId)) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
   if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
-  if (new Set(actions.map(event => event.eventId)).size !== actions.length) throw new RunLogIdentityError("RUN_LOG_ACTION_DUPLICATE");
   if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
-  if (logs.operationStructure?.state === "observed" && logs.operationStructure.observations.some(observation =>
-    observation.occurrence.runId !== row.runId || observation.occurrence.attempt > row.attempt)) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   const unavailableEvidence: string[] = [];
-  if (missingPages.length > 0) unavailableEvidence.push("Confirmed actions unavailable on one or more pages");
   if (detail.captures === undefined) unavailableEvidence.push("Capture availability not supplied");
   else if (detail.captures.state === "error") unavailableEvidence.push("Captures unavailable");
   const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"].includes(name)
@@ -122,7 +106,7 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   if (sections.some(section => section.section === "identity-gate" && section.payload.state === "available") && detail.gate.state === "open" && detail.gate.nodeId === undefined) {
     unavailableEvidence.push("Identity decision join not supplied");
   }
-  const snapshot: RunLogSnapshot = { detail, logs, sections, confirmedActionBindings, actionEvidence: { state: missingPages.length === 0 ? "available" : "unavailable", events: actions, missingPages }, unavailableEvidence };
+  const snapshot: RunLogSnapshot = { detail, logs, sections, unavailableEvidence };
   validateRunLogSnapshot(snapshot);
   return snapshot;
 }
@@ -170,31 +154,6 @@ function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
     eventIds.add(identity.eventId); orders.add(identity.order);
   }
   for (const row of rows) if (row.native?.nodeId !== undefined && !nodes.has(row.native.nodeId)) throw new RunLogIdentityError("RUN_LOG_NODE_CATEGORY_MISSING");
-  const bindings = snapshot.confirmedActionBindings ?? [];
-  const actions = snapshot.actionEvidence.events;
-  if (bindings.length !== actions.length || new Set(actions.map(event => event.eventId)).size !== actions.length
-    || new Set(bindings.map(binding => binding.native.eventId)).size !== bindings.length
-    || new Set(bindings.map(binding => binding.eventId)).size !== bindings.length) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISMATCH");
-  for (const event of actions) {
-    if (event.action.runId !== detail.runId || event.action.attempt > detail.header.attempt) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
-    const binding = bindings.find(binding => binding.eventId === event.eventId);
-    if (binding === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISSING");
-    const identity = native(binding.native);
-    const owner = rows.find(row => row.native?.eventId === identity.eventId);
-    const target = rows.find(row => row.logId === binding.logId);
-    const observation = logs.operationStructure?.state === "observed"
-      ? logs.operationStructure.observations.filter(observation => observation.logId === binding.logId) : [];
-    const { value: _value, ...action } = event.action;
-    const targetAction = observation[0]?.occurrence;
-    const { value: _targetValue, ...targetIdentity } = targetAction ?? {};
-    if (owner?.kind !== "note" || target === undefined || observation.length !== 1
-      || canonicalJsonStringify(DeclaredActionIdentitySchema.parse(targetIdentity)) !== canonicalJsonStringify(DeclaredActionIdentitySchema.parse(action))
-      || canonicalJsonStringify(identity) !== canonicalJsonStringify(owner.native)
-      || identity.attempt !== target.native?.attempt || identity.nodeId !== event.action.nodeId
-      || identity.attempt !== event.action.attempt || event.traceId !== identity.traceId
-      || target.native?.nodeId !== event.action.nodeId
-      || target.native?.order === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_TARGET_MISMATCH");
-  }
   for (const section of snapshot.sections) {
     if (section.section === "workbook-writes") {
       for (const operation of section.payload.operations) {
@@ -291,12 +250,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   const order = new Map<string, number>();
   const groupable = new Set<string>();
   const node = new Map<string, string | undefined>();
-  const bindings = snapshot.confirmedActionBindings ?? [];
-  const confirmationNotes = new Set(bindings.map(binding => binding.native.eventId));
-  const confirmedActions = snapshot.actionEvidence.events;
   const captures = sections.find(section => section.section === "captures");
   const screenshotsOf = (row: ReturnType<typeof logRowsOf>[number]): readonly LogScreenshot[] => {
-    const logId = row.logId;
     const association = row.kind === "note" ? row.note.screenshot : undefined;
     if (association !== undefined) {
       const native = requireNative(row.native);
@@ -319,51 +274,22 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       return [{ logId: row.logId, src: client.artifactUrl(artifact.artifactId), alt: label ?? "Browser capture", time: fmtActionClock(capturedAt),
         ...(label === undefined ? {} : { label }), ...(boundary === undefined ? {} : { boundary }), width: artifact.width, height: artifact.height, kind: boundary === "before-submit" ? "form" : "browser" }];
     }
-    const observation = logs.operationStructure?.state === "observed" ? logs.operationStructure.observations.find(row => row.logId === logId) : undefined;
-    if (captures?.section !== "captures" || observation === undefined) return [];
-    const { value: _value, ...occurrence } = observation.occurrence;
-    const identity = canonicalJsonStringify(DeclaredActionIdentitySchema.parse(occurrence));
-    return captures.payload.artifacts.flatMap(capture => {
-      const artifact = capture.artifact;
-      if (artifact.mediaKind !== "image") return [];
-      return capture.origins.flatMap(origin =>
-      origin.operation !== undefined && origin.capturedAt !== undefined && canonicalJsonStringify(origin.operation) === identity
-        ? [{ src: client.artifactUrl(artifact.artifactId), alt: `${origin.originKind} capture`, time: fmtActionClock(origin.capturedAt),
-          width: artifact.width, height: artifact.height }] : []);
-    });
+    return [];
   };
   const rows = logRowsOf(logs, "projection");
-  const screenshotRows = rows.flatMap(row => row.kind === "note" && row.note.screenshot !== undefined
-    ? [{ row, shots: screenshotsOf(row), sessionId: row.note.screenshot.sessionId }] : []);
-  const submitCaptures = new Map<string, readonly LogScreenshot[]>();
-  const attachedCaptures = new Set<string>();
-  for (const row of rows) {
-    if (row.kind !== "note" || row.note.operatorAction?.submit !== true || row.note.operatorAction.kind !== "click"
-      || row.note.operatorAction.sessionId === undefined || row.note.operatorAction.state === "started" || row.note.operatorAction.state === "failed" || row.note.operatorAction.state === "not-run") continue;
-    const { nodeId, attempt } = requireNative(row.native), sessionId = row.note.operatorAction.sessionId;
-    const submits = rows.filter(candidate => candidate.kind === "note" && candidate.note.operatorAction?.submit === true
-      && candidate.note.operatorAction.kind === "click" && !["started", "failed", "not-run"].includes(candidate.note.operatorAction.state ?? "")
-      && candidate.note.operatorAction.sessionId === sessionId && requireNative(candidate.native).nodeId === nodeId && requireNative(candidate.native).attempt === attempt);
-    const captures = screenshotRows.filter(candidate => candidate.sessionId === sessionId && requireNative(candidate.row.native).nodeId === nodeId && requireNative(candidate.row.native).attempt === attempt
-      && candidate.shots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit"));
-    const before = captures.filter(capture => capture.shots[0]?.boundary === "before-submit");
-    const after = captures.filter(capture => capture.shots[0]?.boundary === "after-submit");
-    if (submits.length !== 1 || before.length !== 1 || after.length !== 1 || captures.length !== 2
-      || requireNative(before[0].row.native).order >= requireNative(after[0].row.native).order) continue;
-    submitCaptures.set(row.logId, [...before[0].shots, ...after[0].shots]);
-    for (const capture of captures) attachedCaptures.add(capture.row.logId);
-  }
   const observedCauses = new Set<string>();
-  const steps = rows.filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).flatMap((row): LogStep[] => {
+  const steps = rows.flatMap((row): LogStep[] => {
     if (row.kind !== "transaction-fenced") groupable.add(row.logId);
     order.set(row.logId, requireNative(row.native).order);
     node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
     const time = fmtActionClock(at);
-    const screenshots = attachedCaptures.has(row.logId) ? [] : submitCaptures.get(row.logId) ?? screenshotsOf(row);
+    const screenshots = screenshotsOf(row);
     let entry: LogEntry | undefined;
     if (row.kind === "observed") {
       const fields = row.displayFields?.flatMap((field, index) => {
+        // shortcut: an unread field has no feed entry until U2 renders it.
+        if ("unread" in field) return [];
         if (field.causal !== undefined) {
           const key = canonicalJsonStringify([field.direction, field.causal]);
           if (observedCauses.has(key)) return [];
@@ -376,19 +302,9 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     }
     else if (row.kind === "transaction-fenced") entry = { kind: "note", id: row.logId, time, message: "Write fenced; submission is not confirmed." };
     else if (row.note.screenshot !== undefined) entry = undefined;
-    else if (row.note.operatorAction !== undefined) {
-      const action = row.note.operatorAction;
-      if (action.registryLabel === true) entry = undefined;
-      else if (action.state === "failed" || action.state === "not-run" || action.state === "started") {
-        const state = action.state === "failed" ? "Failed" : action.state === "not-run" ? "Skipped" : "Started";
-        entry = { kind: "note", id: row.logId, time, message: reasoned(`${state}: ${action.label}`, action.reason),
-          ...(action.state === "failed" ? { tone: "danger" } : {}) };
-      } else if (action.kind === "click") entry = { kind: "click", id: row.logId, time, label: action.label, ...(submitCaptures.has(row.logId) ? { screenshots } : {}) };
-      else if (action.kind === "fill" || action.kind === "read") entry = { kind: "fields", id: row.logId,
-        fields: [{ id: row.logId, time, kind: action.kind, label: action.label, value: action.value ?? "Not retained" }] };
-      else entry = { kind: "note", id: row.logId, time, message: action.kind === "screenshot"
-        ? "Screenshot unavailable: no verified capture association." : action.label };
-    } else if (row.note.level === "info" && row.note.fields !== undefined) entry = undefined;
+    else if (row.note.operatorAction !== undefined) entry = row.note.operatorAction.kind === "screenshot"
+      ? { kind: "note", id: row.logId, time, message: "Screenshot unavailable: no verified capture association." } : undefined;
+    else if (row.note.level === "info" && row.note.fields !== undefined) entry = undefined;
     else entry = { kind: "note", id: row.logId, time, message: row.note.message, ...(row.note.level === "error" ? { tone: "danger" } : {}) };
     if (entry?.kind === "note" && row.kind === "note" && row.note.fields?.some(field => field.key === "code" && field.kind === "text" && field.value === "BROWSER_SCREENSHOT_CAPTURE_FAILED")) {
       const boundary = row.note.fields.find(field => field.key === "boundary" && field.kind === "text")?.value;
@@ -400,16 +316,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };
     }
     const entries: LogEntry[] = entry === undefined ? [] : [entry];
-    for (const binding of bindings.filter(binding => binding.logId === row.logId).toSorted((left, right) => left.native.order - right.native.order)) {
-      const event = confirmedActions.find(event => event.eventId === binding.eventId);
-      if (event === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISSING");
-      const message = event.kind === "fact" ? `${event.meaning} confirmed`
-        : reasoned({ started: "Action started", completed: "Action completed", failed: "Action failed", "not-run": "Action skipped" }[event.state], event.reason);
-      entries.push({ kind: "note", id: event.eventId,
-        time: fmtActionClock(event.kind === "fact" ? event.confirmedAt : event.occurredAt), message,
-        ...(event.kind === "trace" && event.state === "failed" ? { tone: "danger" } : {}) });
-    }
-    if (row.kind !== "observed" && screenshots.length > 0 && !submitCaptures.has(row.logId)) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
+    if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
       decision: { title: "Screenshot", state: "recorded", screenshots } });
     if (entries.length === 0) return [];
     return [{ id: row.logId, time, title: row.kind === "note" ? row.note.screenshot === undefined ? "Run note" : "Screenshot" : row.producer.step,

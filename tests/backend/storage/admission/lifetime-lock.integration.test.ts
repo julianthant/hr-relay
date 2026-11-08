@@ -436,6 +436,24 @@ for (const prior of ["valid", "malformed"] as const) it(`clears only authenticat
   } finally { admission?.release(); await successor?.close(); await initial.close(); await rm(directory, { recursive: true }); }
 });
 
+it("clears a dead holder's browser-roots lock and an unpublished browser-roots stage during one root startup", async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "runtime-browser-roots-startup-")));
+  const initial = await RuntimeLifetimeLock.acquire(0), port = initial.port;
+  let successor: RuntimeLifetimeLock | undefined, admission: RuntimeAdmission | undefined;
+  try {
+    admission = acquireEntrypointAdmission(directory, "exclusive", initial);
+    const machine = join(admission.stateRoot, "machine");
+    admission.release(); admission = undefined;
+    const lock = join(machine, ".browser-roots.lock"), stage = join(machine, ".browser-roots.10000000-0000-4000-8000-000000000002.tmp");
+    await writeFile(lock, JSON.stringify({ nonce: "10000000-0000-4000-8000-000000000001" }), { mode: 0o600, flag: "wx" });
+    await writeFile(stage, "{\"unpublished\":true}", { mode: 0o600, flag: "wx" });
+    await initial.close();
+    successor = await RuntimeLifetimeLock.acquire(port);
+    admission = acquireEntrypointAdmission(directory, "shared", successor);
+    for (const path of [lock, stage]) await assert.rejects(access(path), { code: "ENOENT" });
+  } finally { admission?.release(); await successor?.close(); await initial.close(); await rm(directory, { recursive: true }); }
+});
+
 for (const capability of ["missing", "released", "foreign-workspace"] as const) it(`refuses ${capability} root capability before creating target authority`, async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "runtime-unissued-admission-")));
   const foreign = await realpath(await mkdtemp(join(tmpdir(), "runtime-foreign-admission-")));

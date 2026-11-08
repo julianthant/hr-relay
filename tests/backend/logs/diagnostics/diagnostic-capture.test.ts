@@ -218,3 +218,20 @@ it("admits the maximum diagnostic attachment envelope", async () => {
     assert.equal(pendingDiagnosticArtifacts(f.admission).length, 0);
   } finally { await f.dispose(); }
 });
+
+it("lists managed artifact references by sha256 regardless of row order, so stopped-upgrade inventories compare equal", async () => {
+  const f = await fixture();
+  try {
+    terminalizeFixtureFailure(f, f.run, failure());
+    const texts = ["{\"n\":1}", "{\"n\":2}", "{\"n\":3}", "{\"n\":4}"];
+    const bundles = [];
+    for (const pair of [texts.slice(0, 2), texts.slice(2)]) {
+      const request = f.request();
+      bundles.push(await f.service.capture({ ...request, attachments: pair.map(text => ({ ...request.attachments[0], bytes: Buffer.from(text) })) }));
+    }
+    const captured = bundles.flatMap(bundle => bundle.attachments.map(attachment => attachment.digest));
+    const sorted = [...captured].sort();
+    assert.notDeepEqual(captured, sorted, "fixture must capture files out of sha256 order");
+    assert.deepEqual(f.db.readManagedArtifactReferences().map(reference => reference.sha256), sorted);
+  } finally { await f.dispose(); }
+});

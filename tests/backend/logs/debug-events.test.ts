@@ -39,8 +39,8 @@ describe("bounded native debug events", () => {
     const events = records.map(record => record.payload.kind === "debug" ? record.payload.event : undefined);
     assert.deepEqual(events.map(event => [event?.code, event?.reason, event?.message]), [
       ["WORKER_SUPERVISOR_FAILED", "supervisor-failed", undefined],
-      ["INTERNAL_FAILURE", "supervisor-cause", "AggregateError"],
-      ["PREFLIGHT_OBSERVATION_CHANGED", "supervisor-cause", "PreflightObservationChangedError"],
+      ["INTERNAL_FAILURE", "aggregate-cause", "AggregateError"],
+      ["PREFLIGHT_OBSERVATION_CHANGED", "observation-changed", "PreflightObservationChangedError"],
     ]);
     assert.equal(new Set(events.map(event => event?.correlationId)).size, 1);
     assert.deepEqual((JSON.parse(faults[0] ?? "{}") as { causes: unknown }).causes, [
@@ -68,6 +68,8 @@ describe("bounded native debug events", () => {
     assert.equal(mirrored.status, 503);
     writer.emit({ category: "client", phase: "failed", correlationId: "client-route", route: "/api/v1/runs/PRIVATE_NAME_CANARY" });
     assert.equal("route" in JSON.parse(lines[1]), false);
+    writer.emit({ category: "client", phase: "failed", correlationId: "client-root", route: "/api/v1/dashboard" });
+    assert.equal((JSON.parse(lines[2]) as { route?: string }).route, "/api/v1/dashboard");
     assert.equal(lines.join("").includes("CANARY"), false);
   });
   it.each([
@@ -78,6 +80,8 @@ describe("bounded native debug events", () => {
     [{ phase: "settled", reason: "outcome-unknown" }, "error"],
     [{ phase: "failed", reason: "operation-refused", status: 503 }, "error"],
     [{ phase: "settled", status: 403 }, "warn"],
+    [{ phase: "failed", code: "CHATGPT_OCR_CANCELLED", reason: "catalog-request" }, "info"],
+    [{ phase: "failed", code: "INTERNAL_FAILURE", reason: "request-disconnected" }, "info"],
   ] as const)("derives severity from retained metadata %j", (event, level) => {
     assert.equal(debugEventLevel(event), level);
   });

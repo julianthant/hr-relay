@@ -4,6 +4,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { OcrApprovedSnapshotSchema,ocrSnapshotDigest } from "../../../models/ocr/review.js";
 import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
+import { RunDisplayNameSchema } from "../../../models/run/display-name.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import { workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
@@ -1442,6 +1443,15 @@ function executeIntake(
 }
 
 
+/** An empty name after trimming clears the rename; anything else must be a valid display name. */
+function trimmedDisplayName(request: RunRenameCommand) {
+  const name = request.payload.displayName.trim();
+  if (name.length === 0) return null;
+  const parsed = RunDisplayNameSchema.safeParse(name);
+  if (!parsed.success) reject(request, "invalid-value", parsed.error.issues.map(issue => issue.message).join("; "));
+  return parsed.data;
+}
+
 function executePresentation(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
@@ -1463,7 +1473,7 @@ function executePresentation(
     commandId: lifecycleCommandId("operator-rename", request.commandId),
     runId: request.target.runId,
     expectedVersion: request.target.expectedVersion,
-    displayName: request.payload.displayName,
+    displayName: trimmedDisplayName(request),
   });
   lifecycleRun(request, outcome);
   return applied(request, [runTarget(request.target.runId)], [{

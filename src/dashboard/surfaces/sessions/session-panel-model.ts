@@ -361,7 +361,6 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
   "not-started": "did not start",
 };
 
-
 /** Directives describe intent, not state; pause waits for the current item to finish. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;

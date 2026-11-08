@@ -224,7 +224,7 @@ try {
 } finally { await _afterEachFixture0(); }
 });
 
-it("returns a changed observation before browser preparation or claim, without repeating the detector", async () => {
+it("returns a changed observation before browser preparation or claim once every bounded re-preparation changed", async () => {
   let changed = false, observations = 0, preparations = 0;
   try {
     const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
@@ -243,7 +243,7 @@ it("returns a changed observation before browser preparation or claim, without r
     const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
       claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
     assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
-    assert.equal(observations, 1); assert.equal(preparations, 0);
+    assert.equal(observations, 4); assert.equal(preparations, 0);
     assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
     assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
   } finally { await _afterEachFixture0(); }
@@ -437,6 +437,29 @@ await _afterEachFixture0();
 }
 });
 
+it("retries a worker an earlier dashboard lifetime started, without a child of this process", async () => {
+try {
+
+  const h = await harness(); let spawns = 0;
+  const slot = h.database.withAuthorityTransaction(repositories =>
+    admitFixtureSlot(repositories, personLookupDescriptor.id, 1, h.clock.now().toISOString()));
+  const workers = composeWorkerPool({
+    admission: h.admission, sessionGeneration: 1, profileRoot: join(h.repoRoot, rebuildRuntimeIsolation.browserProfileRoot), database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: () => { spawns += 1; throw new Error("fixture-spawn-reached"); }, settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
+  assert.equal(workers.seam.assertMember({ workerId: slot.workerId, lifetimeId: null, expectedVersion: 0 }), "absent");
+  const retry = CommandRequestSchema.parse({ commandId: "66666666-6666-4666-8666-666666666666", requestedAt: h.clock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "retry-worker",
+    target: { workerId: slot.workerId, workflowId: personLookupDescriptor.id, lifetimeId: null, expectedVersion: 0 } });
+  await assert.rejects(async () => { await kernel.executeWorkerPool(retry); }, /fixture-spawn-reached/u);
+  assert.equal(spawns, 1);
+
+} finally {
+await _afterEachFixture0();
+}
+});
 it("a protected-settings revision change invalidates admission without reusing a recent healthy report", async () => {
 try {
 

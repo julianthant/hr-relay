@@ -5,6 +5,5 @@ import { defineTaskContract } from "../../task/task-contract.js";
 import { ApprovedOcrRecordInputSchema } from "../../workflows/ocr/approved-record.js";
 import { policy,record } from "./approved-snapshot.js";
 export const ReadApprovedOcrRecord = defineTaskContract({ ...policy, id: taskId("ocr/read-approved-record"),
-  title: "Verify approved OCR member", operation: { version: 1, id: "authenticate-approved-record", system: "local", session: { kind: "local", id: "ocr-authority" },
-    actions: [{ id: "verify-approved-record", kind: "verify", label: "Verify the current released record and native member binding" }] }, input: ApprovedOcrRecordInputSchema,
+  title: "Verify approved OCR member", input: ApprovedOcrRecordInputSchema,
   output: z.strictObject({ record: OcrReviewRecordSchema }), example: { record } });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
 import { createDashboardPoolTestWorld } from "../../../support/helpers/backend/dashboard-pool-world.js";
+import { createOperatorCommandIngress } from "../../../../src/backend/runs/commands/operator-command-ingress.js";
 
 const { WORKFLOW, WORKER_1, openControlHarness, dashboardLaunch, launchCommands, planWorkers, nextCommandId, settleMicrotasks, view, cleanup } = createDashboardPoolTestWorld();
 afterEach(cleanup);
@@ -47,6 +48,50 @@ describe("automatic Run capacity", () => {
     await settleMicrotasks();
     assert.equal(h.children.length, 2);
     assert.equal(view(h, WORKER_1).state, "running");
+    assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+  });
+
+  it("respawns the stopped sole member when a run is resumed, and the resumed run is queued for it", async () => {
+    const h = await openControlHarness();
+    const { request } = dashboardLaunch(h);
+    const started = await launchCommands(h).submit(request); assert.ok(started.state === "applied"); await settleMicrotasks();
+    const run = started.affectedTargets.find(target => target.family === "run"); assert.ok(run?.family === "run");
+    const runCommand = (type: "pause" | "resume") => ({ commandId: nextCommandId(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+      source: "dashboard", family: "run", type, target: { runId: run.runId, expectedVersion: h.database.authority.runs.get(run.runId)?.version ?? 0 } });
+    assert.equal((await launchCommands(h).submit(runCommand("pause"))).state, "applied");
+    h.children[0]?.exit(0, null); await settleMicrotasks();
+    assert.equal(view(h).state, "exited");
+    const resumed = await launchCommands(h).submit(runCommand("resume")); await settleMicrotasks();
+    assert.equal(resumed.state, "applied");
+    assert.equal(resumed.state === "applied" ? resumed.workerStartup : "unexpected", undefined);
+    assert.equal(h.children.length, 2);
+    assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+    assert.equal(view(h, WORKER_1).state, "running");
+    const current = h.database.authority.runs.get(run.runId);
+    assert.equal(current?.lifecycle.state, "queued");
+    assert.equal(current?.pause, undefined);
+  });
+
+  it("respawns the stopped sole member once when a bulk Resume re-queues its runs", async () => {
+    const h = await openControlHarness();
+    const { request } = dashboardLaunch(h, "10873690", { items: 2 });
+    const started = await launchCommands(h).submit(request); assert.ok(started.state === "applied"); await settleMicrotasks();
+    const runIds = started.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []);
+    assert.equal(runIds.length, 2);
+    const bulk = (type: "pause" | "resume") => { const bulkCommandId = nextCommandId(); return { commandId: bulkCommandId, bulkCommandId,
+      requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "run", type, mode: "best-effort",
+      targets: runIds.map(runId => ({ runId, expectedVersion: h.database.authority.runs.get(runId)?.version ?? 0 })) }; };
+    const commands = launchCommands(h);
+    const ingress = createOperatorCommandIngress({ clock: h.clock, journal: h.database.authority.commands, protectedCommandAcceptedAt: () => undefined,
+      bulkAcceptances: { withTransaction: work => h.database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) } });
+    const executeBulk = (body: unknown) => ingress.executeBulk(body, accepted => commands.executeBulk(accepted));
+    const paused = await executeBulk(bulk("pause"));
+    assert.ok(paused.state === "vector" && paused.results.every(result => result.outcome === "applied"));
+    h.children[0]?.exit(0, null); await settleMicrotasks();
+    const resumed = await executeBulk(bulk("resume")); await settleMicrotasks();
+    assert.ok(resumed.state === "vector");
+    assert.deepEqual(resumed.results.map(result => result.outcome === "applied" && result.workerStartup === undefined), [true, true]);
+    assert.equal(h.children.length, 2);
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
   });
 

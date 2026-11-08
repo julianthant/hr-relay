@@ -53,6 +53,7 @@
     "src/models/workflows/separations/verify-termination-receipt.ts",
     "src/workflows/person-lookup/workflow.ts",
     "src/workflows/separations/steps/identity-check/step.ts",
+    "src/workflows/separations/steps/kuali-extraction/step.ts",
     "src/workflows/separations/steps/kronos-timecard/step.ts",
     "src/workflows/separations/steps/kuali-finalization/step.ts",
     "src/workflows/separations/steps/ucpath-transaction/step.ts"

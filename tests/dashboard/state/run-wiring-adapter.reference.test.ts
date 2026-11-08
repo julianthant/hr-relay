@@ -8,8 +8,7 @@ import { RunWorkbookWritesWireSchema, NativeRunEventWireSchema } from '../../../
 function snapshot(state: Parameters<typeof workbookReferenceLogs>[0]): RunLogSnapshot {
   const f = workbookReferenceLogs(state);
   if (f.logs.section !== 'logs') throw new Error('reference logs fixture invalid');
-  return { detail: f.detail, logs: f.logs.payload, sections: [f.workbooks], unavailableEvidence: [],
-    actionEvidence: { state: 'available', events: [], missingPages: [] }, confirmedActionBindings: [] };
+  return { detail: f.detail, logs: f.logs.payload, sections: [f.workbooks], unavailableEvidence: [] };
 }
 const client = { artifactUrl: (id: string) => `/artifacts/${id}` };
 for (const state of ['unavailable', 'available', 'resolved'] as const) it(`places ${state} roster choices by retained native order without duplicating the gate`, () => {

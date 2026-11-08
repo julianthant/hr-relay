@@ -14,13 +14,11 @@ import { useRunHistory } from "./run-history-model.js";
 const AUTHORITY_HAZARD = ERROR_CATALOG.STORAGE_AUTHORITY_UNAVAILABLE.text;
 
 /** The bootstrap summary is cheap; the checklist only claims results from a doctor report. */
-export function StorageNotice({ storage, onOpenSettings }: {
+export function StorageNotice({ storage }: {
   storage: StorageHealthSummary;
-  onOpenSettings: () => void;
 }) {
   if (storage.authority === "healthy") return null;
-  return <Notice sticky tone="danger" title="Storage unavailable" description={AUTHORITY_HAZARD}
-    action={{ label: "Storage checks", onAction: onOpenSettings }} />;
+  return <Notice sticky tone="danger" title="Storage unavailable" description={`${AUTHORITY_HAZARD} Open Settings > Storage.`} />;
 }
 
 type CheckTone = "pass" | "attention" | "unavailable" | "neutral";

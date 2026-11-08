@@ -382,10 +382,17 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(payload.value.approvalShape, "one-click");
     assert.deepEqual(
       payload.value.actions.map((action) => action.kind === "command" ? action.resolution : undefined),
-      ["approved"],
+      ["approved", "rejected"],
     );
     const approve = payload.value.actions[0];
     assert.equal(approve?.kind === "command" ? approve.confirm?.tone : undefined, "destructive");
+    // D1: one candidate is approve or reject, both the served gate actions, with the declared arm text and reason.
+    assert.equal(payload.value.rejectReason, "Rejected in Logs");
+    assert.deepEqual(payload.value.decision?.options.map(({ id, label, send, recommended }) => [id, label, send, recommended]), [
+      ["approve", "Approve match", { via: "action", actionKey: "resolve-gate-approved" }, true],
+      ["reject", "Reject match", { via: "action", actionKey: "resolve-gate-rejected" }, undefined],
+    ]);
+    assert.deepEqual(payload.value.decision?.options.map(({ confirm }) => confirm), [approve?.kind === "command" ? approve.confirm : undefined, undefined]);
   });
 
 
@@ -399,6 +406,23 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
 
       assert.deepEqual(payload.value.options, fixture.options);
       assert.equal(payload.value.approvalShape, fixture.approvalShape);
+      const decision = payload.value.decision;
+      if (fixture.approvalShape === "choose-a-candidate") {
+        // D2: the pick table rows are the served options with their own `chosenFrom`; a typed EID must name one of them.
+        assert.equal(decision?.type, "pick-person");
+        const confirm = decision?.options.find(({ id }) => id === "confirm");
+        const table = confirm?.input?.kind === "candidate" ? confirm.input.table : undefined;
+        assert.deepEqual(table?.rows.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })), fixture.options.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })));
+        // The column shows the last 4; the full EID stays on the row for the typed match.
+        assert.deepEqual(table?.rows.map(row => row.cells.find(({ columnId }) => columnId === "eid")?.value), fixture.options.map(({ eid }) => `••••${eid.slice(-4)}`));
+        const approve = payload.value.actions.find(action => action.kind === "command" && action.resolution === "approved");
+        assert.deepEqual(confirm?.confirm, approve?.kind === "command" ? approve.confirm : undefined);
+        assert.deepEqual(table?.typed, { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$" });
+        const cancelKey = w.projection.queueSurface(RUN_ID)?.actions.find(action => action.kind === "command" && action.command === "cancel")?.key;
+        assert.deepEqual(decision?.options.find(({ id }) => id === "cancel-run")?.send, cancelKey === undefined ? undefined : { via: "row-action", actionKey: cancelKey });
+      } else {
+        assert.equal(decision?.type, "identity-mismatch");
+      }
       assert.deepEqual(
         JSON.parse(JSON.stringify(payload.value.actions)) as unknown,
         JSON.parse(JSON.stringify(

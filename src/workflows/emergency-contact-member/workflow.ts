@@ -1,5 +1,3 @@
-import { UcpathProbeEmergencyContact } from "../../models/systems/ucpath/match-emergency-contact-plan.js";
-import { UcpathVerifyEmergencyContact } from "../../models/systems/ucpath/verify-emergency-contact-plan.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { EmergencyContactMemberCanonicalInput,EmergencyContactMemberInputSchema } from "../../models/workflows/emergency-contact-member/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
@@ -25,21 +23,6 @@ export const emergencyContactMemberWorkflow = defineWorkflow({
     { nodeId: "contact-plan", purpose: "Declare the ordered primary demotion and addition bound to the exact original contact set." },
     { nodeId: "contact-preview", purpose: "Probe exact presence, prepare and save the approved primary contact plan, then verify persisted contacts." },
   ],
-  operationDisplay: { capability: "complete", version: 1,
-    transactionReads: [{ entryId: "contact-preview", role: "probe", contract: UcpathProbeEmergencyContact },
-      { entryId: "contact-preview", role: "verify", contract: UcpathVerifyEmergencyContact }],
-    invocations: [
-      { id: "approved-record", entryId: "approved-record", contractRole: "task", occurrencePath: ["approved-record"], bindings: [] },
-      { id: "map-contact", entryId: "map-contact", contractRole: "task", occurrencePath: ["map-contact"], bindings: [] },
-      { id: "read-contacts", entryId: "read-contacts", contractRole: "task", occurrencePath: ["read-contacts"], bindings: [] },
-      { id: "contact-plan", entryId: "contact-plan", contractRole: "task", occurrencePath: ["contact-plan"], bindings: [] },
-      { id: "probe-contact", entryId: "contact-preview", contractRole: "probe", occurrencePath: ["contact-preview", "probe"], bindings: [] },
-      { id: "prepare-contact", entryId: "contact-preview", contractRole: "prepare", occurrencePath: ["contact-preview", "prepare"], bindings: [] },
-      { id: "save-contact", entryId: "contact-preview", contractRole: "commit", occurrencePath: ["contact-preview", "commit"], bindings: [] },
-      { id: "verify-contact", entryId: "contact-preview", contractRole: "verify", occurrencePath: ["contact-preview", "verify"], bindings: [] },
-    ], presentation: ["approved-record", "map-contact", "read-contacts", "contact-plan", "probe-contact", "prepare-contact", "save-contact", "verify-contact"]
-      .map(id => ({ id, kind: "operation" as const, invocationId: id })),
-  },
   steps: author => {
     const plan = contactPlanDefinition.build(author), preview = contactPreviewDefinition.build(author, plan);
     return { steps: [...plan.steps, ...preview.steps], result: preview.result };

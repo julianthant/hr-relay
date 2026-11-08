@@ -75,8 +75,6 @@ Stop when you can fill every template section from evidence. A section you canno
 ## Explorer preview (W6 — derived from the compiled definition)
 - Preview state: <compiled definition preview, or the explicit unavailable reason>
 - Ordered groups and entries, stable ids, typed dependencies, and systems in first-use order: <…>
-- Declared action display: <complete `operationDisplay`, or explicit legacy/unavailable>
-- Source jumps: <only exact displayed producers; missing, ambiguous, or retired sources stay unavailable>
 - Choices: <hypothetical conditions/branches only; no run state, actual outcomes or values, commands, or live overlay>
 
 ## Inputs & subjects

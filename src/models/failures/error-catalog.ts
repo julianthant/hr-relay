@@ -77,6 +77,7 @@ export const ERROR_CATALOG = Object.freeze({
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
   RUN_STALE_QUEUE_CANCELLED: catalogEntry("The never-claimed run was queued on a previous local day and was cancelled during startup.", EmptyParametersSchema),
+  RUN_LOGOUT_CANCELLED: catalogEntry("Relay cancelled this run when the profile logged out.", EmptyParametersSchema),
   STARTUP_PROCESS_CLOSED: catalogEntry("A process left by a crash was proved gone and its process custody was settled. Any unresolved writes remain held.", EmptyParametersSchema),
   PARKED_CHECK_ABSENT: catalogEntry("The target state was not found. The write remains held.", EmptyParametersSchema),
   PARKED_CHECK_AMBIGUOUS: catalogEntry("The target evidence is ambiguous. The write remains held.", EmptyParametersSchema),
@@ -423,14 +424,6 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   LOGS_UNAVAILABLE_TITLE: catalogEntry(
     "Logs unavailable",
-    EmptyParametersSchema,
-  ),
-  LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: catalogEntry(
-    "Confirmed actions unavailable",
-    EmptyParametersSchema,
-  ),
-  LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: catalogEntry(
-    "The response did not supply complete confirmed-action evidence.",
     EmptyParametersSchema,
   ),
   EXPLORER_TASK_BINDING_UNAVAILABLE: catalogEntry(

@@ -241,7 +241,8 @@ afterEach_m1(_afterEachFixture0);
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap }, "sidebar");
     await click(workflowButton("Separations"));
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
-    assert_m1.ok(workflowButton("Separations").querySelector('[aria-label="0 active of 0 in Separations"]'));
+    assert_m1.equal(workflowButton("Separations").querySelector(".workflow-rail-running")?.textContent, "");
+    assert_m1.equal(workflowButton("Separations").getAttribute("aria-description"), null);
     assert_m1.doesNotMatch(document.querySelector('nav[aria-label="Workflows"]')?.textContent ?? "", /active\s*│\s*all/iu);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, "separations");
     await click(button("Settings"));
@@ -531,18 +532,13 @@ it_m1("keeps served Logs failures while explicit parity composition selects mock
 it_m1("passes the app client to a served Explorer read while parity explicitly retains mock Explorer", async () => {
   try {
     const explorer = structuredClone(FIXTURE_EXPLORER_WIRE);
-    const lookup = explorer.workflows.find(workflow => workflow.id === "person-lookup");
-    assert_m1.ok(lookup?.walkthrough);
-    lookup.walkthrough.steps[0].title = "Registered Person Lookup";
-    lookup.walkthrough.steps[0].parts[0] = { kind: "note", text: "Purpose from the served definition" };
     let calls = 0;
     await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22person-lookup%22%7D", {
       workflowExplorer: async () => { calls++; return { ...explorer, workflows: explorer.workflows.map(workflow => workflow.id === "person-lookup" ? { ...workflow, version: parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).find(entry => entry.id === workflow.id)!.start.version } : workflow) }; },
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
-    assert_m1.ok(document.body.textContent?.includes("Registered Person Lookup"), document.body.textContent ?? "");
-    assert_m1.ok(document.body.textContent?.includes("Purpose from the served definition"));
-    assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
+    assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
+    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
     assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
     await _afterEachFixture0();
     calls = 0;

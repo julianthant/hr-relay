@@ -20,7 +20,9 @@ import { ReadOnboardingDatesOutputSchema } from "../../../src/models/systems/crm
 import { searchPersonOrgWithPagePort, assignmentDetailsToCells, type PersonOrgDetail } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { searchPersonMatchWithPort } from "../../../src/backend/systems/ucpath/driver/person-match-operation.js";
 import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
-import { PersonLookupInput, PersonLookupMatchInputError, parsePersonLookupRequest } from "../../../src/models/workflows/person-lookup/input.js";
+import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
+import { previewRunInput } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { CrmDiscoveredRecordSchema } from "../../../src/models/systems/crm/search-onboarding-records.js";
@@ -333,7 +335,11 @@ describe("approved Person Lookup scenarios", () => {
     if (failed) assert.equal(actions.length, 1);
   });
   it("M4", () => {
-    assert.throws(() => parsePersonLookupRequest("Example, Person, x, X", { mode: "match" }), (error: unknown) => error instanceof PersonLookupMatchInputError && error.code === "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS");
+    const surface = personLookupDescriptor.surfaces.inputRun;
+    assert.ok(surface);
+    const refused = previewRunInput(surface, "Example, Person, x, X", { mode: "match" });
+    assert.deepEqual(refused.submissions, []);
+    assert.ok(refused.problem?.includes(ERROR_CATALOG.PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS.text));
     assert.equal(PersonLookupInput.safeParse({ mode: "match", lastName: "Example", firstName: "Person", dob: "x" }).success, false);
   });
   it("F3", async () => {

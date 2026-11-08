@@ -602,11 +602,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         log,
         debugEvents,
         taskNotes,
-        confirmedActionAppend: event => {
-          const authority = database.authority.runs.get(event.action.runId);
-          if (authority === undefined) throw new Error("confirmed-action-run-authority-missing");
-          taskNotes.emitConfirmedAction(event, authority);
-        },
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll: () => stopRequested ? "stop" : paused() ? "pause" : "run",
@@ -628,6 +623,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         claimNext: (request, sessions) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          onObservationChanged: attempt => { log.warn("preflight observation changed during claim; re-preparing", { workerId, attempt }); },
           prepareRun: async (run, signal) => {
             const target = executionDescriptor(run.envelope.workflow);
             if (target === undefined) throw new Error("worker-execution-descriptor-unavailable");

@@ -37,7 +37,7 @@ it.each([
     descriptors: { resolve: () => ({ dataOrigins: dataOriginViewsOf(personLookupModule) }) } }, run.envelope.runId, undefined, run);
   assert.ok(section.section === "logs");
   const fields = section.payload.rows?.flatMap(row => row.kind === "observed" ? row.displayFields ?? [] : []) ?? [];
-  assert.deepEqual(fields.map(field => [field.label, field.value]), [
+  assert.deepEqual(fields.map(field => [field.label, "value" in field ? field.value : "unread"]), [
     ["Employee ID", "10000001"], ["Employee ID", "10000002"], ...(crm === "Not checked" ? [] : [["CRM", crm], ["How found", "No match"]]),
     ["UCPath", "Found"], ["CRM", crm], ...(reason === "" ? [] : [["Status note", reason]]),
   ]);
@@ -60,7 +60,7 @@ it.each([
   const deps={runReader:w.runReader,timeline:w.timeline,stateRoot:w.stateRoot,projection:w.projection,authority:w.authority,descriptors:{resolve:()=>({dataOrigins:dataOriginViewsOf(personLookupModule)})}};
   const section=buildRunLogsSection(deps,run.envelope.runId,undefined,run);assert.ok(section.section==="logs");
   const fields=section.payload.rows?.flatMap(row=>row.kind==="observed"?row.displayFields??[]:[])??[];
-  assert.deepEqual(fields.map(field=>[field.label,field.value]),text===null?[]:[[label,text]]);
+  assert.deepEqual(fields.map(field=>[field.label,"value" in field?field.value:"unread"]),text===null?[]:[[label,text]]);
 });
 it.each([
  {field:"method",value:"unknown-method",redacted:false,refused:true},
@@ -76,5 +76,5 @@ it.each([
  const deps={runReader:w.runReader,timeline:w.timeline,stateRoot:w.stateRoot,projection:w.projection,authority:w.authority,descriptors:{resolve:()=>({dataOrigins:dataOriginViewsOf(personLookupModule)})}};
  const read=()=>buildRunLogsSection(deps,run.envelope.runId,undefined,run);
  if(refused)assert.throws(read,{code:"RUN_LOG_DISPLAY_VALUE_UNMAPPED"});
- else {const section=read();assert.ok(section.section==="logs");assert.deepEqual(section.payload.rows?.flatMap(row=>row.kind==="observed"?row.displayFields?.map(field=>field.value)??[]:[]),redacted?["Redacted"]:[]);}
+ else {const section=read();assert.ok(section.section==="logs");assert.deepEqual(section.payload.rows?.flatMap(row=>row.kind==="observed"?row.displayFields?.map(field=>"value" in field?field.value:"unread")??[]:[]),redacted?["Redacted"]:[]);}
 });

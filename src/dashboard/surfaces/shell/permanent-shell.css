@@ -1,5 +1,5 @@
 .dashboard-shell { --shell-rail-width: 264px; }
-.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: clamp(208px, calc(25vw - 96px), 264px); }
+.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: clamp(176px, calc(25vw - 128px), 232px); }
 .dashboard-shell .dashboard-workspace > main { margin-left: var(--shell-rail-width); }
 .dashboard-shell[data-settings-takeover="true"] .workspace-rail { display: none; }
 .dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { margin-left: 0; }
@@ -21,6 +21,8 @@
 
 .workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (30px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
 .workspace-rail-header h2 { margin: 0; font-size: 23px; line-height: 1.4; font-weight: 500; }
+/* Below 1256 px the rail is narrower than the logo, title and two buttons need at 23 px. */
+@media (max-width: 1255px) { .workspace-rail-header { gap: 6px; } .workspace-rail-header h2 { gap: 6px; font-size: 20px; } }
 .workspace-rail-body { display: flex; flex: 1; min-height: 0; flex-direction: column; pointer-events: auto; }
 
 .workspace-rail-footer { height: 48px; padding: 6px 16px; flex-shrink: 0; background: var(--ds-surface-1); pointer-events: auto; }
@@ -40,9 +42,10 @@
 .workflow-rail button { display: flex; width: 100%; height: 32px; align-items: center; gap: 8px; padding: 0 8px 0 calc(8px + 14px + 8px); border: 0; border-radius: 10px; color: var(--ui-primary); font-size: var(--ds-text-ui); font-weight: 400; text-align: left; cursor: pointer; }
 .workflow-rail button:hover { background: var(--ds-surface-3); }
 .workflow-rail button[aria-current="page"] { background: var(--ds-surface-selected); }
+/* The running-count pill sits in a fixed slot left of the name, so names stay aligned when it is hidden. */
+.workflow-rail-running { order: -1; display: flex; width: 28px; flex-shrink: 0; }
+.workflow-rail button:has(> .workflow-rail-running) { gap: 6px; padding-left: 6px; }
 
-.session-panel-toggle::before { content: ""; position: absolute; inset: 0; background: var(--ui-hover); mask-image: linear-gradient(to right, black calc(100% - var(--ds-space-page)), transparent); opacity: 0; transition: opacity var(--ds-dur-2) var(--ds-ease-out); }
-.session-panel-toggle:hover::before { opacity: 1; }
 .dashboard-panel-columns { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(var(--ds-w-side-panel),30%) minmax(0,1fr); gap: var(--ds-space-cozy); padding: var(--ds-space-cozy); background: var(--ui-canvas); }
 .dashboard-queue-column, .dashboard-log-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .dashboard-queue-column { container-type: inline-size; container-name: queue; }
@@ -128,3 +131,13 @@
 .settings-content [data-settings-path]:focus { outline: none; }
 .settings-nav-search [data-slot="search-field-group"]:has(input:focus-visible) { border: 1px solid var(--ds-fg-muted); }
 .settings-content [data-settings-path]:focus-visible { box-shadow: inset 0 0 0 1px var(--ui-stroke-control); }
+.sessions-bar-icon { width:32px; height:32px; padding:0; border:0; border-radius:6px; background:transparent; color:var(--ui-secondary); translate:none; transform:none; transition:background-color 120ms ease-out, color 120ms ease-out; }
+.sessions-bar-icon:hover { background:var(--ui-hover); color:var(--ui-primary); }
+.sessions-bar-icon:active { background:var(--ui-stroke); translate:none; }
+.sessions-bar-icon:is([aria-expanded=true],[aria-pressed=true]) { background:var(--ui-hover); color:var(--ui-primary); }
+.sessions-bar-icon:focus-visible { outline:2px solid var(--ui-info); outline-offset:-2px; }
+.sessions-bar-toggle { display:flex; flex:1 1 auto; min-width:0; align-items:center; gap:8px; align-self:stretch; padding:0 12px; border:0; border-radius:0; text-align:left; background:transparent; color:var(--ui-primary); cursor:pointer; transition:background-color 120ms ease-out; }
+.sessions-bar-toggle:hover { background:var(--ui-hover); }
+.sessions-bar-toggle:active { background:var(--ui-stroke); }
+@media (prefers-reduced-motion: reduce) { .sessions-bar-icon, .sessions-bar-toggle { transition:none; } }
+html[data-motion=off] :is(.sessions-bar-icon, .sessions-bar-toggle) { transition:none; }
