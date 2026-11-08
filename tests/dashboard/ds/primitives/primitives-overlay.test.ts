@@ -9,21 +9,21 @@ import { dsLayer } from "../../../../src/dashboard/ds/theme/tokens.js";
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class MeasurementFreeResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
 
-it("keeps error cards until acknowledgment and makes toast actions inert during overlays", async () => {
+it("keeps error cards until acknowledgment and makes the toast close control inert during overlays", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("ResizeObserver", MeasurementFreeResizeObserver);
-  const action = vi.fn();
   function Producer() {
     const { toast } = useToasts();
     const [overlay, setOverlay] = useState(false);
     return createElement("div", {},
-      createElement("button", { onClick: () => toast({ tone: "danger", title: "Write parked", description: "Review the saved result.", action: { label: "Review", onAction: action } }) }, "Fail"),
+      createElement("button", { onClick: () => toast({ tone: "danger", title: "Write parked", description: "Review the saved result." }) }, "Fail"),
       createElement("button", { onClick: () => setOverlay(value => !value) }, "Layer"),
       overlay ? createElement(OverlayLayerPresence) : null,
     );
   }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const button = (name: string) => { const found = [...document.querySelectorAll("button")].find(node => node.textContent === name); assert.ok(found, name); return found; };
+  const dismiss = () => { const found = document.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]'); assert.ok(found); return found; };
   try {
     await act(async () => root.render(createElement(ToastProvider, { children: createElement(Producer) })));
     await act(async () => button("Fail").click());
@@ -38,9 +38,9 @@ it("keeps error cards until acknowledgment and makes toast actions inert during 
     assert.equal(toast.hasAttribute("data-ending-style"), false);
     await act(async () => button("Layer").click());
     assert.equal(document.querySelector('[data-ds-toast-viewport]')?.hasAttribute("inert"), true);
-    assert.equal(button("Review").disabled, true);
-    await act(async () => button("Review").click()); assert.equal(action.mock.calls.length, 0);
-    await act(async () => button("Layer").click()); assert.equal(button("Review").disabled, false);
-    await act(async () => button("Review").click()); assert.equal(action.mock.calls.length, 1);
+    assert.equal(dismiss().disabled, true);
+    await act(async () => button("Layer").click()); assert.equal(dismiss().disabled, false);
+    assert.deepEqual([...toast.querySelectorAll("button")].map(node => node.getAttribute("aria-label")), ["Dismiss"]);
+    await act(async () => dismiss().click());
   } finally { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); }
 });

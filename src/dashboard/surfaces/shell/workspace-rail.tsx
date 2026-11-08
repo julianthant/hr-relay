@@ -57,6 +57,6 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
           onControl={notificationRail.onControl} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} notice={notice || inbox?.notice || ""} />
         : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
     </div>
-    {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} onClose={notificationRail.onClosePing} onOpen={notificationRail.onOpenPing} />}
+    {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} />}
   </aside>;
 });

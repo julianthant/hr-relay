@@ -28,7 +28,8 @@ export function RunReview({ selection, focus }: { selection: LogSelection; focus
   const ready = selected?.filter(record => record.assertedEid !== null && record.fields.blockingPaths.length === 0).length ?? 0;
   return <>
     {resource.state === "failed" ? <Notice tone="danger" title="Review unavailable" description={resource.error} /> : resource.state === "loading" ? <Badge tone="neutral">Refreshing</Badge> : undefined}
-    {resource.feedback && <Notice sticky tone="warning" title="Review changes" description={resource.feedback} action={resource.check ? { label: "Check result", onAction: resource.check } : resource.reload ? { label: "Discard local changes", onAction: resource.reload } : undefined} />}
+    {resource.feedback && <Notice sticky tone="warning" title="Review changes" description={resource.feedback} />}
+    {resource.feedback && (resource.check ?? resource.reload) && <Button size="sm" variant="secondary" className="self-start" onClick={resource.check ?? resource.reload}>{resource.check ? "Check result" : "Discard local changes"}</Button>}
     <RecordReview runId={selection.row.runId} subject={selection.row.title} cards={cards.map(card => ({ ...card,
       disposition: resource.readOnly ? card.disposition : discarded ? { label: "Discarded", tone: "neutral" } : undefined }))} readOnly={resource.readOnly || discarded}
       disabled={resource.disabled} actionsDisabled={resource.actionsDisabled} discarded={discarded} selectedCount={ready} focusId={focus?.recordId ?? resource.addedRecordId}

@@ -20,8 +20,6 @@ export type NotificationRailModel = Readonly<{
   onControl: (id: string, control: NotificationControl) => void;
   onReadAll: () => void;
   onOpenItem: (item: NotificationItem) => void;
-  onClosePing: () => void;
-  onOpenPing: () => void;
 }>;
 
 export function useNotificationRailModel({ notifications, filter, setOpen, setNotice, onOpenNotification, served }: NotificationRailInput): NotificationRailModel {
@@ -38,8 +36,6 @@ export function useNotificationRailModel({ notifications, filter, setOpen, setNo
     onControl: (id, action) => { setNotice(""); void served.control(id, action); },
     onReadAll: () => { setNotice(""); void served.readAll(); },
     onOpenItem: item => { setNotice(""); served.open(item, onOpenNotification, () => setOpen(false), setNotice); },
-    onClosePing: () => setPing(false),
-    onOpenPing: () => changeOpen(true),
   };
   return {
     state,
@@ -56,7 +52,5 @@ export function useNotificationRailModel({ notifications, filter, setOpen, setNo
         changeOpen(false);
       }, setNotice);
     },
-    onClosePing: () => setPing(false),
-    onOpenPing: () => changeOpen(true),
   };
 }
