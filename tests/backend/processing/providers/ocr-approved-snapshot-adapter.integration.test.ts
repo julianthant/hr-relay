@@ -337,13 +337,13 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
   const surface = projection.queueSurface(f.parentRun.envelope.runId); assert.ok(surface?.surfaceKind === "operation");
   assert.deepEqual([...surface.memberRunIds].sort(), members.map(member => member.envelope.runId).sort());
   assert.deepEqual(surface.memberRollup, { total: 2, terminal: 2, failed: 0 });
-  assert.deepEqual(surface.linkedRuns.map(link => link.runId), [f.run.envelope.runId]);
+  assert.deepEqual(surface.linkedRuns, []);
   assert.deepEqual(surface.recordMembers?.members.map(row => row.kind === "record" ? row.record.recordId : row.kind), review.records.map(record => record.recordId));
   assert.deepEqual(surface.recordMembers?.members.map(row => row.statusLabel), ["Previewed", "Not approved", "Previewed"]);
   assert.ok(surface.recordMembers?.members.every(row => row.statusLabel !== "Saved"));
   const ocrSurface = projection.queueSurface(f.run.envelope.runId); assert.ok(ocrSurface);
   assert.equal(ocrSurface.parent?.runId, f.parentRun.envelope.runId);
-  assert.equal(ocrSurface.parent?.visibility, "linked");
+  assert.equal(ocrSurface.parent?.visibility, "hidden-unless-failed");
   for (const member of members) {
     const memberSurface = projection.queueSurface(member.envelope.runId); assert.ok(memberSurface);
     assert.equal(memberSurface.parent?.runId, f.parentRun.envelope.runId);

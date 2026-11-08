@@ -66,7 +66,20 @@ function trust(f: Fixture) {
     descriptors: [f.root.descriptor] });
 }
 
+function ocrBytes(f: Fixture) {
+  const runs = [f.run, ...f.database.authority.runs.listChildren(f.run.envelope.runId)];
+  return runs.map(run => canonicalJsonStringify(f.database.authority.runs.get(run.envelope.runId)));
+}
+
 async function replaceAndResume(f: Fixture, resumeDelayMs = 0) {
+  const ocrBefore = ocrBytes(f), readsBefore = f.pageReads.length;
+  const replacement = await replaceAndResumeMember(f, resumeDelayMs);
+  assert.equal(f.pageReads.length, readsBefore);
+  assert.deepEqual(ocrBytes(f), ocrBefore);
+  return replacement;
+}
+
+async function replaceAndResumeMember(f: Fixture, resumeDelayMs: number) {
   const previous = failed(f), command = f.runCommand("retry", previous);
   const previousHold = f.current().pause;
   const applied = f.canonical.kernel.execute(command); assert.equal(applied.state, "applied", JSON.stringify(applied));
