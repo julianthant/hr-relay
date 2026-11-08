@@ -650,7 +650,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     proofContract: parkedWriteProofContract(deps, authority, intent),
     actions,
     decision: parkedWriteDecision({ taskId: intent.taskId, parkedCode: intent.parkedCode, acceptsTransactionId,
-      ...(hasProtectedTransactionInput(authority) ? {} : { recordId: parkedWriteRecordId(intent.taskId, intent.idempotencyKey) }),
+      ...(hasProtectedTransactionInput(authority) || intent.occurrence !== undefined ? {} : { recordId: parkedWriteRecordId(intent.taskId, intent.idempotencyKey) }),
       readBack: ["post-click-verifier-exception", "post-click-verifier-unknown"].includes(intent.authorityReason.code) }, actions),
   });
 }
