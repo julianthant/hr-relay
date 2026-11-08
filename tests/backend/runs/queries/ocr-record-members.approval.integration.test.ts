@@ -61,7 +61,7 @@ function served(f: Fixture, database = f.database, reader = f.canonical.lifecycl
   const parent = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
   const ocr = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
   assert.ok(parent?.surfaceKind === "operation" && ocr?.surfaceKind === "operation");
-  assert.equal(parent.availableSections.includes("review"), false);
+  assert.equal(parent.availableSections.includes("review"), true);
   assert.equal(ocr.availableSections.includes("review"), true);
   const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: reader,
     canonical: { database, reader, descriptors: { resolve: f.resolve } } });
@@ -181,8 +181,8 @@ for (const dryRun of [true, false]) {
     assert.equal(before.ocr.recordMembers?.members.some(member => member.kind === "page-failure"), false);
     assert.equal(repositories.runs.listChildren(f.parentRun.envelope.runId).length, 1);
     assert.equal(repositories.runs.listByWorkflow("emergency-contact-member").length, 0);
-    assert.deepEqual(before.parent.linkedRuns.map(link => ({ runId: link.runId, workflowId: link.workflowId, panelKind: link.panelKind })),
-      [{ runId: f.run.envelope.runId, workflowId: "ocr", panelKind: "review" }]);
+    assert.deepEqual(before.parent.linkedRuns, []);
+    assert.equal(before.parentDetail.panelKind, "review");
 
     assert.equal(f.canonical.kernel.execute(f.approval(selected)).state, "applied");
     const approved = repositories.ocrReviews.snapshots(f.run.envelope.runId); assert.equal(approved.length, 1);
@@ -287,7 +287,7 @@ for (const dryRun of [true, false]) {
   }, scaledMs(60_000));
 }
 
-it("keeps failed OCR pages on their own Logs while hiding successful reads under the linked review", async () => {
+it("keeps failed OCR pages on their own Logs while hiding successful reads under the hosted review", async () => {
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, failManualPageOnce: 2 });
   const view = served(f);
   assert.equal(view.parent.status, "running");

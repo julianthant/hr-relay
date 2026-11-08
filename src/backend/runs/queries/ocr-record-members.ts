@@ -289,13 +289,26 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
   }) });
 }
 
+export function hostedOcrRun(repositories: AuthorityRepositories, host: RunRecord): RunRecord | undefined {
+  if (host.envelope.workflow === "ocr" || !repositories.runs.listChildren(host.envelope.runId).some(child => child.envelope.workflow === "ocr")) return undefined;
+  const hosted = repositories.dependencies.groups(host.envelope.runId).filter(({ manifest }) => manifest.policy.visibility !== "inline")
+    .flatMap(({ group }) => group.children.filter(member => member.child.envelope.workflow === "ocr"));
+  return hosted.length === 1 ? hosted[0]?.child : undefined;
+}
+
+export function ocrHostRun(repositories: AuthorityRepositories, ocr: RunRecord): RunRecord | undefined {
+  const hostId = ocr.envelope.workflow === "ocr" ? ocr.envelope.parent?.runId : undefined;
+  const host = hostId === undefined ? undefined : repositories.runs.get(hostId);
+  return host !== undefined && hostedOcrRun(repositories, host)?.envelope.runId === ocr.envelope.runId ? host : undefined;
+}
+
 export function readQueueRecordMembers(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
   run: RunRecord, children: readonly RunRecord[], resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined): QueueRecordMembers | undefined {
   const workflowLabel = (id: string) => resolve(id)?.label ?? id;
   if (run.envelope.workflow === "ocr") return readOcrQueueMembers(repositories, reader, run.envelope.runId, workflowLabel);
   if (!children.some(child => child.envelope.workflow === "ocr") && run.envelope.continuation === undefined) return undefined;
   const sources = repositories.dependencies.groups(run.envelope.runId)
-    .filter(({ manifest }) => manifest.policy.visibility === "linked")
+    .filter(({ manifest }) => manifest.policy.visibility !== "inline")
     .flatMap(({ group }) => group.children.filter(member => member.child.envelope.workflow === "ocr")
       .flatMap(member => {
         const approval = member.terminal?.state === "satisfied" && member.terminal.kind === "ordinary"

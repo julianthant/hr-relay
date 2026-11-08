@@ -90,6 +90,7 @@ export function createOcrReviewWorld() {
       let failedPage = false;
       let failedSigner = false;
       const signerReads: string[] = [];
+      const pageReads: number[] = [];
       const sessions = options.signerLookup === undefined ? options.sessions : sessionFactoryHarness({ i9: () => ({
         ...createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: READ_AT }),
         async readSection2Signer(input: I9LookupInput) {
@@ -101,8 +102,9 @@ export function createOcrReviewWorld() {
           return { i9Status: "not-found" as const, signerName: "" as const };
         },
       }) });
-      const manualReading = options.failManualPageOnce === undefined && options.manualPageFailure === undefined ? readManualOcrReadingTask : defineTask(readManualOcrReadingTask.contract, {
+      const manualReading = defineTask(readManualOcrReadingTask.contract, {
         sessions: [], async run(args) {
+          pageReads.push(args.input.page.sourcePage);
           if (options.manualPageFailure?.(args.input.page.sourcePage) === true) return args.ctx.fail("INCONSISTENT_INPUTS", "Synthetic manual page reading refused.");
           if (!failedPage && args.input.page.sourcePage === options.failManualPageOnce) {
             failedPage = true;
@@ -268,7 +270,7 @@ export function createOcrReviewWorld() {
           } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
       };
       return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
-        reading, corrected, pageBytes, command, root, resolve, stores, signerReads, readResult: () => {
+        reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
           return OcrResultSchema.parse(checkpoint.output.value);

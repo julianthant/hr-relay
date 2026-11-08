@@ -49,6 +49,7 @@ export interface CrossDateSearchQueryDeps {
   readonly authority: {
     readSnapshot<Result>(read: (snapshot: CrossDateSearchAuthoritySnapshot) => Result): Result;
   };
+  readonly host?: (record: RunRecord) => RunRecord | undefined;
 }
 
 export interface CrossDateSearchQueryService {
@@ -454,7 +455,8 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
           },
           totalMatches: authorityPage.totalMatches,
           coverage: authorityPage.coverage,
-          results: visibleRows.map(({ record, matchRank, metadata }) => resultOf(deps, record, matchRank, metadata)),
+          results: visibleRows.map(({ record, matchRank, metadata }) => resultOf(deps, deps.host?.(record) ?? record, matchRank, metadata))
+            .filter((result, index, all) => all.findIndex(other => other.runId === result.runId) === index),
           nextCursor,
         });
       });

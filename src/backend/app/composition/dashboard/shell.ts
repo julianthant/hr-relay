@@ -5,6 +5,7 @@ import { WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES } from "../../registries/wo
 import { SETTINGS_SCHEMA_HASH } from "../../../../models/config/settings.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import type { BootstrapQueryDeps } from "../../../runs/queries/bootstrap.js";
+import { ocrHostRun } from "../../../runs/queries/ocr-record-members.js";
 import { createCrossDateSearchService } from "../../../runs/queries/search.js";
 import type { OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";
 import { createDashboardStreamHub, type DashboardStreamHubDeps } from "../../../transports/http/subscriptions/dashboard-stream.js";
@@ -31,6 +32,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
       authorityGeneration: database.getMeta().authorityGeneration,
       searchRuns: searchInput => database.authority.runs.search(searchInput),
     })) },
+    host: record => ocrHostRun(database.authority, record),
   });
   return {
     bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, timeZone: input.timeZone, modules: catalogModules,
