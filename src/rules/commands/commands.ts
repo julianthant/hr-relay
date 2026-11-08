@@ -311,7 +311,7 @@ export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recover-run"), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: z.string() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recheck-write"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, transactionId: z.string().regex(/^T\d+$/u).optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema }) }),
 ]);
