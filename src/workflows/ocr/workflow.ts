@@ -26,7 +26,7 @@ export const ocrWorkflow = defineWorkflow({
   surfaces: {},
   role: defineWorkflowRole({ kind: "composition" }),
   identity: { matchKey: input => `${input.document.sha256}:${input.formType}:${input.readingId}` },
-  presentation: { title: input => input.formType, subtitle: () => "OCR document review" },
+  presentation: { title: input => input.fileName ?? input.formType, subtitle: () => "OCR document review" },
   scenarios: ["ocr/multi-page", "ocr/manual", "ocr/page-failure", "ocr/unresolved-identity"],
   steps: ocrSourcePagesDefinition.build,
 });

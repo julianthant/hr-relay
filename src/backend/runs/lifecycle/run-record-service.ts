@@ -531,7 +531,8 @@ export class RunRecordService {
       }
       if (!("lifecycle" in request)) {
         if (runClaim(current.run) !== undefined) return refused({ reason: "owned-by-worker" });
-        if (current.run.lifecycle.state === "terminal") {
+        // A rename is presentation only, so a settled run still takes one; a priority bump does not.
+        if (current.run.lifecycle.state === "terminal" && !("displayName" in request)) {
           return refused({
             reason: "illegal-transition",
             from: current.run.lifecycle.state,
@@ -1605,7 +1606,9 @@ export class RunRecordService {
       result,
       completedAt: this.dependencies.clock.now().toISOString(),
     });
-    if (result.kind === "run") {
+    // A rename of a settled run is not its terminal evidence.
+    const presentation = typeof command.request === "object" && command.request !== null && "displayName" in command.request;
+    if (result.kind === "run" && !presentation) {
       this.dependencies.database.settleLifecycleTerminalEvidence(command.commandId);
       const run = repositories.runs.get(result.runId);
       if (run?.lifecycle.state === "terminal" && run.envelope.parent !== undefined) repositories.dependencies.reconcile(run.envelope.parent.runId, this.dependencies.clock.now().toISOString());

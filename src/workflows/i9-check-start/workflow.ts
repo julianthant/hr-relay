@@ -15,7 +15,7 @@ export const i9CheckStartWorkflow = defineWorkflow({
   identity: { matchKey: i9CheckStartMatchKey },
   referenceLookups: () => [{ typeId: I9_CHECK_REFERENCE.typeId, keys: [], fields: [...I9_CHECK_REFERENCE.fields] }],
   plannedOutputs: () => [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
-  presentation: { title: input => `I-9 Check · ${input.documents.length} PDF${input.documents.length === 1 ? "" : "s"}`, subtitle: () => "One results workbook" },
+  presentation: { title: ({ documents }) => documents.length === 1 && documents[0] !== undefined ? documents[0].fileName : `I-9 Check · ${documents.length} PDFs`, subtitle: () => "One results workbook" },
   surface: { shape: "single" }, surfaces: {
     uploadRun: { title: { segments: [{ kind: "literal", text: "I-9 PDFs" }] }, fields: [],
       pdfInput: { documentsField: "documents", asOfField: "asOf", reviewerField: "reviewerName" },
