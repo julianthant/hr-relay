@@ -7,9 +7,12 @@ import {
   BulkRunCommandResponseSchema,
   CommandRequestSchema,
   CommandResultSchema,
+  needsWorkerCapacity,
   type BulkRunCommandOutcome,
   type BulkRunCommandResponse,
+  type CapacityRequest,
   type CommandResult,
+  type RunWorkerStartupFailure,
 } from "../../../rules/commands/commands.js";
 import type { CommandKernel } from "./command-kernel.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
@@ -29,7 +32,7 @@ export interface DashboardCommandService {
 
   submit(input: unknown): Promise<CommandResult>;
 
-  executeBulk(input: unknown): BulkRunCommandResponse;
+  executeBulk(input: unknown): Promise<BulkRunCommandResponse>;
 }
 
 // Derive child command IDs from bulk ID and run ID for exact replay.
@@ -75,6 +78,29 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
   const WorkerBrowserSniffSchema = z.strictObject({ family: z.literal("worker-browser") }).loose();
 
   const startTails = new Map<string, Promise<void>>();
+  /** One capacity ensure at a time per workflow, so concurrent commands never race a spawn. */
+  async function inWorkflowLane<Result>(key: string, work: () => Promise<Result>): Promise<Result> {
+    const previous = startTails.get(key);
+    let release: () => void = () => undefined;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    startTails.set(key, current);
+    if (previous !== undefined) await previous;
+    try { return await work(); }
+    finally {
+      if (startTails.get(key) === current) startTails.delete(key);
+      release();
+    }
+  }
+  async function ensureCapacity(capacity: RunWorkerCapacity, request: CapacityRequest, result: CommandResult): Promise<RunWorkerStartupFailure | undefined> {
+    try { await capacity.ensure(request, result); return undefined; }
+    catch (error) {
+      if (result.state !== "applied" && result.state !== "already-applied") throw error;
+      return error instanceof RunWorkerStartupError ? error.failure : {
+        state: "unknown", code: "RUN_QUEUED_WORKER_UNAVAILABLE",
+        message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail: errorText(error),
+      };
+    }
+  }
   async function submit(input: unknown): Promise<CommandResult> {
     if (AssistantModelPreferenceCommandRequestSchema.safeParse(input).success) return deps.kernel.executeAssistantModelPreference(input);
     if (WorkerBrowserSniffSchema.safeParse(input).success) {
@@ -86,30 +112,15 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       if (result.state === "applied" && parsed.data.type === "pause-all-and-quit") deps.quitAccepted?.();
       return result;
     }
-    if (!parsed.success || parsed.data.family !== "start" || deps.startWorkerCapacity === undefined) return executeOne(input);
-    const request = parsed.data;
-    const key = request.target.workflowId;
-    const previous = startTails.get(key);
-    let release: () => void = () => undefined;
-    const current = new Promise<void>(resolve => { release = resolve; });
-    startTails.set(key, current);
-    if (previous !== undefined) await previous;
-    try {
+    if (!parsed.success || !needsWorkerCapacity(parsed.data) || deps.startWorkerCapacity === undefined) return executeOne(input);
+    const request = parsed.data, capacity = deps.startWorkerCapacity;
+    const key = capacity.workflowOf(request);
+    if (key === undefined) return executeOne(input);
+    return inWorkflowLane(key, async () => {
       const result = executeOne(request);
-      try { await deps.startWorkerCapacity.ensure(request, result); }
-      catch (error) {
-        if (result.state !== "applied" && result.state !== "already-applied") throw error;
-        const workerStartup = error instanceof RunWorkerStartupError ? error.failure : {
-          state: "unknown" as const, code: "RUN_QUEUED_WORKER_UNAVAILABLE" as const,
-          message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail: errorText(error),
-        };
-        return CommandResultSchema.parse({ ...result, workerStartup });
-      }
-      return result;
-    } finally {
-      if (startTails.get(key) === current) startTails.delete(key);
-      release();
-    }
+      const workerStartup = await ensureCapacity(capacity, request, result);
+      return workerStartup === undefined ? result : CommandResultSchema.parse({ ...result, workerStartup });
+    });
   }
 
   return Object.freeze({
@@ -117,7 +128,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     submit,
 
     // Whole-request refusals reach no target; each target outcome remains a separate vector entry.
-    executeBulk(input: unknown): BulkRunCommandResponse {
+    async executeBulk(input: unknown): Promise<BulkRunCommandResponse> {
       const parsed = BulkRunCommandRequestSchema.safeParse(input);
       if (!parsed.success) {
 
@@ -140,12 +151,21 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       }
 
       const results: BulkRunCommandOutcome[] = [];
+      const queued = new Map<string, { child: CapacityRequest; result: CommandResult }>(), workflowOfRun = new Map<string, string>();
       for (const target of request.targets) {
         const commandId = deriveBulkChildCommandId(request.bulkCommandId, target.runId);
         const child = deriveBulkChildCommand(request, target);
         let result: CommandResult;
         try {
           result = executeOne(child, request.bulkCommandId);
+          const typed = CommandRequestSchema.parse(child);
+          if (deps.startWorkerCapacity !== undefined && (result.state === "applied" || result.state === "already-applied") && needsWorkerCapacity(typed)) {
+            const workflow = deps.startWorkerCapacity.workflowOf(typed);
+            if (workflow !== undefined) {
+              workflowOfRun.set(target.runId, workflow);
+              if (!queued.has(workflow)) queued.set(workflow, { child: typed, result });
+            }
+          }
         } catch (error) {
           // Report an untyped throw per run and continue the remaining targets; it is not a target refusal.
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: errorText(error) });
@@ -178,6 +198,14 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         );
       }
 
+      const capacity = deps.startWorkerCapacity;
+      if (capacity !== undefined) for (const [workflow, { child, result }] of queued) {
+        const workerStartup = await inWorkflowLane(workflow, () => ensureCapacity(capacity, child, result));
+        if (workerStartup === undefined) continue;
+        for (const [index, outcome] of results.entries()) {
+          if (outcome.outcome === "applied" && workflowOfRun.get(outcome.runId) === workflow) results[index] = { ...outcome, workerStartup };
+        }
+      }
       return BulkRunCommandResponseSchema.parse({
         state: "vector",
         bulkCommandId: request.bulkCommandId,

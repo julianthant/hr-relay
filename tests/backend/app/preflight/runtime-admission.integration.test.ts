@@ -24,6 +24,7 @@ import { workflowPreflightScope } from "../../../../src/backend/runs/start/prefl
 import { createPreflightReportService } from "../../../../src/backend/runtime/preflight/report-service.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { admitWorkerLifecycle } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
 import { requiredPreflightChecks, type PreflightRunner, type PreflightRunnerContext } from "../../../../src/models/preflight/preflight.js";
@@ -218,7 +219,7 @@ try {
 } finally { await _afterEachFixture0(); }
 });
 
-it("returns a changed observation before browser preparation or claim, without repeating the detector", async () => {
+it("returns a changed observation before browser preparation or claim once every bounded re-preparation changed", async () => {
   let changed = false, observations = 0, preparations = 0;
   try {
     const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
@@ -237,7 +238,7 @@ it("returns a changed observation before browser preparation or claim, without r
     const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
       claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
     assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
-    assert.equal(observations, 1); assert.equal(preparations, 0);
+    assert.equal(observations, 4); assert.equal(preparations, 0);
     assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
     assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
   } finally { await _afterEachFixture0(); }
@@ -445,6 +446,41 @@ await _afterEachFixture0();
 }
 });
 
+it("retries a worker an earlier dashboard lifetime started, without a child of this process", async () => {
+try {
+  const h = await harness(); let spawns = 0;
+  const plan = CommandRequestSchema.parse({ commandId: "44444444-4444-4444-8444-444444444444", requestedAt: h.clock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
+    target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
+  if (plan.type !== "plan-worker-count") assert.fail("fixture plan required");
+  const slot = h.database.withAuthorityTransaction(repositories => { repositories.commands.insert(plan); return admitWorkerPoolRoster(repositories, plan, h.clock.now().toISOString()); }).selected[0];
+  assert.ok(slot);
+  const workerId = slot.workerId, now = () => h.clock.now().toISOString();
+  assert.equal(h.database.authority.workerLeases.start({ workerId, workflow: personLookupDescriptor.id, browserSystems: ["ucpath", "crm"], processId: 4242,
+    requestedBy: "local-operator", now: now() }).state, "started");
+  const prior = h.database.authority.workerLeases.get(workerId); assert.ok(prior);
+  h.database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: prior.leaseGeneration,
+    lifecycle: { state: "stopped", startedAt: prior.lifecycle.startedAt, stoppedAt: now(), reason: "crashed" }, now: now() });
+  const lease = h.database.authority.workerLeases.get(workerId); assert.ok(lease);
+  const control = composeWorkerProcessControl({
+    admission: h.admission, onExit: () => undefined, profileRoot: join(h.repoRoot, rebuildRuntimeIsolation.browserProfileRoot), database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: () => { spawns += 1; throw new Error("fixture-spawn-reached"); }, birth: { pollMs: 250, timeoutMs: 10_000 }, onFault: () => undefined });
+  const retry = { commandId: randomUUID(), family: "worker-browser", type: "retry-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now(),
+    target: { workerId, workflowId: slot.workflow, membershipRevision: slot.membershipRevision, expectedVersion: h.database.authority.workerPools.get(slot.workflow)?.version,
+      controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
+  const record = h.database.withAuthorityTransaction(repositories => admitWorkerLifecycle(repositories, retry, randomUUID(), retry.requestedAt,
+    { descriptor: personLookupDescriptor, mode: "initialize" }));
+  h.database.authority.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: record.admittedAt });
+  assert.ok(record.lifecycle);
+  const lifecycle = record.lifecycle;
+  await assert.rejects(async () => { await control.supervisor.retryWorker?.(lifecycle); }, /fixture-spawn-reached/u);
+  assert.equal(spawns, 1);
+  control.supervisor.close();
+} finally {
+await _afterEachFixture0();
+}
+});
 it("a protected-settings revision change invalidates admission without reusing a recent healthy report", async () => {
 try {
 
