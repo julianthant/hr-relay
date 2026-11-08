@@ -7085,24 +7085,36 @@ export class AuthorityDatabase implements Disposable {
       const restart = record.request.type === "retry-worker" || record.request.type === "stop-worker" && record.reset?.work.kind === "absent";
       if (record.auditedAt !== undefined || !restart || record.phase.state !== "uncertain"
         || record.effect !== undefined || binding?.operation.kind !== "retry") continue;
-      try {
-        this.withAuthorityTransaction(repositories => {
-          const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
-          if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
-            || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
-            || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
-          this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
-          const message = "worker-retry-never-started";
-          this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
-          const { controlCommandId: _released, ...rest } = lease;
-          this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
-          repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
-            result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
-        });
-      } catch (error) {
+      try { this.#refuseUnbornRetry(record, "worker-retry-never-started", now); }
+      catch (error) {
         if (!(error instanceof Error) || !error.message.startsWith("worker-")) throw error;
       }
     }
+  }
+
+  /** The supervisor proved this executing Retry failed before spawning its replacement; refuse it and release the reservation. */
+  refuseUnbornWorkerRetry(commandId: string, message: string, now: string): void {
+    const record = this.authority.workerControls.get(commandId);
+    if (record?.request.type !== "retry-worker" || record.auditedAt !== undefined || record.phase.state !== "executing"
+      || record.effect !== undefined) throw new Error("worker-retry-birth-unproved");
+    this.#refuseUnbornRetry(record, message, now);
+  }
+
+  #refuseUnbornRetry(record: z.infer<typeof WorkerControlRecordSchema>, message: string, now: string): void {
+    const binding = record.lifecycle;
+    if (binding?.operation.kind !== "retry") throw new Error("worker-retry-birth-unproved");
+    this.withAuthorityTransaction(repositories => {
+      const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
+      if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
+        || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
+        || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
+      this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
+      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+      const { controlCommandId: _released, ...rest } = lease;
+      this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
+      repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+        result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
+    });
   }
 
   #assertRetainedWorkerLifecycleEffect(record: z.infer<typeof WorkerControlRecordSchema>): void {

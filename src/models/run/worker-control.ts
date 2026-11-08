@@ -222,6 +222,8 @@ export type WorkerBrowserObservation = z.infer<typeof WorkerBrowserObservationSc
 export class WorkerControlRefusal extends Error {
   override readonly name = "WorkerControlRefusal";
 }
+/** A Retry that failed before its replacement worker was spawned: nothing changed, so it settles as refused. */
+export class WorkerRetryUnbornRefusal extends WorkerControlRefusal {}
 /** The worker lifecycle refusals a log row or worker card may name; any other refusal text stays unnamed. */
 export const NAMED_WORKER_REFUSALS: ReadonlySet<string> = new Set(["worker-lifecycle-supervisor-unavailable", "worker-retry-binding-required",
   "worker-retry-death-unproved", "worker-retry-owner-changed", "worker-removal-death-unproved", "worker-retirement-closure-not-proved",
