@@ -1,6 +1,7 @@
 # Codebase structure
 
 This map names the current source, test, and documentation owners. Relay runs locally for one operator.
+[Project vocabulary](terminology.md) describes workflow and dashboard terms.
 
 ## Repository folders
 
@@ -29,7 +30,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 owns the contract fingerprint and build id.
 `npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Git worktrees live in its gitignored `.worktrees/<branch>/` folder.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Git instructions](../../AGENTS.md#git) own worktree naming and lifecycle.
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
@@ -116,10 +117,10 @@ Paths in this table are relative to `src/backend/`.
 | --- | --- |
 | `src/cli.ts` | CLI entrypoint. |
 | `src/dashboard/app/` | Renderer composition, navigation, commands, and workflow data-source selection. `navigation/run-navigation.ts` validates exact served day/run destinations for notifications, search and linked Queue chips before opening Logs. |
-| `src/dashboard/client/` | Shared backend client, queries, commands, and subscriptions. |
-| `src/dashboard/ds/` and `src/dashboard/kit/` | Design system and shared UI components. |
-| `src/dashboard/state/` and `src/dashboard/lib/` | Renderer state and utilities. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |
-| `src/dashboard/surfaces/` | Product screens and their view models. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
+| `src/dashboard/client/` | Shared backend transport, entered through `index.ts`, `queries.ts` and `commands.ts`, plus subscriptions. |
+| `src/dashboard/ds/` and `src/dashboard/kit/` | Design system and specimen preview. `ds/ui.tsx` is the barrel; `primitives/` and `theme/` implement it. `kit.html` is the separate preview entry. |
+| `src/dashboard/state/` and `src/dashboard/lib/` | Resource hooks, bootstrap, day and served clock state; framework-free utilities live in `lib/`. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |
+| `src/dashboard/surfaces/` | Feature components, sibling `*-model.ts` view models, styles and mock producers. `surfaces/shared/` holds cross-feature components. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. `failures/error-origins.ts` owns the closed constructor-bound cause vocabulary and its value-free serializer shared by backend events and browser reports. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
 | `src/models/storage/file-identity.ts` | Exact JSON file-identity values shared by credential, installation and logout witnesses: safe numbers or canonical decimal strings. |
@@ -219,9 +220,8 @@ sit beside their owning families. Shared packages and renderer code do not load 
 
 ## Tests and evidence
 
-Tests mirror their source modules, including tracked shell scripts. Paths under `src/` drop that prefix; script, Duo, and root configuration
-paths retain their full path. Unit files use `.test.ts`; integration files use `.integration.test.ts`
-beside them. Topic suffixes split larger suites.
+The [root codebase instructions](../../AGENTS.md#codebase) own test naming and source mirroring.
+The resulting layout is:
 
 ```text
 tests/

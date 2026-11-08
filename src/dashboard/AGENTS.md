@@ -1,6 +1,7 @@
 # Operator dashboard
 
-The browser app. Everything here runs in the browser.
+Read the [codebase map](../../docs/reference/codebase-structure.md#dashboard-and-shared-packages)
+for folder owners and the [dashboard contract](../../docs/reference/dashboard-surfaces.md) for surfaces.
 
 ## Imports
 
@@ -8,22 +9,11 @@ The browser app. Everything here runs in the browser.
   `src/workflow-kit/**`. Never import Node or backend code.
 - `kit.html` is a separate entry. It imports only `ds/**` and `lib/**`.
 
-## Where things live
-
-- `app/`: shell, navigation (the one URL and history owner) and command dispatch.
-- `surfaces/<feature>/`: each feature's components, its `*-model.ts` files, styles and mock producer.
-  `surfaces/shared/` holds only what several features actually use.
-- `client/`: the backend transport. `index.ts`, `queries.ts` and `commands.ts` are the only entry
-  points.
-- `state/`: resource hooks, bootstrap, day and the served clock.
-- `ds/`: the design system. `ui.tsx` is its one barrel; `primitives/` and `theme/` hold the
-  implementation.
-- `lib/`: framework-free helpers. `kit/`: the design-system preview entry (`kit.html`).
-
 ## Rules
 
-- Components never change during wiring. Use every existing component, add none, remove none.
-  Feed them real data through their producers, view-model inputs, ports and callbacks.
+- Keep components visually identical during wiring. Use every existing component, add none, remove
+  none. Change a component only to receive data instead of importing a mock. Feed it through
+  producers, view-model inputs, ports and callbacks.
 - The component set is fixed, but what a workflow shows follows the real workflow: the count,
   order, text, branches and sources of Explorer timeline items, Run and Rerun steps and Logs steps,
   built only from existing components. The Explorer timeline comes from the workflow's registered
@@ -35,24 +25,26 @@ The browser app. Everything here runs in the browser.
   vocabulary go in a sibling `*-model.ts`. The `ds/ui.tsx` barrel is the exception.
 - Use served data for availability, identity, status and write results. Never invent them in the
   browser. Keep exact run joins.
-- Each workflow uses its mock until its own workflow task switches it to served data. Never fall
-  back from served to mock.
+- Select served or mock data once per workflow in `config/dashboard-workflow-sources.json`.
+  Keep mock data until the workflow's signed-off activation. Never fall back to mock at runtime;
+  render served failures as failures.
 - The Logs timeline lists every step and action in the order it happened. Steps that don't apply
   stay visible as Skipped.
 - Desktop only, with a minimum canvas of 1024×720 CSS pixels: queue beside detail, and the document
   scrolls below that size. No mobile layouts, touch styling or phone test variants. Keep zoom
   behavior and full keyboard access.
-- The dashboard has no Archive page, row context menus, version-bump controls or mobile capture.
-  A legacy Archive URL shows a removal notice and returns to the dashboard.
 
 ## Before a change
 
-Use `/ui`. Read [DESIGN.md](DESIGN.md) and open the specimen page (`npm run web`, then
+Use `/ui`. Keep absent product features absent unless assigned; the dashboard contract owns that scope.
+Read [DESIGN.md](DESIGN.md) and open the specimen page (`npm run web`, then
 `http://localhost:5174/kit.html`) before choosing primitives. Read [PARITY.md](PARITY.md) before
 judging a visual difference.
 
 ## Data and command rules
 
+- Extend `src/dashboard/client/index.ts` and shared `src/models/**`; add no second API or type layer.
+  Retain each view model's loading, empty, failure, refusal and uncertain states.
 - Import canonical wire schemas from `src/models/dashboard/**` and command rules from
   `src/rules/commands/**`; never mirror them under the dashboard.
 - Keep exact run, attempt, step, record, field, and command identities through every request and result.
@@ -80,11 +72,13 @@ judging a visual difference.
 
 ## Checks
 
-- `npm run dashboard` starts the backend and Vite together; `npm run web` alone needs a running
-  backend. `npm run web:build` builds production assets.
-- For one surface, run its filtered parity spec. For shared shell, tokens, primitives or models,
-  run the full `npm run test:parity`. Run the full suite before the last commit of any dashboard task.
-- Parity references are the visual contract. Never update them to make a change pass. Update them
-  only for an operator-approved UI change, or when a workflow switches to served data and the
-  operator signs off its screens, in its own commit.
-- The root `AGENTS.md` checks also apply.
+- Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
+  Use filtered parity for one surface and full parity for shared shell, tokens, primitives or
+  models. Complete assigned parity before the last dashboard commit, or record the CI obligation.
+- Update parity, visual and accessibility references only for an assigned operator-approved UI
+  change or signed-off served-workflow switch, in a separate logical commit in the same PR.
+  Never refresh them to hide a defect or make wiring pass. Preserve states, themes, widths,
+  assertions, tolerances, membership and deadlines.
+- Assigned targeted local parity and browser verification run serially with one worker under the
+  local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
+- A declared workflow scenario ID alone proves no execution.

@@ -1,222 +1,215 @@
 # Relay
 
-Relay is the production rebuild of `hr-automation`. It is a local desktop app for one HR operator. It runs on one machine and is never hosted. Until cutover,
-`/Users/julianhein/Projects/hr-automation` is production and the rollback asset.
+Read [README.md](README.md) for the product, [architecture](docs/ARCHITECTURE.md) for its design,
+the [codebase map](docs/reference/codebase-structure.md) for owners, and the
+[terminology reference](docs/reference/terminology.md) for project vocabulary.
 
 ## What to build
 
-- Start with the assigned brief and its folder's README, then the
-  [codebase map](docs/reference/codebase-structure.md). Work only on the assigned task.
-- Work assigned through a brief follows that brief and its folder's README. Receipts, notes and
-  handoffs go in the brief's evidence folder inside `.work/`, never in a commit.
-- The roadmap at docs/roadmap/roadmap.md lists the key implementations and their status.
-  Update it only when the operator or your brief asks.
-- Build the wiring base first: every dashboard component connected to the backend, with no
-  workflow-specific behavior. Then activate served workflows one at a time, in the order
-  defined under Git. Isolated workflow implementation may proceed in parallel.
-- A workflow is wired across Run, Rerun, Queue rows, Logs, Explorer, OCR/Records where it has them,
-  notifications and Analytics. It is done after a dry run and operator sign-off.
-- The production codebase (`/Users/julianhein/Projects/hr-automation`) holds each workflow's complete
-  behavior. Read it, and port by copying with the legacy commit and path recorded in the task's evidence folder.
-- Approved workflow maps A and B, with their safety corrections, authorize workflow coding. They
-  own inputs, steps, sub-steps, log-panel timelines, results and scenarios. At morning review, the
-  operator reviews generated Explorer timelines and dry-run Logs. Activation remains sequential after a
-  dry run and operator sign-off, in the order under Git.
-- Each workflow switches from mock to served data through one static per-workflow switch. Never fall
-  back from served to mock at runtime. A served failure shows its failure state.
-
-## Language
-
-- **Onboarding (sign-up)**: creating a Relay profile and signing in with Duo (`src/backend/profiles/`). It is not the **Onboarding workflow** (`src/workflows/onboarding/`), which hires a new person through CRM, UCPath and I-9.
-- **Operator**: the one HR person using the dashboard. It is not an end user, a tenant or an agent.
-- **Served / mock**: a workflow's dashboard data comes from the backend (`served`) or from fixtures (`mock`), chosen by one static entry in `config/dashboard-workflow-sources.json`. Never a runtime fallback from one to the other.
-- **Dry run**: `dryRun=true`. A workflow reads and previews every form but submits no UCPath transaction and finalizes no Kuali document. It is not a mock run: it uses live systems.
-- **Sign-off**: the operator's explicit approval of a workflow's dry run, required before it switches from mock to served. A passing test or parity run is not sign-off.
-- **Person Lookup**: finds one person in UCPath and cross-checks CRM, read-only. Other workflows delegate to it. It is not a write workflow.
-- **Separations**: turns one Kuali separation document into one terminated employee across Kuali, UCPath and Kronos. It writes only outside dry runs.
-- **OCR**: reads PDF pages, groups records and looks up identities for the operator to review and release. It writes nothing to HR systems.
-- **EC (Emergency Contact)**: reads a PDF through OCR, then delegates each approved OCR record to an EC member that previews or saves that person's primary contact in UCPath. It is not part of OCR.
-- **Parent / delegated rows / member list**: a parent run delegates work to child runs. The Queue shows the children as the parent's delegated rows; the parent's member list is its approved records in source order. A child is not a separate workflow run the operator starts.
-- **Settled parent**: a parent whose members have all finished. A settled mixed-outcome EC parent still admits Retry of each eligible failed member. UNKNOWN and a committed or unresolved Save still refuse.
-- **SharePoint Download**: the Spreadsheets library's Sync of one SharePoint `.xlsx`/`.csv` into a workbook. It is not a workflow.
-- **Spreadsheets library**: the typed workbook store (one mutable master per workbook, manual named versions). Workflow outputs go there, never to loose files.
+- Start with the assigned brief, its folder's README when present, the codebase map and the
+  [roadmap](docs/roadmap/roadmap.md). Work only on the assignment; update the roadmap only when asked.
+- Keep briefs, receipts, review notes and handoffs in the assigned evidence folder under the main
+  checkout's ignored `.work/`, using absolute paths from worktrees. Never commit them.
+  Read the assigned local operations note for machine constraints.
 
 ## Codebase
 
-One person builds and maintains this codebase. Keep it organized, clean and easy to follow.
-
-The repository holds only the current version. No compatibility readers, old migration steps, porting or change records, lesson files, history or backups of old code. A stored-data change ships as a forward migration that deletes the reader it replaces.
-
-- Each concept has one home. [docs/reference/codebase-structure.md](docs/reference/codebase-structure.md)
-  is the map. Update it in the same commit as any move.
-- A change deletes the code it replaces. No shims, parallel old and new paths, commented-out code or
-  unused exports.
-- Add a layer only when it has a second real use. Prefer one cohesive module over many tiny files.
-- Tests mirror source once under tests/: drop src/; keep full paths for scripts/,
-  fast-duo/ and root configs.
-  Unit <module>.test.ts and integration <module>.integration.test.ts sit together;
-  split files over about 800 lines by topic. Architecture/parity/perf/types stay in
-  their own trees; fixtures and helpers live in tests/support/.
-  Delete tests for behavior that no longer exists.
-- Add a guard only to prevent a real, recurring mistake, and record its reason in
-  `docs/guard-inventory.json`.
-- Comments: only where the code cannot say it, in a few words.
-- Docs describe the system as it is now. When a rule changes, update its owning doc in the same
-  commit. Keep history out of the repository.
-- Instructions live only in `AGENTS.md` files. Never add `CLAUDE.md`.
-
-## Dashboard
-
-- Replace mock data with real data. Keep every component exactly as it is: use all of them, add none,
-  remove none.
-- Wiring changes producers, view-model inputs, ports, client methods, hooks, callbacks and the
-  backend. A component file changes only to receive data instead of importing a mock, and it renders
-  identically.
-- The component set is fixed, but what a workflow shows follows the real workflow. Its Explorer
-  timeline, Run and Rerun steps and Logs steps may change in count, order, text, branches and
-  sources, built only from existing components. Generate the Explorer timeline from the workflow's
-  registered definition, never by hand.
-- If real behavior needs a changed or new component, describe it (what, where, why) and ask the
-  operator. Approved components are built first in a UI-only task (components and mock data, no
-  backend), then wired.
-- Extend `src/dashboard/client/index.ts` and the shared models in `src/models/**`. Never add a second
-  API or type layer. Keep each view model's loading, empty, failure, refusal and uncertain states.
-- Read `src/dashboard/AGENTS.md` before any dashboard change.
-
-## Backend
-
-- Only the operator, through the dashboard, uses the backend. The dashboard assistant may use
-  allowlisted reads and make proposals through the dashboard-owned typed client. Only explicit
-  operator confirmation dispatches a validated proposal through that client. The assistant has no
-  arbitrary backend, shell, HTTP or credential access. It cannot approve gates or bypass safety.
-  No other agent or external API access is allowed.
-- Build for one operator on one machine. Add nothing for several users, remote clients or hosting.
-- Keep every HR write protection: dry runs, write intents and parked writes, receipts and evidence,
-  and never retrying an UNKNOWN submit.
-- AI is limited to OCR and the dashboard assistant through the operator's ChatGPT subscription,
-  connected in Settings with OpenAI's open-source "Sign in with ChatGPT" flow (OAuth with PKCE,
-  loopback redirect, Responses API). Store its tokens only in the local credential store.
-  Add no other AI provider.
-- Every failure has a defined error code, and the dashboard shows the text mapped to that code. The
-  browser-safe home for codes and text is `src/models/failures/error-catalog.ts`; add them together.
-- Use TypeScript, Hono, SQLite, HTTP and SSE. Keep HTTP parsing and app composition thin.
-  Repositories own durable storage.
-- Read `src/backend/AGENTS.md`, and the system's `src/backend/systems/<system>/AGENTS.md` before
-  touching a system driver.
+- Keep one home per concept. Update the codebase map in the same commit as a move.
+- Keep only current code and current documentation. Delete replaced code and obsolete tests.
+  Stored-data changes use forward migrations that remove the readers they replace. Add no
+  compatibility readers, shims, old-code backups, history comments or change ledgers.
+- Add a layer only for a second real use. Prefer one cohesive module to many tiny files.
+- Add a guard only for a real recurring mistake, with its reason in `docs/guard-inventory.json`.
+- Mirror source once under `tests/`: drop `src/`, retain `scripts/`, `fast-duo/` and root paths.
+  Put `<module>.test.ts` beside `<module>.integration.test.ts`; split files over about 800 lines
+  by topic. Keep architecture, parity, perf and types in their own trees; shared fixtures and
+  helpers belong in `tests/support/`.
+- Use kebab-case filenames, named exports, `.js` relative imports and `.tsx` only in the dashboard.
+  Use recursively strict Zod schemas at durable, wire and config boundaries; no unchecked casts
+  or `any`. Read time through `src/rules/time/clock.ts`; keep `manualClock` test-only.
+- Keep workflow definitions browser-safe: value imports only from Zod, `src/models/**`,
+  `src/rules/**` and audited `src/workflow-kit/**`. Read the authoring guide for source layout.
+- Freeze registry exports recursively at module load. Use structured errors rather than
+  `console.*` in `src/`. Add failure codes and display text together in
+  `src/models/failures/error-catalog.ts`.
+- Keep instructions in `AGENTS.md` only. Do not create `CLAUDE.md`.
 
 ## Git
 
-- `main` is production: the released code, pushed to `origin/main`. `staging` is the
-  integration branch the operator previews. Each task works on `feature/<slug>` branched from
-  `staging`, in the main checkout's gitignored `.worktrees/<slug>/` folder.
-- The operator launches every task. Non-overlapping feature implementation may run in parallel.
-  Workflow activation stays sequential: Person Lookup → Separations → OCR/Emergency Contact →
-  OnBase → Onboarding, after each workflow's dry run and operator sign-off.
-- Finish a feature on its branch. Run `npm run test:local`, `npm run typecheck` and `npm run lint`,
-  then push and open a ready (non-draft) pull request into `staging` with auto-merge on. It merges
-  with a merge commit once its required checks pass on a branch up to date with `staging`; the merge
-  train keeps it current and Cursor Bugbot reviews every push. The orchestrator session watches its
-  open pull requests and fixes red checks, real Bugbot findings and `merge-conflict` labels on the
-  pull request branch; it is the only agent that pushes to an open pull request. The operator handles
-  only pull requests labeled `needs-human`.
-- Run static, privacy and portable Ubuntu unit, integration and architecture checks for pull
-  requests into `staging`. Run platform-native proofs and parity in CI only for a full release
-  started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Agents must never
-  dispatch or rerun CI workflows. `ci.yml` runs only staging PRs through portable-only `ci-checks.yml`;
-  `release.yml` alone calls `release-checks.yml` for main PRs or operator manual releases.
-  Fix a red release by a pull request into `staging`. Run the tests related
-  to your change locally before pushing, and parity when the change touches a dashboard screen.
-- A test file that needs native platform proofs goes in `NATIVE_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
-  end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
-  `docs/reference/guards-and-tests.md`).
-- A pull request bundles a good amount of related work, so CI runs once per batch rather than after
-  every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
-  what changed and why. Pull a branch before continuing work on it.
-- Push fixes to an open pull request as one batch. While its CI runs, push only once that run has
-  already failed: each push supersedes the older run for that PR.
-- A pull request that intentionally changes a dashboard screen updates that screen's parity, visual
-  and accessibility references in the same pull request; the operator reviews them in the `staging`
-  preview.
-- After the merge, GitHub deletes the remote branch; delete the local branch and remove its worktree
-  (save anything in `.work/` first), then report done.
-  The operator previews `staging` in the main checkout, which owns the store, credentials and
-  ports: stop the dashboard, switch to `staging`, start it. A rejected feature is reverted on `staging`.
-- A release pull request merges `staging` into `main` with a merge commit, only on the operator's
-  explicit go. Sync `main` back into `staging` afterward. Push feature branches only through this
-  pull-request flow; push nothing else without explicit instruction.
-  Required check names are in [repository governance](docs/repository-governance.md).
-- Startup previews a `staging` with a person-store migration only after its automatic pre-upgrade backup verifies.
-- Verify base, path and ownership before editing. Stage exact paths and commit by logical category.
-  Never switch, reset or repurpose another checkout.
-- Briefs, receipts and evidence live in the main checkout's gitignored `.work/` folder; worktrees
-  write there by absolute path. Remove a task's evidence folder once nothing needs it.
-- Once a feature reaches `main`, remove its worktree registration, folder and branch, after its
-  evidence and unknown files are saved.
+- Keep `main` as released production and `staging` as operator-preview integration.
+- Name every branch, worktree, lane and report for one dashboard area and one kind of work.
+  Split work across areas into separate lanes. Use screen names, workflow IDs, or a non-screen
+  area such as `storage`, `workers` or `ci`; never name a branch only `ci/<slug>`.
+- Name deliverables in one to three words. Use `ui` or `backend` alone only for that entire side
+  of an area. Briefs identify UI, backend or workflow work. Separate backend and UI lanes for one
+  area; merge the backend first.
+- Put worktrees in the main checkout's ignored `.worktrees/`, with the branch prefix removed
+  from the folder name. Title terminals `<lane> · coder` or `<lane> · reviewer`.
+
+| Kind | Branch | Base and destination |
+| --- | --- | --- |
+| Design | `design/<area>` | Mock with real components for rendered operator approval; never merge or open a PR. |
+| Feature | `feature/<area>-<deliverable>` | Branch from `origin/staging`; one ready PR into `staging`. |
+| Task | `task/<feature>/<slice>` | Branch from its feature; merge back with `--no-ff`, no PR or GitHub CI. |
+| Fix | `fix/<area>-<symptom>` | Branch from `origin/staging`; one bounded PR into `staging`. |
+| Check | `check/<what>` | Local live-check build; never merge, remove after use. |
+| Scratch | `scratch/<lane>-<n>` | Focused CI feedback only; never merge, remove after use. |
+
+### Feature and task flow
+
+- Launch independent features only after the orchestrator compares expected changed files.
+  Features never depend on each other; overlapping work becomes a task of one feature or waits.
+- A feature agent coordinates, reviews and merges tasks; it writes no task code. Record expected
+  files and proposed task order for the orchestrator. Run tasks with shared files or dependencies
+  sequentially. Keep `<feature>-review-notes.md` beside the brief.
+- Before task review, merge the latest feature branch into the task, then complete typecheck,
+  lint, affected tests and `npm run test:architecture` through the assigned test path.
+  The feature agent inspects the real diff and check output, then merges one task per merge commit.
+  Task agents never merge themselves.
+- A later task resolves conflicts against the latest feature and reruns affected checks. Review
+  the resolution as part of its diff. The feature agent decides behavior disagreements or refers
+  them to the orchestrator.
+- Send schema, data-format and live-write changes to the feature's staging reviewer immediately
+  after task integration, before another task builds on them.
+- When directed, merge `origin/staging` into the feature without changing running task branches.
+  Resolve and report conflicts immediately because they reveal overlapping feature scope.
+- When branch publication is authorized, publish task commits and feature task merges for backup.
+  Open the feature PR only when ready. Its reviewer reads the whole feature by task merge commit.
+
+### Review before push
+
+- Easy lanes assigned to a Cursor coder on a small UI tweak or a one-file fix have no reviewer.
+  That coder runs focused checks, typecheck and lint, publishes the PR, enables auto-merge, and
+  on red reads the failing job log, fixes that cause, and pushes.
+- Other lanes use one coder and one loop reviewer, taking turns. The orchestrator launches the
+  reviewer at the first local SHA. Both may run together only while earlier fixes overlap the
+  end of that same review; never put three agents on one lane.
+- Reviewers use `/review` every round alongside their checklist. After typecheck and lint pass,
+  commit locally and send the reviewer the SHA and report path. Fix findings and repeat.
+- Reviewed lanes push only the exact SHA cleared by `VERDICT: PUSH <sha>`. A merge or fix needs
+  renewed clearance. Auto-merge remains enabled, so every reviewed lane's published head needs it.
+- The reviewer owns CI judgment and sends fixes to the coder; reviewed coders do not independently
+  watch or repair CI. The orchestrator replaces unavailable reviewers. Do not merge PRs by hand.
+
+### PR and release flow
+
+- Before publishing, fetch origin and pull an existing remote task/feature branch with
+  `git pull --no-rebase origin <branch>`. Merge its required latest base, never rebase or force-push.
+  A staging-bound branch must show zero behind in
+  `git rev-list --left-right --count origin/staging...HEAD`. Review the resulting SHA before push.
+- At the first ready feature/fix push, open a PR into `staging`. Keep its title and description
+  current on every push or merge. Enable `gh pr merge <N> --auto --merge --match-head-commit <sha>` after clearance.
+  Green required checks merge that cleared SHA; there is no final reviewer pass.
+  Workflow behavior PRs wait for a live dry run and operator sign-off; the orchestrator enables
+  their auto-merge. Required check names live in [repository governance](docs/repository-governance.md).
+- Batch fixes on the PR branch. While its CI runs, push again only after that run fails.
+  Fix root causes and include bounded cleanup of affected fixtures or slow setup; avoid large rewrites.
+  Repair red releases through a PR into `staging`.
+  A base failure needs evidence and one separate repair PR, not copies in every feature.
+- Let the merge train update open PRs with `staging`; resolve returned conflicts on the PR branch.
+  Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards,
+  unrelated parity updates or expanded scope to the operator with `needs-human`.
+- Preview `staging` in the main checkout, which owns runtime state, credentials and ports: stop the
+  dashboard, switch to `staging`, then start it. A rejected feature is reverted on `staging`.
+  Verify the automatic pre-upgrade backup before previewing a person-store migration.
+- Release only on the operator's explicit go: merge `staging` into `main` with a merge commit,
+  then sync `main` back into `staging`. Never push directly to either protected branch.
+- After merge, save evidence and unknown files, remove the owned worktree registration and folder,
+  and delete its local branch. Verify remote branch deletion and report residue. Remove evidence
+  only when nothing needs it; clean up any remaining feature worktree once the feature reaches `main`.
 
 ## Checks
 
-- During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
-  generated checks. Run `npm run test:local` for tests that need this machine or its accounts.
-  Update tests when behavior changes, and say when none exist.
-- Before push: `npm run test:local`, `npm run typecheck` and `npm run lint`. Run portable cloud unit,
-  integration and architecture suites on Ubuntu, plus static and privacy. Run platform-native proofs
-  and parity in CI only for operator-started full releases (`staging` → `main` pull requests or
-  manual full-release dispatches). Otherwise run Windows-native tests locally on Windows and
-  macOS-native tests locally on the Mac when load is low. A release
-  pull request then runs `npm run web:build`, `npm run test:coverage` alone, and `npm run test:perf`.
-  Coverage selects the unit, integration and architecture suites without perf, so don't run those
-  three separately.
-- A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and
-  timeouts. Never report an unrun check as passed.
-- Generate derived files at their source. Never hand-edit them.
+- Follow the brief's assigned test path: focused GitHub feedback by default, or an orchestrator-granted
+  local slot. Use one path, not both. CI-path lanes run typecheck and lint serially; tests wait for
+  the named runner. Pause local tests during operator live runs. Run full suites only in a granted
+  slot; PR CI supplies the feature's full run. Use platform-matching machines for native proofs.
+- Before review/push, complete typecheck, lint/static checks and source generators whose inputs
+  changed; report unrun tests for the reviewer and CI. Never commit a failure caused by the change.
+  A demonstrated base failure may proceed with its evidence recorded.
+- For docs-only changes, check links, whitespace, affected generated output and any tests that parse
+  the edited documents. No runtime suite is required for prose alone.
+- Run portable Ubuntu unit, integration and architecture suites plus static and privacy for staging
+  PRs. Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards, retaining
+  release coverage. Add new native proofs to `scripts/test/ci-files.ts`.
+- Only the operator starts full-release CI. Agents never dispatch or rerun CI workflows.
+  The focused-test script is the assigned scratch-feedback path, not a release or merge proof.
+  [Guards and tests](docs/reference/guards-and-tests.md#focused-tests-in-github-actions) describes it.
+- Run platform-native proofs and parity in CI only for operator-started releases. Release checks
+  build the web bundle, run coverage alone, then perf. Coverage already selects unit, integration
+  and architecture; do not run those full suites again for unchanged inputs.
+- PC feedback never blocks a repair push or substitutes for the published head's PR CI. Do not
+  run macOS-native proofs or parity there. Keep machine slot details in the local operations note.
+- Preserve the timing feedback loop. Refresh `scripts/test/ci-durations.json` when job end times
+  spread more than a minute. Generate derived files through their source, never by hand.
+- Before local coverage, verify free memory, no swap pressure and no listener on the runtime backend
+  port. A resource refusal leaves the gate unrun.
+- Before publication, stage the exact candidate and run `npm run privacy:check`; inspect its prose
+  and images too. Keep public instructions free of local paths, machine/account identities,
+  terminal handles, secrets and employee identifiers.
 
 ## Runtime safety
 
-- Fail loud. Missing or corrupt data and failed checks never become defaults, cached values,
-  alternate selectors or swallowed results. Throw a named error, or return a distinct unknown that
-  the caller checks. Allow a fallback only for a valid expected case with recorded verification.
-- Never log secret or canary values.
-- Never import, invoke, proxy or read production (`hr-automation`) state. Port by copying, record the
-  source commit and path in the task's evidence folder, then verify live. Never delete production files. Prefix cross-repo paths
-  with `legacy:`.
-- `config/runtime-isolation.json` owns the rebuild's ports, browser session and state, artifact,
-  lock and auth roots. Read the operating reference before changing authority or path resolution.
-  Preserve settings/database coupling, terminal tombstones, explicit verified backups and the current
-  boot/upgrade authority. Never discard one authority half to hide a mismatch.
-- Never overwrite an existing `.env` or print credentials. Before configuration or live work, read
-  the operating reference's Environment section. An unavailable subject blocks before secret access
-  or browser launch. Never substitute canaries.
-- Read-only selectors, login checks, collectors and dry runs are pre-authorized. Transaction
-  verification uses `dryRun=true`: no UCPath submit, no Kuali finalization. A transaction-free
-  live read creates no transactions and no durable effects. Never retry an UNKNOWN submit.
-- Browser work uses playwright-cli, headless by default. Snapshot before choosing locators.
-  Fast Duo needs full Chromium (`fast-duo/README.md`). Close only your own sessions, and skip a
-  system that is down while continuing with the rest.
+- Fail loud on missing or corrupt data and failed checks. Throw a named error or propagate a
+  distinct unknown that the caller checks. A fallback needs a valid expected case and recorded
+  verification: live evidence for selectors or page state, tests for pure logic. When the expected
+  case and the recorded verification are not both clearly met, throw. The error names the
+  offending field or value. Never turn a
+  failed check into a default, cached result, alternate selector or swallowed success.
+  Retry the same transient operation only where its write policy permits it. Swallow an optional
+  failure only when no caller depends on its success.
+- Preserve dry runs, write intents, parked writes, receipts, evidence and UNKNOWN/no-retry behavior.
+  Transaction verification uses `dryRun=true`: no UCPath submit or Kuali finalization.
+  A transaction-free live read creates no transactions and no durable effects.
+- Port workflow behavior by copying production reference code and recording its commit and path
+  in task evidence, then verify live. Prefix cross-repo paths `legacy:`. Never import, invoke,
+  proxy or read production state, delete production files, or make committed gates depend on legacy.
+- Before changing authority or path resolution, read the operating reference and
+  `config/runtime-isolation.json`. Preserve database/settings coupling, terminal tombstones,
+  verified backups and boot/upgrade authority. Never discard one authority half to hide a mismatch.
+- Before configuration or live work, read the operating reference's Environment section.
+  Preserve existing `.env` files. Do not print credentials. Reject unavailable subjects before
+  secret reads or browser launch; never substitute canaries or use settings/credentials as
+  test-input fallbacks. Never log secret or canary values.
+- Read-only selectors, login checks, collectors and live dry runs are pre-authorized. Use headless
+  sessions by default and snapshot before choosing locators. Fast Duo requires full Chromium;
+  read `fast-duo/README.md`.
+  Close only owned sessions; skip unavailable systems and continue with the rest.
+
+## Backend
+
+Read [backend instructions](src/backend/AGENTS.md) before backend or CLI composition changes,
+and the relevant system's `AGENTS.md` before touching its driver.
+
+## Dashboard
+
+Read [dashboard instructions](src/dashboard/AGENTS.md) before changing dashboard components,
+client code or wiring.
+
+## Context, reports and delegation
+
+- Each Codex brief selects its route. Claude and Cursor use their launch settings, without routes.
+  Codex lane workers do not launch workers. Opus 5.5 xhigh coders delegate through `/delegate`
+  and report counts per tier in READY.
+- At each finished concern, record its commits in the assigned `<lane>-report.md`. Include changes,
+  check results, CI obligations and open decisions. Prefix terminal reports `REPORT: <lane>` and
+  send them to the orchestrator, then stop at the brief's boundary.
+- Claude workers above 300k tokens finish the current step and write `<lane>-resume.md` beside
+  the brief: brief path, branch, HEAD, dirty paths, open review verdicts and next step. Send
+  `CONTEXT HANDOFF <note path>` to the orchestrator and stop. The orchestrator closes the session
+  and starts a fresh one on the brief and the note.
 
 ## Read by task
 
-`ref <slug>` means `docs/reference/<slug>.md`. Read only the relevant sections.
+`ref <slug>` means `docs/reference/<slug>.md`. Read relevant sections, not whole catalogs.
 
 | Task | Read first |
 | --- | --- |
-| Any task | The assigned brief, its folder's README, the [codebase map](docs/reference/codebase-structure.md) and the [roadmap](docs/roadmap/roadmap.md) |
 | Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/guides/workflow-authoring.md) |
-| Dashboard, client, CLI | `src/dashboard/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`; use `/ui` for frontend work |
+| Dashboard, client, CLI | Module instructions, `ref frontend-backend-integration`, `ref dashboard-surfaces` |
 | Settings, config, secrets | `ref clock-config-secrets` |
 | Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, the system's `AGENTS.md` |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
 | Tests and guards | `ref guards-and-tests` |
-| Live dry run, "verify X in the app" | [`/verify`](.agents/skills/verify/SKILL.md) and its [feature map](.agents/skills/verify/features/README.md) |
-| Environment, porting, conventions | The [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
-
-## Commands
-
-| Purpose | Command |
-| --- | --- |
-| Dev backend + Vite | `npm run dashboard` (Ctrl+C stops both) |
-| Production bundle and server | `npm run web:build`, then `npm run dashboard:prod` |
-| Workflow dry run | Sign in to the dashboard, use Run, and select Dry Run for a workflow that supports previews |
-| Visual contract | `npm run test:parity` (desktop only) |
-| Affected pre-push tests on the PC | `npm run test:pc -- [files or globs]`; see [guards and tests](docs/reference/guards-and-tests.md#pre-push-tests-on-the-pc) |
-| Named test files in GitHub Actions | `scripts/ci/focused-tests.sh <lane> <ubuntu\|macos\|windows\|both\|all> <test file>...`; see [guards and tests](docs/reference/guards-and-tests.md#focused-tests-in-github-actions) |
-| Roadmap | `npm run roadmap`, then `npm run roadmap:check` |
+| Live dry run | [`/verify`](.agents/skills/verify/SKILL.md) and its [feature map](.agents/skills/verify/features/README.md) |
+| Environment, porting, conventions | [Operating reference](.agents/skill-library/repository-work/REFERENCE.md) |

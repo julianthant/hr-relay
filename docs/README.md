@@ -19,6 +19,7 @@ Read the [root instructions](../AGENTS.md) for task rules. Use the [repository o
 
 | Topic | References |
 | --- | --- |
+| Project vocabulary | [Terminology](reference/terminology.md) |
 | Source and tests | [Codebase map](reference/codebase-structure.md), [guards and tests](reference/guards-and-tests.md) |
 | Workflows and tasks | [Workflow model](reference/workflow-model.md), [task contract](reference/task-contract.md) |
 | Writes, sessions, and evidence | [Write safety](reference/write-safety.md), [execution and sessions](reference/execution-and-sessions.md), [operator trust](reference/operator-trust.md) |
@@ -37,4 +38,4 @@ The [roadmap site](roadmap/index.html) is generated from [the roadmap source](ro
 
 ## Evidence
 
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Git worktrees live in its gitignored `.worktrees/<branch>/` folder. Selector manifests used by semantic registry tests live under [`tests/support/fixtures/ui/`](../tests/support/fixtures/ui/).
+The [task instructions](../AGENTS.md#what-to-build) own evidence placement, and the [Git instructions](../AGENTS.md#git) own worktree naming. Selector manifests used by semantic registry tests live under [`tests/support/fixtures/ui/`](../tests/support/fixtures/ui/).
