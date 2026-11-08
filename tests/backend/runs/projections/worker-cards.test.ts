@@ -26,9 +26,10 @@ function memberView(input: Partial<WorkerMemberView> = {}): WorkerMemberView {
     activity: { state: "idle" }, browsers: [], exit: undefined, held: undefined, ...input };
 }
 function card(input: Readonly<{ view?: WorkerMemberView | undefined; slot?: typeof slot; foldRevision?: number; resolveRun?: (runId: string) => typeof running | undefined;
-  duoSystems?: readonly string[]; lastRun?: Parameters<typeof workerCardOf>[0]["lastRun"] }> = {}) {
+  duoSystems?: readonly string[]; lastRun?: Parameters<typeof workerCardOf>[0]["lastRun"]; writeInFlight?: (runId: string) => boolean }> = {}) {
   return workerCardOf({ slot: input.slot ?? slot, view: "view" in input ? input.view : memberView(), foldRevision: input.foldRevision ?? 0, resolveRun: input.resolveRun ?? (() => undefined),
-    ...(input.duoSystems === undefined ? {} : { duoSystems: input.duoSystems }), ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }) });
+    ...(input.duoSystems === undefined ? {} : { duoSystems: input.duoSystems }), ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }),
+    ...(input.writeInFlight === undefined ? {} : { writeInFlight: input.writeInFlight }) });
 }
 
 describe("the worker card from the pool member and its slot", () => {
@@ -52,15 +53,33 @@ describe("the worker card from the pool member and its slot", () => {
     assert.deepEqual(value.controls, { basis: { state: "present", value: { lifetimeId: LIFETIME, version: 3 } } });
     assert.deepEqual(value.currentRun, { state: "present", runId: RUN, traceId: TRACE });
     assert.equal(value.revision, 16);
-    assert.equal(workerDirectiveNote(value), "Pausing: this step will restart");
+    assert.equal(workerDirectiveNote(value), undefined, "a directive alone names no step outcome");
   });
 
   it("serves a stopping member's stop directive, which offers no second Stop", () => {
     const value = card({ view: memberView({ state: "stopping", activity: { state: "busy", runId: RUN } }), slot: { ...slot, paused: true }, resolveRun: () => running });
     assert.equal(value.state, "running");
     assert.equal(value.directive, "stop");
-    assert.equal(workerDirectiveNote(value), "Stopping: this step is cancelled");
+    assert.equal(workerDirectiveNote(value), undefined, "a directive alone names no step outcome");
     assert.equal(canStopWorker(value), false);
+  });
+
+  it("names the served step interrupt of the current run beside state and retains Stop availability", () => {
+    const busy = memberView({ activity: { state: "busy", runId: RUN } });
+    const pause = { state: "requested", commandId: "aaaaaaaa-0002-4000-8000-000200000000", requestedAt: STARTED } as const;
+    const served = (run: typeof running, writeInFlight = false) => card({ view: busy, resolveRun: () => run, writeInFlight: () => writeInFlight });
+    assert.equal(served(running).interrupt, undefined);
+    assert.equal(workerDirectiveNote(served(running)), undefined);
+    assert.equal(canStopWorker(served(running)), true);
+    const pausing = RunRecordSchema.parse({ ...running, pause });
+    assert.deepEqual(served(pausing).interrupt, { action: "pause", step: "cancel" });
+    assert.equal(workerDirectiveNote(served(pausing)), "This step will restart");
+    assert.deepEqual(served(pausing, true).interrupt, { action: "pause", step: "finish-write" });
+    assert.equal(workerDirectiveNote(served(pausing, true)), "Finishing the save first");
+    const stopping = RunRecordSchema.parse({ ...running, pause, cancelRequested: true });
+    assert.deepEqual(served(stopping).interrupt, { action: "stop", step: "cancel" }, "a pending cancel wins over a pause");
+    assert.equal(workerDirectiveNote(served(stopping)), "This step is cancelled");
+    assert.equal(workerDirectiveNote({ ...served(pausing), state: "failed" }), undefined);
   });
 
   it("refuses to join a run another worker owns", () => {

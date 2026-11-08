@@ -39,13 +39,13 @@
     - heading "Alex Morgan" [level=2]
     - text: Pausing
     - button "Pausing…" [disabled]
-    - status: Finishing the current step; a submit is never interrupted. Pause is not yet recorded.
+    - status: This step will restart
     - navigation "Run timeline":
       - list:
         - listitem:
           - button "Read request · Completed · 14s" [disabled]: Read request 14s
         - listitem:
-          - button "Verify employee · Pauses after this step": Verify employee Pauses after this step
+          - button "Verify employee · This step will restart": Verify employee This step will restart
         - listitem:
           - button "Read timecard · Upcoming" [disabled]: Read timecard
         - listitem:

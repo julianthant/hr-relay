@@ -8,6 +8,7 @@ import { type SubscriptionState } from "../../client/subscriptions/subscription.
 import { dsClip,dsRadius,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { elapsedSecondsBetween } from "../shared/status/format.js";
+import { stepInterruptLabel } from "../shared/status/status-model.js";
 import type { QueueSurfaceWire } from "../shell/shell-model.js";
 
 
@@ -366,12 +367,12 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
   "not-started": "did not start",
 };
 
-/** Directives describe intent, not state; pause waits for the current item to finish. */
+/** A served step interrupt names what happens to the current step. A directive alone does not. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;
-  if (card.directive === "pause" && card.state !== "paused") return "Pausing: this step will restart";
+  const interrupt = stepInterruptLabel(card.interrupt);
+  if (interrupt !== undefined) return interrupt;
   if (card.directive === "run" && card.state === "paused") return "Resume requested";
-  if (card.directive === "stop") return "Stopping: this step is cancelled";
   return undefined;
 }
 
