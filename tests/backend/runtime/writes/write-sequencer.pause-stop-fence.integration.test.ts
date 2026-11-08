@@ -17,8 +17,9 @@ import { testRunLifecycle, testRunService, testWorkerLifetime } from "../../../s
 import {
   absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID,
   WriteFixtureCommit, writeFixtureDescriptor, writeFixtureDriverDeclaration, writeFixtureQueuedRun,
-  WriteFixtureProofSchema, WriteFixtureSaveCommit, writeFixtureSaveDescriptor, type WriteFixtureDriver,
+  WriteFixtureProofSchema, WriteFixtureSaveCommit, writeFixtureSaveDescriptor, writeFixtureTraversalDescriptor, type WriteFixtureDriver,
 } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 
 const { harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 afterEach(cleanup);
@@ -196,14 +197,15 @@ describe("pause around a transaction node in a whole claimed run", () => {
     return { run: claimed.run, claim: { workerId: lifetime.workerId, claimGeneration: claimed.run.claimGeneration } };
   }
 
-  function runWhole(h: Harness, probe: CommitProbe, held: ReturnType<typeof claimOnly>) {
+  function runWhole(h: Harness, probe: CommitProbe, held: ReturnType<typeof claimOnly>,
+    signal = new AbortController().signal, descriptor = writeFixtureDescriptor) {
     const { stores, sequencer, bound } = probingSequencer(h, probe);
     const deps: RunExecutorDependencies = {
-      lifecycle: testRunLifecycle(h.database, h.clock), descriptor: writeFixtureDescriptor, stores,
+      lifecycle: testRunLifecycle(h.database, h.clock), descriptor, stores,
       authority: h.database, sessions: h.manager, emitter: h.emitter.emitter, clock: h.clock, ids: h.ids,
       scheduler: h.scheduler, taskDeadlineMs: 60_000, log: recordingLogger().log, writeSequencer: sequencer,
     };
-    return bound(held.run, () => executeClaimedRun(deps, { ...held, signal: new AbortController().signal }));
+    return bound(held.run, () => executeClaimedRun(deps, { ...held, signal }));
   }
 
   function resume(h: Harness) {
@@ -278,5 +280,49 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assert.equal(probe.calls, 1);
     assert.equal(h.world.events.filter((event) => event.startsWith("commit-click")).length, 1);
   });
-});
 
+  it("Stop admitted after the fence settles the save once, then cancels the run before its next step", async () => {
+    const probe = createCommitProbe();
+    const h = await harness();
+    h.database.authority.runs.enqueue(writeFixtureQueuedRun());
+    h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    const held = claimOnly(h);
+    const workSignal = new AbortController();
+    let admitted: ReturnType<typeof admitWorkerReset> | undefined;
+    probe.afterClick = async () => {
+      const slot = h.database.authority.workerSlots.get(held.claim.workerId), lease = h.database.authority.workerLeases.get(held.claim.workerId);
+      assert.ok(slot && lease);
+      const now = h.clock.now().toISOString();
+      admitted = h.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+        commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now,
+        target: { workerId: slot.workerId, membershipRevision: slot.membershipRevision,
+          controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
+      }, randomUUID(), now));
+      // The worker's 250 ms observer aborts the run's work signal once it sees the admitted reset.
+      workSignal.abort(new Error("worker-reset-current-work"));
+      await yieldToEventLoop();
+    };
+
+    const outcome = await runWhole(h, probe, held, workSignal.signal, writeFixtureTraversalDescriptor);
+
+    assert.equal(outcome.state, "abandoned");
+    assert.equal(probe.signalAbortedAfterHook, false);
+    assert.equal(intentByKey(h.database)?.status, "committed");
+    assert.equal(probe.calls, 1);
+    assert.equal(attemptsOf(h), 1);
+    assert.equal(h.database.authority.writeIntents.listByRun(WRITE_FIXTURE_RUN_ID).length, 1);
+    const reset = admitted?.reset;
+    assert.ok(admitted && reset?.work.kind === "current");
+    const record = admitted;
+    h.database.withAuthorityTransaction(repositories => repositories.workerControls.transition(record.commandId, "admitted",
+      { state: "executing", startedAt: h.clock.now().toISOString() }));
+    testRunService(h.database, h.clock).settleResetWork(reset);
+
+    const settled = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(settled?.lifecycle.state === "terminal" && settled.lifecycle.outcome === "cancelled");
+    assert.equal(intentByKey(h.database)?.status, "committed");
+    assert.equal(attemptsOf(h), 1);
+    const startedNodes = h.emitter.events().flatMap(event => event.t === "span.started" && event.kind === "task" ? [event.spanPath] : []);
+    assert.ok(!startedNodes.some(path => path.includes("/second-write") || path.includes("/after-write")), JSON.stringify(startedNodes));
+  });
+});
