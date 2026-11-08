@@ -127,7 +127,7 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 ] as const;
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
-  "PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
+  "PARITY_UPDATE", "SESSIONS_BAR_RENDER_DIR", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
   "RELAY_TEST_HOST",
   "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
 ] as const;
@@ -163,6 +163,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   RELAY_TEST_PROCESS_IMPORT: ["tests/support/compiled-process.ts", "tests/support/compiled-process-setup.ts"],
   RELAY_TEST_HOST: ["scripts/test/pc.ts"],
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
+  SESSIONS_BAR_RENDER_DIR: ["tests/parity/sessions-bar-hover.test.ts"],
   TMPDIR: [
     "tests/support/private-temp-setup.ts",
     "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",

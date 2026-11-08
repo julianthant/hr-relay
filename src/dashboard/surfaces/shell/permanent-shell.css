@@ -131,13 +131,19 @@
 .settings-content [data-settings-path]:focus { outline: none; }
 .settings-nav-search [data-slot="search-field-group"]:has(input:focus-visible) { border: 1px solid var(--ds-fg-muted); }
 .settings-content [data-settings-path]:focus-visible { box-shadow: inset 0 0 0 1px var(--ui-stroke-control); }
+.sessions-bar { transition:background-color 120ms ease-out; }
+.sessions-bar:has(.sessions-bar-toggle:hover) { background-color:var(--ui-hover); }
+html[data-hub]:not([data-hub-input="pointer"]) .sessions-bar:has(.sessions-bar-toggle:focus-visible) { background-color:var(--hub-focus-fill); }
+.sessions-bar:has(.sessions-bar-toggle:active),
+html[data-hub]:not([data-hub-input="pointer"]) .sessions-bar:has(.sessions-bar-toggle:active) { background-color:var(--ui-stroke); }
+/* Hub paints a focused button's own fill. Keep the toggle clear so the bar tint reaches the icon group. */
+html[data-hub]:not([data-hub-input="pointer"]) .sessions-bar > button.sessions-bar-toggle.sessions-bar-toggle:focus-visible { background-color:transparent !important; }
+.sessions-bar-actions { background-color:transparent; }
 .sessions-bar-icon { width:32px; height:32px; padding:0; border:0; border-radius:6px; background:transparent; color:var(--ui-secondary); translate:none; transform:none; transition:background-color 120ms ease-out, color 120ms ease-out; }
 .sessions-bar-icon:hover { background:var(--ui-hover); color:var(--ui-primary); }
 .sessions-bar-icon:active { background:var(--ui-stroke); translate:none; }
 .sessions-bar-icon:is([aria-expanded=true],[aria-pressed=true]) { background:var(--ui-hover); color:var(--ui-primary); }
 .sessions-bar-icon:focus-visible { outline:2px solid var(--ui-info); outline-offset:-2px; }
-.sessions-bar-toggle { display:flex; flex:1 1 auto; min-width:0; align-items:center; gap:8px; align-self:stretch; padding:0 12px; border:0; border-radius:0; text-align:left; background:transparent; color:var(--ui-primary); cursor:pointer; transition:background-color 120ms ease-out; }
-.sessions-bar-toggle:hover { background:var(--ui-hover); }
-.sessions-bar-toggle:active { background:var(--ui-stroke); }
-@media (prefers-reduced-motion: reduce) { .sessions-bar-icon, .sessions-bar-toggle { transition:none; } }
-html[data-motion=off] :is(.sessions-bar-icon, .sessions-bar-toggle) { transition:none; }
+.sessions-bar-toggle { display:flex; flex:1 1 auto; min-width:0; align-items:center; gap:8px; align-self:stretch; padding:0 12px; border:0; border-radius:0; text-align:left; background:transparent; color:var(--ui-primary); cursor:pointer; }
+@media (prefers-reduced-motion: reduce) { .sessions-bar, .sessions-bar-icon, .sessions-bar-toggle { transition:none; } }
+html[data-motion=off] :is(.sessions-bar, .sessions-bar-icon, .sessions-bar-toggle) { transition:none; }
