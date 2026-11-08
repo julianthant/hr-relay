@@ -15,6 +15,7 @@
     "src/dashboard/assets/ocr/documents.json",
     "src/dashboard/kit/kit-page.tsx",
     "src/dashboard/surfaces/notifications/notifications-fixture.ts",
+    "src/dashboard/surfaces/run-detail/logs/log-decision-fixture.ts",
     "src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts",
     "src/dashboard/surfaces/workflows/mocks/workflow-operation-catalog.ts",
     "src/dashboard/surfaces/workflows/mocks/workflow-result-model.ts",
@@ -53,8 +54,8 @@
     "src/models/workflows/separations/verify-termination-receipt.ts",
     "src/workflows/person-lookup/workflow.ts",
     "src/workflows/separations/steps/identity-check/step.ts",
-    "src/workflows/separations/steps/kuali-extraction/step.ts",
     "src/workflows/separations/steps/kronos-timecard/step.ts",
+    "src/workflows/separations/steps/kuali-extraction/step.ts",
     "src/workflows/separations/steps/kuali-finalization/step.ts",
     "src/workflows/separations/steps/ucpath-transaction/step.ts"
   ],
@@ -125,6 +126,7 @@
     "b6e684c6b73448e04de5777b820d3e147c71557e7424d394071ca45878094231",
     "b7ce5e4962d81ec1e8fd1f1c13321005b6202f01cae030747fcb285ccd6c0e9c",
     "bdc05a309d635a203c87ba48fe0509a202ed2dccfb713c457f8ecf4dcdf4d7f4",
+    "be51f6046774fbe5fef1d99600bec8e7482be8ef554e1e8397eec08747775c07",
     "c2c83bf1d0d1e8ebd2568910b2c158d7ceef49b0d68f99c556a318a014840019",
     "c6e87ecc1f0397d72b3556ab2424faef3c263a68ad6b20f86e56b4ab96c6fd79",
     "c6eb0ae83fa7fbc78a5dc7319f91e8d9b239afd6f5b2cbe40db073dca4ef2dc3",
@@ -137,6 +139,7 @@
     "d3f0028cb3d1e5aafac37f8f8312775852d5e3369614cadfb5f6213a76f35095",
     "d51486e06907ef27a9887a89211d09f722e3caa3d1f90bcf082a5df1e898afde",
     "d52a898317b98d8db16f2d089b00092c42fb194d09f622a87624663ebdd720c7",
+    "d596003ad94bdd86e7b511c6c30dd52238e0eda3d5969b8195056c5dc8c1bd93",
     "d69973b808ff37fe8f6d56f09a81778fa2239a490aec3a5106a03d7b327b4bd5",
     "d7bc6deb01735e68bf14dc85f90e2b32c44000fa0f68d3ff9e7a286e3f672484",
     "d83eb90d0051d37c04e8996003a7751ed01e4479c650ea87afa3954e48d7c143",
@@ -157,7 +160,8 @@
     "fa95b43be4cf8bb030d85e663324ecc5247c2af6272672bfd4bbc1020b40582b",
     "fcf86a124614927c4b28917733947721dfb12b563dcef3da5ec2636a052d54e2",
     "fddc84213e15e23a007bd71061cf0bd2200fff2736384a3797e66415f9d97409",
-    "ff8cf707d4a009e0e194099aab8157883bcd94446643fa82b0b26a19700b2234"
+    "ff8cf707d4a009e0e194099aab8157883bcd94446643fa82b0b26a19700b2234",
+    "ffe6a4b0f4fa7f455f985167b9eaf738f097213eafbf6e756733bf7f1b34dab8"
   ],
   "ssn": [
     "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225",

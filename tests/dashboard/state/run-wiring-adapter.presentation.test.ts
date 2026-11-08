@@ -95,6 +95,15 @@ describe("served Person Lookup Logs operator presentation", () => {
       ? entry.fields.filter(field => field.label === "Name").map(field => field.value) : [])]),
       [["Search for person", ["Quillan, Petra A.", "Fable, Rowan B."]], ["Cross-check identity", ["Quillan, Petra A."]]]);
   });
+  it("shows a value Relay failed to read as Couldn't read, flagged unread", () => {
+    const original = snapshot();
+    const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
+    assert.ok(source?.kind === "observed");
+    const unread = { ...source, native: native(6), logId: id(106), sequence: 6, displayFields: [{ direction: "read", label: "Status", unread: true }] };
+    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), unread] });
+    const fields = projectRunLogs({ ...original, logs }, client).steps.flatMap(step => step.entries).flatMap(entry => entry.kind === "fields" ? entry.fields : []);
+    assert.deepEqual(fields.filter(field => field.label === "Status").map(field => [field.kind, field.value, field.unread]), [["read", "Couldn't read", true]]);
+  });
   it("keeps an unassociated screenshot explicitly unavailable", () => {
     const original = snapshot();
     const rows = original.logs.rows?.flatMap(row => row.kind === "note" && row.note.screenshot !== undefined
