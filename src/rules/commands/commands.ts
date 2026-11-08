@@ -722,6 +722,7 @@ export const BulkRunCommandOutcomeSchema = z.discriminatedUnion("outcome", [
     /** true when the child was already journaled and the kernel replayed it */
     replayed: z.boolean(),
     detail: z.string().min(1),
+    workerStartup: RunWorkerStartupFailureSchema.optional(),
   }),
   z.strictObject({
     outcome: z.literal("conflict"),
