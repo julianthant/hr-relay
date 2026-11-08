@@ -63,7 +63,6 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
       await advance(dialog); await advance(dialog);
       await expect(dialog.getByRole("region", { name: "Confirm", exact: true }).getByRole("group", { name: "Run plan", exact: true })).toContainText(type);
       await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const review = logs.getByRole("region", { name: "OCR records", exact: true });
       if (type === "Oath") await expect(review.getByRole("textbox", { name: "Printed name", exact: true })).toBeVisible();
@@ -110,18 +109,18 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-      await expect(rail.getByRole("button")).toHaveCount(15);
-      for (const flow of MOCK_WORKFLOWS) {
+      await expect(rail.getByRole("button")).toHaveCount(14);
+      for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
         await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
         await page.getByRole("button", { name: "Start a run", exact: true }).click();
         let dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
         const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
         if (!flow.runnable) {
-          await expect(picker.getByRole("button", { name: flow.label, exact: true })).toBeDisabled();
+          await expect(picker.getByRole("button", { name: flow.label, exact: true })).toHaveCount(0);
           await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
           await rail.getByRole("button", { name: flow.label, exact: true }).click();
           const sample = seedMockRuns().find(run => run.workflowId === flow.id)!;
-          await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: new RegExp(`^${sample.subject.replaceAll("./", "\\.")} —`, "u") }).click();
+          await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: new RegExp(`^${sample.subject.replaceAll("./", "\\.")} —`, "u") }).click({ position: { x: 24, y: 14 } });
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
           await expect(logs.getByRole("heading", { level: 2 })).toHaveText(sample.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");
@@ -171,13 +170,12 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         const visibleSteps = mockSelectableSteps(flow.id, initialMockDraft(flow.id));
         const reading = mockOcrReadSteps(flow.id, initialMockDraft(flow.id));
         const stepCount = visibleSteps.length + reading.length;
-        await expect(stepRegion.getByRole("checkbox")).toHaveCount(visibleSteps.filter(step => !mockStepIsDependency(step)).length + visibleSteps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length + reading.length);
+        await expect(stepRegion.getByRole("checkbox")).toHaveCount(visibleSteps.filter(step => !mockStepIsDependency(step)).length + visibleSteps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length + reading.filter(step => step.key === "prep:ocr").length);
         await expect(dialog).toContainText(`${stepCount} / ${stepCount} included`);
         await expect(stepRegion.locator("li").first()).toHaveCSS("min-height", "58px");
         const optionalStep = visibleSteps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step));
         // Sign-in that a required form action depends on is locked, so some flows have no optional step.
-        const readingOnly = flow.id === "ocr";
-        const optional = readingOnly ? reading[0] : optionalStep;
+        const optional = optionalStep;
         if (optional === undefined) {
           for (const step of visibleSteps.filter(candidate => !mockStepIsDependency(candidate))) {
             const box = stepRegion.getByRole("checkbox", { name: step.label, exact: true });
@@ -201,7 +199,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(confirmation).toContainText("Bulk");
         await expect(confirmation).toContainText("Headless · screenshots required");
         if (optional === undefined) await expect(confirmation).not.toContainText("Omitted");
-        else await expect(confirmation).toContainText(readingOnly ? "Off · enter records in review" : `Omitted: ${optional.label}`);
+        else await expect(confirmation).toContainText(`Omitted: ${optional.label}`);
         await expect(confirmation.getByRole("group", { name: "Run plan", exact: true }).locator("dl")).toHaveCSS("font-family", /-apple-system/);
         await expect(confirmation.locator("details")).toHaveCount(0);
         await expect(confirmation.getByText("Workflow plan", { exact: true })).toHaveCount(0);
@@ -246,7 +244,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       }
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
       const approvalLogs = page.getByRole("region", { name: "Selected run logs", exact: true });
-      await approvalLogs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await approvalLogs.getByRole("button", { name: /^Records \d+$/u }).click();
       const review = approvalLogs.getByRole("region", { name: "OCR records", exact: true });
       await review.getByRole("button", { name: "Approve records", exact: true }).click();

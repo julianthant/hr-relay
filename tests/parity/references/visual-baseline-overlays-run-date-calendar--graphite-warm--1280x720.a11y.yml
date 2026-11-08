@@ -47,8 +47,6 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "OCR"
-        - listitem:
           - button "CRM Doc Download"
       - heading "OnBase" [level=3]
       - list:

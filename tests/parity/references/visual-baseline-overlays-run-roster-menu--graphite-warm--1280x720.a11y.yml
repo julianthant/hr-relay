@@ -10,7 +10,7 @@
 - dialog "Start a run":
   - banner:
     - heading "Start a run" [level=2]
-    - paragraph: OCR · Workflow preview
+    - paragraph: Emergency Contact · Workflow preview
     - button "Close"
   - complementary:
     - group:
@@ -47,8 +47,6 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "OCR"
-        - listitem:
           - button "CRM Doc Download"
       - heading "OnBase" [level=3]
       - list:
@@ -82,6 +80,6 @@
     - text: Form type
     - button "Oath Form type": Oath
   - contentinfo:
-    - text: 0 runsOCR
+    - text: 0 runsEmergency Contact
     - button "Cancel"
     - button "Continue" [disabled]

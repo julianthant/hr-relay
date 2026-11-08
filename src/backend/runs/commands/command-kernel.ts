@@ -296,7 +296,7 @@ export interface CommandKernelDependencies {
   readonly authorityInstallationId?: string;
   readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
   readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
-  readonly workflowSources?: Readonly<Record<string, "mock" | "served">>;
+  readonly workflowSources?: Readonly<Record<string, "mock" | "served" | "hidden">>;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
 
