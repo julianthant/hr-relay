@@ -42,4 +42,12 @@ describe("DecisionCard", () => {
     await draw({ title: "Which Bea Morrow is this run about?", preview: true });
     assert.equal(view.querySelectorAll("button").length, 0);
   });
+
+  it("draws an inline pick without a box, puts the question after the control and hides Cancel run when the run cannot be cancelled", async () => {
+    const view = await draw({ title: "Which Bea Morrow is this run about?", context: "UCPath found 3 people.", inline: true, children: createElement("table", { "aria-label": "Search results" }) });
+    assert.equal(view.querySelector("form")?.className.includes("border"), false);
+    assert.match(view.querySelector("form")?.textContent ?? "", /^Which Bea Morrow is this run about\? UCPath found 3 people\.Confirm$/u);
+    assert.equal(view.querySelector("form")?.firstElementChild?.tagName, "TABLE");
+    assert.deepEqual([...view.querySelectorAll("button")].map(button => button.textContent), ["Confirm"]);
+  });
 });
