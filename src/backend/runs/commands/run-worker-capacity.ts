@@ -1,17 +1,10 @@
 import type { CommandKernel } from "./command-kernel.js";
-import { WorkerBrowserCommandRequestSchema, type CommandRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import { WorkerBrowserCommandRequestSchema, type CapacityRequest, type CommandRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-type StartRequest = Extract<CommandRequest, { family: "start" }>;
-type RunRequest = Extract<CommandRequest, { family: "run" }>;
-/** Start, or a run command that leaves work queued for a worker of its workflow. */
-export type CapacityRequest = StartRequest | RunRequest;
-const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry", "recover-run"]);
-export function needsWorkerCapacity(request: CommandRequest): request is CapacityRequest {
-  return request.family === "start" || request.family === "run" && QUEUEING_RUN_TYPES.has(request.type);
-}
+
 type WorkerRequest = Extract<CommandRequest, { family: "worker-browser" }>;
 type CapacityAuthority = Pick<AuthorityRepositories, "runs" | "startPlans" | "workerPools" | "workerSlots" | "workerControls" | "commands">;
 

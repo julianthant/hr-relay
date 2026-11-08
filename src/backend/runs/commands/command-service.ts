@@ -7,15 +7,17 @@ import {
   BulkRunCommandResponseSchema,
   CommandRequestSchema,
   CommandResultSchema,
+  needsWorkerCapacity,
   type BulkRunCommandOutcome,
   type BulkRunCommandResponse,
+  type CapacityRequest,
   type CommandResult,
   type RunWorkerStartupFailure,
 } from "../../../rules/commands/commands.js";
 import type { CommandKernel } from "./command-kernel.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { errorText } from "../lifecycle/support.js";
-import { needsWorkerCapacity, RunWorkerStartupError, type CapacityRequest, type RunWorkerCapacity } from "./run-worker-capacity.js";
+import { RunWorkerStartupError, type RunWorkerCapacity } from "./run-worker-capacity.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 export interface DashboardCommandServiceDeps {

@@ -967,6 +967,12 @@ export function commandAssistantAvailability(isActive: (family: string, action: 
 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandRequest = z.infer<typeof CommandRequestSchema>;
+/** Start, or a run command that leaves work queued for a worker of its workflow; only these may carry workerStartup. */
+export type CapacityRequest = Extract<CommandRequest, { family: "start" } | { family: "run" }>;
+const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry", "recover-run"]);
+export function needsWorkerCapacity(request: CommandRequest): request is CapacityRequest {
+  return request.family === "start" || request.family === "run" && QUEUEING_RUN_TYPES.has(request.type);
+}
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 export type CommandAuditRecord = z.infer<typeof CommandAuditRecordSchema>;
 export type RunDisplayName = z.infer<typeof RunDisplayNameSchema>;
