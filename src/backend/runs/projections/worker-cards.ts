@@ -6,6 +6,7 @@ import {
   WorkerBrowserWireSchema,
   WorkerCardWireSchema,
   WorkerLastRunWireSchema,
+  type StepInterruptWire,
 } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RunFoldRecord } from "./run-queue-projection.js";
@@ -56,6 +57,11 @@ function currentRunOf(lease: WorkerLeaseRecord, member: WorkerSlotRecord,
   return { state: "present", runId, traceId: run.envelope.traceId };
 }
 
+export function stepInterruptOf(run: RunRecord, stopPending: boolean, writeInFlight: boolean): StepInterruptWire | undefined {
+  const action = stopPending || run.cancelRequested === true ? "stop" : run.pause?.state === "requested" ? "pause" : undefined;
+  return action === undefined ? undefined : { action, step: writeInFlight ? "finish-write" : "cancel" };
+}
+
 type WorkerLastRun = NonNullable<WorkerCardWire["lastRun"]>;
 
 /** The run this worker last claimed: the run's own terminal facts, and its last task span on the claimed attempt (an open span wins). */
@@ -102,6 +108,7 @@ export function workerCardOf(input: Readonly<{
   duoSystems?: readonly string[];
   lastRun?: WorkerLastRun;
   timeline?: WorkerCardWire["timeline"];
+  writeInFlight?: (runId: string) => boolean;
 }>): WorkerCardWire {
   const { lease, fold, member } = input;
   if (member.retiredAt !== null || member.workerId !== lease.workerId || member.workflow !== lease.workflow) throw new Error("worker-member-authority-unavailable");
@@ -141,6 +148,10 @@ export function workerCardOf(input: Readonly<{
   };
   // A settled lease owns no live browser; open span evidence does not prove a surviving process.
   const served = terminal ? [] : [...browsers.values()].map(browserWire);
+  const currentRun = currentRunOf(lease, member, input.resolveRun);
+  const run = currentRun.state === "present" ? input.resolveRun(currentRun.runId) : undefined;
+  const stopPending = operation?.request.type === "stop-worker" && operation.phase.state !== "succeeded" && operation.phase.state !== "refused";
+  const interrupt = run === undefined ? undefined : stepInterruptOf(run, stopPending, input.writeInFlight?.(run.envelope.runId) === true);
   return WorkerCardWireSchema.parse({
     member: workerPoolMember(member),
     workerId: lease.workerId,
@@ -163,7 +174,7 @@ export function workerCardOf(input: Readonly<{
         stopReason: lease.lifecycle.reason === "operator" && isDrainStopReason(lease.control.reason) ? "shutdown" : lease.lifecycle.reason,
         ...(lease.lifecycle.failureCode === undefined ? {} : { failureCode: lease.lifecycle.failureCode }) }
       : {}),
-    currentRun: currentRunOf(lease, member, input.resolveRun),
+    currentRun,
     browserRequirements: lease.browserSystems === undefined
       ? {
         state: "unavailable",
@@ -175,6 +186,7 @@ export function workerCardOf(input: Readonly<{
     browsers: served,
     ...(terminal ? { lastBrowsers: (observations ?? []).map(value => browserWire({ sessionId: value.sessionId, system: value.system, openedAt: value.openedAt })) } : {}),
     ...(lease.lifecycle.state === "waiting" ? { waitingActivity: lease.lifecycle.activity } : {}),
+    ...(interrupt === undefined ? {} : { interrupt }),
     ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }),
     ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
     availability: { state: "available" },

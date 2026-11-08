@@ -1423,6 +1423,7 @@ function rebuildStagedProjections(
           listRunBatches: () => staged.authority.runSessions.list(),
           getRunBatch: (id) => staged.authority.runSessions.get(id),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
+          writeInFlight: runId => staged.authority.writeIntents.listByRun(runId).some(intent => intent.status === "attempting"),
           delegationWait: runId => staged.authority.dependencies.waitState(runId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
           canonicalPerson: (runId) => staged.canonicalPerson(runId),

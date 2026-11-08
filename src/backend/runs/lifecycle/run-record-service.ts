@@ -769,7 +769,9 @@ export class RunRecordService {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: violation === undefined ? "worker transition cannot replace ownership or settle" : violation });
       }
-      this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, request.lifecycle.state === "parked-write");
+      // An admitted reset still lets a fenced write settle: parked UNKNOWN, or committed with its evidence.
+      this.assertCurrentExecution({ runId: request.runId, claim: request.claim },
+        request.lifecycle.state === "parked-write" || request.evidenceFingerprint !== undefined);
       if (request.lifecycle.state === "validating" || request.lifecycle.state === "running") {
         authenticateWorkbookReferenceExecution(repositories, current.run);
       }

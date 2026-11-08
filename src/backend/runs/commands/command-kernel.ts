@@ -46,7 +46,7 @@ import { IntakeParseSchema,resolveInspectSelection,type IntakeLayout } from "../
 import type { IntakeProjection } from "../../../models/intake/projection.js";
 import { intakeReviewBinding,resolveIntakeComparison } from "../../../models/intake/review.js";
 import { validateIntakeRows } from "../../../models/intake/validate.js";
-import { isTerminalRunState,RunRecordSchema,type RunRecord } from "../../../models/run/record.js";
+import { isTerminalRunState,RunRecordSchema,runClaim,type RunRecord } from "../../../models/run/record.js";
 import { workerPoolVersion } from "../../../models/run/worker-pool.js";
 import { isLiveWorker } from "../../../models/run/worker.js";
 import { findGateDecision } from "../../../models/trust/gate-decisions.js";
@@ -2017,6 +2017,9 @@ function validateWorkerPoolCommand(
           + "a stopped worker starts a new lease generation instead of taking directives",
         );
       }
+      if (request.type === "resume-worker" && workerPauseHeldRuns(repositories, lease.workerId, "requested").length > 0) {
+        reject(request, "invalid-state", "worker-pause-settling");
+      }
       return lease.version;
     }
     case "refresh-browser":
@@ -2042,6 +2045,17 @@ function validateWorkerPoolCommand(
 }
 
 type WorkerPoolSettledAcknowledgement = WorkerEffectAcknowledgement;
+
+/** Worker Pause holds its claimed run under a claim-derived pause id, so resume-worker resumes only those runs. */
+function workerPauseCommandId(workerId: string, run: RunRecord): string {
+  return lifecycleCommandId("worker-pause", { workerId, runId: run.envelope.runId, claimGeneration: run.claimGeneration });
+}
+
+function workerPauseHeldRuns(repositories: AuthorityRepositories, workerId: string, state: "requested" | "paused"): readonly RunRecord[] {
+  const workflow = repositories.workerSlots.get(workerId)?.workflow;
+  return workflow === undefined ? [] : repositories.runs.listCurrentByWorkflow(workflow)
+    .filter(run => run.pause?.state === state && run.pause.commandId === workerPauseCommandId(workerId, run));
+}
 
 
 async function settleWorkerPoolEffect(
@@ -2082,6 +2096,7 @@ async function settleWorkerPoolEffect(
 
 function applyWorkerPoolCommand(
   repositories: AuthorityRepositories,
+  lifecycle: RunRecordService,
   request: WorkerBrowserCommand,
   now: string,
   basisVersion: number,
@@ -2141,11 +2156,18 @@ function applyWorkerPoolCommand(
         now,
       });
       requireApplied(outcome, `${request.type} directive on worker ${request.target.workerId}`);
-      return applied(request, [workerTarget(request.target.workerId)], [{
-        target: workerTarget(request.target.workerId),
-        before: lease.version,
-        after: lease.version + 1,
-      }]);
+      const versionChanges: VersionChange[] = [{ target: workerTarget(request.target.workerId), before: lease.version, after: lease.version + 1 }];
+      const held = request.type === "pause-worker"
+        ? repositories.runs.listByWorker(request.target.workerId).filter(run => runClaim(run) !== undefined && run.pause === undefined && run.cancelRequested !== true)
+        : workerPauseHeldRuns(repositories, request.target.workerId, "paused");
+      for (const run of held) {
+        const runId = run.envelope.runId;
+        const outcome = request.type === "pause-worker"
+          ? lifecycle.pause({ commandId: workerPauseCommandId(request.target.workerId, run), runId, expectedVersion: run.version })
+          : lifecycle.resumePaused({ commandId: lifecycleCommandId("worker-resume", { commandId: request.commandId, runId }), runId, expectedVersion: run.version });
+        versionChanges.push({ target: runTarget(runId), before: run.version, after: lifecycleRun(request, outcome).version });
+      }
+      return applied(request, versionChanges.map(change => change.target), versionChanges);
     }
     case "refresh-browser":
     case "reopen-browser":
@@ -2186,6 +2208,17 @@ async function executeWorkerPoolCommand(
         } else {
           if (pool.assertResetOwner === undefined) throw new WorkerControlRefusal("worker-reset-owner-unavailable");
           pool.assertResetOwner(live.target.workerId, live.target.membershipRevision, lifetime);
+        }
+        for (const run of workerPauseHeldRuns(repositories, live.target.workerId, "paused")) {
+          // The operator Cancel arm also cancels the held run's cascade-cancel children.
+          const cancel = CommandRequestSchema.parse({ commandId: lifecycleCommandId("worker-stop-held-cancel", { commandId: request.commandId, runId: run.envelope.runId }),
+            family: "run", type: "cancel", source: request.source, requestedBy: request.requestedBy, requestedAt: request.requestedAt,
+            target: { runId: run.envelope.runId, expectedVersion: run.version } });
+          if (cancel.family !== "run" || cancel.type !== "cancel") throw new Error("worker-reset-held-run-cancel-shape");
+          repositories.commands.insert(cancel);
+          const application = withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(dependencies, repositories, cancel, now));
+          repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request: cancel, result: application.result, completedAt: now,
+            versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
         }
         const record = admitWorkerReset(repositories, request, dependencies.ids.uuid(), now, descriptor);
         if (record.lifecycle !== undefined) {
@@ -2287,7 +2320,7 @@ async function executeWorkerPoolCommand(
       const acknowledgement = WorkerEffectAcknowledgementSchema.parse(await settleWorkerPoolEffect(pool, request, context));
       if (!browser) record = dependencies.authority.withAuthorityTransaction(repositories => {
         if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
-        const application = applyWorkerPoolCommand(repositories, request, now, pre.record.basisVersion, acknowledgement);
+        const application = applyWorkerPoolCommand(repositories, dependencies.lifecycle, request, now, pre.record.basisVersion, acknowledgement);
         return repositories.workerControls.transition(request.commandId, "executing", {
           state: "succeeded", startedAt: now, completedAt: dependencies.clock.now().toISOString(), acknowledgement, application,
         });
@@ -2332,7 +2365,7 @@ async function executeWorkerPoolCommand(
     repositories.commands.insert(request);
     if (repositories.commandAudits.findByCommand(request.commandId) !== undefined) return replay(dependencies, repositories, request, now);
     const application = record.phase.state === "succeeded"
-      ? record.phase.application ?? applyWorkerPoolCommand(repositories, request, record.admittedAt, record.basisVersion, record.phase.acknowledgement)
+      ? record.phase.application ?? applyWorkerPoolCommand(repositories, dependencies.lifecycle, request, record.admittedAt, record.basisVersion, record.phase.acknowledgement)
       : { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: record.phase.message }), versionChanges: [], affectedDependencyIds: [] };
     repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result: application.result,
       completedAt: dependencies.clock.now().toISOString(), versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });

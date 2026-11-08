@@ -560,7 +560,8 @@ older observed input fresh.
 ### 5.6 Recovery and Rerun
 
 `RunRecord.pause` is an orthogonal scheduling hold. Queued work pauses immediately. Claimed work
-records a request and finishes its current callback before acknowledging the hold. A claim release
+records a request; the worker cancels the current step and acknowledges the hold, and the step
+restarts on Resume. A step past its write fence finishes its write before the hold is acknowledged. A claim release
 into queued delegation or a gate park acknowledges the hold atomically and preserves that park.
 Resume clears only an acknowledged hold; paused work cannot be claimed. A run-level pause affects
 that exact run, including a parent; it does not implicitly cascade to children. Pause-all validates

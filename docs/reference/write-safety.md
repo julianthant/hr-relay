@@ -192,7 +192,7 @@ An unscoped commit requires a reviewed reason and a valid `UnscopedBindingProof`
 
 ### Fenced callback lifetime and verification
 
-After the durable fence, `withTransactionDriver` crosses `retainAfterFence()`. A deadline or parent abort requests cancellation but cannot prove the callback stopped. The sequencer waits for the callback's actual settlement before releasing its transaction page or parking. A callback that never settles remains process-owned with an `attempting` intent; process loss transfers responsibility to recovery.
+After the durable fence, `withTransactionDriver` crosses `retainAfterFence()`, and its lease signal stops following the run's abort. Pause, Stop, shutdown and heartbeat loss cannot reach the commit, the after-submit capture, verification or settlement; only task deadlines bound them. A deadline requests cancellation but cannot prove the callback stopped. The sequencer waits for the callback's actual settlement before releasing its transaction page or parking. A callback that never settles remains process-owned with an `attempting` intent; process loss transfers responsibility to recovery.
 
 Commit `recordData` batches are validated and timestamped at the call but delivered only after callback settlement. Fallible diagnostic delivery cannot interrupt fence-to-click. A task error remains primary when terminal observation delivery also fails.
 
@@ -389,7 +389,9 @@ The corresponding runtime tests exercise preview, parked resolution, proof verif
 
 The native worker-control journal binds an admitted reset to the exact member and process lifetime,
 reserved revision, current run/claim/attempt and queued cascade. The SQLite claim boundary and common
-`#writeFenceRefusal` used by `fenceAttempt` and `refenceRetryable` respect this reservation. An unsafe
+`#writeFenceRefusal` used by `fenceAttempt` and `refenceRetryable` respect this reservation. The
+fence also refuses while the run has a requested pause or cancellation, so each request lands either
+before the fence (no intent, the step restarts) or after it (the write finishes). An unsafe
 or foreign-owned cascade refuses before reservation. An unresolved historical Stop without reset
 identity remains authority-unavailable and blocks admission through its unknown effect.
 

@@ -86,8 +86,9 @@ at the first idle claim result. Supervised launches additionally carry `--worker
 against the executing Spawn reservation before admitting the child.
 
 The loop handles browser controls, then reads the durable `run`, `pause`, or `stop` directive
-between complete runs. Pause claims nothing and keeps the process alive. Stop ends the loop after
-the current run settles. An unreadable or malformed directive fails the loop.
+between runs. Pause claims nothing and keeps the process alive. Stop ends the loop after the
+current run settles. An unreadable or malformed directive fails the loop. Worker Pause also pauses
+the worker's claimed run, so its current step is cancelled (section 11.2).
 
 SIGINT, SIGTERM, or an injected stop aborts the active run. The executor abandons interrupted
 ownership rather than inventing a terminal result. The controller recovers that claim on child exit or the next startup.
@@ -96,8 +97,9 @@ One heartbeat renews the exact worker and `claimGeneration`; lost renewal aborts
 `RunRecordService` re-reads authority versions before lifecycle mutation.
 Current execution also requires the retained physical worker lifetime, current profile admission,
 slot, lease and process birth. The executor checks this authority after a child await, and native
-worker mutations check it in their transaction. Pause and ordinary graceful stop do not revoke the
-current item; exact-worker reset, lifecycle and recovery reservations still fence it. An independent
+worker mutations check it in their transaction. A requested pause or cancellation cancels the
+current step (section 11.2); ordinary graceful stop does not revoke the current item. Exact-worker
+reset, lifecycle and recovery reservations still fence it. An independent
 delegation edge stops ancestor cancellation propagation, without bypassing the child's own home-worker
 or profile lifetime.
 
@@ -256,11 +258,13 @@ cancellation poison-closes the resource. Failed closure retains poison and refus
 Browser observations distinguish `starting` login from authenticated, leased unknown, failed and
 proved closed states. The dashboard keeps closed system history separate from live browser identities.
 
-`withTransactionDriver` adds the sequencer's one-way `retainAfterFence()` transition. Before the
-fence, abort races the callback normally. After the fence, cancellation reaches the task but
-cannot detach the callback or reset, close, or return its resource before actual settlement.
-Cancellation and callback failures remain visible together. A callback that never settles leaves
-the session and `attempting` write process-owned until process loss permits write recovery.
+`withTransactionDriver` gives the transaction a lease signal that follows the run's abort until
+the sequencer's one-way `retainAfterFence()`. Before the fence, abort races the callback normally.
+After the fence the lease stops following the run: only task deadlines bound the commit,
+verification and settlement, and the callback keeps its resource until actual settlement. The run
+then meets its abort at the next boundary, including after its last node. A callback that never
+settles leaves the session and `attempting` write process-owned until process loss permits write
+recovery.
 
 ### 4.1 Authentication proof
 
@@ -604,6 +608,13 @@ controls also capture their authenticated member and full process lifetime at ad
 exact control reservation. Worker cards project them only for that member and lifetime. Historical
 records without this binding remain unavailable; reads and replay never attach current identity.
 
+`pause-worker` also requests a pause on the worker's claimed run, under
+`lifecycleCommandId("worker-pause", { workerId, runId, claimGeneration })`. An existing pause is
+kept, and a pending cancellation wins. `resume-worker` resumes only runs paused under that id, and
+refuses `worker-pause-settling` while such a pause is still requested. Stop on a worker cancels the
+paused run its Pause holds, with its cascade-cancel children, through the operator Cancel arm in the
+same admission transaction.
+
 Pause and Resume carry `controlBasis` with `leaseGeneration` and `controlRevision`.
 Refresh and Reopen also name `browserSessionId`. Reservation increments the control revision.
 Heartbeats preserve the basis; another instruction or lifetime invalidates it. Composition and
@@ -628,6 +639,14 @@ member, process lifetime, reserved control revision, current run/claim/attempt o
 and queued cascade dependencies. A separately claimed child refuses as foreign custody. Admission
 atomically blocks subsequent claims and both write-fence paths. A prior fenced callback remains
 owned by its sequencer and may settle or park UNKNOWN; reset never cancels or retries that write.
+
+During a run the worker polls the run row and its reset every `WORK_CONTROL_POLL_MS` (250 ms). A
+requested pause, a requested cancellation or an admitted reset aborts the run's work signal. The
+executor settles the abort from the run row: a requested pause is acknowledged and the run requeues
+paused, a requested cancellation terminalizes, and any other abort abandons. The cancelled step has no
+checkpoint, so Resume replays completed checkpoints and runs it again under a new claim generation. A
+transaction step is restartable until its fence. After the fence its write finishes, and the run
+pauses or stops at the next boundary.
 
 The worker observes reset during current execution, acquisition and sign-in using a work abort
 signal separate from lifetime shutdown. Actual read callback promises retain run/claim/attempt

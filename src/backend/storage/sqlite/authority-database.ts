@@ -7934,7 +7934,8 @@ export class AuthorityDatabase implements Disposable {
       if (runs.some(member => member.runId === intent.runId)) return { reason: "invalid-state" };
       throw new Error("worker-reset-current-run-conflict");
     }
-    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.attempt !== intent.runAttempt) {
+    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.pause?.state === "requested"
+      || run.envelope.attempt !== intent.runAttempt) {
       return { reason: "invalid-state" };
     }
     try { this.#assertCurrentExecution(intent.runId, claim); }

@@ -356,7 +356,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         continue;
       }
       await deps.browserControl?.(sessions);
-      // Between items only: the active run always settles before the next poll.
       const directive = deps.controlPoll === undefined
         ? "run"
         : WorkerDirectiveSchema.parse(deps.controlPoll());
@@ -413,19 +412,24 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         runController.abort(new Error(`worker ${workerId} received its stop signal mid-run`));
       };
       deps.stopSignal.addEventListener("abort", onStop, { once: true });
-      let resetPoll = { cancel: (): void => undefined };
-      let resetPolling = true;
-      const observeReset = (): void => {
-        if (!resetPolling) return;
+      let workPoll = { cancel: (): void => undefined };
+      let workPolling = true;
+      const observeWork = (): void => {
+        if (!workPolling) return;
         try {
+          const current = deps.authority.authority.runs.get(run.envelope.runId);
+          if (current?.pause?.state === "requested" || current?.cancelRequested === true) {
+            runController.abort(new Error("worker-run-control-current-work"));
+            return;
+          }
           if (deps.activeWorkReset?.(run, claim) === true) {
             runController.abort(new Error("worker-reset-current-work"));
             return;
           }
         } catch (error) { runController.abort(error); return; }
-        resetPoll = deps.scheduler.schedule(clock.monotonicMs() + deps.idleRepollMs, observeReset);
+        workPoll = deps.scheduler.schedule(clock.monotonicMs() + WORK_CONTROL_POLL_MS, observeWork);
       };
-      if (deps.activeWorkReset !== undefined) observeReset();
+      observeWork();
       const heartbeat = startHeartbeat({
         lifecycle: deps.lifecycle,
         ids: deps.ids,
@@ -491,8 +495,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       } finally {
         const reset = deps.pendingReset?.();
         if (reset !== undefined) await finishReset(reset);
-        resetPolling = false;
-        resetPoll.cancel();
+        workPolling = false;
+        workPoll.cancel();
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }
@@ -519,6 +523,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 
 
 
+export const WORK_CONTROL_POLL_MS = 250;
 export const WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000;
 export const WORKER_SIGTERM_TIMEOUT_MS = 30_000;
 

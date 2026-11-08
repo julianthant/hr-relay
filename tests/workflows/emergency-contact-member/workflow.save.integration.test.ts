@@ -9,6 +9,7 @@ import { readApprovedOcrRecordTask } from "../../../src/backend/processing/ocr/t
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
 import { ucpathDriver } from "../../../src/backend/systems/ucpath/driver-declaration.js";
 import { createDeterministicContactPersistence } from "../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { interpretContactPage } from "../../../src/backend/systems/ucpath/driver/contact-operation.js";
@@ -221,16 +222,28 @@ it("uses complete persisted exact presence without a new intent or Save", async 
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
 });
 
-it("keeps interrupted Save ownership until callback settlement, then parks without output or another click", async () => {
+it("keeps interrupted Save ownership until callback settlement, verifies and commits it once, then abandons the run without a result or another click", async () => {
   const f = await memberFixture({ interrupt: true });
+  assert.deepEqual(f.failures, []);
   assert.equal(f.persistence.submissions.length, 1);
-  assert.equal(f.database.authority.writeIntents.listByRun(f.run.envelope.runId)[0]?.status, "parked");
+  assert.equal(f.reads, 3, "initial read, native probe and mandatory native verifier");
+  const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
+  assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "committed");
+  assert.ok(f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "contact-preview"));
+  const date = f.clock.now().toISOString().slice(0, 10);
+  assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows.length, 1);
+  assert.deepEqual(f.result.outcomes.map(outcome => outcome.state), ["abandoned"]);
   assert.equal(f.database.authority.runResults.get(f.run.envelope.runId), undefined);
+  assert.notEqual(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "terminal");
+  // The controller recovers the abandoned claim when the interrupted worker exits.
+  releaseSeededWriteOwners(f.database, f.clock.now().toISOString());
   const retry = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
   await f.execution.execute(retry, world.SIGNAL);
   assert.equal(f.persistence.submissions.length, 1);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
-  assert.match(f.database.authority.failures.listByRun(retry.envelope.runId)[0]?.summary ?? "", /parked/u);
+  assert.deepEqual(f.database.authority.failures.listByRun(retry.envelope.runId), []);
+  const reused = f.database.authority.runResults.get(retry.envelope.runId); assert.ok(reused);
+  assert.equal(EmergencyContactMemberResultSchema.parse(reused.result.value).disposition, "already-present");
 });
 
 it("saves an addition with no demotion when the complete original set has no primary", async () => {
