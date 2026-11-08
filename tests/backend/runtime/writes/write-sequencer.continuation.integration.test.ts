@@ -7,7 +7,7 @@ import { readRunCheckpoint, captureRunContinuation, continuationEvidenceDigest }
 import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { FailureRecordSchema, settledWriteRunIds } from "../../../../src/models/trust/failure.js";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import { SourceBoundRunSchema, repeatOccurrenceKey, repeatEvidenceDigest } from "../../../../src/models/run/rerun.js";
 import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
@@ -42,7 +42,7 @@ function failAfterTransaction(h: Harness, run: RunRecord) {
   assert.equal(current.lifecycle.state, "running");
   assert.ok(current.lifecycle.state === "running" && current.lifecycle.currentNodeId === WRITE_FIXTURE_NODE_ID);
   const now = h.clock.now().toISOString();
-  const failure = FailureRecordSchema.parse(buildNodeFailureRecord({ writes: h.database.authority.writeIntents.listByRun(current.envelope.runId), run: current, failureId: randomUUID(),
+  const failure = FailureRecordSchema.parse(buildNodeFailureRecord({ writes: settledWriteRunIds(current.envelope).flatMap(id => h.database.authority.writeIntents.listByRun(id)), run: current, failureId: randomUUID(),
     nodeId: NodeIdSchema.parse(WRITE_FIXTURE_NODE_ID), taskId: WriteFixtureCommit.id,
     error: new Error("Synthetic failure after the settled transaction"), occurredAt: now }));
   assert.equal(failure.writeState, "committed");

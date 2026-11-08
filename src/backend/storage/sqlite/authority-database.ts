@@ -109,7 +109,7 @@ import { admitWorkerVerification,createWorkerSlotRepository,readWorkerReservatio
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
 import { RunEvidenceReceiptSchema,type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
-import { FailureRecordSchema,settledWriteState,type FailureRecord } from "../../../models/trust/failure.js";
+import { FailureRecordSchema,settledWriteRunIds,settledWriteState,type FailureRecord } from "../../../models/trust/failure.js";
 import { RunCheckpointRecordSchema,checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSchema,CommandIdSchema,DiagnosticBundleIdSchema,FailureIdSchema,FailureFingerprintSchema,FingerprintSchema,GateIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteIntentIdSchema } from "../../../rules/identity/ids.js";
@@ -3870,7 +3870,7 @@ export class AuthorityDatabase implements Disposable {
         fingerprint: sha256Hex(`hrauto:failure-class:v1\0${current.envelope.workflow}\0absent-node\0absent-task\0${code}`),
         runId: current.envelope.runId, traceId: current.envelope.traceId, attempt: current.envelope.attempt,
         workflowId: current.envelope.workflow, code, summary, transient: false,
-        writeState: settledWriteState(intents),
+        writeState: settledWriteState(settledWriteRunIds(current.envelope).flatMap(id => repositories.writeIntents.listByRun(id))),
         causeChain: [{ code, summary, role: "primary", transient: false }],
         remediation: [{ kind: "operator-action", message: summary }], occurredAt: request.now });
       const authorization = FailureTerminalAuthorizationRecordSchema.parse({ kind: "failed", runId: current.envelope.runId,
