@@ -1003,7 +1003,13 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
   const uploadRun = surfaces.uploadRun;
   if (uploadRun !== undefined) {
     if (uploadRun.pdfInput !== undefined) {
-      for (const field of Object.values(uploadRun.pdfInput)) assertSchemaOffersPath(input, field, `${id}: PDF input`);
+      const pdfInput = uploadRun.pdfInput;
+      const fields = "documentsField" in pdfInput ? Object.values(pdfInput) : [pdfInput.documentField, pdfInput.fileNameField, pdfInput.readingIdField, ...Object.keys(pdfInput.fixed)];
+      for (const field of fields) assertSchemaOffersPath(input, field, `${id}: PDF input`);
+      if ("fixed" in pdfInput && input instanceof z.ZodObject) {
+        const shape: Readonly<Record<string, z.ZodType | undefined>> = (input as z.ZodObject<Readonly<Record<string, z.ZodType>>>).shape;
+        for (const [field, value] of Object.entries(pdfInput.fixed)) if (shape[field]?.safeParse(value).success !== true) throw new Error(`${id}: PDF input fixed value ${field} is invalid`);
+      }
       if (uploadRun.accepts.some(accept => accept.mediaType !== "application/pdf")) throw new Error(`${id}: PDF input requires PDF files`);
     }
     for (const field of uploadRun.fields) {

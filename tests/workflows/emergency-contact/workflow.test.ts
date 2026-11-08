@@ -62,3 +62,9 @@ it("titles an Emergency Contact run by its PDF name, else the generic PDF title"
   assert.equal(title({ ...input, fileName: "Contacts.pdf" }), "Contacts.pdf");
   assert.equal(title(input), "Emergency Contact PDF");
 });
+
+it("declares one PDF start door whose fields and fixed values the input schema accepts", () => {
+  const pdfInput = emergencyContactWorkflow.surfaces?.uploadRun?.pdfInput;
+  assert.deepEqual(pdfInput, { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: { roster: null, reading: { kind: "subscription" } } });
+  assert.deepEqual(descriptor.surfaces.uploadRun?.accepts.map(accept => accept.mediaType), ["application/pdf"]);
+});

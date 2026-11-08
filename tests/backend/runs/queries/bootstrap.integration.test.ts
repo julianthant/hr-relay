@@ -205,6 +205,9 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
     expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
       documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
     });
+    expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'emergency-contact')?.start?.uploadRun?.pdfInput).toEqual({
+      documentField: 'document', fileNameField: 'fileName', readingIdField: 'readingId', fixed: { roster: null, reading: { kind: 'subscription' } },
+    });
     expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
     const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
     expect(onboarding?.availability).toEqual({ state: 'available' });

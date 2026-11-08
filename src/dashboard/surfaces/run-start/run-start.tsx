@@ -1022,7 +1022,7 @@ export function RunStartDialog({
 
               {currentStage === "Confirm" && plan !== null && (
                 <RunConfirmLayout count={plan.planned.length} outputs={plan.planned.flatMap(planned => planned.outputs ?? [])} inputs={pdfSurface !== undefined ? pdfInput.draft?.files.map(file => ({ label: file.source.fileName, kind: "PDF" })) : preview.entries.length ? preview.entries.map(entry => ({ label: entry.sourceText, kind: rowCapability === undefined ? inputRun.state === 'present' ? inputRunFieldLabel(inputRun.surface.parser) : 'Input' : `Entry ${entry.index + 1} · ${plan.refused.some(refusal => refusal.entry === entry.index + 1) ? "Refused" : "Accepted"}` })) : undefined} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
-                  description={isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? "One run for all attached PDFs." : "One run for each accepted entry."}
+                  description={isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? pdfSurface.pdfInput !== undefined && "documentField" in pdfSurface.pdfInput ? "One run for each attached PDF." : "One run for all attached PDFs." : "One run for each accepted entry."}
                   facts={[
                       { key: "Workflow", value: workflow === undefined ? plan.workflowId : `${workflow.label} · ${versionTag(workflow.version)}` },
                       { key: "Input", value: inputSummary || Object.values(valueDrafts).map(draft => draft.text).filter(Boolean).join(", ") },

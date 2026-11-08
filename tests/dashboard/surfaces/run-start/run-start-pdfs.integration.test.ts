@@ -12,6 +12,10 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 import { createHash } from "node:crypto";
 import { WorkbookLibraryEntrySchema } from "../../../../src/models/dashboard/workbook-library.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
+import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
+import { EmergencyContactInputSchema } from "../../../../src/models/workflows/emergency-contact/input.js";
+import { OCR_ROSTER_FIELDS, OCR_ROSTER_TYPE_ID } from "../../../../src/models/workflows/ocr/roster.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -131,4 +135,32 @@ it("retires an upload when the selected workflow changes and ignores its late re
   expect(dialog.text()).not.toContain(file.name);
   expect(document.querySelector('[aria-label="Selected PDFs"]')).toBeNull();
   expect(document.querySelector("textarea")).not.toBeNull();
+});
+
+it("plans one Emergency Contact run per uploaded PDF and says so on Confirm", async () => {
+  const contact = compileWorkflow(emergencyContactWorkflow).descriptor, uploads: string[] = [], plans: unknown[] = [];
+  const roster = WorkbookLibraryEntrySchema.parse({ ...reference, libraryId: "roster-file", name: "Roster.xlsx", metadata: { typeId: OCR_ROSTER_TYPE_ID, sharePoint: null },
+    type: { id: OCR_ROSTER_TYPE_ID, name: "OCR roster", keyFieldId: "eid", fields: [...OCR_ROSTER_FIELDS], defaultWorkbookId: "roster-file" },
+    state: { ...reference.state, libraryId: "roster-file" } });
+  const served = h.stubClient({ workbookCatalog: async () => [roster], workbookTypes: async () => [roster.type],
+    uploadOcrSource: async request => {
+      uploads.push(request.fileName);
+      return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+        artifact: { id: `00000000-0000-4000-8000-${String(uploads.length).padStart(12, "0")}`, mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
+    }, submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000002");
+      return { ...plan, workflowId: contact.id, planned: ["first.pdf", "second.pdf"].map(title => ({ ...plan.planned[0], title,
+        workbookReferences: [{ libraryId: roster.libraryId, version: roster.version, versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: roster.type }] })) }; } });
+  const flow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: contact.id, label: contact.label, version: contact.version, steps: projectStartSteps(contact),
+    inputRun: { state: "absent", reason: "PDF input" }, uploadRun: contact.surfaces.uploadRun, requiredWorkbookTypeIds: contact.requiredWorkbookTypeIds };
+  const dialog = await h.openDialog(served, { workflows: [flow], panelWorkflowId: flow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
+  await dialog.press("Continue");
+  await dialog.press("Current Reference version");
+  const version = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-label="Fall review"]'); assert.ok(version);
+  await act(async () => version.click());
+  await dialog.press("Continue");
+  const request = StartPlanRequestSchema.parse(plans[0]);
+  expect(request.submissions).toHaveLength(2);
+  expect(request.submissions.map(submission => EmergencyContactInputSchema.parse(submission).fileName)).toEqual(uploads);
+  expect(dialog.text()).toContain("One run for each attached PDF");
 });
