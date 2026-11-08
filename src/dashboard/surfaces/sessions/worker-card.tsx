@@ -9,7 +9,7 @@ import { SessionTimeline } from "./session-timeline.js";
 type WorkerBrowser = SessionWorker["browsers"][number];
 const BROWSER_WORD: Record<WorkerBrowser["state"], string> = { ready: "Ready", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed", "needs-duo": "Needs Duo", "signed-out": "Signed out" };
 const BROWSER_TONE: Record<WorkerBrowser["state"], string> = { ready: "text-ui-secondary", active: "text-ui-info", starting: "text-ui-warning", unopened: "text-ui-muted", closed: "text-ui-muted", unavailable: "text-ui-warning", failed: "text-ui-danger", "needs-duo": "text-ui-warning", "signed-out": "text-ui-warning" };
-const MAX_ROWS = 4;
+const MAX_SYSTEMS = 4;
 
 /** The one note line under the step bar: why a settled worker ended, a failed step, or a pending pause or stop. Red only for a failed step. */
 function cardNote(worker: SessionWorker): { text: string; tone: string } | undefined {
@@ -19,28 +19,27 @@ function cardNote(worker: SessionWorker): { text: string; tone: string } | undef
 }
 
 function BrowserRow({ browser }: { browser: WorkerBrowser }) {
-  return <li className="flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-md bg-ui-table px-1 py-1 text-caption last:odd:col-span-2"><span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span><span className={cn("shrink-0", BROWSER_TONE[browser.state])} title={browser.reason}>{BROWSER_WORD[browser.state]}</span></li>;
+  return <li title={browser.name} className={cn("flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-md bg-ui-table px-2 py-1 text-caption")}><span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span><span className={cn("shrink-0", BROWSER_TONE[browser.state])} title={browser.reason}>{BROWSER_WORD[browser.state]}</span></li>;
 }
 
-/** Up to four sessions are rows; more are compact chips, so every name reads in full. The area grows to take the card's spare height. */
-function Browsers({ worker }: { worker: SessionWorker }) {
-  const label = `${worker.label} systems`;
-  if (worker.browsers.length === 0) return worker.state === "unavailable" ? <div className="min-h-[4.5rem] flex-1 py-3" /> : <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">No browser sessions open</p>;
-  if (worker.browsers.length <= MAX_ROWS) return <ul aria-label={label} className="m-0 min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0 grid grid-cols-2">{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul>;
-  return <ul aria-label={label} className="m-0 flex min-h-[4.5rem] flex-1 list-none flex-wrap content-start gap-x-3 gap-y-1.5 py-3 pl-0 text-caption">{worker.browsers.map(browser => <li key={browser.id} className="flex items-center gap-1.5"><span aria-hidden className={cn("size-1.5 shrink-0 rounded-full bg-current", BROWSER_TONE[browser.state])} /><span>{browser.label}</span>{browser.state !== "ready" && <span className={BROWSER_TONE[browser.state]} title={browser.reason}>{BROWSER_WORD[browser.state]}</span>}</li>)}</ul>;
+/** Browser sessions are always the chip grid, two per row; a workflow past four systems gets a wider card and three per row. */
+function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
+  if (worker.browsers.length === 0) return <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">{worker.browsersNote ?? "No browser sessions open"}</p>;
+  return <ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul>;
 }
 
 export function WorkerCard({ worker, countdown, operation, onControl, onCheck }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void; onCheck?: (id: string) => void }) {
   const locked = operation !== undefined && ["pending", "checking", "uncertain"].includes(operation.state);
   const settled = worker.state === "failed" || worker.state === "stopped";
   const note = cardNote(worker);
+  const wide = worker.browsers.length > MAX_SYSTEMS;
   const icon = (label: string, control: SessionControl, Glyph: typeof Pause) => <Button size="sm" variant="ghost" className="size-6 p-0" disabled={locked} aria-label={label} title={label} icon={<Glyph aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, control)} />;
-  return <article aria-label={`${worker.label} · ${worker.workflow}`} className="flex w-80 shrink-0 flex-col rounded-lg border border-ui-stroke bg-ui-panel p-3">
+  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-lg border border-ui-stroke bg-ui-panel px-4 py-3", wide ? "w-[32rem]" : "w-[22rem]")}>
     <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-semibold" title={worker.workflow}>{worker.workflow}</h3><span className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{SESSION_STATE_LABELS[worker.state]}</span></header>
     <p className="mb-0 mt-1 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
-    <Browsers worker={worker} />
+    <Browsers worker={worker} wide={wide} />
     <div className="border-t border-ui-stroke pt-2">
-      <SessionTimeline nodes={worker.timeline} label={`${worker.label} node timeline`} action={worker.action} emptyLabel={worker.state === "idle" ? "No run in progress" : undefined} />
+      <SessionTimeline nodes={worker.timeline} label={`${worker.label} step timeline`} action={worker.action} emptyLabel={worker.state === "idle" ? "No run in progress" : undefined} />
       <p className={cn("mb-0 mt-1.5 min-h-4 break-words text-caption", note?.tone)}>{note?.text}</p>
     </div>
     <WorkerOperationNote operation={operation} worker={worker} onCheck={onCheck} />

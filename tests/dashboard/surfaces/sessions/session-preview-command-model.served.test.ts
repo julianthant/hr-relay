@@ -434,8 +434,9 @@ it("refreshes only observed physical sessions through required presentation slot
     const day = DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state, browsers: [], browserRequirements: { state: "present", systems: state === "failed" ? ["ucpath", "kuali"] : [] },
       ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] });
     const view = sessionsFromDay(day, catalog, now); assert(view.state === "ready");
-    assert.deepEqual(view.workers[0].browsers, []);
-    assert.equal(view.workers[0].problem, state === "failed" ? "Worker stopped unexpectedly." : undefined);
+    assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), state === "failed" ? [["UCPath", "closed"], ["Kuali", "closed"]] : []);
+    assert.equal(view.workers[0].problem, state === "failed" ? "Its run is no longer on record." : undefined);
+    assert.equal(view.workers[0].action, state === "failed" ? "Worker stopped unexpectedly." : "Preparing worker");
   }
 });
 
@@ -532,7 +533,8 @@ it("distinguishes an intentionally stopped worker after restart from a crashed w
       state: "failed", endedAt: now, stopReason, browsers: [] }] }), catalog, now);
     assert.ok(view.state === "ready");
     assert.equal(view.workers[0].state, stopReason === "crashed" ? "failed" : "stopped");
-    assert.equal(view.workers[0].problem, { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly." }[stopReason]);
+    assert.equal(view.workers[0].action, { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly." }[stopReason]);
+    assert.equal(view.workers[0].problem, "Its run is no longer on record.");
   }
 });
 
