@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StartCommandRequestSchema, CommandIdentityConflictError, type CommandRequest, type BulkRunCommandOutcome, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
+import { workerStartupToast } from "../../app/commands/worker-startup-toast.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { RerunValuesSnapshotSchema, type RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
@@ -252,9 +253,7 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
 }
 
 export function runLaunchAppliedToast(input: Readonly<{ label: string; count?: number; rerun: boolean; workerStartup?: RunWorkerStartupFailure }>) {
-  if (input.workerStartup !== undefined) return { tone: "warning" as const,
-    title: input.workerStartup.state === "refused" ? "Run queued; worker unavailable" : "Run queued; worker status unknown",
-    description: input.workerStartup.message };
+  if (input.workerStartup !== undefined) return workerStartupToast(input.workerStartup);
   return { tone: "success" as const, title: input.count === undefined ? "Run submission confirmed" : input.rerun ? "Rerun started"
     : input.count === 1 ? "Run started" : `${input.count} runs started`, description: input.label };
 }
