@@ -15,6 +15,7 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import { workbookMatches } from "./master-changes.js";
 import { WorkbookLibraryActionSchema, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
+import { WORKFLOW_REFERENCE_TYPES } from "./reference-types.js";
 
 export class WorkbookLibraryError extends Error {
   constructor(readonly code: Extract<ErrorCatalogCode, `WORKBOOK_${string}`>, options?: ErrorOptions) {
@@ -121,6 +122,8 @@ export interface WorkbookSyncDownload {
   ) => Promise<Result>): Promise<Result>;
 }
 export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload }>) {
+  const present = new Set(deps.repository.types().map(type => type.id));
+  for (const type of WORKFLOW_REFERENCE_TYPES) if (!present.has(type.id)) deps.repository.putType(type);
   const read = (libraryId: string): SavedWorkbook => {
     const record = deps.repository.read(input(WorkbookIdSchema, libraryId));
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
