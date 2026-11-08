@@ -99,25 +99,16 @@ describe("worker-browser arms", () => {
     if (claimed.state !== "claimed") throw new Error("fixture run was not claimed");
     if (write === "attempting") await attemptingOwnedWrite({ database: harness.database, fence: async input => harness.database.authority.writeIntents.fenceAttempt(input) }, claimed.run);
     harness.workerMembers.set(workerId, { lifetimeId: UUID_4, version: 3, state: "running" });
-    const before = harness.database.authority.runs.get(runId);
-    assert.ok(before);
 
     const request = workerCommand("stop-worker", { workerId, workflowId: rejectActiveDescriptor.id, lifetimeId: UUID_4, expectedVersion: 3 });
     const reset = await harness.kernel.executeWorkerPool(request);
     const cancelId = lifecycleCommandId("worker-reset-cancel", request.commandId);
-    if (write === "attempting") {
-      assert.equal(reset.state, "rejected", JSON.stringify(reset));
-      if (reset.state === "rejected") { assert.equal(reset.code, "invalid-state"); assert.equal(reset.commandId, request.commandId); }
-      assert.deepEqual(harness.database.authority.runs.get(runId), before, "an unresolved write keeps the claimed run untouched");
-      assert.equal(harness.database.authority.commands.get(cancelId), undefined);
-      assert.equal(harness.database.authority.commands.get(request.commandId), undefined);
-      assert.deepEqual(harness.workerCalls, [], "no process effect over an unresolved write");
-      return;
-    }
     assert.equal(reset.state, "applied", JSON.stringify(reset));
+    // A fenced write in flight is not refused: it finishes and settles once, then the run ends.
+    assert.deepEqual(harness.database.authority.writeIntents.listByRun(runId).map(intent => intent.status), write === "attempting" ? ["attempting"] : []);
     // A claimed run's Cancel is a request; the stopped process's exit settlement ends it.
     const cancelled = harness.database.authority.runs.get(runId);
-    assert.equal(cancelled?.lifecycle.state, "claimed");
+    assert.equal(cancelled?.lifecycle.state, write === "attempting" ? "running" : "claimed");
     assert.equal(cancelled?.cancelRequested, true);
     assert.equal(harness.database.authority.commands.get(cancelId)?.type, "cancel");
     assert.equal(harness.database.authority.commandAudits.findByCommand(cancelId)?.result.state, "applied");

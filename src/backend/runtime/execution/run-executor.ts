@@ -268,6 +268,11 @@ function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId
   return stored;
 }
 
+// Bound inputs compare in their JSON form: an optional field bound to undefined is absent.
+function boundInputIdentity(value: unknown): string {
+  return canonicalJsonStringify(JSON.parse(JSON.stringify(value)));
+}
+
 function labelOf(node: TaskRuntimeNode): string {
   return node.label ?? node.uses.title;
 }
@@ -852,7 +857,7 @@ export async function executeClaimedRun(
           if (!deferred && envelope.continuation !== undefined) {
             const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn)));
             const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
-            if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)) {
+            if (boundInputIdentity(original) !== boundInputIdentity(continued)) {
               problems.push(`Completed node "${node.id}" has incompatible corrected input; continuation refused`);
               continue;
             }
@@ -1035,6 +1040,11 @@ export async function executeClaimedRun(
     const abortReason = (fallback: string): RunAbandonedError => new RunAbandonedError(
       input.signal.reason instanceof Error ? input.signal.reason.message : fallback,
     );
+
+    const interruptBeforeFence = (nodeId: string): void => {
+      if (input.signal.aborted) throw abortReason(`run ${runId} was aborted during ${nodeId}`);
+      pauseAtBoundary();
+    };
 
     const waitForBackoff = async (ms: number): Promise<void> => {
       if (ms <= 0) return;
@@ -1550,7 +1560,7 @@ export async function executeClaimedRun(
       if (sourceEvidence !== undefined) {
         const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
         const continued = node.bind(scopeFor(node.dependsOn));
-        if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)
+        if (boundInputIdentity(original) !== boundInputIdentity(continued)
           || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
           || canonicalJsonStringify(sourceEvidence.manifest.policy) !== canonicalJsonStringify(node.policy)
           || sourceEvidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")) throw new RunContinuationRefusedError("run-continuation-child-input-mismatch");
@@ -1578,8 +1588,8 @@ export async function executeClaimedRun(
             throw new RunContinuationRefusedError("run-continuation-task-context-unavailable");
           }
           if (envelope.continuation !== undefined
-            && canonicalJsonStringify(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn))))
-              !== canonicalJsonStringify(node.uses.input.parse(node.bind(scope)))) {
+            && boundInputIdentity(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn))))
+              !== boundInputIdentity(node.uses.input.parse(node.bind(scope)))) {
             throw new RunContinuationRefusedError("run-continuation-task-input-mismatch");
           }
           const freshness = auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
@@ -1930,6 +1940,7 @@ export async function executeClaimedRun(
                   action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); }));
               } catch (error) {
                 if (error instanceof RunAbandonedError) throw error;
+                interruptBeforeFence(node.id);
                 return await failNode(node, node.commit.uses.id, error);
               }
               emit({
@@ -2010,6 +2021,7 @@ export async function executeClaimedRun(
                 code: error.parkCode,
               });
             }
+            interruptBeforeFence(node.id);
             return await failNode(node, node.commit.uses.id, error);
           }
           continue;
@@ -2043,7 +2055,7 @@ export async function executeClaimedRun(
           }
           try {
             await deps.sessions.closeAll("parked");
-            input.signal.throwIfAborted();
+            if (input.signal.aborted) throw abortReason(`run ${runId} was aborted before ${node.id}`);
             checkCancellation();
             requireOriginalClaim(getRun());
             const sourceEvidence = childSourceEvidence(node);
@@ -2066,7 +2078,7 @@ export async function executeClaimedRun(
                 raw = childBatchOutputs.get(node.id);
               }
             }
-            input.signal.throwIfAborted();
+            if (input.signal.aborted) throw abortReason(`run ${runId} was aborted during ${node.id}`);
             const pending = DelegationPendingSchema.safeParse(raw);
             if (pending.success) {
               if (entry.mode === "replay-child") throw new RunContinuationRefusedError("run-gate-resume-child-unsettled");
@@ -2121,7 +2133,8 @@ export async function executeClaimedRun(
       }
     }
 
-
+    // The last node's boundary: an abort pauses, cancels or abandons the run instead of settling it done.
+    if (input.signal.aborted) throw abortReason(`run ${runId} was aborted before its terminal settlement`);
     assertAccounting();
     if (envelope.dryRun) {
       const support = workflowDryRunSupport(descriptor);
@@ -2146,6 +2159,11 @@ export async function executeClaimedRun(
   const handleInterruption = (error: unknown):
     { state: "handled"; outcome: RunExecutionOutcome } | { state: "unhandled"; failure: unknown } => {
     let failure = error;
+    // An aborted run settles a requested pause or cancellation from durable state; any other abort abandons.
+    if (input.signal.aborted && failure instanceof RunAbandonedError && !(failure instanceof RunPauseRequestedError)) {
+      try { const current = getRun(); requireOriginalClaim(current); checkCancellation(); checkPause(current); }
+      catch (control) { failure = control; }
+    }
     if (failure instanceof RunTerminalAdmissionLostError) {
       const admissionVersion = failure.admissionVersion;
       try {

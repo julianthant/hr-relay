@@ -264,6 +264,51 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
   ],
 };
 
+const STOP_CANCELS = 'constcancels=[...(run===undefined?[]:[journaledResetCancel(repositories,run,false)]),...workerPauseHeldRuns(repositories,member.workerId,"paused").map(held=>journaledResetCancel(repositories,held,true))];';
+
+/** Stop ends the current run (fenced write finish) and every paused-held run (no finish) through journaledResetCancel, inside the stop-worker admission transaction. */
+function stopCancelsDeclaration(kernel: ts.SourceFile): ts.VariableStatement | undefined {
+  const found: ts.VariableStatement[] = [];
+  function find(node: ts.Node): void {
+    if (ts.isCaseClause(node) && node.expression.getText(kernel) === '"stop-worker"') {
+      function inCase(inner: ts.Node): void {
+        if (ts.isVariableStatement(inner) && inner.declarationList.declarations.some(declaration => declaration.name.getText(kernel) === "cancels")) found.push(inner);
+        ts.forEachChild(inner, inCase);
+      }
+      inCase(node);
+    }
+    ts.forEachChild(node, find);
+  }
+  find(kernel);
+  return found.length === 1 ? found[0] : undefined;
+}
+
+function isStopHeldCancelAdmission(kernel: ts.SourceFile): boolean {
+  const compact = (node: ts.Node): string => node.getText(kernel).replace(/\s+/gu, "");
+  const declaration = stopCancelsDeclaration(kernel);
+  if (declaration === undefined || compact(declaration) !== STOP_CANCELS) return false;
+  let callback: ts.Node | undefined = declaration.parent;
+  while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
+  if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent) || compact(callback.parent.expression) !== "transact" || callback.body !== declaration.parent) return false;
+  let clause: ts.Node | undefined = callback;
+  while (clause !== undefined && !ts.isCaseClause(clause)) clause = clause.parent;
+  if (clause === undefined || !ts.isCaseClause(clause)) return false;
+  const journaled: ts.CallExpression[] = [], scopedOrBare: ts.CallExpression[] = [];
+  function calls(node: ts.Node): void {
+    if (ts.isCallExpression(node)) {
+      const name = compact(node.expression);
+      if (name === "journaledResetCancel") journaled.push(node);
+      if (name === "executeCancel" || name === "withCanonicalRunCommandScope") scopedOrBare.push(node);
+    }
+    ts.forEachChild(node, calls);
+  }
+  calls(clause);
+  let owner: ts.Node | undefined = scopedOrBare[0];
+  while (owner !== undefined && !(ts.isVariableDeclaration(owner) && owner.name.getText(kernel) === "journaledResetCancel")) owner = owner.parent;
+  return journaled.length === 2 && scopedOrBare.length === 2 && owner !== undefined
+    && scopedOrBare.every(call => { let node: ts.Node | undefined = call; while (node !== undefined && node !== owner) node = node.parent; return node === owner; });
+}
+
 function withoutDelegationAuditReads(content: string, path: string, kernelContent: string): string {
   const specs = DELEGATION_AUDIT_READS[path];
   if (specs === undefined) return content;
@@ -364,7 +409,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
       && node.expression.text === "withCanonicalRunCommandScope") calls.push(node); ts.forEachChild(node, find); }
     find(kernel);
     const argumentsOf = (call: ts.CallExpression) => call.arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",");
-    if (calls.length !== 2 || argumentsOf(calls[0]) !== "repositories,cancel,()=>executeCancel(dependencies,repositories,cancel,now)"
+    if (calls.length !== 2 || argumentsOf(calls[0]) !== "repositories,cancel,()=>executeCancel(dependencies,repositories,cancel,now,!held)"
       || argumentsOf(calls[1]) !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
     // Reset's own Cancel is journaled inside the Reset's transaction: commands.insert before the scope, commandAudits.insert after.
     let resetOwner: ts.Node | undefined = calls[0].parent;
@@ -384,6 +429,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     resetJournal(resetOwner.body);
     if (resetBefore.length !== 1 || resetAfter.length !== 1 || resetStray.length !== 0 || resetBefore[0].end >= calls[0].getStart(kernel)
       || calls[0].end >= resetAfter[0].getStart(kernel)) return content;
+    if (!isStopHeldCancelAdmission(kernel)) return content;
     calls.shift();
     const selection = calls[0].parent;
     if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
@@ -429,6 +475,27 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     content = content.slice(0, use.name.getStart(source)) + "receiptReads" + content.slice(use.name.end);
   }
   return content;
+}
+
+/** Stop held-cancel negative controls: held cancels outside the admission transaction, the wrong pause state, a missing or unjournaled held cancel, and swapped finish flags. */
+function stopHeldCancelMutants(kernel: string): readonly string[] {
+  const parsed = ts.createSourceFile("kernel.ts", kernel, ts.ScriptTarget.Latest, true);
+  const declaration = stopCancelsDeclaration(parsed);
+  assert.ok(declaration);
+  const statement = kernel.slice(declaration.getStart(parsed), declaration.end);
+  const held = "...workerPauseHeldRuns(repositories, member.workerId, \"paused\").map(held => journaledResetCancel(repositories, held, true))";
+  const current = "run === undefined ? [] : [journaledResetCancel(repositories, run, false)]";
+  assert.ok(statement.includes(held) && statement.includes(current));
+  const without = kernel.slice(0, declaration.getStart(parsed)) + kernel.slice(declaration.end);
+  return [
+    without.replace('catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }\n      return result;', `catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }\n      ${statement}\n      return result;`),
+    kernel.replace(statement, statement.replace('"paused"', '"requested"')),
+    kernel.replace(statement, statement.replace(`, ${held}`, "").replace(held, "")),
+    kernel.replace(statement, statement.replace("journaledResetCancel(repositories, held, true)", "executeCancel(dependencies, repositories, held, now, false)")),
+    kernel.replace(statement, statement.replace("run, false", "run, true").replace("held, true", "held, false")),
+    kernel.replace(statement, statement.replace("run, false", "run, true")),
+    kernel.replace(statement, statement.replace("held, true", "held, false")),
+  ];
 }
 
 describe("finite native delegation audit read ownership", () => {
@@ -547,8 +614,9 @@ describe("finite native delegation audit read ownership", () => {
           kernel.replaceAll("dependencies.authority.withAuthorityTransaction", "dependencies.authority.withAuthorityReadSnapshot"),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "settings" || request.family === "start"'),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "start"'),
-          kernel.replace("() => executeCancel(dependencies, repositories, cancel, now))", "() => executeCancel(dependencies, repositories, request, now))"),
+          kernel.replace("() => executeCancel(dependencies, repositories, cancel, now, !held))", "() => executeCancel(dependencies, repositories, request, now, !held))"),
           kernel.replace("repositories.commands.insert(cancel);", ""),
+          ...stopHeldCancelMutants(kernel),
           kernel.replace("const journaledResetCancel =", "const resetCancel ="),
           kernel.replace("const application = withCanonicalRunCommandScope(repositories, cancel,", "repositories.commandAudits.findByCommand(cancel.commandId); const application = withCanonicalRunCommandScope(repositories, cancel,"),
         ]) {

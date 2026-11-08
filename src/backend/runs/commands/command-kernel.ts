@@ -44,7 +44,7 @@ import { IntakeParseSchema,resolveInspectSelection,type IntakeLayout } from "../
 import type { IntakeProjection } from "../../../models/intake/projection.js";
 import { intakeReviewBinding,resolveIntakeComparison } from "../../../models/intake/review.js";
 import { validateIntakeRows } from "../../../models/intake/validate.js";
-import { isTerminalRunState,RunRecordSchema,type RunRecord } from "../../../models/run/record.js";
+import { isTerminalRunState,RunRecordSchema,runClaim,type RunRecord } from "../../../models/run/record.js";
 import { workerPoolVersion } from "../../../models/run/worker-pool.js";
 import { findGateDecision } from "../../../models/trust/gate-decisions.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -710,11 +710,14 @@ function refuseCancelOverUnresolvedWrite(
   repositories: AuthorityRepositories,
   request: RunBasicCommand,
   targets: readonly CancelTarget[],
+  finishFencedWrite: boolean,
 ): void {
   for (const target of targets) {
     const runId = target.run.envelope.runId;
     for (const intent of repositories.writeIntents.listByRun(runId)) {
       if (intent.status !== "attempting" && intent.status !== "parked") continue;
+      // A claimed run is only marked cancel-requested: its fenced write finishes and settles once, then the run ends at its next boundary.
+      if (finishFencedWrite && intent.status === "attempting" && runClaim(target.run) !== undefined) continue;
       const scope = runId === request.target.runId
         ? `run ${runId}`
         : `run ${runId}, a cascade-cancelled member of ${request.target.runId},`;
@@ -736,6 +739,7 @@ function executeCancel(
   repositories: AuthorityRepositories,
   request: RunBasicCommand,
   now: string,
+  finishFencedWrite = false,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -773,7 +777,7 @@ function executeCancel(
     }
   };
   walk(current);
-  refuseCancelOverUnresolvedWrite(repositories, request, targets);
+  refuseCancelOverUnresolvedWrite(repositories, request, targets, finishFencedWrite);
 
   const affectedTargets: TargetReference[] = [];
   const versionChanges: VersionChange[] = [];
@@ -1931,6 +1935,17 @@ function claimedRunsOf(repositories: AuthorityRepositories, workerId: string): r
   return repositories.runs.listByWorker(workerId).filter(run => ["claimed", "validating", "running"].includes(run.lifecycle.state));
 }
 
+/** Worker Pause holds its claimed run under a claim-derived pause id, so resume-worker resumes only those runs. */
+function workerPauseCommandId(workerId: string, run: RunRecord): string {
+  return lifecycleCommandId("worker-pause", { workerId, runId: run.envelope.runId, claimGeneration: run.claimGeneration });
+}
+
+function workerPauseHeldRuns(repositories: AuthorityRepositories, workerId: string, state: "requested" | "paused"): readonly RunRecord[] {
+  const workflow = repositories.workerSlots.get(workerId)?.workflow;
+  return workflow === undefined ? [] : repositories.runs.listCurrentByWorkflow(workflow)
+    .filter(run => run.pause?.state === state && run.pause.commandId === workerPauseCommandId(workerId, run));
+}
+
 function auditWorkerCommand(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories, request: WorkerBrowserCommand,
   application: CommandApplication, parkedWriteCheck?: ParkedWriteCheckAcknowledgement): CommandResult {
   repositories.commands.insert(request);
@@ -2058,16 +2073,19 @@ async function executeWorkerPoolCommand(
       });
     }
     case "stop-worker": {
-      // Reset: the ordinary run Cancel (version fenced, refused over an unresolved write, delegation cascade), then a fresh process.
+      // Reset: the ordinary run Cancel (version fenced, refused over a parked write, delegation cascade), then a fresh process.
+      // The claimed run's fenced write finishes and settles once before the run ends.
       // The Cancel is its own journaled run command, derived from the Reset's id, so cancellation authenticates it.
-      const journaledResetCancel = (repositories: AuthorityRepositories, run: RunRecord): CommandApplication => {
-        const cancel = RunCommandRequestSchema.parse({ commandId: lifecycleCommandId("worker-reset-cancel", request.commandId),
+      const journaledResetCancel = (repositories: AuthorityRepositories, run: RunRecord, held: boolean): CommandApplication => {
+        const cancel = RunCommandRequestSchema.parse({ commandId: held
+          ? lifecycleCommandId("worker-stop-held-cancel", { commandId: request.commandId, runId: run.envelope.runId })
+          : lifecycleCommandId("worker-reset-cancel", request.commandId),
           requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source,
           ...(request.reason === undefined ? {} : { reason: request.reason }),
           family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: run.version } }) as RunBasicCommand;
         repositories.commands.insert(cancel);
         try {
-          const application = withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(dependencies, repositories, cancel, now));
+          const application = withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(dependencies, repositories, cancel, now, !held));
           repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request: cancel, result: application.result, completedAt: now,
             versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
           return application;
@@ -2083,9 +2101,11 @@ async function executeWorkerPoolCommand(
         const runs = claimedRunsOf(repositories, member.workerId);
         if (runs.length > 1) throw new Error("worker-holds-more-than-one-claimed-run");
         const run = runs[0];
-        const application = run === undefined ? applied(request, [workerTarget(member.workerId)], []) : journaledResetCancel(repositories, run);
-        const reset = applied(request, [workerTarget(member.workerId), ...(run === undefined ? [] : application.result.state === "applied" ? application.result.affectedTargets : [])],
-          application.versionChanges, application.affectedDependencyIds);
+        // Stop also ends the runs this worker's pause holds; their Cancel cascades to cascade-cancel children.
+        const cancels = [...(run === undefined ? [] : [journaledResetCancel(repositories, run, false)]),
+          ...workerPauseHeldRuns(repositories, member.workerId, "paused").map(held => journaledResetCancel(repositories, held, true))];
+        const reset = applied(request, [workerTarget(member.workerId), ...cancels.flatMap(cancel => cancel.result.state === "applied" ? cancel.result.affectedTargets : [])],
+          cancels.flatMap(cancel => cancel.versionChanges), cancels.flatMap(cancel => cancel.affectedDependencyIds));
         return { member, result: auditWorkerCommand(dependencies, repositories, request, reset) };
       });
       try { await pool.stop(member.workerId, "reset"); await pool.start(member); }
@@ -2099,8 +2119,21 @@ async function executeWorkerPoolCommand(
         if (!paused) repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
         requireMemberFence(pool, request);
+        if (!paused && workerPauseHeldRuns(repositories, member.workerId, "requested").length !== 0) reject(request, "invalid-state", "worker-pause-settling");
         const slot = repositories.workerSlots.setPaused({ workerId: member.workerId, paused, now });
-        return auditWorkerCommand(dependencies, repositories, request, applied(request, [workerTarget(slot.workerId)], []));
+        // Worker Pause holds its claimed run (the step restarts on Resume); Resume releases only the runs that pause held. A pending cancel wins.
+        const held = paused
+          ? claimedRunsOf(repositories, member.workerId).filter(run => run.pause === undefined && run.cancelRequested !== true)
+          : workerPauseHeldRuns(repositories, member.workerId, "paused");
+        const versionChanges: VersionChange[] = held.map(run => {
+          const runId = run.envelope.runId;
+          const outcome = paused
+            ? dependencies.lifecycle.pause({ commandId: workerPauseCommandId(member.workerId, run), runId, expectedVersion: run.version })
+            : dependencies.lifecycle.resumePaused({ commandId: lifecycleCommandId("worker-resume", { commandId: request.commandId, runId }), runId, expectedVersion: run.version });
+          return { target: runTarget(runId), before: run.version, after: lifecycleRun(request, outcome).version };
+        });
+        return auditWorkerCommand(dependencies, repositories, request,
+          applied(request, [workerTarget(slot.workerId), ...versionChanges.map(change => change.target)], versionChanges));
       });
       // The slot is the authority; the message only ends the child's idle wait now.
       await pool.direct(request.target.workerId, paused ? "pause" : "run");

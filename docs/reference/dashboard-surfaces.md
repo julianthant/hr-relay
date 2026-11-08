@@ -827,6 +827,12 @@ operator interface until their canonical assistant binding is implemented.
 
 ### Run pause presentation
 
+While a claimed run has a pending pause or stop, its queue row and its worker card serve
+`interrupt: { action: "pause" | "stop", step: "cancel" | "finish-write" }`. `finish-write` means the
+run holds an `attempting` write intent, so the save finishes before the run pauses or stops; the row
+live message then reads "Finishing the save first", and a pending pause otherwise reads "Restarts
+this step on Resume".
+
 Queue footers expose Pause and Resume from served `pauseControl`, preserving their timing, attempt,
 trace and other actions. A recorded pause uses the outline Queued style with a Paused label; requests
 remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar

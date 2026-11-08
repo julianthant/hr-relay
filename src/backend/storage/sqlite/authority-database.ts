@@ -6849,7 +6849,8 @@ export class AuthorityDatabase implements Disposable {
     const slot = this.authority.workerSlots.get(claim.workerId);
     if (run?.envelope.parent !== undefined && (slot === undefined || slot.retiredAt !== null
       || !authenticateDescendantHome(this.authority, run, slot.workflow))) return { reason: "lost" };
-    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.attempt !== intent.runAttempt) {
+    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.pause?.state === "requested"
+      || run.envelope.attempt !== intent.runAttempt) {
       return { reason: "invalid-state" };
     }
     try { this.#assertCurrentExecution(intent.runId, claim); }

@@ -164,6 +164,13 @@ export const QueueBusinessOutcomeSchema = z.strictObject({
 });
 export type QueueBusinessOutcome = z.infer<typeof QueueBusinessOutcomeSchema>;
 
+/** A pending Pause or Stop on claimed work: the current step is cancelled, or its fenced save finishes first. */
+export const StepInterruptWireSchema = z.strictObject({
+  action: z.enum(["pause", "stop"]),
+  step: z.enum(["cancel", "finish-write"]),
+});
+export type StepInterruptWire = z.infer<typeof StepInterruptWireSchema>;
+
 const QueueBaseFields = {
   runId: RunIdSchema,
   itemId: ItemIdSchema,
@@ -183,6 +190,7 @@ const QueueBaseFields = {
   pause: RunPauseSchema.optional(),
   pauseControl: z.strictObject({ state: z.enum(["running", "pause-pending", "paused", "unavailable"]),
     expectedVersion: PositiveIntSchema, command: z.enum(["pause", "resume"]).optional() }).optional(),
+  interrupt: StepInterruptWireSchema.optional(),
     /* The scheduling class, read from the run envelope (its one home) exactly as `dryRun` is; there is no absent arm and there must never be one. */
   priority: QueuePrioritySchema,
     /* This run's ORDINAL within its workflow — the footer's `#N`; durable and assigned at enqueue, never derived from a row's position in a day's page. */
@@ -464,6 +472,7 @@ export const WorkerCardWireSchema = z.strictObject({
   /** Failed cards only: the exited member's sessions as last observed. */
   lastBrowsers: z.array(WorkerBrowserWireSchema).optional(),
   waitingActivity: z.enum(["acquiring", "authenticating", "closing"]).optional(),
+  interrupt: StepInterruptWireSchema.optional(),
   lastRun: WorkerLastRunWireSchema.optional(),
   /** Whether the current or last run's steps can be shown; the steps themselves stay on its queue row. */
   timeline: z.discriminatedUnion("state", [

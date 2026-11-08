@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { WorkerBrowserWireSchema, WorkerCardWireSchema, WorkerLastRunWireSchema } from "../../../models/dashboard/projection.js";
+import { WorkerBrowserWireSchema, WorkerCardWireSchema, WorkerLastRunWireSchema, type StepInterruptWire } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import type { WorkerChildBrowserObservation } from "../../runtime/workers/worker-messages.js";
@@ -26,6 +26,12 @@ function workerCardState(view: WorkerMemberView): WorkerCardWire["state"] {
     case "idle":
     case undefined: return "idle";
   }
+}
+
+/** Stop is the run's durable cancellation (row Cancel, or the Reset's own Cancel), so the run alone says which interrupt is pending. */
+export function stepInterruptOf(run: RunRecord, writeInFlight: boolean): StepInterruptWire | undefined {
+  const action = run.cancelRequested === true ? "stop" : run.pause?.state === "requested" ? "pause" : undefined;
+  return action === undefined ? undefined : { action, step: writeInFlight ? "finish-write" : "cancel" };
 }
 
 type WorkerLastRun = NonNullable<WorkerCardWire["lastRun"]>;
@@ -78,6 +84,7 @@ export function workerCardOf(input: Readonly<{
   duoSystems?: readonly string[];
   lastRun?: WorkerLastRun;
   timeline?: WorkerCardWire["timeline"];
+  writeInFlight?: (runId: string) => boolean;
 }>): WorkerCardWire {
   const { slot, view } = input;
   if (slot.retiredAt !== null || (view !== undefined && (view.member.workerId !== slot.workerId || view.member.workflowId !== slot.workflow))) {
@@ -101,6 +108,8 @@ export function workerCardOf(input: Readonly<{
     signIn: signInOf(view, browser, input.duoSystems ?? []) });
   const state = workerCardState(view);
   const browsers = view.state === "exited" ? [] : view.browsers.filter(browser => browser.health !== "closed").map(browserWire);
+  const current = run !== undefined && "workerId" in run.lifecycle && run.lifecycle.workerId === slot.workerId ? run : undefined;
+  const interrupt = current === undefined ? undefined : stepInterruptOf(current, input.writeInFlight?.(current.envelope.runId) === true);
   return WorkerCardWireSchema.parse({
     ...base,
     state,
@@ -112,13 +121,13 @@ export function workerCardOf(input: Readonly<{
         // An exited member holds no live browser; its last reported sessions stay readable.
         lastBrowsers: view.browsers.map(browserWire) }
       : {}),
-    currentRun: run === undefined || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== slot.workerId
-      ? { state: "absent", reason: "no current claimed run" }
-      : { state: "present", runId: run.envelope.runId, traceId: run.envelope.traceId },
+    currentRun: current === undefined ? { state: "absent", reason: "no current claimed run" }
+      : { state: "present", runId: current.envelope.runId, traceId: current.envelope.traceId },
     ...(view.browserSystems === undefined ? {} : { browserRequirements: { state: "present", systems: view.browserSystems,
       missing: view.browserSystems.filter(system => !browsers.some(browser => browser.system === system && browser.signIn === "signed-in")) } }),
     browsers,
     ...(state === "waiting" && view.activity?.waiting !== undefined ? { waitingActivity: view.activity.waiting } : {}),
+    ...(interrupt === undefined ? {} : { interrupt }),
     revision: input.foldRevision + view.version + 1,
   });
 }

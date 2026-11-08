@@ -154,7 +154,7 @@ describe("worker browser sessions", () => {
     assert.deepEqual(sessions.activeSystems(), []);
   });
 
-  it("retains a fenced transaction callback through parent abort and poison-closes after settlement", async () => {
+  it("detaches a fenced transaction callback from parent abort and settles it normally", async () => {
     const harness = sessionFactory();
     const sessions = await manager(harness);
     const controller = new AbortController();
@@ -194,9 +194,8 @@ describe("worker browser sessions", () => {
 
     releaseOperation();
     const outcome = await lease;
-    assert.deepEqual(outcome, { state: "rejected", error: parentFailure });
-    assert.equal(harness.closes(), 1);
-    assert.deepEqual(sessions.activeSystems(), []);
+    assert.deepEqual(outcome, { state: "fulfilled", value: "result" });
+    assert.equal(harness.closes(), 0);
   });
 
   it("keeps ordinary abort-race semantics before a transaction lease retains its fence", async () => {

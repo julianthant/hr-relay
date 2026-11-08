@@ -341,6 +341,21 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         runController.abort(new Error(`worker ${workerId} received its stop signal mid-run`));
       };
       deps.stopSignal.addEventListener("abort", onStop, { once: true });
+      let workPoll = { cancel: (): void => undefined };
+      let workPolling = true;
+      // A pause request or a cancellation (row Cancel, or Stop's reset Cancel) cancels the current step; a fenced write finishes first.
+      const observeWork = (): void => {
+        if (!workPolling) return;
+        try {
+          const current = deps.authority.authority.runs.get(run.envelope.runId);
+          if (current?.pause?.state === "requested" || current?.cancelRequested === true) {
+            runController.abort(new Error("worker-run-control-current-work"));
+            return;
+          }
+        } catch (error) { runController.abort(error); return; }
+        workPoll = deps.scheduler.schedule(clock.monotonicMs() + WORK_CONTROL_POLL_MS, observeWork);
+      };
+      observeWork();
       const heartbeat = startHeartbeat({
         lifecycle: deps.lifecycle,
         ids: deps.ids,
@@ -402,6 +417,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         );
         outcomes.push(outcome);
       } finally {
+        workPolling = false;
+        workPoll.cancel();
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }
@@ -425,3 +442,5 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     ...(preflightRefusal === undefined ? {} : { preflightRefusal }) });
 }
 
+
+export const WORK_CONTROL_POLL_MS = 250;
