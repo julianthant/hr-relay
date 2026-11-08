@@ -590,7 +590,8 @@ SIGTERM, waits `WORKER_SIGTERM_TIMEOUT_MS = 30_000`, then sends SIGKILL. Observe
 are a timestamped prefix of that policy. An initial acknowledgement records only the graceful
 request, not future signals or exit. Failed delivery and uncertain stop effects remain visible.
 A lifetime that a shutdown or logout drain's directive ends records stop reason `shutdown`; any other
-stop directive records `operator`.
+stop directive records `operator`. The worker card reads the directive's reason, so such a lifetime shows
+`shutdown` even if its stored reason says `operator`.
 During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_TIMEOUT_MS = 5_000`.
 
 ### 11.2 Durable worker and browser controls

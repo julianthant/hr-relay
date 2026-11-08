@@ -8,7 +8,7 @@ import {
 } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
-import { isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
+import { isDrainStopReason, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
 
@@ -109,7 +109,8 @@ export function workerCardOf(input: Readonly<{
     },
     startedAt: lease.lifecycle.startedAt,
     ...(lease.lifecycle.state === "stopped"
-      ? { endedAt: lease.lifecycle.stoppedAt, stopReason: lease.lifecycle.reason }
+      ? { endedAt: lease.lifecycle.stoppedAt,
+        stopReason: lease.lifecycle.reason === "operator" && isDrainStopReason(lease.control.reason) ? "shutdown" : lease.lifecycle.reason }
       : {}),
     currentRun: currentRunOf(lease, member, input.resolveRun),
     browserRequirements: lease.browserSystems === undefined

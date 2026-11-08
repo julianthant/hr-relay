@@ -11,7 +11,7 @@ import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { createDurableChildRunExecutor } from "../../runtime/execution/durable-child-executor.js";
 import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
-import { isLiveWorker, WORKER_LOGOUT_STOP_REASON, WORKER_SHUTDOWN_STOP_REASON, type WorkerStopReason } from "../../../models/run/worker.js";
+import { isDrainStopReason, isLiveWorker, type WorkerStopReason } from "../../../models/run/worker.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
@@ -1019,8 +1019,7 @@ function settleLease(
         state: "stopped",
         startedAt: lease.lifecycle.startedAt,
         stoppedAt: now,
-        reason: reason !== "stop-directive" ? reason
-          : lease.control.reason === WORKER_SHUTDOWN_STOP_REASON || lease.control.reason === WORKER_LOGOUT_STOP_REASON ? "shutdown" : "operator",
+        reason: reason !== "stop-directive" ? reason : isDrainStopReason(lease.control.reason) ? "shutdown" : "operator",
       },
       now,
     });

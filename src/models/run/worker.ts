@@ -29,6 +29,7 @@ export type WorkerStopReason = z.infer<typeof WorkerStopReasonSchema>;
 /** Stop directives Relay writes itself when it drains workers; a lifetime they end stopped for shutdown, not by the operator. */
 export const WORKER_SHUTDOWN_STOP_REASON = "application-shutdown";
 export const WORKER_LOGOUT_STOP_REASON = "profile-logout";
+export const isDrainStopReason = (reason: string | undefined): boolean => reason === WORKER_SHUTDOWN_STOP_REASON || reason === WORKER_LOGOUT_STOP_REASON;
 
 /** The descriptor's ordered browser-system set, frozen when this worker lease starts. */
 export const WorkerBrowserSystemsSchema = z.array(BrowserSystemIdSchema).superRefine((systems, context) => {
