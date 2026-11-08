@@ -445,7 +445,7 @@ export const WorkerCardWireSchema = z.strictObject({
   state: z.enum(["running", "starting", "idle", "waiting", "paused", "failed"]),
   controls: WorkerControlWireSchema.optional(),
   /** What the operator last ASKED of this worker; `run` is the un-directed state. */
-  directive: z.enum(["run", "pause"]),
+  directive: z.enum(["run", "pause", "stop"]),
   /** The spawn instant; for a member that never started, when its slot was planned. */
   startedAt: IsoInstantSchema,
   /** Present iff the member exited — the observed exit instant, never `now`. */

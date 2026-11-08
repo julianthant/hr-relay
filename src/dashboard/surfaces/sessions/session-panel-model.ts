@@ -44,7 +44,11 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   slots: readonly WorkerBrowserSlot[];
   unavailableReason?: string;
 }> {
-  if (card.state === "failed") return { slots: [] };
+  if (card.state === "failed") {
+    // A settled worker keeps the sessions it had; without them, the systems its workflow needs read Closed.
+    const systems = card.lastBrowsers?.length ? card.lastBrowsers.map(browser => browser.system) : card.browserRequirements?.state === "present" ? card.browserRequirements.systems : [];
+    return { slots: [...new Set(systems)].map(system => ({ state: "closed" as const, system })) };
+  }
   const open = [...card.browsers];
   const requirements = card.browserRequirements;
   if (requirements === undefined) {
@@ -365,15 +369,16 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
 /** Directives describe intent, not state; pause waits for the current item to finish. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;
-  if (card.directive === "pause" && card.state !== "paused") return "Pausing after this item";
+  if (card.directive === "pause" && card.state !== "paused") return "Pausing: this step will restart";
   if (card.directive === "run" && card.state === "paused") return "Resume requested";
+  if (card.directive === "stop") return "Stopping: this step is cancelled";
   return undefined;
 }
 
 
-/** An exited member takes no directives. */
+/** An exited member takes no directives; stopping twice must not offer another command. */
 export function canStopWorker(card: WorkerCardWire): boolean {
-  return card.state !== "failed";
+  return card.state !== "failed" && card.directive !== "stop";
 }
 
 

@@ -83,7 +83,8 @@ export function workerCardOf(input: Readonly<{
   if (slot.retiredAt !== null || (view !== undefined && (view.member.workerId !== slot.workerId || view.member.workflowId !== slot.workflow))) {
     throw new Error("worker-member-authority-unavailable");
   }
-  const base = { member: workerPoolMember(slot), workerId: slot.workerId, workflowId: slot.workflow, directive: slot.paused ? "pause" : "run",
+  const base = { member: workerPoolMember(slot), workerId: slot.workerId, workflowId: slot.workflow,
+    directive: view?.state === "stopping" ? "stop" : slot.paused ? "pause" : "run",
     ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }), ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
     availability: { state: "available" } } as const;
   if (view === undefined) {

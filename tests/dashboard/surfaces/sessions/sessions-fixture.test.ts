@@ -21,13 +21,13 @@ describe_m0("frontend timeline and sessions", () => {
     const paused = previewSessionControl_m0(data, first.id, "pause");
     if (paused.state !== "ready") throw new Error("ready result required");
     assert_m0.equal(paused.workers[0].state, "paused");
-    assert_m0.equal(paused.workers[0].timeline?.find(node => node.id === "separation-12")?.state, "paused");
+    assert_m0.equal(paused.workers[0].timeline?.find(node => node.id === "kronos-timecard")?.state, "paused");
     assert_m0.equal(data.workers[0].state, "running");
     assert_m0.equal(paused.workers[1], data.workers[1]);
     const resumed = previewSessionControl_m0(paused, first.id, "resume");
     if (resumed.state !== "ready") throw new Error("ready result required");
     assert_m0.equal(resumed.workers[0].state, "running");
-    assert_m0.equal(resumed.workers[0].timeline?.find(node => node.id === "separation-12")?.state, "active");
+    assert_m0.equal(resumed.workers[0].timeline?.find(node => node.id === "kronos-timecard")?.state, "active");
     const stopped = previewSessionControl_m0(resumed, first.id, "stop");
     if (stopped.state !== "ready") throw new Error("ready result required");
     assert_m0.equal(stopped.workers[0].state, "idle");
@@ -79,7 +79,7 @@ describe_m0("frontend timeline and sessions", () => {
     assert_m0.deepEqual(sessionTallies_m0(active.workers), [{ state: "running", count: 2 }, { state: "starting", count: 1 }, { state: "idle", count: 1 }]);
     assert_m0.equal(sessionsSample_m0("loading").state, "loading");
     assert_m0.equal(sessionsSample_m0("unavailable").state, "unavailable");
-    assert_m0.deepEqual(sessionTimelineSummary_m0(active.workers[0].timeline!), { completed: 11, total: 22 });
+    assert_m0.deepEqual(sessionTimelineSummary_m0(active.workers[0].timeline!), { completed: 1, total: 5 });
     assert_m0.deepEqual(sessionTimelineSummary_m0(active.workers[1].timeline!), { completed: 3, total: 4 });
     assert_m0.throws(() => sessionTimelineSummary_m0([]), /session-timeline-invalid/);
     const node = active.workers[0].timeline![0];

@@ -52,7 +52,15 @@ describe("the worker card from the pool member and its slot", () => {
     assert.deepEqual(value.controls, { basis: { state: "present", value: { lifetimeId: LIFETIME, version: 3 } } });
     assert.deepEqual(value.currentRun, { state: "present", runId: RUN, traceId: TRACE });
     assert.equal(value.revision, 16);
-    assert.equal(workerDirectiveNote(value), "Pausing after this item");
+    assert.equal(workerDirectiveNote(value), "Pausing: this step will restart");
+  });
+
+  it("serves a stopping member's stop directive, which offers no second Stop", () => {
+    const value = card({ view: memberView({ state: "stopping", activity: { state: "busy", runId: RUN } }), slot: { ...slot, paused: true }, resolveRun: () => running });
+    assert.equal(value.state, "running");
+    assert.equal(value.directive, "stop");
+    assert.equal(workerDirectiveNote(value), "Stopping: this step is cancelled");
+    assert.equal(canStopWorker(value), false);
   });
 
   it("refuses to join a run another worker owns", () => {

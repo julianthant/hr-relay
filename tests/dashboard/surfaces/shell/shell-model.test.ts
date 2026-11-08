@@ -190,7 +190,7 @@ describe_m0("Session Panel authority joins", () => {
     });
   });
 
-  it_m0("shows no browser slots on a retained terminal worker card", () => {
+  it_m0("shows the systems a retained terminal worker card needs as closed", () => {
     const day = sessionDay();
     const terminal = day.workerCards.find((card) => card.state === "failed");
     if (terminal === undefined) throw new Error("the real wire fixture needs a stopped retained worker card");
@@ -198,7 +198,7 @@ describe_m0("Session Panel authority joins", () => {
     assert_m0.deepEqual(workerBrowserView_m0({
       ...terminal,
       browserRequirements: { state: "present", systems: ["ucpath", "crm"] },
-    }), { slots: [] });
+    }), { slots: [{ state: "closed", system: "ucpath" }, { state: "closed", system: "crm" }] });
   });
 
   it_m0("folds one membership per served card, in wire order, for the strip to read by worker id", () => {
