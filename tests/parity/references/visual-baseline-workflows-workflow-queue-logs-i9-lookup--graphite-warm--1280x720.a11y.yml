@@ -46,8 +46,6 @@
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR"
-      - listitem:
         - button "CRM Doc Download"
       - listitem:
         - button "SharePoint Download"
@@ -65,7 +63,7 @@
     - text: "Finished 1 08/03/2026: 1 completed"
     - button "Lee, Jordan — done" [pressed]:
       - text: Lee, Jordan Done
-      - button "OCR · detect-test.pdf — the run that delegated this one": OCR · review
+      - button "OnBase · detect-test.pdf — the run that delegated this one": OnBase · running
       - text: 10:04 AM
       - button "Attempts for Lee, Jordan": "#1"
       - text: I9L23406114 36s

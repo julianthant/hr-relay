@@ -9,7 +9,7 @@ function inSentence(label: string): string {
   return [/^[A-Z0-9-]{2,}$/u.test(first) ? first : first.charAt(0).toLowerCase() + first.slice(1), ...rest].join(" ");
 }
 
-export function mockStepIsDependency(step: MockStep): boolean { return ["wait-approval", "wait-signatures"].includes(step.key); }
+export function mockStepIsDependency(step: MockStep): boolean { return ["wait-approval", "wait-signatures", "prep:person-lookup", "read-document"].includes(step.key); }
 function formStepIsLocked(id: MockWorkflowId, step: MockStep): boolean {
   return Boolean(step.write || ["fill-form", "fill-keywords", "prepare-import"].includes(step.key)
     || id === "separations" && ["ucpath-job-summary", "kronos-search"].includes(step.key)

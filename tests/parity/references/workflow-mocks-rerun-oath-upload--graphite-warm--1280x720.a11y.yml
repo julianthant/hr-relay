@@ -22,14 +22,16 @@
     - listitem:
       - button "4 Confirm" [disabled]: Confirm
   - heading "Choose what to run again" [level=3]
-  - text: 5 / 6 included
+  - text: 7 / 8 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
     - heading "Steps" [level=4]
     - list:
       - listitem:
         - checkbox "Read oath" [checked]
-        - text: Read oath OCR Not started
+        - text: Read oath OCR Completed
+      - listitem: Match extracted people Automatic Completed
+      - listitem: Review extracted records Approval required Not started
       - listitem: Wait for all signatures Automatic Not started
       - listitem:
         - checkbox "Sign in to ServiceNow" [checked] [disabled]

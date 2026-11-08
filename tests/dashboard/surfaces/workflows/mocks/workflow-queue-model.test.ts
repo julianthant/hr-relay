@@ -67,7 +67,7 @@ describe("canonical workflow mock queue presentations", () => {
     const runs = seedMockRuns(), parent = runs.find(run => run.workflowId === "emergency-contact")!, source = runs.find(run => run.id === parent.ocrRunId)!;
     const waiting = mockQueueSurface(source, anchor, parent);
     expect(mockQueueSurface(parent, anchor).status).toBe("running");
-    expect(mockQueueSurface(parent, anchor).liveMessage).toEqual({ state: "present", value: "Read emergency contact" }); expect(mockQueueSurface(parent, anchor).gateOpenedAt.state).toBe("absent");
+    expect(mockQueueSurface(parent, anchor).liveMessage).toEqual({ state: "present", value: "Review extracted records" }); expect(mockQueueSurface(parent, anchor).gateOpenedAt.state).toBe("absent");
     expect(waiting.status).toBe("awaiting-approval"); expect(waiting.gateOpenedAt.state).toBe("present"); expect(waiting.endedAt.state).toBe("absent");
     const approved = approveMockRun(runs, source.id);
     const child = approved.find(run => run.parentId === parent.id && run.role === "person")!;

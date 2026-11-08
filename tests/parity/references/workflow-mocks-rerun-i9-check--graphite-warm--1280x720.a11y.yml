@@ -22,14 +22,16 @@
     - listitem:
       - button "4 Confirm" [disabled]: Confirm
   - heading "Choose what to run again" [level=3]
-  - text: 3 / 4 included
+  - text: 5 / 6 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
     - heading "Steps" [level=4]
     - list:
       - listitem:
         - checkbox "Read I-9 forms" [checked]
-        - text: Read I-9 forms OCR Not started
+        - text: Read I-9 forms OCR Completed
+      - listitem: Match extracted people Automatic Completed
+      - listitem: Review extracted records Approval required Not started
       - listitem:
         - checkbox "Match person in UCPath"
         - text: Match person in UCPath UCPath Not started

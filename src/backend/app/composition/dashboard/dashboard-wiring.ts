@@ -148,7 +148,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
-  const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
+  const workflowSources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredWorkflowSources);
 
   let resolveQuit: () => void = () => undefined;
   const shutdownRequested = new Promise<void>(resolve => { resolveQuit = resolve; });
