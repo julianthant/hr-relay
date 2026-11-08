@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
-import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema, type StepInterruptWire } from "../../../../src/models/dashboard/projection.js";
 import { RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { ApplicationLifecycleSchema } from "../../../../src/models/dashboard/application-lifecycle.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
@@ -12,7 +12,14 @@ import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DESCRIPTOR_HASH } 
 import { separationsDescriptor } from "../registered-workflows.js";
 import { TERMINATION_NODE, UCPATH_TRANSACTION_STEP } from "../../../../src/workflows/separations/steps/ucpath-transaction/step.js";
 import { FIXTURE_NOW, uuidOf } from "../../fixtures/dashboard/fixture-identity.js";
-import { stepInterruptLabel } from "../../../../src/dashboard/surfaces/shared/status/status-model.js";
+
+// The parity runner loads this file in Node. status-model pulls in the CSS token sheet.
+function servedInterruptLabel(interrupt: StepInterruptWire | undefined): string | undefined {
+  if (interrupt?.step === "finish-write") return "Finishing the save first";
+  if (interrupt?.action === "pause") return "This step will restart";
+  if (interrupt?.action === "stop") return "This step is cancelled";
+  return undefined;
+}
 
 export const PICKED_RUN_STATES = ["running", "pausing", "paused", "resuming", "pause-all", "quit-confirm", "quitting", "after-crash"] as const;
 export const PICKED_SAFETY_STATES = ["captures", "before-after", "pre-submit-failed", "post-submit-unknown", "post-submit-proved", "dry-run"] as const;
@@ -44,7 +51,7 @@ export function pickedRunWorld(state: PickedRunState) {
     expectedVersion: PositiveIntSchema.parse(original.rowRevision), ...(terminal || pending || unknownWrite ? {} : { command: paused ? "resume" as const : "pause" as const }) };
   const interrupt = state === "quitting" ? { action: "pause" as const, step: "finish-write" as const }
     : pending ? { action: "pause" as const, step: "cancel" as const } : undefined;
-  const interruptLabel = stepInterruptLabel(interrupt);
+  const interruptLabel = servedInterruptLabel(interrupt);
   const row = QueueSurfaceWireSchema.parse({ ...original, ...(safety ? { workflowId: separationsDescriptor.id, descriptorHash: separationsDescriptor.contractFingerprint, traceId: "sp-095200-0002" } : {}), status, pauseControl, dryRun: state === "dry-run",
     ...(paused || pending ? { pause: { state: paused ? "paused" : "requested", commandId: uuidOf(963), requestedAt: FIXTURE_NOW, ...(paused ? { pausedAt: FIXTURE_NOW } : {}) } } : {}),
     ...(interrupt === undefined ? {} : { interrupt }),
