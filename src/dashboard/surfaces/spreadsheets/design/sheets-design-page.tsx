@@ -51,12 +51,12 @@ function ReferenceCards({ items, actions }: { items: readonly Reference[]; actio
 }
 
 function ReferenceTable({ items, actions }: { items: readonly Reference[]; actions: Actions }) {
-  return <div className="overflow-hidden rounded-[10px] border border-ui-stroke"><table aria-label="Used by workflows" className="hub-sheets-data"><thead><tr><th scope="col" className="!w-[28%]">Reference</th><th scope="col" className="w-[20%]">Current file</th><th scope="col">Rows</th><th scope="col">Updated</th><th scope="col" className="w-[19%]">Columns</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>
-    {items.map(item => <tr key={item.id}><td className="!w-[28%]"><strong className="font-medium">{item.title}</strong><span className="hub-sheets-caption">{item.note}</span></td>
-      {item.file ? <><td className="!min-w-0"><button type="button" className="text-left font-medium underline-offset-2 hover:underline" onClick={() => actions.open(item.file!)}>{item.file.name}</button></td><td>{item.file.rows.toLocaleString()}</td><td>{when(item.file.updatedAt)}</td>
+  return <div className="overflow-hidden rounded-[10px] border border-ui-stroke"><table aria-label="Used by workflows" className="hub-sheets-data"><thead><tr><th scope="col" className="!w-[30%]">Reference</th><th scope="col" className="w-[30%]">Current file</th><th scope="col" className="w-[18%]">Columns</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>
+    {items.map(item => <tr key={item.id}><td className="!w-[30%]"><strong className="font-medium">{item.title}</strong><span className="hub-sheets-caption">{item.note}</span></td>
+      {item.file ? <><td className="!min-w-0"><button type="button" className="text-left font-medium underline-offset-2 hover:underline" onClick={() => actions.open(item.file!)}>{item.file.name}</button><span className="hub-sheets-caption">{plural(item.file.rows, 'row')} · Updated {when(item.file.updatedAt)}</span></td>
         <td><ul>{item.file.eid && <ColumnLine match={item.file.eid} />}{item.file.person && <ColumnLine match={item.file.person} />}</ul></td>
         <td><div className="hub-sheets-actions"><Button onClick={() => actions.importFor(item.id)}>Replace</Button><Button onClick={() => actions.open(item.file!)}>Open</Button><FileMenu file={item.file} kind="reference" actions={actions} label={item.file.name} /></div></td></>
-        : <><td colSpan={4}><span className="text-ui-muted">Missing. {item.workflow} cannot look people up.</span></td><td><div className="hub-sheets-actions"><Button variant="primary" onClick={() => actions.importFor(item.id)}>Import a roster</Button></div></td></>}
+        : <><td colSpan={2}><span className="text-ui-muted">Missing. {item.workflow} cannot look people up.</span></td><td><div className="hub-sheets-actions"><Button variant="primary" onClick={() => actions.importFor(item.id)}>Import a roster</Button></div></td></>}
     </tr>)}
   </tbody></table></div>;
 }
