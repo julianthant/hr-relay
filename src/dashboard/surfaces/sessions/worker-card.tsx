@@ -6,9 +6,9 @@ import { SESSION_STATE_LABELS, sessionStateColor, type SessionControl, type Sess
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
 import { SessionTimeline } from "./session-timeline.js";
 
-type Browser = SessionWorker["browsers"][number];
-const BROWSER_WORD: Record<Browser["state"], string> = { ready: "Ready", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed" };
-const BROWSER_TONE: Record<Browser["state"], string> = { ready: "text-ui-secondary", active: "text-ui-info", starting: "text-ui-warning", unopened: "text-ui-muted", closed: "text-ui-muted", unavailable: "text-ui-warning", failed: "text-ui-danger" };
+type WorkerBrowser = SessionWorker["browsers"][number];
+const BROWSER_WORD: Record<WorkerBrowser["state"], string> = { ready: "Ready", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed" };
+const BROWSER_TONE: Record<WorkerBrowser["state"], string> = { ready: "text-ui-secondary", active: "text-ui-info", starting: "text-ui-warning", unopened: "text-ui-muted", closed: "text-ui-muted", unavailable: "text-ui-warning", failed: "text-ui-danger" };
 const MAX_ROWS = 4;
 
 /** The one note line under the step bar: why a settled worker ended, a failed step, or a pending pause or stop. Red only for a failed step. */
@@ -18,7 +18,7 @@ function cardNote(worker: SessionWorker): { text: string; tone: string } | undef
   return worker.note ? { text: worker.note, tone: "text-ui-warning" } : undefined;
 }
 
-function BrowserRow({ browser }: { browser: Browser }) {
+function BrowserRow({ browser }: { browser: WorkerBrowser }) {
   return <li className="flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-md bg-ui-table px-1 py-1 text-caption last:odd:col-span-2"><span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span><span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}</span></li>;
 }
 
