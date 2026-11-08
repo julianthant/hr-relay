@@ -7,7 +7,7 @@ export const readResolvedIdentityTask = defineTask(ReadResolvedIdentity, {
   sessions: [],
   async run({ input, ctx }) {
     const output = resolvePersonLookupIdentity(input);
-    ctx.log.info("Identity cross-check", { method: output.method, candidateEids: output.candidateEids.join(", ") });
+    ctx.log.info("Identity cross-check", { method: output.method, candidates: output.candidateEids.length });
     const aliases = new Map<string, NonNullable<DataPoint["aliases"]>>();
     if (output.selected !== null) {
       const index = input.person?.results.indexOf(output.selected) ?? -1;

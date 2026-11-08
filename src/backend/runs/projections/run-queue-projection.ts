@@ -1340,6 +1340,7 @@ export class RunQueueProjection {
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
+      ...(status === "cancelled" ? { cancelledBy: cancelledBy(authority) } : {}),
       liveMessage: pauseControl.state === "pause-pending" ? { state: "present", value: "Pauses after this step finishes" }
         : pauseControl.state === "paused" ? { state: "present", value: "Pause recorded. Resume to continue." } : this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
@@ -1808,4 +1809,9 @@ export class RunQueueProjection {
 
 export function createRunQueueProjection(deps: RunQueueProjectionDeps): RunQueueProjection {
   return new RunQueueProjection(deps);
+}
+
+function cancelledBy(run: RunRecord): NonNullable<QueueSurfaceWire["cancelledBy"]> {
+  const summary = run.lifecycle.state === "terminal" ? run.lifecycle.errorSummary : undefined;
+  return summary?.startsWith("RUN_LOGOUT_CANCELLED:") === true ? "logout" : summary?.startsWith("RUN_STALE_QUEUE_CANCELLED:") === true ? "stale-queue" : "operator";
 }
