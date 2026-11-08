@@ -33,7 +33,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const bar = workspace.locator(".workspace-rail-header");
       expect((await bar.boundingBox())!.x).toBe(0);
       expect((await bar.boundingBox())!.height).toBe(64);
-      const titleBounds = (await bar.getByRole("heading", { name: "Relay", exact: true }).boundingBox())!;
+      const title = bar.getByRole("heading", { name: "Relay", exact: true });
+      await expect(title).toHaveText("Relay");
+      await expect(title.locator("svg")).toHaveCount(0);
+      expect(await title.evaluate(node => getComputedStyle(node).fontSize)).toBe("23px");
+      const titleBounds = (await title.boundingBox())!;
       const categoryIconBounds = (await rail.locator("h3 svg").first().boundingBox())!;
       expect(titleBounds.x).toBe(categoryIconBounds.x);
       const searchIconBounds = (await bar.getByRole("button", { name: "Search runs", exact: true }).locator("svg").boundingBox())!;
