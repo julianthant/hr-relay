@@ -233,6 +233,7 @@ function HeaderChips({
         status={status}
         pauseControl={surface.pauseControl}
         outcome={outcome}
+        cancelledBy={surface.cancelledBy}
         presentation="queue"
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
         {...(gateAge === undefined ? {} : { age: gateAge })}

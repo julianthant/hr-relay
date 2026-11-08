@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { appliedWorkerStartupToast, unconfirmedBulkWorkerToast, workerStartupToast } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
+import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workerStartupToast } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
+import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../parity/helpers/fixture-day.js";
 import { runLaunchAppliedToast } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import type { RunWorkerStartupFailure } from "../../../../src/rules/commands/commands.js";
 
@@ -71,5 +73,28 @@ describe("applied worker startup toast", () => {
     assert.deepEqual(appliedWorkerStartupToast({ family: "run", type: "retry", targets: [{}, {}] }, { state: "vector", results }), {
       tone: "warning", title: "2 runs queued; worker status unknown",
     });
+  });
+});
+
+describe("stopped worker toast", () => {
+  const label = (workflowId: string) => workflowId === "person-lookup" ? "Person Lookup" : workflowId;
+  const queued = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.workflowId === "person-lookup" && row.status === "queued");
+  const day = (stopReason: "crashed" | "operator" | undefined, rows = queued) => DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: rows,
+    workerCards: FIXTURE_DAY_WIRE.workerCards.filter(card => card.workflowId === "person-lookup").map(card => stopReason === undefined ? card
+      : { ...card, state: "failed", stopReason, endedAt: FIXTURE_NOW, browsers: [], currentRun: { state: "absent", reason: "no current run" } }) });
+
+  it("names the stopped worker while its workflow has queued runs no worker can take", () => {
+    assert.ok(queued.length > 1);
+    assert.deepEqual(stoppedWorkerToasts(day("crashed"), label), [{ tone: "warning", title: `${String(queued.length)} runs queued; worker unavailable`,
+      description: "Person Lookup worker crashed. Retry it in Sessions." }]);
+    assert.deepEqual(stoppedWorkerToasts(day("operator", queued.slice(0, 1)), label), [{ tone: "warning", title: "Run queued; worker unavailable",
+      description: "Person Lookup worker stopped by you. Retry it in Sessions." }]);
+  });
+
+  it("stays quiet while a worker can still take the run, or nothing waits", () => {
+    assert.deepEqual(stoppedWorkerToasts(day(undefined), label), []);
+    assert.deepEqual(stoppedWorkerToasts(day("crashed", []), label), []);
+    const paused = queued.map(row => ({ ...row, pause: { state: "paused", commandId: "00000000-0000-4000-8000-000000000123", requestedAt: FIXTURE_NOW, pausedAt: FIXTURE_NOW } }));
+    assert.deepEqual(stoppedWorkerToasts(day("crashed", DashboardDayWireSchema.shape.queueSurfaces.parse(paused)), label), []);
   });
 });

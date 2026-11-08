@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -124,5 +125,18 @@ describe("declared Queue business outcomes", () => {
       assert.equal(row()?.outcome, undefined);
       assert.notEqual(row()?.status, "verified-done");
     }
+  });
+
+  it("serves who cancelled a cancelled row", async () => {
+    const { w, run, row } = await setup();
+    const cancelled = { state: "terminal", outcome: "cancelled", endedAt: instantOffsetOf(0, 1) };
+    w.authority.put(runRecordOf({ seed: 80, lifecycle: cancelled, claimGeneration: 1, version: run.version }));
+    assert.equal(row()?.cancelledBy, "operator");
+    for (const [code, source] of [["RUN_LOGOUT_CANCELLED", "logout"], ["RUN_STALE_QUEUE_CANCELLED", "stale-queue"]] as const) {
+      w.authority.put(runRecordOf({ seed: 80, lifecycle: { ...cancelled, errorSummary: `${code}: ${ERROR_CATALOG[code].text}` }, claimGeneration: 1, version: run.version }));
+      assert.equal(row()?.cancelledBy, source);
+    }
+    w.authority.put(runRecordOf({ seed: 80, lifecycle: { state: "queued" }, claimGeneration: 1, version: run.version }));
+    assert.equal(row()?.cancelledBy, undefined);
   });
 });

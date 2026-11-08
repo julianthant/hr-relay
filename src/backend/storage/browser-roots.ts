@@ -344,8 +344,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
         const commandRotation = prior.owner.kind === 'command' && expectedOwner.kind === 'command' && prior.launch.state === 'closed';
         if (!commandRotation && (prior.owner.kind !== "worker" || expectedOwner.kind !== "worker" || prior.owner.workerId !== expectedOwner.workerId
           || prior.owner.workflowId !== expectedOwner.workflowId || prior.owner.ordinal !== expectedOwner.ordinal
-          || prior.owner.membershipRevision > expectedOwner.membershipRevision || prior.owner.leaseGeneration >= expectedOwner.leaseGeneration
-          || prior.launch.state !== "closed")) throw new BrowserRootUnavailableError();
+          || prior.owner.membershipRevision > expectedOwner.membershipRevision || prior.launch.state !== "closed")) throw new BrowserRootUnavailableError();
       } else if (owner !== undefined && expectedOwner?.kind !== "signup" && prior.launch.state !== "closed") {
         stoppedRecoveryRequired = true; assertStoppedRecovery();
       }

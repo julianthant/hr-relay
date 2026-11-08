@@ -216,6 +216,8 @@ const RunRecordBaseSchema = z.strictObject({
   claimGeneration: NonNegativeIntSchema,
     /** Operator intent; a claimed worker alone settles the cancellation. */
   cancelRequested: z.literal(true).optional(),
+    /** The errorSummary a Relay-requested cancel settles with; absent when the operator cancelled. */
+  cancelSummary: z.string().min(1).optional(),
   pause: RunPauseSchema.optional(),
   delegationRefresh: RunDelegationRefreshSchema.optional(),
     /** Operator-assigned label over a stable id; never identity. */
