@@ -1393,6 +1393,36 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     });
   }
 
+  /** Beat ⑦ keeps custody of a proven save: a settlement that does not land parks the intent UNKNOWN. */
+  async function settleOrPark<T>(
+    context: WriteSequencerContext,
+    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
+    settle: () => T,
+  ): Promise<T> {
+    try {
+      return settle();
+    } catch (error) {
+      const failure = new PostFenceWriteFailure({
+        writeIntentId: intent.writeIntentId,
+        generation: intent.generation,
+        intentVersion: intent.version,
+        parkCode: "unknown",
+        message: `the save was proven but its settlement did not commit: ${failureMessage(error)}`,
+        operatorMessage: "The save was proven but could not be recorded; check again to confirm it",
+        authorityReason: authorityReason(context.run, "post-fence-session-exception", "settlement", authorityExceptionDetail(error)),
+        cause: error,
+      });
+      await parkAfterFence(context, failure);
+      throw new WriteParkedError({
+        writeIntentId: failure.writeIntentId,
+        intentGeneration: failure.generation,
+        parkCode: failure.parkCode,
+        message: failure.message,
+        cause: failure,
+      });
+    }
+  }
+
   /** Beat ⑥ — capture/verify: every completion arm parses through its proofSchema. */
   async function captureProof(input: Readonly<{
     context: WriteSequencerContext;
@@ -1611,30 +1641,33 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         throw new WriteParkedError({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
           parkCode: "unknown", message: failure.message, cause: failure });
       }
-      const settlement = buildCommittedSettlement({
-        descriptor: context.descriptor,
-        nodeId: String(context.node.id),
-        run: context.run,
-        intent,
-        commitContract,
-        operator,
-        implFingerprint: taskImplFingerprint(commitContract),
-        proofSource: "recovery-probe",
-        proofValue,
-        outputValue,
-        confirmedAt: instant(),
-        ids: deps.ids,
+      const settlement = await settleOrPark(context, intent, () => {
+        const built = buildCommittedSettlement({
+          descriptor: context.descriptor,
+          nodeId: String(context.node.id),
+          run: context.run,
+          intent,
+          commitContract,
+          operator,
+          implFingerprint: taskImplFingerprint(commitContract),
+          proofSource: "recovery-probe",
+          proofValue,
+          outputValue,
+          confirmedAt: instant(),
+          ids: deps.ids,
+        });
+        executeSequencedWriteCommit(
+          deps.authority,
+          {
+            run: { runId: context.run.envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
+            checkpoint: built.checkpoint,
+            commit: built.commit,
+          },
+          { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
+          deps.hooks,
+        );
+        return built;
       });
-      executeSequencedWriteCommit(
-        deps.authority,
-        {
-          run: { runId: context.run.envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
-          checkpoint: settlement.checkpoint,
-          commit: settlement.commit,
-        },
-        { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
-        deps.hooks,
-      );
       return {
         disposition: "committed",
         proofSource: "recovery-probe",
@@ -2299,32 +2332,35 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
         return { state: "new" as const, proof: leased };
       },
-      settleVerified: proof => {
+      settleVerified: async proof => {
         /* beat ⑦ — ONE outer authority transaction over the whole bundle */
-        const committed = buildCommittedSettlement({
-          descriptor: context.descriptor,
-          nodeId: String(node.id),
-          run,
-          intent: proof.intent,
-          commitContract,
-          operator,
-          implFingerprint: taskImplFingerprint(commitContract),
-          proofSource: "normal-output",
-          proofValue: proof.proofValue,
-          outputValue: proof.outputValue,
-          confirmedAt: instant(),
-          ids: deps.ids,
+        const committed = await settleOrPark(context, proof.intent, () => {
+          const built = buildCommittedSettlement({
+            descriptor: context.descriptor,
+            nodeId: String(node.id),
+            run,
+            intent: proof.intent,
+            commitContract,
+            operator,
+            implFingerprint: taskImplFingerprint(commitContract),
+            proofSource: "normal-output",
+            proofValue: proof.proofValue,
+            outputValue: proof.outputValue,
+            confirmedAt: instant(),
+            ids: deps.ids,
+          });
+          executeSequencedWriteCommit(
+            deps.authority,
+            {
+              run: { runId: envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
+              checkpoint: built.checkpoint,
+              commit: built.commit,
+            },
+            { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
+            deps.hooks,
+          );
+          return built;
         });
-        executeSequencedWriteCommit(
-          deps.authority,
-          {
-            run: { runId: envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
-            checkpoint: committed.checkpoint,
-            commit: committed.commit,
-          },
-          { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
-          deps.hooks,
-        );
         if (committed.outcome.disposition !== "committed") throw new Error("committed-settlement-disposition-mismatch");
         return { committed, confirmedAt: committed.outcome.confirmedAt };
       },

@@ -167,7 +167,7 @@ A selected repeat reaches fresh prepare, binding, fence, commit, and verificatio
 | Fence | Check the monotonic probe-to-fence budget and CAS the intent and attempt into durable `attempting` | `StagedPageDiscardedError` or a lost fence prevents the click |
 | Commit | Mint the capability for the fenced generation and binding digest, retain the lease after the fence, and invoke the commit callback | A settled callback failure becomes post-fence uncertainty; an unsettled callback remains owned |
 | Verify | Parse commit output and run the completion contract's proof arm on the retained transaction page | Missing or invalid proof and every non-`present` saved-effect verdict park the write |
-| Settle | Atomically commit operation authority, checkpoint, confirmation publication, timeline history, and the run transition | A failed transaction leaves no partial accepted settlement |
+| Settle | Atomically commit operation authority, checkpoint, confirmation publication, timeline history, and the run transition | A failed transaction leaves no partial accepted settlement and parks the proven write `UNKNOWN` |
 
 A competing fence winner can be reused only if it has settled `committed` or `observed-present` proof. An unresolved winner refuses another click.
 
