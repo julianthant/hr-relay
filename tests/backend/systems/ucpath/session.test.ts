@@ -189,6 +189,27 @@ describe("ucpath login recipe", () => {
     assert.equal(harness.actions().includes("click:portal-login"), true);
   });
 
+  it("names a redirect to the UCPath maintenance page instead of a sign-in failure", async () => {
+    const maintenance = "https://ucpath-notifications.universityofcalifornia.edu/ucpath-maintenance.html";
+    const { context } = await contextFor({
+      url: "about:blank",
+      navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL },
+      elements: {
+        "portal-login": { navigatesTo: maintenance },
+        "campus-link": { count: 0 },
+        "sso-submit": { count: 0 },
+      },
+    });
+    await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.code, "UCPATH_MAINTENANCE");
+      assert.equal(error.message, ERROR_CATALOG.UCPATH_MAINTENANCE.text);
+      assert.equal(error.step, "navigate-login-entry");
+      assert.equal(error.observedUrl, maintenance);
+      return true;
+    });
+  });
+
   it("walks portal → campus discovery → SSO → verified landing", async () => {
     const { context, harness, evidence } = await contextFor({
       url: "about:blank",
