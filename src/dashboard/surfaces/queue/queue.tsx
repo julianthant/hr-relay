@@ -38,6 +38,7 @@ import {
 } from "../shared/status/status-model.js";
 import type { QueueSortKey } from "./queue-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
+import { RenameableTitle } from "../shared/rename/renameable-title.js";
 import {
   type LinkedRunWire,
   type OperationSurfaceWire,
@@ -104,6 +105,8 @@ export interface QueueHandlers {
   /** Jump to a run this row DELEGATED TO . Same shape as
  * `onOpenParent` and separate from it on purpose: the wire hands the whole */
   onOpenLinked?: (link: LinkedRunWire) => void;
+  /** Double-click renames the row title in place; an empty name restores the default. Offered only when a host supplies it. */
+  onRenameTitle?: (runId: string, name: string) => void;
 }
 
 /** How a surface reaches its served actions. The default is honest emptiness. */
@@ -710,6 +713,10 @@ export function QueueRow({
   const bulkIds = state.bulkIds;
   const titleTooltip = batch === undefined ? queueRowTitleTooltip(surface) : undefined;
   const title = batch === undefined ? queueRowTitle(surface) : workflowLabel;
+  const { onRenameTitle } = handlers;
+  const renameTitle = batch === undefined && onRenameTitle !== undefined
+    && surface.actions.some((action) => action.kind === "command" && action.command === "rename")
+    ? onRenameTitle : undefined;
   const selectedBatchMember = batch === undefined ? undefined
     : batch.items.flatMap(item => item.attempts).find(attempt => attempt.runId === state.selectedRunId);
   const bulkKey = batch?.key ?? surface.runId;
@@ -770,8 +777,11 @@ export function QueueRow({
           <div data-queue-body className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
             <div className="flex min-w-0 items-center gap-x-[var(--ds-space-base)]">
               <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
-                <span
+                <RenameableTitle
                   data-demo-row-title
+                  name={title}
+                  {...(renameTitle === undefined ? {} : { onRename: (name: string) => renameTitle(surface.runId, name) })}
+                  inputClassName={dsText.title}
                   className={cn(
                     dsText.title,
                     // Truncate rather than wrap — wrapping shoved the status
@@ -780,9 +790,7 @@ export function QueueRow({
                   )}
                   // A renamed row’s subject identity outranks a tooltip repeating its truncated custom name.
                   {...(titleTooltip === undefined ? {} : { title: titleTooltip })}
-                >
-                  {title}
-                </span>
+                />
                 {/* Name workflow ownership only when the surface mixes workflows. */}
                 {surface.workflowId !== state.panelWorkflowId && (
                   <span className={rowChip("neutral", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}>
