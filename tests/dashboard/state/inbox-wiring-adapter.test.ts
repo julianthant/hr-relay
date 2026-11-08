@@ -67,7 +67,7 @@ async function harness(enabled = true, initiallyFailed = false) {
   const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, nowIso: now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
     dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "live" }, refresh() {}, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
-  function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding, toast: input => { toasts.push(input); return "toast"; }, openInbox() {} }); return null; }
+  function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding, toast: input => { toasts.push(input); return "toast"; } }); return null; }
   root = createRoot(document.createElement("div"));
   const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   await render();
@@ -148,7 +148,7 @@ it("delivers two synchronous positive publications and a warning once each witho
   });
   assert.deepEqual(h.toasts.map(toast => toast.tone), ["success", "success", "warning"]);
   assert.deepEqual(h.toasts.slice(0, 2).map(toast => toast.description), ["Exact subject · Person Lookup", "Exact subject · Person Lookup"]);
-  assert(h.toasts.every(toast => toast.action?.label === "Open notifications"));
+  assert(h.toasts.every(toast => !("action" in toast)));
   await h.render(true, { ...h.binding, authority: { ...h.binding.authority, dayState: { ...h.binding.authority.dayState, connection: { state: "reconnecting" } } } });
   await h.render();
   await act(async () => { h.listeners[0](publication(second, 2)); h.listeners[0](publication(warning, 3)); await new Promise(resolve => setTimeout(resolve, 0)); });

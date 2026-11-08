@@ -36,8 +36,6 @@ function Harness({ notifications, onOpenNotification }: {
     createElement("button", { key: "all", onClick: model.onReadAll }, "Read all"),
     createElement("button", { key: "panel", onClick: () => model.changeOpen(true) }, "Open panel"),
     createElement("button", { key: "item", onClick: () => { if (completed) model.onOpenItem(completed); } }, "Open completed"),
-    createElement("button", { key: "ping-close", onClick: model.onClosePing }, "Close ping"),
-    createElement("button", { key: "ping-open", onClick: model.onOpenPing }, "Open ping"),
   ]);
 }
 
@@ -88,23 +86,13 @@ describe("notification rail producer", () => {
     assert.equal(model().dataset.reads?.includes('"sample-completed":true'), true);
   });
 
-  it("initializes the preview ping and clears it on close or opening notifications", () => {
+  it("initializes the preview ping and clears it on opening notifications", () => {
     window.history.replaceState(null, "", "/?notificationsPreview=ping");
     mount(() => undefined);
     assert.equal(model().dataset.ping, "true");
     assert.equal(model().dataset.pingItem, "sample-completed");
-    click("Open ping");
+    click("Open panel");
     assert.equal(model().dataset.ping, "false");
     assert.equal(model().dataset.open, "true");
-
-    act(() => root?.unmount());
-    root = undefined;
-    host?.remove();
-    host = undefined;
-    window.history.replaceState(null, "", "/?notificationsPreview=ping");
-    mount(() => undefined);
-    click("Close ping");
-    assert.equal(model().dataset.ping, "false");
-    assert.equal(model().dataset.open, "false");
   });
 });
