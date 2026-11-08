@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createWorkerDirectiveTestWorld } from "../../../support/helpers/backend/worker-directive-world.js";
 import { healthyUcpathDriver, healthyCrmDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
+import { runWorkerLoop, WORK_CONTROL_POLL_MS } from "../../../../src/backend/runtime/workers/worker-loop.js";
 
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
@@ -45,7 +45,7 @@ describe("reset retains actual callback ownership", () => {
         target: { workerId, membershipRevision: slot.membershipRevision, expectedVersion: lease.version,
           controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
       }, randomUUID(), h.authority.clock.now().toISOString()));
-      for (const entry of h.scheduler.pending().filter(entry => entry.deadlineMonotonicMs === h.authority.clock.monotonicMs() + 1000)) entry.fire();
+      for (const entry of h.scheduler.pending().filter(entry => entry.deadlineMonotonicMs === h.authority.clock.monotonicMs() + WORK_CONTROL_POLL_MS)) entry.fire();
       await tick();
       expect(finished).toBe(false);
       expect(h.stop.signal.aborted).toBe(false);
@@ -102,7 +102,7 @@ describe("reset retains actual callback ownership", () => {
         target: { workerId, membershipRevision: slot.membershipRevision, expectedVersion: lease.version,
           controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
       }, randomUUID(), h.authority.clock.now().toISOString()));
-      for (const entry of h.scheduler.pending().filter(entry => entry.deadlineMonotonicMs === h.authority.clock.monotonicMs() + 1000)) entry.fire();
+      for (const entry of h.scheduler.pending().filter(entry => entry.deadlineMonotonicMs === h.authority.clock.monotonicMs() + WORK_CONTROL_POLL_MS)) entry.fire();
       await tick();
       expect(activeSignal?.aborted, "the actual acquisition/authentication owner must receive reset cancellation").toBe(true);
       expect(finished).toBe(false);
