@@ -11,7 +11,7 @@ import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { createDurableChildRunExecutor } from "../../runtime/execution/durable-child-executor.js";
 import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
-import { isLiveWorker } from "../../../models/run/worker.js";
+import { isLiveWorker, WORKER_LOGOUT_STOP_REASON, WORKER_SHUTDOWN_STOP_REASON, type WorkerStopReason } from "../../../models/run/worker.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
@@ -921,7 +921,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       clock,
       workerId,
       leaseGeneration,
-      report.closure === "unproved" ? "crashed" : report.stopped === "stop-directive" ? "operator" : "shutdown",
+      report.closure === "unproved" ? "crashed" : report.stopped === "stop-directive" ? "stop-directive" : "shutdown",
       report.closure === "unproved" ? new WorkerSessionClosureUnprovedError(workerId) : undefined,
       log,
     );
@@ -994,7 +994,7 @@ function settleLease(
   clock: Clock,
   workerId: WorkerId,
   leaseGeneration: number,
-  reason: "operator" | "shutdown" | "crashed",
+  reason: WorkerStopReason | "stop-directive",
   original: unknown,
   log: TaskLogger,
 ): void {
@@ -1019,7 +1019,8 @@ function settleLease(
         state: "stopped",
         startedAt: lease.lifecycle.startedAt,
         stoppedAt: now,
-        reason,
+        reason: reason !== "stop-directive" ? reason
+          : lease.control.reason === WORKER_SHUTDOWN_STOP_REASON || lease.control.reason === WORKER_LOGOUT_STOP_REASON ? "shutdown" : "operator",
       },
       now,
     });
