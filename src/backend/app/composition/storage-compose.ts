@@ -694,23 +694,26 @@ export function composeProfileActivity(input: Readonly<{
             const current = input.lifecycle.read(run.envelope.runId);
             if (current.state !== 'present') throw new Error('profile-run-custody-unavailable');
             if (current.run.lifecycle.state === 'terminal' || current.run.lifecycle.state === 'parked-write') continue;
-            // Logout cancels only claimed work; a run no worker holds stays paused for the next sign-in.
-            if (runClaim(current.run) === undefined) {
-              if (current.run.pause?.state !== 'paused') requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: current.run.envelope.runId, expectedVersion: current.run.version }));
-              continue;
-            }
-            requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
+            if (current.run.cancelRequested === true) continue;
+            // Logout cancels a claimed run that stands alone; any other run pauses, so never-claimed work and run graphs resume after the next sign-in.
+            const standalone = current.run.envelope.parent === undefined
+              && input.database.authority.runs.listChildren(current.run.envelope.runId).every(child => child.lifecycle.state === 'terminal');
+            if (runClaim(current.run) !== undefined && standalone) requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
               expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString(),
                 errorSummary: `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}` } }));
+            else if (current.run.pause === undefined) requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: current.run.envelope.runId, expectedVersion: current.run.version }));
           } catch (error) { failures.push(error); }
         }
       } catch (error) { failures.push(error); }
-      try {
-        pending.push('state' in input.supervisor
-          ? (busy(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
-          : input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-            requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: 'profile-logout' }));
-      } catch (error) { failures.push(error); }
+      pending.push((async () => {
+        // A paused claim settles at its worker's next step boundary, as on shutdown.
+        while (input.database.readProfileResourceCustody().runs.some(run => runClaim(run) !== undefined && run.pause !== undefined)) {
+          await new Promise<void>(resolve => setTimeout(resolve, 50));
+        }
+        if ('state' in input.supervisor) { if (busy(false)) throw new Error('profile-resource-closure-unproved'); }
+        else await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
+          requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: 'profile-logout' });
+      })());
       const completion = Promise.allSettled(pending).then(results => {
         const errors: unknown[] = [...failures];
         for (const result of results) if (result.status === 'rejected') { const reason: unknown = result.reason; errors.push(reason); }
