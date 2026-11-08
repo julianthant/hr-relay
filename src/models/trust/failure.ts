@@ -117,6 +117,12 @@ export const FailureRecordSchema = z.strictObject({
 
 export type FailureRecord = z.infer<typeof FailureRecordSchema>;
 
+/** What a failure says was written: a write this run settled (committed, or found already present) makes it a failure after that write. */
+export function settledWriteState(intents: readonly Readonly<{ status: string }>[]): "not-attempted" | "committed" | "verified" {
+  const settled = intents.filter(({ status }) => status === "committed" || status === "observed-present");
+  return settled.length === 0 ? "not-attempted" : settled.some(({ status }) => status === "observed-present") ? "verified" : "committed";
+}
+
 function subjectEvidence(evidence: z.infer<typeof SubjectEvidenceWireSchema>) {
   return { kind: evidence.kind, digest: evidence.digest };
 }

@@ -42,17 +42,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       }
       await chooseScenario( "parked");
-      const parked = surface.getByRole("group", { name: "File termination", exact: true });
+      const parked = surface.getByRole("group", { name: "Did the termination save in UCPath?", exact: true });
       await parked.scrollIntoViewIfNeeded();
-      await expect(parked).toContainText("The result is unknown. Check UCPath before continuing.");
+      await expect(parked).toContainText("Submit did not confirm. Check Smart HR Transactions for DEMO-1042.");
       const confirm = parked.getByRole("button", { name: "Confirm", exact: true });
+      const transaction = parked.getByRole("textbox", { name: /^Transaction number/u });
       await expect(confirm).toBeDisabled();
-      await expect(parked.getByRole("textbox")).toHaveCount(0);
-      await parked.getByRole("radio", { name: "Yes, it was submitted", exact: true }).check();
+      await transaction.fill("SIM-042");
       await expect(confirm).toBeDisabled();
-      await parked.getByRole("textbox", { name: /^Transaction number/u }).fill("SIM-042");
+      await transaction.fill("T00042871");
       await confirm.click();
-      await expect(surface).toContainText("Answered: Check result");
+      await expect(surface).toContainText("Answered: Saved in UCPath");
       await expect(parked.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
 
       await chooseScenario( "review-candidates");

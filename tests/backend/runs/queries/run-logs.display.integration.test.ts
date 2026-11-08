@@ -43,7 +43,7 @@ it("flags each declared field a failed read task never observed, on the node's l
   w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: "person-lookup", runId: queued.envelope.runId, attempt: 1, traceId: queued.envelope.traceId,
     spanPath: `${queued.envelope.traceId}/active-status#1`, nodeId: "active-status", taskId, points: [allowed("status", "active"), allowed("title", null)] });
   w.projection.ingestFromTimeline();
-  const failure = buildNodeFailureRecord({ run: queued, failureId: uuidOf(186), nodeId: NodeIdSchema.parse("active-status"), taskId: TaskIdSchema.parse(taskId), error: new Error("fixture read failed"), occurredAt: at });
+  const failure = buildNodeFailureRecord({ writes: [], run: queued, failureId: uuidOf(186), nodeId: NodeIdSchema.parse("active-status"), taskId: TaskIdSchema.parse(taskId), error: new Error("fixture read failed"), occurredAt: at });
   const run = runRecordOf({ seed: 86, descriptor: personLookupModule.descriptor, lifecycle: { state: "terminal", outcome: "failed", endedAt: at, failureId: failure.failureId } });
   const trust = { getFailure: () => failure, ensureReceipt: () => { throw new Error("unused"); }, countFailuresByFingerprint: () => 0 };
   const fieldsFor = (dir: "read" | "write") => {

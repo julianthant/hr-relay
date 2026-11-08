@@ -22,6 +22,7 @@ import { failureCodeFromTaskCode, catalogCodeForThrown } from "../../../models/f
 import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
+  settledWriteState,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 
@@ -67,6 +68,8 @@ export interface NodeFailureInput {
   readonly taskId?: TaskId;
   readonly error: unknown;
   readonly occurredAt: unknown;
+  /** The run's write intents; a settled one makes this a failure after that write. */
+  readonly writes: readonly Readonly<{ status: string }>[];
 }
 
 export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
@@ -105,8 +108,8 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
     summary,
     ...(input.error instanceof Error ? { debug: failureDebugDetails(input.error) } : {}),
     transient,
-    // Transaction failures are owned by the sequencer.
-    writeState: "not-attempted",
+    // A failing transaction parks through the sequencer; this records only writes the run already settled.
+    writeState: settledWriteState(input.writes),
     ...(taskError?.subject === undefined || hasProtectedTransactionInput(run)
       ? {}
       : { subject: { expected: subjectEvidence(taskError.subject) } }),

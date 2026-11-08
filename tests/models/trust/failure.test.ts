@@ -47,7 +47,7 @@ function failure(diagnosticSafetyVersion?: 1) {
 
 describe("diagnostic evidence projection", () => {
   it("keeps an arbitrary Error message in authority without stamping it safe for projection", () => {
-    const authority = buildNodeFailureRecord({
+    const authority = buildNodeFailureRecord({ writes: [],
       run: QUEUED_RUN,
       failureId: "10000000-0000-4000-8000-000000000004",
       nodeId: NODE_ID,
@@ -76,7 +76,7 @@ describe("diagnostic evidence projection", () => {
   });
 
   it("stamps the closed non-Error fallback sentence because no thrown value is copied into it", () => {
-    const authority = buildNodeFailureRecord({
+    const authority = buildNodeFailureRecord({ writes: [],
       run: QUEUED_RUN,
       failureId: "10000000-0000-4000-8000-000000000006",
       nodeId: NODE_ID,

@@ -24,8 +24,6 @@ export const DecisionSendSchema = z.discriminatedUnion("via", [
   z.strictObject({ via: z.literal("action"), actionKey: Text }),
   /* The run's queue-row descriptor (cancel, resume, recover). */
   z.strictObject({ via: z.literal("row-action"), actionKey: Text }),
-  /* One choice, two commands: present sends the first with a transaction id, absent sends the second. */
-  z.strictObject({ via: z.literal("verification"), presentActionKey: Text, absentActionKey: Text, transactionPattern: Pattern }),
   /* `resolve-gate` on the parked gate node at the run version, with this declared arm. */
   z.strictObject({ via: z.literal("gate-arm"), gateNodeId: Text, expectedVersion: z.number().int().positive(), arm: Text }),
   /* The failure's served start plan, previewed before it starts. */
@@ -62,7 +60,6 @@ export const CandidateTableWireSchema = z.strictObject({
 export type CandidateTableWire = z.infer<typeof CandidateTableWireSchema>;
 
 export const DecisionInputWireSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("verification"), question: Text }),
   z.strictObject({ kind: z.literal("text"), label: Text, placeholder: Text.optional(), pattern: Pattern.optional(), prefill: Text.optional() }),
   z.strictObject({ kind: z.literal("date"), label: Text }),
   z.strictObject({ kind: z.literal("candidate"), table: CandidateTableWireSchema }),
@@ -78,10 +75,6 @@ export const DecisionOptionWireSchema = z.strictObject({
   /* Only the option that uses it; an option without one is submittable as is. */
   input: DecisionInputWireSchema.optional(),
   confirm: ActionConfirmWireSchema.optional(),
-}).superRefine((option, context) => {
-  if ((option.send.via === "verification") !== (option.input?.kind === "verification")) {
-    context.addIssue({ code: "custom", path: ["input"], message: "a verification send and a verification input come together" });
-  }
 });
 export type DecisionOptionWire = z.infer<typeof DecisionOptionWireSchema>;
 

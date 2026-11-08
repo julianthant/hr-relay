@@ -38,18 +38,41 @@ describe("failureDecision", () => {
     assert.deepEqual(failureDecision(corrected("1003187")).options[0]?.input, { kind: "text", label: "Employee ID", pattern: "^10\\d{6}$", prefill: "1003187" });
   });
 
-  it("serves a failure after a committed or verified write as D8 with only a note", () => {
+  it("serves a failure after a committed or verified write as D8: Mark as failed or a note, both closing the failure and filing nothing", () => {
+    const annotate = { via: "command", family: "failure-resolution", type: "annotate-failure" };
     for (const writeState of ["committed", "verified"] as const) {
       const decision = failureDecision(FailureDetailWireSchema.parse({ ...base, ...capable, writeState }));
       assert.equal(decision.type, "failed-after-write");
-      assert.deepEqual(decision.options.map(({ id, send }) => [id, send]), [["add-note", { via: "command", family: "failure-resolution", type: "annotate-failure" }]]);
+      assert.equal(decision.choiceLabel, "Next step");
+      assert.deepEqual(decision.options.map(({ id, label, send, recommended }) => [id, label, send, recommended]), [
+        ["mark-as-failed", "Mark as failed", annotate, true],
+        ["add-note", "Add note", annotate, undefined],
+      ]);
+      assert.equal(decision.options[0]?.hint, "Ends this person's run as failed; files nothing.");
+      assert.equal(decision.options[0]?.input, undefined);
+      assert.deepEqual(decision.options[1]?.input, { kind: "text", label: "Note" });
+      assert.ok(decision.options.every(({ id }) => id !== "retry" && id !== "check-again"), "nothing after a committed write runs again from this card");
     }
+    assert.deepEqual(failureDecision(FailureDetailWireSchema.parse({ ...base, writeState: "committed" })).options, [], "no option without the resolution capability");
   });
 
   it("serves any other failure as D7 with no retry, because no retry is served without a correction", () => {
     const decision = failureDecision(FailureDetailWireSchema.parse({ ...base, ...capable }));
     assert.equal(decision.type, "failed-retryable");
-    assert.deepEqual(decision.options.map(({ id, recommended }) => [id, recommended]), [["add-note", true]]);
+    assert.deepEqual(decision.options.map(({ id, recommended, input }) => [id, recommended, input]), [["add-note", true, { kind: "text", label: "Note" }]]);
     assert.deepEqual(failureDecision(base).options, [], "no note option without the resolution capability");
+  });
+
+  it("serves no annotate option once the capture is resolved, because a second resolve is refused", () => {
+    const resolved = { resolution: { ...capable.resolution, capture: { ...capable.resolution.capture,
+      resolution: { status: "resolved" as const, version: 3, by: "local-operator", at: "2026-08-03T12:00:00.000Z", note: "Checked" } } } };
+    for (const writeState of ["committed", "verified"] as const) {
+      const decision = failureDecision(FailureDetailWireSchema.parse({ ...base, ...resolved, writeState }));
+      assert.equal(decision.type, "failed-after-write");
+      assert.deepEqual(decision.options, []);
+    }
+    const retryable = failureDecision(FailureDetailWireSchema.parse({ ...base, ...resolved, writeState: "not-attempted" }));
+    assert.equal(retryable.type, "failed-retryable");
+    assert.deepEqual(retryable.options, []);
   });
 });

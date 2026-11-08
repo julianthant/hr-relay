@@ -23,15 +23,15 @@ describe("decision instance text", () => {
   });
 
   it("serves the declared dropdown label and the owner's context line", () => {
-    const decision = projectDecision("write-parked", [{ id: "check-again", send: { via: "action", actionKey: "recheck-write" } }, { id: "didnt-land", send: { via: "action", actionKey: "resolve-write-absent" } }],
+    const decision = projectDecision("write-parked", [{ id: "saved", send: { via: "action", actionKey: "recheck-write" }, label: "Saved in UCPath" }, { id: "not-saved", send: { via: "action", actionKey: "resolve-write-absent" }, label: "Not saved, file it again" }],
       { context: "UCPath did not confirm the save." });
     assert.equal(decision.choiceLabel, "Answer");
     assert.equal(decision.context, "UCPath did not confirm the save.");
-    assert.equal(projectDecision("write-parked", [{ id: "check-again", send: { via: "action", actionKey: "recheck-write" } }]).context, undefined);
+    assert.equal(projectDecision("write-parked", [{ id: "check-again", send: { via: "action", actionKey: "check-parked-write" } }]).context, undefined);
   });
 
   it("refuses a decision with several choices and no dropdown label", () => {
-    const decision = projectDecision("write-parked", [{ id: "check-again", send: { via: "action", actionKey: "recheck-write" } }, { id: "didnt-land", send: { via: "action", actionKey: "resolve-write-absent" } }]);
+    const decision = projectDecision("write-parked", [{ id: "saved", send: { via: "action", actionKey: "recheck-write" }, label: "Saved in UCPath" }, { id: "not-saved", send: { via: "action", actionKey: "resolve-write-absent" }, label: "Not saved, file it again" }]);
     const { choiceLabel: _removed, ...unlabelled } = decision;
     assert.throws(() => RunDecisionWireSchema.parse(unlabelled), /choiceLabel/u);
   });

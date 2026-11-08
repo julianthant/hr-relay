@@ -70,7 +70,7 @@ import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/type
 function refineDecisionActions(decision: RunDecisionWire | undefined, actions: readonly Pick<ActionDescriptorWire, "key">[], context: z.RefinementCtx, path: (string | number)[]): void {
   if (decision === undefined) return;
   const keys = new Set(actions.map(({ key }) => key));
-  const named = decision.options.flatMap(({ send }) => send.via === "action" ? [send.actionKey] : send.via === "verification" ? [send.presentActionKey, send.absentActionKey] : []);
+  const named = decision.options.flatMap(({ send }) => send.via === "action" ? [send.actionKey] : []);
   if (named.some(key => !keys.has(key))) context.addIssue({ code: "custom", path, message: "a decision option must name an action served on the same section" });
 }
 

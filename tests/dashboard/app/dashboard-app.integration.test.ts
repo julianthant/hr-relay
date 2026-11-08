@@ -513,13 +513,13 @@ it_m1("keeps served Logs failures while explicit parity composition selects mock
     assert_m1.ok(reads > 0);
     assert_m1.ok(document.body.textContent?.includes("The dashboard could not load this from the local service. Try again."));
     assert_m1.match(document.body.textContent ?? "", /Could not load logs|Logs unavailable/);
-    assert_m1.doesNotMatch(document.body.textContent ?? "", /Confirm the employee match|private transport detail/);
+    assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
     const failedReads = reads;
     await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
-    assert_m1.match(document.body.textContent ?? "", /Confirm the employee match/);
+    assert_m1.match(document.body.textContent ?? "", /Is this the right person\?/);
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows))[0];
     assert_m1.ok(workflow);

@@ -11,7 +11,7 @@ export const logDecisionExamples = [
       "kind": "decision",
       "time": "09:32:39",
       "decision": {
-        "title": "File termination",
+        "title": "Did the termination save in UCPath?",
         "state": "parked",
         "message": "Clicked Save and Submit, but no confirmation returned.",
         "caution": "The result is unknown. Check UCPath before continuing.",
@@ -30,32 +30,42 @@ export const logDecisionExamples = [
         "footer": "Alex Morgan · DEMO-1042",
         "served": {
           "type": "write-parked",
-          "title": "File termination",
+          "title": "Did the termination save in UCPath?",
+          "context": "Submit did not confirm. Check Smart HR Transactions for DEMO-1042.",
           "choiceLabel": "Answer",
           "options": [
             {
-              "id": "parked-check",
+              "id": "check-again",
               "label": "Check again",
-              "hint": "The termination is still not where Relay looked. The run remains held.",
+              "hint": "Reads Smart HR Transactions again; files nothing.",
               "send": {
                 "via": "action",
-                "actionKey": "parked-check"
+                "actionKey": "check-parked-write"
               }
             },
             {
-              "id": "parked-0",
-              "label": "Check result",
-              "hint": "Continued from the held step.",
+              "id": "saved",
+              "label": "Saved in UCPath",
+              "hint": "Relay checks this number, then the run continues.",
+              "send": {
+                "via": "action",
+                "actionKey": "recheck-write"
+              },
               "recommended": true,
               "input": {
-                "kind": "verification",
-                "question": "Is the termination present in UCPath for Alex Morgan?"
-              },
+                "kind": "text",
+                "label": "Transaction number",
+                "placeholder": "T00000000",
+                "pattern": "^T\\d+$"
+              }
+            },
+            {
+              "id": "not-saved",
+              "label": "Not saved, file it again",
+              "hint": "Relay files the termination once more.",
               "send": {
-                "via": "verification",
-                "presentActionKey": "recheck-write",
-                "absentActionKey": "resolve-write-absent",
-                "transactionPattern": "^[A-Za-z0-9-]+$"
+                "via": "action",
+                "actionKey": "resolve-write-absent"
               }
             }
           ]
@@ -64,36 +74,112 @@ export const logDecisionExamples = [
     }
   },
   {
-    "id": "verification",
-    "label": "Choose the result to continue",
+    "id": "parked-read-back",
+    "label": "Saved, read-back failed",
     "category": "Write parked",
     "entry": {
-      "id": "verification",
+      "id": "parked-read-back",
       "kind": "decision",
       "time": "09:32:39",
       "decision": {
-        "title": "Continue the parked run",
+        "title": "Termination saved, but the read-back failed",
         "state": "parked",
-        "message": "Termination for Alex Morgan · effective 09/26/2026",
-        "footer": "No further submission while held",
+        "message": "Clicked Save and Submit, but no confirmation returned.",
+        "caution": "The result is unknown. Check UCPath before continuing.",
+        "screenshots": [
+          {
+            "src": "/logs-preview/ucpath-form.svg",
+            "alt": "Form after Submit",
+            "time": "09:32:38",
+            "width": 850,
+            "height": 1050,
+            "label": "Form after Submit",
+            "kind": "form",
+            "system": "UCPath"
+          }
+        ],
+        "footer": "Alex Morgan · DEMO-1042",
         "served": {
-          "type": "write-parked",
-          "title": "Continue the parked run",
+          "type": "write-unknown",
+          "title": "Termination saved, but the read-back failed",
+          "context": "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions for DEMO-1042.",
+          "choiceLabel": "Answer",
           "options": [
             {
-              "id": "verification-0",
-              "label": "Check result",
-              "hint": "Continued from the held step.",
-              "recommended": true,
-              "input": {
-                "kind": "verification",
-                "question": "Is the termination present in UCPath for Alex Morgan?"
-              },
+              "id": "check-again",
+              "label": "Check again",
+              "hint": "Reads Smart HR Transactions again; files nothing.",
               "send": {
-                "via": "verification",
-                "presentActionKey": "recheck-write",
-                "absentActionKey": "resolve-write-absent",
-                "transactionPattern": "^[A-Za-z0-9-]+$"
+                "via": "action",
+                "actionKey": "check-parked-write"
+              },
+              "recommended": true
+            },
+            {
+              "id": "saved",
+              "label": "Saved in UCPath",
+              "hint": "Relay checks this number, then the run continues.",
+              "send": {
+                "via": "action",
+                "actionKey": "recheck-write"
+              },
+              "input": {
+                "kind": "text",
+                "label": "Transaction number",
+                "placeholder": "T00000000",
+                "pattern": "^T\\d+$"
+              }
+            },
+            {
+              "id": "not-saved",
+              "label": "Not saved, file it again",
+              "hint": "Relay files the termination once more.",
+              "send": {
+                "via": "action",
+                "actionKey": "resolve-write-absent"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "parked-kuali",
+    "label": "Kuali save not confirmed",
+    "category": "Write parked",
+    "entry": {
+      "id": "parked-kuali",
+      "kind": "decision",
+      "time": "09:32:39",
+      "decision": {
+        "title": "Did the separation document save in Kuali?",
+        "state": "parked",
+        "message": "Clicked Save, but no confirmation returned.",
+        "footer": "No further submission while held",
+        "served": {
+          "type": "write-unknown",
+          "title": "Did the separation document save in Kuali?",
+          "context": "Save did not confirm. Check document SIM-48216 in Kuali.",
+          "choiceLabel": "Answer",
+          "options": [
+            {
+              "id": "saved",
+              "label": "Saved in Kuali",
+              "hint": "Relay checks Kuali, then the run continues.",
+              "send": {
+                "via": "action",
+                "actionKey": "recheck-write"
+              },
+              "recommended": true
+            },
+            {
+              "id": "not-saved",
+              "label": "Not saved, save it again",
+              "hint": "Relay saves the document once more.",
+              "send": {
+                "via": "action",
+                "actionKey": "resolve-write-absent"
               }
             }
           ]
@@ -475,22 +561,22 @@ export const logDecisionExamples = [
         "footer": "Result unknown · do not submit again",
         "served": {
           "type": "failed-retryable",
-          "title": "File termination",
+          "title": "A step failed",
+          "choiceLabel": "Next step",
           "options": [
             {
-              "id": "failure-attempting-0",
-              "label": "Check result",
-              "hint": "Continued from the held step.",
+              "id": "add-note",
+              "label": "Add note",
+              "hint": "Record what you found. The run stays failed.",
+              "send": {
+                "via": "command",
+                "family": "failure-resolution",
+                "type": "annotate-failure"
+              },
               "recommended": true,
               "input": {
-                "kind": "verification",
-                "question": "Is the termination present in UCPath for Alex Morgan?"
-              },
-              "send": {
-                "via": "verification",
-                "presentActionKey": "recheck-write",
-                "absentActionKey": "resolve-write-absent",
-                "transactionPattern": "^[A-Za-z0-9-]+$"
+                "kind": "text",
+                "label": "Note"
               }
             }
           ]
@@ -545,17 +631,33 @@ export const logDecisionExamples = [
         ],
         "footer": "Submitted · do not submit again",
         "served": {
-          "type": "failed-retryable",
-          "title": "Verify termination",
+          "type": "failed-after-write",
+          "title": "A step failed after a write",
+          "choiceLabel": "Next step",
           "options": [
             {
-              "id": "failure-committed-0",
-              "label": "Retry verification",
-              "hint": "Reading the submitted transaction again.",
-              "recommended": true,
+              "id": "mark-as-failed",
+              "label": "Mark as failed",
+              "hint": "Ends this person's run as failed; files nothing.",
               "send": {
-                "via": "action",
-                "actionKey": "failure-committed-0"
+                "via": "command",
+                "family": "failure-resolution",
+                "type": "annotate-failure"
+              },
+              "recommended": true
+            },
+            {
+              "id": "add-note",
+              "label": "Add note",
+              "hint": "Record what you found. The run stays failed.",
+              "send": {
+                "via": "command",
+                "family": "failure-resolution",
+                "type": "annotate-failure"
+              },
+              "input": {
+                "kind": "text",
+                "label": "Note"
               }
             }
           ]
@@ -611,17 +713,33 @@ export const logDecisionExamples = [
         ],
         "footer": "UCPath termination already verified",
         "served": {
-          "type": "failed-retryable",
-          "title": "Finalize Kuali document",
+          "type": "failed-after-write",
+          "title": "A step failed after a write",
+          "choiceLabel": "Next step",
           "options": [
             {
-              "id": "failure-verified-0",
-              "label": "Retry Kuali step",
-              "hint": "Continued to Finalize Kuali document.",
-              "recommended": true,
+              "id": "mark-as-failed",
+              "label": "Mark as failed",
+              "hint": "Ends this person's run as failed; files nothing.",
               "send": {
-                "via": "action",
-                "actionKey": "failure-verified-0"
+                "via": "command",
+                "family": "failure-resolution",
+                "type": "annotate-failure"
+              },
+              "recommended": true
+            },
+            {
+              "id": "add-note",
+              "label": "Add note",
+              "hint": "Record what you found. The run stays failed.",
+              "send": {
+                "via": "command",
+                "family": "failure-resolution",
+                "type": "annotate-failure"
+              },
+              "input": {
+                "kind": "text",
+                "label": "Note"
               }
             }
           ]
@@ -677,22 +795,22 @@ export const logDecisionExamples = [
         "footer": "Result unknown · do not submit again",
         "served": {
           "type": "failed-retryable",
-          "title": "Verify termination",
+          "title": "A step failed",
+          "choiceLabel": "Next step",
           "options": [
             {
-              "id": "failure-unknown-0",
-              "label": "Check result",
-              "hint": "Continued from the held step.",
+              "id": "add-note",
+              "label": "Add note",
+              "hint": "Record what you found. The run stays failed.",
+              "send": {
+                "via": "command",
+                "family": "failure-resolution",
+                "type": "annotate-failure"
+              },
               "recommended": true,
               "input": {
-                "kind": "verification",
-                "question": "Is the termination present in UCPath for Alex Morgan?"
-              },
-              "send": {
-                "via": "verification",
-                "presentActionKey": "recheck-write",
-                "absentActionKey": "resolve-write-absent",
-                "transactionPattern": "^[A-Za-z0-9-]+$"
+                "kind": "text",
+                "label": "Note"
               }
             }
           ]
@@ -709,7 +827,7 @@ export const logDecisionExamples = [
       "kind": "decision",
       "time": "09:32:39",
       "decision": {
-        "title": "Confirm employee identity",
+        "title": "Which Alex Morgan is this run about?",
         "state": "failed",
         "message": "Expected DEMO-1042. The browser showed DEMO-2088.",
         "attemptedAction": "read employee ID",
@@ -748,17 +866,18 @@ export const logDecisionExamples = [
         "footer": "No write attempted",
         "served": {
           "type": "pick-person",
-          "title": "Confirm employee identity",
+          "title": "Which Alex Morgan is this run about?",
+          "context": "UCPath found 3 people with this name.",
           "options": [
             {
-              "id": "identity-mismatch-0",
-              "label": "Select employee",
-              "hint": "Continued from the held step.",
-              "recommended": true,
+              "id": "confirm",
+              "label": "Confirm",
+              "hint": "Continue with the picked person.",
               "send": {
                 "via": "action",
                 "actionKey": "identity-mismatch-0"
               },
+              "recommended": true,
               "input": {
                 "kind": "candidate",
                 "table": {
@@ -951,7 +1070,7 @@ export const logDecisionExamples = [
       "kind": "decision",
       "time": "09:32:39",
       "decision": {
-        "title": "Confirm the employee match",
+        "title": "Is this the right person?",
         "state": "review",
         "comparison": [
           {
@@ -985,17 +1104,18 @@ export const logDecisionExamples = [
         "footer": "Run is waiting for the employee decision",
         "served": {
           "type": "identity-mismatch",
-          "title": "Confirm the employee match",
+          "title": "Is this the right person?",
+          "choiceLabel": "Next step",
           "options": [
             {
-              "id": "review-identity-0",
-              "label": "Continue with Alex",
-              "hint": "Alex Morgan · DEMO-1042. Continued to Read Workforce Job Summary.",
-              "recommended": true,
+              "id": "approve",
+              "label": "Approve match",
+              "hint": "The person found is the one the request means.",
               "send": {
                 "via": "action",
-                "actionKey": "review-identity-0"
-              }
+                "actionKey": "review-identity-approve"
+              },
+              "recommended": true
             }
           ]
         }
@@ -1593,7 +1713,7 @@ export const logDecisionExamples = [
       "kind": "decision",
       "time": "09:32:39",
       "decision": {
-        "title": "Confirm employee identity",
+        "title": "Is this the right person?",
         "state": "review",
         "screenshots": [
           {
@@ -1610,17 +1730,18 @@ export const logDecisionExamples = [
         "footer": "Alex Morgan · DEMO-1042",
         "served": {
           "type": "identity-mismatch",
-          "title": "Confirm employee identity",
+          "title": "Is this the right person?",
+          "choiceLabel": "Next step",
           "options": [
             {
-              "id": "screenshot-person-0",
-              "label": "Continue with Alex",
-              "hint": "Alex Morgan · DEMO-1042. Continued to Read Workforce Job Summary.",
-              "recommended": true,
+              "id": "approve",
+              "label": "Approve match",
+              "hint": "The person found is the one the request means.",
               "send": {
                 "via": "action",
-                "actionKey": "screenshot-person-0"
-              }
+                "actionKey": "screenshot-person-approve"
+              },
+              "recommended": true
             }
           ]
         }
