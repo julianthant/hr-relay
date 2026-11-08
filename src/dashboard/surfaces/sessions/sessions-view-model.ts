@@ -50,6 +50,10 @@ const UNAVAILABLE_LINE: Readonly<Record<UnavailableWorkerCard["availability"]["r
   "worker-browser-closure-or-health-unavailable": "Relay can't confirm this worker's browsers.", "worker-current-run-authority-unavailable": "Relay can't read this worker's run.",
   "worker-lifetime-unavailable": "Relay can't read how long this worker ran.", "worker-current-phase-unavailable": "Relay can't read what this worker is doing.", "worker-card-unavailable": "Relay can't read this worker right now.",
 };
+/** The top line when no step or live message is served, so the step block always has one. */
+const RUNLESS_LINE: Readonly<Record<WorkerCardWire["state"], string>> = {
+  idle: "Ready for the next run", starting: "Preparing worker", waiting: "Preparing worker", paused: "Paused between runs", running: "Run in progress", failed: "Last step unknown",
+};
 const LAST_RUN_LINE: Readonly<Record<NonNullable<Extract<WorkerCardWire["lastRun"], { state: "present" }>["outcome"]>, string>> = {
   done: "Last run finished.", failed: "Last run failed.", cancelled: "Last run was cancelled.", discarded: "Last run was discarded.", interrupted: "Last run was interrupted.", superseded: "Last run was replaced.",
 };
@@ -115,7 +119,7 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       authority: card, state,
       ...(row === undefined ? {} : { subject: row.title }),
       action: recordGone ? card.stopReason === undefined ? "Last step unknown" : SETTLED_LINE[card.stopReason] : settled ? stepLabel ?? "Last step unknown" : row?.liveMessage.state === "present" ? row.liveMessage.value : stepLabel
-        ?? (card.state === "idle" ? "Ready for the next run" : card.state === "starting" ? "Preparing worker" : ""),
+        ?? RUNLESS_LINE[card.state],
       ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
       ...(problem === undefined ? {} : { problem }),

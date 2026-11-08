@@ -1,5 +1,5 @@
 import { Monitor, Pause, Play, RotateCw, Square, Trash2 } from "lucide-react";
-import { Button } from "../../ds/ui.js";
+import { Button, Tooltip, TooltipProvider } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { IDLE_REFRESH_MS, type IdleSessionCountdown } from "./session-idle-model.js";
 import { SESSION_STATE_LABELS, sessionStateColor, type SessionControl, type SessionWorker } from "./sessions-view-model.js";
@@ -18,14 +18,22 @@ function cardNote(worker: SessionWorker): { text: string; tone: string } | undef
   return worker.note ? { text: worker.note, tone: "text-ui-warning" } : undefined;
 }
 
+/** A nickname or a served reason stays reachable: screen readers get the full text, and a focusable chip shows it in the design-system tooltip. */
 function BrowserRow({ browser }: { browser: WorkerBrowser }) {
-  return <li title={browser.name} className={cn("flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-md bg-ui-table px-2 py-1 text-caption")}><span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="break-words">{browser.label}</span></span><span className={cn("shrink-0", BROWSER_TONE[browser.state])} title={browser.reason}>{BROWSER_WORD[browser.state]}</span></li>;
+  const detail = [browser.name, browser.reason].filter(Boolean).join(" · ");
+  const row = <>
+    <span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span aria-hidden={browser.name !== undefined} className="break-words">{browser.label}</span>{browser.name !== undefined && <span className="sr-only">{browser.name}</span>}</span>
+    <span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}{browser.reason !== undefined && <span className="sr-only">. {browser.reason}</span>}</span>
+  </>;
+  return <li className="flex min-h-8 min-w-0 items-center rounded-md bg-ui-table text-caption">{detail === ""
+    ? <div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-2 py-1">{row}</div>
+    : <Tooltip content={detail}><div tabIndex={0} className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info">{row}</div></Tooltip>}</li>;
 }
 
 /** Browser sessions are always the chip grid, two per row; a workflow past four systems gets a wider card and three per row. */
 function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
   if (worker.browsers.length === 0) return <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">{worker.browsersNote ?? "No browser sessions open"}</p>;
-  return <ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul>;
+  return <TooltipProvider delayDuration={200}><ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul></TooltipProvider>;
 }
 
 export function WorkerCard({ worker, countdown, operation, onControl, onCheck }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void; onCheck?: (id: string) => void }) {

@@ -503,7 +503,7 @@ it("distinguishes unopened browser requirements from observed unavailable health
       const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
       assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPath", "unopened"]]);
       await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
-      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : "CRMUnavailable", "UCPathNot opened"]);
+      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : observation?.state === "unavailable" ? "CRMUnavailable. Browser health was not served" : "CRMUnavailable", "UCPathNot opened"]);
       assert.match(host.querySelector("article")?.textContent ?? "", /No run assigned.*Ready for the next run/s);
       assert.equal(h.sent.length, 0);
     }
@@ -642,12 +642,30 @@ it("shows the served last values of a settled worker, sign-in, wait activity, un
   const [signing] = parse([{ ...card, state: "waiting", waitingActivity: "authenticating", currentRun: { state: "absent", reason: "none" }, browserRequirements: { state: "present", systems: ["ucpath", "crm", "kuali"] },
     browsers: [observed("ucpath", "needs-duo"), observed("crm", "signed-out"), observed("kuali", "unknown", { state: "unavailable", reason: "Kuali did not answer" })] }]);
   assert.equal(signing.note, "Signing in");
+  assert.equal(signing.action, "Preparing worker", "a waiting card without a run still has a top line");
   assert.deepEqual(signing.browsers.map(browser => [browser.label, browser.state, browser.reason]), [["UCPath", "needs-duo", undefined], ["CRM", "signed-out", undefined], ["Kuali", "unavailable", "Kuali did not answer"]]);
 
+  for (const state of ["paused", "running"] as const) assert.notEqual(parse([{ ...card, state, currentRun: { state: "absent", reason: "none" } }])[0].action, "");
   const [idle] = parse([{ ...card, state: "idle", currentRun: { state: "absent", reason: "none" }, browsers: [], lastRun: { state: "present", runId: row.runId, traceId: row.traceId, outcome: "done", endedAt: now } }]);
   assert.equal(idle.problem, "Last run finished.");
 
   const sibling = { member: { ...card.member, workerId: "person-lookup-worker-2", ordinal: 2, poolIndex: 2 }, workerId: "person-lookup-worker-2", availability: { state: "unavailable", reason: "worker-card-unavailable" } };
   const workers = parse([card], { unavailableWorkerCards: [UnavailableWorkerCardWireSchema.parse(sibling)] });
   assert.deepEqual(workers.map(worker => [worker.label, worker.state]), [["Worker 1", card.state], ["Worker 2", "unavailable"]]);
+});
+
+it("keeps a system nickname's full name and an unavailable reason in the chip's text and reachable by keyboard", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const day = dayWith(); const card = day.workerCards[0]; const h = harness(day);
+  h.setDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, state: "running", browserRequirements: { state: "present", systems: ["servicenow", "ucpath"] },
+    browsers: [{ sessionId: uuidOf(9500), system: "servicenow", openedAt: now, observation: { state: "unavailable", reason: "ServiceNow did not answer" } }] }] }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    const [chip, plain] = [...host.querySelectorAll("article li")];
+    assert.equal(chip.textContent, "SNowServiceNowUnavailable. ServiceNow did not answer");
+    assert.equal(chip.querySelector("span[aria-hidden='true']")?.textContent, "SNow");
+    assert.equal(chip.querySelector("[tabindex='0']")?.getAttribute("tabindex"), "0");
+    assert.equal(plain.querySelector("[tabindex]"), null, "a chip with nothing to add is not a tab stop");
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
