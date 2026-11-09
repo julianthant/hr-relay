@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { ONBASE_DOCUMENT_TYPE, OnbaseCommitImport, OnbaseInputSchema, OnbasePrepareImport, OnbaseSavedDocumentSchema } from "../../../../models/systems/onbase/import-document.js";
+import { ONBASE_DOCUMENT_TYPE, OnbaseInputSchema, OnbaseSavedDocumentSchema } from "../../../../models/systems/onbase/import-document.js";
+import { OnbaseCommitImport } from "../../../../models/systems/onbase/upload-import.js";
+import { OnbasePrepareImport } from "../../../../models/systems/onbase/stage-import.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildSource } from "../source-page/step.js";

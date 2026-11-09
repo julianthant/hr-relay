@@ -1,5 +1,5 @@
 import { ReadWorkbookResult } from "../../../../models/processing/workbooks/read-result.js";
-import { ReadRetentionRow } from "../../../../models/workflows/i9-check/check.js";
+import { ReadRetentionRow } from "../../../../models/workflows/i9-check/read-retention-row.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
 import { ReadI9CheckRows } from "../../../../models/workflows/i9-check-start/read-rows.js";
 import { ReadI9CheckPublication } from "../../../../models/workflows/i9-check-start/read-publication.js";

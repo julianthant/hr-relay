@@ -1,4 +1,4 @@
-import { ReadRetentionRow } from "../../../../models/workflows/i9-check/check.js";
+import { ReadRetentionRow } from "../../../../models/workflows/i9-check/read-retention-row.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";

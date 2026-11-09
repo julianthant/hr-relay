@@ -58,6 +58,20 @@ function separationsExplorerEntry() {
 }
 
 describe("compiled Explorer declaration binding", () => {
+  it("links newly readable I-9 Check and OnBase contracts to their task-owned source files", () => {
+    const tasks = allTasks();
+    for (const name of ["read-match-outcome", "read-retention-row"]) {
+      const task = tasks.find(task => task.taskId === `workflow:i9-check/${name}`); assert.ok(task, name);
+      assert.deepEqual(task.contractSource, { state: "resolved", path: `src/models/workflows/i9-check/${name}.ts` });
+      assert.deepEqual(task.implSource, { state: "resolved", path: `src/workflows/i9-check/tasks/${name}.ts` });
+    }
+    for (const name of ["read-source-page", "stage-import", "upload-import"]) {
+      const task = tasks.find(task => task.taskId === `onbase/${name}`); assert.ok(task, name);
+      assert.deepEqual(task.contractSource, { state: "resolved", path: `src/models/systems/onbase/${name}.ts` });
+      assert.deepEqual(task.implSource, { state: "resolved", path: `src/backend/systems/onbase/tasks/${name}.ts` });
+    }
+  });
+
   it("links the registered I-9 lookup and profile-plan contracts to their exact source owners", () => {
     const tasks = allTasks();
     for (const operation of ["read-i9-lookup", "read-i9-profile-plan"]) {
