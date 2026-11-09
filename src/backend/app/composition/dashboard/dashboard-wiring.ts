@@ -307,6 +307,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   startupCleanups.push(requiredClosure(() => hub.close()));
 
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
+  input.onInitialPreflight?.(initialPreflight);
   const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
   if (blockingChecks.length > 0) {
     throw new Error(

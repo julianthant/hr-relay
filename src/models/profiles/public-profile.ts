@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 import { ProfileIdSchema, ProfileRegistryRowSchema } from "./profile.js";
+import { PreflightReportWireSchema } from "../preflight/preflight-contract.js";
 
 export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(1).max(254), password: z.string().min(1).max(1024) });
 export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
@@ -60,13 +61,34 @@ export type ConfirmProfileOnboardingDuoRequest = z.infer<typeof ConfirmProfileOn
 export const CancelProfileOnboardingDuoRequestSchema = StartProfileOnboardingDuoRequestSchema.extend({ attemptId: z.uuid() });
 export type CancelProfileOnboardingDuoRequest = z.infer<typeof CancelProfileOnboardingDuoRequestSchema>;
 
+export const ProfileFirstRunCheckSchema = z.discriminatedUnion("state", [
+  z.strictObject({ scope: z.literal("local-startup"), profileId: ProfileIdSchema,
+    epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), state: z.enum(["passed", "failed"]), report: PreflightReportWireSchema }),
+  z.strictObject({ scope: z.literal("local-startup"), profileId: ProfileIdSchema,
+    epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), state: z.literal("unavailable"), code: z.literal("PROFILE_FIRST_RUN_CHECK_UNAVAILABLE") }),
+]).superRefine((value, context) => {
+  if (value.state === "unavailable") return;
+  if (value.report.requestedCapabilities.length !== 1 || value.report.requestedCapabilities[0] !== "dashboard.serve") {
+    context.addIssue({ code: "custom", path: ["report", "requestedCapabilities"], message: "profile-first-run-check-scope-invalid" });
+  }
+  if ((value.state === "failed") !== value.report.results.some(result => result.status === "fail")) {
+    context.addIssue({ code: "custom", path: ["state"], message: "profile-first-run-check-outcome-invalid" });
+  }
+});
+export type ProfileFirstRunCheck = z.infer<typeof ProfileFirstRunCheckSchema>;
+
 export const PublicProfileStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("signed-out"), signUpRequired: z.boolean().optional(),
     resumable: z.literal(true).optional(), logoutIncomplete: z.literal(true).optional() }),
-  z.strictObject({ state: z.literal("error"), code: ErrorCodeSchema }),
-  z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
+  z.strictObject({ state: z.literal("error"), code: ErrorCodeSchema, firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
+  z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
   z.strictObject({ state: z.literal("cancelling"), operationId: z.uuid() }),
   ProfileOnboardingStateSchema,
-  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
-]);
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema, firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
+]).superRefine((value, context) => {
+  if (value.state !== "active" || value.firstRunCheck === undefined) return;
+  if (value.firstRunCheck.state !== "passed" || value.firstRunCheck.profileId !== value.profileId || value.firstRunCheck.epoch !== value.epoch) {
+    context.addIssue({ code: "custom", path: ["firstRunCheck"], message: "profile-first-run-check-active-identity-invalid" });
+  }
+});
 export type PublicProfileState = z.infer<typeof PublicProfileStateSchema>;

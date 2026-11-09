@@ -10,6 +10,7 @@ import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js
 import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema,
   WorkbookLibraryStateSchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionRecordSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { PlannedRunOutputSchema } from "../../../../src/models/dashboard/run-outputs.js";
+import { ProfileFirstRunCheckSchema } from "../../../../src/models/profiles/public-profile.js";
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -672,6 +673,7 @@ export const EXTRA_SURFACE_MODULES: readonly string[] = Object.freeze([
   "src/models/trust/diagnostic.ts",
   "src/models/trust/evidence.ts",
   "src/models/trust/failure.ts",
+  "src/models/profiles/public-profile.ts",
 ]);
 
 export function scannedSurfaceModules(): readonly string[] {
@@ -785,6 +787,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRequestSchema },
   { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantResultSchema },
   { id: "wire/chatgpt-connection", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptConnectionResultSchema },
+  { id: "wire/profile-first-run-check", egress: "operator-loopback", module: "src/models/profiles/public-profile.ts", schema: ProfileFirstRunCheckSchema },
   { id: "wire/chatgpt-ocr-test", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptOcrTestResultSchema },
   { id: "wire/chatgpt-account", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptAccountViewSchema },
   { id: "wire/chatgpt-start", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInStartResultSchema },
@@ -1233,6 +1236,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/assistant", path: "candidates[].displayName", origin: "captured-hr-value" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
   { surface: "wire/chatgpt-connection", path: "message", origin: "repository-authored" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].summary", origin: "local-filesystem-name" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].impact", origin: "repository-authored" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].remediation", origin: "repository-authored" },
   { surface: "wire/chatgpt-ocr-test", path: "message", origin: "repository-authored" },
   { surface: "wire/chatgpt-account", path: "account.message", origin: "repository-authored" },
   { surface: "wire/chatgpt-account", path: "account.name", origin: "external-text" },
@@ -1910,6 +1916,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
 export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = Object.freeze(
   SurfaceModuleDispositionSchema.array().parse([
+    { module: "src/models/profiles/public-profile.ts", state: "audited", reason: "Signup completion serves its existing local startup report and exact profile epoch only on loopback; detector summaries may name local storage basenames, never credentials or remote diagnostics." },
     { module: "src/models/dashboard/assistant.ts", state: "audited", reason: "Operator request and response stay on loopback: authored questions, broker-supplied subjects, external answer text, exact context-verified citations and planner-bound dry-run proposals. Inference transport is a separate account boundary." },
     { module: "src/models/dashboard/chatgpt-account.ts", state: "audited", reason: "Local account identity and registered fixed failures only; OAuth start URL contains public PKCE, state and nonce, never tokens or verifier." },
     { module: "src/models/dashboard/dashboard-frontend-owner.ts", state: "no-surface", reason: "Declares a closed launch nonce and probe pathname; no wire or durable free-text schema." },

@@ -255,6 +255,7 @@ and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its
 `tests/support/compiled-process{,-setup,-loader}.ts` owns test child JavaScript preparation,
 launch imports and content-addressed loading; `guards-and-tests.md` owns its cache contract.
 `tests/support/helpers/backend/runtime-lifetime.ts` owns temporary kernel listeners for tests;
+`tests/support/helpers/backend/public-profile-shell.ts` owns fresh public-profile roots and the canonical signup/Duo request sequence shared by shell and first-run completion proofs.
 `tests/backend/runs/lifecycle/run-record-service.write-parking.integration.test.ts` owns write-park journal and event atomicity.
 
 | Behavior | Test owner |

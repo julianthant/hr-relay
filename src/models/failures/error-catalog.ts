@@ -154,6 +154,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Preflight report could not be read or verified. Re-check readiness.",
     EmptyParametersSchema,
   ),
+  PROFILE_FIRST_RUN_CHECK_UNAVAILABLE: catalogEntry(
+    "The initial local startup check did not complete. Resume sign-in to retry startup.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_RERUN_UNAVAILABLE: catalogEntry(
     "Preflight re-check could not be completed or verified. Read current readiness before retrying.",
     EmptyParametersSchema,
