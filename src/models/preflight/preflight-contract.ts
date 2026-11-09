@@ -92,7 +92,7 @@ export const PreflightReadinessWireSchema = z.discriminatedUnion("state", [
 export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema>;
 
 export const WorkerPreflightRefusalSchema = z.strictObject({
-  state: z.literal("preflight-refused"), code: z.literal("PREFLIGHT_OBSERVATION_CHANGED"), runId: RunIdSchema.optional(),
+  state: z.literal("preflight-refused"), code: z.enum(["PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_BLOCKED"]), runId: RunIdSchema.optional(),
 });
 export type WorkerPreflightRefusal = z.infer<typeof WorkerPreflightRefusalSchema>;
 

@@ -24,6 +24,24 @@ describe("worker run loop", () => {
     assert.equal(claims, 1); assert.equal(h.sessions.opens("ucpath"), 0); assert.equal(h.sessions.opens("crm"), 0);
     assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "worker" && event.outcome === "failed"));
   });
+  for (const code of ["PREFLIGHT_BLOCKED", "PREFLIGHT_OBSERVATION_CHANGED"] as const) it(`keeps a standing worker alive after ${code} and claims when readiness returns`, async () => {
+    const h = await loopHarness();
+    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    let claims = 0;
+    const report = await runWorkerLoop({ ...h.deps, exitWhenIdle: false,
+      claimNext: (request, sessions) => {
+        claims++;
+        if (claims === 1) return { state: "preflight-refused", code, runId: RunIdSchema.parse(RUN_ID) };
+        if (claims === 3) h.stop.abort();
+        return h.deps.claimNext(request, sessions);
+      },
+    });
+    assert.equal(claims, 3);
+    assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
+    assert.equal(report.stopped, "stop-signal");
+    assert.equal(report.preflightRefusal, undefined);
+    assert.equal(report.closure, "proved");
+  });
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {
     const harness = await loopHarness();
     const { database } = harness.authority;

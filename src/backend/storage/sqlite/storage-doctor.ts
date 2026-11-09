@@ -491,6 +491,7 @@ function reconcileSpanAuthority(
       return current;
     });
   } catch (error) {
+    if (storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -514,6 +515,7 @@ function reconcileSpanAuthority(
       busyTimeoutMs,
     );
   } catch (error) {
+    if (storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -526,9 +528,10 @@ function reconcileSpanAuthority(
   }
   if (snapshot.authorityGeneration !== corpus.authorityGeneration
     || snapshot.authorityContentFingerprint !== corpus.authorityContentFingerprint) {
-    return { reconciliation: SpanAuthorityReconciliationSchema.parse({ state: "unavailable",
-      cause: { code: "span-authority-unavailable", summary: "timeline and run authority changed between read snapshots; inspect again" },
-    }) };
+    if (snapshot.authorityGeneration > corpus.authorityGeneration) {
+      throw new StorageDoctorObservationChangedError({ cause: { initial: authorityIdentityOf(corpus), final: authorityIdentityOf(snapshot) } });
+    }
+    throw new Error("timeline and run authority identities disagree without a forward generation change");
   }
   if (corpus.state === "missing" && snapshot.malformedRecords.length === 0
     && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {
@@ -633,7 +636,7 @@ function authorityIdentityState(read: AuthorityIdentityRead): string {
 
 export class StorageDoctorObservationChangedError extends Error {
   constructor(options: ErrorOptions) {
-    super("authority changed while the storage doctor awaited external evidence (initial=available; final=available)", options);
+    super("authority changed while the storage doctor awaited external evidence; inspect again", options);
     this.name = "StorageDoctorObservationChangedError";
   }
 }
@@ -643,6 +646,10 @@ function authorityIdentityChanged(
   initial: AuthorityIdentityRead,
   final: AuthorityIdentityRead,
 ): Error {
+  if (initial.state === "unavailable" && initial.cause.code === "authority-locked"
+    || final.state === "unavailable" && final.cause.code === "authority-locked") {
+    return new StorageDoctorObservationChangedError({ cause: { initial, final } });
+  }
   if (initial.state === "available" && final.state === "available"
     && final.identity.authorityGeneration > initial.identity.authorityGeneration) {
     return new StorageDoctorObservationChangedError({ cause: { initial, final } });
@@ -857,6 +864,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
       authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs);
     } catch (error) {
       authorityCause = storageHealthCauseFromError(error);
+      if (authorityCause.code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     }
     const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
       ? inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs)

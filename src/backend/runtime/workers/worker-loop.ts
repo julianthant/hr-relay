@@ -309,10 +309,12 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       const claimed = await deps.claimNext(claimRequest, sessions);
       if (claimed.state === "preflight-refused") {
         preflightRefusal = WorkerPreflightRefusalSchema.parse(claimed);
-        stopped = "preflight-refused";
         deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId: claimRequest.commandId,
           area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused" }, { kind: "worker", workerId });
-        break;
+        if (deps.exitWhenIdle) { stopped = "preflight-refused"; break; }
+        preflightRefusal = undefined;
+        await boundedWait(deps.scheduler, clock, deps.idleCadence?.() ?? deps.idleRepollMs, deps.stopSignal);
+        continue;
       }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
         const notBefore = claimed.refusal.notBefore;
@@ -434,7 +436,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       ...(closure === "proved" && preflightRefusal === undefined ? {} : {
         diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
         errorSummary: closure === "unproved" ? `worker ${workerId} browser session closure is unproved`
-          : ERROR_CATALOG.PREFLIGHT_OBSERVATION_CHANGED.text,
+          : ERROR_CATALOG[preflightRefusal?.code ?? "PREFLIGHT_OBSERVATION_CHANGED"].text,
       }),
     });
   }

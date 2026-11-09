@@ -902,6 +902,10 @@ export const ERROR_CATALOG = Object.freeze({
     "This command does more than its assistant classification says. No action was taken.",
     EmptyParametersSchema,
   ),
+  PREFLIGHT_BLOCKED: catalogEntry(
+    "Readiness checks blocked this worker. Check Settings readiness; the queued run will wait until its prerequisites are available.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_OBSERVATION_CHANGED: catalogEntry(
     "Storage changed before the next run could be claimed. Re-check readiness; use Sessions for any queued run instead of starting it again.",
     EmptyParametersSchema,

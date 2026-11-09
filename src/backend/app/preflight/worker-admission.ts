@@ -5,6 +5,12 @@ import { PreflightAdmissionRefusal, PreflightObservationChangedError, type Prefl
 import type { WorkerPreflightRefusal } from "../../../models/preflight/preflight-contract.js";
 import type { RuntimePreflight } from "./runtime-admission.js";
 
+export function workerPreflightRefusal(error: unknown, runId?: RunRecord["envelope"]["runId"]): WorkerPreflightRefusal | undefined {
+  const code = error instanceof PreflightObservationChangedError ? "PREFLIGHT_OBSERVATION_CHANGED"
+    : error instanceof PreflightAdmissionRefusal && error.reason === "blocked" ? "PREFLIGHT_BLOCKED" : undefined;
+  return code === undefined ? undefined : { state: "preflight-refused", code, ...(runId === undefined ? {} : { runId }) };
+}
+
 class PreparationRequired extends Error {
   constructor(readonly scope: PreflightAdmissionScope, readonly run: RunRecord) { super("Selected run needs preflight preparation."); }
 }
@@ -19,8 +25,10 @@ export async function claimWithPreflight(input: Readonly<{
   let prepared: Readonly<{ runId: string; version: number }> | undefined;
   for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
     if (input.signal.aborted) throw input.signal.reason;
+    let selected: RunRecord | undefined;
     try {
       return input.claim(run => {
+        selected = run;
         if (run.pause !== undefined) throw new PreflightAdmissionRefusal("stale", "Paused work cannot prepare or acquire a claim.");
         const scope = input.preflight.runScope(run.envelope);
         try { input.preflight.admission.assertReady(scope); }
@@ -31,19 +39,23 @@ export async function claimWithPreflight(input: Readonly<{
         if (prepared?.runId !== run.envelope.runId || prepared.version !== run.version) throw new PreparationRequired(scope, run);
       });
     } catch (error) {
-      if (!(error instanceof PreparationRequired)) throw error;
+      if (!(error instanceof PreparationRequired)) {
+        const refusal = workerPreflightRefusal(error, selected?.envelope.runId);
+        if (refusal !== undefined) return refusal;
+        throw error;
+      }
       try {
         await input.preflight.admission.prepare(error.scope, input.signal);
         input.preflight.admission.assertReady(error.scope);
+        if (prepared?.runId !== error.run.envelope.runId || prepared.version !== error.run.version) {
+          await input.prepareRun(error.run, input.signal);
+          prepared = { runId: error.run.envelope.runId, version: error.run.version };
+        }
       } catch (preparationError) {
-        if (!(preparationError instanceof PreflightObservationChangedError)) throw preparationError;
-        if (attempt === CLAIM_ATTEMPTS - 1) return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
+        const refusal = workerPreflightRefusal(preparationError, error.run.envelope.runId);
+        if (refusal === undefined) throw preparationError;
+        if (refusal.code === "PREFLIGHT_BLOCKED" || attempt === CLAIM_ATTEMPTS - 1) return refusal;
         input.onObservationChanged?.(attempt + 1);
-        continue;
-      }
-      if (prepared?.runId !== error.run.envelope.runId || prepared.version !== error.run.version) {
-        await input.prepareRun(error.run, input.signal);
-        prepared = { runId: error.run.envelope.runId, version: error.run.version };
       }
     }
   }
