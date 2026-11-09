@@ -68,8 +68,9 @@ the current served account binding once, without a polling or activation loop.
 owns durable preference and private account authority. Neither a mounted control nor source wiring
 establishes live model or operator acceptance.
 
-The assistant's selected subject reference is the visible served run. The service turns it into an opaque run
-reference for the model; read tools resolve it locally through the canonical run-detail and search owners.
+The assistant's selected subject reference is the visible served run. The service checks its current revision and issues an opaque, version-pinned run reference with a server-only label. Read tools resolve it through the admitted run owners.
+
+Exact Employee ID queries read schema-bound canonical Person Lookup inputs on single and delegated member runs, including queued rows without name checkpoints. They exclude protected subjects, operation parents and previews. The read scans every canonical page within the existing 10,000-row corpus bound, refuses incomplete or stale scans, and orders matching candidates newest first. Multiple candidates stay explicit; the five-row tool limit reports more results. Labels use workflow, retained run number when present, Employee ID, enqueue time and attempt only on the server; the model receives reference tokens. Protected selected rows keep the existing protected-subject label.
 
 Bootstrap projects the admitted person registry name as the actor label. Appearance uses that label with the existing person/epoch preference owner and claims saved state only after confirmed settings readback. Preference commands use `source: person-preferences`; the ordinary editor recovers only its own `settings-surface` attempts, so simultaneous preference saves cannot become ordinary editor retries.
 

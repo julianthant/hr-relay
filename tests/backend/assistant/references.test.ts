@@ -81,9 +81,11 @@ it("expands tool arguments strictly: every token-shaped part must be a current i
 
 it("pins a version on a reference separately from the unpinned reference to the same record", () => {
   const table = createAssistantReferenceTable(7);
-  const unpinned = table.issue("R", "run-a", "run", "run-a"), pinned = table.issue("R", "run-a", "the selected run", "run-a", 3);
+  const label = "Person Lookup · EID 10000001 · 2026-11-08T12:00:00Z · attempt 1";
+  const unpinned = table.issue("R", "run-a", "run", "run-a"), pinned = table.issue("R", "run-a", label, "run-a", 3);
   assert.notEqual(unpinned, pinned);
   assert.equal(table.resolve(unpinned, ["R"]).version, undefined);
   assert.equal(table.resolve(pinned, ["R"]).version, 3);
   assert.equal(table.issue("R", "run-a", "the selected run", "run-a", 3), pinned);
+  assert.equal(table.display(pinned), label, "the useful first label is retained without mutable relabeling");
 });

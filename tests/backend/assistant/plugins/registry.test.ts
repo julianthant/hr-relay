@@ -5,7 +5,7 @@ import { createAssistantProposals } from "../../../../src/backend/assistant/prop
 import { surfaceLeaves } from "../../../architecture/logs/helpers/redaction-surface-audit.js";
 
 const unused = () => { throw new Error("registry test reads declarations only"); };
-const plugins = () => createAssistantPlugins({ search: unused, runDetail: unused, notifications: unused, workbooks: unused, attachment: unused, settings: unused, facts: unused });
+const plugins = () => createAssistantPlugins({ findLookupRuns: unused, runReferenceLabel: unused, search: unused, runDetail: unused, notifications: unused, workbooks: unused, attachment: unused, settings: unused, facts: unused });
 
 it("offers every plugin's tools in one strict namespace with unique names", () => {
   const registry = assistantToolRegistry(plugins());

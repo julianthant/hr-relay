@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CrossDateSearchPage, CrossDateSearchQueryInput } from "../../../models/dashboard/search.js";
+import type { CrossDateSearchPage, CrossDateSearchQueryInput, CrossDateSearchResult } from "../../../models/dashboard/search.js";
 import type { RunDetailWire } from "../../../models/dashboard/run-detail.js";
 import type { NotificationWire } from "../../../models/dashboard/projection.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
@@ -17,6 +17,8 @@ import { settingsPlugin } from "./settings/index.js";
 export interface AssistantPluginDeps {
   search(query: CrossDateSearchQueryInput): CrossDateSearchPage;
   runDetail(runId: string): RunDetailWire;
+  runReferenceLabel(runId: string, expectedVersion: number): string;
+  findLookupRuns(eid: string): readonly Readonly<{ runId: string; version: number; day: string; status: CrossDateSearchResult["state"]; label: string }>[];
   notifications(actorId: string): readonly NotificationWire[];
   /** The Spreadsheets library owner; every read and change goes through it. */
   workbooks(): Pick<WorkbookLibraryService, "catalog" | "read" | "types">;

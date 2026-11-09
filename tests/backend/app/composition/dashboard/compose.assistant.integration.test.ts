@@ -31,7 +31,7 @@ import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixt
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
+import { EXECUTOR_EID, personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
@@ -188,7 +188,7 @@ it('serves the read tools through authenticated composition without private prov
     transport.setResponse(init => {
       assert.equal(typeof init.body, 'string'); if (typeof init.body !== 'string') throw Error('synthetic request body required');
       const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), outbound = JSON.stringify(request);
-      for (const value of [run.envelope.runId, run.envelope.traceId, subjectRef, title]) assert.equal(outbound.includes(value), false, value);
+      for (const value of [run.envelope.runId, run.envelope.traceId, subjectRef, title, EXECUTOR_EID]) assert.equal(outbound.includes(value), false, value);
       assert.deepEqual(request.tools.map(namespace => namespace.name), ['relay']);
       const last = request.input.at(-1);
       if (last !== undefined && 'type' in last && last.type === 'function_call_output') outputs.push(JSON.parse(last.output));
@@ -204,7 +204,7 @@ it('serves the read tools through authenticated composition without private prov
       commands: database.prepare('SELECT * FROM commands ORDER BY id').all(), audits: database.prepare('SELECT * FROM command_audits ORDER BY id').all(),
     }));
     const before = durable(), controls = context.database.authority.workerControls.list();
-    assert.deepEqual(await ask('Explain this run', subjectRef), { state: 'answered', text: `the selected run is ${detail.header.status}.` });
+    assert.deepEqual(await ask('Explain this run', subjectRef), { state: 'answered', text: `Person Lookup · EID ${EXECUTOR_EID} · ${run.envelope.enqueuedAt} · attempt ${String(run.envelope.attempt)} is ${detail.header.status}.` });
     assert.equal(turns, 3);
     const [read, logs] = outputs;
     assert.deepEqual(z.object({ status: z.string(), version: z.number(), attempt: z.number(), workflow: z.string() }).parse(read),

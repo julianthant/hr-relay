@@ -8,7 +8,7 @@ import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
 import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
 import { assistantMessageStream, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { createAssistantService, type AssistantServiceOptions } from "../../../src/backend/assistant/service.js";
-import { AssistantToolRefusal, type AssistantPlugin, type AssistantTool } from "../../../src/backend/assistant/plugins/plugin.js";
+import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { AssistantAuthorizationError } from "../../../src/backend/assistant/authorization.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
@@ -47,7 +47,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
   const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => FACTS,
     owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), plugins: () => [plugin],
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent: () => { if (!preferenceCurrent) throw new Error("assistant-model-preference-changed"); } }),
-    history: () => db.database.authority.assistantHistory, ...input.options });
+    history: () => db.database.authority.assistantHistory, runReferenceLabel: () => "Recorded run", ...input.options });
   const revision = (conversationId: string) => {
     if (service.conversation(conversationId) === undefined) assert.equal(service.history({ operation: "create", conversationId, title: "Chat" }).state, "saved");
     return service.conversation(conversationId)?.revision ?? 0;
@@ -501,6 +501,35 @@ it("refuses a whole send whose attachment text exceeds the context bound, withou
     const result = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
       new AbortController().signal);
     assert.deepEqual(result.kind === "result" && result.result.state === "refused" && result.result.code, "ASSISTANT_ATTACHMENT_TOO_LARGE");
+    assert.equal(w.posts(), 0);
+  } finally { await w.f.cleanup(); }
+});
+
+it("issues the selected run's useful first label with its pin and sends only its token to inference", async () => {
+  const id = randomUUID(), version = 3, label = "Person Lookup · EID 10000001 · 2026-11-08T12:00:00Z · attempt 1";
+  const selected: AssistantTool = { kind: "read", name: "selected_reference", description: "Return the selected reference without personal data.",
+    parameters: z.strictObject({}), output: z.strictObject({ run: referenceSchema("R") }), privacy: [], async invoke(_value, context) {
+      const run = context.references.issue("R", id, "the selected run", id, version);
+      assert.equal(context.references.resolve(run, ["R"]).version, version);
+      return { run };
+    } };
+  const w = await world({ tools: [selected], options: { runReferenceLabel(runId, revision) {
+    assert.equal(runId, id); assert.equal(revision, version); return label;
+  } } });
+  try {
+    w.script.push(call("selected_reference", {}), body => assistantMessageStream(z.object({ run: z.string() }).parse(lastOutput(body)).run));
+    const result = await w.ask("Explain the selected run", undefined, undefined, { subjectRef: `run_${id}_${version}` });
+    assert.ok(result.state === "answered"); assert.equal(result.text, label);
+    const provider = JSON.stringify(w.bodies);
+    assert.equal(provider.includes("10000001"), false); assert.equal(provider.includes(label), false);
+  } finally { await w.f.cleanup(); }
+});
+
+it("refuses a changed selected row before inference instead of issuing a generic reference", async () => {
+  const w = await world({ options: { runReferenceLabel() { throw new AssistantToolRefusal("ASSISTANT_READ_STALE"); } } });
+  try {
+    assert.deepEqual(await w.ask("Explain", undefined, undefined, { subjectRef: `run_${randomUUID()}_1` }),
+      { state: "refused", code: "ASSISTANT_READ_STALE", message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
     assert.equal(w.posts(), 0);
   } finally { await w.f.cleanup(); }
 });

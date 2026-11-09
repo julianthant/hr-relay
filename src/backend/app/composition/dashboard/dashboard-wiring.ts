@@ -254,13 +254,14 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     rerunValues: request => dataQueries.rerunValues(request), served: workflowId => workflowSources[workflowId] === "served",
     actorId: resolved.config.actor.id, clock, assertCurrent, kernel, workbooks: () => workbookLibrary,
     attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
-  const assistantPluginDeps = createAssistantPluginDeps({ database, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
+  const assistantPluginDeps = createAssistantPluginDeps({ database, runs: lifecycle, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
     search: () => shell.search, notifications: () => notifications,
     workbooks: () => workbookLibrary, attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
   const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
     assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
     owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
     plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
+    runReferenceLabel: (runId, version) => assistantPluginDeps.runReferenceLabel(runId, version),
     decideAction: (decision, signal) => assistantProposals.decideAction(decision, signal),
     history: () => { assertCurrent(); return database.authority.assistantHistory; },
     selectedModel: () => { const captured = captureSelectedModel(); return { preference: captured.view.preference, assertCurrent: captured.assertPreferenceCurrent }; },

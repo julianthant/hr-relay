@@ -29,6 +29,7 @@ export interface AssistantServiceOptions {
   readonly owner: () => Readonly<{ profileId: string; epoch: number }>;
   readonly actorId: string;
   readonly plugins?: () => readonly AssistantPlugin[];
+  readonly runReferenceLabel: (runId: string, expectedVersion: number) => string;
   /** Hash-pinned workflow facts; a failed pin refuses the turn. */
   readonly facts: () => AssistantWorkflowFacts;
   /** The person's saved model and effort; `assertCurrent` throws once either changes. */
@@ -202,7 +203,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
         const input: AssistantInputItem[] = [
           { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined
-            : table.issue("R", selectedRun.runId, "the selected run", selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
+            : table.issue("R", selectedRun.runId, options.runReferenceLabel(selectedRun.runId, selectedRun.revision), selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
           ...history.replay(request.conversationId, current.ordinal).map(row => row.messageId === undefined ? replayed(row)
             : userTurn(row.modelText, files(history.turnAttachments(row.messageId)), table)),
           userTurn(masked, files(history.turnAttachments(request.messageId)), table),
@@ -270,7 +271,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         if (closure(error)) return stop("CHATGPT_RESOURCE_CLOSURE_UNPROVED");
         if (current !== undefined && error instanceof ChatGptDeliveryUncertainError) return { uncertain: true };
         if (signal.aborted) return stop("ASSISTANT_CANCELLED");
-        if (error instanceof AssistantHistoryRefusal) return stop(error.code);
+        if (error instanceof AssistantHistoryRefusal || error instanceof AssistantToolRefusal) return stop(error.code);
         if (error instanceof AssistantModelChangedError) return stop("ASSISTANT_MODEL_CHANGED");
         if (error instanceof ChatGptAccountError) {
           if (error.code === "CHATGPT_USAGE_LIMIT") return stop("ASSISTANT_USAGE_LIMIT");

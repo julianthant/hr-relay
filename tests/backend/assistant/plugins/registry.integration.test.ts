@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, it } from "vitest";
 import { z } from "zod";
+import { CanonicalListRunsRequestSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { createAssistantService } from "../../../../src/backend/assistant/service.js";
+import { AssistantToolRefusal } from "../../../../src/backend/assistant/plugins/plugin.js";
+import { createAssistantReferenceTable } from "../../../../src/backend/assistant/references.js";
+import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
+import { PersonLookupCanonicalInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { EXECUTOR_EID, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createAssistantPlugins } from "../../../../src/backend/assistant/plugins/registry.js";
 import { assistantWorkflowFacts } from "../../../../src/backend/assistant/plugins/workflows/facts.js";
 import { createAssistantPluginDeps } from "../../../../src/backend/app/composition/dashboard/assistant.js";
@@ -93,9 +100,10 @@ async function seededOwners() {
     notificationObserver: { status: () => { throw new Error("observer unused by the snapshot"); } } as never,
     notificationTarget: createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get }) });
   const facts = assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup"));
-  return { w, run, plugins: () => createAssistantPlugins(createAssistantPluginDeps({ database, runDetail, assertCurrent() {}, facts: () => facts,
+  const deps = createAssistantPluginDeps({ database, runs: lifecycle, runDetail, assertCurrent() {}, facts: () => facts,
     search: () => search, notifications: () => notifications, workbooks: () => library,
-    attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) })), facts, settings: () => readSettings(database.authority).settings,
+    attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
+  return { w, run, deps, plugins: () => createAssistantPlugins(deps), facts, settings: () => readSettings(database.authority).settings,
     notificationSubjects: () => notifications.snapshot("local-operator").flatMap(row => row.kind === "notification" && row.context.state === "available" ? [row.context.subject] : []) };
 }
 
@@ -130,7 +138,7 @@ it("keeps every seeded personal value out of the provider requests across all pr
     const debug: unknown[] = [];
     const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => owners.facts, plugins: owners.plugins,
       owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), debugEvents: { emit: event => { debug.push(event); } },
-      selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent: () => {} }), history: () => owners.w.database.authority.assistantHistory });
+      selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent: () => {} }), runReferenceLabel: (id, version) => owners.deps.runReferenceLabel(id, version), history: () => owners.w.database.authority.assistantHistory });
     const conversationId = randomUUID();
     assert.equal(service.history({ operation: "create", conversationId, title: "Chat" }).state, "saved");
     const envelope = await service.respond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: "Who ran recently, and what needs my attention?" }, new AbortController().signal);
@@ -162,4 +170,152 @@ it("keeps every seeded personal value out of the provider requests across all pr
     assert.ok(owners.notificationSubjects().includes(CANARIES.subject), "the run-linked notification resolves the subject locally");
     assert.ok(Object.values(CANARIES).every(value => !JSON.stringify(debug).includes(value)));
   } finally { await f.cleanup(); }
+});
+
+function queuedLookup(eid: string, at = "2026-11-08T12:00:00.000Z", shape: RunRecord["envelope"]["shape"] = "single"): RunRecord {
+  const base = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(), itemId: randomUUID() }));
+  return RunRecordSchema.parse({ ...base, createdAt: at, updatedAt: at, envelope: { ...base.envelope, shape, enqueuedAt: at }, input: { ...base.input,
+    parsed: { schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"), protectedBindings: [],
+      value: { mode: "search", emplId: eid, crmCheck: true, keepNonHdh: false, includeCrmDates: false } } } });
+}
+async function lookupOwners(replace?: (runs: RunRecordService) => Pick<RunRecordService, "list" | "read">) {
+  const w = await makeWorld(); worlds.push(w);
+  const runs = new RunRecordService({ database: w.database, clock: w.clock, ids: { uuid: randomUUID }, publishQueued() {} });
+  const unused = () => { throw new Error("not used by canonical Lookup identity reads"); };
+  const deps = createAssistantPluginDeps({ database: w.database, runs: replace?.(runs) ?? runs, runDetail: createRunDetailTestWorld().depsOf(w),
+    assertCurrent() {}, facts: () => assistantWorkflowFacts(DESCRIPTORS.filter(row => row.id === "person-lookup")), search: unused,
+    notifications: unused, workbooks: unused, attachment: unused });
+  return { w, runs, deps };
+}
+const readRefused = (code: string) => (error: unknown) => error instanceof AssistantToolRefusal && error.code === code;
+
+it("finds three exact canonical EIDs in shuffled queued single/member rows without a name checkpoint", async () => {
+  const o = await lookupOwners(), eids = ["10000002", "10812345", "10000001"];
+  const firstEid = eids[0]; assert.ok(firstEid);
+  const parent = queuedLookup(firstEid, undefined, "operation");
+  const rows = eids.map((eid, index) => queuedLookup(eid, `2026-11-08T12:00:0${index}.000Z`, index === 1 ? "operation-member" : "single"));
+  const member = rows[1]; assert.ok(member);
+  rows[1] = RunRecordSchema.parse({ ...member, envelope: { ...member.envelope, parent: { runId: parent.envelope.runId,
+    tracePrefix: parent.envelope.traceId, edgeId: "lookup-members" } } });
+  for (const row of [parent, rows[2], rows[0], rows[1]]) { assert.ok(row); assert.equal(o.w.database.authority.runs.enqueue(row).state, "inserted"); }
+  for (const index of [2, 0, 1]) {
+    const eid = eids[index], expected = rows[index]; assert.ok(eid && expected);
+    const found = o.deps.findLookupRuns(eid);
+    assert.deepEqual(found.map(row => [row.runId, row.version]), [[expected.envelope.runId, expected.version]]);
+    assert.ok(found[0]?.label.includes(`EID ${eid}`));
+    assert.equal(o.w.database.authority.runCheckpoints.listByItem(expected.envelope.workflow, expected.envelope.itemId).length, 0);
+  }
+  assert.deepEqual(o.deps.findLookupRuns(EXECUTOR_EID), []);
+  const selected = rows[0]; assert.ok(selected);
+  assert.ok(o.deps.runReferenceLabel(selected.envelope.runId, selected.version).includes(`EID ${eids[0]}`));
+  assert.throws(() => o.deps.runReferenceLabel(selected.envelope.runId, selected.version + 1), readRefused("ASSISTANT_READ_STALE"));
+});
+
+it("scans past the ascending first page and sorts genuine duplicate candidates newest first", async () => {
+  const old = queuedLookup("10000001", "2026-11-07T12:00:00.000Z"), latest = queuedLookup("10000001");
+  const parent = queuedLookup("10000001", undefined, "operation"), requests: unknown[] = [];
+  const o = await lookupOwners(runs => ({ read: id => runs.read(id), list(request) {
+    requests.push(request);
+    return request.cursor === undefined ? { state: "listed", rows: [...Array.from({ length: 999 }, () => parent), old],
+      cursor: CanonicalListRunsRequestSchema.shape.cursor.unwrap().parse({ generation: 1, offset: 1000, disposition: "live", workflow: "person-lookup" }) }
+      : { state: "listed", rows: [latest] };
+  } }));
+  assert.deepEqual(o.deps.findLookupRuns("10000001").map(row => row.runId), [latest.envelope.runId, old.envelope.runId]);
+  assert.deepEqual(requests, [{ workflow: "person-lookup", disposition: "live", limit: 1000 },
+    { workflow: "person-lookup", disposition: "live", limit: 1000, cursor: { generation: 1, offset: 1000, disposition: "live", workflow: "person-lookup" } }]);
+});
+
+it("refuses incomplete capped or stale page scans rather than claiming an EID was not found", async () => {
+  const parent = queuedLookup("10000001", undefined, "operation");
+  for (const mode of ["cap", "stale"] as const) {
+    const o = await lookupOwners(runs => ({ read: id => runs.read(id), list(request) {
+      if (mode === "stale" && request.cursor !== undefined) return { state: "refused", refusal: { reason: "cursor-stale" } };
+      return { state: "listed", rows: Array.from({ length: 1000 }, () => parent), cursor: CanonicalListRunsRequestSchema.shape.cursor.unwrap().parse({ generation: 1,
+        offset: (request.cursor?.offset ?? 0) + 1000, disposition: "live", workflow: "person-lookup" }) };
+    } }));
+    assert.throws(() => o.deps.findLookupRuns("10000002"), readRefused(mode === "cap" ? "ASSISTANT_LIMIT" : "ASSISTANT_READ_STALE"));
+  }
+});
+
+it("refuses wrong canonical schema bindings and malformed values without matching raw ingress", async () => {
+  const base = queuedLookup("10000001");
+  for (const parsed of [{ ...base.input.parsed, schemaHash: "a".repeat(64) },
+    { ...base.input.parsed, value: { mode: "search", emplId: "10000001" } }]) {
+    const row = RunRecordSchema.parse({ ...base, input: { ...base.input, parsed } });
+    const o = await lookupOwners(() => ({ read: () => ({ state: "present", run: row, disposition: "live" }), list: () => ({ state: "listed", rows: [row] }) }));
+    assert.throws(() => o.deps.findLookupRuns("10000001"), readRefused("ASSISTANT_READ_UNAVAILABLE"));
+    assert.throws(() => o.deps.runReferenceLabel(row.envelope.runId, row.version), readRefused("ASSISTANT_READ_UNAVAILABLE"));
+  }
+});
+
+it("withholds protected Lookup identities before extracting them and keeps the selected label protected-safe", async () => {
+  const base = queuedLookup("10000001");
+  const row = RunRecordSchema.parse({ ...base, input: { ...base.input, parsed: { ...base.input.parsed, schemaHash: "a".repeat(64),
+    protectedBindings: [{ kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: randomUUID() }] } } });
+  const o = await lookupOwners(() => ({ read: () => ({ state: "present", run: row, disposition: "live" }), list: () => ({ state: "listed", rows: [row] }) }));
+  assert.deepEqual(o.deps.findLookupRuns("10000001"), []);
+  assert.equal(o.deps.runReferenceLabel(row.envelope.runId, row.version), "Protected test subject");
+  const tool = createAssistantPlugins(o.deps).flatMap(plugin => plugin.tools).find(tool => tool.name === "find_people"); assert.ok(tool?.kind === "read");
+  const references = createAssistantReferenceTable(1);
+  const output = await tool.invoke({ query: references.issue("E", "10000001", "10000001") }, { references, signal: new AbortController().signal,
+    actorId: "local-operator", conversationId: randomUUID(), operatorText: "", assertCurrent() {}, assertRetainedCurrent() {} });
+  assert.deepEqual(output, { people: [], more: false });
+
+});
+
+it("keeps queued exact-EID relationships token-only in provider requests, including a selected member", async () => {
+  const o = await lookupOwners(), eids = ["10000002", "10812345", "10000001"], rows = eids.map(eid => queuedLookup(eid));
+  for (const row of rows) o.w.database.authority.runs.enqueue(row);
+  const f = await chatGptFixture(undefined, profiles.create);
+  try {
+    await f.connected();
+    const bodies: string[] = [], results: string[] = []; let step = 0;
+    f.setResponse(init => {
+      assert.ok(typeof init.body === "string"); const body = init.body; bodies.push(body);
+      const request = WireSchema.parse(JSON.parse(body)), last = request.input.at(-1);
+      if (last !== undefined && "type" in last && last.type === "function_call_output") {
+        const result = z.object({ people: z.array(z.object({ runs: z.array(z.object({ run: z.string() })).length(1) })).length(1) }).parse(JSON.parse(last.output));
+        const run = result.people[0]?.runs[0]; assert.ok(run); results.push(run.run);
+      }
+      const token = body.match(/\[\[E[1-3]\.g[0-9]+\]\]/gu)?.[step++];
+      const output = step <= 3 ? [{ type: "function_call", namespace: "relay", name: "find_people", call_id: `find_${step}`,
+        arguments: JSON.stringify({ query: token }), status: "completed" }] : [{ type: "message", role: "assistant", status: "completed",
+        content: [{ type: "output_text", text: results.join("; ") }] }];
+      return new Response(completedResponseStream(output, request.model, `resp_${step}`), { headers: { "Content-Type": "text/event-stream" } });
+    });
+    const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => o.deps.facts(),
+      plugins: () => createAssistantPlugins(o.deps), runReferenceLabel: (id, version) => o.deps.runReferenceLabel(id, version),
+      owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), selectedModel: () => ({
+        preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent() {} }), history: () => o.w.database.authority.assistantHistory });
+    const conversationId = randomUUID(), selected = rows[0]; assert.ok(selected);
+    service.history({ operation: "create", conversationId, title: "Lookup" });
+    const response = await service.respond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: `Find ${eids.join(", ")}`,
+      subjectRef: `run_${selected.envelope.runId}_${selected.version}` }, new AbortController().signal);
+    assert.ok(response.kind === "result" && response.result.state === "answered");
+    for (const eid of eids) { assert.ok(response.result.text.includes(`EID ${eid}`)); assert.equal(bodies.join().includes(eid), false); }
+    assert.equal(new Set(results).size, 3);
+    for (const row of rows) assert.equal(bodies.join().includes(row.envelope.runId), false);
+  } finally { await f.cleanup(); }
+});
+
+it("does not infer EIDs from names, match inputs, preview rows or raw ingress", async () => {
+  const base = queuedLookup("10000001");
+  const values = [{ mode: "search", name: "Synthetic Person", crmCheck: true, keepNonHdh: false, includeCrmDates: false },
+    { mode: "match", firstName: "Synthetic", lastName: "Person", dob: "01/15/2000", crmCheck: false, includeCrmDates: false }];
+  const rows = values.map(value => RunRecordSchema.parse({ ...base, input: { ...base.input, parsed: { ...base.input.parsed, value } } }));
+  const preview = queuedLookup("10000001", undefined, "preview");
+  const first = rows[0]; assert.ok(first);
+  const o = await lookupOwners(() => ({ read: () => ({ state: "present", run: first, disposition: "live" }),
+    list: () => ({ state: "listed", rows: [...rows, preview] }) }));
+  assert.deepEqual(o.deps.findLookupRuns(EXECUTOR_EID), []);
+  assert.deepEqual(o.deps.findLookupRuns("10000001"), []);
+  const label = o.deps.runReferenceLabel(base.envelope.runId, base.version);
+  assert.equal(label.includes("Synthetic Person"), false); assert.equal(label.includes("EID"), false);
+});
+
+it("uses the retained operator run number in local labels without a separate numbering read", async () => {
+  const row = RunRecordSchema.parse({ ...queuedLookup("10000001"), runNumber: 47 });
+  const o = await lookupOwners(() => ({ read: () => ({ state: "present", run: row, disposition: "live" }), list: () => ({ state: "listed", rows: [row] }) }));
+  assert.ok(o.deps.runReferenceLabel(row.envelope.runId, row.version).startsWith("Person Lookup #47 · EID 10000001"));
+  assert.equal(o.deps.findLookupRuns("10000001")[0]?.label, o.deps.runReferenceLabel(row.envelope.runId, row.version));
 });
