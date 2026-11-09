@@ -631,6 +631,7 @@ const MetaRowSchema = z.strictObject({
   profile_id: z.uuid().optional(),
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
+const TableColumnRowSchema = z.object({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
 // SQL max over no rows is NULL, meaning the item has no run attempt.
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
@@ -2021,7 +2022,7 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
         if (table === "deleted_runs") continue;
         const columns = database.prepare(`PRAGMA table_info(${table})`).all()
-          .map(raw => z.object({ name: z.string() }).parse(raw).name)
+          .map(raw => TableColumnRowSchema.parse(raw).name)
           .filter(name => name.endsWith("_json"));
         if (columns.length === 0) continue;
         const retained = table === "diagnostic_snapshots" ? " WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged'"
@@ -3250,20 +3251,29 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  readProfileResourceCustody() {
+  readApplicationActivity() {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
       return Object.freeze({
-        authorityGeneration: this.getMeta().authorityGeneration,
-        upgrades: readAuthorityUpgradeRecords(this.#database),
-        slots: this.authority.workerSlots.list(),
         runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw): PredecessorRunRecord => runRecordFromRow(raw)),
         writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
           .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
         duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()
           .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema)),
-        exclusiveSessionLeases: this.#database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow),
         pendingArtifacts: this.authority.artifactOutbox.listPending(),
+      });
+    });
+  }
+
+  readProfileResourceCustody() {
+    this.#assertOpen();
+    return this.#withReadSnapshot(() => {
+      return Object.freeze({
+        ...this.readApplicationActivity(),
+        authorityGeneration: this.getMeta().authorityGeneration,
+        upgrades: readAuthorityUpgradeRecords(this.#database),
+        slots: this.authority.workerSlots.list(),
+        exclusiveSessionLeases: this.#database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow),
         artifactReferences: this.readManagedArtifactReferences(),
         configSnapshots: this.#database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
           .map(row => this.#parseNativeRow("settings_snapshots", row, ConfigSnapshotRecordSchema)),

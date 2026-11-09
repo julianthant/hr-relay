@@ -3,10 +3,12 @@ import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/a
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
+const ArtifactReferenceContainerSchema = z.record(z.string(), z.unknown());
+
 export function containsDeletionArtifactReference(value: unknown, ref: ArtifactRef): boolean {
   if (value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some(item => containsDeletionArtifactReference(item, ref));
-  const record = z.record(z.string(), z.unknown()).parse(value);
+  const record = ArtifactReferenceContainerSchema.parse(value);
   if (record.artifactId === ref.id || record.sha256 === ref.sha256 || record.digest === ref.sha256 || record.sourceSha256 === ref.sha256) return true;
   if (typeof record.preparationJson === "string" && containsDeletionArtifactReference(JSON.parse(record.preparationJson), ref)) return true;
   return Object.values(record).some(item => containsDeletionArtifactReference(item, ref));
@@ -27,7 +29,7 @@ export function artifactReferencesIn(input: unknown): readonly ArtifactRef[] {
     if (attachment.success) add(ArtifactRefSchema.parse({ id: attachment.data.artifactId, sha256: attachment.data.digest,
       bytes: attachment.data.byteLength, mediaType: attachment.data.mediaType }));
     if (Array.isArray(value)) { for (const member of value) visit(member); return; }
-    const record = z.record(z.string(), z.unknown()).parse(value);
+    const record = ArtifactReferenceContainerSchema.parse(value);
     if (typeof record.preparationJson === "string") visit(JSON.parse(record.preparationJson));
     for (const member of Object.values(record)) visit(member);
   };
