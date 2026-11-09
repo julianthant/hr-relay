@@ -85,6 +85,12 @@
   .queue-sort.ds-select-control { width: 28px; padding-inline: 6px; justify-content: center; }
   .queue-sort [data-slot="select-value"], .queue-sort > svg:last-child { display: none; }
   .queue-status-label { display: none; }
+  .queue-status-trigger { width: 28px; min-width: 28px; padding-inline: 6px; justify-content: center; }
+  .queue-status-trigger > svg:last-child { display: none; }
+}
+
+@container actions (max-width: 400px) {
+  .dashboard-action-panel .operations-toolbar > [aria-label="Action panel controls"] { padding-inline: 8px; }
 }
 
 @container actions (max-width: 450px) {
