@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -639,5 +640,27 @@ for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, as
   await page.screenshot({ path: join(OUT, `command-unknown-notification-${theme}-${WIDTH}.png`) });
   await panel.getByRole("button", { name: /Pause all: outcome unknown/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// Logs cards: identity review, held and failure cards, image viewer, batch member Logs.
+const LOGS_OUT = process.env.LOGS_CARDS_OUT ?? OUT;
+for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: 1100 });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
+  const logs = page.locator(".dashboard-log-column");
+  const shot = async (name: string) => { await settle(page); await page.screenshot({ path: join(LOGS_OUT, `${name}-${theme}-${WIDTH}.png`) }); };
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  await page.locator(".notification-panel").getByRole("button", { name: /Run waiting for you/ }).click();
+  await expect(page.getByRole("heading", { name: /Morrow, Bea/ }).first()).toBeVisible();
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  await shot("logs-identity-review");
+  await logs.getByRole("button", { name: "Review", exact: true }).click().catch(() => undefined);
+  await shot("logs-identity-review-focus");
+  writeFileSync(join(LOGS_OUT, `logs-identity-review-${theme}.txt`), await logs.innerText());
   expect(errors).toEqual([]);
 });
