@@ -922,6 +922,30 @@ const DECISION_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
 
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+    ...[
+      "runOptions.mode.field", "runOptions.mode.label", "runOptions.mode.initial", "runOptions.mode.options[].value",
+      "runOptions.mode.options[].label", "runOptions.mode.options[].defaults[].value.text",
+      "runOptions.controls[].field", "runOptions.controls[].label", "runOptions.controls[].modes[]",
+      "runOptions.controls[].requires[]", "runOptions.controls[].options[]",
+      "runOptions.omittableSteps[].stepKey", "runOptions.omittableSteps[].label",
+      "runOptions.omittableSteps[].form.fields[].label", "runOptions.omittableSteps[].form.fields[].help",
+      "runOptions.omittableSteps[].form.fields[].values[]",
+      "runOptions.upload.fields[].label", "runOptions.upload.fields[].placeholder",
+      "runOptions.upload.fields[].options[].value", "runOptions.upload.fields[].options[].label",
+      "sessionStep.unavailableDelegations[].reason", "sessionStep.requirements[].id",
+      "sessionStep.requirements[].stepKey", "sessionStep.requirements[].stepTitle", "sessionStep.requirements[].delegationPath[].stepKey",
+      "steps[].id", "steps[].title", "steps[].pages.reason", "steps[].pages.items[].id", "steps[].pages.items[].title",
+      "steps[].pages.items[].lines[].id", "steps[].pages.items[].lines[].text",
+      "steps[].pages.items[].fields[].id", "steps[].pages.items[].fields[].label", "steps[].pages.items[].fields[].example",
+      "steps[].pages.items[].fields[].display.cases[].value", "steps[].pages.items[].fields[].display.cases[].text",
+      "steps[].pages.items[].fields[].options[]", "steps[].pages.items[].fields[].source.origin",
+      "steps[].pages.items[].fields[].sources[].value",
+      "steps[].pages.items[].fields[].source.detail", "steps[].pages.items[].fields[].source.read.page",
+      "steps[].pages.items[].fields[].source.read.field", "steps[].pages.items[].fields[].source.chain[].label",
+      "steps[].pages.items[].fields[].source.chain[].detail", "steps[].pages.items[].fields[].source.chain[].read.page",
+      "steps[].pages.items[].fields[].source.chain[].read.field", "steps[].decisions[].id", "steps[].decisions[].outcome",
+      "steps[].decisions[].label.text", "steps[].decisions[].label.reason",
+    ].map(path => ({ surface: "wire/workflow-explorer", path: `workflows[].reviewSpec.${path}`, origin: "repository-authored" })),
     ...([
       ["wire/run-detail", "decision."], ["wire/run-detail", "gate.decision."], ["wire/run-detail-section", "payload.decision."],
       ["wire/run-detail-section", "payload.value.decision."], ["wire/run-detail-section", "payload.referenceChoices[].resolution.decision."],
@@ -1947,6 +1971,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
     { module: "src/models/dashboard/diagnostic-bundle.ts", state: "audited", reason: "Diagnostic-bundle readback carries only verified attachment metadata and capture-time redaction facts" },
     { module: "src/models/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and semantic UI task links" },
+    { module: "src/models/dashboard/explorer-review-spec.ts", state: "audited", reason: "Embedded in the Explorer loopback surface; page, source, option and outcome text comes only from repository declarations and fictional examples." },
     { module: "src/models/dashboard/item-attempt-history.ts", state: "audited", reason: "the attempt-history wire serves retained per-item status and dates" },
     { module: "src/models/dashboard/native-path-picker.ts", state: "audited", reason: "the local native picker returns an operator-selected absolute pathname, never file contents" },
     { module: "src/models/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },

@@ -1,4 +1,4 @@
-import { OnbasePrepareImport } from "../../../../models/systems/onbase/import-document.js";
+import { OnbasePrepareImport } from "../../../../models/systems/onbase/stage-import.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { onbaseDriver } from "../driver-declaration.js";
 

@@ -1,4 +1,5 @@
-import { OnbaseVerifyImport, validateOnbaseImportVerdict } from "../../../../models/systems/onbase/import-document.js";
+import { validateOnbaseImportVerdict } from "../../../../models/systems/onbase/import-document.js";
+import { OnbaseVerifyImport } from "../../../../models/systems/onbase/verify-import.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import { onbaseDriver } from "../driver-declaration.js";
