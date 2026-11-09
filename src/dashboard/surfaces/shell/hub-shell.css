@@ -1,4 +1,4 @@
-.hub-icon { width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;background:transparent;color:var(--ui-secondary);flex:none;padding:0; }
+.hub-icon { width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--ui-secondary);flex:none;padding:0; }
 .hub-icon svg { width:16px;height:16px; }
 .hub-icon:hover,.hub-chat-title:hover { background:var(--ui-hover);color:var(--ui-primary); }
 .hub-icon:active,.hub-btn:active { transform:translateY(1px); }

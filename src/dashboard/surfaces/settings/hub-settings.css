@@ -48,7 +48,7 @@
 .settings-takeover .ds-field-label>span[aria-hidden="true"][class*="--ds-danger"] { display:none; }
 
 
-.settings-nav-header button { width:30px;height:30px;border-radius:999px; }
+.settings-nav-header button { width:30px;height:30px;border-radius:8px; }
 .settings-nav-header button svg { width:16px;height:16px; }
 .settings-credentials-page .settings-compact-form>.ds-body-section+.ds-body-section { margin-top:var(--ds-settings-section-gap); }
 @media (min-width:1024px) and (max-width:1150px) {

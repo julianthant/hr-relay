@@ -119,7 +119,7 @@
 .settings-takeover .ds-path-control > button { border: 0; box-shadow: none; background: var(--ui-hover); border-radius: var(--ds-radius-md); font-weight: 400; }
 .settings-takeover .ds-path-control > button:hover { background: var(--ui-table); }
 
-.queue-attention-toggle { width: 28px; min-width: 28px; height: 28px; border: 1px solid var(--ui-stroke); border-radius: 10px; background: var(--ui-panel); color: var(--ui-secondary); }
+.queue-attention-toggle { width: 28px; min-width: 28px; height: 28px; border: 1px solid var(--ui-stroke); border-radius: 8px; background: var(--ui-panel); color: var(--ui-secondary); }
 .queue-attention-toggle[data-selected] { background: color-mix(in srgb,var(--ui-info) 15%,var(--ui-panel)); border-color: color-mix(in srgb,var(--ui-info) 45%,var(--ui-stroke)); color: var(--ui-info); }
 
 
@@ -145,7 +145,7 @@ html[data-hub]:not([data-hub-input="pointer"]) .sessions-bar:has(.sessions-bar-t
 /* Hub paints a focused button's own fill. Keep the toggle clear so the bar tint reaches the icon group. */
 html[data-hub]:not([data-hub-input="pointer"]) .sessions-bar > button.sessions-bar-toggle.sessions-bar-toggle:focus-visible { background-color:transparent !important; }
 .sessions-bar-actions { background-color:transparent; }
-.sessions-bar-icon { width:28px; height:28px; padding:0; border:0; border-radius:10px; background:transparent; color:var(--ui-secondary); translate:none; transform:none; transition:background-color 120ms ease-out, color 120ms ease-out; }
+.sessions-bar-icon { width:28px; height:28px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--ui-secondary); translate:none; transform:none; transition:background-color 120ms ease-out, color 120ms ease-out; }
 .sessions-bar-icon:hover { background:var(--ds-surface-3); color:var(--ui-primary); }
 .sessions-bar-icon:active { background:var(--ui-stroke); translate:none; }
 .sessions-bar-icon:is([aria-expanded=true],[aria-pressed=true]) { background:var(--ui-hover); color:var(--ui-primary); }
