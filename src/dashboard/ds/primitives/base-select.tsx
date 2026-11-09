@@ -124,10 +124,10 @@ function SelectItem({
       </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator
         render={
-          <span className="pointer-events-none absolute right-2.5 flex size-4 items-center justify-center" />
+          <span className="ds-menu-indicator" />
         }
       >
-        <CheckIcon aria-hidden className="ds-menu-check !static !transform-none" />
+        <CheckIcon aria-hidden className="ds-menu-check" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )
