@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { parseRunWorkbookReference, WorkbookIdSchema, WorkbookRevisionSchema } from "../../dashboard/workbooks.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
-import { normalizeEidDigits } from "../../fields/cell-coercion.js";
+import { wholeCellEid } from "../../fields/cell-coercion.js";
 import { FingerprintSchema, IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { RosterRowFactsSchema } from "../../../rules/matching/roster-match.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -25,10 +25,9 @@ function rosterRows(reference: ReturnType<typeof parseRunWorkbookReference>) {
     const identity = canonicalJsonStringify([match.sheetId, match.rowId]);
     if (seen.has(identity)) throw new Error("ocr-roster-membership-invalid");
     seen.add(identity);
-    const eid = match.values.eid, name = match.values.fullName;
-    const eidText = typeof eid === "string" ? eid : typeof eid === "number" && Number.isSafeInteger(eid) && eid >= 0 ? String(eid) : "";
+    const name = match.values.fullName;
     return OcrRosterRowSchema.parse({ sourceRow: index + 1, sheetId: match.sheetId, rowId: match.rowId,
-      eid: CANONICAL_FIELDS.eid.schema.safeParse(normalizeEidDigits(eidText)).data ?? null,
+      eid: wholeCellEid(match.values.eid),
       name: name === null || typeof name === "string" && name.trim() === "" ? null : CANONICAL_FIELDS.fullName.schema.parse(name) });
   });
 }

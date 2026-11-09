@@ -1,6 +1,7 @@
 import { columnName } from './spreadsheet-editor-model.js';
 import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { fieldForSpreadsheetHeader, spreadsheetField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
+import { wholeCellEid } from '../../../models/fields/cell-coercion.js';
 
 export function spreadsheetHeaderRow(sheet: EditableSheet): number {
   const row = sheet.headerRow ?? 1;
@@ -69,7 +70,7 @@ export function spreadsheetRowsWithoutEid(document: EditableWorkbook): number {
     const column = sheet.columnBindings?.findIndex((binding, index) => binding.fieldId === 'eid' && !sheet.hidden.includes(index)) ?? -1;
     if (column < 0) return total;
     return total + sheet.rows.slice(spreadsheetHeaderRow(sheet)).filter(row => row.cells.some(cell => cellText(cell).trim())
-      && (!cellText(row.cells[column]).trim() || !spreadsheetValueMatches('eid', cellText(row.cells[column])))).length;
+      && wholeCellEid(cellText(row.cells[column])) === null).length;
   }, 0);
 }
 export function selectSpreadsheetColumns(document: EditableWorkbook): EditableWorkbook {

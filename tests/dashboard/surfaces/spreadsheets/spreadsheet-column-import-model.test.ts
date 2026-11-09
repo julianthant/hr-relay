@@ -133,8 +133,9 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(spreadsheetColumnErrors_m1({ ...pending, sheets: [{ ...pending.sheets[0], hidden: [0] }] }).length, 0);
   });
   it_m1('counts rows whose Employee ID is blank or unusable, skipping empty rows and unkept columns', () => {
-    const pending = prepareSpreadsheetColumns_m1(book([['UCPath ID', 'Legal Name'], ['10000001', 'Example, Avery'], ['pending', 'Example, Blake'], ['', 'Example, Casey'], ['', '']]));
-    assert_m1.equal(spreadsheetRowsWithoutEid(pending), 2);
+    const pending = prepareSpreadsheetColumns_m1(book([['UCPath ID', 'Legal Name'], ['10000001', 'Example, Avery'], ['pending', 'Example, Blake'], ['', 'Example, Casey'], ['note:10000002', 'Example, Dana'], [' 10000003 ', 'Example, Emery'], ['-10000004', 'Example, Finley'], ['10000005.5', 'Example, Gray'], ['10000006', 'Example, Harper'], ['', '']]));
+    Reflect.set(pending.sheets[0].rows[8].cells, 0, { value: 10000006.5 });
+    assert_m1.equal(spreadsheetRowsWithoutEid(pending), 6);
     assert_m1.equal(spreadsheetRowsWithoutEid({ ...pending, sheets: [{ ...pending.sheets[0], hidden: [0] }] }), 0);
   });
 });

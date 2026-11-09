@@ -25,11 +25,15 @@ describe("OCR captured workbook roster", () => {
     const numeric = reference(); numeric.snapshot.rows[0].matches[0].values.eid = 10000001;
     assert.equal(bindOcrRoster(bound(numeric), readAt).rows[0].eid, "10000001");
     assert.equal(numeric.snapshot.rows[0].matches[0].values.eid, 10000001);
-    for (const eid of [true, -10000001, 10000001.5, "invalid", "12345", "see note", { type: "date", value: readAt }]) {
+    for (const eid of [true, -10000001, 10000001.5, "invalid", "12345", "see note", "note:10000001", "10000001 (left)", "1000-0001", "-10000001", "10000001.5", { type: "date", value: readAt }]) {
       const unusable = reference(); Reflect.set(unusable.snapshot.rows[0].matches[0].values, "eid", eid);
       const rows = bindOcrRoster(bound(unusable), readAt).rows;
       assert.equal(rows[0].eid, null); assert.equal(rows[0].name, "Example, Avery"); assert.equal(rows[1].eid, "10000001");
     }
+  });
+  it("accepts a whole-cell EID with surrounding spaces", () => {
+    const padded = reference(); padded.snapshot.rows[0].matches[0].values.eid = " 10000001 ";
+    assert.equal(bindOcrRoster(bound(padded), readAt).rows[0].eid, "10000001");
   });
   it("treats a whitespace-only EID or name as missing", () => {
     const blank = reference(); Object.assign(blank.snapshot.rows[0].matches[0].values, { eid: " ", fullName: "  " });
