@@ -15,7 +15,7 @@ import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js"
 import { HubShell } from "../surfaces/shell/hub-shell.js";
 import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
-import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
+import { useInboxWiring, type InboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useApplicationLifecycle } from "../state/application-lifecycle-model.js";
@@ -45,7 +45,7 @@ SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
 import { StatusMockHost } from "../surfaces/settings/status-mock/status-mock.js";
-import { statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
+import { STATUS_MOCK_UNKNOWN_COMMAND, statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
 import { Banner,Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
@@ -62,7 +62,7 @@ ConfirmCommandDialog,
 type ActionTarget,
 type PendingCommand,
 } from "../surfaces/shared/actions/actions.js";
-import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
+import { CommandRecovery, recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
@@ -104,7 +104,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
 import type { NotificationReads } from "../surfaces/notifications/notification-rail-model.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
-import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
+import { withCommandNotices, type NotificationDestination, type NotificationItem } from "../surfaces/notifications/notifications-view-model.js";
 import {
 bulkSubjectsOf,
 composeBulkRunCommand,
@@ -1014,12 +1014,19 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
+  const shownRecovery: readonly CommandRecoveryEntry[] = statusMock() === "command-unknown" ? [...recoveryEntries, STATUS_MOCK_UNKNOWN_COMMAND] : recoveryEntries;
+  const commandNotices: readonly NotificationItem[] = shownRecovery.map(entry => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
+    detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "recovery", key: entry.inFlightKey } }));
+  const railNotifications = withCommandNotices(notifications, commandNotices);
+  const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => item.kind === "command" ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
+  const railInbox = workflowComposition.inbox === "served" ? { ...inbox, state: withCommandNotices(inbox.state, commandNotices), open: openInbox } : undefined;
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
+    if (destination.kind === "recovery") { setPendingRecovery(destination.key); opened(); return; }
     if (destination.kind === "settings") {
       leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
       return;
@@ -1156,7 +1163,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} reads={notificationReads} setReads={setNotificationReads} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={railNotifications} reads={notificationReads} setReads={setNotificationReads} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1190,7 +1197,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <>
           {}
           <CommandRecovery
-            entries={recoveryEntries}
+            entries={shownRecovery}
             pendingKey={pendingRecovery}
             onReview={setPendingRecovery}
             onReplay={(entry) => {

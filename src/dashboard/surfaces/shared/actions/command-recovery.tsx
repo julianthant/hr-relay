@@ -1,4 +1,4 @@
-import { Button, Dialog, DialogContent, DialogFooter, dsText } from "../../../ds/ui.js";
+import { Button, Dialog, DialogContent, DialogFooter, Notice, dsText } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export interface CommandRecoveryEntry {
@@ -7,6 +7,10 @@ export interface CommandRecoveryEntry {
   readonly targets: readonly { runId: string; title: string; expectedVersion: number }[];
   readonly detail?: string;
 }
+
+/** Shared by the sticky toast and its Priority notification so both name the command the same way. */
+export const recoveryTitle = (entry: CommandRecoveryEntry) => `${entry.label.replace(/ requested$/u, "")}: outcome unknown`;
+export const recoveryDetail = (entry: CommandRecoveryEntry) => `${entry.targets.length} ${entry.targets.length === 1 ? "run" : "runs"}`;
 
 /** A lost response remains recoverable even after its row leaves the queue. */
 export function CommandRecovery({ entries, pendingKey, onReview, onReplay }: {
@@ -17,15 +21,7 @@ export function CommandRecovery({ entries, pendingKey, onReview, onReplay }: {
 }) {
   const pending = entries.find(entry => entry.inFlightKey === pendingKey);
   return <>
-    {entries.length > 0 && <section
-      aria-label="Commands awaiting recovery"
-      className={cn(dsText.meta, "mx-[var(--ds-shell-inset)] mt-[var(--ds-shell-inset)] flex flex-wrap items-center gap-[var(--ds-space-base)] text-[color:var(--ds-fg-secondary)]")}
-    >
-      <span>Command outcome unknown. Review the original request to recover its result.</span>
-      {entries.map(entry => <Button key={entry.inFlightKey} variant="secondary" onClick={() => onReview(entry.inFlightKey)}>
-        Review {entry.label} ({entry.targets.length} {entry.targets.length === 1 ? "run" : "runs"})
-      </Button>)}
-    </section>}
+    {entries.map(entry => <Notice key={entry.inFlightKey} tone="warning" sticky title={recoveryTitle(entry)} description={recoveryDetail(entry)} action={{ label: "Review", onClick: () => onReview(entry.inFlightKey) }} />)}
     <Dialog open={pending !== undefined} onOpenChange={open => { if (!open) onReview(null); }}>
       {pending !== undefined && <DialogContent
         size="sm"

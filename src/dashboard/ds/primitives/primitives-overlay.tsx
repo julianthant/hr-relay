@@ -809,6 +809,8 @@ export interface DsToast {
   duration?: number;
   /** stays until its owner dismisses it or the operator closes it */
   sticky?: boolean;
+  /** One soft button at the right edge; it dismisses the toast, then runs. */
+  action?: { label: string; onClick: () => void };
 }
 
 interface ToastContextValue {
@@ -835,6 +837,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       manager.add({ id, title: input.title, description: input.description,
         type: input.tone === "danger" ? "error" : input.tone,
         timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 0 : 3000),
+        data: input.action === undefined ? undefined : { action: input.action },
       });
       return id;
     },
@@ -847,27 +850,35 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 /** A toast tied to the surface that renders it: shown while mounted, withdrawn when the state clears.
  * `sticky` is for a state the operator must act on elsewhere; otherwise it dismisses itself. Without a `ToastProvider` it renders inline. */
-export function Notice({ tone, title, description, sticky = false }: Pick<DsToast, "tone" | "title" | "description" | "sticky">) {
+export function Notice({ tone, title, description, sticky = false, action }: Pick<DsToast, "tone" | "title" | "description" | "sticky" | "action">) {
   const toasts = useContext(ToastContext);
+  const run = useRef(action?.onClick);
+  run.current = action?.onClick;
+  const label = action?.label;
   useEffect(() => {
     if (toasts === null) return;
-    const id = toasts.toast({ tone, title, description, sticky, duration: 6000 });
+    const id = toasts.toast({ tone, title, description, sticky, duration: 6000, action: label === undefined ? undefined : { label, onClick: () => run.current?.() } });
     return () => toasts.dismiss(id);
-  }, [toasts, tone, title, description, sticky]);
+  }, [toasts, tone, title, description, sticky, label]);
   if (toasts !== null) return null;
-  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span></div>;
+  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span>{action && <button type="button" onClick={action.onClick}>{action.label}</button>}</div>;
 }
 
 function ToastViewport() {
   const { toasts, close } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
-    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
-      onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
-      className={cn(inert && "pointer-events-none")}>
-      <BaseToastContent><BaseToastIcon type={item.type} />
-        <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
-      </BaseToastContent>
-    </BaseToast>)}
+    {toasts.map(item => {
+      const action = (item.data as { action?: NonNullable<DsToast["action"]> } | undefined)?.action;
+      return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
+        onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
+        className={cn(inert && "pointer-events-none")}>
+        <BaseToastContent><BaseToastIcon type={item.type} />
+          <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
+          {action && <Button size="sm" variant="secondary" className="shrink-0" onKeyDown={event => event.stopPropagation()}
+            onClick={event => { event.stopPropagation(); close(item.id); action.onClick(); }}>{action.label}</Button>}
+        </BaseToastContent>
+      </BaseToast>;
+    })}
   </BaseToastViewport>;
 }

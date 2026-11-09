@@ -2,10 +2,11 @@ import type { NotificationTarget } from "../../../models/notifications/notificat
 
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
-export type NotificationKind = "storage" | "chatgpt" | "run";
+export type NotificationKind = "storage" | "chatgpt" | "run" | "command";
 export type NotificationDestination = NotificationTarget
   | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
   | Readonly<{ kind: "settings"; section: "subscription" }>
+  | Readonly<{ kind: "recovery"; key: string }>
   | Readonly<{ kind: "none" }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
@@ -38,6 +39,11 @@ export function updateNotification(state: NotificationsState, id: string, contro
   return { ...state, items: state.items.map(item => item.id === id && item.read !== (control === "read") ? { ...item, read: control === "read" } : item) };
 }
 
+/** Commands whose outcome is unknown stay Priority until the operator recovers them. */
+export function withCommandNotices(state: NotificationsState, notices: readonly NotificationItem[]): NotificationsState {
+  return state.state === "ready" && notices.length > 0 ? { ...state, items: [...notices, ...state.items] } : state;
+}
+
 export function applyNotificationReads(state: NotificationsState, reads: Readonly<Record<string, boolean>>): NotificationsState {
   if (state.state !== "ready") return state;
   return { ...state, items: state.items.map(item => reads[item.id] === undefined || reads[item.id] === item.read ? item : { ...item, read: reads[item.id] }) };
@@ -45,6 +51,6 @@ export function applyNotificationReads(state: NotificationsState, reads: Readonl
 
 export const itemDay = (item: NotificationItem) => item.day ?? "Today";
 /** The grey tag on the title line: the workflow, or the system the notice is about. */
-export const itemSource = (item: NotificationItem) => item.kind === "storage" ? "Storage" : item.kind === "chatgpt" ? "ChatGPT" : item.workflow;
+export const itemSource = (item: NotificationItem) => item.kind === "storage" ? "Storage" : item.kind === "chatgpt" ? "ChatGPT" : item.kind === "command" ? "Commands" : item.workflow;
 /** Runs name the subject on the grey preview; the other notices carry their own sentence. */
 export const itemPreview = (item: NotificationItem) => item.kind === "run" ? `${item.subject} · ${item.detail}` : item.detail;
