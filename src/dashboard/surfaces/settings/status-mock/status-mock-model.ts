@@ -11,7 +11,6 @@ export const STATUS_MOCK_ACCOUNT = {
 /** Plan and limits are not served today (backend gap); the 5-hour limit frame is the one that has run out. */
 export const STATUS_MOCK_SUBSCRIPTION = {
   plan: "Plus plan",
-  appData: { stateRoot: "/Users/jordan.lee/Library/Application Support/Relay", artifactRoot: "/Users/jordan.lee/Library/Application Support/Relay/evidence" },
   limits: [{ label: "5-hour limit", resets: "2h 10m", left: 64 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
   limitReached: [{ label: "5-hour limit", resets: "1h 25m", left: 0 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
 } as const;
