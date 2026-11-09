@@ -113,11 +113,11 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
   const openRecords = useCallback(() => setRecordsVisible(true), [setRecordsVisible]);
   const decide = useCallback((_id: string, option: { id: string }) => { if (option.id === "retry-step") onRetry(); }, [onRetry]);
   const toolbar = useMemo(() => <span className="flex items-center gap-2">
-        {hasRecords && <Button ref={recordsButton} size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(reviewRun).length}</Button>}
-        {run.role === "person" && mockFailedStepKey(run) !== undefined && <IconButton size="sm" variant="outline" label="Retry" icon={<RotateCcw aria-hidden className="size-4" />} onClick={onRetry} />}
-        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
+        {hasRecords && <Button ref={recordsButton} size="md" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(reviewRun).length}</Button>}
+        {run.role === "person" && mockFailedStepKey(run) !== undefined && <IconButton size="md" variant="outline" label="Retry" icon={<RotateCcw aria-hidden className="size-4" />} onClick={onRetry} />}
+        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <Button size="md" onClick={onRerun}>Rerun</Button>}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
-          <PopoverTrigger asChild><IconButton size="sm" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
+          <PopoverTrigger asChild><IconButton size="md" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
           <PopoverContent title="Linked runs" align="end" width="md">
             <ul className="m-0 list-none space-y-1 p-0">{linked.map(item => <li key={item.id}>
               <button type="button" onClick={() => { setLinksOpen(false); onSelect(item.id); }} className={cn("flex min-h-10 w-full items-center gap-3 rounded-md px-2 py-2 text-left text-body hover:bg-ui-hover", dsFocus)}>
