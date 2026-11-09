@@ -31,12 +31,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
         await page.getByRole("button", { name: "Start a run", exact: true }).click();
         const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
-        const roster = dialog.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true });
-        expect((await roster.locator("svg").boundingBox())?.width).toBe(14);
-        expect((await roster.locator("svg").boundingBox())?.height).toBe(14);
-        await roster.press("Enter");
-        await expect(page.getByRole("menuitemradio")).toHaveCount(2);
-        await page.keyboard.press("Escape"); await expect(roster).toBeFocused();
+        await expect(dialog.getByRole("button", { name: "Add spreadsheet", exact: true })).toBeVisible();
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "contacts.pdf" : "manual-contacts.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         await expect(dialog).toContainText("Interactive runs go first.");

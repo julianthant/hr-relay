@@ -21,7 +21,6 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
 }) {
   const flow = mockWorkflow(workflowId);
   const mock = statusMock();
-  const statusMockPicker = workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-a" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options" || mock?.startsWith("run-sheets") === true);
   const [draft, setDraft] = useState<MockDraft>(() => editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)));
   const [stage, setStage] = useViewState("launchStage", source ? "Steps" : "Input");
   const chatGptBlocked = workflowId === "emergency-contact" && (mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options");
@@ -37,6 +36,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const error = fileError ?? (stage === "Steps" || index === stages.length - 1 ? mockDraftError(workflowId, draft) : mockDraftInputError(workflowId, draft)) ?? (workflowId === "oath-upload" ? mockOathDuplicate(runs, draft) : undefined);
   const pdf = draft.method === "pdf";
   const uploadOnly = workflowId === "oath-upload" && draft.uploadMode === "upload-only";
+  const spreadsheetPicker = pdf && flow.roster && !uploadOnly;
   const typedEntries = mockInputEntries(workflowId, draft);
   const steps = mockSelectableSteps(workflowId, draft);
   const preparation = mockOcrReadSteps(workflowId, draft);
@@ -46,7 +46,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   // Priority follows the run's size until the operator changes it: ticked for one person, unticked for several.
   const people = pdf ? draft.files.length : typedEntries.length;
   const priority = priorityTouched ? draft.priority === "interactive" : people <= 1;
-  const startDisabled = blocked || Boolean(error) || reading || (statusMockPicker && statusMockPicksBlocked(picks));
+  const startDisabled = blocked || Boolean(error) || reading || (spreadsheetPicker && statusMockPicksBlocked(picks));
   const advance = () => { if (startDisabled) return; if (last) onSubmit(workflowId, { ...draft, priority: priority ? "interactive" : "background" }, source?.id); else setStage(stages[index + 1]); };
   // Enter continues (or starts on the last step); Shift+Enter keeps its newline in a textbox. Buttons, links and open pickers keep Enter for themselves.
   // Listens on the document so Enter still works when focus fell back to the dialog after a step change.
@@ -105,14 +105,13 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </>)}
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
-            {(workflowId === "onbase" || flow.roster && !uploadOnly && !statusMockPicker) && <RunList label="Documents setup">
-              {flow.roster && !uploadOnly && !statusMockPicker && <RunListRow title="Roster" description="The spreadsheet Relay matches each scan against."><div className="w-[250px]"><ChoicePicker hideLabel label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} /></div></RunListRow>}
-              {workflowId === "onbase" && <RunListRow title="Document type" description="How OnBase files the imported pages."><div className="w-[250px]"><ChoicePicker hideLabel label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /></div></RunListRow>}
+            {workflowId === "onbase" && <RunList label="Documents setup">
+              <RunListRow title="Document type" description="How OnBase files the imported pages."><div className="w-[250px]"><ChoicePicker hideLabel label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /></div></RunListRow>
             </RunList>}
             {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
           {workflowId === "emergency-contact" && mock === "run-a" && <StatusMockReadiness frame="run-a" />}
-          {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options" || mock?.startsWith("run-sheets") === true) && <StatusMockRosterPicker picks={picks} onPicks={setPicks} />}
+          {spreadsheetPicker && mock !== "run-a" && <StatusMockRosterPicker picks={picks} onPicks={setPicks} />}
           {draft.method === "roster" && <RunList label="Spreadsheet"><RunListRow title="Spreadsheet" description="The library spreadsheet to download."><div className="w-[250px]"><ChoicePicker hideLabel label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} /></div></RunListRow></RunList>}
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}
           {workflowId === "work-study" && <RunList label="Dates"><RunListRow title="Effective date" description="The day the change takes effect."><div className="w-[200px]"><DateInput hideLabel label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} /></div></RunListRow></RunList>}
