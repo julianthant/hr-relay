@@ -1,5 +1,5 @@
 .dashboard-shell { --shell-rail-width: 264px; }
-.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: clamp(176px, calc(25vw - 128px), 232px); }
+.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: 312px; }
 .dashboard-shell .dashboard-workspace > main { margin-left: var(--shell-rail-width); }
 .dashboard-shell[data-settings-takeover="true"] .workspace-rail { display: none; }
 .dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { margin-left: 0; }
@@ -18,8 +18,11 @@
 @media (prefers-reduced-motion: reduce) { .dashboard-shell .settings-content { transition: none; } }
 .workspace-rail { position: absolute; inset: 0 auto 0 0; z-index: 30; width: var(--shell-rail-width); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--ui-stroke); background: var(--ds-surface-1); color: var(--ui-primary); pointer-events: none; }
 
-.workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (30px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
-.workspace-rail-header h2 { margin: 0; font-size: 23px; line-height: 1.4; font-weight: 500; }
+.workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (28px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
+.workspace-rail-header button, .workspace-rail-header .rail-notification-toggle { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
+.workspace-rail { --rail-hover-fill: color-mix(in srgb, var(--ds-fg) 8.5%, var(--ds-surface-1)); }
+.workspace-rail-header button:not([aria-pressed="true"]):hover, .workspace-rail-header button:not([aria-pressed="true"]):focus-visible { background: var(--rail-hover-fill); color: var(--ui-primary); }
+.workspace-rail-header h2 { margin: 0; font-size: 18px; line-height: 1.4; font-weight: 600; }
 .workspace-rail-body { display: flex; flex: 1; min-height: 0; flex-direction: column; pointer-events: auto; }
 
 .workspace-rail-footer { height: 48px; padding: 6px 16px; flex-shrink: 0; background: var(--ds-surface-1); pointer-events: auto; }
@@ -103,17 +106,6 @@
 .queue-attention-toggle { width: 28px; min-width: 28px; height: 28px; border: 1px solid var(--ui-stroke); border-radius: 10px; background: var(--ui-panel); color: var(--ui-secondary); }
 .queue-attention-toggle[data-selected] { background: color-mix(in srgb,var(--ui-info) 15%,var(--ui-panel)); border-color: color-mix(in srgb,var(--ui-info) 45%,var(--ui-stroke)); color: var(--ui-info); }
 
-.notification-tabs { flex: 1; min-height: 0; gap: 8px; }
-.notification-filter-bar { display: flex; align-items: center; gap: var(--ds-space-base); padding: 0 16px; }
-.notification-filter-bar .tabs__list-container { flex: 1; min-width: 0; background: transparent; border-bottom: 1px solid var(--ui-stroke); border-radius: 0; }
-.notification-filter-bar .tabs__list { width: 100%; background: transparent; border-radius: 0; padding: 0; }
-.notification-filter-bar .tabs__tab { flex: 1; min-width: 0; height: var(--ds-h-md); padding: 0 var(--ds-space-base); border-radius: 0; color: var(--ui-secondary); font-size: var(--ds-text-body); font-weight: 400; }
-.notification-filter-bar .tabs__tab[data-selected="true"] { color: var(--ui-primary); }
-.notification-filter-bar .tabs__indicator { top: auto; bottom: -1px; height: 2px; background: var(--ui-info); border-radius: 0; box-shadow: none; }
-.notification-category-filter { width: var(--ds-h-md); height: var(--ds-h-md); padding: 0; }
-.notification-category-filter[data-filtered="true"] { background: color-mix(in srgb,var(--ui-info) 14%,transparent); color: var(--ui-info); }
-.notification-tab-panel { display: flex; min-height: 0; flex: 1; padding: 0; }
-.notification-row { margin-top: 4px; }
 
 .settings-search-results { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .settings-search-result { display: flex; align-items: flex-start; min-height: 52px; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--ui-primary); font-size: 14px; }

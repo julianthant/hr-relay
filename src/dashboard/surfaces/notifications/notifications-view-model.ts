@@ -2,12 +2,20 @@ import type { NotificationTarget } from "../../../models/notifications/notificat
 
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
+export type NotificationKind = "storage" | "chatgpt" | "run";
 export type NotificationDestination = NotificationTarget
-  | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>;
+  | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
+  | Readonly<{ kind: "settings"; section: "subscription" }>
+  | Readonly<{ kind: "none" }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
+  kind?: NotificationKind;
+  /** Priority: still needs the operator. Resolved items fall into their day group. */
+  priority?: boolean;
+  /** Day group label once out of Priority: Today, Yesterday, a weekday or a date. */
+  day?: string;
 }>;
 export type NotificationPinned = Readonly<{ id: string; title: string; detail: string }>;
 export type NotificationsState = Readonly<{ state: "ready"; items: readonly NotificationItem[]; pinned: readonly NotificationPinned[] }>
@@ -34,3 +42,9 @@ export function applyNotificationReads(state: NotificationsState, reads: Readonl
   if (state.state !== "ready") return state;
   return { ...state, items: state.items.map(item => reads[item.id] === undefined || reads[item.id] === item.read ? item : { ...item, read: reads[item.id] }) };
 }
+
+export const itemDay = (item: NotificationItem) => item.day ?? "Today";
+/** The grey tag on the title line: the workflow, or the system the notice is about. */
+export const itemSource = (item: NotificationItem) => item.kind === "storage" ? "Storage" : item.kind === "chatgpt" ? "ChatGPT" : item.workflow;
+/** Runs name the subject on the grey preview; the other notices carry their own sentence. */
+export const itemPreview = (item: NotificationItem) => item.kind === "run" ? `${item.subject} · ${item.detail}` : item.detail;

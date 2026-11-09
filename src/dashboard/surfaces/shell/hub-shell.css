@@ -56,7 +56,6 @@
 .hub-modal .hub-btn.primary { border-color:var(--hub-primary-border); }
 .hub-modal h2 { letter-spacing:normal; }
 
-html[data-hub] .workspace-rail-header button:not([aria-pressed="true"]):hover { background:transparent; }
 
 .hub-assistant-slot[hidden] { display:none; }
 .hub-assistant-slot > #hub-panel-assistant { border:0;box-shadow:none;width:100%; }

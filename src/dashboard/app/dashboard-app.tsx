@@ -102,6 +102,7 @@ import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js"
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
+import type { NotificationReads } from "../surfaces/notifications/notification-rail-model.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
 import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
@@ -141,6 +142,9 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 
+
+/** Read once at load: the route rewrites the URL after first render. */
+const NOTIFICATION_SCENARIO = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
 
 export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const profileClient = useDashboardClient();
@@ -999,8 +1003,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
   const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
-  const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
-  const notifications = useWorkspaceNotifications(notificationScenario, {
+  const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
+  const notifications = useWorkspaceNotifications(NOTIFICATION_SCENARIO, {
     day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: mockRuns,
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
@@ -1011,6 +1015,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const notificationNavigation = useRef(0);
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
+    if (destination.kind === "settings") {
+      leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
+      return;
+    }
+    if (destination.kind === "none") return;
     if (source === "mock" && destination.kind === "run") {
       const validate = () => {
         const context = notificationContext.current;
@@ -1028,7 +1037,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         if (!setActiveWorkflowId(row.workflowId)) return;
         setLaunchOpen(false); exitQueueSelection(); onFilter(["all"]);
         setRoute({ ...routeWithoutTakeovers(routeRef.current), day: destination.day, start: false, run: destination.runId, section: "logs",
-          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined, notifications: false } });
+          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined } });
         opened();
         requestAnimationFrame(() => {
           const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(destination.runId)}"]`);
@@ -1087,7 +1096,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const run = context.runs.find(item => item.id === destination.runId)!;
       setRailPreview(run.workflowId); setRailRun(run.id);
       if (destination.records) setRailReviewId(run.id);
-      setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined, notifications: false } }));
+      setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined } }));
       opened();
       requestAnimationFrame(() => {
         const queueId = mockQueueId(destination.runId);
@@ -1139,7 +1148,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} reads={notificationReads} setReads={setNotificationReads} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}

@@ -4,7 +4,7 @@ import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { notificationsSample } from "../../../../src/dashboard/surfaces/notifications/notifications-fixture.js";
-import { useNotificationRailModel } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
+import { useNotificationRailModel, type NotificationReads } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import type { NotificationDestination, NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -24,12 +24,13 @@ function Harness({ notifications, onOpenNotification }: {
 }) {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("existing notice");
-  const model = useNotificationRailModel({ notifications, filter: "all", setOpen, setNotice, onOpenNotification });
-  const reads = model.state.state === "ready" ? Object.fromEntries(model.state.items.map(item => [item.id, item.read])) : {};
+  const [reads, setReads] = useState<NotificationReads>({});
+  const model = useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification });
+  const readMarks = model.state.state === "ready" ? Object.fromEntries(model.state.items.map(item => [item.id, item.read])) : {};
   const completed = model.state.state === "ready" ? model.state.items.find(item => item.title === "Run completed") : undefined;
   return createElement("div", {
     "data-open": String(open), "data-notice": notice, "data-unread": String(model.unread),
-    "data-ping": String(model.ping), "data-ping-item": model.pingItem?.id ?? "", "data-reads": JSON.stringify(reads),
+    "data-ping": String(model.ping), "data-ping-item": model.pingItem?.id ?? "", "data-reads": JSON.stringify(readMarks),
   }, [
     createElement("button", { key: "read", onClick: () => model.onControl("sample-verification", "read") }, "Mark read"),
     createElement("button", { key: "unread", onClick: () => model.onControl("sample-completed", "unread") }, "Mark unread"),

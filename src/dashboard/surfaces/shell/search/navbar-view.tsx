@@ -1,8 +1,8 @@
 import { useViewState } from "../../../app/navigation/view-route-model.js";
-import { shortcutActionForEvent, useShortcutPreferences } from "../../settings/navigation/keyboard-preferences-model.js";
+import { shortcutActionForEvent, shortcutLabel, useShortcutPreferences } from "../../settings/navigation/keyboard-preferences-model.js";
 import { useEffect, useId, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { Button, DatePicker, Dialog, DialogContent, dsFocus } from "../../../ds/ui.js";
+import { Button, DatePicker, Dialog, DialogContent, Kbd, Tooltip, dsFocus } from "../../../ds/ui.js";
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from "../../../ds/primitives/command.js";
 import { cn } from "../../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
@@ -32,7 +32,7 @@ export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (re
     return () => window.removeEventListener("keydown", onKey);
   }, [preferences, setOpen]);
   return <div className="rail-search">
-    <button ref={trigger} type="button" aria-label="Search runs" title="Search runs" aria-haspopup="dialog" aria-expanded={open} className={iconButton} onClick={() => setOpen(true)}><Search aria-hidden className="size-4" /></button>
+    <Tooltip side="bottom" content={<span className="flex items-center gap-2">Search{preferences.bindings.search[0] && <Kbd>{shortcutLabel(preferences.bindings.search[0])}</Kbd>}</span>}><button ref={trigger} type="button" aria-label="Search runs" aria-haspopup="dialog" aria-expanded={open} className={iconButton} onClick={() => setOpen(true)}><Search aria-hidden className="size-4" /></button></Tooltip>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent title="Search runs" description="Search recent runs by name, workflow or status." size="lg" className="navbar-search-dialog" onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }}>
         <Command className="navbar-search-command" label="Search runs" value={activeResult} onValueChange={setActiveResult} shouldFilter={false} loop>

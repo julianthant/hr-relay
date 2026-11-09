@@ -1,0 +1,32 @@
+/* Notification centre: the sidebar body while the bell is pressed. Rows sit on the workflow rail's 8px insets. */
+.notification-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 8px 8px 16px; }
+.notification-panel-scroll { margin-inline: -8px; padding-inline: 8px; display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 20.5px; overflow-y: auto; overscroll-behavior: contain; }
+.notification-group-head { display: flex; height: 20px; align-items: center; justify-content: space-between; padding: 0 2px 0 0; margin-bottom: 5.25px; }
+.notification-group-head button { width: 28px; height: 28px; margin-block: -4px; border-radius: 8px; color: var(--ui-muted); }
+.notification-group-head button:hover, .notification-group-head button[data-popup-open] { background: var(--rail-hover-fill); color: var(--ui-primary); }
+.notification-group-label { margin: 0; padding: 0 8px; font-size: 13px; font-weight: 400; line-height: 20px; color: var(--ui-muted); }
+.notification-list { margin: 0; padding: 0; list-style: none; }
+.notification-list li + li { margin-top: 1px; }
+.notification-item {
+  display: flex; width: 100%; flex-direction: column; box-sizing: border-box; padding: 3.75px 4px 7.25px 8px;
+  border: 0; border-radius: 10px; background: transparent; text-align: left; font-weight: 400; color: var(--ui-primary); cursor: pointer;
+}
+.notification-row { position: relative; }
+.notification-item:hover, .notification-item:focus-visible, .notification-row:hover .notification-item, .notification-row:focus-within .notification-item { background: var(--rail-hover-fill); outline: none; }
+.notification-item[aria-current] { background: var(--ds-surface-selected); }
+.notification-item-head { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.notification-item-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 25px; }
+.notification-item-tag { max-width: 45%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--ui-muted); }
+/* The dot sits in the 16px between the sidebar edge and the row text, centred on the title line. */
+.notification-unread-dot { position: absolute; left: -3px; top: 13.5px; width: 6px; height: 6px; border-radius: 9999px; background: var(--ui-info); pointer-events: none; }
+.notification-item-actions { position: absolute; top: 50%; right: 2px; display: none; align-items: center; gap: 4px; transform: translateY(-50%); }
+.notification-row:hover .notification-item-actions, .notification-row:focus-within .notification-item-actions { display: flex; }
+.notification-row:hover .notification-item-tag, .notification-row:focus-within .notification-item-tag { visibility: hidden; }
+.notification-item-actions button { color: var(--ui-muted); }
+.notification-item-actions button:hover { background: var(--rail-hover-fill); color: var(--ui-primary); }
+.notification-item-line { display: -webkit-box; overflow: hidden; padding-right: 56px; font-size: 12px; line-height: 16px; color: var(--ui-muted); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.notification-empty { margin: 0; padding: 7px 8px 0; font-size: 13px; line-height: 20px; color: var(--ui-muted); opacity: .7; }
+.notification-notice { margin: 0; padding: 8px 8px 0; border-top: 1px solid var(--ui-stroke); font-size: 12px; line-height: 16px; color: var(--ui-secondary); }
+.rail-notification-toggle[aria-pressed="true"] { border-radius: 8px; background: color-mix(in srgb, var(--ui-info) 16%, transparent); color: var(--ui-info); }
+.notification-menu { width: 172px; }
+.notification-group-head.justify-end { justify-content: flex-end; }
