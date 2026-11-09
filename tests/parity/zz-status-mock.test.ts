@@ -9,7 +9,8 @@ import { STATUS_MOCK_IDS, type StatusMockId } from "../../src/dashboard/surfaces
 // Design mock renders for the status pages that leave Settings; output goes to the gitignored .work folder.
 const OUT = process.env.STATUS_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/settings-status-mock";
 const THEMES = (process.env.STATUS_MOCK_THEMES ?? "light").split(",") as ("light" | "dark")[];
-const WIDTH = Number(process.env.STATUS_MOCK_WIDTH ?? 1440);
+const WIDTH = Number(process.env.STATUS_MOCK_WIDTH ?? 1280);
+const HEIGHT = 720;
 const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
@@ -23,8 +24,6 @@ test.afterAll(async () => { await server.close(); });
 
 async function settle(page: Page) {
   await page.mouse.move(1, 1);
-  const grow = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
-  if (grow > 0) await page.setViewportSize({ width: WIDTH, height: 900 + grow });
   await page.waitForTimeout(500);
 }
 
@@ -34,7 +33,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   for (const id of STATUS_MOCK_IDS.filter(item => ONLY === undefined || ONLY.includes(item))) {
-    await page.setViewportSize({ width: WIDTH, height: 900 });
+    await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     const settings = SETTINGS_PAGE[id];
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${settings ? `&settings=${settings}` : ""}&statusMock=${id}`);
     if (settings) await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
@@ -50,6 +49,13 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     // Toasts stack collapsed; hover expands them so all three show.
     if (id === "toasts") { await page.getByRole("region", { name: "Notifications" }).getByText("Saved data needs attention").hover(); await page.waitForTimeout(600); }
     await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}.png`) });
+    // Settings pages scroll inside the window; a second full-window frame shows what sits below the fold.
+    const scroller = page.locator("#dashboard-settings-content");
+    if (settings && await scroller.evaluate(node => node.scrollHeight - node.clientHeight > 8)) {
+      await scroller.evaluate(node => { node.scrollTop = node.scrollHeight; });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}-more.png`) });
+    }
   }
   expect(errors).toEqual([]);
 });
