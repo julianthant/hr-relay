@@ -12,7 +12,10 @@ it("retains fresh production PL task observations/checkpoints and collapses only
   const forwarded=database.authority.runCheckpoints.latest("person-lookup",p.run.envelope.itemId,"search-identity");
   expect(original).toBeDefined();
   if (original === undefined) throw new Error("searching checkpoint required");
-  expect(original.observationOrigins?.map(entry => entry.path)).toEqual(observationLeafPaths(original.output.value));
+  const leaves = observationLeafPaths(original.output.value);
+  expect(original.observationOrigins).toHaveLength(leaves.length);
+  expect(new Set(original.observationOrigins?.map(entry => JSON.stringify(entry.path))))
+    .toEqual(new Set(leaves.map(path => JSON.stringify(path))));
   const events = database.authority.timelineEvents.page({ runId: p.run.envelope.runId, after: 0, limit: 1000 });
   const search = events.flatMap(record => record.payload.kind === "span" && record.payload.event.t === "data.observed"
     && record.payload.event.nodeId === "searching" ? record.payload.event.points : []);

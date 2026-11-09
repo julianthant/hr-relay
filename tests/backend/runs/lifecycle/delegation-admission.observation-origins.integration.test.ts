@@ -69,7 +69,7 @@ it("authenticates every observation against its native event and producer before
           assert.ok(checkpoint);
           return { ...record, payload: { ...record.payload, event: SpanEventWireSchema.parse({
             ...event,
-            ...(invalid === "node" ? { nodeId: "foreign-node" } : invalid === "task" ? { taskId: "foreign/task" }
+            ...(invalid === "node" ? { nodeId: "foreign-node" } : invalid === "task" ? { taskId: "ocr/read-approved-records" }
               : invalid === "attempt" ? { attempt: event.attempt + 1 } : invalid === "span" ? { spanPath: `${event.spanPath}-foreign` }
                 : { points: event.points.map(point => ({ ...point, origins: observationLeafPaths(readObservationPath(checkpoint.output.value, point.field.split(".")))
                   .map(path => ({ path: [...path], origin: { ...resolveObservationOrigin(event, point, path), spanPath: "foreign-span" } })) })) }),

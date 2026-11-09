@@ -22,7 +22,7 @@ function collector(spanPath = "pl-180000-aaaa/searching#2.3") {
  return { ...created, points };
 }
 function observedEvent(points: readonly RecordedDataPoint[]) {
- const event = SpanEventWireSchema.parse({ t: "data.observed", ts: points[0].recordedAt, observedAt: points[0].recordedAt,
+ const event = SpanEventWireSchema.parse({ t: "data.observed", pid: 1, ts: points[0].recordedAt, observedAt: points[0].recordedAt,
    workflow: execution.workflowId, runId: execution.runId, traceId: execution.traceId, attempt: execution.attempt, spanPath, nodeId: execution.nodeId, taskId: execution.taskId,
    points: redactObservedDataPoints(SearchPersonOrg.id, points) });
  if (event.t !== "data.observed") throw new Error("observation required");
