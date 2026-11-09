@@ -1842,16 +1842,16 @@ th.ds-text-caps {
 .ds-date-picker {
   --foreground: var(--ds-control-fg);
   --muted: var(--ds-fg-muted);
-  --field: var(--ds-control-bg);
+  --field: var(--ds-picker-bg);
   --field-foreground: var(--ds-control-fg);
   --field-placeholder: var(--ds-fg-muted);
-  --field-hover: var(--ds-control-bg-hover);
+  --field-hover: var(--ds-picker-bg-hover);
   --field-focus: var(--ds-control-bg);
   --field-shadow: none;
   --field-border-width: 1px;
-  --field-border: var(--ds-border-strong);
-  --field-border-hover: var(--ds-border-strong);
-  --field-border-focus: var(--ds-focus-ring);
+  --field-border: var(--ds-soft-border);
+  --field-border-hover: var(--ds-soft-border);
+  --field-border-focus: var(--ds-field-focus-edge);
   --focus: var(--ds-focus-ring);
   --accent: var(--ui-info);
   --accent-foreground: var(--ds-accent-fg);
@@ -1862,7 +1862,7 @@ th.ds-text-caps {
   background: var(--field);
   color: var(--field-foreground);
   border-width: var(--field-border-width);
-  border-radius: var(--ds-radius-md);
+  border-radius: 8px;
   --tw-shadow: 0 0 #0000;
 }
 
@@ -1876,7 +1876,7 @@ th.ds-text-caps {
 .ds-date-picker .date-picker__trigger { border-radius: 6px; }
 .ds-date-picker .date-picker__trigger:hover { background: var(--ds-surface-3); }
 .ds-date-picker--toolbar .date-input-group {
-  height: var(--ds-h-toolbar);
+  height: var(--ds-h-md);
 }
 
 .ds-date-navigation {

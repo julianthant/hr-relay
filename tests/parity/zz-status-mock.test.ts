@@ -58,17 +58,17 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       if (id === "rail-min-bell") { await page.getByRole("button", { name: /^Notifications/ }).click(); await expect(page.getByRole("button", { name: "Collapse sidebar", exact: true })).toBeVisible(); }
     } else if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Start run", exact: true })).toBeVisible();
     } else if (id === "run-person-lookup" || id === "run-person-lookup-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).last().click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await expect(dialog.getByText("Workflow preview")).toBeVisible();
       await dialog.getByRole("textbox").first().fill(id === "run-person-lookup" ? "10000001" : "10000001; 10000002; Lee, Jordan");
       await expect(dialog.getByText("Parsed input")).toBeVisible();
     } else if (id === "run-options-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await dialog.getByRole("textbox").first().fill("48216, 48220");
       await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -79,7 +79,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         await page.getByRole("button", { name: "Rerun", exact: true }).click();
         await expect(page.getByRole("dialog").getByText(/\d+ of \d+ included/)).toBeVisible();
       } else {
-        await page.getByRole("button", { name: "Start a run", exact: true }).click();
+        await page.getByRole("button", { name: "Start run", exact: true }).click();
         const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
         await dialog.getByRole("textbox").first().fill("10555001");
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -104,7 +104,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     } else if (id.startsWith("run")) {
       // The way the operator opens it: Emergency Contact in the rail, then Start a run, then choose the scan.
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await dialog.locator('input[type="file"]').setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
       await expect(dialog.getByText("Scan_0412.pdf").first()).toBeVisible();
@@ -228,7 +228,7 @@ test("run dialog keys", async ({ page }) => {
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
   await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
-  await page.getByRole("button", { name: "Start a run", exact: true }).click();
+  await page.getByRole("button", { name: "Start run", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
   const box = dialog.getByRole("textbox").first();
   await expect(dialog.getByText("Enter to continue")).toHaveCount(0);
@@ -258,7 +258,7 @@ test("run dialog priority", async ({ page }) => {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: workflow, exact: true }).last().click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByRole("textbox").first().fill(text);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -286,7 +286,7 @@ test("customize steps every workflow", async ({ page }) => {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await rail.getByRole("button", { name, exact: true }).last().click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await expect(dialog.getByText("Workflow preview"), `${name}: redesigned dialog`).toBeVisible();
     const file = dialog.locator('input[type="file"]');
@@ -320,7 +320,7 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await rail.getByRole("button", { name, exact: true }).last().click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await expect(dialog.getByText("Workflow preview")).toBeVisible();
     await settle(page);
