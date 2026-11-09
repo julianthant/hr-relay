@@ -23,7 +23,7 @@ export function RunSection({ title, description, children }: { title: string; de
   return <section aria-label={title} className="flex min-w-0 flex-col gap-3"><RunHeading title={title} description={description} />{children}</section>;
 }
 
-/** One row: a title with its grey line directly under it on the left, controls vertically centred on the right. `check` puts an include toggle at the far right, `locked` a disabled on toggle with a small lock, `lead` an icon. */
+/** One row: a title with its grey line directly under it on the left, controls vertically centred on the right. `check` puts an include toggle at the far right, `locked` a disabled on toggle with a small lock before the title, `lead` an icon. */
 export function RunListRow({ title, description, check, locked, lead, dimmed, below, children }: {
   title: ReactNode; description?: ReactNode;
   check?: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean };
@@ -33,11 +33,12 @@ export function RunListRow({ title, description, check, locked, lead, dimmed, be
   const toggle = check
     ? <Switch hideLabel label={`Include ${name}`} checked={check.checked} disabled={check.disabled} onCheckedChange={check.onChange} className="!min-h-0 !w-auto !py-0" />
     : locked
-      ? <><Lock aria-label="Required" role="img" className="size-3 text-[color:var(--ds-fg-muted)]" /><Switch hideLabel label={`${name} (required)`} checked disabled onCheckedChange={() => undefined} className="!min-h-0 !w-auto !py-0" /></>
+      ? <Switch hideLabel label={`${name} (required)`} checked disabled onCheckedChange={() => undefined} className="!min-h-0 !w-auto !py-0" />
       : null;
   return <div className={cn("ds-run-row flex flex-col justify-center gap-2 border-b border-ui-stroke last:border-b-0", description ? "min-h-[var(--ds-row-h-2)] py-[var(--ds-row-pad-y)]" : "min-h-[var(--ds-row-h-1)] py-[var(--ds-row-pad-y-1)]", dimmed && "opacity-50")}>
     <div className="flex items-center justify-between gap-4">
       <div className="flex min-w-0 items-center gap-[var(--ds-space-base)]">
+        {locked && !check && <Lock aria-label="Required" role="img" className="size-3.5 shrink-0 text-[color:var(--ds-fg-muted)]" />}
         {lead}
         <div className="min-w-0"><div className={TITLE}>{title}</div>{description && <div className={NOTE}>{description}</div>}</div>
       </div>
