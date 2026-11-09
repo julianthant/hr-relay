@@ -662,6 +662,13 @@ for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page
   const open = async (name: string | RegExp) => { await queue.getByText(name).first().click(); await page.waitForTimeout(400); };
   if (wanted("identity")) { await open("Waiting on identity review"); await shot("logs-identity"); }
   if (wanted("held")) { await open("EID 10333015"); await shot("logs-held"); }
+  if (wanted("viewer")) {
+    await open("EID 10333015");
+    await logs.getByRole("button", { name: /Enlarge screenshot/ }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await shot("logs-viewer");
+    await page.keyboard.press("Escape");
+  }
   if (wanted("failed")) { await open("EID 10555001"); await shot("logs-failed"); }
   if (wanted("parked")) { await open("EID 10777012"); await shot("logs-parked"); }
   expect(errors).toEqual([]);

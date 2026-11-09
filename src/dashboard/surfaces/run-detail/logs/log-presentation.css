@@ -20,8 +20,8 @@
 .log-capture-group--browsers figcaption { padding: 7px 9px; font-size: 12px; }
 .log-image-error { display: flex; min-height: 112px; width: 100%; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 12px; font-size: 12px; color: var(--ui-danger); }
 .log-image-error span { max-width: 360px; }
-.log-viewer-dialog { width: calc(100vw - 48px); max-width: 1200px; height: min(858px, calc(100vh - 48px)); max-height: calc(100vh - 48px); background: var(--ui-panel); }
-.log-viewer-dialog > header { align-items: center; padding: 12px 17px; }
+.log-viewer-dialog { width: calc(100vw - 48px); max-width: 1200px; height: auto; max-height: calc(100vh - 48px); background: var(--ui-panel); }
+.log-viewer-dialog > header { align-items: center; padding: 12px 16px; }
 .log-viewer-dialog > header h2 { font-size: 14px; line-height: 21px; }
 .log-viewer { display: grid; grid-template-columns: 184px minmax(0, 1fr); min-height: 0; flex: 1; }
 .log-viewer--single { grid-template-columns: minmax(0, 1fr); }
@@ -33,12 +33,12 @@
 .log-capture-tab strong { display: block; margin-top: 6px; font-size: 12px; font-weight: 500; }
 .log-capture-tab > span { display: block; font-size: 12px; color: var(--ui-secondary); }
 .log-image-workspace { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
-.log-viewer-toolbar { display: flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--ui-stroke); }
-.log-sizing { display: flex; align-items: center; padding: 2px; border: 1px solid var(--ui-stroke); border-radius: 6px; }
-.log-sizing button[aria-pressed="true"] { background: var(--ui-table); box-shadow: 0 1px 2px color-mix(in srgb, var(--ui-primary) 8%, transparent); }
-.log-sizing button { padding-inline: 6px; font-size: 12px; }
-.log-zoom { min-width: 32px; font-size: 12px; text-align: center; color: var(--ui-secondary); font-variant-numeric: tabular-nums; }
-.log-dimensions { margin-left: auto; font-size: 9px; color: var(--ui-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.log-viewer-dialog > header button { width: 28px; height: 28px; border-radius: 8px; }
+.log-viewer-toolbar fieldset { flex: none; }
+.log-viewer-toolbar fieldset span { white-space: nowrap; }
+.log-viewer-toolbar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 8px 16px; border-bottom: 1px solid var(--ui-stroke); }
+.log-zoom { min-width: 40px; font-size: var(--text-body); text-align: center; color: var(--ui-primary); font-variant-numeric: tabular-nums; }
+.log-dimensions { margin-left: auto; font-size: var(--text-caption); color: var(--ui-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .log-image-panes { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 0; min-width: 0; }
 .log-image-panes--compare { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .log-image-pane { display: flex; min-height: 0; min-width: 0; flex-direction: column; }
@@ -49,7 +49,7 @@
 .log-image-canvas { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; padding: 16px; }
 .log-image-stage { position: relative; flex-shrink: 0; }
 .log-viewer-image { position: absolute; left: 50%; top: 50%; max-width: none; box-shadow: 0 4px 16px color-mix(in srgb, var(--ui-primary) 12%, transparent); }
-.log-viewer-caption { display: flex; align-items: center; gap: 10px; padding: 10px 17px; border-top: 1px solid var(--ui-stroke); font-size: 12px; }
+.log-viewer-caption { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--ui-stroke); font-size: var(--text-body); color: var(--ui-secondary); }
 .log-viewer-caption label { display: flex; align-items: center; gap: 7px; margin-left: auto; color: var(--ui-muted); }
 .log-viewer-caption .ds-select-control { width: 250px; max-width: 100%; }
 .log-capture-open:focus-visible, .log-capture-tab:focus-visible, .log-image-viewport:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
@@ -79,7 +79,7 @@
 .log-decision-footer > span { color: var(--ui-muted); font-size: var(--text-body); }
 .log-decision-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .log-decision-loading { display: flex; flex-direction: column; gap: 10px; }
-@media (max-width: 1100px) { .log-viewer-toolbar { gap: 3px; padding-inline: 8px; } .log-viewer-toolbar button { padding-inline: 4px; } .log-capture-group--browsers { gap: 8px; } }
+@media (max-width: 1100px) { .log-viewer-toolbar { gap: 4px; padding-inline: 12px; } .log-capture-group--browsers { gap: 8px; } }
 @media (prefers-reduced-motion: reduce) { .log-capture-expand { transition: none; } }
 .log-decision-actions button { min-height: 28px; height: 28px; padding-inline: 11px; font-size: 12px; line-height: 18px; }
 
