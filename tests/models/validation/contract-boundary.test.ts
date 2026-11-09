@@ -2,10 +2,26 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractCollectionFieldLeaves, contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../src/models/validation/contract-boundary.js";
+import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractCollectionFieldLeaves, contractCollectionFieldOptions, contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../src/models/validation/contract-boundary.js";
 
 const paths = (schema: z.core.$ZodType): readonly string[] =>
   contractSchemaLeaves(schema).map((leaf) => leaf.path);
+
+it("accepts composite source paths without inventing scalar options or accepting missing fields", () => {
+  const cell = z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.string() }),
+    z.strictObject({ state: z.literal("absent"), reason: z.enum(["blank", "unreadable"]) }),
+  ]);
+  const schema = z.strictObject({ employee: z.strictObject({ name: cell }), rows: z.array(z.strictObject({ cell })),
+    choice: z.union([z.enum(["active", "inactive"]), z.literal("pending")]), open: z.union([z.string(), z.literal("")]) });
+  for (const path of ["employee", "employee.name", "employee.name.value", "rows", "rows.cell", "open"]) {
+    assert.equal(contractCollectionFieldOptions(schema, path, "review source"), undefined, path);
+  }
+  assert.deepEqual(contractCollectionFieldOptions(schema, "employee.name.state", "review source"), ["absent", "present"]);
+  assert.deepEqual(contractCollectionFieldOptions(schema, "rows.cell.reason", "review source"), ["blank", "unreadable"]);
+  assert.deepEqual(contractCollectionFieldOptions(schema, "choice", "review source"), ["active", "inactive", "pending"]);
+  assert.throws(() => contractCollectionFieldOptions(schema, "employee.missing", "review source"), /review source references unknown schema field employee\.missing/u);
+});
 
 it("derives collection field vocabularies without expanding the ordinary boundary census", () => {
   const schema = z.strictObject({ rows: z.array(z.strictObject({ cells: z.array(z.union([

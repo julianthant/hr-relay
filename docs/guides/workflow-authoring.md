@@ -192,6 +192,10 @@ its ordered `chain` can refer to earlier reads in the same workflow. Every decla
 needs a label when the group supplies review metadata. Compilation rejects unknown, ambiguous or
 out-of-step references.
 
+Source paths may name structured values such as a Kuali field's present/absent object. Those
+references remain intact; automatic dropdown options require a complete finite scalar vocabulary
+for every source of the field.
+
 The backend derives `reviewSpec` from these groups, existing run surfaces, omission forms, task
 session declarations, graph policies and declared failure codes. Control kinds and options use only
 the input alternatives admitted by each control's declared modes. Register each normalized failure

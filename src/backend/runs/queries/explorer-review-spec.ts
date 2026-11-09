@@ -1,7 +1,7 @@
 import type { ExplorerNodeWire } from "../../../models/dashboard/explorer.js";
 import { ExplorerReviewSpecSchema, type ExplorerReviewDecision, type ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { contractCollectionFieldLeaves, contractSchemaLeavesForModes } from "../../../models/validation/contract-boundary.js";
+import { contractCollectionFieldOptions, contractSchemaLeavesForModes } from "../../../models/validation/contract-boundary.js";
 import { WorkflowStepReviewSchema } from "../../../models/workflow/review-spec.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import type { ExplorerModuleView } from "./explorer.js";
@@ -151,25 +151,26 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
             const sources = field.transactionFields.map(reference => {
               const node = runtimeNodes.find(node => node.id === reference.nodeId);
               if (node?.kind !== "transaction") throw new Error(`workflow ${module.descriptor.id} review field ${field.id} requires transaction source ${reference.nodeId}`);
-              const leaf = contractCollectionFieldLeaves(node.prepare.uses[reference.kind]).find(leaf => leaf.path === reference.fieldPath);
-              if (leaf === undefined) throw new Error(`workflow ${module.descriptor.id} review field ${field.id} names unknown transaction field ${reference.nodeId}/${reference.fieldPath}`);
-              return { binding: { ...reference, arm: "prepare" as const, taskId: node.prepare.uses.id }, leaf };
+              const options = contractCollectionFieldOptions(node.prepare.uses[reference.kind], reference.fieldPath,
+                `workflow ${module.descriptor.id} review transaction field ${field.id} source ${reference.nodeId}`);
+              return { binding: { ...reference, arm: "prepare" as const, taskId: node.prepare.uses.id }, options };
             });
             const options = field.display !== undefined ? field.display.cases.map(entry => entry.text)
-              : sources.some(source => source.leaf.options === undefined) ? [] : [...new Set(sources.flatMap(source => source.leaf.options ?? []))];
+              : sources.some(source => source.options === undefined) ? [] : [...new Set(sources.flatMap(source => source.options ?? []))];
             return { id: field.id, label: field.label, ...(field.example === undefined ? {} : { example: field.example }),
               ...(field.display === undefined ? {} : { display: field.display }), ...(options.length === 0 ? {} : { options }),
               sources: sources.map(source => source.binding), source: field.source };
           }
           const operator = group.operatorFields?.find(candidate => candidate.label === field.operatorField && candidate.visibility !== "logs");
           if (operator === undefined) throw new Error(`workflow ${module.descriptor.id} review field ${field.id} has no visible operator field ${field.operatorField}`);
-          const options = operator.display === undefined ? [...new Set(operator.sources.flatMap(source => {
+          const sourceOptions = operator.sources.map(source => {
             const node = runtimeNodes.find(candidate => candidate.id === source.nodeId);
             if (node?.kind !== "task") throw new Error(`workflow ${module.descriptor.id} review field ${field.id} requires task source ${source.nodeId}`);
-            const leaf = contractCollectionFieldLeaves(node.uses[source.kind]).find(candidate => candidate.path === source.fieldPath);
-            if (leaf === undefined) throw new Error(`workflow ${module.descriptor.id} review field ${field.id} names unknown source field ${source.nodeId}/${source.fieldPath}`);
-            return leaf.options ?? [];
-          }))] : operator.display.cases.map(entry => entry.text);
+            return contractCollectionFieldOptions(node.uses[source.kind], source.fieldPath,
+              `workflow ${module.descriptor.id} review field ${field.id} source ${source.nodeId}`);
+          });
+          const options = operator.display !== undefined ? operator.display.cases.map(entry => entry.text)
+            : sourceOptions.some(options => options === undefined) ? [] : [...new Set(sourceOptions.flatMap(options => options ?? []))];
           return { id: field.id, label: operator.label, ...(operator.example === undefined ? {} : { example: operator.example }),
             ...(operator.display === undefined ? {} : { display: operator.display }),
             ...(options.length === 0 ? {} : { options }), sources: operator.sources, source: field.source };

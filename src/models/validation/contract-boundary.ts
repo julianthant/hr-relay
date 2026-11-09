@@ -441,3 +441,8 @@ function vocabularyOf(
 export function contractCollectionFieldLeaves(schema: z.core.$ZodType): readonly ContractSchemaLeaf[] {
   return Object.freeze([...indexLeaves(relativeLeaves(schema, ALWAYS, [], true)).values()]);
 }
+
+export function contractCollectionFieldOptions(schema: z.core.$ZodType, path: string, owner: string): readonly string[] | undefined {
+  assertSchemaOffersCollectionPath(schema, path, owner);
+  return contractCollectionFieldLeaves(schema).find(leaf => leaf.path === path)?.options;
+}

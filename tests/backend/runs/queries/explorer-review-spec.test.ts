@@ -10,11 +10,60 @@ import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { compileWorkflow, composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
+import { separationsWorkflow } from "../../../../src/workflows/separations/workflow.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 
 const clock = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const hash = FingerprintSchema.parse("c".repeat(64));
 function workflows() { return buildWorkflowExplorer(explorerQueryDeps(clock, hash)).workflows; }
+
+it("preserves structured Kuali sources without offering their descendant states as field options", () => {
+  const separation = workflows().find(workflow => workflow.id === "separations"); assert.ok(separation);
+  const step = separation.reviewSpec.steps.find(step => step.id === "kuali-extraction"); assert.ok(step?.pages.state === "authored");
+  const page = step.pages.items.find(page => page.id === "separation-document"); assert.ok(page);
+  for (const [label, fieldPath] of [["Employee", "employee.name"], ["Employee ID", "employee.eid"]]) {
+    const field: (typeof page.fields)[number] | undefined = page.fields.find(field => field.label === label); assert.ok(field, label);
+    assert.deepEqual(field.sources, [{ nodeId: "document", kind: "output", fieldPath }]);
+    assert.equal(field.options, undefined);
+  }
+});
+
+it("preserves composite transaction fields and leaves their vocabulary open", () => {
+  const deps = explorerQueryDeps(clock, hash);
+  const original = deps.modules.find(module => module.descriptor.id === "separations"); assert.ok(original);
+  const field = { id: "finalization-values", label: "Finalization values",
+    transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables" }],
+    source: { origin: "Reviewed finalization", detail: "The complete reviewed form values.", chain: [] } } satisfies WorkflowStepReview["pages"][number]["fields"][number];
+  const definition = { ...separationsWorkflow, steps: separationsWorkflow.steps.map(([group, entries]) =>
+    [group.key !== "kuali-finalization" || group.review === undefined ? group : { ...group, review: { ...group.review,
+      pages: group.review.pages.map(page => page.id === "kuali-document" ? { ...page, fields: [...page.fields, field] } : page) } }, entries] as const) };
+  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
+  const workflow = buildWorkflowExplorer({ ...deps, modules: [module] }).workflows[0]; assert.ok(workflow);
+  const step = workflow.reviewSpec.steps.find(step => step.id === "kuali-finalization"); assert.ok(step?.pages.state === "authored");
+  const served = step.pages.items.flatMap(page => page.fields).find(field => field.id === "finalization-values"); assert.ok(served);
+  assert.deepEqual(served.sources, [{ nodeId: "finalize-kuali", arm: "prepare", taskId: "kuali/stage-separation-finalization", kind: "input", fieldPath: "variables" }]);
+  assert.equal(served.options, undefined);
+});
+
+it("keeps combined operator sources open when only one source has a finite vocabulary", () => {
+  const deps = explorerQueryDeps(clock, hash);
+  const original = deps.modules.find(module => module.descriptor.id === "separations"); assert.ok(original);
+  const definition = { ...separationsWorkflow, steps: separationsWorkflow.steps.map(([group, entries]) => {
+    if (group.key !== "kuali-extraction" || group.review === undefined) return [group, entries] as const;
+    return [{ ...group, operatorFields: [...group.operatorFields ?? [], { label: "Combined identity", sources: [
+      { nodeId: "document", kind: "output" as const, fieldPath: "employee.name" },
+      { nodeId: "document", kind: "output" as const, fieldPath: "employee.name.state" },
+    ] }], review: { ...group.review, pages: group.review.pages.map(page => page.id !== "separation-document" ? page : { ...page,
+      fields: [...page.fields, { id: "combined-identity", operatorField: "Combined identity",
+        source: { origin: "Kuali", detail: "The structured identity and its read state.", chain: [] } }] }) } }, entries] as const;
+  }) };
+  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
+  const workflow = buildWorkflowExplorer({ ...deps, modules: [module] }).workflows[0]; assert.ok(workflow);
+  const step = workflow.reviewSpec.steps.find(step => step.id === "kuali-extraction"); assert.ok(step?.pages.state === "authored");
+  const field = step.pages.items.flatMap(page => page.fields).find(field => field.label === "Combined identity"); assert.ok(field);
+  assert.equal(field.sources.length, 2);
+  assert.equal(field.options, undefined);
+});
 
 it("serves every readable definition with exact ordered steps and declared failure outcomes", () => {
   const entries = workflows();
