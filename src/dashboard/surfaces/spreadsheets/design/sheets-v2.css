@@ -1,0 +1,13 @@
+/* Import dialog source pane: 200ms slide in the switch's direction with an edge fade. */
+@keyframes sv2-in-right { from { transform: translateX(60%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sv2-in-left { from { transform: translateX(-60%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sv2-out-left { from { transform: none; opacity: 1; } to { transform: translateX(-60%); opacity: 0; } }
+@keyframes sv2-out-right { from { transform: none; opacity: 1; } to { transform: translateX(60%); opacity: 0; } }
+.sv2-in-right { animation: sv2-in-right 200ms ease-out both; }
+.sv2-in-left { animation: sv2-in-left 200ms ease-out both; }
+.sv2-out-left { animation: sv2-out-left 200ms ease-out both; }
+.sv2-out-right { animation: sv2-out-right 200ms ease-out both; }
+.sv2-height { transition: height 200ms ease-out; }
+@media (prefers-reduced-motion: reduce) { :is(.sv2-in-right, .sv2-in-left, .sv2-out-left, .sv2-out-right) { animation: none; } .sv2-height { transition: none; } }
+html[data-motion=off] :is(.sv2-in-right, .sv2-in-left, .sv2-out-left, .sv2-out-right) { animation: none; }
+html[data-motion=off] .sv2-height { transition: none; }

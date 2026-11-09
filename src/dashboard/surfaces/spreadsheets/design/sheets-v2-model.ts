@@ -5,6 +5,7 @@ export interface VersionEntry { readonly n: number; readonly at: string; readonl
 export interface Sheet {
   readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly pinned: boolean;
   readonly sharePoint: string | null; readonly from: { readonly id: string; readonly version: number } | null;
+  readonly workflow?: string; readonly run?: string;
   readonly createdAt: string; readonly updatedAt: string; readonly versions: readonly VersionEntry[];
   readonly mapping: Readonly<Record<FieldKey, string | null>>; readonly dataset: 'roster' | 'i9';
 }
@@ -43,13 +44,14 @@ const SHAREPOINT: readonly Sheet[] = [
     versions: [sync(2, '2026-10-22T17:00'), sync(1, '2026-09-22T10:00')] }),
 ];
 // A run's spreadsheet is named by its queue code, exactly as the queue card shows it.
+const WORKFLOW_BY_PREFIX: Readonly<Record<string, string>> = { EC: 'Emergency Contact', PL: 'Person Lookup', SP: 'Separations', OB: 'Onboarding' };
 const run = (code: string, from: Sheet, at: string, tags: readonly string[]): Sheet =>
-  base(`run-${code}`, code, { tags, from: { id: from.id, version: from.versions[0].n }, createdAt: at, updatedAt: at, versions: [v(1, at, 'Created by a run')] });
+  base(`run-${code}`, code, { workflow: WORKFLOW_BY_PREFIX[code.slice(0, 2)], run: code, tags, from: { id: from.id, version: from.versions[0].n }, createdAt: at, updatedAt: at, versions: [v(1, at, 'Created by a run')] });
 const [ROSTER, I9] = PINNED;
 const CREATED_ALL: readonly Sheet[] = [
-  run('EC51820377', ROSTER, '2026-11-08T14:40', ['HR', 'Fall']),
+  run('EC51820377', ROSTER, '2026-11-08T14:40', ['HR', 'Fall', '2026', 'Student', 'Payroll']),
   run('PL33065442', I9, '2026-11-07T19:31', ['I-9']),
-  base('applicants', 'Student applicants', { tags: ['HR', 'Fall', '2026', 'Student', 'Payroll'], createdAt: '2026-11-01T17:00', updatedAt: '2026-11-01T17:00' }),
+  base('applicants', 'Student applicants', { tags: ['Fall'], createdAt: '2026-11-01T17:00', updatedAt: '2026-11-01T17:00' }),
 ];
 const CREATED_MORE: readonly Sheet[] = [
   run('SP20481136', ROSTER, '2026-11-07T00:22', ['HR']), run('EC51773902', ROSTER, '2026-11-05T22:40', ['HR']),
@@ -66,7 +68,9 @@ export const initialSheets = (scenario: Scenario): readonly Sheet[] =>
 
 export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Created' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Created';
 export const newestFirst = (sheets: readonly Sheet[]): readonly Sheet[] => sheets.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-export const allTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(sheet => sheet.tags))].toSorted();
+/** A run's workflow is an automatic tag, always first. */
+export const tagsOf = (sheet: Sheet): readonly string[] => sheet.workflow ? [sheet.workflow, ...sheet.tags] : sheet.tags;
+export const allTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(tagsOf))].toSorted();
 
 /** Merge preview: Employee ID decides which rows exist; the numbers are fixed fixtures. */
 export const mergePreview = (target: Sheet): { added: number; updated: number } => ({ added: 12, updated: target.id === 'i9' ? 5 : 3 });
@@ -91,4 +95,6 @@ export const guessColumn = (key: FieldKey, headers: readonly string[]): string |
   return headers.find(header => pattern.test(header)) ?? null;
 };
 
-export const IMPORT_FILE = { name: 'Contacts export.xlsx', suggested: 'Contacts export', rows: 398, headers: ['Employee ID', 'Full name', 'Work email', 'Department', 'Work phone'] };
+export const IMPORT_FILE = { name: 'Contacts export.xlsx', suggested: 'Contacts export', rows: 398, size: '42 KB' };
+export const IMPORT_DATASET: Dataset = { headers: ['Employee ID', 'Full name', 'Contact address', 'Department', 'Work phone'],
+  rows: Array.from({ length: 8 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: `contact${i}@example.org` }, { text: dept[i % 3] }, { text: `555-01${String(i).padStart(2, '0')}` }]) };

@@ -15,6 +15,7 @@ for (const theme of ["light", "dark"] as const) {
     test.setTimeout(300_000);
     const errors: string[] = [];
     page.on("pageerror", error => { errors.push(error.message); console.log(`PAGEERROR ${error.message.slice(0, 300)}`); });
+    page.setDefaultTimeout(10_000);
     mkdirSync(OUT, { recursive: true });
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
@@ -45,7 +46,7 @@ for (const theme of ["light", "dark"] as const) {
         await page.keyboard.press("Escape"); await expect(page.getByRole("listitem", { name: "I-9 tracker", exact: true })).toHaveCount(0); await shotPage("list-filter");
       },
       "list-search": async () => { await open(); await page.getByRole("searchbox", { name: "Search spreadsheets" }).fill("roster"); await expect(page.getByRole("listitem", { name: "I-9 tracker", exact: true })).toHaveCount(0); await shot("list-search"); },
-      "list-tags": async () => { await open(); await page.getByRole("button", { name: /^\d+ more tags/u }).hover(); await expect(page.getByRole("tooltip")).toBeVisible(); await shot("list-tags-tooltip"); },
+      "list-tags": async () => { await open(); await page.getByRole("button", { name: /^\d+ more tags/u }).first().hover(); await expect(page.getByRole("tooltip")).toBeVisible(); await shot("list-tags-tooltip"); },
       menu: async () => { await open(); await menu("Contact roster"); await shot("menu-sharepoint"); await page.keyboard.press("Escape"); await menu("I-9 tracker"); await shot("menu-created"); },
       many: async () => {
         await open({ relaySheetsScenario: "many" }); await shotPage("many");
@@ -69,11 +70,15 @@ for (const theme of ["light", "dark"] as const) {
       "import-file": async () => {
         await open(); await page.getByRole("button", { name: "Import", exact: true }).click(); await expect(dialog()).toBeVisible(); await shot("import-file-empty");
         await dialog().locator('input[type="file"]').setInputFiles(file); await dialog().getByRole("textbox", { name: "Add a tag" }).fill("HR"); await page.keyboard.press("Enter"); await shot("import-file");
-        await dialog().getByText("SharePoint", { exact: true }).click(); await expect(dialog().getByRole("button", { name: "Choose file" })).toHaveCount(0); await dialog().getByRole("textbox", { name: "Workbook link" }).fill("https://example.sharepoint.com/sites/hr/x.xlsx"); await shot("import-sharepoint");
+        await dialog().getByText("SharePoint", { exact: true }).click(); await expect(dialog().getByRole("button", { name: "Choose file" })).toHaveCount(0); await dialog().getByRole("textbox", { name: "SharePoint workbook link" }).fill("https://example.sharepoint.com/sites/hr/x.xlsx"); await shot("import-sharepoint");
+      },
+      "code-link": async () => {
+        await open(); await page.getByRole("button", { name: "EC51820377, open run logs", exact: true }).click();
+        await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0); await shot("code-link");
       },
       "import-columns": async () => {
         await open(); await page.getByRole("button", { name: "Import", exact: true }).click(); await dialog().locator('input[type="file"]').setInputFiles(file);
-        await dialog().getByRole("button", { name: "Next", exact: true }).click(); await expect(dialog().getByText("Step 2 of 2")).toBeVisible(); await shot("import-columns");
+        await dialog().getByRole("button", { name: "Next", exact: true }).click(); await expect(dialog().getByRole("button", { name: "Back", exact: true })).toBeVisible(); await shot("import-columns");
         await dialog().getByRole("button", { name: "Add to library", exact: true }).click(); await expect(dialog()).toHaveCount(0); await expect(page.getByRole("listitem", { name: "Contacts export", exact: true })).toBeVisible(); await shotPage("import-added");
       },
       link: async () => {
