@@ -513,14 +513,14 @@ export function Switch({
         "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",
         checked
           ? "ds-switch-control-checked border-transparent bg-[var(--ds-accent)]"
-          : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
+          : "border-transparent bg-[var(--ui-stroke-control)]",
         dsFocus,
         dsMotion.fast,
         )}><HeroSwitch.Thumb className={cn(
-        "ds-switch-thumb block shrink-0 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
+        "ds-switch-thumb block shrink-0 rounded-full shadow-[0_1px_2px_rgb(0_0_0/0.3)] transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
         checked
           ? "ds-switch-thumb-checked bg-[var(--ds-accent-fg)]"
-          : "bg-[var(--ds-fg-muted)]",
+          : "bg-[var(--ds-body-switch-thumb-bg)]",
         )} /></HeroSwitch.Control>
         <span className={cn("ds-switch-copy flex min-w-0 flex-1 flex-col", hideLabel && "sr-only")}>
           <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>

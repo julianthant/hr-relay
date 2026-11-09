@@ -1565,7 +1565,7 @@ th.ds-text-caps {
 }
 
 .ds-body-scope .ds-switch-row:not([data-selected="true"]) .ds-switch-control {
-  background-color: var(--ds-surface-2);
+  background-color: var(--ui-stroke-control);
 }
 
 .ds-body-scope .ds-switch-row[data-selected="true"] .ds-switch-thumb {

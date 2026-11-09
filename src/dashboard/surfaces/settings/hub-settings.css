@@ -1,4 +1,4 @@
-.dashboard-shell .settings-takeover > nav.settings-panel-nav { width:244px;padding:24px 14px;gap:0;background:var(--ui-panel); }
+.dashboard-shell .settings-takeover > nav.settings-panel-nav { width:244px;padding:24px 14px;gap:0;background:var(--ui-canvas); }
 .settings-nav-header { padding:0 8px;min-height:30px;height:30px;margin-bottom:15px; }
 .settings-nav-header h2 { font-size:20px;font-weight:600; }
 .settings-nav-search { margin:0 5px 15px;width:calc(100% - 10px); }

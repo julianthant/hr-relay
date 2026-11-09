@@ -3,11 +3,11 @@
   --hub-fast-duo-ink: #fff;
   --hub-focus-fill: #d6d6d6;
   --hub-focus-ink: #151515;
-  --hub-primary-border: #747474;
-  --hub-primary: #202020;
-  --hub-primary-ink: #fafafa;
-  --hub-primary-hover: #343434;
-  --hub-switch: #3b82f6;
+  --hub-primary-border: var(--ui-info);
+  --hub-primary: var(--ui-info);
+  --hub-primary-ink: var(--ds-accent-fg);
+  --hub-primary-hover: color-mix(in srgb, var(--ui-info) 88%, var(--ds-accent-fg));
+  --hub-switch: var(--ui-info);
   --hub-shadow: 0 8px 32px #0002;
   --hub-panel-shadow: 0 4px 16px #0002;
   --hub-dialog-shadow: 0 20px 60px #0003;

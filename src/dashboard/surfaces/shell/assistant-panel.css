@@ -3,7 +3,7 @@
 #hub-panel-assistant .hub-icon svg{width:16px;height:16px}
 #hub-panel-assistant .hub-btn{min-height:32px;padding:5px 12px;border:1px solid var(--ui-stroke);border-radius:8px;background:var(--ui-panel);font-size:12px;font-weight:500;white-space:nowrap}
 #hub-panel-assistant .hub-btn:hover{background:var(--ui-hover)}
-#hub-panel-assistant .hub-btn.primary{background:#202020;color:#fafafa;border-color:#202020}
+#hub-panel-assistant .hub-btn.primary{background:var(--hub-primary);color:var(--hub-primary-ink);border-color:var(--hub-primary)}
 #hub-panel-assistant .hub-btn.danger{background:var(--ui-danger);color:var(--ui-panel)}
 #hub-panel-assistant .hub-plain{border:0;background:transparent;border-radius:8px;text-align:left}
 #hub-panel-assistant .hub-icon:active,#hub-panel-assistant .hub-btn:active{transform:translateY(1px)}
@@ -46,7 +46,7 @@
 #hub-panel-assistant .hub-card h3{background:var(--ui-table);margin:0 -12px 12px;padding:9px 12px}
 #hub-panel-assistant .hub-resolved svg{width:14px;height:14px}
 #hub-panel-assistant .hub-caption{font-size:11px}
-#hub-panel-assistant [data-action=approve].primary, .hub-assistant-detail .hub-btn.primary{border:1px solid #747474}
+#hub-panel-assistant [data-action=approve].primary, .hub-assistant-detail .hub-btn.primary{border:1px solid var(--hub-primary-border)}
 #hub-panel-assistant .hub-spinner{display:inline-block;width:10px;height:10px;flex:none;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:middle;margin-right:5px;animation:hub-spin .8s linear infinite}
 #hub-panel-assistant .hub-chat-title{border:0;background:transparent;border-radius:8px;padding:4px 6px;min-height:30px}
 #hub-panel-assistant .hub-chat-title>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -82,7 +82,7 @@ html[data-motion=off] :is(#hub-panel-assistant,.hub-assistant-menu,.hub-assistan
 @media(prefers-reduced-motion:reduce){#hub-panel-assistant *, .hub-assistant-menu,.hub-assistant-menu *, .hub-assistant-detail *{animation:none!important;transition:none!important}}
 
 #hub-panel-assistant .hub-btn{border-color:var(--ui-stroke-control)}
-#hub-panel-assistant [data-action=approve].primary{border-color:#747474}
+#hub-panel-assistant [data-action=approve].primary{border-color:var(--hub-primary-border)}
 
 #hub-panel-assistant .hub-card-footer .hub-btn{border-radius:7px}
 
@@ -91,7 +91,7 @@ html[data-motion=off] :is(#hub-panel-assistant,.hub-assistant-menu,.hub-assistan
 .hub-assistant-detail button:focus-visible{background:var(--hub-focus-fill)!important;color:var(--hub-focus-ink)!important;box-shadow:none;outline:none}
 
 
-.hub-assistant-detail .hub-btn.primary{background:#202020;color:#fafafa}
+.hub-assistant-detail .hub-btn.primary{background:var(--hub-primary);color:var(--hub-primary-ink)}
 
 .hub-assistant-detail{inset:0!important;margin:auto!important;height:max-content;transform:none!important;translate:none!important}
 
