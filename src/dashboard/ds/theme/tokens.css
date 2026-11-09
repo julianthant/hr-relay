@@ -1007,11 +1007,11 @@ body[data-demo-theme="light"] {
 }
 [data-demo-theme="dark"] .ds-menu-surface { box-shadow: 0 10px 32px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4); }
 /* Tooltip (Codex): 28px, 14px text, one step above the menu surface, a faint inset edge instead of a border, 14px corner, key chip after the text. */
-.ds-tooltip { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; height: 28px; max-width: 280px; padding: 0 6px 0 12px; border-radius: 14px; font-size: 14px; line-height: 20px; white-space: nowrap; color: var(--ui-primary);
+.ds-tooltip { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; height: 28px; max-width: 280px; padding: 0 5px 0 12px; border-radius: 8px; font-size: 14px; line-height: 20px; white-space: nowrap; color: var(--ui-primary);
   background: color-mix(in srgb, var(--ds-fg) 6%, var(--ui-field)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 6px 20px rgb(0 0 0 / 0.14); }
 [data-demo-theme="dark"] .ds-tooltip { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 8px 24px rgb(0 0 0 / 0.45); }
 .ds-tooltip:not(:has(.ds-tooltip-key)) { padding-right: 12px; }
-.ds-tooltip-key { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 8px; font: inherit; font-size: 13px; color: var(--ui-primary); background: color-mix(in srgb, var(--ds-fg) 20%, transparent); }
+.ds-tooltip-key { display: inline-flex; align-items: center; height: 20px; min-width: 20px; justify-content: center; padding: 0 6px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--ui-primary); background: color-mix(in srgb, var(--ds-fg) 20%, transparent); }
 .ds-menu-item {
   position: relative; display: flex; min-height: var(--ds-menu-item-h); align-items: center; gap: 8px; box-sizing: border-box;
   padding: 4px 8px; border-radius: 8px; outline: none; cursor: default; user-select: none;
