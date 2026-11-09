@@ -24,3 +24,9 @@ html[data-motion=off] .sv2-height { transition: none; }
 .sv2-row { min-height:var(--ds-row-h-2); padding:var(--ds-row-pad-y) var(--ds-row-pad-x); }
 .sv2-row-title { font-size:var(--ds-row-title); line-height:var(--ds-row-title-lh); }
 .sv2-row-desc { margin-top:var(--ds-row-gap); font-size:var(--ds-row-desc); line-height:var(--ds-row-desc-lh); }
+
+/* Sheet grid: neutral throughout. Every other row takes a faint stripe (gutter included); hover and selection sit above it. */
+.sv2-grid tbody tr:nth-child(even) > * { background: color-mix(in srgb, var(--ds-fg) 2.5%, transparent); }
+.sv2-grid tbody tr:hover > td { background: color-mix(in srgb, var(--ds-fg) 5%, transparent); }
+.sv2-grid tbody td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); }
+.sv2-grid tbody tr:hover > td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 12%, transparent); }
