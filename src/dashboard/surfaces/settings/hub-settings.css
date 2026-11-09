@@ -2,9 +2,6 @@
 .settings-nav-header { padding:0 8px;min-height:30px;height:30px;margin-bottom:15px; }
 .settings-nav-header h2 { font-size:20px;font-weight:600; }
 .settings-nav-search { margin:0 5px 15px;width:calc(100% - 10px); }
-.settings-nav-search [data-slot="search-field-group"] { height:34px;min-height:34px;border:1px solid var(--ui-stroke-control);border-radius:8px;background:var(--ui-field); }
-.settings-nav-search [data-slot="search-field-search-icon"] { display:none; }
-.settings-nav-search input { padding:6px 10px;font-size:12px; }
 .settings-nav-group { gap:var(--ds-space-hair);margin-bottom:18px; }
 .settings-nav-group > span { font-size:11px;font-weight:500;color:var(--ui-muted);padding:0 10px;margin:0 0 4px;line-height:16.5px; }
 .settings-nav-group a { height:32px;min-height:32px;gap:8px;padding:0 8px;font-size:var(--ds-text-ui);line-height:19.5px;border-radius:10px;color:var(--ui-primary); }

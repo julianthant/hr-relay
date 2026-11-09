@@ -531,14 +531,14 @@ export function Switch({
   );
 }
 
-/** A search field with its icon and a clear control. Used by every list. */
+/** The one search field: a pill with its icon, an optional shortcut hint and a clear × while it has text. `menu` is the 28px size for a field inside a dropdown menu. */
 export const SearchInput = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' }
+  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' | 'menu' }
 >(function SearchInput({ className, onClear, shortcut, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
-    <HeroSearchField className={cn("ds-search-field", variant === 'toolbar' && 'ds-search-field--toolbar', className)} aria-label={props["aria-label"]}
+    <HeroSearchField className={cn("ds-search-field", variant === 'menu' && 'ds-search-field--menu', className)} aria-label={props["aria-label"]}
       value={value === undefined ? undefined : String(value)} defaultValue={defaultValue === undefined ? undefined : String(defaultValue)}
       isDisabled={disabled ?? field.disabled} isReadOnly={readOnly} isInvalid={field["aria-invalid"] || props["aria-invalid"] === true} onClear={onClear}>
       <HeroSearchField.Group>

@@ -20,9 +20,7 @@
 .hub-assistant-launcher:hover { background:var(--ui-table); }
 .hub-assistant-launcher svg { width:22px;height:22px; }
 .hub-transcript { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 16px;scrollbar-width:thin;font-size:13px;line-height:1.65; }
-.hub-chat-search { position:relative;margin-bottom:12px; }
-.hub-chat-search input { padding-left:30px; }
-.hub-chat-search svg { position:absolute;left:10px;top:10px;width:14px;height:14px; }
+.hub-chat-search { margin-bottom:12px; }
 .hub-chat-group h3 { color:var(--ui-muted);font-weight:500;font-size:11px;margin:8px 8px 5px; }
 .hub-chat-row { display:flex;align-items:center;gap:3px;border:0;border-radius:10px;padding:8px 5px;margin-bottom:3px; }
 .hub-chat-row:is(:hover,[data-current="true"]) { background:var(--ui-table); }

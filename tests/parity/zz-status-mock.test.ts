@@ -15,7 +15,7 @@ const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
   "general-a": "general", "general-a-chatgpt-limit": "general", "general-a-chatgpt-disconnected": "general",
-  "analytics-a": "activity", "analytics-b": "activity",
+  "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard", "settings-storage": "storage",
 };
 
 let server: FixtureServer;
@@ -35,7 +35,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
   for (const id of STATUS_MOCK_IDS.filter(item => ONLY === undefined || ONLY.includes(item))) {
     await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     const settings = SETTINGS_PAGE[id];
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${settings ? `&settings=${settings}` : ""}&statusMock=${id}`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${settings ? `&settings=${settings}` : ""}${id === "settings-storage" ? "" : `&statusMock=${id}`}`);
     if (settings) await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
     else if (!id.startsWith("signup")) await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
     // A modal dialog blocks pointer clicks, so close the assistant panel through the DOM.
@@ -101,6 +101,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       }
     }
     if (settings === "general") await expect(page.getByText(id.endsWith("limit") ? "Usage limit reached" : id.endsWith("disconnected") ? "Disconnected" : "Working · checked 2 min ago").first()).toBeVisible();
+    if (settings === "keyboard") await expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
     // Toasts stack collapsed at the top centre; only the "-open" frame hovers the stack.
@@ -272,5 +273,29 @@ test("customize steps every workflow", async ({ page }) => {
     reached.push(name);
   }
   expect(reached).toEqual(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]);
+  expect(errors).toEqual([]);
+});
+
+// The shared search field on the kit page: a 34px pill, and the 28px size inside a dropdown menu.
+test(`kit search ${WIDTH}`, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+  for (const theme of ["dark", "light"] as const) {
+    await page.evaluate(value => { for (const el of [document.documentElement, document.body]) { el.setAttribute("data-demo-theme", value); el.classList.toggle("dark", value === "dark"); } }, theme);
+    const field = page.getByRole("searchbox", { name: "Search the specimen" });
+    await field.scrollIntoViewIfNeeded();
+    expect(await field.evaluate(node => Math.round(node.closest('[data-slot="search-field-group"]')?.getBoundingClientRect().height ?? 0))).toBe(34);
+    await page.getByRole("button", { name: "Tags", exact: true }).click();
+    const menuField = page.getByRole("searchbox", { name: "Find a tag" });
+    await expect(menuField).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(Math.abs(await menuField.evaluate(node => node.closest('[data-slot="search-field-group"]')?.getBoundingClientRect().height ?? 0) - 28)).toBeLessThanOrEqual(1);
+    await page.mouse.move(1, 1);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(OUT, `kit-search-${theme}-${WIDTH}.png`) });
+    await page.keyboard.press("Escape");
+  }
   expect(errors).toEqual([]);
 });

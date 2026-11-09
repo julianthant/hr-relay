@@ -3,8 +3,8 @@ import { useAssistantController } from "../assistant/assistant-controller-model.
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PreflightAssistantContext } from "../settings/preflight/preflight-assistant-model.js";
 import { createPortal } from "react-dom";
-import { ChevronDown, History, LogOut, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
-import { Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
+import { ChevronDown, History, LogOut, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Button, Dialog, DialogContent, DialogFooter, SearchInput } from "../../ds/ui.js";
 import { chatAge, createMockHubChatsPort, useHubChats, useHubPanelPosition, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
 import type { AssistantPorts } from "./assistant-panel-model.js";
@@ -74,7 +74,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
           event.preventDefault(); buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
         }}>
           {model.error && <p role="alert" className="hub-caption">{model.error}</p>}
-          <div className="hub-chat-search"><Search aria-hidden /><input className="hub-field" aria-label="Search chats" placeholder="Search chats" value={query} onChange={event => setQuery(event.target.value)} /></div>
+          <div className="hub-chat-search"><SearchInput aria-label="Search chats" placeholder="Search chats" value={query} onChange={event => setQuery(event.target.value)} /></div>
           {model.chats.length === 0 ? <div className="hub-empty"><strong>No chats yet</strong>Start a new chat to ask Relay for help.</div> : !model.chats.some(chat => chat.title.toLowerCase().includes(query.toLowerCase())) ? <div className="hub-empty">No matching chats.</div> : (["Today", "Yesterday", "Earlier"] as const).map(group => {
             const rows = model.chats.filter(chat => chat.group === group && chat.title.toLowerCase().includes(query.toLowerCase()));
             return rows.length > 0 && <section className="hub-chat-group" key={group}><h3>{group}</h3>{rows.map(chat => <div className="hub-chat-row" key={chat.id} data-current={chat.id === model.currentId} onKeyDown={event => {

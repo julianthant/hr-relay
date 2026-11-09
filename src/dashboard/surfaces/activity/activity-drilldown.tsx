@@ -52,7 +52,7 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
       : <>
         <p className="mb-3 mt-0 text-caption text-ui-muted" role="status">{result.totalMatches}{selection.query?.trim() ? ` of ${result.total}` : ''} {selection.metric === 'timed' ? `completed ${result.total === 1 ? 'run' : 'runs'} with recorded duration` : result.total === 1 ? 'run' : 'runs'}</p>
         <div role="group" aria-label="Run filters" className="mb-3 flex min-w-0 items-center gap-3">
-          <SearchInput aria-label="Search runs" placeholder="Search name or run ID" variant="toolbar" className="min-w-0 flex-1" maxLength={500}
+          <SearchInput aria-label="Search runs" placeholder="Search name or run ID" className="min-w-0 flex-1" maxLength={500}
             value={selection.query ?? ''} onChange={event => onSelection({ ...selection, query: event.target.value, page: 0, run: undefined }, 'replace')}
             onClear={() => onSelection({ ...selection, query: undefined, page: 0, run: undefined })} />
           <Select aria-label="Run order" variant="toolbar" value={activityOrderValue(selection)}

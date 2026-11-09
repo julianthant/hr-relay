@@ -118,6 +118,10 @@ import {
   useToasts,
   type DsRankedItem,
   type DsStatus,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "../ds/ui.js";
 
 const KIT_SECTIONS = [
@@ -1140,6 +1144,18 @@ function OverlaysSection() {
         </Tooltip>
       </Row>
       {/* Essential detail uses click disclosure so pointer, touch and keyboard can reach it. */}
+      <Row label="Search">
+        <span className="w-[280px]"><SearchInput aria-label="Search the specimen" placeholder="Search" shortcut={<Kbd>/</Kbd>} /></span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="outline" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>Tags</Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[240px]">
+            <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a tag" placeholder="Find a tag" /></div>
+            <DropdownMenuItem>Contact roster</DropdownMenuItem>
+            <DropdownMenuItem>Pinned</DropdownMenuItem>
+            <DropdownMenuItem>SharePoint</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </Row>
       <Row label="Popover">
         <Popover>
           <PopoverTrigger asChild>

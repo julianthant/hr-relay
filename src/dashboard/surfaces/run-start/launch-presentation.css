@@ -116,9 +116,6 @@
 .launch-dialog > header > button { @apply size-[30px]; }
 .launch-dialog > footer { @apply h-[57px] bg-ui-table; }
 .launch-dialog > footer button { @apply h-8 px-3 text-body font-medium; }
-.launch-dialog .launch-workflow-rail [data-slot="search-field-group"] { @apply h-8 min-h-8 gap-[6px] border border-ui-stroke bg-ui-panel px-[7px] py-0; }
-.launch-dialog .launch-workflow-rail [data-slot="search-field-input"] { @apply h-[30px] min-h-0 text-caption; }
-.launch-dialog .launch-workflow-rail [data-slot="search-field-search-icon"] { @apply size-[14px]; }
 .launch-dialog .launch-stagebar { @apply h-[54px]; }
 .launch-dialog .launch-stagebar > li { @apply p-0; }
 .launch-dialog .launch-stagebar button { @apply flex items-center gap-[7px] rounded-md px-2 py-[5px] text-body; }
