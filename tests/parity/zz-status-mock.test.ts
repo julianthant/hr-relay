@@ -44,9 +44,8 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     if (id === "toasts") await expect(page.getByText("UCPath is down for maintenance")).toBeVisible();
     if (id.startsWith("run")) await expect(page.getByRole("dialog")).toBeVisible();
-    if (settings === "general") await expect(page.getByText(id.endsWith("problem") ? "Saved data needs attention" : "Saved on this computer").first()).toBeVisible();
+    if (settings === "general") await expect(page.getByText(id.endsWith("problem") ? "Needs attention · last backup" : "Saved on this computer").first()).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
-    if (id === "general-a") await page.getByRole("button", { name: "Actions for ChatGPT", exact: true }).click();
     await settle(page);
     // Toasts stack collapsed; hover expands them so all three show.
     if (id === "toasts") { await page.getByRole("region", { name: "Notifications" }).getByText("Saved data needs attention").hover(); await page.waitForTimeout(600); }

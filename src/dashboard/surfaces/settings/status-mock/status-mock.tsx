@@ -1,7 +1,6 @@
-import { Check, LoaderCircle, MoreHorizontal } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
-import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DsBodyScope, IconButton, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, useToasts } from "../../../ds/ui.js";
-import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
+import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DsBodyScope, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, useToasts } from "../../../ds/ui.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
 import { ACTIVITY_DATE_PRESETS } from "../../activity/activity-model.js";
@@ -58,15 +57,11 @@ function ToastsMock() {
   return null;
 }
 
-/** General's one status block: Storage and ChatGPT, two rows. Restore and Check again appear only on a storage problem. */
+/** General's Status section: two rows that only show status, checked automatically. No buttons; a storage problem is the sticky toast. */
 export function StatusMockStatusBlock({ problem }: { problem: boolean }) {
   return <BodySection title="Status"><FormGroup label="Status">
-    <ResultRow label="Storage" description={problem ? "Saved data needs attention · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago"}
-      value={problem ? <span className="inline-flex gap-2"><Button variant="secondary">Restore from 12 min ago</Button><Button variant="secondary">Check again</Button></span> : <StatusDot status="verifiedDone" />} />
-    <ResultRow label="ChatGPT" description="Connected as Jordan Lee" value={<span className="inline-flex items-center justify-end gap-2"><Button variant="secondary">Check connection</Button>
-        <DropdownMenu><DropdownMenuTrigger render={<IconButton label="Actions for ChatGPT" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => window.open(CHATGPT_USAGE_URL, "_blank", "noopener,noreferrer")}>Manage usage</DropdownMenuItem><DropdownMenuItem variant="destructive">Disconnect</DropdownMenuItem>
-        </DropdownMenuContent></DropdownMenu></span>} />
+    <ResultRow label="Storage" description={problem ? "Needs attention · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago"} value={<StatusDot status={problem ? "failed" : "verifiedDone"} />} />
+    <ResultRow label="ChatGPT" description="Connected as Jordan Lee · checked 2 min ago" value={<StatusDot status="verifiedDone" />} />
   </FormGroup></BodySection>;
 }
 

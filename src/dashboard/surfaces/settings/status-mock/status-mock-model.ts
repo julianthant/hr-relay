@@ -1,3 +1,5 @@
+import { createPreviewChatGptAccountPort } from "../general/chatgpt-account-model.js";
+
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
 export const STATUS_MOCK_IDS = ["run-a", "run-b", "toasts", "general-a", "general-a-problem", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
@@ -48,3 +50,6 @@ export const STATUS_MOCK_ANALYTICS = {
     receipts: "26 saved in UCPath · 9 saved in Kuali",
   },
 } as const;
+
+/** A connected account, so the ChatGPT section and the Status row agree. */
+export const STATUS_MOCK_ACCOUNT_PORT = (() => { const port = createPreviewChatGptAccountPort(); void port.signIn({ usePlan: true }); return port; })();
