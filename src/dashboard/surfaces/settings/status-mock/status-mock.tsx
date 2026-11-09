@@ -1,6 +1,6 @@
 import { Check, ExternalLink, LoaderCircle } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
-import { BodySection, Button, ButtonLink, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { useEffect, useState, type ReactNode } from "react";
+import { BodySection, Button, ButtonLink, ChoicePicker, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
 import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
@@ -8,7 +8,7 @@ import { ACTIVITY_DATE_PRESETS } from "../../activity/activity-model.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
 import { OutcomeBar, OutcomeLegend, RunsPerDayChart, ShareBar } from "./status-mock-charts.js";
-import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockCounts, type StatusMockId } from "./status-mock-model.js";
+import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_SPREADSHEETS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockCounts, type StatusMockId } from "./status-mock-model.js";
 
 const noop = () => undefined;
 
@@ -23,11 +23,17 @@ function MockRow({ label, description, value }: { label: ReactNode; description?
 const MockCard = ({ children }: { children: ReactNode }) => <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">{children}</div>;
 
 /** Readiness blockers inside the real Run dialog: one row each, reason on the left, its fix on the right. */
-export function StatusMockReadiness() {
+export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
   return <section aria-label="Before you start" className="flex flex-col gap-2">
     <h4 className="m-0 text-heading font-semibold">Before you start</h4>
-    <MockCard>{STATUS_MOCK_BLOCKERS.map(blocker => <MockRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}</MockCard>
+    <MockCard>{STATUS_MOCK_BLOCKERS[frame].map(blocker => <MockRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}</MockCard>
   </section>;
+}
+
+/** The dialog's roster picker: the person chooses the reference spreadsheet; the last one used is preselected. */
+export function StatusMockRosterPicker() {
+  const [value, setValue] = useState<string>(STATUS_MOCK_SPREADSHEETS[0].value);
+  return <ChoicePicker label="Reference spreadsheet" value={value} options={STATUS_MOCK_SPREADSHEETS} onChange={setValue} />;
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */

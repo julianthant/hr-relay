@@ -11,7 +11,7 @@ import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-star
 import { TypedInput, RunFlagChips } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
-import { StatusMockReadiness } from "../../settings/status-mock/status-mock.js";
+import { StatusMockReadiness, StatusMockRosterPicker } from "../../settings/status-mock/status-mock.js";
 import { statusMock } from "../../settings/status-mock/status-mock-model.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
@@ -79,7 +79,8 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </>)}
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
-            {mock === "run-a" && <StatusMockReadiness />}
+            {mock === "run-a" && <StatusMockReadiness frame="run-a" />}
+            {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b") && <StatusMockRosterPicker />}
             <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && workflowId === "onbase" && "grid-cols-2")}>
             {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
             {workflowId === "onbase" && <ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} />}
@@ -124,9 +125,9 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         }) : <li className="p-3 text-body text-ui-secondary">OCR preparation reads and matches the PDF records.</li>}</RunStepsList>{mockStepInputError(workflowId, draft) && <p role="alert" className="text-caption text-ui-danger">{mockStepInputError(workflowId, draft)}</p>}</section>}
         {stage === "Confirm" && <RunConfirmLayout count={count} flags={<RunFlagChips dryRun={flow.dryRun && draft.dryRun} priority={draft.priority === "background" ? "bulk" : "interactive"} />}
           description={source ? "A new run linked to the source." : pdf && !uploadOnly ? workflowId === "onbase" ? "One combined document sent to OCR for review." : "One run per PDF. OCR reviews records before downstream work." : "One run for each accepted entry."}
-          facts={[...mockConfirmationFacts(workflowId, draft), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
+          facts={[...mockConfirmationFacts(workflowId, draft), ...(workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b") ? [{ key: "Reference spreadsheet", value: "EC roster Oct 2026" }] : []), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
-          {mock === "run-b" && <StatusMockReadiness />}
+          {mock === "run-b" && <StatusMockReadiness frame="run-b" />}
         </RunConfirmLayout>}
         </div>
 
