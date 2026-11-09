@@ -4,6 +4,8 @@ import * as admission from "../../../../src/backend/runs/lifecycle/delegation-ad
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { observationLeafPaths, readObservationPath, resolveObservationOrigin } from "../../../../src/models/events/data-observation-origin.js";
+import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -28,6 +30,24 @@ it("authenticates every observation against its native event and producer before
     refuse(repositories => ({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
       page: query => repositories.timelineEvents.page(query).filter(record => record.payload.kind !== "span" || record.payload.event.t !== "data.observed"),
     } }),/delegation-observation-event-mismatch/);
+    for (const invalid of ["node", "task", "attempt", "span", "origin"] as const) {
+      refuse(repositories => ({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+        page: query => repositories.timelineEvents.page(query).map(record => {
+          if (record.payload.kind !== "span" || record.payload.event.t !== "data.observed") return record;
+          const event = record.payload.event;
+          const checkpoint = repositories.runCheckpoints.listByAttempt(batch.run.envelope.workflow, batch.run.envelope.itemId, event.nodeId, event.attempt)
+            .find(checkpoint => checkpoint.runId === event.runId);
+          assert.ok(checkpoint);
+          return { ...record, payload: { ...record.payload, event: SpanEventWireSchema.parse({
+            ...event,
+            ...(invalid === "node" ? { nodeId: "foreign-node" } : invalid === "task" ? { taskId: "foreign/task" }
+              : invalid === "attempt" ? { attempt: event.attempt + 1 } : invalid === "span" ? { spanPath: `${event.spanPath}-foreign` }
+                : { points: event.points.map(point => ({ ...point, origins: observationLeafPaths(readObservationPath(checkpoint.output.value, point.field.split(".")))
+                  .map(path => ({ path: [...path], origin: { ...resolveObservationOrigin(event, point, path), spanPath: "foreign-span" } })) })) }),
+          }) } };
+        }),
+      } }),/delegation-observation-event-mismatch/);
+    }
     for (const invalid of ["origins","schema","implementation"] as const) {
       refuse(repositories => ({ ...repositories, runCheckpoints: { ...repositories.runCheckpoints,
         listByAttempt: (...args) => {
@@ -44,6 +64,45 @@ it("authenticates every observation against its native event and producer before
   try {
     const f = await world.fixture();
     assert.equal(verified,true);
+    assert.ok(f.database.authority.runs.listChildren(f.run.envelope.runId).length > 0);
+  } finally { probe.mockRestore(); }
+});
+
+it("accepts retained full-origin events and ignores earlier attempts' fields absent from the successful checkpoint", async () => {
+  const native = admission.admitDelegation;
+  let expanded = 0;
+  const probe = vi.spyOn(admission, "admitDelegation").mockImplementationOnce((dependencies, batch, plans, lifecycle) => {
+    const database = dependencies.database;
+    const observed = new Proxy(database, { get(target, key) {
+      if (key === "evidenceSchemaHash") return target.evidenceSchemaHash.bind(target);
+      if (key === "withAuthorityTransaction") return <Result>(work: (repositories: AuthorityRepositories) => Result) =>
+        target.withAuthorityTransaction(repositories => work({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+          page: query => repositories.timelineEvents.page(query).flatMap(record => {
+            if (record.payload.kind !== "span" || record.payload.event.t !== "data.observed") return record;
+            const event = record.payload.event;
+            const checkpoint = repositories.runCheckpoints.listByAttempt(batch.run.envelope.workflow, batch.run.envelope.itemId, event.nodeId, event.attempt)
+              .find(checkpoint => checkpoint.runId === event.runId);
+            assert.ok(checkpoint);
+            const failed = { ...record, payload: { ...record.payload, event: SpanEventWireSchema.parse({ ...event,
+              spanPath: event.spanPath.replace(/\.\d+$/u, ".999"),
+              points: [{ direction: "read", field: "failedRead", values: [{ key: "failedRead", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "Earlier failed read" }] }],
+            }) } };
+            return [failed, { ...record, payload: { ...record.payload, event: { ...event, points: event.points.map(point => {
+              assert.equal(point.origins, undefined);
+              expanded++;
+              return { ...point, origins: observationLeafPaths(readObservationPath(checkpoint.output.value, point.field.split(".")))
+                .map(path => ({ path: [...path], origin: resolveObservationOrigin(event, point, path) })) };
+            }) } } }];
+          }),
+        } }));
+      const value: unknown = Reflect.get(target, key, target);
+      return value;
+    } });
+    return native({ ...dependencies, database: observed }, batch, plans, lifecycle);
+  });
+  try {
+    const f = await world.fixture();
+    assert.ok(expanded > 0);
     assert.ok(f.database.authority.runs.listChildren(f.run.envelope.runId).length > 0);
   } finally { probe.mockRestore(); }
 });

@@ -36,7 +36,7 @@ import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../models/workflow/gates.js";
 import { taskSpanPath } from "../../logs/span-emitter.js";
-import { readObservationPath } from "../../../models/events/data-observation-origin.js";
+import { readObservationPath, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { DelegationManifestIdSchema, DependencyIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 
@@ -411,8 +411,15 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
       if (event.nodeId === checkpoint.nodeId && event.taskId === node.uses.id && event.attempt === checkpoint.attempt
         && Number.isSafeInteger(taskAttempt) && taskAttempt > 0
         && event.spanPath === taskSpanPath(run.envelope.traceId, checkpoint.nodeId, taskAttempt, checkpoint.claimGeneration)) {
-        for (const point of event.points) for (const source of point.origins ?? []) {
-          observed.add(canonicalJsonStringify([[...point.field.split("."), ...source.path],source.origin]));
+        for (const point of event.points) {
+          const field = point.field.split(".");
+          const origins = new Map((point.origins ?? []).map(entry => [canonicalJsonStringify(entry.path), entry.origin]));
+          for (const entry of checkpoint.observationOrigins) {
+            if (!field.every((part, index) => part === entry.path[index])) continue;
+            const path = entry.path.slice(field.length);
+            const origin = origins.get(canonicalJsonStringify(path)) ?? resolveObservationOrigin(event, { field: point.field }, path);
+            observed.add(canonicalJsonStringify([entry.path,origin]));
+          }
         }
       }
     }
