@@ -49,7 +49,7 @@ const [ROSTER, I9] = PINNED;
 const CREATED_ALL: readonly Sheet[] = [
   run('EC51820377', ROSTER, '2026-11-08T14:40', ['HR', 'Fall']),
   run('PL33065442', I9, '2026-11-07T19:31', ['I-9']),
-  base('applicants', 'Student applicants', { tags: ['Fall'], createdAt: '2026-11-01T17:00', updatedAt: '2026-11-01T17:00' }),
+  base('applicants', 'Student applicants', { tags: ['HR', 'Fall', '2026', 'Student', 'Payroll'], createdAt: '2026-11-01T17:00', updatedAt: '2026-11-01T17:00' }),
 ];
 const CREATED_MORE: readonly Sheet[] = [
   run('SP20481136', ROSTER, '2026-11-07T00:22', ['HR']), run('EC51773902', ROSTER, '2026-11-05T22:40', ['HR']),
@@ -80,8 +80,8 @@ const date = (i: number) => `11/${String(1 + (i % 28)).padStart(2, '0')}/2026`;
 export const DATASETS: Readonly<Record<Sheet['dataset'], Dataset>> = {
   roster: { headers: ['Employee ID', 'Full name', 'Work email', 'Department', 'Work phone', 'Emergency phone', 'Start date', 'Hourly rate'],
     rows: Array.from({ length: 28 }, (_, i): Cell[] => [{ text: eid(i), bold: i === 3 }, { text: person(i), bold: i === 3, fill: i === 3 ? '#fff2cc' : undefined }, { text: `person${i}@example.org` }, { text: dept[i % 3] }, { text: `555-01${String(i).padStart(2, '0')}` }, { text: i % 4 ? `555-02${String(i).padStart(2, '0')}` : '', fill: i % 4 ? undefined : '#f4cccc' }, { text: date(i) }, { text: `$${(22 + i * 0.5).toFixed(2)}`, align: 'right' }]) },
-  i9: { headers: ['EID', 'Employee', 'Action', 'Action date', 'Completed by'],
-    rows: Array.from({ length: 24 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: i % 2 ? 'Section 2 done' : 'Reverify', fill: i % 2 ? '#d9ead3' : '#fce5cd' }, { text: date(i) }, { text: 'Example, Reviewer' }]) },
+  i9: { headers: ['EID', 'Employee', 'Notify address', 'Action', 'Action date', 'Completed by'],
+    rows: Array.from({ length: 24 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: `notify${i}@example.org` }, { text: i % 2 ? 'Section 2 done' : 'Reverify', fill: i % 2 ? '#d9ead3' : '#fce5cd' }, { text: date(i) }, { text: 'Example, Reviewer' }]) },
 };
 export const samplesOf = (dataset: Dataset, header: string): string => { const column = dataset.headers.indexOf(header); return column < 0 ? '' : dataset.rows.map(row => row[column].text).filter(Boolean).slice(0, 2).join(', '); };
 

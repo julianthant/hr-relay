@@ -3,13 +3,12 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, Field, Input } from '.
 import { type Sheet, mergePreview, stamp } from './sheets-v2-model.js';
 import { Grey, Picker, TagEditor, V2Button } from './sheets-v2-ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/ui.js';
-import '../../run-start/launch-presentation.css';
 
 export type DialogKind = 'rename' | 'tags' | 'link' | 'merge' | 'rollback' | 'delete';
 const field = '!bg-[var(--ui-field)] !border-[color:var(--ui-stroke-control)]';
 
-function Shell({ title, description, onClose, footer, children, size = 'md' }: { title: string; description?: string; onClose: () => void; footer: ReactNode; children?: ReactNode; size?: 'md' | 'lg' }) {
-  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="launch-design" size={size} title={title} description={description}>
+function Shell({ title, description, onClose, footer, children, size = 'sm' }: { title: string; description?: string; onClose: () => void; footer: ReactNode; children?: ReactNode; size?: 'sm' | 'md' }) {
+  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent size={size} title={title} description={description}>
     {children && <DialogBody>{children}</DialogBody>}
     <DialogFooter>{footer}</DialogFooter>
   </DialogContent></Dialog>;
@@ -35,13 +34,13 @@ export function SheetDialog({ kind, sheet, sheets, actions, onClose }: { kind: D
     <Field label="Workbook link"><Input className={field} placeholder="https://…sharepoint.com/…" value={text} onChange={event => setText(event.target.value)} /></Field></Shell>;
   if (kind === 'merge') {
     const targets = sheets.filter(item => item.id !== sheet.id && !item.sharePoint), preview = target && mergePreview(target);
-    return <Shell title={`Merge ${sheet.name} into…`} description="Rows match on Employee ID. No rows are removed." onClose={onClose}
+    return <Shell title={`Merge ${sheet.name} into…`} description="Rows match on Employee ID. No rows are removed." size="md" onClose={onClose}
       footer={<>{preview && <Grey className="mr-auto">{preview.added} added · {preview.updated} updated</Grey>}<Cancel onClose={onClose} /><V2Button look="primary" disabled={!target} onClick={done(() => actions.merge(target!))}>Merge</V2Button></>}>
       <DropdownMenu><DropdownMenuTrigger render={<Picker aria-label="Target spreadsheet" className="w-full">{target?.name ?? <span className="text-ui-muted">Choose a spreadsheet</span>}</Picker>} /><DropdownMenuContent align="start" className="min-w-[320px]">
         <DropdownMenuRadioGroup value={target?.id ?? ''} onValueChange={id => setTarget(targets.find(item => item.id === id))}>{targets.map(item => <DropdownMenuRadioItem closeOnClick key={item.id} value={item.id}>{item.name}</DropdownMenuRadioItem>)}</DropdownMenuRadioGroup>
       </DropdownMenuContent></DropdownMenu></Shell>;
   }
-  if (kind === 'rollback') return <Shell title="Roll back" description={`${sheet.name} · now v${sheet.versions[0].n}`} onClose={onClose}
+  if (kind === 'rollback') return <Shell title="Roll back" description={`${sheet.name} · now v${sheet.versions[0].n}`} size="md" onClose={onClose}
     footer={<>{sheet.sharePoint && <Grey className="mr-auto">The next sync replaces it.</Grey>}<Cancel onClose={onClose} /><V2Button look="primary" disabled={version === undefined} onClick={done(() => actions.rollback(version!))}>Roll back</V2Button></>}>
     <ul role="radiogroup" aria-label="Versions" className="divide-y divide-ui-stroke rounded-md border border-ui-stroke">{sheet.versions.map((entry, index) => <li key={entry.n}>
       <button type="button" role="radio" aria-checked={version === entry.n} disabled={index === 0} onClick={() => setVersion(entry.n)} className={`flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] hover:bg-ui-hover disabled:opacity-60 ${version === entry.n ? 'bg-ui-hover' : ''}`}>

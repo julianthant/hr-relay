@@ -1,6 +1,6 @@
-import { forwardRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ChevronDown, Download, MoreHorizontal, X } from 'lucide-react';
-import { Button, IconButton, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
+import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
 import { type Dataset, type Sheet, samplesOf } from './sheets-v2-model.js';
 
 // soft = secondary (grey fill), line = outline (faint border), plain = ghost; primary is only a dialog's confirming action.
@@ -17,7 +17,30 @@ export const Picker = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof B
 });
 
 export const Grey = ({ children, className = '' }: { children: ReactNode; className?: string }) => <span className={`text-[12px] text-ui-muted ${className}`}>{children}</span>;
-export const Tag = ({ children, onRemove }: { children: string; onRemove?: () => void }) => <span className="inline-flex h-5 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{children}{onRemove && <button type="button" aria-label={`Remove ${children}`} className={`rounded-sm ${dsFocus}`} onClick={onRemove}><X size={11} aria-hidden /></button>}</span>;
+export const Tag = ({ children, onRemove }: { children: string; onRemove?: () => void }) => <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{children}{onRemove && <button type="button" aria-label={`Remove ${children}`} className={`rounded-sm ${dsFocus}`} onClick={onRemove}><X size={11} aria-hidden /></button>}</span>;
+
+const GAP = 4;
+/** Shows the chips that fit the available width, then a +N chip whose tooltip lists every tag. */
+export function TagsFit({ tags }: { tags: readonly string[] }) {
+  const box = useRef<HTMLDivElement>(null), probe = useRef<HTMLDivElement>(null);
+  const [count, setCount] = useState(tags.length);
+  useLayoutEffect(() => {
+    const element = box.current, ruler = probe.current; if (!element || !ruler) return;
+    const fit = () => {
+      const sizes = [...ruler.children].map(child => (child as HTMLElement).offsetWidth), plus = sizes.pop() ?? 0, room = element.clientWidth;
+      let next = tags.length;
+      while (next > 0 && sizes.slice(0, next).reduce((sum, size) => sum + size + GAP, -GAP) + (next < tags.length ? GAP + plus : 0) > room) next -= 1;
+      setCount(next);
+    };
+    fit(); const observer = new ResizeObserver(fit); observer.observe(element); return () => observer.disconnect();
+  }, [tags]);
+  const hidden = tags.length - count;
+  return <div ref={box} className="relative flex h-5 min-w-0 flex-1 items-center gap-1 overflow-hidden">
+    <div ref={probe} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 flex gap-1 whitespace-nowrap">{tags.map(tag => <Tag key={tag}>{tag}</Tag>)}<Tag>{`+${tags.length}`}</Tag></div>
+    {tags.slice(0, count).map(tag => <Tag key={tag}>{tag}</Tag>)}
+    {hidden > 0 && <Tooltip content={<span className="grid gap-0.5">{tags.map(tag => <span key={tag}>{tag}</span>)}</span>}><button type="button" aria-label={`${hidden} more tags: ${tags.join(', ')}`} className={`inline-flex h-5 shrink-0 items-center rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary ${dsFocus}`}>+{hidden}</button></Tooltip>}
+  </div>;
+}
 
 export function TagEditor({ tags, onChange }: { tags: readonly string[]; onChange: (tags: readonly string[]) => void }) {
   const [draft, setDraft] = useState('');

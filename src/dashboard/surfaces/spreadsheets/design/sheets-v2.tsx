@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useToasts } from '../../../ds/ui.js';
+import { Tag as TagIcon } from 'lucide-react';
+import { SearchInput, useToasts } from '../../../ds/ui.js';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
-import { NOW, allTags, initialSheets, newestFirst, tableOf, type FieldKey, type Sheet } from './sheets-v2-model.js';
+import { NOW, allTags, initialSheets, newestFirst, tableOf, type Sheet } from './sheets-v2-model.js';
 import { sheetsParam, sheetsScenario } from './sheets-v2-mode.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
 import { SheetDetail } from './sheets-v2-detail.js';
@@ -20,6 +21,7 @@ export function SheetsV2() {
   const [dialog, setDialog] = useState<{ kind: DialogKind; id: string }>();
   const [importing, setImporting] = useState(false);
   const [filter, setFilter] = useState<readonly string[]>([]);
+  const [query, setQuery] = useState('');
   const [listRef, narrow] = useNarrow<HTMLDivElement>();
   useEffect(() => { if (sheetsParam('relaySheetsSync') === 'failed') toast({ tone: 'danger', title: "Couldn't sync Contact roster", description: 'Relay keeps the last version.' }); }, [toast]);
 
@@ -39,21 +41,21 @@ export function SheetsV2() {
   };
   const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'rollback', id }), menu };
 
-  const visible = useMemo(() => newestFirst(sheets).filter(sheet => !filter.length || filter.some(tag => sheet.tags.includes(tag))), [sheets, filter]);
+  const visible = useMemo(() => newestFirst(sheets).filter(sheet => (!filter.length || filter.some(tag => sheet.tags.includes(tag))) && sheet.name.toLowerCase().includes(query.trim().toLowerCase())), [sheets, filter, query]);
   const tables = (['Pinned', 'SharePoint', 'Created'] as const).map(title => ({ title, items: visible.filter(sheet => tableOf(sheet) === title) })).filter(table => table.items.length);
   const target = dialog && sheets.find(item => item.id === dialog.id);
   const tags = allTags(sheets);
 
   return <section aria-label="Spreadsheets" className="hub-sheets-library min-w-0 text-[13px]">
     {openId && sheets.some(item => item.id === openId) ? <SheetDetail sheet={get(openId)} sheets={sheets} onBack={() => setOpenId(undefined)} onOpen={setOpenId} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })}
-      onMap={(key: FieldKey, header) => change(openId, item => ({ ...item, mapping: { ...item.mapping, [key]: header } }))} /> : <>
+      onMap={patch => change(openId, item => ({ ...item, mapping: { ...item.mapping, ...patch } }))} /> : <>
       <div className="mb-4 flex items-center justify-between gap-4"><div className="min-w-0"><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0 truncate">Reference lists your runs look people up in.</p></div><V2Button onClick={() => setImporting(true)}>Import</V2Button></div>
-      <div className="mb-5"><DropdownMenu><DropdownMenuTrigger render={<Picker aria-label="Filter by tag">{filter.length ? filter.join(', ') : 'All tags'}</Picker>} /><DropdownMenuContent align="start" className="min-w-[180px]">
+      <div className="mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="h-7 w-[260px]" /><DropdownMenu><DropdownMenuTrigger render={<Picker aria-label="Filter by tag" icon={<TagIcon size={14} aria-hidden className="text-ui-muted" />}>{filter.length ? filter.join(', ') : 'All tags'}</Picker>} /><DropdownMenuContent align="start" className="min-w-[180px]">
         <DropdownMenuCheckboxItem checked={!filter.length} onCheckedChange={() => setFilter([])} onSelect={event => event.preventDefault()}>All tags</DropdownMenuCheckboxItem><DropdownMenuSeparator />
         {tags.map(tag => <DropdownMenuCheckboxItem key={tag} checked={filter.includes(tag)} onCheckedChange={checked => setFilter(current => checked ? [...current, tag] : current.filter(item => item !== tag))} onSelect={event => event.preventDefault()}>{tag}</DropdownMenuCheckboxItem>)}
       </DropdownMenuContent></DropdownMenu></div>
       <div ref={listRef}>{tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} all={sheets} narrow={narrow} actions={rows} limit={table.title === 'Created' ? CREATED_ROWS : undefined} />)
-        : <Grey className="text-[13px]">{sheets.length ? 'No spreadsheets with these tags.' : 'No spreadsheets yet. Choose Import to add one.'}</Grey>}</div>
+        : <Grey className="text-[13px]">{sheets.length ? 'No spreadsheets match.' : 'No spreadsheets yet. Choose Import to add one.'}</Grey>}</div>
     </>}
     {dialog && target && <SheetDialog kind={dialog.kind} sheet={target} sheets={sheets} onClose={() => setDialog(undefined)} actions={{
       rename: name => change(target.id, item => ({ ...item, name })), tags: next => change(target.id, item => ({ ...item, tags: next })),
