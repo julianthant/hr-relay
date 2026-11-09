@@ -61,19 +61,20 @@ export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfi
   </article>;
 }
 export function AssistantPanel({ producer, accountClient, onAttachFile, onRegisterSpreadsheet, onRunWorkflow, onOpenSettings,
-  onClose, onChats, onNewChat, onRename, title, headerProps, onSendMessage, draft, served, onAutomaticTitle, historyNotice, modelPreference, initialText = '' }: AssistantPorts & {
-  historyNotice?: string; modelPreference?: AssistantModelPreferenceView['preference'];
+  onClose, onChats, onNewChat, onRename, title, headerProps, fresh = false, onSendMessage, draft, served, onAutomaticTitle, historyNotice, modelPreference, initialText = '' }: AssistantPorts & {
+  fresh?: boolean; historyNotice?: string; modelPreference?: AssistantModelPreferenceView['preference'];
   onAutomaticTitle?: (title: string) => void; served?: ReturnType<typeof useAssistantController>; producer: AssistantConversationPort; accountClient: Pick<DashboardClient, 'chatGptAccount'>; onClose?: () => void; onChats?: () => void;
   onNewChat?: () => void; onRename?: () => void; title?: string; headerProps?: HTMLAttributes<HTMLElement>; onOpenSettings?: (section?: string) => void; onSendMessage?: () => void; initialText?: string; draft?: ComposerDraftPort;
 }) {
   const model = useAssistantPanel({ producer, accountClient, served, ports: { onAttachFile, onRegisterSpreadsheet, onRunWorkflow } });
   // The mock chat opens on the first approved frame; a served chat starts empty.
-  const frame = assistantFrame() ?? (served ? undefined : ASSISTANT_FRAMES[0]);
+  const frame = fresh ? undefined : assistantFrame() ?? (served ? undefined : ASSISTANT_FRAMES[0]);
   if (frame) { title = frame.title; initialText = frame.draft ?? ""; }
   const conversation = model.conversation;
   const wasAtLatest = useRef(true);
   useLayoutEffect(() => { const element = model.transcript.current; if (element && wasAtLatest.current) element.scrollTop = element.scrollHeight; }, [conversation, served?.state, model.transcript]);
-  const accountReady = served ? served.accountAvailable : model.account?.state === 'connected';
+  // A new mock chat is always ready to compose; the served account decides for served chats.
+  const accountReady = served ? served.accountAvailable : fresh || model.account?.state === 'connected';
   const canCompose = served?.canCompose ?? accountReady;
   const turn = served?.state.turn;
   const proposal = turn?.state === 'proposal' ? turn.proposal : undefined;
@@ -81,7 +82,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
   useEffect(() => { assistantActivity.report(phase); }, [phase]);
   return <section id="hub-panel-assistant" className="hub-assistant-panel" role="region" aria-label="Relay assistant" data-source={served ? "served" : conversation.source}>
     <header {...headerProps} className="hub-panel-header"><div className="hub-panel-title"><button type="button" className="hub-chat-title hub-plain" title="Rename chat" onClick={onRename} disabled={!onRename}><span>{title ?? conversation.title}</span></button></div>
-      <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="Chats" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
+      <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="History" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
     </header><div className="hub-panel-content">
       <div className="hub-thread-wrap"><><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
         {frame && <AssistantMockThread frame={frame} />}<>
@@ -98,7 +99,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
         {served?.state.restored && <p className="hub-caption">Restored chat. Previous proposals cannot be confirmed.</p>}
         {historyNotice && <p role="status" className="hub-caption">{historyNotice}</p>}
         {model.error ? <p role="alert" className="hub-footer-status">{model.error}</p> : null}
-        {frame ? null : !served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
+        {frame || fresh ? null : !served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
         </>
       </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</></div>
       {served && !accountReady && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings(served.accountAction === 'preflight' ? 'preflight' : 'general')}>{served.accountAction === 'preflight' ? 'Open Preflight' : served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}</div>}
