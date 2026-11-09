@@ -9,6 +9,9 @@ import { composeDataQueries } from "../../../src/backend/app/composition/dashboa
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createCommandKernel, executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createDashboardCommandService } from "../../../src/backend/runs/commands/command-service.js";
+import { RunWorkerStartupError } from "../../../src/backend/runs/commands/run-worker-capacity.js";
+import type { RunWorkerStartupFailure } from "../../../src/rules/commands/commands.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { ASSISTANT_MESSAGES_MAX, AssistantActionDecisionSchema, type AssistantActionProposal } from "../../../src/models/dashboard/assistant.js";
@@ -74,10 +77,19 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: { withDownload: (command, use) => sync.download(command, use) } });
   const workbookOwner: { library: Parameters<typeof createAssistantProposals>[0] extends { workbooks(): infer L } ? L : never } = { library };
   const files = new Map<string, AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>>();
+  let capacityFailure: RunWorkerStartupFailure | undefined;
+  const ensured: string[] = [];
+  const capacityCommands = createDashboardCommandService({ kernel, projection: { ingestFromTimeline() {}, refreshRun() {} },
+    startWorkerCapacity: { workflowOf: () => h.descriptor.id, async ensure(command) {
+      ensured.push(command.commandId);
+      assert.equal(database.authority.assistantAuthorization.actionByCommand(command.commandId)?.state, "settled");
+      assert.equal(database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "applied");
+      if (capacityFailure !== undefined) throw new RunWorkerStartupError(capacityFailure);
+    } } });
   const proposals = createAssistantProposals({ database, authorization, kernel, ocrSources: () => { throw new Error("no OCR source in this harness"); }, workbooks: () => workbookOwner.library,
     attachment: (conversation, id) => { const file = files.get(id); return file?.conversationId === conversation ? file : undefined; }, plans: h.planner, runs: h.lifecycle, descriptors: { resolve: () => h.descriptor },
     rerunValues: request => data.rerunValues(request), served: () => true, actorId: "local-operator", clock, assertCurrent() {},
-    commands: { publish() {}, async submit(command) {
+    commands: { completeConsumed: (command, result) => capacityCommands.completeConsumed(command, result), publish() {}, async submit(command) {
       entered = true;
       if (mode === "hold-before") await gate();
       const result = kernel.execute(command);
@@ -108,7 +120,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
     return references.issue("A", id, name);
   };
   const replaceAttachment = (token: string) => { const id = references.resolve(token, ["A"]).target, file = files.get(id); assert.ok(file); files.set(id, { ...file, sha256: "0".repeat(64) }); };
-  return { h, database, clock, kernel, proposals, library, sync, workbookOwner, attach, replaceAttachment, tool, decide, done, runCount, commandOf, references, context, captions, executeSettings,
+  return { h, database, clock, kernel, proposals, ensured, capacityFailure(value: RunWorkerStartupFailure) { capacityFailure = value; }, library, sync, workbookOwner, attach, replaceAttachment, tool, decide, done, runCount, commandOf, references, context, captions, executeSettings,
     submitMode(next: SubmitMode) { mode = next; entered = false; }, entered: () => entered, release: () => { release(); },
     expireModel() { modelCurrent = false; }, changeManifest() { factsSha = "b".repeat(64); },
     markAttempting(runId: string, itemId: string, runAttempt: number) { attemptingFor = attemptingIntent(runId, itemId, runAttempt); } };
@@ -124,6 +136,7 @@ it("refuses Confirm on an expired card as expired, without dispatch", async () =
   o.clock.advanceWall(Date.parse(card.expiresAt) - o.clock.nowMs() + 1);
   await assert.rejects(o.decide(card, "confirm"), refusedWith("ASSISTANT_PROPOSAL_EXPIRED"));
   assert.equal(o.runCount(), before);
+  assert.deepEqual(o.ensured, []);
 });
 
 it("issues and confirms an eligible rerun once and refuses its replay", async () => {
@@ -376,4 +389,25 @@ it("reads a lost library-action response back from its operation record and keep
   assert.deepEqual(await o.decide(card, "confirm"), { state: "unknown", actionId: card.actionId });
   assert.ok(o.captions().at(-1)?.includes("Check the Spreadsheets library for Lost."));
   await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u, "UNKNOWN is never retried");
+});
+
+it.each(["ready", "refused", "unknown"] as const)("keeps a confirmed Resume applied with %s worker capacity and stores only its safe warning", async state => {
+  const o = await owners(), queued = o.h.start(o.h.proposal());
+  assert.equal(o.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "pause",
+    requestedAt: o.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+    target: { runId: queued.envelope.runId, expectedVersion: queued.version } })).state, "applied");
+  const paused = o.h.fresh(queued);
+  const reference = o.references.issue("R", paused.envelope.runId, "run", paused.envelope.runId, paused.version);
+  const card = await o.tool("propose_run_action").propose({ run: reference, action: "resume" }, o.context);
+  if (state !== "ready") o.capacityFailure({ state, code: "RUN_QUEUED_WORKER_UNAVAILABLE",
+    message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail: "private capacity diagnostic" });
+  const command = o.commandOf(card); assert.ok(command);
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "applied", actionId: card.actionId });
+  assert.deepEqual(o.ensured, [command.commandId]);
+  const resumed = o.h.fresh(paused);
+  assert.equal(resumed.pause, undefined); assert.equal(resumed.version, paused.version + 1);
+  assert.deepEqual(o.captions(), [`Done: ${card.label}.${state === "ready" ? "" : ` ${ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text}`}`]);
+  assert.equal(o.captions().join().includes("private capacity diagnostic"), false);
+  await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
+  assert.deepEqual(o.ensured, [command.commandId]);
 });

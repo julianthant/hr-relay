@@ -15,7 +15,9 @@ import { NotificationRecordSchema } from "../../../../../src/models/notification
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
+import * as workerCapacity from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+import { RunWorkerStartupError, type RunWorkerCapacity, runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { assistantProposalDigest } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -37,6 +39,11 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.j
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { unexpectedWorkbookSync } from "../../../../support/helpers/backend/workbook-sync.js";
+
+vi.mock("../../../../../src/backend/runs/commands/run-worker-capacity.js", async importOriginal => {
+  const actual = await importOriginal<typeof workerCapacity>();
+  return { ...actual, createRunWorkerCapacity: vi.fn(actual.createRunWorkerCapacity) };
+});
 
 type Door = { history(operation: AssistantHistoryOperation): Promise<unknown>; respond(request: AssistantRequest): Promise<unknown> };
 const clientDoor = (client: ReturnType<typeof createDashboardClient>): Door => ({
@@ -570,10 +577,28 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
   } });
 });
 
-it('confirms run actions, issues reruns and entry lists, and refuses expired, stale and changed cards before any effect', async () => {
-  await withServedAssistant(async fixture => {
+it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s capacity, retaining warnings and refusing stale cards', async capacityState => {
+  const actual = await vi.importActual<typeof workerCapacity>("../../../../../src/backend/runs/commands/run-worker-capacity.js");
+  let checkCapacity: RunWorkerCapacity["ensure"] = async () => { throw new Error("capacity before the fixture was ready"); };
+  const capacityCalls: string[] = [];
+  const factory = vi.spyOn(workerCapacity, "createRunWorkerCapacity").mockImplementation(deps => ({
+    ...actual.createRunWorkerCapacity(deps), ensure: (command, result) => checkCapacity(command, result),
+  }));
+  try { await withServedAssistant(async fixture => {
     const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
     const database = context.database;
+    checkCapacity = async (command, result) => {
+      assert.ok(command.family === "run" && command.type === "resume");
+      capacityCalls.push(command.commandId);
+      assert.equal(result.state, "applied");
+      withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => {
+        assert.equal(raw.prepare("SELECT state FROM assistant_actions WHERE command_id=?").get(command.commandId)?.state, "settled");
+        assert.equal(raw.prepare("SELECT json_extract(payload_json,'$.result.state') AS state FROM command_audits WHERE command_id=?").get(command.commandId)?.state, "applied");
+        assert.equal(raw.prepare("SELECT pause_state FROM runs WHERE id=?").get(command.target.runId)?.pause_state, null);
+      });
+      if (capacityState !== "ready") throw new RunWorkerStartupError({ state: capacityState, code: "RUN_QUEUED_WORKER_UNAVAILABLE",
+        message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail: "private worker startup diagnostic" });
+    };
     let cleanupSubscription = () => {};
     try {
       if (client.assistantDecide === undefined) throw new Error('assistant decide owner required');
@@ -656,7 +681,14 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
       await vi.waitFor(() => assert.ok(published.slice(beforePause).some(row => row.revision === paused.version && row.pause === 'paused')), { timeout: 5_000, interval: 25 });
       const resume = await propose('Resume this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'resume' }], `run_${paused.envelope.runId}_${paused.version}`);
       const beforeResume = published.length;
+      assert.deepEqual(capacityCalls, [], 'expired, cancelled and pause cards never start a worker');
       assert.equal((await confirm(resume)).state, 'applied');
+      const resumeCommand = database.authority.assistantAuthorization.action(resume.actionId)?.command; assert.ok(resumeCommand);
+      assert.deepEqual(capacityCalls, [resumeCommand.commandId]);
+      const caption = withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw =>
+        raw.prepare("SELECT json_extract(payload_json,'$.text') AS text FROM assistant_messages WHERE action_id=? AND kind='decision'").get(resume.actionId)?.text);
+      assert.equal(caption, `Done: ${resume.label}.${capacityState === "ready" ? "" : ` ${ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text}`}`);
+      assert.equal(String(caption).includes('private worker startup diagnostic'), false);
       const resumed = database.authority.runs.get(second.run.envelope.runId); assert.ok(resumed && resumed.pause === undefined);
       await vi.waitFor(() => assert.ok(published.slice(beforeResume).some(row => row.revision === resumed.version && row.pause !== 'paused')), { timeout: 5_000, interval: 25 });
       cleanupSubscription();
@@ -683,7 +715,7 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
       assert.equal(database.authority.startPlans.get(startPlanId)?.consumedBy, undefined);
 
     } finally { cleanupSubscription(); }
-  });
+  }); } finally { factory.mockRestore(); }
 });
 
 it('refuses a PDF start while Emergency Contact is not served and confirms an attached spreadsheet as a library import', async () => {

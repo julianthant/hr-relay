@@ -11,6 +11,7 @@ import {
   type BulkRunCommandOutcome,
   type BulkRunCommandResponse,
   type CapacityRequest,
+  type CommandRequest,
   type CommandResult,
   type RunWorkerStartupFailure,
 } from "../../../rules/commands/commands.js";
@@ -33,6 +34,8 @@ export interface DashboardCommandService {
   submit(input: unknown): Promise<CommandResult>;
 
   executeBulk(input: unknown): Promise<BulkRunCommandResponse>;
+
+  completeConsumed(request: CommandRequest, result: CommandResult): Promise<CommandResult>;
 
   /** Publishes an already-executed command's applied result exactly as `execute` does, without executing it again. */
   publish(input: unknown, result: CommandResult): void;
@@ -107,6 +110,15 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       };
     }
   }
+  async function completeCapacity(capacity: RunWorkerCapacity, request: CapacityRequest, result: CommandResult): Promise<CommandResult> {
+    const workerStartup = await ensureCapacity(capacity, request, result);
+    return workerStartup === undefined ? result : CommandResultSchema.parse({ ...result, workerStartup });
+  }
+  async function completeConsumed(request: CommandRequest, result: CommandResult): Promise<CommandResult> {
+    if ((result.state !== "applied" && result.state !== "already-applied") || !needsWorkerCapacity(request) || deps.startWorkerCapacity === undefined) return result;
+    const capacity = deps.startWorkerCapacity, key = capacity.workflowOf(request);
+    return key === undefined ? result : inWorkflowLane(key, () => completeCapacity(capacity, request, result));
+  }
   async function submit(input: unknown): Promise<CommandResult> {
     if (AssistantModelPreferenceCommandRequestSchema.safeParse(input).success) return deps.kernel.executeAssistantModelPreference(input);
     if (WorkerBrowserSniffSchema.safeParse(input).success) {
@@ -122,16 +134,13 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     const request = parsed.data, capacity = deps.startWorkerCapacity;
     const key = capacity.workflowOf(request);
     if (key === undefined) return executeOne(input);
-    return inWorkflowLane(key, async () => {
-      const result = executeOne(request);
-      const workerStartup = await ensureCapacity(capacity, request, result);
-      return workerStartup === undefined ? result : CommandResultSchema.parse({ ...result, workerStartup });
-    });
+    return inWorkflowLane(key, () => completeCapacity(capacity, request, executeOne(request)));
   }
 
   return Object.freeze({
     execute: executeOne,
     submit,
+    completeConsumed,
     publish,
 
     // Whole-request refusals reach no target; each target outcome remains a separate vector entry.

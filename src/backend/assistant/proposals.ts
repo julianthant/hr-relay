@@ -30,7 +30,7 @@ export interface AssistantProposalDeps extends Pick<AssistantSpreadsheetProposal
   readonly database: AuthorityDatabase;
   readonly authorization: ReturnType<typeof createAssistantAuthorization>;
   readonly plans: StartPlanService;
-  readonly commands: Pick<DashboardCommandService, "submit" | "publish">;
+  readonly commands: Pick<DashboardCommandService, "submit" | "publish" | "completeConsumed">;
   readonly runs: Pick<RunRecordService, "read">;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   readonly rerunValues: (request: unknown) => RerunValuesResponse;
@@ -322,17 +322,20 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
       // After the claim every failure, including this Confirm's own abort, is UNKNOWN: the action is spent and never retried.
       try {
         const current = () => { signal.throwIfAborted(); issued.assertCurrent(); };
-        const result = issued.start
+        let result = issued.start
           ? await deps.authorization.consumeStart(issued.chat, decision.actionId, current, command => deps.commands.submit(command))
           : deps.authorization.consume(issued.chat, decision.actionId);
-        if (!issued.start && result !== null) deps.commands.publish(issued.record.command, result);
+        if (!issued.start && result !== null) {
+          result = await deps.commands.completeConsumed(issued.record.command, result);
+          deps.commands.publish(issued.record.command, result);
+        }
         signal.throwIfAborted();
         if (result?.state !== "applied") {
           caption(notDone);
           return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
         }
         issued.assertApplied();
-        caption(`Done: ${issued.label}.`);
+        caption(`Done: ${issued.label}.${result.workerStartup === undefined ? "" : ` ${result.workerStartup.message}`}`);
         return { state: "applied", actionId: decision.actionId };
       } catch {
         try { caption(ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text, `Outcome unknown: ${issued.label}. Do not retry.`); } catch { /* the action stays UNKNOWN either way */ }
