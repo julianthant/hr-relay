@@ -508,7 +508,7 @@ it("refuses a whole send whose attachment text exceeds the context bound, withou
 it("issues the selected run's useful first label with its pin and sends only its token to inference", async () => {
   const id = randomUUID(), version = 3, label = "Person Lookup · EID 10000001 · 2026-11-08T12:00:00Z · attempt 1";
   const selected: AssistantTool = { kind: "read", name: "selected_reference", description: "Return the selected reference without personal data.",
-    parameters: z.strictObject({}), output: z.strictObject({ run: referenceSchema("R") }), privacy: [], async invoke(_value, context) {
+    parameters: z.strictObject({ selected: z.literal(true) }), output: z.strictObject({ run: referenceSchema("R") }), privacy: [], async invoke(_value, context) {
       const run = context.references.issue("R", id, "the selected run", id, version);
       assert.equal(context.references.resolve(run, ["R"]).version, version);
       return { run };
@@ -517,7 +517,7 @@ it("issues the selected run's useful first label with its pin and sends only its
     assert.equal(runId, id); assert.equal(revision, version); return label;
   } } });
   try {
-    w.script.push(call("selected_reference", {}), body => assistantMessageStream(z.object({ run: z.string() }).parse(lastOutput(body)).run));
+    w.script.push(call("selected_reference", { selected: true }), body => assistantMessageStream(z.object({ run: z.string() }).parse(lastOutput(body)).run));
     const result = await w.ask("Explain the selected run", undefined, undefined, { subjectRef: `run_${id}_${version}` });
     assert.ok(result.state === "answered"); assert.equal(result.text, label);
     const provider = JSON.stringify(w.bodies);

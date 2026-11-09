@@ -9,7 +9,8 @@ import type { NotificationWire } from '../../../../models/dashboard/projection.j
 import type { WorkbookLibraryService } from '../../../workbooks/workbook-library-service.js';
 import type { RunRecordService } from '../../../runs/lifecycle/run-record-service.js';
 import type { RunRecord } from '../../../../models/run/record.js';
-import { PersonLookupCanonicalInput } from '../../../../models/workflows/person-lookup/input.js';
+import { PersonLookupCanonicalInput, personLookupWorkflow } from '../../../../workflows/person-lookup/workflow.js';
+import { directIdentifierDisplay } from '../../../../rules/redaction/redaction.js';
 import { parseCanonicalInputSnapshot } from '../../../../models/workflow/canonical-input.js';
 import { searchPartitionDay } from '../../../../models/dashboard/search-calendar.js';
 import { EidSchema } from '../../../../rules/identity/ids.js';
@@ -17,7 +18,7 @@ import { AssistantToolRefusal } from '../../../assistant/plugins/plugin.js';
 import { hasProtectedSubject, protectedSubjectDisplay } from '../../../runs/start/protected-input.js';
 
 function lookupEid(row: RunRecord): string | undefined {
-  if (row.envelope.workflow !== 'person-lookup' || (row.envelope.shape !== 'single' && row.envelope.shape !== 'operation-member')
+  if (row.envelope.workflow !== personLookupWorkflow.id || (row.envelope.shape !== 'single' && row.envelope.shape !== 'operation-member')
     || hasProtectedSubject(row.input.parsed.protectedBindings)) return undefined;
   try {
     const input = parseCanonicalInputSnapshot(PersonLookupCanonicalInput, row.input.parsed);
@@ -39,7 +40,7 @@ export function createAssistantPluginDeps(options: Readonly<{
   const current = <T>(read: () => T): T => { options.assertCurrent(); const value = read(); options.assertCurrent(); return value; };
   const label = (row: RunRecord) => protectedSubjectDisplay(row.input.parsed.protectedBindings, () => {
     const eid = lookupEid(row), workflow = options.facts().facts.find(fact => fact.id === row.envelope.workflow)?.label ?? row.envelope.workflow;
-    return { title: `${workflow}${row.runNumber === undefined ? '' : ` #${String(row.runNumber)}`}${eid === undefined ? '' : ` · EID ${eid}`} · ${row.envelope.enqueuedAt} · attempt ${String(row.envelope.attempt)}` };
+    return { title: `${workflow}${row.runNumber === undefined ? '' : ` #${String(row.runNumber)}`}${eid === undefined ? '' : ` · EID ${directIdentifierDisplay(eid)}`} · ${row.envelope.enqueuedAt} · attempt ${String(row.envelope.attempt)}` };
   }).title;
   return {
     findLookupRuns: eid => current(() => options.database.withAuthorityReadSnapshot(() => {
@@ -47,7 +48,7 @@ export function createAssistantPluginDeps(options: Readonly<{
       let cursor: Parameters<RunRecordService['list']>[0]['cursor'];
       let scanned = 0;
       do {
-        const page = options.runs.list({ workflow: 'person-lookup', disposition: 'live', limit: 1000, ...(cursor === undefined ? {} : { cursor }) });
+        const page = options.runs.list({ workflow: personLookupWorkflow.id, disposition: 'live', limit: 1000, ...(cursor === undefined ? {} : { cursor }) });
         if (page.state !== 'listed') throw new AssistantToolRefusal('ASSISTANT_READ_STALE');
         scanned += page.rows.length;
         for (const row of page.rows) if (lookupEid(row) === exact) matches.push(row);
