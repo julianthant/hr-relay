@@ -1,4 +1,4 @@
-import { Bell, MoreHorizontal } from "lucide-react";
+import { Bell, MoreHorizontal, Search } from "lucide-react";
 import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, IconButton, Skeleton, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
@@ -33,7 +33,7 @@ function dayGroups(items: readonly NotificationItem[]) {
   return days.map(day => ({ day, items: items.filter(item => itemDay(item) === day) }));
 }
 
-/** The sidebar body while the bell is pressed: Priority, then day groups. The sidebar header stays the workflow view's. */
+/** The sidebar body while the bell is pressed: the workflow view's Search row, Priority, then day groups. The sidebar header stays the workflow view's. */
 export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack, notice }: {
   state: NotificationsState; activeId: string; onReadAll: () => void; onOpen: Open; onBack: () => void; notice: string;
 }) {
@@ -51,6 +51,7 @@ export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack,
     <DropdownMenuContent align="end"><DropdownMenuItem disabled={!items.some(item => !item.read)} onClick={onReadAll}>Mark all read</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
   return <section aria-label="Notifications" className="notification-panel font-ui">
     <div className="notification-panel-scroll rail-scroll">
+      <h3 className="notification-search-row"><Search aria-hidden className="size-3.5 shrink-0" />Search</h3>
       {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="h-10 flex-1" /></div>)}</div></LoadingRegion>
         : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>
         : <>
