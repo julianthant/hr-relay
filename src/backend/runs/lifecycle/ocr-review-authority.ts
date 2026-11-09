@@ -8,7 +8,11 @@ import { checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from
 import type { OperatorGateResultRecord } from "../../../models/workflow/gates.js";
 import { childRunOutcomeSchema } from "../../../models/workflow/graph.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
-import { OcrApprovalReferenceSchema,OcrResultSchema } from "../../../models/workflows/ocr/result.js";
+import { OcrInputSchema } from "../../../models/workflows/ocr/input.js";
+import { ReadOcrResult } from "../../../models/workflows/ocr/read-result.js";
+import { ReadOcrReviewSeed } from "../../../models/workflows/ocr/read-review-seed.js";
+import { hydrateOcrReviewSeed, compactOcrReviewSeed, type OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
+import { OcrApprovalReferenceSchema,OcrResultSchema,compactOcrResult } from "../../../models/workflows/ocr/result.js";
 import { PersonLookupResultSchema } from "../../../models/workflows/person-lookup/result.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -118,10 +122,27 @@ export function assertOcrReviewChildrenCurrent(repositories: AuthorityRepositori
   }
 }
 
+export function readOcrReviewCheckpointSeed(repositories: AuthorityRepositories, ocrRun: RunRecord, checkpointValue: unknown): OcrReviewSeed {
+  try {
+    return hydrateOcrReviewSeed(ReadOcrReviewSeed.output.parse(checkpointValue), extractionId => {
+      const stored = repositories.ocrExtractions.get(extractionId);
+      if (stored?.binding !== "source-bound") return undefined;
+      const { binding: _binding, ...reading } = stored;
+      return reading;
+    }, OcrInputSchema.parse(ocrRun.input.parsed.value).roster);
+  } catch (cause) { throw new OcrReviewRefusedError({ cause }); }
+}
+
 export function publishOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
   run: RunRecord, checkpoint: RunCheckpointRecord): void {
   const actorId = authenticateOcrOperator(repositories, reader, run);
-  const seed = OcrResultSchema.parse(checkpoint.output.value);
+  const result = ReadOcrResult.output.parse(checkpoint.output.value);
+  const review = repositories.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId, "build-review", run.envelope.attempt)
+    .find(row => row.runId === run.envelope.runId && row.contractFingerprint === run.envelope.contractFingerprint
+      && row.output.schemaHash === deriveSchemaHash(ReadOcrReviewSeed.output, "output")
+      && sha256Hex(canonicalJsonStringify(row.output.value)) === result.review.digest);
+  if (review === undefined) throw new OcrReviewRefusedError();
+  const seed = OcrResultSchema.parse({ review: readOcrReviewCheckpointSeed(repositories, run, review.output.value), identities: result.identities });
   assertOcrReviewChildrenCurrent(repositories, run.envelope.runId, seed, ["lookup-identities", "lookup-signers"]);
   const current = readOcrReviewAuthority(repositories, reader, run.envelope.runId);
   if (current !== undefined && same(current.revision.seed, seed)) return;
@@ -188,7 +209,9 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
         .find(row => checkpointRecordKey(row) === (record.origin.kind === "checkpoint" ? record.origin.key : ""));
       const publication = checkpoint === undefined ? undefined : repositories.timelineEvents.get(deriveStableUuid("timeline-checkpoint-recorded",
         checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)));
-      if (checkpoint === undefined || checkpoint.runId !== runId || !same(checkpoint.output.value, record.seed)
+      if (checkpoint === undefined || checkpoint.runId !== runId
+        || !same(checkpoint.output.value, record.seed) && (!same(checkpoint.output.value, compactOcrResult(record.seed))
+          || !same(readOcrReviewCheckpointSeed(repositories, existence.run, compactOcrReviewSeed(record.seed.review)), record.seed.review))
         || checkpoint.contractFingerprint !== existence.run.envelope.contractFingerprint
         || checkpoint.descriptorVersion !== existence.run.envelope.descriptorVersion
         || publication?.payload.kind !== "checkpoint-recorded" || publication.workflow !== checkpoint.workflowId

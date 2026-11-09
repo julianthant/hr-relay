@@ -4,7 +4,7 @@ import { valueFreeProtectedData } from "../../../models/write-safety/protected-i
 import { bindOcrLookupOutcomes, ocrLookupRequests } from "../../../models/workflows/ocr/lookup.js";
 import { OcrApprovalReferenceSchema, OcrResultSchema, OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
 import { OcrCanonicalInputSchema } from "../../../models/workflows/ocr/input.js";
-import { OcrReviewSeedSchema, type OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
+import type { OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
 import { OcrPageWorkflowInputSchema } from "../../../models/workflows/ocr-page/input.js";
 import { ReadOcrReviewSeed } from "../../../models/workflows/ocr/read-review-seed.js";
 import { DelegationRefreshRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
@@ -23,7 +23,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { childTerminalSettlement, readDelegationScopeEvidence } from "../../storage/sqlite/delegation-authority.js";
-import { authenticateOcrOperator, readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
+import { authenticateOcrOperator, readOcrReviewAuthority, readOcrReviewCheckpointSeed, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
@@ -65,7 +65,7 @@ function readOcrRecordSource(repositories: AuthorityRepositories, runId: string)
   const retained = repositories.dependencies.groups(runId,"retained");
   const lookups = retained.filter(({ group }) => ["lookup-identities", "lookup-signers"].includes(group.invocation.nodeId)).map(({ group, manifest }) => {
     const checkpoint = originalCheckpoint(repositories,group,"build-review");
-    const seed = OcrReviewSeedSchema.parse(checkpoint.output.value);
+    const seed = readOcrReviewCheckpointSeed(repositories,owner,checkpoint.output.value);
     if (checkpoint.output.schemaHash !== deriveSchemaHash(ReadOcrReviewSeed.output,"output")
       || seed.sourceRunId !== undefined && seed.sourceRunId !== owner.envelope.runId) throw new OcrReviewRefusedError();
     const family = group.invocation.nodeId === "lookup-identities" ? "person-lookup" : "i9-lookup";

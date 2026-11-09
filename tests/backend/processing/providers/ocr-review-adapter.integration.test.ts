@@ -119,7 +119,8 @@ it("ocr/approved-records — reads only the corrected, explicitly selected recor
   if (result.state !== "ready") assert.fail("Selection read refused");
   assert.deepEqual(result.sources[0].snapshot.records.map(record => record.recordId), [revision.records[1].recordId]);
   assert.deepEqual(result.sources[0].snapshot.records[0].fields, f.corrected);
-  assert.notDeepEqual(result.sources[0].snapshot.records[0].fields, result.sources[0].review.records[1].fields);
+  assert.equal("fields" in result.sources[0].review.records[1], false);
+  assert.equal(result.sources[0].review.accounting.outcomes.some(outcome => "output" in outcome), false);
 });
 
 it("refuses substituted bulk consumer custody, task and dependency authority", async () => {

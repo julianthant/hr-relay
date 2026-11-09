@@ -2,7 +2,7 @@ import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
 import { OcrApprovedSnapshotSchema } from "../../../src/models/ocr/review.js";
 import { admitOcrExtraction, type SubmittedAnswer } from "../../../src/models/ocr/extraction.js";
 import { buildOcrSourceManifest, ocrPageInputs, type OcrPageInput } from "../../../src/models/workflows/ocr/source-manifest.js";
-import { buildOcrReviewSeed } from "../../../src/models/workflows/ocr/review-seed.js";
+import { buildOcrReviewSeed, compactOcrReviewSeed } from "../../../src/models/workflows/ocr/review-seed.js";
 import { accountOcrPages, bindOcrPageReading, ocrExtractionItemId, OcrPageOutcomeSchema } from "../../../src/models/workflows/ocr/page-accounting.js";
 import { ItemIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
@@ -41,5 +41,5 @@ export function i9ApprovedSource(index: number, pages: readonly I9FixturePage[])
   const snapshot = OcrApprovedSnapshotSchema.parse({ snapshotId: id(4), sourceRunId, revision: 1,
     reviewDigest: sha256Hex(`I-9 synthetic revision ${index}`), selectedRecordIds: records.map(record => record.recordId), records,
     approvedBy: "local-operator", approvedAt: READ_AT });
-  return { requestDocument: { document, readingId, fileName: `source-${index}.pdf`, reading: { kind: "subscription" as const } }, source: { snapshot, review } };
+  return { review, requestDocument: { document, readingId, fileName: `source-${index}.pdf`, reading: { kind: "subscription" as const } }, source: { snapshot, review: compactOcrReviewSeed(review) } };
 }

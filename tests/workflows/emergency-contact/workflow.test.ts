@@ -7,7 +7,7 @@ import { emergencyContactWorkflow } from "../../../src/workflows/emergency-conta
 import { EMERGENCY_CONTACT_MEMBER_EXAMPLE } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { ReadApprovedOcrSnapshot } from "../../../src/models/processing/ocr/read-approved-snapshot.js";
 import { OCR_INPUT_EXAMPLE } from "../../../src/models/workflows/ocr/input.js";
-import { ReadOcrResult } from "../../../src/models/workflows/ocr/read-result.js";
+import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
 import { OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
 import { descriptorRuntimeNodes, workflowPlanning } from "../../../src/workflow-kit/workflow.js";
 import type { RuntimeScope } from "../../../src/models/workflow/graph.js";
@@ -26,7 +26,8 @@ function scope(different = false): RuntimeScope {
   const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
   return { input: EmergencyContactInputSchema.parse(input), outputs: {
     "read-document": { state: "done", runId: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval.sourceRunId, itemId: OCR_INPUT_EXAMPLE.readingId,
-      output: OcrWorkflowResultSchema.parse({ ...ReadOcrResult.example, approvedSnapshot: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval }) },
+      output: OcrWorkflowResultSchema.parse({ review: ReadOcrReviewSeed.example, identities: [],
+        approvedSnapshot: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval }) },
     "approved-records": { snapshot: { ...ReadApprovedOcrSnapshot.example.snapshot, records: [first, second], selectedRecordIds: [first.recordId, second.recordId] } },
   } };
 }
