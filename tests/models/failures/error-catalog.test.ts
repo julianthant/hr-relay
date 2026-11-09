@@ -25,6 +25,13 @@ describe("error catalog", () => {
     }
   });
 
+  it("explains an unsatisfied delegation join with fixed text", () => {
+    const resolved = resolveErrorCatalogFailure({ code: "DELEGATION_OUTCOME_POLICY_UNSATISFIED", parameters: {}, summary: "delegation-outcome-policy-unsatisfied" }, "http-response");
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state !== "resolved") throw new Error("delegation policy catalog unresolved");
+    assert.equal(resolved.text, "A step this run depends on did not finish, so the run stopped. Open that step for the reason.");
+  });
+
   it("maps the HTTP internal failure code without exposing its native cause", () => {
     const failure = { code: "INTERNAL_FAILURE", parameters: {}, summary: "private native path" };
     const resolved = resolveErrorCatalogFailure(failure, "http-response");
