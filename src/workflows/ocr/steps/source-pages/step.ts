@@ -26,7 +26,25 @@ const childPolicy = Object.freeze({
   onChildFailed: "allow-partial", cascadeCancel: "cascade",
   afterChildRetry: "resume-parent", visibility: "inline"
 } as const);
-export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-pages", label: "Prepare source pages" }), system: "local" as const });
+export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-pages", label: "Prepare source pages" }), system: "local" as const,
+  description: "Render every original PDF page and bind each page's form type and reading method to the source manifest.",
+  review: {
+    pages: [
+      {
+        id: "source-pdf",
+        title: "Source PDF",
+        mode: "Read only",
+        nodeIds: ["render-pages", "read-source-pages"],
+        lines: [
+          { id: "render", kind: "action", text: "Render every original PDF page.", nodeIds: ["render-pages"] },
+          { id: "source", kind: "check", text: "Check each original page’s form type and reading method.", nodeIds: ["read-source-pages"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const,
+});
 export function buildSourcePages({ task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
   const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [], ({ input }) => ({ document: input.document }));
   const source = task({ id: "read-source-pages", contract: ReadOcrSourcePages, replay: "checkpoint" }, [rendered],
@@ -79,11 +97,38 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   return {
     steps: [
       ...sourcePages.steps,
-      [{ key: "page-readings", label: "Read document pages", system: "local" }, [pages]],
-      [{ key: "review-records", label: "Group records for review", system: "local" }, [review]],
-      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath" }, [identities]],
-      [{ key: "signer-lookups", label: "Look up official signers", system: "i9" }, [signers, completed]],
-      [{ key: "approval", label: "Approve selected records", system: "local" }, [approval]],
+      [{ key: "page-readings", label: "Read document pages", system: "local",
+        description: "Read each original page through the delegated OCR Page workflow and retain every completed or failed reading for review.",
+        review: { pages: [], branchLabels: [] } as const,
+      }, [pages]],
+      [{ key: "review-records", label: "Group records for review", system: "local",
+        description: "Account for every source page and group its readings into proposed records for operator review.",
+        review: {
+          pages: [
+            {
+              id: "ocr-records",
+              title: "OCR records",
+              mode: "Read only",
+              nodeIds: ["build-review"],
+              lines: [{ id: "group", kind: "check", text: "Account for every original page and group its readings into records for review.", nodeIds: ["build-review"] }],
+              fields: []
+            }
+          ],
+          branchLabels: []
+        } as const,
+      }, [review]],
+      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath",
+        description: "Check each proposed person through Person Lookup in UCPath and CRM, retaining the delegated outcomes for review.",
+        review: { pages: [], branchLabels: [] } as const,
+      }, [identities]],
+      [{ key: "signer-lookups", label: "Look up official signers", system: "i9",
+        description: "Look up proposed official signers in I-9 Complete and retain all person and signer lookup outcomes with the source-bound review.",
+        review: { pages: [], branchLabels: [] } as const,
+      }, [signers, completed]],
+      [{ key: "approval", label: "Approve selected records", system: "local",
+        description: "Require the operator's selection when approval is requested, preserving the bound source evidence before releasing records.",
+        review: { pages: [], branchLabels: [] } as const,
+      }, [approval]],
     ] as const, result: result(OcrWorkflowResultSchema, [completed, approval], ({ outputs }) => ({
       ...outputs["read-result"], approvedSnapshot: outputs["approve-records"] ?? null,
     }))
