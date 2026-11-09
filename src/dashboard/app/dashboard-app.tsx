@@ -930,6 +930,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   /** Settings navigation creates history so Back returns to the previous view. */
   const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const openSettings = useCallback((section = ""): void => {
     setRoute(current => ({
       ...current,
@@ -1151,7 +1152,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} reads={notificationReads} setReads={setNotificationReads} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()} onLogout={() => setLogoutOpen(true)} notifications={notifications} reads={notificationReads} setReads={setNotificationReads} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1285,7 +1286,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
-      <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onOpenSettings={openSettings} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} onLogout={() => leaveSettings(() => {
+      <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onOpenSettings={openSettings} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} logoutOpen={logoutOpen} onLogoutOpenChange={setLogoutOpen} onLogout={() => leaveSettings(() => {
         if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
         else void onProfileLogout();
       })} />
@@ -1295,7 +1296,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         catalog={workflowCatalog}
         open={sessionsOpen}
         onOpenChange={setSessionsOpen}
-        settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()}
       />
 
       <RunLaunchHost

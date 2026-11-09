@@ -8,8 +8,9 @@
 .hub-btn.danger { background:var(--ui-danger);color:var(--ui-panel); }
 .hub-field { width:100%;height:34px;padding:6px 10px;border:1px solid var(--ui-stroke-control);border-radius:8px;background:var(--ui-field);font-size:13px;color:var(--ui-primary); }
 .hub-field::placeholder { color:var(--ui-muted); }
-.hub-slot { position:fixed;top:12px;right:12px;bottom:calc(var(--ds-h-bar) + 21px);width:420px;max-width:calc(100vw - 32px);border:1px solid var(--ui-stroke);border-radius:8px;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);z-index:var(--hub-panel-layer); }
+.hub-slot { position:fixed;top:12px;right:12px;bottom:12px;width:420px;max-width:calc(100vw - 32px);border:1px solid var(--ui-stroke);border-radius:8px;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);z-index:var(--hub-panel-layer); }
 :root:has(#hub-shell-assistant:not([hidden])) #dashboard-main-region { padding-right:432px; }
+:root:has(#hub-shell-assistant:not([hidden])) .session-dock { right:444px; }
 :root:has(#hub-shell-assistant:not([hidden])) [data-slot=toast-viewport] { right:448px; }
 .hub-slot[hidden] { display:none; }
 .hub-slot-header { display:flex;padding:10px 12px;min-height:52px;align-items:center;border-bottom:1px solid var(--ui-stroke);gap:8px; }
@@ -18,7 +19,6 @@
 .hub-chat-title > span { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .hub-header-actions { display:flex;gap:2px;flex:none; }
 .hub-assistant-slot { flex:1;min-height:0; }
-/* Docked in the Logs footer's reserved right corner: Sessions bar (44px + border), column padding, footer inset. */
 .hub-transcript { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 16px;scrollbar-width:thin;font-size:13px;line-height:1.65; }
 .hub-chat-search { margin-bottom:12px; }
 .hub-chat-group h3 { color:var(--ui-muted);font-weight:500;font-size:11px;margin:8px 8px 5px; }

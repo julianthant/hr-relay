@@ -7,8 +7,7 @@ import { History, LogOut, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button, Dialog, DialogContent, DialogFooter, EmptyState, SearchInput, Tab, TabList, TabPanel, Tabs } from "../../ds/ui.js";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockActivity } from "./assistant-mock-thread.js";
-import { AssistantMark } from "./assistant-mark.js";
-import { assistantLogo, assistantLogoState } from "./assistant-mark-model.js";
+import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";
 import { chatAge, createMockHubChatsPort, useHubChats, useHubPanelPosition, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
 import type { AssistantPorts } from "./assistant-panel-model.js";
@@ -18,22 +17,22 @@ import { useDashboardClient } from '../../state/client-context.js';
 import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
-type HubShellProps = { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string) => void; settingsOpen: boolean; onLogout: () => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]>; commands?: DashboardCommandBinding };
+type HubShellProps = { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string) => void; settingsOpen: boolean; onLogout: () => void; logoutOpen: boolean; onLogoutOpenChange: (open: boolean) => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]>; commands?: DashboardCommandBinding };
 export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
   const history = useAssistantHistory(client, props.source === 'served', props.authority);
   return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
     preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || history.blocked || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
 }
-function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const panelPosition = useHubPanelPosition(4);
-  const [logout, setLogout] = useState(false);
-  const [opened, setOpened] = useState(source === "mock");
-  const frame = assistantFrame(), logo = assistantLogo();
+  useState(() => { assistantOpen.init(source === "mock"); });
+  const opened = useAssistantOpen();
+  const frame = assistantFrame();
   useEffect(() => {
     const toggle = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j" || event.altKey || event.shiftKey || settingsOpen) return;
-      event.preventDefault(); panelPosition.reset(); setOpened(value => !value);
+      event.preventDefault(); panelPosition.reset(); assistantOpen.toggle();
     };
     document.addEventListener("keydown", toggle);
     return () => document.removeEventListener("keydown", toggle);
@@ -45,11 +44,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const [title, setTitle] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [saving, setSaving] = useState(false);
-  const launcher = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  const anchor = useRef<HTMLSpanElement>(null);
-  const [footer, setFooter] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => { setFooter(anchor.current?.closest(".dashboard-shell")?.querySelector<HTMLElement>('[aria-label="Session actions"] > span:last-child') ?? null); }, []);
   const localChats = useMemo(() => history?.chats ?? createMockHubChatsPort(source === "mock"), [source, history]);
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
@@ -73,13 +68,11 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   };
   const icon = (label: string, glyph: ReactNode, onClick: () => void) => <button tabIndex={0} className="hub-icon" type="button" aria-label={label} title={label} onClick={onClick}>{glyph}</button>;
   return <>
-    {footer && createPortal(<Button ref={launcher} tabIndex={0} size="sm" variant="ghost" className="sessions-bar-icon sessions-bar-mark" style={{ order: -1 }} aria-label="Ask Relay" aria-expanded={opened} aria-controls="hub-shell-assistant" title="Ask Relay (⌘J)" onClick={() => { panelPosition.reset(); setOpened(value => !value); }} icon={<AssistantMark direction={logo ?? "orbit"} state={assistantLogoState()} size={16} />} />, footer)}
-    {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout sessions-bar-icon" aria-label="Log out" title="Log out" onClick={() => setLogout(true)} icon={<LogOut aria-hidden className="size-4" />} />, footer)}
       <section ref={panelPosition.element} id="hub-shell-assistant" className="hub-slot" aria-label={list ? "Relay assistant" : "Assistant panel"} data-source={model.source} hidden={settingsOpen || !opened} inert={settingsOpen || !opened} aria-hidden={settingsOpen || !opened} onKeyDown={event => {
-        if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { setOpened(false); panelPosition.reset(); launcher.current?.focus(); } }
+        if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { assistantOpen.set(false); panelPosition.reset(); focusAssistantLauncher(); } }
       }}>
         {list && <header className="hub-slot-header"><div className="hub-slot-title"><span>History</span></div><div className="hub-header-actions">
-          {icon("Chats", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { void model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, () => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); })}
+          {icon("Chats", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { void model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, () => { assistantOpen.set(false); panelPosition.reset(); focusAssistantLauncher(); })}
         </div></header>}
         {list ? <Tabs value={tab} onValueChange={setTab} className="hub-history"><TabList label="History" className="px-3"><Tab value="chats">Chats</Tab><Tab value="activity">Activity</Tab></TabList>
           <TabPanel value="chats" className="flex min-h-0 flex-1 flex-col"><div className="hub-transcript hub-chat-list" onKeyDown={event => {
@@ -102,13 +95,13 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
         </Tabs> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
           {current && currentSession && <AssistantPanel key={current.id} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
-            onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)} ></AssistantPanel>}
+            onClose={() => { assistantOpen.set(false); panelPosition.reset(); focusAssistantLauncher(); }} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)} ></AssistantPanel>}
         </div>
       </section>
-    <span ref={anchor} role="status" className="sr-only">{announcement}</span>
-    <Dialog open={logout} onOpenChange={setLogout}><DialogContent hideClose className="hub-modal" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><button tabIndex={0} className="hub-btn" onClick={() => setLogout(false)}>Cancel</button><button tabIndex={0} className="hub-btn primary" onClick={() => { setLogout(false); onLogout(); }}>Log out</button></DialogFooter></DialogContent></Dialog>
+    <span role="status" className="sr-only">{announcement}</span>
+    <Dialog open={logoutOpen} onOpenChange={onLogoutOpenChange}><DialogContent hideClose className="hub-modal" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><button tabIndex={0} className="hub-btn" onClick={() => onLogoutOpenChange(false)}>Cancel</button><button tabIndex={0} className="hub-btn primary" onClick={() => { onLogoutOpenChange(false); onLogout(); }}>Log out</button></DialogFooter></DialogContent></Dialog>
     <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose className="hub-modal" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
-      onCloseAutoFocus={event => { event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : document.querySelector<HTMLElement>(".hub-chat-open") ?? launcher.current)?.focus({ preventScroll: true }); }}>
+      onCloseAutoFocus={event => { event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : document.querySelector<HTMLElement>(".hub-chat-open") ?? document.querySelector<HTMLElement>("[data-assistant-launcher]"))?.focus({ preventScroll: true }); }}>
       <form onSubmit={event => {
         event.preventDefault(); if (!editing || saving) return;
         const { id, kind } = editing;

@@ -8,6 +8,8 @@ import { QUEUE_SORTS, type QueueSortKey } from './queue-model.js';
 import { needsYouCount, statusCount, totalCount, type StatusBucket, type StatusCountWire } from '../shell/shell-model.js';
 import { PROPOSED_STATUS, dsStatusOf } from '../shared/status/status-model.js';
 import { toggleQueueFilter } from './queue-filter-model.js';
+import { assistantLauncher } from '../shell/assistant-launcher-model.js';
+import { AssistantToolbarButton } from '../shell/assistant-launcher.js';
 
 export function FocusQueueToolbar({ leading, runStart, pauseControls, active, counts, onFilter, sort, onSort }: {
   pauseControls?: ReactNode;
@@ -47,6 +49,7 @@ export function FocusQueueToolbar({ leading, runStart, pauseControls, active, co
     </Select>
     <ToggleButton isIconOnly size="sm" variant="default" isSelected={sort === "attention"} onChange={selected => { if (selected && sort !== "attention") setChronological(sort); onSort(selected ? "attention" : chronological); }} className="queue-attention-toggle" aria-label="Attention first"><ListOrdered aria-hidden className="size-4" /></ToggleButton>
     {pauseControls}
+    {assistantLauncher() === 'c' && <AssistantToolbarButton />}
   </OperationsToolbar>;
 }
 

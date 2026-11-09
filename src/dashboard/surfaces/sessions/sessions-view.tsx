@@ -1,9 +1,10 @@
 import { type IdleSessionCountdown } from './session-idle-model.js';
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
+import { assistantLauncher } from "../shell/assistant-launcher-model.js";
+import { AssistantDockField, AssistantIconLauncher } from "../shell/assistant-launcher.js";
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { Settings, ChevronDown, ChevronUp, Minus, Plus, UsersRound } from "lucide-react";
-import { ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, Input, Select, Skeleton } from "../../ds/ui.js";
+import { ChevronDown, ChevronUp, Minus, Plus, UsersRound } from "lucide-react";
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, Input, Select, Skeleton } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
@@ -12,10 +13,10 @@ import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 
 /** The bar's counts: one quiet summary line; only the running count is green, like the rail's running pill. */
 function BarCounts({ data }: { data: SessionsViewState }) {
-  if (data.state !== "ready") return <span className="text-caption text-ui-muted">{data.state === "loading" ? "Loading" : "Unavailable"}</span>;
+  if (data.state !== "ready") return <span className="text-body text-ui-muted">{data.state === "loading" ? "Loading" : "Unavailable"}</span>;
   const tallies = sessionTallies(data.workers).filter(tally => tally.count > 0);
-  if (tallies.length === 0) return <span className="text-caption text-ui-muted">No workers</span>;
-  return <span className="text-caption text-ui-secondary">{tallies.map((tally, index) => <span key={tally.state}>{index > 0 && <span className="px-1.5 text-ui-muted">·</span>}
+  if (tallies.length === 0) return <span className="text-body text-ui-muted">No workers</span>;
+  return <span className="text-body text-ui-secondary">{tallies.map((tally, index) => <span key={tally.state}>{index > 0 && <span className="px-1.5 text-ui-muted">·</span>}
     <span className={cn("tabular-nums", tally.state === "running" && "font-medium text-ui-positive")}>{tally.count} {SESSION_STATE_LABELS[tally.state].toLocaleLowerCase()}</span></span>)}</span>;
 }
 
@@ -28,12 +29,12 @@ function SessionsSkeleton() {
   </div>)}</LoadingRegion>;
 }
 
-export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows, settingsOpen, onSettings, operations = {}, onCheck, idleCountdowns = {} }: {
+export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows, operations = {}, onCheck, idleCountdowns = {} }: {
   data: SessionsViewState; open: boolean; onOpenChange: (open: boolean) => void;
   onControl: (id: string, control: SessionControl) => void; onAdd: (workflowId: string, count: number) => void;
   idleCountdowns?: Readonly<Record<string, IdleSessionCountdown>>;
   operations?: Readonly<Record<string, SessionPreviewOperation>>; onCheck?: (id: string) => void;
-  workflows: readonly { id: string; label: string }[]; settingsOpen?: boolean; onSettings?: () => void;
+  workflows: readonly { id: string; label: string }[];
 }) {
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -57,7 +58,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     trigger.focus({ preventScroll: true });
   }, [addOpen, addLocked, data.state, validWorkflow]);
   const addControl = <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild><Button ref={addTriggerRef} size="sm" variant="ghost" className="sessions-bar-icon" aria-label="Add workers" title="Add workers" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger>
+          <DialogTrigger asChild><Button ref={addTriggerRef} size="sm" variant="secondary" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />}>Add workers</Button></DialogTrigger>
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
@@ -70,18 +71,21 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
             <DialogFooter><Button variant="muted" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="outline" disabled={!validCount || !validWorkflow || data.state !== "ready" || addLocked} onClick={event => { addFocusOrigin.current = event.currentTarget.closest('[role="dialog"]'); onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
           </DialogContent>
         </Dialog>;
-  const settingsControl = onSettings && <Button id={SETTINGS_GEAR_ID} size="sm" variant="ghost" className="sessions-bar-icon" aria-label="Settings" title="Settings" aria-pressed={settingsOpen} onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} />;
-  return <section aria-label="Session Panel" className="ui-theme-scope shrink-0 border-t border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    <ActionBarRow label="Session actions" className="sessions-bar h-11 gap-0 px-0">
-      <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title={open ? "Hide sessions" : "Show sessions"} onClick={() => onOpenChange(!open)} className="sessions-bar-toggle">
-        {open ? <ChevronDown aria-hidden className="size-3.5 shrink-0 text-ui-muted" /> : <ChevronUp aria-hidden className="size-3.5 shrink-0 text-ui-muted" />}<UsersRound aria-hidden className="size-3.5 shrink-0 text-ui-muted" /><span className="text-heading">Sessions</span>
-        <span className="ml-1 flex min-w-0 items-center border-l border-ui-stroke pl-3"><BarCounts data={data} /></span>
-      </button>
-      <span className="sessions-bar-actions flex shrink-0 items-center gap-1 pl-2 pr-3">{addControl}{settingsControl}</span>
-    </ActionBarRow>
-    {operations.add && ['uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 border-t border-ui-stroke px-4 py-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}
-    {open && <div id={contentId} className="max-h-[24rem] overflow-y-auto border-t border-ui-stroke bg-ui-canvas p-3">
+  const launcher = assistantLauncher();
+  const pill = <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title="" onClick={() => onOpenChange(!open)} className={cn("session-pill", launcher !== "b" && "dock-surface")}>
+    <span className="session-pill-title">Sessions</span><span aria-hidden className="text-ui-muted">·</span><span className="session-pill-counts"><BarCounts data={data} /></span>
+    {open ? <ChevronDown aria-hidden /> : <ChevronUp aria-hidden />}
+  </button>;
+  return <section aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
+    {open && <div id={contentId} role="region" aria-label="Sessions" className="session-float">
+      <div className="session-float-header"><h2 className="session-float-title">Sessions</h2>{addControl}</div>
+      {operations.add && ['uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 px-3 pb-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}
+      <div className="session-float-body">
       {data.state === "ready" ? data.workers.length ? <div data-session-strip className="flex items-stretch gap-3 overflow-x-auto pb-1">{data.workers.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={(id, control) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); }} />)}</div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
+      </div>
     </div>}
+    <div className="dock-row" aria-label="Session actions" role="group">
+      {launcher === "b" ? <div className="dock-group dock-surface">{pill}<span aria-hidden className="dock-divider" /><AssistantDockField /></div> : <>{pill}{launcher === "a" && <AssistantIconLauncher />}</>}
+    </div>
   </section>;
 }
