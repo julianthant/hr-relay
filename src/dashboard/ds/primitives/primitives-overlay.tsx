@@ -129,6 +129,9 @@ function Scrim({ layer, entered, slow }: { layer: string; entered: boolean; slow
   );
 }
 
+/** A dialog's confirming action is the dashboard blue. */
+const DIALOG_BLUE = "[--ds-accent:var(--ui-info)] [--ds-accent-fg:var(--ui-canvas)] [--ds-accent-hover:var(--ui-info)]";
+
 /** A modal dialog. `title` is REQUIRED — Radix warns without one,
  * and an unlabelled modal is unusable with a screen reader. */
 export function DialogContent({
@@ -219,7 +222,7 @@ function DialogSurface({
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],
           dsLayer.modal,
-          "group/dialog flex max-h-[86vh] flex-col overflow-hidden border outline-none",
+          "group/dialog flex max-h-[86vh] flex-col overflow-hidden border outline-none", DIALOG_BLUE,
           "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)]",
           dsRadius.xl,
           dsElev.high,
@@ -352,7 +355,7 @@ function ConfirmSurface({
         className={cn(
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] max-w-[420px] -translate-x-1/2 -translate-y-1/2",
           dsLayer.modal,
-          "flex flex-col gap-[var(--ds-space-loose)] border p-5 outline-none",
+          "flex flex-col gap-[var(--ds-space-loose)] border p-5 outline-none", DIALOG_BLUE,
           "rounded-[20px] border-[color:var(--ds-border)] bg-[var(--ds-surface-overlay)]",
           dsElev.high,
           dsMotion.enter,

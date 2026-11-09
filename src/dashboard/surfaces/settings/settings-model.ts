@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { statusMock } from "./status-mock/status-mock-model.js";
 import type {
 SettingsSectionPrimitiveSchema
 } from "../../../models/dashboard/bootstrap.js";
@@ -53,7 +52,9 @@ const FOLDED_EDITOR_SECTIONS = new Set(["display", "annual-dates"]);
 const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   display: "general",
   "annual-dates": "general",
-  "runtime-isolation": "paths",
+  "runtime-isolation": "general",
+  paths: "general",
+  routes: "general",
   providers: "general",
   "provider-env": "general",
   "protected-store": "credentials",
@@ -123,14 +124,11 @@ export function buildSettingsNav(
   const groups: SettingsNavGroup[] = [];
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
-    clientEntry("credentials", "Credentials", "credentials"),
+    clientEntry("credentials", "Account", "credentials"),
   ] });
-  groups.push({ id: "advanced", heading: "Advanced", entries: [
-    clientEntry("paths", "Paths", "paths"),
-    clientEntry("routes", "Routes", "routes"),
-    ...(editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
-      .map(section => servedEntry(section.id, section.label)) ?? []),
-  ] });
+  const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
+    .map(section => servedEntry(section.id, section.label)) ?? [];
+  if (advanced.length > 0) groups.push({ id: "advanced", heading: "Advanced", entries: advanced });
   groups.push({ id: "data", heading: "Data", entries: [
     clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("explorer", "Explorer", "explorer"),
@@ -145,7 +143,7 @@ export function buildSettingsNav(
   if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
     statusEntries.unshift({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
-  if (statusMock() === undefined) groups.push({ id: "status", heading: "Status", entries: statusEntries });
+  groups.push({ id: "status", heading: "Status", entries: statusEntries });
   groups.push({
     id: "help",
     heading: "Help",

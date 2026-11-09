@@ -1,4 +1,5 @@
-import { ArrowLeft,ArrowUp,Check,CircleAlert,Database,Folder,Gauge,Hand,History,MessagesSquare,Monitor,Search,Settings as SettingsIcon,Sparkles,Table2 } from "lucide-react";
+import { ArrowLeft,ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Settings as SettingsIcon,Sparkles,Table2 } from "lucide-react";
+import { z } from "zod";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
@@ -19,14 +20,17 @@ import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
+import { StatusMockAccount } from "./status-mock/status-mock.js";
 import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
+import { StatusMockGeneral } from "./status-mock/status-mock-general.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
 import { PreflightSection } from "./preflight/settings-preflight.js";
-import { RoutesSection } from "./routes/settings-routes.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage/storage-settings-model.js";
 import { StorageSection } from "./storage/storage-settings.js";
 
+
+const APP_DATA_LOCATIONS = z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) });
 
 export type { SettingsSection,StorageHealthSummary };
 
@@ -42,7 +46,7 @@ const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
 
 const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   general: Sparkles,
-  credentials: Hand,
+  credentials: UserRound,
   display: Monitor,
   performance: Gauge,
   paths: Folder,
@@ -216,6 +220,7 @@ export function SettingsPage({
   const target = selectedResult?.target;
   const pathTargetLoading = activeId === "paths" && (searchTarget === "paths.stateRoot" || searchTarget === "paths.artifactRoot") && editor.editor.state === "loading";
   const searchContext = useMemo(() => ({ target, visit: searchVisit }), [target, searchVisit]);
+  const appDataLocations = settingsDocument === undefined ? undefined : APP_DATA_LOCATIONS.parse({ stateRoot: settingsDocument.deployment["paths.stateRoot"], artifactRoot: settingsDocument.deployment["paths.artifactRoot"] });
   const content = useRef<HTMLDivElement>(null);
   const scrollPositions = useRef(new Map<string, number>());
   useEffect(() => {
@@ -317,13 +322,13 @@ export function SettingsPage({
         {isDataSection && (activeId === "activity" && (mockStatus === "analytics-a" || mockStatus === "analytics-b") ? <StatusMockAnalytics variant={mockStatus === "analytics-a" ? "a" : "b"} /> : dataContent)}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
-        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} />}
+        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} locations={appDataLocations} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
-        {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}
-        {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
+        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && !(resolution.entry.id === "general" && mockStatus !== undefined) && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />}
+        {resolution.state === "open" && resolution.entry.id === "general" && mockStatus !== undefined && <StatusMockGeneral />}
+        {resolution.state === "open" && resolution.entry.id === "credentials" && (mockStatus?.startsWith("account") || mockStatus?.startsWith("general-a-chatgpt") ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <PreflightSection editor={editor} workflowLabels={workflowLabels} />
         )}

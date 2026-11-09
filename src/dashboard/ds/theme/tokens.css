@@ -1250,9 +1250,7 @@ th.ds-text-caps {
 }
 
 .ds-body-scope .ds-field-description {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 520px;
   margin: var(--ds-space-body-copy-gap) 0 0;
   color: var(--ds-fg-secondary);
   font-size: var(--ds-row-desc);
@@ -1591,8 +1589,9 @@ th.ds-text-caps {
   align-items: center;
   justify-content: space-between;
   min-height: 0;
-  padding-block: 16px;
+  padding-block: 13px;
 }
+.ds-body-scope .ds-switch-row:has(.ds-text-meta) { padding-block: 11px; }
 
 .ds-body-scope .ds-switch-content {
   flex: 1;
@@ -1603,6 +1602,7 @@ th.ds-text-caps {
 }
 
 .ds-body-scope .ds-switch-copy {
+  max-width: 520px;
   gap: var(--ds-space-tight);
 }
 

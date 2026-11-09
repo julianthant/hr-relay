@@ -1,6 +1,13 @@
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "settings-storage", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "settings-storage", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-duo-setup", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
+
+/** Account page fixtures: Email is not served after sign-in, so the page has no email row. */
+export const STATUS_MOCK_ACCOUNT = {
+  values: { name: "Jordan Lee", initials: "JL", timekeeper: "Lee, Jordan", ucpathUsername: "jlee", lastSignedIn: "Aug 3, 2026, 8:41 AM" },
+  email: "jordan.lee@example.com",
+  limitNote: "Usage limit reached · resets 9:40 PM",
+} as const;
 
 /** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. */
 const LOADED_MOCK: StatusMockId | undefined = typeof window === "undefined" ? undefined
@@ -12,7 +19,7 @@ export function statusMock(): StatusMockId | undefined {
 /** Toasts are a title and at most one short line, no buttons. The stack shows the newest and folds the rest behind it; hovering opens it. */
 const THREE_TOASTS = [
   { tone: "warning", title: "UCPath is down for maintenance", description: "Runs that use UCPath wait." },
-  { tone: "warning", title: "ChatGPT is disconnected", description: "Reconnect it in Settings > General." },
+  { tone: "warning", title: "ChatGPT is disconnected", description: "Reconnect it in Settings > Account." },
   { tone: "danger", title: "Relay is missing files", description: "Download Relay again." },
 ] as const;
 export const STATUS_MOCK_TOASTS = {
@@ -52,7 +59,7 @@ export const STATUS_MOCK_FIRST_RUN = [
   { id: "browser", label: "Browser for workflows", state: "ok" },
   { id: "storage", label: "Saved on this computer", state: "ok" },
   { id: "duo", label: "Duo sign-in", state: "ok" },
-  { id: "folders", label: "Download and report folders", state: "running" },
+  { id: "folders", label: "Downloads folder", state: "running" },
 ] as const;
 
 /** Outcome vocabulary shared by the key figures, the daily chart and the workflow rows. Needs attention = finished but not checked after saving, or waiting for you. */

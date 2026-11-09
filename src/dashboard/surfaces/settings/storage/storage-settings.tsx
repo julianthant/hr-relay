@@ -1,3 +1,4 @@
+import { AppDataPaths } from "../general/settings-storage.js";
 import { type ReactNode, useRef, useState } from "react";
 import type { StorageDoctorWire } from "../../../../models/dashboard/storage.js";
 import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-history.js";
@@ -110,7 +111,7 @@ function RestoreNotice({ backupCapturedAt }: { backupCapturedAt: string }) {
   return <Notice sticky tone="warning" title={`Restored from the ${fmtInstantDay(backupCapturedAt)} ${fmtClock(backupCapturedAt)} backup.`} description="Check UCPath for anything done after that." />;
 }
 
-export function StorageSection({ storage, onHistoryCleared }: { storage: StorageHealthSummary; onHistoryCleared?: () => void }) {
+export function StorageSection({ storage, onHistoryCleared, locations }: { storage: StorageHealthSummary; onHistoryCleared?: () => void; locations?: { stateRoot: string; artifactRoot: string } }) {
   const { doctor, runDoctor } = useStorageDoctor();
   const history = useRunHistory(onHistoryCleared);
   const [confirming, setConfirming] = useState<ClearRunHistoryRequest>();
@@ -159,6 +160,7 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
         {CREDENTIAL_CHECKS.map(check => <CheckRow pending={pending} loading={show} key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
         {report?.protectedSettings.state === "unavailable" && <div className="diagnostic-check-detail"><DiagnosticFindings name="Connections" result={{ tone: "unavailable", value: "Unavailable", detail: report.protectedSettings.cause.summary }} /></div>}
       </CheckGroup>
+      <AppDataPaths locations={locations} />
       <BodySection title="Run history"><FormGroup label="Run history">
         <div className="hub-settings-row">
           <div><div className="hub-row-label">Clear run history</div><span className="hub-row-note">{history.description}</span></div>

@@ -12,9 +12,12 @@ const THEMES = (process.env.STATUS_MOCK_THEMES ?? "light").split(",") as ("light
 const WIDTH = Number(process.env.STATUS_MOCK_WIDTH ?? 1280);
 const HEIGHT = 720;
 const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
+// 2 renders at the Codex references' scale for pixel comparison.
+test.use({ deviceScaleFactor: Number(process.env.STATUS_MOCK_SCALE ?? 1) });
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
-  "general-a": "general", "general-a-chatgpt-limit": "general", "general-a-chatgpt-disconnected": "general",
+  "general-a": "general", "account": "credentials", "account-edit": "credentials", "account-delete": "credentials", "account-duo-setup": "credentials",
+  "general-a-chatgpt-limit": "credentials", "general-a-chatgpt-disconnected": "credentials",
   "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard", "settings-storage": "storage",
 };
 
@@ -36,7 +39,8 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     const settings = SETTINGS_PAGE[id];
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${settings ? `&settings=${settings}` : ""}${id === "settings-storage" ? "" : `&statusMock=${id}`}`);
-    if (settings) await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
+    // The modal frames open with their dialog, which hides the page behind it from the accessibility tree.
+    if (settings) await expect(page.locator("nav.settings-panel-nav")).toBeVisible();
     else if (!id.startsWith("signup")) await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
     // A modal dialog blocks pointer clicks, so close the assistant panel through the DOM.
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
@@ -100,7 +104,14 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         await expect(id === "run-b" ? dialog.getByText("ChatGPT is disconnected") : dialog.getByRole("button", { name: /^Start (dry|live) run$/ })).toBeVisible();
       }
     }
-    if (settings === "general") await expect(page.getByText(id.endsWith("limit") ? "Usage limit reached" : id.endsWith("disconnected") ? "Disconnected" : "Working · checked 2 min ago").first()).toBeVisible();
+    if (settings === "credentials") {
+      await expect(page.getByRole("heading", { name: "Account", exact: true }).or(page.locator(".ds-page-heading-title", { hasText: "Account" }))).toBeVisible();
+      if (id === "account-edit") await expect(page.getByRole("dialog", { name: "Edit name" })).toBeVisible();
+      if (id === "account-delete") await expect(page.getByRole("alertdialog").or(page.getByRole("dialog")).getByRole("button", { name: "Delete account", exact: true })).toBeVisible();
+      if (id === "account-duo-setup") await expect(page.getByText("Needs setup")).toBeVisible();
+      if (id.endsWith("limit")) await expect(page.getByText("Usage limit reached")).toBeVisible();
+      if (id.endsWith("disconnected")) await expect(page.getByText("Not connected")).toBeVisible();
+    }
     if (settings === "keyboard") await expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
@@ -356,12 +367,19 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  for (const id of ["general", "credentials", "paths", "routes", "preflight", "activity", "keyboard", "storage"]) {
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}`);
+  for (const id of ["general", "credentials", "preflight", "activity", "keyboard", "storage"]) {
+    // General and Account show the moved rows, which only the mock Account page carries.
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "credentials" ? "&statusMock=account" : ""}`);
     await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await settle(page);
     await page.screenshot({ path: join(OUT, `settings-${id}-${theme}-${WIDTH}.png`) });
+    const scroller = page.locator("#dashboard-settings-content");
+    if (await scroller.evaluate(node => node.scrollHeight - node.clientHeight > 8)) {
+      await scroller.evaluate(node => { node.scrollTop = node.scrollHeight; });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: join(OUT, `settings-${id}-${theme}-${WIDTH}-more.png`) });
+    }
   }
   expect(errors).toEqual([]);
 });
@@ -402,5 +420,39 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await page.keyboard.press("Tab");
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&statusMock=analytics-b`);
   await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// Account edit and delete flows, and General's toggles and pickers, on the mock fixtures.
+test("account and general interactions", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=credentials&statusMock=account`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await expect(page.locator("nav.settings-panel-nav").getByRole("link", { name: "Routes" })).toHaveCount(0);
+  await expect(page.locator("nav.settings-panel-nav").getByRole("link", { name: "Paths" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit Name", exact: true }).click();
+  const edit = page.getByRole("dialog", { name: "Edit name" });
+  await expect(edit.getByRole("button", { name: "Close" })).toHaveCount(0);
+  await edit.getByRole("textbox", { name: "Name" }).fill("Casey Park");
+  await edit.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Casey Park")).toBeVisible();
+  await page.getByRole("button", { name: "Edit Name", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await expect(page.getByText("Not connected")).toBeVisible();
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=general&statusMock=general-a`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  const full = page.getByRole("switch", { name: "Full access" });
+  await expect(full).not.toBeChecked();
+  await full.dispatchEvent("click");
+  await expect(full).toBeChecked();
+  await expect(page.getByRole("button", { name: "Change", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
