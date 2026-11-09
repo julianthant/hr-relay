@@ -23,8 +23,9 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   onOpenNotification: (destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => void;
 }) {
   const [open, setOpen] = useViewState("notifications", false);
+  const [activeId, setActiveId] = useViewState("notificationActive", "", "replace");
   const [notice, setNotice] = useState("");
-  const notificationRail = useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification, served: inbox });
+  const notificationRail = useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification, onActive: setActiveId, served: inbox });
   const bell = useRef<HTMLButtonElement>(null);
   const back = () => { notificationRail.changeOpen(false); bell.current?.focus(); };
   return <aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-settings-open={settingsOpen} data-notifications-open={open}>
@@ -37,7 +38,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
       </div>
     </header>
     <div className="workspace-rail-body">
-      {open ? <NotificationsPanel state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
+      {open ? <NotificationsPanel activeId={activeId} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
         : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
     </div>
     {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} />}

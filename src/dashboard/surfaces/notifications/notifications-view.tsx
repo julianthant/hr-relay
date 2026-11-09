@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, CircleAlert, CircleCheck, Clock, HardDrive, Info, Unplug, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, CheckCheck, CircleAlert, CircleCheck, Clock, HardDrive, Info, Unplug, type LucideIcon } from "lucide-react";
 import { forwardRef, useEffect, useRef } from "react";
 import { IconButton, Skeleton, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
@@ -17,23 +17,23 @@ function itemIcon(item: NotificationItem): LucideIcon {
 /** Runs name the subject and workflow on the grey line; the other notices carry their own sentence. */
 const itemLine = (item: NotificationItem) => item.kind === "run" ? `${item.subject} · ${item.workflow}` : item.detail;
 
-function NotificationRow({ item, onOpen }: { item: NotificationItem; onOpen: (item: NotificationItem) => void }) {
+function NotificationRow({ item, active, onOpen }: { item: NotificationItem; active: boolean; onOpen: (item: NotificationItem) => void }) {
   const Icon = itemIcon(item);
-  return <li><button type="button" className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
+  return <li><button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
     <Icon aria-hidden className={TONE_COLOR[item.tone]} />
     <span className="notification-item-copy"><span className="notification-item-title">{item.title}</span><span className="notification-item-line">{itemLine(item)}</span></span>
     <span className="notification-item-meta"><span className="notification-item-time">{shortAge(item.age)}</span><span aria-hidden className="notification-unread-dot" data-read={item.read} />{!item.read && <span className="sr-only">Unread</span>}</span>
   </button></li>;
 }
 
-function NotificationGroup({ label, items, onOpen }: { label: string; items: readonly NotificationItem[]; onOpen: (item: NotificationItem) => void }) {
+function NotificationGroup({ label, items, activeId, onOpen }: { label: string; items: readonly NotificationItem[]; activeId: string; onOpen: (item: NotificationItem) => void }) {
   if (items.length === 0) return null;
-  return <section aria-label={label}><h3 className="notification-group-label">{label}</h3><ul className="notification-list">{items.map(item => <NotificationRow key={item.id} item={item} onOpen={onOpen} />)}</ul></section>;
+  return <section aria-label={label}><h3 className="notification-group-label">{label}</h3><ul className="notification-list">{items.map(item => <NotificationRow key={item.id} item={item} active={item.id === activeId} onOpen={onOpen} />)}</ul></section>;
 }
 
 /** The sidebar body while the bell is pressed: header, Today and Earlier groups, or one grey line when there is nothing. */
-export function NotificationsPanel({ state, onReadAll, onOpen, onBack, notice }: {
-  state: NotificationsState; onReadAll: () => void; onOpen: (item: NotificationItem) => void; onBack: () => void; notice: string;
+export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack, notice }: {
+  state: NotificationsState; activeId: string; onReadAll: () => void; onOpen: (item: NotificationItem) => void; onBack: () => void; notice: string;
 }) {
   const items = state.state === "ready" ? state.items : [];
   const empty = state.state === "ready" && items.length === 0;
@@ -47,14 +47,16 @@ export function NotificationsPanel({ state, onReadAll, onOpen, onBack, notice }:
   }, [onBack]);
   return <section aria-label="Notifications" className="notification-panel font-ui">
     <header className="settings-nav-header notification-panel-head"><h2>Notifications</h2>
-      <IconButton label="Back to workflows" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={onBack} />
+      <div className="notification-panel-actions">
+        <IconButton label="Mark all read" size="sm" disabled={!items.some(item => !item.read)} icon={<CheckCheck className={dsIcon.md} />} onClick={onReadAll} />
+        <IconButton label="Back to workflows" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={onBack} />
+      </div>
     </header>
-    <div className="notification-panel-toolbar"><button type="button" disabled={!items.some(item => !item.read)} className={cn("notification-mark-read", dsFocus)} onClick={onReadAll}>Mark all read</button></div>
     <div className="notification-panel-scroll rail-scroll">
       {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="size-4 rounded-full" /><Skeleton className="h-8 flex-1" /></div>)}</div></LoadingRegion>
         : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>
         : empty ? <p className="notification-empty">You're all caught up.</p>
-        : <><NotificationGroup label="Today" items={items.filter(item => !item.earlier)} onOpen={onOpen} /><NotificationGroup label="Earlier" items={items.filter(item => item.earlier)} onOpen={onOpen} /></>}
+        : <><NotificationGroup label="Today" items={items.filter(item => !item.earlier)} activeId={activeId} onOpen={onOpen} /><NotificationGroup label="Earlier" items={items.filter(item => item.earlier)} activeId={activeId} onOpen={onOpen} /></>}
     </div>
     {notice && <p role="status" className="notification-notice">{notice}</p>}
   </section>;

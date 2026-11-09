@@ -55,7 +55,7 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
     const rows = [...rail.querySelectorAll(".notification-item")].map(row => row.getBoundingClientRect());
     return { width: box.width, head: rect("h2", 1).left - box.left, label: rect(".notification-group-label").left - box.left, icon: rect(".notification-item > svg").left - box.left,
       text: rect(".notification-item-copy").left - rect(".notification-item > svg").left, dotRight: box.right - 1 - rect(".notification-unread-dot").right,
-      backRight: box.right - 1 - rect(".notification-panel-head button").right, pitch: rows[1].top - rows[0].top, timeGap: rect(".notification-unread-dot").left - rect(".notification-item-time").right,
+      backRight: box.right - 1 - rect(".notification-panel-actions button", 1).right, pitch: rows[1].top - rows[0].top, timeGap: rect(".notification-unread-dot").left - rect(".notification-item-time").right,
       panelBottom: box.bottom - rect(".notification-panel").bottom };
   });
   console.log(`MEASURE ${theme} ${JSON.stringify(m)}`);
@@ -76,20 +76,27 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await expect(panel(page).getByRole("button", { name: /Run waiting for you/ }).locator(".notification-unread-dot")).toHaveAttribute("data-read", "true");
   await expect(page.getByRole("heading", { name: /Morrow, Bea/ }).first()).toBeVisible();
   await page.mouse.move(1, 1);
+  await expect(panel(page).getByRole("button", { name: /Run waiting for you/ })).toHaveAttribute("aria-current", "true");
   await shot(page, "run-clicked", theme);
+  // The Settings sidebar width (about 244px), scene-only: the shared width is lane E's.
+  await page.addStyleTag({ content: ".dashboard-shell.dashboard-shell { --shell-rail-width: 244px !important; }" });
+  await page.waitForTimeout(300);
+  await shot(page, "panel-mixed-244", theme);
 
   // A ChatGPT item opens Settings > Subscription; the read marks survive the visit.
   await panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ }).click();
   await expect(page.locator(".ds-page-heading-title", { hasText: "Subscription" })).toBeVisible();
   await shot(page, "settings-sidebar", theme);
   await page.getByRole("button", { name: /^(Back|Close settings)/ }).first().click();
+  await expect(panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ })).toHaveAttribute("aria-current", "true");
+  await expect(panel(page).getByRole("button", { name: /Run waiting for you/ })).not.toHaveAttribute("aria-current", "true");
   await expect(panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ }).locator(".notification-unread-dot")).toHaveAttribute("data-read", "true");
 
-  await expect(panel(page).getByRole("button", { name: "Mark all read" })).toBeDisabled();
+  await expect(panel(page).getByRole("button", { name: "Mark all read", exact: true })).toBeDisabled();
   await expect(dot(page)).toHaveCount(0);
   await open(page, "centre");
   await bell(page).click();
-  await panel(page).getByRole("button", { name: "Mark all read" }).click();
+  await panel(page).getByRole("button", { name: "Mark all read", exact: true }).click();
   await expect(dot(page)).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(panel(page)).toBeHidden();
