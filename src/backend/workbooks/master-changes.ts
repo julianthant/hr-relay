@@ -13,7 +13,7 @@ const address = (sheet: string, row: string, field: string) => JSON.stringify([s
 function columns(sheet: EditableWorkbookWire['sheets'][number], field: string): number[] {
   return sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
 }
-function workbookKey(value: unknown): string | undefined {
+export function workbookKey(value: unknown): string | undefined {
   if (typeof value === 'string') return value.length ? value : undefined;
   return typeof value === 'number' && Number.isFinite(value) ? String(value) : undefined;
 }

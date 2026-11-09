@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { rmSync } from "node:fs";
-import { afterAll, afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { buildRunWorkbookSection, createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
@@ -248,8 +248,9 @@ it("rechecks the selected named worksheet on each plan without consulting type d
   const mismatched = f.planner.plan({ ...f.request, workbookReferences: [{ ...f.selection, libraryId: foreign.libraryId }] });
   expect(mismatched.planned).toEqual([]);
   expect(mismatched.refused).toMatchObject([{ code: "capability-unavailable" }]);
-  const badDefaultPlanner = f.makePlanner({ ...f.library, types: () => f.library.types().map(current => current.id === patch.typeId
-    ? { ...current, defaultWorkbookId: foreign.libraryId } : current) });
+  const alteredLibrary = { ...f.library, types: () => f.library.types().map(current => current.id === patch.typeId
+    ? { ...current, defaultWorkbookId: foreign.libraryId } : current) };
+  const badDefaultPlanner = f.makePlanner(alteredLibrary);
   const badDefault = badDefaultPlanner.plan(f.request);
   expect(badDefault.planned).toHaveLength(1);
   expect(badDefault.refused).toEqual([]);
@@ -362,4 +363,19 @@ it('projects workflow-authored output facts and binds them into the retained pla
   const plan = f.plan();
   expect(() => StartPlanRecordSchema.parse({ ...plan, planned: plan.planned.map(run => ({ ...run, outputs: [{ kind: 'workbook', name: 'Different.xlsx', rowSubject: 'record', rows: { state: 'known', count: 99 } }] })) })).toThrow();
 
+});
+
+
+it("loads each selected source once in each planning and confirmation scope across entries", async () => {
+  const f = await fixture(), read = vi.spyOn(f.repository, "libraryVersion");
+  const wire = f.planner.plan({ ...f.request, submissions: [{ eid: patch.key }, { eid: "10800002" }],
+    workbookReferences: [f.selection, { ...f.selection, entry: 2 }] });
+  const record = f.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
+  expect(record.planned).toHaveLength(2);
+  expect(read).toHaveBeenCalledTimes(1);
+  const result = f.kernel.execute(world.startCommand(record));
+  expect(result.state).toBe("applied");
+  expect(read).toHaveBeenCalledTimes(2);
+  f.plan();
+  expect(read).toHaveBeenCalledTimes(3);
 });

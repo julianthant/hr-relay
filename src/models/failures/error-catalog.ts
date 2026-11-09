@@ -770,6 +770,7 @@ export const ERROR_CATALOG = Object.freeze({
   COMMAND_BROWSER_UNAVAILABLE: catalogEntry("The browser command could not acquire its current profile and session.", EmptyParametersSchema),
   COMMAND_BROWSER_CLOSURE_UNPROVED: catalogEntry("The command's browser or authentication resources could not be proven closed. Profile custody is retained.", EmptyParametersSchema),
   WORKBOOK_METADATA_UNSUPPORTED: catalogEntry("This workbook has formulas, Excel error cells or metadata Relay cannot preserve during master edits.", EmptyParametersSchema),
+  WORKBOOK_CAPTURE_LIMIT_EXCEEDED: catalogEntry("The selected worksheets exceed the capture limit of 32 sources, 250,000 populated cells or 500,000 cell positions. Select fewer or smaller worksheets.", EmptyParametersSchema),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
     EmptyParametersSchema,

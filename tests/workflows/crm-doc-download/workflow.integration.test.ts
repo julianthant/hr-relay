@@ -52,7 +52,9 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     h.clock.setWall(f.clock.now());
     const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: f.clock, sync: unexpectedWorkbookSync });
     const workbook = crmDocumentWorkbookFixture(mode === "ambiguous");
-    if (mode === "ambiguous") { const sheet = workbook.sheets[1], row = sheet?.rows[1]; assert.ok(sheet && row); sheet.rows.push({ ...structuredClone(row), id: "duplicate-two" }); }
+    const selectedSheet = workbook.sheets[0], secondSheet = workbook.sheets[1]; assert.ok(selectedSheet && secondSheet);
+    selectedSheet.rows.push(...structuredClone(secondSheet.rows.slice(1)));
+    if (mode === "ambiguous") { const row = secondSheet.rows[1]; assert.ok(row); selectedSheet.rows.push({ ...structuredClone(row), id: "duplicate-two" }); }
     if (mode === "missing") { const row = workbook.sheets[0]?.rows[1]; assert.ok(row); row.cells[0] = { value: "missing@example.test" }; }
     const saved = library.create(workbook), libraryId = saved.libraryId;
     library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
@@ -61,15 +63,16 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600000, workbooks: library, plannedBy: "local-operator",
       configFingerprint: f.snapshot.fingerprint, configSnapshotId: f.snapshot.configSnapshotId });
     const planned = planner.plan({ workflowId: descriptor.id, submissions: [{ people: "10000001;two@example.test" }], dryRun: false,
-      workbookReferences: [{ entry: 1, typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId, versionId: "original" }],
+      workbookReferences: [{ entry: 1, libraryId, versionId: "original", sheetId: selectedSheet.id,
+        expectedVersion: library.read(libraryId).version }],
     });
     const plan = h.database.authority.startPlans.get(planned.startPlanId); assert.ok(plan);
     assert.equal(plan.planned.length, 1); assert.deepEqual(plan.refused, []);
     const entry = plan.planned[0]; assert.ok(entry?.workbookReferences);
-    const current = library.read(libraryId), edited = structuredClone(current.workbook), firstName = edited.sheets[0]?.rows[1]?.cells[1]; assert.ok(firstName);
-    firstName.value = "Editable head"; library.save(libraryId, current.version, edited);
     const start = h.kernel.execute({ ...world.startCommand(plan), requestedAt: f.clock.now().toISOString() });
     const runId = singleAppliedRunId(start);
+    const current = library.read(libraryId), edited = structuredClone(current.workbook), firstName = edited.sheets[0]?.rows[1]?.cells[1]; assert.ok(firstName);
+    firstName.value = "Editable head"; library.save(libraryId, current.version, edited);
     const ports = testWorkerPorts(f.db, f.clock, { path: f.path, descriptor, poolIndex: 1 });
     const slot = f.db.authority.workerSlots.list(descriptor.id).find(slot => slot.poolIndex === 1); assert.ok(slot);
     const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: slot.workerId });
@@ -185,13 +188,26 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
         return;
       }
       const output = ReadCrmWorksheetArchives.output.parse(terminal.result.value);
-      assert.deepEqual([output.worksheetCount, output.personCount, output.documentCount], [2, 2, 2]);
-      assert.deepEqual(output.collection.files.map(file => file.relativePath), ["July 6/July 6.zip", "August 2/August 2.zip"]);
-      for (const [index, sheet] of output.worksheets.entries()) {
-        const zip = await JSZip.loadAsync(readFileSync(join(f.snapshot.config.paths.onboardingDocsDir, sheet.relativePath)));
-        const name = `Fixture, ${index === 0 ? "Legal" : "Second"} EID/Signed Offer Letter.pdf`;
-        assert.deepEqual(Object.keys(zip.files), [name]); assert.equal(await zip.file(name)?.async("string"), `%PDF-1.7 worksheet person ${String(index + 1)}`);
+      assert.deepEqual([output.worksheetCount, output.personCount, output.documentCount], [1, 2, 2]);
+      assert.deepEqual(output.collection.files.map(file => file.relativePath), ["July 6/July 6.zip"]);
+      assert.equal(output.worksheets.length, 1);
+      const sheet = output.worksheets[0]; assert.ok(sheet);
+      assert.equal(sheet.relativePath, "July 6/July 6.zip");
+      assert.equal(sheet.worksheetId, "july"); assert.equal(sheet.worksheetName, "July 6");
+      assert.deepEqual(sheet.people.map(person => ({ identity: person.identity, folderName: person.folderName, documentCount: person.documentCount })),
+        CRM_DOCUMENT_RECORDS_FIXTURE.records.map((person, index) => ({ identity: person.identity,
+          folderName: `Fixture, ${index === 0 ? "Legal" : "Second"} EID`, documentCount: 1 })));
+      const archiveBytes = readFileSync(join(f.snapshot.config.paths.onboardingDocsDir, sheet.relativePath));
+      assert.equal(archiveBytes.byteLength, sheet.artifact.bytes);
+      const zip = await JSZip.loadAsync(archiveBytes);
+      const names = ["Fixture, Legal EID/Signed Offer Letter.pdf", "Fixture, Second EID/Signed Offer Letter.pdf"];
+      assert.deepEqual(Object.keys(zip.files), names);
+      for (const [index, name] of names.entries()) {
+        const document = zip.file(name); assert.ok(document);
+        const bytes = await document.async("nodebuffer");
+        assert.deepEqual(bytes, Buffer.from(`%PDF-1.7 worksheet person ${String(index + 1)}`));
       }
+      assert.equal(existsSync(join(f.snapshot.config.paths.onboardingDocsDir, "August 2", "August 2.zip")), false);
       for (const nodeId of ["document-records", "workbook-reference", "document-rows", "document-pdfs", "worksheet-archives"]) {
         const checkpoint = f.db.authority.runCheckpoints.latest(descriptor.id, entry.itemId, nodeId); assert.ok(checkpoint);
         assert.equal(checkpoint.runId, runId); assert.ok(checkpoint.provenance.length > 0);
@@ -212,8 +228,8 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
   } finally { await manager?.closeAll("worker-stop"); await resources?.stop(); for (const database of world.openDatabases.splice(0)) database.close(); await f.dispose(); }
 }
 
-it("crm-doc-download/worksheet-archives — executes registered CRM sessions, run-bound references and both published worksheet ZIPs", () => runCrm("complete"));
-it("retains multiple operator row choices and resumes the same batch to publish both exact archives", () => runCrm("ambiguous"));
+it("crm-doc-download/worksheet-archives — executes registered CRM sessions, run-bound references and both PDFs in the selected worksheet ZIP", () => runCrm("complete"));
+it("retains multiple operator row choices and resumes the same batch to publish both exact PDFs in one worksheet archive", () => runCrm("ambiguous"));
 it.each(["missing", "download-failed", "cancelled"] as const)("publishes no collection for %s", mode => runCrm(mode));
 
 it("authenticates batch choices in the retained reference step proof", () => {

@@ -39,7 +39,7 @@ import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
-  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types">;
+  readonly workbooks?: Pick<WorkbookLibraryService, "createReferenceCapture">;
   readonly protectedSecrets?: ProtectedSecretSource;
 
   readonly authority: Readonly<{
@@ -148,6 +148,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
   const planned: PlannedRun[] = [];
   const refused: StartRefusal[] = [];
   const seenItemIds = new Set<string>();
+  const captureReference = deps.workbooks?.createReferenceCapture();
 
   for (const [index, rawInput] of rawSubmissions.entries()) {
     const entry = PositiveIntSchema.parse(index + 1);
@@ -185,8 +186,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
     let workbookReferences: SchemaBoundCanonicalValue[] | undefined;
     if (references.length > 0) {
-      const workbooks = deps.workbooks;
-      if (workbooks === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
+      if (captureReference === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
       try {
         workbookReferences = references.map(({ entry: _entry, ...selection }) => {
           const lookup = lookups[0];
@@ -202,7 +202,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
           const reference = { ...lookup, libraryId: selection.libraryId, versionId: selection.versionId,
             ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }),
             ...("mode" in lookup ? { expectedVersion: selection.expectedVersion } : {}) };
-          const snapshot = workbooks.snapshot({ kind: "selected-source", typeId: requirement.id,
+          const snapshot = captureReference({ kind: "selected-source", typeId: requirement.id,
             keyFieldId: requirement.keyFieldId, fields: planning.requiredWorkbookFields,
             writableFields: requirement.writableFields,
             mode: requirement.mode, keys: "mode" in lookup ? [] : lookup.keys,

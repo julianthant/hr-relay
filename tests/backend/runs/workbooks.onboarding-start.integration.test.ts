@@ -9,7 +9,6 @@ import { RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashb
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { OnboardingCanonicalValueSchema } from "../../../src/models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
-import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.js";
@@ -41,7 +40,7 @@ async function fixture(workflow: AnyWorkflowDescriptor = descriptor) {
       ...rows.map(([rowId, email, name]) => ({ id: rowId, cells: [email, name, "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) }))],
   });
   const saved = library.create({ name: "Selected roster.xlsx", themes: [], hasFormulas: false,
-    sheets: [sheet("people", [["first", first, "First"], ["second", second, "Second"], ["upper", first.toUpperCase(), "Upper"]]),
+    sheets: [sheet("people", [["first", first, "First"], ["second", second, "Second"], ["upper", first.toUpperCase(), "Upper"], ["duplicate", first, "Duplicate"]]),
       sheet("archive", [["archived", first, "Archived"]])] });
   repository.putType({ id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
   assert.equal(library.operatorOperation(saved.libraryId, "declare", { kind: "metadata", expectedVersion: saved.version,
@@ -51,8 +50,9 @@ async function fixture(workflow: AnyWorkflowDescriptor = descriptor) {
   const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
     descriptors: { resolve: id => id === workflow.id ? workflow : undefined }, planTtlMs: 600_000,
     workbooks: library, configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
-  const selection = (entry: number, sheetId = "people", rowId = "first") => ({ entry, typeId: "onboarding-roster",
-    libraryId: saved.libraryId, versionId, selectedRow: { sheetId, rowId } });
+  const selection = (entry: number, sheetId = "people", rowId = "first") => ({ entry,
+    libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id, sheetId,
+    expectedVersion: library.read(saved.libraryId).version, selectedRow: { sheetId, rowId } });
   const submission = (email = first) => ({ email, mode: "rehire", configuredJobEndDate: "06/30/2027" });
   const request = (emails: readonly string[] = [first]) => ({ workflowId: descriptor.id, dryRun: false,
     submissions: emails.map(email => submission(email)), workbookReferences: emails.map((_email, index) => selection(index + 1)) });
@@ -125,26 +125,29 @@ describe("selected saved Onboarding row start authority", () => {
 
   it("retains ambiguous physical selection in the reference digest and plan fingerprint", async () => {
     const f = await fixture();
-    const a = f.plan(), request = f.request(); request.workbookReferences = [f.selection(1, "archive", "archived")];
+    const a = f.plan(), request = f.request(); request.workbookReferences = [f.selection(1, "people", "duplicate")];
     const b = f.plan(request);
     const aRef = RunWorkbookSelectedRowReferenceSchema.parse(a.record.planned[0].workbookReferences?.[0].value);
     const bRef = RunWorkbookSelectedRowReferenceSchema.parse(b.record.planned[0].workbookReferences?.[0].value);
     assert.deepEqual(aRef.snapshot, bRef.snapshot);
+    assert.deepEqual(aRef.snapshot.worksheets.map(sheet => sheet.sheetId), ["people"]);
+    assert.deepEqual(aRef.request.selectedRow, { sheetId: "people", rowId: "first" });
+    assert.deepEqual(bRef.request.selectedRow, { sheetId: "people", rowId: "duplicate" });
     assert.equal(aRef.snapshot.rows[0].state, "ambiguous");
     assert.notEqual(a.record.inputFingerprint, b.record.inputFingerprint);
     const aInput = OnboardingCanonicalValueSchema.parse(a.record.planned[0].input.value);
     const bInput = OnboardingCanonicalValueSchema.parse(b.record.planned[0].input.value);
     assert.ok(aInput.roster.state === "resolved" && bInput.roster.state === "resolved");
     assert.notEqual(aInput.roster.row.binding.referenceDigest, bInput.roster.row.binding.referenceDigest);
-    assert.equal(bInput.roster.row.references.legalName.firstName, "Archived");
+    assert.equal(bInput.roster.row.references.legalName.firstName, "Duplicate");
     const run = f.start(a.record)[0];
     const forged = RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
       value: { ...aInput, roster: { ...aInput.roster, row: { ...aInput.roster.row,
-        binding: { ...aInput.roster.row.binding, sheetId: "archive", rowId: "archived" }, references: bInput.roster.row.references } } } } } });
+        binding: { ...aInput.roster.row.binding, rowId: "duplicate" }, references: bInput.roster.row.references } } } } } });
     assert.throws(() => authenticateOnboardingRosterExecution(f.database.authority, forged), { code: "WORKBOOK_STORAGE_CORRUPT" });
   });
 
-  it("refuses invalid membership, unavailable versions, wrong types and caller roster without queued effects", async () => {
+  it("refuses invalid membership, unavailable versions and caller roster without queued effects", async () => {
     const f = await fixture();
     const created = await f.apply({ kind: "create-version", name: "Removed", from: { kind: "version", versionId: f.versionId }, useNow: false });
     const removed = created.result.versions.find(version => version.id === created.action.operationId); assert.ok(removed);
@@ -153,7 +156,6 @@ describe("selected saved Onboarding row start authority", () => {
       { ...f.request(), workbookReferences: [f.selection(1, "foreign", "first")] },
       { ...f.request(), workbookReferences: [f.selection(1, "people", "missing")] },
       { ...f.request(), workbookReferences: [f.selection(1, "people", "people-header")] },
-      { ...f.request(), workbookReferences: [{ ...f.selection(1), typeId: "general" }] },
       { ...f.request(), workbookReferences: [{ ...f.selection(1), versionId: removed.id }] },
       { ...f.request(), submissions: [{ ...f.submission(), roster: {} }] },
       { ...f.request(), submissions: [{ ...f.submission(), mode: "unknown" }] },
@@ -162,6 +164,7 @@ describe("selected saved Onboarding row start authority", () => {
     for (const request of cases) {
       const { record } = f.plan(request); assert.equal(record.planned.length, 0); assert.deepEqual(record.refused.map(row => row.entry), [1]);
     }
+    assert.throws(() => f.plan({ ...f.request(), workbookReferences: [{ ...f.selection(1), typeId: "general" }] }));
     assert.deepEqual(f.database.authority.runs.listByWorkflow(descriptor.id), []);
     assert.deepEqual(f.writeCalls, []); assert.deepEqual(f.workerCalls, []);
   });
@@ -187,15 +190,25 @@ describe("selected saved Onboarding row start authority", () => {
     assert.deepEqual(active.record.refused.map(row => row.code), ["active-run-exists"]);
   });
 
-  it("confirms the reviewed immutable version after current master values change", async () => {
+  it("refuses stale writable confirmation and admits a fresh selection of the edited current version", async () => {
     const f = await fixture(), { record } = f.plan();
-    const reviewed = canonicalJsonStringify(record.planned[0].input);
     const current = f.library.read(f.id), workbook = structuredClone(current.workbook);
     workbook.sheets[0].rows[1].cells[1].value = "Edited master";
     f.library.save(f.id, current.version, workbook);
-    const run = f.start(record)[0];
-    assert.equal(canonicalJsonStringify(run.input.parsed), reviewed);
+    const refused = f.kernel.execute(world.startCommand(record));
+    assert.equal(refused.state, "rejected");
+    if (refused.state === "rejected") assert.equal(refused.code, "replan-required");
+    assert.equal(f.database.authority.startPlans.get(record.startPlanId)?.consumedBy, undefined);
+    assert.deepEqual(f.database.authority.runs.listByWorkflow(descriptor.id), []);
+    assert.equal(f.repository.lastUsed(descriptor.id), undefined);
+    assert.deepEqual(f.writeCalls, []); assert.deepEqual(f.workerCalls, []);
+    const fresh = f.plan(), run = f.start(fresh.record)[0];
+    assert.deepEqual(run.input.parsed, fresh.record.planned[0].input);
     const input = OnboardingCanonicalValueSchema.parse(run.input.parsed.value);
-    assert.ok(input.roster.state === "resolved"); assert.equal(input.roster.row.references.legalName.firstName, "First");
+    assert.ok(input.roster.state === "resolved");
+    assert.equal(input.roster.row.references.legalName.firstName, "Edited master");
+    const reference = RunWorkbookSelectedRowReferenceSchema.parse(run.input.workbookReferences?.[0].value);
+    assert.equal(reference.request.versionId, f.library.libraryVersion(f.id).version.id);
+    assert.notEqual(reference.request.versionId, f.versionId);
   });
 });

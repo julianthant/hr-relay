@@ -207,7 +207,7 @@ it('captures exact named all-row bytes separately from live CAS and refuses miss
   const edited = structuredClone(f.service.read(id).workbook);
   edited.sheets[0].rows[1].cells[1].value = 'Changed, Person';
   f.service.save(id, 2, edited);
-  const request = { kind: 'selected-source', mode: 'all', typeId: 'ocr-roster', keyFieldId: 'eid',
+  const request = { kind: 'selected-source', mode: 'all', keys: [], typeId: 'ocr-roster', keyFieldId: 'eid',
     libraryId: id, versionId: 'original', sheetId: 'people', expectedVersion: 3,
     fields: ['eid', 'fullName'], writableFields: [] };
   const captured = f.service.snapshot(request);
@@ -336,4 +336,132 @@ it('groups results using run enqueue authority, stable ties and explicit unavail
   expect(result.workflows[0].runs[2].enqueuedAt).toBeNull();
   create('conflict', runIds[1], 'second');
   expect(() => f.service.results()).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_CORRUPT' }));
+});
+
+function captureRequest(f: ReturnType<typeof fixture>, keys = ['10000001']) {
+  return { kind: 'selected-source' as const, mode: 'keys' as const, typeId: 'roster', keyFieldId: 'eid',
+    fields: ['eid', 'fullName'], writableFields: [], keys, libraryId: f.record.libraryId,
+    versionId: 'original', sheetId: 'people', expectedVersion: 1 };
+}
+
+it('indexes each selected source once across keys and entries and starts fresh on the next scope', () => {
+  const f = fixture(), read = vi.spyOn(f.repository, 'libraryVersion');
+  const capture = f.service.createReferenceCapture(), request = captureRequest(f);
+  expect(capture({ ...request, keys: ['missing', '10000001'] }).rows.map(row => row.state)).toEqual(['missing', 'matched']);
+  expect(capture(request)).toEqual(f.service.snapshot(request));
+  expect(read).toHaveBeenCalledTimes(2); // scoped read and independent one-shot read
+  capture(request);
+  expect(read).toHaveBeenCalledTimes(2);
+  const changed = structuredClone(f.record.workbook);
+  changed.sheets[0].columnBindings?.reverse();
+  f.service.save(f.record.libraryId, 1, changed);
+  expect(() => f.service.createReferenceCapture()(request)).toThrow(expect.objectContaining({ code: 'WORKBOOK_VERSION_CONFLICT' }));
+  expect(f.service.createReferenceCapture()({ ...request, versionId: 'revision:2', expectedVersion: 2 }).rows[0].state).toBe('missing');
+});
+
+it('ignores an unmapped binding with a matching field ID when indexing selected-source keys', () => {
+  const f = fixture(), workbook = structuredClone(f.record.workbook), sheet = workbook.sheets[0];
+  sheet.width = 3;
+  sheet.columnBindings?.push({ id: 'unmapped-eid', sourceColumn: 2, sourceHeader: 'Unmapped EID', fieldId: 'eid', basis: 'unmapped' });
+  sheet.rows[0].cells.push({ value: 'Unmapped EID' });
+  sheet.rows[1].cells.push({ value: 'phantom-eid' });
+  const saved = f.service.create({ ...workbook, libraryId: undefined });
+  const capture = f.service.createReferenceCapture();
+  const request = { ...captureRequest(f), libraryId: saved.libraryId };
+  expect(capture({ ...request, keys: ['phantom-eid'] }).rows).toEqual([{ key: 'phantom-eid', state: 'missing', matches: [] }]);
+  const mapped = capture(request);
+  expect(mapped.rows.map(row => [row.key, row.state, row.matches.map(match => match.rowId)]))
+    .toEqual([['10000001', 'matched', ['person']]]);
+  expect(mapped.rows[0].matches[0].values.eid).toBe('10000001');
+});
+
+it('retains ordered missing, numeric, ambiguous and tagged-date values with exact row membership', () => {
+  const f = fixture(), workbook = structuredClone(f.record.workbook);
+  workbook.sheets[0].rows.push(
+    { id: 'numeric', cells: [{ value: 42 }, { value: new Date('2026-01-01T00:00:00Z') }] },
+    { id: 'duplicate', cells: [{ value: '42' }, { value: 'second' }] },
+    { id: 'boolean', cells: [{ value: true }, { value: 'boolean' }] },
+    { id: 'date', cells: [{ value: new Date('2026-01-01T00:00:00Z') }, { value: 'date' }] });
+  const saved = f.service.create({ ...workbook, libraryId: undefined });
+  const request = { ...captureRequest(f), libraryId: saved.libraryId, keys: ['42', 'true', 'null', '2026-01-01T00:00:00.000Z', 'missing', '10000001'] };
+  const capture = f.service.createReferenceCapture(), snapshot = capture(request);
+  expect(snapshot.rows.map(row => [row.key, row.state, row.matches.map(match => match.rowId)]))
+    .toEqual([['42', 'ambiguous', ['numeric', 'duplicate']], ['true', 'missing', []], ['null', 'missing', []], ['2026-01-01T00:00:00.000Z', 'missing', []], ['missing', 'missing', []], ['10000001', 'matched', ['person']]]);
+  expect(snapshot.rows[0].matches[0].values.fullName).toEqual({ type: 'date', value: '2026-01-01T00:00:00.000Z' });
+  expect(Object.isFrozen(snapshot.rows[0].matches[0].values)).toBe(true);
+  expect(capture({ ...request, keys: ['42'], selectedRow: { sheetId: 'people', rowId: 'numeric' } }).rows).toEqual([snapshot.rows[0]]);
+  expect(() => capture({ ...request, keys: ['42'], selectedRow: { sheetId: 'people', rowId: 'boolean' } })).toThrow();
+  expect(capture(request)).toEqual(snapshot);
+  const all = capture({ ...request, mode: 'all', keys: [] });
+  expect(all.rows.map(row => row.matches[0].rowId)).toEqual(['person', 'numeric', 'duplicate', 'boolean', 'date']);
+});
+
+it('keeps equal sheet and row identities separate across Library sources and rejects stale requests without caching success', () => {
+  const f = fixture(), other = f.service.create({ ...f.record.workbook, libraryId: undefined });
+  const read = vi.spyOn(f.repository, 'libraryVersion'), capture = f.service.createReferenceCapture(), request = captureRequest(f);
+  expect(() => capture({ ...request, expectedVersion: 2 })).toThrow(expect.objectContaining({ code: 'WORKBOOK_VERSION_CONFLICT' }));
+  expect(capture(request).libraryId).toBe(f.record.libraryId);
+  expect(capture({ ...request, libraryId: other.libraryId }).libraryId).toBe(other.libraryId);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(() => capture({ ...request, expectedVersion: 2 })).toThrow(expect.objectContaining({ code: 'WORKBOOK_VERSION_CONFLICT' }));
+});
+
+it.each([{ width: 2, rows: 62_501, value: 'populated', named: true }, { width: 4, rows: 62_501, value: null, named: false }])(
+  'bounds aggregate selected sheets, counting repeat captures once ($width columns)', async ({ width, rows, value, named }) => {
+    const f = fixture(), workbook = { ...f.record.workbook, libraryId: undefined,
+      sheets: [{ ...f.record.workbook.sheets[0], width,
+        columnBindings: Array.from({ length: width }, (_, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: `Column ${index}`,
+          fieldId: index === 0 ? 'eid' : index === 1 ? 'fullName' : null, basis: index < 2 ? 'manual' as const : 'unmapped' as const })),
+        rows: Array.from({ length: rows }, (_, index) => ({ id: `row-${index}`, cells: Array.from({ length: width }, () => ({ value })) })) }] };
+    const first = f.service.create(workbook), capture = f.service.createReferenceCapture();
+    if (named) await f.service.libraryAction(first.libraryId, { operationId: 'second-named', expectedVersion: 1,
+      expectedRevision: f.repository.libraryState(first.libraryId).revision,
+      change: { kind: 'create-version', name: 'Second named bytes', from: { kind: 'version', versionId: 'original' }, useNow: false } }, new AbortController().signal);
+    const request = { ...captureRequest(f, ['absent']), libraryId: first.libraryId, expectedVersion: f.service.read(first.libraryId).version };
+    const next = named ? { ...request, versionId: 'second-named' } : { ...request, libraryId: f.service.create(workbook).libraryId };
+    capture(request); capture(request); capture(request);
+    expect(() => capture(next)).toThrow(expect.objectContaining({ code: 'WORKBOOK_CAPTURE_LIMIT_EXCEEDED' }));
+    expect(f.service.createReferenceCapture()(next).rows[0].state).toBe('missing');
+  });
+
+it('bounds the unique selected-source count independently of repeated captures', () => {
+  const f = fixture(), capture = f.service.createReferenceCapture();
+  for (let index = 0; index < 32; index++) {
+    const record = f.service.create({ ...f.record.workbook, libraryId: undefined });
+    const request = { ...captureRequest(f), libraryId: record.libraryId };
+    capture(request); capture(request);
+  }
+  expect(() => capture(captureRequest(f))).toThrow(expect.objectContaining({ code: 'WORKBOOK_CAPTURE_LIMIT_EXCEEDED' }));
+});
+
+it('builds the key index once rather than rescanning for each key or entry', () => {
+  const f = fixture(), selected = structuredClone(f.repository.libraryVersion(f.record.libraryId, 'original'));
+  let keyReads = 0;
+  const cell = selected.workbook.sheets[0].rows[1].cells[0], key = cell.value;
+  Object.defineProperty(cell, 'value', { enumerable: true, get: () => { keyReads++; return key; } });
+  vi.spyOn(f.repository, 'libraryVersion').mockReturnValue(selected);
+  const capture = f.service.createReferenceCapture(), request = captureRequest(f, ['missing', '10000001', 'another']);
+  capture(request);
+  const firstReads = keyReads;
+  capture(request); capture(request);
+  // Each later capture reads the matched value once; neither its misses nor its keys scan the source again.
+  expect(keyReads - firstReads).toBe(2);
+});
+
+it('charges distinct named versions separately and does not charge invalid captures', async () => {
+  const f = fixture();
+  const created = await f.apply({ kind: 'create-version', name: 'Another', from: { kind: 'version', versionId: 'original' }, useNow: false });
+  const read = vi.spyOn(f.repository, 'libraryVersion'), capture = f.service.createReferenceCapture();
+  const request = { ...captureRequest(f), expectedVersion: f.service.read(f.record.libraryId).version };
+  capture(request);
+  capture({ ...request, versionId: created.action.operationId });
+  capture(request); capture({ ...request, versionId: created.action.operationId });
+  expect(read).toHaveBeenCalledTimes(2);
+  for (let index = 0; index < 31; index++) {
+    const record = f.service.create({ ...f.record.workbook, libraryId: undefined });
+    const next = { ...captureRequest(f), libraryId: record.libraryId };
+    expect(() => capture({ ...next, selectedRow: { sheetId: 'people', rowId: 'not-a-row' } })).toThrow();
+    if (index < 30) capture(next);
+    else expect(() => capture(next)).toThrow(expect.objectContaining({ code: 'WORKBOOK_CAPTURE_LIMIT_EXCEEDED' }));
+  }
 });

@@ -72,7 +72,7 @@ import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type R
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
-import { snapshotWorkbookReference, WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
+import { createWorkbookReferenceCapture, WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
@@ -511,6 +511,7 @@ function executeStartRun(
       }
     }
   }
+  const captureReference = createWorkbookReferenceCapture(repositories.workbooks);
   let selectedSources: { libraryId: string; sheetId: string }[] | undefined;
   for (const planned of plan.planned) {
     const captured = planned.workbookReferences ?? [];
@@ -527,7 +528,7 @@ function executeStartRun(
         if (requirement === undefined || snapshot.worksheets.length !== 1 || worksheet === undefined
           || !("versionId" in snapshot) || snapshot.versionId === undefined
           || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-        const refreshed = snapshotWorkbookReference(repositories.workbooks, {
+        const refreshed = captureReference({
           kind: "selected-source", typeId: requirement.id, keyFieldId: requirement.keyFieldId,
           fields: descriptor.requiredWorkbookFields, writableFields: requirement.writableFields,
           mode: requirement.mode, keys: "mode" in reference.request ? [] : reference.request.keys,
