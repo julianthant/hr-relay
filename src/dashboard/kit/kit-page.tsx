@@ -199,7 +199,7 @@ function Section({
     >
       <div className="flex flex-col gap-[var(--ds-space-hair)] border-b border-[color:var(--ds-border-subtle)] pb-[var(--ds-space-base)]">
         <h2 className={cn(dsText.section, "font-semibold")}>{title}</h2>
-        <p className={cn(dsText.body, "max-w-[80ch] text-[color:var(--ds-fg-muted)]")}>{note}</p>
+        <p className={cn(dsText.body, "max-w-[110ch] text-[color:var(--ds-fg-muted)]")}>{note}</p>
       </div>
       {children}
     </section>
@@ -323,7 +323,7 @@ function ActionsSection() {
     <Section
       id="actions"
       title="Actions"
-      note="One primary per surface, one danger per surface. Variant is semantic, not decorative — outline for peers in a toolbar, ghost for anything that must not compete."
+      note="Soft for most actions, soft bordered for pickers, plain for icons and minor ones, blue to confirm a dialog."
     >
       <Row label="Soft">
         <Button>Change</Button>
