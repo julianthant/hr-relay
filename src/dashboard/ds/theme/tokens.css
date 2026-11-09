@@ -15,11 +15,13 @@
   --ds-h-desktop-min: 720px;
   /* SURFACE — the elevation ladder, darkest (page) to lightest (raised).
    Depth in this product comes from surface + hairline border, never from */
-  --ds-soft-bg: color-mix(in srgb, var(--ds-fg) 5%, var(--ui-panel)); /* soft buttons and fields: a subtle step above the card */
-  --ds-soft-bg-hover: color-mix(in srgb, var(--ds-fg) 9%, var(--ui-panel));
-  --ds-soft-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); /* faint edge for fields and pickers */
-  --ds-picker-bg: var(--ui-canvas); /* pickers and value chips: darker than the card */
-  --ds-picker-bg-hover: color-mix(in srgb, var(--ds-fg) 5%, var(--ui-canvas));
+  /* Pickers, soft buttons and fields: Codex steps measured on a card (dark: fill +6, edge +22, hover one step up), as foreground overlays so they hold on any surface. */
+  --ds-soft-bg: color-mix(in srgb, var(--ds-fg) 5%, transparent); /* borderless soft buttons: +10 on a dark panel, hover +16 */
+  --ds-soft-bg-hover: color-mix(in srgb, var(--ds-fg) 8%, transparent);
+  --ds-soft-border: color-mix(in srgb, var(--ds-fg) 9%, transparent);
+  --ds-picker-bg: color-mix(in srgb, var(--ds-fg) 3%, transparent); /* pickers and bordered buttons: the Codex +6 */
+  --ds-picker-bg-hover: color-mix(in srgb, var(--ds-fg) 6%, transparent);
+  --ds-field-focus-edge: color-mix(in srgb, var(--ds-fg) 55%, transparent); /* text fields: no ring, the edge steps up */
   --ds-surface-page: var(--background); /* app background, behind everything */
   --ds-surface-1: var(--card); /* panels, cards, bars — the default plane */
   --ds-surface-2: var(--muted); /* inset wells, table headers, code blocks */
@@ -812,6 +814,7 @@ body[data-demo-theme="light"] {
   --ds-border: #e6e6e6;
   --ds-border-strong: #d4d4d4;
   --ds-border-loud: #b8b8b8;
+  --ds-field-focus-edge: color-mix(in srgb, var(--ds-fg) 72%, transparent);
   --ds-control-border: #8a8a8a; /* 3.6:1 on white, 3.4:1 on the page */
 
   /* --- foreground ------------------------------------------------------- */
@@ -827,9 +830,6 @@ body[data-demo-theme="light"] {
   --ds-control-bg-hover: var(--accent);
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, #d5dbe4);
   --ds-control-fg: var(--foreground);
-  --ds-soft-bg: #f1f1f1; /* soft buttons: a grey barely off the card, faint edge */
-  --ds-soft-bg-hover: #e9e9e9;
-  --ds-soft-border: var(--ui-stroke);
 
   --ds-accent: #4338ca;
   --ds-accent-mark: #4f46e5;
@@ -1035,9 +1035,9 @@ body[data-demo-theme="light"] {
 /* Controls inside a row are 28px. */
 .ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); }
 /* A menu's trigger: soft bordered, 32px, 10px radius, 14px label, grey 14px chevron. */
-.ds-menu-trigger, .ds-select-control { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border: 1px solid var(--ds-soft-border); border-radius: 999px; background: var(--ds-picker-bg); font-size: 13px; font-weight: 400; line-height: 18px; color: var(--ui-primary); }
+.ds-menu-trigger, .ds-select-control { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border: 1px solid var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); font-size: 13px; font-weight: 400; line-height: 18px; color: var(--ui-primary); }
 /* Toolbar filter dropdowns (beside a 32px search): 28px rounded rectangle, not a pill. */
-.ds-filter-trigger, .ds-toolbar-row .ds-menu-trigger, .ds-toolbar-row .ds-select-control, :has(> .ds-search-field) > :is(.ds-menu-trigger, .ds-select-control) { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border-radius: 10px; align-self: center; }
+.ds-filter-trigger, .ds-toolbar-row .ds-menu-trigger, .ds-toolbar-row .ds-select-control, :has(> .ds-search-field) > :is(.ds-menu-trigger, .ds-select-control) { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border-radius: 8px; align-self: center; }
 .ds-menu-trigger:hover, .ds-select-control:hover { background: var(--ds-picker-bg-hover); }
 .ds-menu-trigger > svg, .ds-select-control [data-slot="select-trigger"] > svg, .ds-select-control > svg { width: 14px; height: 14px; color: var(--ui-muted); }
 

@@ -24,7 +24,7 @@ import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/to
  * primary — the ONE affirmative action on a surface (Approve, Run, Save) */
 const BUTTON_TEXT = "text-[13px]";
 const SOFT = cn(
-  "rounded-[10px] bg-[var(--ds-soft-bg)] text-[color:var(--ds-fg)] border-transparent",
+  "rounded-[8px] bg-[var(--ds-soft-bg)] text-[color:var(--ds-fg)] border-transparent",
   "hover:bg-[var(--ds-soft-bg-hover)]",
 );
 const buttonVariants = cva(
@@ -75,12 +75,12 @@ const buttonVariants = cva(
       size: {
         // Every button label is 13px; md, lg and toolbar share the 28px height.
         sm: cn("h-[var(--ds-h-sm)] px-[var(--ds-space-snug)] gap-[var(--ds-space-tight)]", BUTTON_TEXT, dsText.flush),
-        md: cn("h-[var(--ds-h-md)] px-[var(--ds-space-cozy)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
-        lg: cn("h-[var(--ds-h-md)] px-[var(--ds-space-loose)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
+        md: cn("h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-cozy)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
+        lg: cn("h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-loose)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
         /** A control in an ACTION BAR. The same box as `toolbarControl` — same
  * height token, same inset, same gap, same type — because the one */
         toolbar: cn(
-          "h-[var(--ds-h-md)] px-[var(--ds-space-base)] gap-[var(--ds-space-snug)]",
+          "h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-base)] gap-[var(--ds-space-snug)]",
           BUTTON_TEXT,
           dsText.flush,
         ),
