@@ -24,6 +24,7 @@ import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 import { queueRowTitle } from "../../queue/queue-model.js";
 import { RunReview } from "../review/review.js";
+import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
 import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.js";
 
@@ -94,19 +95,20 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const footerActions = useMemo(() => {
     const records = reviewAvailable && recordCount !== undefined && onReview !== undefined;
     if (!records && rerun === undefined) return undefined;
-    return <>{records && <LogFooterButton label={`Records ${recordCount}`} count={recordCount} pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={reviewOpen ? onLogs : onReview} />}{rerun}</>;
-  }, [reviewAvailable, recordCount, onReview, reviewOpen, onLogs, rerun]);
+    return <>{records && <LogFooterButton label={`Records ${recordCount}`} count={recordCount} pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={onReview} />}{rerun}</>;
+  }, [reviewAvailable, recordCount, onReview, reviewOpen, rerun]);
   const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton size="md" label={resource.snapshot.detail.childRetry.label}
     icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}
       {batchRetry !== undefined && <IconButton size="md" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
-  return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
+  return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     onReview={reviewAvailable ? onReview : undefined}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} interrupt={selection.row.interrupt} presentation="queue" />}
     toolbar={toolbar} footerActions={footerActions}
-    content={reviewOpen ? <RunReview selection={selection} focus={reviewFocus} /> : content}
-    afterStep={afterStep} />;
+    content={content}
+    afterStep={afterStep} />
+    {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.row.title}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
 }
 
 function PreviewLogSample({ selection, nowIso, onAction }: { selection?: LogSelection; nowIso?: string; onAction?: DashboardActionHandler }) {
