@@ -566,7 +566,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     advance(record: ChatGptCredentialRecord): void;
     close(): void;
   }
-  async function beginInference(signal?: AbortSignal, assertCurrent: () => void = () => options.admission.assertProfileRuntime(), kind: "ocr" | "assistant" = "ocr"): Promise<InferenceOperation> {
+  async function beginInference(signal?: AbortSignal, assertCurrent: () => void = () => options.admission.assertProfileRuntime(), kind: "ocr" | "assistant" | "account" = "ocr"): Promise<InferenceOperation> {
     const cancelled = () => signal?.aborted === true;
     active();
     const completion = Promise.withResolvers<void>();
@@ -668,7 +668,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     const parsed = ChatGptInferenceDiagnosticSchema.shape.providerCode.exclude(["none", "unknown"]).safeParse(code);
     diagnostic.providerCode = code === undefined ? "none" : parsed.success ? parsed.data : "unknown";
   }
-  async function rejectPlanResponse(response: Response, operation: InferenceOperation, diagnostic?: ChatGptInferenceDiagnostic): Promise<never> {
+  async function rejectPlanResponse(response: Response, operation: InferenceOperation, diagnostic?: ChatGptInferenceDiagnostic, failureCode: ChatGptAccountCode = "CHATGPT_OCR_FAILED"): Promise<never> {
     operation.assertCurrent();
     const invokedAccessToken = operation.credentials.session?.accessToken;
     if (invokedAccessToken === undefined) throw fault("CHATGPT_PLAN_DISABLED");
@@ -680,7 +680,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       code = body.error?.code ?? (typeof body.detail === "object" ? body.detail.code : undefined) ?? undefined;
     } catch (error) {
       if (error instanceof ChatGptResourceClosureUnprovedError) throw error;
-      operation.assertCurrent(); throw fault("CHATGPT_OCR_FAILED");
+      operation.assertCurrent(); throw fault(failureCode);
     }
     operation.assertCurrent();
     if (diagnostic !== undefined) { diagnostic.path = "http-error"; recordProviderCode(diagnostic, code); }
@@ -691,7 +691,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }
     if (response.status === 503) throw fault("CHATGPT_USAGE_UNAVAILABLE");
     if (response.status === 400 || response.status === 422) throw fault("CHATGPT_REQUEST_REJECTED");
-    throw fault("CHATGPT_OCR_FAILED");
+    throw fault(failureCode);
   }
   async function inferenceAuthority(credentials: ChatGptCredentialRecord, epoch: number): Promise<ChatGptAccountAuthority> {
     const authority = await readAuthority(), current = repository.read();
@@ -722,8 +722,9 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (outcome.kind === "error") throw outcome.error;
     return outcome.value;
   }
-  async function readAssistantCatalog(operation: InferenceOperation, signal?: AbortSignal) {
-    const diagnostic: ChatGptInferenceDiagnostic = { operation: "assistant", path: "catalog-request", contentType: "missing", providerCode: "none" };
+  async function readModelCatalog(operation: InferenceOperation, signal?: AbortSignal, purpose: "assistant" | "account" = "assistant") {
+    const failureCode = purpose === "account" ? "CHATGPT_CONNECTION_FAILED" : "CHATGPT_MODELS_UNAVAILABLE";
+    const diagnostic: ChatGptInferenceDiagnostic = { operation: purpose, path: "catalog-request", contentType: "missing", providerCode: "none" };
     try {
       operation.assertCurrent();
       const session = operation.credentials.session;
@@ -731,21 +732,36 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       const response = await request(`${RESOURCE}/models`, { headers: { Authorization: `Bearer ${session.accessToken}` } }, signal, diagnostic);
       return await consumeInferenceResponse(response, async () => {
         operation.assertCurrent();
-        if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);
+        if (!response.ok) await rejectPlanResponse(response, operation, diagnostic, purpose === "account" ? failureCode : "CHATGPT_OCR_FAILED");
         diagnostic.path = "catalog-body";
-        const body = await boundedJson(response, diagnostic, "CHATGPT_MODELS_UNAVAILABLE", MODEL_CATALOG_MAX_BYTES);
+        const body = await boundedJson(response, diagnostic, failureCode, MODEL_CATALOG_MAX_BYTES);
         diagnostic.path = "catalog-schema";
         const parsed = z.object({ models: z.array(z.object({ slug: AssistantInferenceRequestSchema.shape.model,
           display_name: z.string().min(1).max(256), visibility: z.string().min(1).max(64) })).max(256) }).safeParse(body);
-        if (!parsed.success) throw fault("CHATGPT_MODELS_UNAVAILABLE");
+        if (!parsed.success) throw fault(failureCode);
         const catalog = parsed.data;
         operation.assertCurrent();
         const visible = AssistantModelCatalogSchema.safeParse({ models: catalog.models.filter(model => model.visibility === "list")
           .map(model => ({ slug: model.slug, displayName: model.display_name })) });
-        if (!visible.success) throw fault("CHATGPT_MODELS_UNAVAILABLE");
+        if (!visible.success) throw fault(failureCode);
         return visible.data;
       });
     } catch (error) { if (error instanceof ChatGptResourceClosureUnprovedError) diagnostic.path = "resource-closure"; recordFailure(error, diagnostic, { method: "GET", route: "/v1/models" }); throw error; }
+  }
+  async function checkConnection(signal?: AbortSignal): Promise<{ readonly checkedAt: string }> {
+    try {
+      assertResourceClosure();
+      const operation = await beginInference(signal, undefined, "account");
+      try {
+        await readModelCatalog(operation, signal, "account");
+        assertResourceClosure();
+        operation.assertCurrent();
+        return Object.freeze({ checkedAt: clock.now().toISOString() });
+      } finally { operation.close(); }
+    } catch (error) {
+      if (error instanceof ChatGptAccountError && error.code === "CHATGPT_OCR_CANCELLED") throw fault("CHATGPT_CONNECTION_CANCELLED");
+      throw error;
+    }
   }
   async function listAssistantModels(signal?: AbortSignal) {
     const cancelled = () => signal?.aborted === true;
@@ -757,7 +773,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
       const authority = await inferenceAuthority(operation.credentials, operation.epoch);
       if (!revalidateAuthority(authority)) throw fault(authority.availability === "limit-reached" ? "CHATGPT_USAGE_LIMIT" : "CHATGPT_USAGE_UNAVAILABLE");
-      const catalog = await readAssistantCatalog(operation, signal);
+      const catalog = await readModelCatalog(operation, signal);
       operation.assertCurrent();
       return Object.freeze({ catalog, authority });
     } finally { operation.close(); }
@@ -807,7 +823,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     const operation = await beginInference(signal, assertSelectionCurrent, "assistant");
     let authority: ChatGptAccountAuthority;
     try {
-      const catalog = await readAssistantCatalog(operation, signal);
+      const catalog = await readModelCatalog(operation, signal);
       operation.assertCurrent();
       if (!catalog.models.some(model => model.slug === choice.slug)) throw fault('CHATGPT_ASSISTANT_REFUSED');
       authority = await inferenceAuthority(operation.credentials, operation.epoch);
@@ -1153,6 +1169,6 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (signOutFailure instanceof Error) throw signOutFailure;
     if (signOutFailure !== undefined) throw new Error("ChatGPT sign-out failed", { cause: signOutFailure });
   }
-  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
+  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, checkConnection, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;

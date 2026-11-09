@@ -1,7 +1,38 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 const attemptId = "00000000-0000-4000-8000-000000000001";
+it("sends one explicit connection request with its identity and signal through the existing transport", async () => {
+  const calls: { url: string; init: RequestInit | undefined }[] = [], signal = new AbortController().signal;
+  const result = { state: "completed", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z" };
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => { calls.push({ url, init }); return Response.json(result); } });
+  assert.equal(calls.length, 0);
+  await assert.rejects(client.checkChatGptConnection({ checkId: "invalid" }));
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await client.checkChatGptConnection({ checkId: attemptId }, signal), result);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/settings/chatgpt-account/check-connection");
+  assert.equal(calls[0].init?.method, "POST");
+  assert.equal(calls[0].init?.body, JSON.stringify({ checkId: attemptId }));
+  assert.equal(calls[0].init?.signal, signal);
+  assert.equal(new Headers(calls[0].init?.headers).get("origin"), "http://127.0.0.1:3938");
+});
+it("rejects wrong check identities, extra capability results and noncatalog failure text without retry", async () => {
+  for (const body of [
+    { state: "completed", checkId: "00000000-0000-4000-8000-000000000002", checkedAt: "2026-10-12T12:00:00.000Z" },
+    { state: "completed", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z", checks: [] },
+    { state: "refused", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z", code: "CHATGPT_CONNECTION_FAILED", message: "private" },
+  ]) {
+    let calls = 0;
+    const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async () => { calls++; return Response.json(body); } });
+    await assert.rejects(client.checkChatGptConnection({ checkId: attemptId }), { kind: "schema" });
+    assert.equal(calls, 1);
+  }
+  const result = { state: "refused", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z", code: "CHATGPT_CONNECTION_FAILED", message: ERROR_CATALOG.CHATGPT_CONNECTION_FAILED.text };
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async () => Response.json(result) });
+  assert.deepEqual(await client.checkChatGptConnection({ checkId: attemptId }), result);
+});
 it("uses the one typed client for strict account lifecycle requests without persistence", async () => {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {

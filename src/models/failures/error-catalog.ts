@@ -659,6 +659,14 @@ export const ERROR_CATALOG = Object.freeze({
     "Relay could not read the models available to this ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
     EmptyParametersSchema,
   ),
+  CHATGPT_CONNECTION_FAILED: catalogEntry(
+    "Relay could not verify the ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CONNECTION_CANCELLED: catalogEntry(
+    "The ChatGPT connection check was cancelled. Check again when the account and profile are current.",
+    EmptyParametersSchema,
+  ),
   CHATGPT_REQUEST_REJECTED: catalogEntry(
     "ChatGPT rejected the request Relay sent. Relay's integration needs correction; review the local diagnostics before retrying.",
     EmptyParametersSchema,

@@ -14,7 +14,7 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => Chat
   const initialWall = Date.now();
   let persisted: ChatGptAccountView = { state: "signed-out" };
   const complete: ChatGptAccountQueries["completeChatGptSignIn"] = overrides.completeChatGptSignIn ?? (async () => { calls.push("complete"); return { state: "completed", attemptId, account }; });
-  const queries: ChatGptAccountQueries = {
+  const queries: ChatGptAccountQueries = { checkChatGptConnection: async () => { throw new Error("unexpected connection check"); },
     chatGptAccount: async () => { calls.push("read"); return persisted; },
     startChatGptSignIn: async () => { calls.push("start"); return started; },
     cancelChatGptSignIn: async () => { calls.push("cancel"); return { state: "cancelled", attemptId }; },
@@ -87,7 +87,7 @@ it("suppresses stale reads and completion settlements and resumes the original s
 });
 it("reads current state once at connected expiry without starting sign-in", async () => {
   vi.useFakeTimers(); let reads = 0, now = Date.parse("2026-10-12T12:59:59.000Z");
-  const queries: ChatGptAccountQueries = { testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
+  const queries: ChatGptAccountQueries = { checkChatGptConnection: async () => { throw new Error("unexpected connection check"); }, testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
   const port = createServedChatGptAccountPort(queries, { nowMs: () => now });
   try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getSnapshot(), { state: "expired" }); } finally { port.dispose(); vi.useRealTimers(); }
 });

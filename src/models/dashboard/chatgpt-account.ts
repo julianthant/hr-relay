@@ -50,6 +50,16 @@ export type ChatGptSignInStart = z.infer<typeof ChatGptSignInStartSchema>;
 export type ChatGptAccountView = z.infer<typeof ChatGptAccountViewSchema>;
 export type ChatGptSignInCompletion = z.infer<typeof ChatGptSignInCompletionSchema>;
 
+export const ChatGptConnectionRequestSchema = z.strictObject({ checkId: z.uuid() });
+const ConnectionIdentitySchema = z.strictObject({ checkId: z.uuid(), checkedAt: IsoInstantSchema });
+export const ChatGptConnectionResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("completed"), ...ConnectionIdentitySchema.shape }),
+  z.strictObject({ state: z.literal("refused"), ...ConnectionIdentitySchema.shape, ...FailureSchema.shape }).refine(fixedFailure),
+  z.strictObject({ state: z.literal("uncertain"), ...ConnectionIdentitySchema.shape, ...FailureSchema.shape }).refine(fixedFailure),
+]);
+export type ChatGptConnectionRequest = z.infer<typeof ChatGptConnectionRequestSchema>;
+export type ChatGptConnectionResult = z.infer<typeof ChatGptConnectionResultSchema>;
+
 export const ChatGptOcrTestResultSchema = z.union([
   z.strictObject({ state: z.literal("completed"), model: z.string().min(1).max(128) }), RefusedSchema, UncertainSchema,
 ]);

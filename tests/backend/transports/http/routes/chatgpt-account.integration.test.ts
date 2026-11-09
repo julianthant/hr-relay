@@ -1,3 +1,4 @@
+import { manualClock } from "../../../../../src/rules/time/clock.js";
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
 import { Hono } from "hono";
@@ -17,7 +18,8 @@ it("preserves the original typed closure refusal even when the current account i
   const completion = Promise.withResolvers<ChatGptAccountState>();
   const app: DashboardApp = new Hono();
   let reads = 0;
-  registerChatGptAccountRoutes(app, { chatGptAccount: {
+  registerChatGptAccountRoutes(app, { clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), chatGptAccount: {
+    checkConnection: async () => { throw new Error("unexpected connection check"); },
     refreshAccount: async () => { reads++; return ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" }); },
     signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise, cancel: async () => {} }),
     signOut: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }),
@@ -38,7 +40,7 @@ async function setup(debugEvents?: ChatGptAccountRouteDeps["debugEvents"]) {
   app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
-  registerChatGptAccountRoutes(app, { debugEvents, chatGptAccount: { ...fixture.service, signIn: async input => { authorization = await fixture.service.signIn(input); return authorization; } } });
+  registerChatGptAccountRoutes(app, { clock: fixture.clock, debugEvents, chatGptAccount: { ...fixture.service, signIn: async input => { authorization = await fixture.service.signIn(input); return authorization; } } });
   const request = (suffix = "", input?: unknown) => app.request(`http://127.0.0.1${path}${suffix}`, input === undefined ? undefined : { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" }, body: JSON.stringify(input) });
   return { ...fixture, app, request, authorization: () => { assert.ok(authorization); return authorization; } };
 }
@@ -160,7 +162,7 @@ it("keeps local sign-out authoritative when remote revocation is unconfirmed", a
 
 it("keeps typed OCR resource closure uncertainty distinct and exposes only its defined operator text", async () => {
   const app: DashboardApp = new Hono();
-  registerChatGptAccountRoutes(app, { chatGptOcrTest: { testOcr: async () => { throw new ChatGptResourceClosureUnprovedError(new Error("synthetic private cause")); } } });
+  registerChatGptAccountRoutes(app, { clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), chatGptOcrTest: { testOcr: async () => { throw new ChatGptResourceClosureUnprovedError(new Error("synthetic private cause")); } } });
   const response = await app.request(`http://127.0.0.1${path}/test-ocr`, { method: "POST",
     headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" }, body: "{}" });
   assert.deepEqual(await response.json(), { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text });

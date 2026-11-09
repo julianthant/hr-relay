@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { ChatGptAccountStateSchema, ChatGptAuthorizationUrlSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema } from "../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptConnectionRequestSchema, ChatGptConnectionResultSchema, ChatGptAccountStateSchema, ChatGptAuthorizationUrlSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema } from "../../../src/models/dashboard/chatgpt-account.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 const attemptId = "00000000-0000-4000-8000-000000000001";
+it("requires exact check identity and time with one strict connection outcome and fixed failure text", () => {
+  const completed = { state: "completed", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z" };
+  assert.equal(ChatGptConnectionRequestSchema.safeParse({ checkId: attemptId }).success, true);
+  assert.equal(ChatGptConnectionRequestSchema.safeParse({ checkId: "invalid" }).success, false);
+  assert.equal(ChatGptConnectionResultSchema.safeParse(completed).success, true);
+  for (const extra of [{ checks: [] }, { model: "private" }, { accessToken: "private" }, { checkedAt: "invalid" }, { checkId: undefined }])
+    assert.equal(ChatGptConnectionResultSchema.safeParse({ ...completed, ...extra }).success, false);
+  const refused = { ...completed, state: "refused", code: "CHATGPT_CONNECTION_FAILED", message: ERROR_CATALOG.CHATGPT_CONNECTION_FAILED.text };
+  assert.equal(ChatGptConnectionResultSchema.safeParse(refused).success, true);
+  assert.equal(ChatGptConnectionResultSchema.safeParse({ ...refused, message: "private provider failure" }).success, false);
+});
 it("keeps account and lifecycle responses recursively strict and token-free", () => {
   const account = { state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2026-10-12T12:00:00.000Z", planUsage: "enabled" };
   assert.equal(ChatGptAccountStateSchema.safeParse(account).success, true);

@@ -12,7 +12,7 @@ const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId, au
 function setup(overrides: Partial<ChatGptAccountQueries> = {}) {
   const calls: string[] = [];
   let connected = false;
-  const client: ChatGptAccountQueries = {
+  const client: ChatGptAccountQueries = { checkChatGptConnection: async () => { throw new Error("unexpected connection check"); },
     chatGptAccount: async () => connected ? account : { state: "signed-out" },
     startChatGptSignIn: async () => started,
     completeChatGptSignIn: async () => { connected = true; return { state: "completed", attemptId, account }; },
