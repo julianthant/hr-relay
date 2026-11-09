@@ -60,7 +60,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
     // Toasts stack collapsed; hover expands them so all three show.
-    if (firstToast) { await page.getByRole("region", { name: "Notifications" }).getByText(firstToast).hover(); await page.waitForTimeout(600); }
+    if (firstToast) { await page.mouse.move(WIDTH - 130, HEIGHT - 70); await page.waitForTimeout(800); }
     await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}.png`) });
     // Settings pages scroll inside the window; a second full-window frame shows what sits below the fold.
     const scroller = page.locator("#dashboard-settings-content");

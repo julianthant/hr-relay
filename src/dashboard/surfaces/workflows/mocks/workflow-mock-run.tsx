@@ -22,6 +22,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
 }) {
   const flow = mockWorkflow(workflowId);
   const mock = statusMock();
+  const statusMockPicker = workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-a" || mock === "run-b");
   const [draft, setDraft] = useState<MockDraft>(() => editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)));
   const [stage, setStage] = useViewState("launchStage", source ? "Steps" : "Input");
   const blocked = workflowId === "emergency-contact" && (mock === "run-a" && stage === "Input" || mock === "run-b" && stage === "Confirm");
@@ -82,7 +83,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {mock === "run-a" && <StatusMockReadiness frame="run-a" />}
             {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b") && <StatusMockRosterPicker />}
             <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && workflowId === "onbase" && "grid-cols-2")}>
-            {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
+            {flow.roster && !uploadOnly && !statusMockPicker && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
             {workflowId === "onbase" && <ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} />}
             </div>
             {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
@@ -123,11 +124,11 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </div></div>}
           </li>;
         }) : <li className="p-3 text-body text-ui-secondary">OCR preparation reads and matches the PDF records.</li>}</RunStepsList>{mockStepInputError(workflowId, draft) && <p role="alert" className="text-caption text-ui-danger">{mockStepInputError(workflowId, draft)}</p>}</section>}
+        {stage === "Confirm" && mock === "run-b" && <StatusMockReadiness frame="run-b" />}
         {stage === "Confirm" && <RunConfirmLayout count={count} flags={<RunFlagChips dryRun={flow.dryRun && draft.dryRun} priority={draft.priority === "background" ? "bulk" : "interactive"} />}
           description={source ? "A new run linked to the source." : pdf && !uploadOnly ? workflowId === "onbase" ? "One combined document sent to OCR for review." : "One run per PDF. OCR reviews records before downstream work." : "One run for each accepted entry."}
           facts={[...mockConfirmationFacts(workflowId, draft), ...(workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b") ? [{ key: "Reference spreadsheet", value: "EC roster Oct 2026" }] : []), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
-          {mock === "run-b" && <StatusMockReadiness frame="run-b" />}
         </RunConfirmLayout>}
         </div>
 
