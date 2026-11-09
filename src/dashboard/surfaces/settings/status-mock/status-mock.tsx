@@ -1,5 +1,6 @@
 import { Check, ExternalLink, LoaderCircle } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
+import { cn } from "../../../lib/utils.js";
 import { BodySection, Button, ButtonLink, Checkbox, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
 import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
@@ -38,7 +39,7 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
   return <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0"><legend className="mb-1 p-0 text-meta font-medium text-ui-secondary">Reference spreadsheets</legend>
     <MockCard>{STATUS_MOCK_SPREADSHEETS.map(sheet => {
       const version = picks[sheet.value];
-      return <div key={sheet.value} className="flex items-center justify-between gap-4 border-b border-ui-stroke px-4 py-3 last:border-b-0">
+      return <div key={sheet.value} className={cn("flex items-center justify-between gap-4 border-b border-ui-stroke px-4 py-3 last:border-b-0", "disabled" in sheet && "opacity-50")}>
         <Checkbox className="min-w-0" label={sheet.label} description={sheet.description} disabled={"disabled" in sheet} checked={version !== undefined}
           onCheckedChange={value => onPicks(value === true ? { ...picks, [sheet.value]: sheet.current } : Object.fromEntries(Object.entries(picks).filter(([key]) => key !== sheet.value)))} />
         {version !== undefined && <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[72px] !border-[color:var(--ds-border)] !bg-transparent" value={String(version)} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
