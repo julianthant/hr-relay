@@ -2,7 +2,7 @@
 .search-palette { --palette-fill: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas)); border-color: var(--palette-fill); background: var(--ui-canvas); box-shadow: 0 12px 40px rgb(0 0 0 / 0.12); }
 [data-demo-theme="light"] .search-palette { --palette-fill: color-mix(in srgb, var(--ds-fg) 8%, #fff); background: #fff; }
 [data-demo-theme="dark"] .search-palette { box-shadow: 0 12px 40px rgb(0 0 0 / 0.45); }
-.search-palette-scrim { position: fixed; inset: 0; background: color-mix(in srgb, var(--ds-fg) 28%, transparent); }
+.search-palette-scrim { position: fixed; inset: 0; background: var(--ds-surface-scrim); }
 .search-palette { position: fixed; left: 50%; top: 64px; width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 128px); transform: translateX(-50%); display: flex; flex-direction: column; overflow: hidden; padding: 0; outline: none; }
 .search-palette-input { box-sizing: border-box; width: 100%; height: 51px; flex: none; padding: 0 16px; border: 0; border-bottom: 1px solid var(--ui-stroke); background: transparent; color: var(--ui-primary); font: inherit; font-size: 17px; outline: none; }
 .search-palette-input::placeholder { color: var(--ui-muted); }
