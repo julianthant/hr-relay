@@ -1,12 +1,12 @@
-import { Check, CircleAlert, LoaderCircle } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
-import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DsBodyScope, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DsBodyScope, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, useToasts } from "../../../ds/ui.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
 import { ACTIVITY_DATE_PRESETS } from "../../activity/activity-model.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
-import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_CHECKS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
+import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
 
 const noop = () => undefined;
 
@@ -57,25 +57,13 @@ function ToastsMock() {
   return null;
 }
 
-/** "Check connection" sits in the ChatGPT account group; its result lists each part in plain words. */
-export function StatusMockCheckConnection({ checked }: { checked: boolean }) {
-  return <>
-    <ResultRow label="Check connection" description={checked ? "Checked just now" : "Test ChatGPT, reading scans, the assistant and UCPath."} value={<Button variant="secondary">Check connection</Button>} />
-    {checked && STATUS_MOCK_CHECKS.map(check => <ResultRow key={check.id} label={check.label}
-      value={<span className="inline-flex items-center gap-2">{check.result === "ok" ? <><Check aria-hidden className={dsIcon.md} />Working</> : <><CircleAlert aria-hidden className={`${dsIcon.md} text-ui-danger`} />Did not answer</>}</span>} />)}
-  </>;
-}
-
-/** The one storage line in General. Variant A is a Storage row; B is a status strip under the heading. */
-export function StatusMockStorageLine({ variant, problem }: { variant: "a" | "b"; problem: boolean }) {
-  const text = problem ? "Saved data needs attention · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago";
-  const actions = problem && <span className="inline-flex gap-2"><Button variant="secondary">Restore from 12 min ago</Button><Button variant="secondary">Check again</Button></span>;
-  if (variant === "a") return <BodySection title="Storage"><FormGroup label="Storage">
-    <ResultRow label={problem ? "Saved data needs attention" : "Saved on this computer"} description={problem ? "Last backup 12 min ago" : "Last backup 12 min ago"} value={actions || <StatusDot status="verifiedDone" />} />
+/** General's one status block: Storage and ChatGPT, two rows. Restore and Check again appear only on a storage problem. */
+export function StatusMockStatusBlock({ problem }: { problem: boolean }) {
+  return <BodySection title="Status"><FormGroup label="Status">
+    <ResultRow label="Storage" description={problem ? "Saved data needs attention · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago"}
+      value={problem ? <span className="inline-flex gap-2"><Button variant="secondary">Restore from 12 min ago</Button><Button variant="secondary">Check again</Button></span> : <StatusDot status="verifiedDone" />} />
+    <ResultRow label="ChatGPT" description="Connected as Jordan Lee" value={<Button variant="secondary">Check connection</Button>} />
   </FormGroup></BodySection>;
-  return <div role="status" className="mb-[var(--ds-space-page)] flex items-center justify-between gap-3 rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel px-4 py-2.5 text-body">
-    <span className="inline-flex items-center gap-2"><StatusDot status={problem ? "failed" : "verifiedDone"} />{text}</span>{actions}
-  </div>;
 }
 
 function Tile({ tile }: { tile: (typeof STATUS_MOCK_ANALYTICS.tiles)[number] }) {

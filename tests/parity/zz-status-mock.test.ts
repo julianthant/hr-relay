@@ -13,7 +13,7 @@ const WIDTH = Number(process.env.STATUS_MOCK_WIDTH ?? 1440);
 const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
-  "general-a": "general", "general-a-problem": "general", "general-b": "general", "general-b-problem": "general",
+  "general-a": "general", "general-a-problem": "general",
   "analytics-a": "activity", "analytics-b": "activity",
 };
 

@@ -1,7 +1,7 @@
 import { createPreviewChatGptAccountPort } from "../general/chatgpt-account-model.js";
 
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-a", "run-b", "toasts", "general-a", "general-a-problem", "general-b", "general-b-problem", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-a", "run-b", "toasts", "general-a", "general-a-problem", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 export function statusMock(): StatusMockId | undefined {
@@ -19,13 +19,6 @@ export const STATUS_MOCK_TOASTS = [
 export const STATUS_MOCK_BLOCKERS = [
   { id: "roster", title: "Emergency Contact needs an OCR roster", note: "Relay matches each scan against it.", action: "Import roster" },
   { id: "chatgpt", title: "ChatGPT is disconnected", note: "Relay reads the scans with your ChatGPT plan.", action: "Reconnect" },
-] as const;
-
-export const STATUS_MOCK_CHECKS = [
-  { id: "chatgpt", label: "ChatGPT sign-in", result: "ok" },
-  { id: "ocr", label: "Reading scans", result: "ok" },
-  { id: "assistant", label: "Assistant", result: "ok" },
-  { id: "ucpath", label: "UCPath", result: "failed" },
 ] as const;
 
 export const STATUS_MOCK_FIRST_RUN = [
