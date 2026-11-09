@@ -200,8 +200,11 @@ describe("redaction surface scan — the declaration audit", () => {
       clock: manualClock(new Date(NOW)), onRecord: batch => points.push(...batch.points) });
     const key = REDACTION_CANARIES.personName;
     collector.recordData({ direction: "read", field: "results", value: [{ [key]: "captured" }] });
-    assert.equal(points.length, 1);
-    assert.ok(points[0]?.origins?.some(entry => entry.path.includes(key) && entry.origin.path.includes(key)));
+    collector.recordData({ direction: "read", field: "selection", value: [{ [key]: "captured" }],
+      aliases: [{ path: [], source: { kind: "local", field: "results", path: [] } }] });
+    assert.equal(points.length, 2);
+    assert.equal(points[0]?.origins, undefined);
+    assert.ok(points[1]?.origins?.some(entry => entry.path.includes(key) && entry.origin.path.includes(key)));
   });
 
   it("covers the actual assistant and OCR loopback boundaries and rejects each missing origin", () => {
