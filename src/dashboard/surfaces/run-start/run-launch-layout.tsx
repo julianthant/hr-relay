@@ -25,11 +25,17 @@ export function RunStepsList({ children }: { children: ReactNode }) {
   return <ul className="m-0 list-none overflow-hidden rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] divide-y divide-[color:var(--ds-border)] p-0">{children}</ul>;
 }
 
-export function RunConfirmLayout({ count, flags, description, facts, inputs, outputs, children }: {
+export function RunConfirmLayout({ count, flags, description, facts, inputs, outputs, rows, children }: {
   count: number; flags?: ReactNode; description: string;
+  /** Replaces the count, plan and input sections with plain label-left, value-right rows. */
+  rows?: readonly { label: string; value: string }[];
   facts: readonly { key: string; value: string }[]; inputs?: readonly { label: string; kind: string }[];
   outputs?: readonly PlannedRunOutput[]; children?: ReactNode;
 }) {
+  if (rows) return <DsBodyScope role="region" aria-label="Confirm" className="launch-confirm flex flex-col gap-[var(--ds-space-base)]" style={{ background: 'transparent' }}>
+    {rows.map(row => <div key={row.label} className="flex items-center justify-between gap-4"><span className="text-body">{row.label}</span><span className="text-body text-ui-secondary">{row.value}</span></div>)}
+    {children}
+  </DsBodyScope>;
   const inputFacts = inputs ?? facts.filter(fact => fact.key === 'Input').map(fact => ({ label: fact.value, kind: 'Input' }));
   return <DsBodyScope role="region" aria-label="Confirm" className="launch-confirm flex flex-col gap-[var(--ds-space-section)]" style={{ background: 'transparent' }}>
     <div className="flex items-center justify-between gap-3"><div><h4 id="run-start-confirm" className="text-body font-semibold">{count} {count === 1 ? 'run' : 'runs'} ready to queue</h4><p className="mt-[6px] text-body text-ui-secondary">{description}</p></div>{flags}</div>

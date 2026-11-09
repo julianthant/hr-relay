@@ -46,6 +46,12 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+    } else if (id === "run-rerun-confirm") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
+      await page.getByRole("button", { name: "Rerun", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      for (const name of ["Continue", "Continue", "Preview plan"]) await dialog.getByRole("button", { name, exact: true }).click();
+      await expect(dialog.getByText("Review the plan")).toBeVisible();
     } else if (id === "run-rerun") {
       // Reruns happen only in the Rerun dialog: Emergency Contact in the rail, the run's Rerun button, then Continue to the Values stage.
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
