@@ -10,8 +10,8 @@ import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adap
 import { plural } from "../shared/status/format.js";
 import type { EditableWorkbook } from "../../../rules/spreadsheets/workbook-io.js";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
-import { SheetsDesignD } from "../spreadsheets/design/sheets-design-d.js";
-import { sheetsDesign } from "../spreadsheets/design/sheets-design-mode.js";
+import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
+import { sheetsDesign } from "../spreadsheets/design/sheets-v2-mode.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
@@ -21,6 +21,8 @@ import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
+import { StatusMockAnalytics } from "./status-mock/status-mock.js";
+import { statusMock } from "./status-mock/status-mock-model.js";
 import { PreflightSection } from "./preflight/settings-preflight.js";
 import { RoutesSection } from "./routes/settings-routes.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
@@ -201,6 +203,7 @@ export function SettingsPage({
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
   const groups = useMemo(() => buildSettingsNav(sections, settingsDocument), [sections, settingsDocument]);
+  const mockStatus = statusMock();
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
   const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
@@ -313,8 +316,8 @@ export function SettingsPage({
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
         )}
-        {isDataSection && dataContent}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (sheetsDesign() ? <SheetsDesignD /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
+        {isDataSection && (activeId === "activity" && (mockStatus === "analytics-a" || mockStatus === "analytics-b") ? <StatusMockAnalytics variant={mockStatus === "analytics-a" ? "a" : "b"} /> : dataContent)}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (sheetsDesign() ? <SheetsV2 /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}

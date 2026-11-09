@@ -11,6 +11,8 @@ import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-star
 import { TypedInput, RunFlagChips } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
+import { StatusMockReadiness, StatusMockRosterPicker } from "../../settings/status-mock/status-mock.js";
+import { statusMock } from "../../settings/status-mock/status-mock-model.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
 export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit, initialDraft, onDraftChange }: {
@@ -19,8 +21,11 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   onSubmit: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   const flow = mockWorkflow(workflowId);
+  const mock = statusMock();
+  const statusMockPicker = workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-a" || mock === "run-b" || mock === "run-rerun");
   const [draft, setDraft] = useState<MockDraft>(() => editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)));
   const [stage, setStage] = useViewState("launchStage", source ? "Steps" : "Input");
+  const blocked = workflowId === "emergency-contact" && (mock === "run-a" && stage === "Input" || mock === "run-b" && stage === "Confirm" || mock === "run-rerun" && stage === "Values");
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);
   const [optionalSteps, setOptionalSteps] = useViewState("launchCustomize", false);
@@ -76,11 +81,14 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
             <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && workflowId === "onbase" && "grid-cols-2")}>
-            {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
+            {flow.roster && !uploadOnly && !statusMockPicker && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
             {workflowId === "onbase" && <ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} />}
             </div>
             {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
+          {workflowId === "emergency-contact" && mock === "run-a" && <StatusMockReadiness frame="run-a" />}
+          {workflowId === "emergency-contact" && mock === "run-rerun" && stage === "Values" && <StatusMockReadiness frame="run-rerun" />}
+          {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b" || mock === "run-rerun") && <StatusMockRosterPicker />}
           {draft.method === "roster" && <ChoicePicker label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} />}
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}
           {workflowId === "work-study" && <DateInput label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} />}
@@ -117,9 +125,10 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </div></div>}
           </li>;
         }) : <li className="p-3 text-body text-ui-secondary">OCR preparation reads and matches the PDF records.</li>}</RunStepsList>{mockStepInputError(workflowId, draft) && <p role="alert" className="text-caption text-ui-danger">{mockStepInputError(workflowId, draft)}</p>}</section>}
+        {stage === "Confirm" && mock === "run-b" && <StatusMockReadiness frame="run-b" />}
         {stage === "Confirm" && <RunConfirmLayout count={count} flags={<RunFlagChips dryRun={flow.dryRun && draft.dryRun} priority={draft.priority === "background" ? "bulk" : "interactive"} />}
           description={source ? "A new run linked to the source." : pdf && !uploadOnly ? workflowId === "onbase" ? "One combined document sent to OCR for review." : "One run per PDF. OCR reviews records before downstream work." : "One run for each accepted entry."}
-          facts={[...mockConfirmationFacts(workflowId, draft), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
+          facts={[...mockConfirmationFacts(workflowId, draft), ...(workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b" || mock === "run-rerun") ? [{ key: "Reference spreadsheets", value: "EC roster Oct 2026, Student staff roster" }] : []), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </RunConfirmLayout>}
         </div>
@@ -127,7 +136,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
       </DialogBody></div>
     <DialogFooter meta={<MetaLine tone="faint" items={[source ? "Source run · new run" : `${count} ${count === 1 ? "run" : "runs"}`, flow.label, ...(stage === "Confirm" ? [`${count} to create`] : [])]} />}>
       {index > 0 && <Button variant="ghost" icon={<ArrowLeft className="size-3" aria-hidden />} onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="muted" onClick={onClose}>Cancel</Button>
-      <Button variant="primary" icon={stage === "Confirm" ? <Play className="size-[14px]" aria-hidden /> : undefined} iconAfter={stage !== "Confirm" ? <ArrowRight className="size-[14px]" aria-hidden /> : undefined} disabled={Boolean(error) || reading} onClick={() => stage === "Confirm" ? onSubmit(workflowId, draft, source?.id) : setStage(stages[index + 1])}>{stage === "Confirm" ? source ? "Create rerun" : "Start preview" : stages[index + 1] === "Confirm" ? "Preview plan" : "Continue"}</Button>
+      <Button variant="primary" icon={stage === "Confirm" ? <Play className="size-[14px]" aria-hidden /> : undefined} iconAfter={stage !== "Confirm" ? <ArrowRight className="size-[14px]" aria-hidden /> : undefined} disabled={blocked || Boolean(error) || reading} onClick={() => stage === "Confirm" ? onSubmit(workflowId, draft, source?.id) : setStage(stages[index + 1])}>{stage === "Confirm" ? source ? "Create rerun" : "Start preview" : stages[index + 1] === "Confirm" ? "Preview plan" : "Continue"}</Button>
     </DialogFooter>
   </>;
 }

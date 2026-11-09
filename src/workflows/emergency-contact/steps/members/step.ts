@@ -6,7 +6,9 @@ import { TaskError } from "../../../../workflow-kit/errors.js";
 
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { buildEmergencyContactRecords } from "../read-document/step.js";
-export const MEMBERS_STEP = Object.freeze({ key: "members", label: "Preview approved Emergency Contacts", system: "ucpath" as const });
+export const MEMBERS_STEP = Object.freeze({ key: "members", label: "Preview approved Emergency Contacts", system: "ucpath" as const,
+  review: { pages: [], branchLabels: [] } as const,
+});
 export function buildEmergencyContactMembers(author: WorkflowAuthor<typeof EmergencyContactInputSchema>, upstream: ReturnType<typeof buildEmergencyContactRecords>) {
     const settled = author.task({ id: "read-result", label: "Account for approved members", contract: ReadEmergencyContactResult, replay: "always-rerun" }, [upstream.ocr, upstream.members], ({ outputs }) => {
       const ocr = outputs["read-document"];

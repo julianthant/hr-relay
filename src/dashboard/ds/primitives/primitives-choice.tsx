@@ -42,10 +42,10 @@ export function SegmentedChoice<T extends string>({ label, value, options, onCha
 }) {
   const name = useId();
   return <fieldset className="min-w-0"><legend className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]")}>{label}</legend>
-    <div className="flex rounded-[var(--ds-radius-md)] border border-[color:var(--ds-control-border)] bg-ui-canvas p-[3px]">
+    <div className="flex h-[var(--ds-h-md)] rounded-full bg-[var(--ds-surface-3)] p-[2px]">
       {options.map(option => <label key={option.value} className="relative min-w-0 flex-1 cursor-pointer">
         <input type="radio" name={`${label}-${name}`} value={option.value} checked={option.value === value} onChange={() => onChange(option.value)} className="peer sr-only" />
-        <span className={cn("block rounded-[var(--ds-radius-sm)] px-[var(--ds-space-base)] py-[5px] text-center text-[color:var(--ds-fg-muted)] peer-checked:bg-ui-hover peer-checked:font-semibold peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)]", dsText.body)}>{option.label}</span>
+        <span className="flex h-full items-center justify-center rounded-full px-[var(--ds-space-base)] text-center text-[13px] leading-none text-[color:var(--ds-fg-muted)] peer-checked:bg-[var(--ds-surface-1)] peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)]">{option.label}</span>
       </label>)}
     </div>
   </fieldset>;

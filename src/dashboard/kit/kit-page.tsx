@@ -3,10 +3,12 @@ import {
   ArrowUpDown,
   ArrowUpRight,
   Camera,
+  ChevronDown,
   ChevronsUp,
   ClipboardList,
   Inbox,
   Info,
+  MoreHorizontal,
   Pencil,
   Play,
   Plus,
@@ -316,26 +318,36 @@ function StatusSection() {
 
 function ActionsSection() {
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   return (
     <Section
       id="actions"
       title="Actions"
       note="One primary per surface, one danger per surface. Variant is semantic, not decorative — outline for peers in a toolbar, ghost for anything that must not compete."
     >
-      <Row label="Variants">
+      <Row label="Soft">
+        <Button>Change</Button>
+        <Button icon={<Upload aria-hidden className="size-3.5" />}>Import</Button>
+        <Button variant="muted">Sync now</Button>
+      </Row>
+      <Row label="Soft bordered">
+        <Button variant="outline" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>This week</Button>
+        <Button variant="outline">Export</Button>
+      </Row>
+      <Row label="Plain">
+        <Button variant="ghost" iconAfter={<ArrowUpRight aria-hidden className="size-3.5" />}>Open receipt</Button>
+        <IconButton label="More" icon={<MoreHorizontal aria-hidden className="size-3.5" />} />
+      </Row>
+      <Row label="Two-way switch">
+        <SegmentedChoice label="Theme" value={theme} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={setTheme} />
+      </Row>
+      <Row label="Blue primary">
         <Button variant="brand" size="toolbar" icon={<Play aria-hidden className="size-3.5" />}>
           Start a run
         </Button>
-        <Button variant="primary" icon={<Play aria-hidden className="size-3.5" />}>
-          Run
-        </Button>
-        <Button variant="muted">Cancel</Button>
-        <Button variant="outline" icon={<Upload aria-hidden className="size-3.5" />}>
-          Upload
-        </Button>
-        <Button variant="ghost" iconAfter={<ArrowUpRight aria-hidden className="size-3.5" />}>
-          Open receipt
-        </Button>
+        <Button variant="primary">Confirm</Button>
+      </Row>
+      <Row label="Danger">
         <Button variant="danger" icon={<Trash2 aria-hidden className="size-3.5" />}>
           Delete run
         </Button>

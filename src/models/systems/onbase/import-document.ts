@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
 import { ERROR_CATALOG } from "../../failures/error-catalog.js";
-import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";
-import { EidSchema, ElementIdSchema, FingerprintSchema, ObservationIdSchema, PageStateIdSchema, TaskIdSchema, taskId } from "../../../rules/identity/ids.js";
+import { ContractFieldPathSchema } from "../../task/task-contract.js";
+import { EidSchema, ElementIdSchema, FingerprintSchema, ObservationIdSchema, PageStateIdSchema } from "../../../rules/identity/ids.js";
 import { probeVerdictSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 
 export const ONBASE_DOCUMENT_TYPE = "X_HR_Emergency Contact";
@@ -39,44 +40,12 @@ export const ONBASE_EXAMPLE_INPUT = OnbaseInputSchema.parse({ ucpathId: "1080000
 export const ONBASE_EXAMPLE_TARGET = OnbaseTargetSchema.parse({ ...ONBASE_EXAMPLE_INPUT, pageSha256: "2".repeat(64) });
 export const ONBASE_EXAMPLE_PROOF = OnbaseSavedDocumentSchema.parse({ documentId: "900001", ucpathId: "10800000", documentType: ONBASE_DOCUMENT_TYPE,
   documentName: ONBASE_DOCUMENT_NAME, pageSha256: "2".repeat(64), source: "retrieval-pdf-read-back" });
-const subject = { kind: "person", expected: { fromInput: ContractFieldPathSchema.parse("ucpathId"), identity: "eid" },
-  observe: ONBASE_DISPLAYED_EID, match: "normalized-exact-eid", requiredAt: "after-prepare-before-fence" } as const;
-const errors = ["ONBASE_IMPORT_UNPROVED"] as const;
+export const ONBASE_EXAMPLE_PREPARED = OnbasePreparedSchema.parse({ stagedPageState: ONBASE_IMPORT_STAGED, observedEid: "10800000", pageSha256: "2".repeat(64), keywords: { ucpathId: "10800000", lastName: "Example", firstName: "Person",
+    documentName: ONBASE_DOCUMENT_NAME, departmentName: "Example Department", departmentCode: "000001", viceChancellor: "Example Division", viceChancellorCode: "EX" } });
+export const ONBASE_IMPORT_SUBJECT = deepFreeze({ kind: "person", expected: { fromInput: ContractFieldPathSchema.parse("ucpathId"), identity: "eid" },
+  observe: ONBASE_DISPLAYED_EID, match: "normalized-exact-eid", requiredAt: "after-prepare-before-fence" } as const);
+export const ONBASE_IMPORT_ERROR_CODES = Object.freeze(["ONBASE_IMPORT_UNPROVED"] as const);
 
-export const OnbaseReadSourcePage = defineTaskContract({
-  id: taskId("onbase/read-source-page"), title: "Read this person's PDF page", effect: "read", input: OnbaseInputSchema, output: OnbaseTargetSchema,
-  errorCodes: errors, subject: { kind: "none", reason: "Reads one explicitly selected local PDF page without inferring a person." },
-  freshness: { defaultMaxAgeMs: 0, defaultOverride: "forbidden" }, provenance: { default: "live" }, artifacts: "content-addressed",
-  scenarios: ["onbase/one-page", "onbase/invalid-pdf"], example: ONBASE_EXAMPLE_TARGET,
-});
-export const OnbasePrepareImport = defineTaskContract({
-  id: taskId("onbase/stage-import"), title: "Prepare Emergency Contact import", effect: "prepare", input: OnbaseTargetSchema, output: OnbasePreparedSchema,
-  errorCodes: errors, subject, checkpoint: "in-memory-only", scenarios: ["onbase/prepare", "onbase/keyset-miss", "onbase/identity-mismatch"],
-  example: { stagedPageState: ONBASE_IMPORT_STAGED, observedEid: "10800000", pageSha256: "2".repeat(64), keywords: { ucpathId: "10800000", lastName: "Example", firstName: "Person",
-    documentName: ONBASE_DOCUMENT_NAME, departmentName: "Example Department", departmentCode: "000001", viceChancellor: "Example Division", viceChancellorCode: "EX" } },
-});
-export const OnbaseMatchImport = defineTaskContract({
-  id: taskId("onbase/match-import"), title: "Find the exact saved PDF", effect: "read", input: OnbaseTargetSchema, output: OnbaseImportVerdictSchema,
-  errorCodes: errors, subject: { kind: "none", reason: "Exact document type and employee keyword filters are verified before accepting any retrieved PDF." },
-  freshness: { defaultMaxAgeMs: 0, defaultOverride: "forbidden" }, provenance: { default: "live" }, scenarios: ["onbase/saved-effect", "onbase/unknown"],
-  example: { state: "present", proof: ONBASE_EXAMPLE_PROOF },
-});
-export const OnbaseVerifyImport = defineTaskContract({
-  id: taskId("onbase/verify-import"), title: "Verify the imported PDF exists", effect: "read", input: OnbaseTargetSchema, output: OnbaseImportVerdictSchema,
-  errorCodes: errors, subject: OnbaseMatchImport.subject, freshness: OnbaseMatchImport.freshness, provenance: OnbaseMatchImport.provenance,
-  scenarios: ["onbase/saved-effect", "onbase/unknown"], example: OnbaseMatchImport.example,
-});
-export const OnbaseCommitImport = defineTaskContract({
-  id: taskId("onbase/upload-import"), title: "Import Emergency Contact once", effect: "commit", input: OnbaseTargetSchema, output: OnbaseImportOutputSchema,
-  errorCodes: errors, subject, scenarios: ["onbase/committed", "onbase/unknown"],
-  writeSafety: {
-    completion: { kind: "upload-verify", verify: { taskId: TaskIdSchema.parse("onbase/verify-import"), effect: "read" }, proofSchema: OnbaseSavedDocumentSchema,
-      proofFromOutput: (output: z.output<typeof OnbaseImportOutputSchema>) => output.savedDocument,
-      proofFromPresentProbe: ({ proof }: { proof: OnbaseSavedDocument }) => proof, outputFromProof: (proof: OnbaseSavedDocument) => ({ savedDocument: proof }) },
-    idempotency: { key: onbaseImportKey, probe: { taskId: TaskIdSchema.parse("onbase/match-import"), effect: "read" },
-      recoveryAbsence: { kind: "operator-only", reason: "OnBase indexing propagation has no verified negative-settlement interval; UNKNOWN cannot authorize another Import." } },
-  }, example: { savedDocument: ONBASE_EXAMPLE_PROOF },
-});
 export class OnbaseImportError extends Error {
   readonly code = "ONBASE_IMPORT_UNPROVED";
   constructor(readonly reason: string, options?: ErrorOptions) { super(ERROR_CATALOG.ONBASE_IMPORT_UNPROVED.text, options); this.name = "OnbaseImportError"; }

@@ -18,9 +18,79 @@ export const I9_LOOKUP_STEP = Object.freeze({
       label: "I-9 status", sources: [
         { nodeId: "lookup-source", kind: "output", fieldPath: "i9Status" },
         { nodeId: "lookup", kind: "output", fieldPath: "i9Status" },
-      ]
+      ], display: { cases: [
+        { value: "signed", text: "Signed" }, { value: "unsigned", text: "Unsigned" },
+        { value: "historical", text: "Historical" }, { value: "not-found", text: "Not found" },
+        { value: "unable-to-access", text: "Unable to access" },
+      ] },
     },
   ],
+  review: {
+    pages: [
+      {
+        id: "employee-search",
+        title: "Search for Existing Employee",
+        mode: "Fill form",
+        nodeIds: ["lookup-source"],
+        lines: [
+          { id: "search-by-name", kind: "action", text: "Search I-9 Complete using the supplied name and optional SSN.", nodeIds: ["lookup-source"] },
+          {
+            id: "check-search-results",
+            kind: "check",
+            text: "Check exact displayed names and require one matching profile before opening a record.",
+            nodeIds: ["lookup-source"]
+          }
+        ],
+        fields: []
+      },
+      {
+        id: "i9-record-summary",
+        title: "I-9 Record Summary Information",
+        mode: "Read only",
+        nodeIds: ["lookup-source", "lookup"],
+        lines: [
+          {
+            id: "read-section-two",
+            kind: "read",
+            text: "Read the Section 2 signing event from the record audit history when a matching record is available.",
+            nodeIds: ["lookup-source"]
+          },
+          { id: "report-signer-status", kind: "check", text: "Return the signer and I-9 status from the verified lookup outcome.", nodeIds: ["lookup"] }
+        ],
+        fields: [
+          {
+            id: "authorized-official-signer",
+            operatorField: "Authorized official signer",
+            source: {
+              origin: "I-9 Complete",
+              detail: "The official named on the Signed Section 2 audit event; blank when there is no signed Section 2.",
+              read: { stepKey: "lookup", page: "I-9 Record Summary Information", field: "Authorized official signer" },
+              chain: [
+                { label: "Employee search", detail: "Confirm one exact displayed name and profile before reading its I-9 summary." },
+                { label: "Section 2 audit", detail: "Read the signer name from the Signed Section 2 audit row when present." },
+                { label: "Lookup result", detail: "Carry the verified signer into the workflow result." }
+              ]
+            }
+          },
+          {
+            id: "i9-status",
+            operatorField: "I-9 status",
+            source: {
+              origin: "I-9 Complete",
+              detail: "The lookup classification: signed, unsigned, historical, not found or unable to access.",
+              read: { stepKey: "lookup", page: "I-9 Record Summary Information", field: "I-9 status" },
+              chain: [
+                { label: "Employee search", detail: "Classify no results or restricted access from the employee search." },
+                { label: "Record summary", detail: "For a matching record, classify historical routing or the Section 2 audit event." },
+                { label: "Lookup result", detail: "Carry the verified status into the workflow result." }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 const entries = defineStepEntries(I9_LOOKUP_STEP);
 const signer = entries.task("lookup-source", I9ReadSection2Signer, { label: "Read Section 2 signer", replay: "checkpoint" });
