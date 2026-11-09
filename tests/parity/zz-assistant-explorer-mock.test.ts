@@ -34,6 +34,7 @@ const FRAMES: Frame[] = [
     await page.getByRole("combobox", { name: "Explorer workflow", exact: true }).click();
     await page.getByRole("option", { name: "Person Lookup", exact: true }).click();
   } },
+  { id: "settings-sessions-open", settings: "explorer", query: "assistantOpen=0", view: { sessions: true } },
   { id: "explorer-pick", settings: "explorer", query: "assistantOpen=0", act: async page => {
     await page.getByRole("combobox", { name: "Explorer workflow", exact: true }).click();
     await page.getByRole("option", { name: "Person Lookup", exact: true }).click();

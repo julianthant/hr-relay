@@ -13,10 +13,10 @@
 .settings-nav-group a { display: flex; min-width: 0; height: 36px; align-items: center; gap: 10px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
 .settings-nav-group a svg { width: 16px; height: 16px; }
 .dashboard-shell .settings-content { padding: 32px; }
-/* The Sessions bar (46px + 12px edge gap) sits under the main area; Settings keeps its sidebar full height and ends the content above the bar. */
-.dashboard-workspace > main { padding-bottom: 58px; }
+/* The Sessions bar (its height + 12px edge gap) sits under the main area; Settings keeps its sidebar full height and ends the content above the bar. */
+.dashboard-workspace > main { padding-bottom: calc(var(--session-dock-h, 46px) + 12px); }
 .dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { padding-bottom: 0; }
-.dashboard-shell .settings-content { margin-bottom: 58px; }
+.dashboard-shell .settings-content { margin-bottom: calc(var(--session-dock-h, 46px) + 12px); }
 .dashboard-shell .settings-content { opacity: 1; transition: opacity var(--ds-dur-enter) var(--ds-ease-out); }
 .dashboard-shell .settings-takeover[data-demo-enter="from"] > .settings-content { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .dashboard-shell .settings-content { transition: none; } }

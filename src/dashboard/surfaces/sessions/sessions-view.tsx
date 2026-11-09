@@ -38,6 +38,18 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
 }) {
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const dockRef = useRef<HTMLElement>(null);
+  // The columns, Settings content and assistant panel end above the bar, so its height is published for them.
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    if (dock === null) return;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty("--session-dock-h", `${String(dock.offsetHeight)}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(dock);
+    return () => { observer.disconnect(); root.style.removeProperty("--session-dock-h"); };
+  }, []);
   const addTriggerRef = useRef<HTMLButtonElement>(null);
   const addFocusOrigin = useRef<Element | null>(null);
   const [addOpen, setAddOpen] = useViewState("addWorkers", false);
@@ -76,16 +88,15 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     <UsersRound aria-hidden /><span className="session-pill-title">Sessions</span><span aria-hidden className="text-ui-muted">·</span><span className="session-pill-counts"><BarCounts data={data} /></span>
     {open ? <ChevronDown aria-hidden /> : <ChevronUp aria-hidden />}
   </button>;
-  return <section aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    {open && <div id={contentId} role="region" aria-label="Sessions" className="session-float">
-      <div className="session-float-header"><h2 className="session-float-title">Sessions</h2>{addControl}</div>
+  return <section ref={dockRef} aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
+    <div className="session-bar" aria-label="Session actions" role="group">
+      {toggle}<span className="session-bar-end">{open && addControl}{launcher === "a" && <AssistantIconLauncher />}{launcher === "b" && <AssistantDockField />}</span>
+    </div>
+    {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
       {operations.add && ['uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 px-3 pb-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}
-      <div className="session-float-body">
+      <div className="session-body-cards">
       {data.state === "ready" ? data.workers.length ? <div data-session-strip className="flex items-stretch gap-3 overflow-x-auto pb-1">{data.workers.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={(id, control) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); }} />)}</div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
       </div>
     </div>}
-    <div className="session-bar" aria-label="Session actions" role="group">
-      {toggle}{launcher === "a" && <AssistantIconLauncher />}{launcher === "b" && <AssistantDockField />}
-    </div>
   </section>;
 }
