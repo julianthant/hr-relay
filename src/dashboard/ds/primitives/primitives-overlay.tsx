@@ -484,15 +484,18 @@ export function Tooltip({
   content,
   side = "top",
   collisionBoundary,
+  open,
   children,
 }: {
   content: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
   collisionBoundary?: Element | null;
+  /** Set false to hold the tooltip closed (for example while the trigger's own menu is open). */
+  open?: false;
   children: ReactNode;
 }) {
   return (
-    <TooltipPrimitive.Root>
+    <TooltipPrimitive.Root {...(open === false ? { open: false } : {})}>
       <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
