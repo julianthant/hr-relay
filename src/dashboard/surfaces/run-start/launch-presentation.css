@@ -113,7 +113,7 @@
 .launch-dialog > header > div { @apply gap-[2px]; }
 .launch-dialog > header h2 { @apply text-[16px] leading-[22px] font-semibold; }
 .launch-dialog > header p { @apply text-caption leading-[18px] text-ui-secondary; }
-.launch-dialog > header > button { @apply size-7; }
+.launch-dialog > header > button { @apply size-7 rounded-[10px]; }
 .launch-dialog > footer { @apply h-[57px] bg-ui-table; }
 .launch-dialog > footer button { @apply h-7 px-3 text-body font-medium; }
 .launch-dialog .launch-stagebar { @apply h-[54px]; }

@@ -1870,6 +1870,9 @@ th.ds-text-caps {
   }
 }
 
+/* The calendar button inside a date field is an icon button: rounded square, the row hover fill. */
+.ds-date-picker .date-picker__trigger { border-radius: 8px; }
+.ds-date-picker .date-picker__trigger:hover { background: var(--ds-surface-3); }
 .ds-date-picker--toolbar .date-input-group {
   height: var(--ds-h-toolbar);
 }

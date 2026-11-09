@@ -1,5 +1,5 @@
-#hub-panel-assistant .hub-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;background:transparent;color:var(--ui-secondary);flex:none}
-#hub-panel-assistant .hub-icon:hover,#hub-panel-assistant .hub-plain:hover{background:var(--ui-hover);color:var(--ui-primary)}
+#hub-panel-assistant .hub-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;background:transparent;color:var(--ui-secondary);flex:none}
+#hub-panel-assistant .hub-icon:hover,#hub-panel-assistant .hub-plain:hover{background:var(--ds-surface-3);color:var(--ui-primary)}
 #hub-panel-assistant .hub-icon svg{width:16px;height:16px}
 #hub-panel-assistant .hub-btn{min-height:32px;padding:5px 12px;border:1px solid var(--ui-stroke);border-radius:8px;background:var(--ui-panel);font-size:12px;font-weight:500;white-space:nowrap}
 #hub-panel-assistant .hub-btn:hover{background:var(--ui-hover)}
