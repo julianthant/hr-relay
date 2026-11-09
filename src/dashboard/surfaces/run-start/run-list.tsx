@@ -8,9 +8,9 @@ const NOTE = "mt-[3px] truncate text-[11px] font-normal leading-4 text-[color:va
 const CHECK_COPY = "[&_.ds-checkbox-control]:!mt-0 [&_.ds-checkbox-control]:!size-[14px] [&_.ds-checkbox-label]:!text-[12px] [&_.ds-checkbox-label]:!font-normal [&_.ds-checkbox-label]:!leading-[18px] [&_.ds-checkbox-description]:!mt-[3px] [&_.ds-checkbox-description]:!text-[11px] [&_.ds-checkbox-description]:!leading-4 [&_.ds-checkbox-description]:!text-[color:var(--ds-fg-secondary)]";
 
 /** The one card every list in the Run and Rerun dialogs uses (input, spreadsheets, options, steps, blockers), so their rows cannot drift. */
-export function RunList({ title, label, children }: { title?: string; label?: string; children: ReactNode }) {
+export function RunList({ title, label, aside, children }: { title?: string; label?: string; aside?: ReactNode; children: ReactNode }) {
   return <DsBodyScope role="region" aria-label={label ?? title} className="flex min-w-0 flex-col gap-2" style={{ background: "transparent" }}>
-    {title && <h4 className="m-0 text-[13px] font-semibold leading-[18px]">{title}</h4>}
+    {title && <div className="flex items-baseline justify-between gap-3"><h4 className="m-0 text-[13px] font-semibold leading-[18px]">{title}</h4>{aside && <span className="text-[12px] text-ui-muted">{aside}</span>}</div>}
     <div className="overflow-hidden rounded-[var(--ds-radius-lg)] border border-ui-stroke bg-ui-table">{children}</div>
   </DsBodyScope>;
 }

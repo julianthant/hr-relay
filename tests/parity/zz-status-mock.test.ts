@@ -46,12 +46,13 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
-    } else if (id === "run-person-lookup") {
+    } else if (id === "run-person-lookup" || id === "run-person-lookup-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).last().click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await expect(dialog.getByText("Workflow preview")).toBeVisible();
-      await dialog.getByRole("textbox").first().fill("10000001");
+      await dialog.getByRole("textbox").first().fill(id === "run-person-lookup" ? "10000001" : "10000001; 10000002; Lee, Jordan");
+      await expect(dialog.getByText("Parsed input")).toBeVisible();
     } else if (id === "run-options-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();

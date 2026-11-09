@@ -96,7 +96,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             text={draft.text} onText={text => patch({ text })} draft={mockTypedInputValues(workflowId, draft)}
             onValue={(field, value) => patch(changeMockTypedInput(workflowId, draft, field, value))}
             preview={{ entries: typedEntries.map((sourceText, index) => ({ index, sourceText })), submissions: [], problem: null }} /> : <>
-            <Field label={flow.inputLabel} description="Separate values with a comma or a new line.">
+            <Field label={flow.inputLabel} description="Separate values with a comma or Shift+Enter.">
               <Textarea autoFocus rows={4} value={draft.text} placeholder={flow.placeholder} onChange={event => patch({ text: event.target.value })} />
             </Field>
             {typedEntries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{typedEntries.map((entry, number) => <li key={number} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{number + 1}</span><span className="truncate">{entry}</span></li>)}</ul>}
