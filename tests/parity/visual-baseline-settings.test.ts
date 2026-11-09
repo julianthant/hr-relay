@@ -239,12 +239,15 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       const typeFields = page.getByRole("dialog", { name: "Edit spreadsheet type", exact: true });
       await expect(typeFields.getByRole("textbox", { name: "Type name", exact: true })).toHaveValue("Roster");
       await expect(typeFields.getByRole("group", { name: /^Columns \(/u })).toBeVisible();
+      await expect(typeFields.getByRole("heading", { name: "Edit spreadsheet type", exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(typeFields).toBeInViewport({ ratio: 1 });
       await capture(page, info, theme, width, "spreadsheet-type-fields");
       await typeFields.getByRole("button", { name: "Cancel", exact: true }).click(); await expect(editType).toBeFocused();
       const createType = page.getByRole("button", { name: "Create type", exact: true });
       await createType.click();
       const addType = page.getByRole("dialog", { name: "Create spreadsheet type", exact: true });
-      await expect(addType).toBeVisible();
+      await expect(addType.getByRole("heading", { name: "Create spreadsheet type", exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(addType).toBeInViewport({ ratio: 1 });
       await capture(page, info, theme, width, "spreadsheet-type-add");
       await addType.getByRole("button", { name: "Save type", exact: true }).click(); await expect(addType.getByRole("alert")).toBeVisible();
       await addType.getByRole("textbox", { name: "Type name", exact: true }).fill("Roster");
