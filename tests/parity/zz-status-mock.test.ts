@@ -137,20 +137,31 @@ test(`kit buttons ${WIDTH}`, async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-// A compact confirm dialog on the kit page: title, one grey line, the buttons.
-test(`kit compact dialog ${WIDTH}`, async ({ page }) => {
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Open destructive dialog", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Delete this run?" });
-  await expect(dialog).toBeVisible();
-  await page.mouse.move(1, 1);
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: join(OUT, `kit-dialog-compact-${WIDTH}.png`) });
-  expect(errors).toEqual([]);
-});
+// The shared confirm dialog on the kit page: destructive (soft red) and non-destructive (blue), no close ×, Cancel focused and ringed, Escape closes.
+for (const [trigger, title, button, destructive] of [["Open destructive dialog", "Delete this spreadsheet?", "Delete spreadsheet", true], ["Open confirm dialog", "Start a live run?", "Start live run", false]] as const) {
+  test(`kit confirm dialog ${destructive ? "destructive" : "primary"} ${WIDTH}`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+    await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+    for (const theme of ["dark", "light"] as const) {
+      await page.evaluate(value => { for (const el of [document.documentElement, document.body]) { el.setAttribute("data-demo-theme", value); el.classList.toggle("dark", value === "dark"); } }, theme);
+      await page.getByRole("button", { name: trigger, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: title });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+      await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+      expect(await dialog.getByRole("button", { name: "Cancel", exact: true }).evaluate(node => getComputedStyle(node).outlineStyle)).toBe("solid");
+      await expect(dialog.getByRole("button", { name: button, exact: true })).toBeVisible();
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(OUT, `kit-confirm-${destructive ? "destructive" : "primary"}-${theme}-${WIDTH}.png`) });
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+    }
+    expect(errors).toEqual([]);
+  });
+}
 
 // The two-way switch's thumb slides to the chosen side, and does not under reduced motion.
 for (const motion of ["no-preference", "reduce"] as const) test(`kit switch slide ${motion}`, async ({ page }) => {

@@ -151,6 +151,7 @@ export {
   DialogContent,
   DialogBody,
   DialogFooter,
+  ConfirmDialog,
   Drawer,
   DrawerTrigger,
   DrawerClose,

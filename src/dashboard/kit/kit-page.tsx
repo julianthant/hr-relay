@@ -22,6 +22,7 @@ import { cn } from "../lib/utils.js";
 import {
   Badge,
   Banner,
+  ConfirmDialog,
   BulletList,
   Button,
   Card,
@@ -1043,6 +1044,7 @@ function FormsSection() {
 function OverlaysSection() {
   const [dialog, setDialog] = useState(false);
   const [danger, setDanger] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const { toast } = useToasts();
 
@@ -1058,6 +1060,9 @@ function OverlaysSection() {
         </Button>
         <Button variant="dangerGhost" onClick={() => setDanger(true)}>
           Open destructive dialog
+        </Button>
+        <Button variant="secondary" onClick={() => setConfirm(true)}>
+          Open confirm dialog
         </Button>
         <Button variant="secondary" onClick={() => setDrawer(true)}>
           Open drawer
@@ -1194,22 +1199,12 @@ function OverlaysSection() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={danger} onOpenChange={setDanger}>
-        <DialogContent
-          size="sm"
-          title="Delete this run?"
-          description="Its tracker row and evidence are removed."
-        >
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setDanger(false)}>
-              Keep it
-            </Button>
-            <Button variant="danger" onClick={() => setDanger(false)}>
-              Delete run
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog open={danger} onOpenChange={setDanger} destructive title="Delete this spreadsheet?"
+        description="Its saved versions and column mapping are removed. This cannot be undone." detail="Contact roster · 6 versions"
+        confirmLabel="Delete spreadsheet" onConfirm={() => setDanger(false)} />
+      <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Start a live run?"
+        description="Relay will submit real transactions to UCPath for 3 people." detail="Separations · Kuali 48216, 48220, 48224"
+        confirmLabel="Start live run" onConfirm={() => setConfirm(false)} />
 
       <Drawer open={drawer} onOpenChange={setDrawer}>
         <DrawerContent title="Alvarez, Marisol" description="se-140211-9f3a · Separations">
