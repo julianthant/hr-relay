@@ -85,9 +85,19 @@ for (const theme of ["light", "dark"] as const) {
         await open(); await menu("I-9 tracker", "Link to SharePoint…"); await dialog().getByRole("textbox", { name: "Workbook link" }).fill("https://example.sharepoint.com/sites/hr/i9.xlsx"); await shot("link");
         await dialog().getByRole("button", { name: "Link", exact: true }).click(); await expect(dialog()).toHaveCount(0); await shotPage("link-done");
       },
+      "menu-run": async () => {
+        await open(); await menu("PL33065442"); await expect(page.getByRole("menuitem", { name: "Merge into I-9 tracker", exact: true })).toBeVisible(); await shot("menu-run-merge"); await page.keyboard.press("Escape");
+        await menu("EC51820377"); await expect(page.getByRole("menuitem", { name: /^Merge/u })).toHaveCount(0); await shot("menu-run-sharepoint"); await page.keyboard.press("Escape");
+        await menu("I-9 tracker"); await expect(page.getByRole("menuitem", { name: /^Merge/u })).toHaveCount(0);
+      },
       merge: async () => {
-        await open(); await menu("I-9 tracker", "Merge into…"); await dialog().getByRole("button", { name: "Target spreadsheet", exact: true }).click(); await page.getByRole("menuitemradio", { name: "Student applicants", exact: true }).click(); await expect(page.getByRole("menuitemradio")).toHaveCount(0); await shot("merge");
-        await dialog().getByRole("button", { name: "Merge", exact: true }).click(); await expect(dialog()).toHaveCount(0);
+        await open(); await menu("PL33065442", "Merge into I-9 tracker"); await expect(dialog().getByText("Merge PL33065442 into I-9 tracker?")).toBeVisible(); await expect(dialog().getByText("12 added · 3 updated", { exact: false })).toBeVisible(); await shot("merge");
+        await dialog().getByRole("button", { name: "Merge", exact: true }).click(); await expect(dialog()).toHaveCount(0); await expect(page.getByRole("listitem", { name: "PL33065442", exact: true })).toHaveCount(1);
+        await page.getByRole("button", { name: "Versions of I-9 tracker, now v4", exact: true }).click(); await expect(dialog().getByRole("radio", { name: /Merged from PL33065442/u })).toBeVisible(); await shot("rollback-merged");
+      },
+      "merge-delete": async () => {
+        await open(); await menu("PL33065442", "Merge and delete"); await expect(dialog().getByText("PL33065442 is deleted after the merge.")).toBeVisible(); await shot("merge-delete");
+        await dialog().getByRole("button", { name: "Merge and delete", exact: true }).click(); await expect(page.getByRole("listitem", { name: "PL33065442", exact: true })).toHaveCount(0); await shotPage("merge-delete-done");
       },
       rollback: async () => {
         await open(); await page.getByRole("button", { name: "Versions of Contact roster, now v6", exact: true }).click(); await dialog().getByRole("radio", { name: /^v3 /u }).click(); await shot("rollback");

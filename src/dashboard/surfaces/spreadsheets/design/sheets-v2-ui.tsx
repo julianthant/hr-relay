@@ -60,9 +60,9 @@ export function TagEditor({ tags, onChange, workflow }: { tags: readonly string[
   </div>;
 }
 
-export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'merge' | 'rename' | 'tags' | 'delete' | 'download';
+export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'merge' | 'mergeDelete' | 'rename' | 'tags' | 'delete' | 'download';
 /** Same menu on every row and on the detail page. */
-export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
+export function SheetMenu({ sheet, original, onAction, withDownload, label }: { sheet: Sheet; original?: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
   const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
   return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className="min-w-[210px]">
     {withDownload && item('download', 'Download')}
@@ -70,7 +70,7 @@ export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: She
     {sheet.sharePoint && item('sync', 'Sync now')}
     {item('link', sheet.sharePoint ? 'Change SharePoint link…' : 'Link to SharePoint…')}
     {item('clone', 'Clone')}
-    {!sheet.sharePoint && item('merge', 'Merge into…')}
+    {original && <>{item('merge', `Merge into ${original.name}`)}{item('mergeDelete', 'Merge and delete')}</>}
     {item('rename', 'Rename')}
     {item('tags', 'Edit tags')}
     <DropdownMenuSeparator />

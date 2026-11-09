@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Tooltip } from '../../../ds/ui.js';
-import { type Sheet, stamp } from './sheets-v2-model.js';
+import { type Sheet, mergeOriginal, stamp } from './sheets-v2-model.js';
 import { DownloadIcon, SheetMenu, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
 export interface RowActions { open: (id: string) => void; version: (id: string) => void; menu: (id: string, action: MenuAction) => void; logs: (sheet: Sheet) => void }
@@ -40,7 +40,7 @@ export function SheetRow({ sheet, sheets, narrow, actions }: { sheet: Sheet; she
     <TagsFit sheet={sheet} />
     <div className="truncate text-ui-muted"><SourceCell sheet={sheet} sheets={sheets} onOpen={actions.open} /></div>
     <div onClick={stop}><V2Button look="plain" className="-ml-3 tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.versions[0].n}`} onClick={() => actions.version(sheet.id)}>v{sheet.versions[0].n}</V2Button></div>
-    <div className="flex justify-end" onClick={stop}>{!narrow && <DownloadIcon name={sheet.name} />}<SheetMenu sheet={sheet} label={sheet.name} withDownload={narrow} onAction={action => actions.menu(sheet.id, action)} /></div>
+    <div className="flex justify-end" onClick={stop}>{!narrow && <DownloadIcon name={sheet.name} />}<SheetMenu sheet={sheet} original={mergeOriginal(sheet, sheets)} label={sheet.name} withDownload={narrow} onAction={action => actions.menu(sheet.id, action)} /></div>
   </li>;
 }
 

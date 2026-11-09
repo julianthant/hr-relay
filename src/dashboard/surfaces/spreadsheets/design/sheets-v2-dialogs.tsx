@@ -1,14 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import { Dialog, DialogBody, DialogContent, DialogFooter, Field, Input } from '../../../ds/ui.js';
-import { type Sheet, mergePreview, stamp } from './sheets-v2-model.js';
+import { type Sheet, mergeOriginal, mergePreview, stamp } from './sheets-v2-model.js';
 import './sheets-v2.css';
-import { Grey, Picker, TagEditor, V2Button } from './sheets-v2-ui.js';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/ui.js';
+import { Grey, TagEditor, V2Button } from './sheets-v2-ui.js';
 
-export type DialogKind = 'rename' | 'tags' | 'link' | 'merge' | 'rollback' | 'delete';
+export type DialogKind = 'rename' | 'tags' | 'link' | 'merge' | 'mergeDelete' | 'rollback' | 'delete';
 const field = '!bg-[var(--ui-field)] !border-[color:var(--ui-stroke-control)]';
 
-function Shell({ title, description, onClose, footer, children, size = 'sm' }: { title: string; description?: string; onClose: () => void; footer: ReactNode; children?: ReactNode; size?: 'sm' | 'md' }) {
+function Shell({ title, description, onClose, footer, children, size = 'sm' }: { title: string; description?: ReactNode; onClose: () => void; footer: ReactNode; children?: ReactNode; size?: 'sm' | 'md' }) {
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="sv2-dialog" size={size} title={title} description={description}>
     {children && <DialogBody>{children}</DialogBody>}
     <DialogFooter>{footer}</DialogFooter>
@@ -18,13 +17,12 @@ const Cancel = ({ onClose }: { onClose: () => void }) => <V2Button onClick={onCl
 
 export interface DialogActions {
   rename: (name: string) => void; tags: (tags: readonly string[]) => void; link: (url: string) => void;
-  merge: (target: Sheet) => void; rollback: (version: number) => void; remove: () => void;
+  merge: (into: Sheet, andDelete: boolean) => void; rollback: (version: number) => void; remove: () => void;
 }
 
 export function SheetDialog({ kind, sheet, sheets, actions, onClose }: { kind: DialogKind; sheet: Sheet; sheets: readonly Sheet[]; actions: DialogActions; onClose: () => void }) {
   const [text, setText] = useState(kind === 'rename' ? sheet.name : kind === 'link' ? sheet.sharePoint ?? '' : '');
   const [tags, setTags] = useState(sheet.tags);
-  const [target, setTarget] = useState<Sheet>();
   const [version, setVersion] = useState<number>();
   const done = (run: () => void) => () => { run(); onClose(); };
   if (kind === 'rename') return <Shell title="Rename spreadsheet" onClose={onClose} footer={<><Cancel onClose={onClose} /><V2Button look="primary" disabled={!text.trim()} onClick={done(() => actions.rename(text.trim()))}>Rename</V2Button></>}>
@@ -33,13 +31,11 @@ export function SheetDialog({ kind, sheet, sheets, actions, onClose }: { kind: D
   if (kind === 'link') return <Shell title={sheet.sharePoint ? 'Change SharePoint link' : 'Link to SharePoint'} description="Relay pulls this workbook in. It becomes read-only here." onClose={onClose}
     footer={<><Cancel onClose={onClose} /><V2Button look="primary" disabled={!/^https:\/\//u.test(text.trim())} onClick={done(() => actions.link(text.trim()))}>Link</V2Button></>}>
     <Field label="Workbook link"><Input className={field} placeholder="https://…sharepoint.com/…" value={text} onChange={event => setText(event.target.value)} /></Field></Shell>;
-  if (kind === 'merge') {
-    const targets = sheets.filter(item => item.id !== sheet.id && !item.sharePoint), preview = target && mergePreview(target);
-    return <Shell title={`Merge ${sheet.name} into…`} description="Rows match on Employee ID. No rows are removed." size="md" onClose={onClose}
-      footer={<>{preview && <Grey className="mr-auto">{preview.added} added · {preview.updated} updated</Grey>}<Cancel onClose={onClose} /><V2Button look="primary" disabled={!target} onClick={done(() => actions.merge(target!))}>Merge</V2Button></>}>
-      <DropdownMenu><DropdownMenuTrigger render={<Picker aria-label="Target spreadsheet" className="w-full">{target?.name ?? <span className="text-ui-muted">Choose a spreadsheet</span>}</Picker>} /><DropdownMenuContent align="start" className="min-w-[320px]">
-        <DropdownMenuRadioGroup value={target?.id ?? ''} onValueChange={id => setTarget(targets.find(item => item.id === id))}>{targets.map(item => <DropdownMenuRadioItem closeOnClick key={item.id} value={item.id}>{item.name}</DropdownMenuRadioItem>)}</DropdownMenuRadioGroup>
-      </DropdownMenuContent></DropdownMenu></Shell>;
+  if (kind === 'merge' || kind === 'mergeDelete') {
+    const into = mergeOriginal(sheet, sheets)!, { added, updated } = mergePreview(), andDelete = kind === 'mergeDelete';
+    return <Shell title={`Merge ${sheet.name} into ${into.name}?`} size="md" onClose={onClose}
+      description={<><span className="block">Rows match on Employee ID. {added} added · {updated} updated. Nothing is removed.</span>{andDelete && <span className="block">{sheet.name} is deleted after the merge.</span>}</>}
+      footer={<><Cancel onClose={onClose} /><V2Button look={andDelete ? 'danger' : 'primary'} onClick={done(() => actions.merge(into, andDelete))}>{andDelete ? 'Merge and delete' : 'Merge'}</V2Button></>} />;
   }
   if (kind === 'rollback') return <Shell title="Roll back" description={`${sheet.name} · now v${sheet.versions[0].n}`} size="md" onClose={onClose}
     footer={<>{sheet.sharePoint && <Grey className="mr-auto">The next sync replaces it.</Grey>}<Cancel onClose={onClose} /><V2Button look="primary" disabled={version === undefined} onClick={done(() => actions.rollback(version!))}>Roll back</V2Button></>}>

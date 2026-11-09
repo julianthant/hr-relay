@@ -34,7 +34,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     else if (action === 'sync') { change(id, item => note(item, 'Synced from SharePoint')); toast({ tone: 'success', title: `Synced ${sheet.name}` }); }
     else if (action === 'clone') clone(sheet);
     else if (action === 'link') setDialog({ kind: 'link', id });
-    else if (action === 'merge') setDialog({ kind: 'merge', id });
+    else if (action === 'merge' || action === 'mergeDelete') setDialog({ kind: action, id });
     else if (action === 'rename') setDialog({ kind: 'rename', id });
     else if (action === 'tags') setDialog({ kind: 'tags', id });
     else if (action === 'delete') setDialog({ kind: 'delete', id });
@@ -60,7 +60,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     {dialog && target && <SheetDialog kind={dialog.kind} sheet={target} sheets={sheets} onClose={() => setDialog(undefined)} actions={{
       rename: name => change(target.id, item => ({ ...item, name })), tags: next => change(target.id, item => ({ ...item, tags: next })),
       link: url => change(target.id, item => note({ ...item, sharePoint: url, pinned: item.pinned }, 'Synced from SharePoint')),
-      merge: into => { change(into.id, item => note(item, `Merged from ${target.name}`)); toast({ tone: 'success', title: `Merged into ${into.name}` }); },
+      merge: (into, andDelete) => { change(into.id, item => note(item, `Merged from ${target.name}`)); if (andDelete) { setSheets(current => current.filter(item => item.id !== target.id)); if (openId === target.id) setOpenId(undefined); } toast({ tone: 'success', title: `Merged into ${into.name}` }); },
       rollback: version => change(target.id, item => note(item, `Rolled back to v${version}`)),
       remove: () => { setSheets(current => current.filter(item => item.id !== target.id)); if (openId === target.id) setOpenId(undefined); },
     }} />}

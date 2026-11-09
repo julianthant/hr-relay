@@ -73,7 +73,9 @@ export const tagsOf = (sheet: Sheet): readonly string[] => sheet.workflow ? [she
 export const allTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(tagsOf))].toSorted();
 
 /** Merge preview: Employee ID decides which rows exist; the numbers are fixed fixtures. */
-export const mergePreview = (target: Sheet): { added: number; updated: number } => ({ added: 12, updated: target.id === 'i9' ? 5 : 3 });
+export const mergePreview = (): { added: number; updated: number } => ({ added: 12, updated: 3 });
+/** A run-made copy merges back only into the spreadsheet it was made from, and only when that one has no SharePoint link. */
+export const mergeOriginal = (sheet: Sheet, sheets: readonly Sheet[]): Sheet | undefined => sheet.run ? sheets.find(item => item.id === sheet.from?.id && !item.sharePoint) : undefined;
 
 export interface Cell { readonly text: string; readonly bold?: boolean; readonly fill?: string; readonly align?: 'right' }
 export interface Dataset { readonly headers: readonly string[]; readonly rows: readonly (readonly Cell[])[] }
