@@ -19,7 +19,7 @@ export function statusMock(): StatusMockId | undefined {
 /** Toasts are a title and at most one short line, no buttons. The stack shows the newest and folds the rest behind it; hovering opens it. */
 const THREE_TOASTS = [
   { tone: "warning", title: "UCPath is down for maintenance", description: "Runs that use UCPath wait." },
-  { tone: "warning", title: "ChatGPT is disconnected", description: "Reconnect it in Settings > General." },
+  { tone: "warning", title: "ChatGPT is disconnected", description: "Reconnect it in Settings > Account." },
   { tone: "danger", title: "Relay is missing files", description: "Download Relay again." },
 ] as const;
 export const STATUS_MOCK_TOASTS = {
@@ -59,7 +59,7 @@ export const STATUS_MOCK_FIRST_RUN = [
   { id: "browser", label: "Browser for workflows", state: "ok" },
   { id: "storage", label: "Saved on this computer", state: "ok" },
   { id: "duo", label: "Duo sign-in", state: "ok" },
-  { id: "folders", label: "Download and report folders", state: "running" },
+  { id: "folders", label: "Downloads folder", state: "running" },
 ] as const;
 
 /** Outcome vocabulary shared by the tiles, the daily chart and the per-workflow bars. Needs attention = finished but not checked after saving, or waiting for you. */

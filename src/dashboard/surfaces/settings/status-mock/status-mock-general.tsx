@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { BodySection, Button, DateInput, FormGroup, Input, PageHeading, ResultRow, Select, Switch } from "../../../ds/ui.js";
+import { BodySection, Button, DateInput, FormGroup, Input, PageHeading, ResultRow, SegmentedChoice, Select, Switch } from "../../../ds/ui.js";
 import { middle } from "../general/settings-storage.js";
 
 const DOWNLOADS = "/Users/jordan.lee/Documents/Relay downloads";
@@ -23,7 +23,7 @@ function Pick({ label, description, value, options, onChange }: { label: string;
 export function StatusMockGeneral() {
   const [defaultPermissions, setDefaultPermissions] = useState(true);
   const [fullAccess, setFullAccess] = useState(false);
-  const [theme, setTheme] = useState("Dark");
+  const [theme, setTheme] = useState("system");
   const [animations, setAnimations] = useState(true);
   const [jobEnd, setJobEnd] = useState("");
   const [headless, setHeadless] = useState(true);
@@ -43,7 +43,7 @@ export function StatusMockGeneral() {
     <Section title="General">
       <ResultRow controlWidth="wide" label="Downloads" description="Onboarding documents, run downloads and exports."
         value={<span className="inline-flex items-center justify-end gap-3"><span title={DOWNLOADS} className="whitespace-nowrap font-mono text-[13px]">{middle(DOWNLOADS)}</span><Button variant="secondary">Change</Button></span>} />
-      <Pick label="Theme" description="Light, dark or follow this Mac." value={theme} options={["Light", "Dark", "System"]} onChange={setTheme} />
+      <ResultRow label="Theme" description="Light, dark or follow this Mac." value={<SegmentedChoice hideLabel label="Theme" value={theme} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }, { value: "system", label: "System" }]} onChange={setTheme} />} />
       <Toggle label="Animations" on={animations} onChange={setAnimations} />
       <ResultRow label="Default job end date" description="Default end date for job records." value={<DateInput name="jobEndDate" label="Default job end date" value={jobEnd} onChange={setJobEnd} valueFormat="us" hideLabel />} />
     </Section>

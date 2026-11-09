@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { statusMock } from "./status-mock/status-mock-model.js";
 import type {
 SettingsSectionPrimitiveSchema
 } from "../../../models/dashboard/bootstrap.js";
@@ -144,7 +143,7 @@ export function buildSettingsNav(
   if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
     statusEntries.unshift({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
-  if (statusMock() === undefined) groups.push({ id: "status", heading: "Status", entries: statusEntries });
+  groups.push({ id: "status", heading: "Status", entries: statusEntries });
   groups.push({
     id: "help",
     heading: "Help",
