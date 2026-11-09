@@ -25,7 +25,7 @@ Watch Queue and Logs by snapshot. The roster-row choice and the write-review gat
 
 Checkpoint 1 (the agent's stop): Logs show every step before the gate in order: CRM read, UCPath duplicate check, I-9 lookup, findings. The run is parked at the write-review gate with `dryRun` true. The write plan does not exist yet; the agent never approves and reports `parked at hire review`.
 
-Full acceptance (after the operator releases the gate): the writes (I-9 profile save, remote I-9 create, hire create, master fill) show Previewed or stopped-after-prepare, never performed. `explain run` shows no UCPath submit, no I-9 create and no master-cell fill; the roster workbook version is unchanged. The Explorer timeline for Onboarding matches the Logs steps.
+Full acceptance (after the operator releases the gate): only the transactions the plan applies to (I-9 profile save and remote I-9 create, or the existing-record path; hire create) show Previewed or stopped-after-prepare, never performed. The hire receipt read and the master fill depend on an unsubmitted hire, so Logs show them Unavailable. `explain run` shows no UCPath submit, no I-9 create and no master-cell fill; the roster cells and workbook version are unchanged. The Explorer timeline for Onboarding matches the Logs steps.
 
 ## Gotchas
 
