@@ -485,9 +485,12 @@ export function Tooltip({
   side = "top",
   collisionBoundary,
   open,
+  shortcut,
   children,
 }: {
   content: ReactNode;
+  /** The key chord, drawn as a chip after the text. */
+  shortcut?: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
   collisionBoundary?: Element | null;
   /** Set false to hold the tooltip closed (for example while the trigger's own menu is open). */
@@ -503,16 +506,9 @@ export function Tooltip({
           sideOffset={6}
           collisionBoundary={collisionBoundary}
           collisionPadding={8}
-          className={cn(
-            "max-w-[280px] border px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
-            "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)] text-[color:var(--ds-fg)]",
-            dsRadius.md,
-            dsText.meta,
-            dsElev.mid,
-            dsLayer.menu,
-          )}
+          className={cn("ds-tooltip", dsLayer.menu)}
         >
-          {content}
+          {content}{shortcut && <kbd className="ds-tooltip-key">{shortcut}</kbd>}
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>

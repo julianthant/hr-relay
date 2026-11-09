@@ -59,14 +59,17 @@
 .queue-status-trigger svg { width: 14px; height: 14px; flex-shrink: 0; }
 
 @container actions (max-width: 600px) {
-  .queue-sort.ds-select-control { width: 32px; padding-inline: 8px; justify-content: center; }
+  .dashboard-log-date > .ds-date-picker { width: 144px; }
+}
+
+@container actions (max-width: 540px) {
+  .queue-sort.ds-select-control { width: 28px; padding-inline: 6px; justify-content: center; }
   .queue-sort [data-slot="select-value"], .queue-sort > svg:last-child { display: none; }
   .queue-status-label { display: none; }
 }
 
 @container actions (max-width: 450px) {
-  .dashboard-log-date > .ds-date-picker { width: 144px; }
-  .queue-start-trigger { width: 32px; min-width: 32px; padding-inline: 0; }
+  .queue-start-trigger { width: 28px; min-width: 28px; padding-inline: 0; }
   .queue-start-label { display: none; }
 }
 
