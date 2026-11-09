@@ -15,7 +15,7 @@
     - strong: How can I help?
     - text: Ask about a record or describe what you want to do.
   - status:
-    - text: The ChatGPT plan usage limit was reached.
+    - text: This request reached a ChatGPT usage limit. Review this app's limit in ChatGPT Settings → Usage before trying again.
     - button "Open Settings"
   - group "Message composer":
     - text: Message Relay
