@@ -10,7 +10,7 @@ import {
   Dialog,
   DialogContent,
   DialogFooter,
-  Disclosure,
+  StatusPill,
   Notice,
   Select,
   dsBorder,
@@ -24,7 +24,7 @@ import {
 import { toolbarControl } from "../shell/shell-model.js";
 import { OperationsToolbarRow } from '../shell/operations-toolbar.js';
 import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
-import { PAUSE_ALL_EFFECT, PAUSE_ALL_PENDING_STATUS, stepInterruptLabel } from "../shared/status/status-model.js";
+import { PAUSE_ALL_EFFECT, PAUSE_ALL_PENDING_STATUS, stepInterruptLabel, type ProposedStatus } from "../shared/status/status-model.js";
 import type { StepInterruptWire } from "../../../models/dashboard/projection.js";
 import {
   BULK_RESULT_OUTCOMES,
@@ -40,24 +40,19 @@ import {
 /** the icon per bulk verb — the same two the row's own footer draws */
 const BULK_VERB_ICON: Record<BulkVerb, typeof RotateCcw> = { cancel: Ban, retry: RotateCcw, resume: Play };
 
-/** what one run's child command settled as, in the operator's words: a `conflict` carries the refresh instruction */
-const OUTCOME_TONE: Record<
-  BulkRunCommandOutcome["outcome"],
-  { readonly word: string; readonly text: string; readonly dot: string }
-> = {
-  applied: {
-    word: "applied",
-    text: "text-[color:var(--ds-success-fg)]",
-    dot: "bg-[var(--ds-success-fg)]",
-  },
-  conflict: {
-    word: "conflict",
-    text: "text-[color:var(--ds-status-waiting-fg)]",
-    dot: "bg-[var(--ds-status-waiting-fg)]",
-  },
-  refused: { word: "refused", text: "text-[color:var(--ds-danger)]", dot: "bg-[var(--ds-danger)]" },
-  errored: { word: "errored", text: "text-[color:var(--ds-danger)]", dot: "bg-[var(--ds-danger)]" },
+/** What one run's child command settled as, as the standard status chip and its plain count word. */
+const OUTCOME_CHIP: Record<BulkRunCommandOutcome["outcome"] | "not-attempted", { readonly status: ProposedStatus; readonly label: string; readonly className?: string; readonly count: (n: number) => string }> = {
+  applied: { status: "verifiedDone", label: "Applied", className: "bg-[var(--ds-success-bg)] border-[color:var(--ds-success-border)] text-[color:var(--ds-success-fg)] font-normal", count: n => `${n} applied` },
+  conflict: { status: "doneWarnings", label: "Conflict", count: n => `${n} ${n === 1 ? "conflict" : "conflicts"}` },
+  refused: { status: "failed", label: "Refused", count: n => `${n} refused` },
+  errored: { status: "failed", label: "Failed", count: n => `${n} failed` },
+  "not-attempted": { status: "queued", label: "Not attempted", count: n => `${n} not attempted` },
 };
+
+function OutcomeChip({ outcome }: { outcome: keyof typeof OUTCOME_CHIP }) {
+  const chip = OUTCOME_CHIP[outcome];
+  return <span className="flex w-[104px] shrink-0"><StatusPill status={chip.status} label={chip.label} size="sm" hideIcon presentation="queue" className={chip.className} /></span>;
+}
 
 /** The pending batch a confirm dialog is asking about, held by the shell. */
 export interface PendingBulkCommand {
@@ -317,8 +312,8 @@ function bulkSummary(outcome: BulkBatchOutcome) {
     detail: outcome.response.state === "refused" ? outcome.response.message : undefined };
   const buckets = bulkResultCounts(vector);
   const counts = [
-    ...BULK_RESULT_OUTCOMES.map(item => `${buckets[item]} ${OUTCOME_TONE[item].word}`),
-    ...(vector.results.length < vector.requestedCount ? [`${vector.requestedCount - vector.results.length} not attempted`] : []),
+    ...BULK_RESULT_OUTCOMES.filter(item => buckets[item] > 0).map(item => OUTCOME_CHIP[item].count(buckets[item])),
+    ...(vector.results.length < vector.requestedCount ? [OUTCOME_CHIP["not-attempted"].count(vector.requestedCount - vector.results.length)] : []),
   ].join(" · ");
   return { title: `${outcome.plan.label}: partial result`, tone: "warning" as const, counts, detail: counts };
 }
@@ -327,6 +322,16 @@ function bulkSummary(outcome: BulkBatchOutcome) {
 export function bulkResultNotice(outcome: BulkBatchOutcome): NotificationItem {
   const { title, tone, detail } = bulkSummary(outcome);
   return { id: "bulk-result", kind: "command", priority: true, title, subject: "", workflow: "", detail: detail ?? "", tone, age: "Just now", read: false, action: "Review", destination: { kind: "bulk-result" } };
+}
+
+function BulkResultRow({ outcome, subject, reason, onOpen }: { outcome: keyof typeof OUTCOME_CHIP; subject: string; reason?: string | undefined; onOpen: () => void }) {
+  return <BareButton type="button" onClick={onOpen}
+    className={cn("flex min-w-0 cursor-pointer items-center text-left h-[var(--ds-h-md)] gap-[var(--ds-space-snug)] px-[var(--ds-space-tight)]", dsRadius.sm, dsText.meta, dsFocus, dsMotion.fast, "hover:bg-[var(--ds-surface-3)]")}>
+    <OutcomeChip outcome={outcome} />
+    {/* Unknown subjects display their real ID rather than an invented name. */}
+    <span className="w-40 shrink-0 truncate text-[color:var(--ds-fg-secondary)]">{subject}</span>
+    <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{reason}</span>
+  </BareButton>;
 }
 
 /** The toast only notifies; its Priority notification item opens the per-run review (`reviewing`), and closing the review clears the result. */
@@ -345,72 +350,23 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
     {summary !== undefined && <Notice sticky tone={summary.tone} title={summary.title} description={summary.detail} />}
     <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
       {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
-        <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-cozy)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
+        <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-tight)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
           {vector === undefined ? (
             /* Whole-request refusal reached no run; the served sentence is the complete answer. */
-            <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-danger)]")}>
+            <p className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
               {reviewing.response.state === "refused" ? reviewing.response.message : ""}
             </p>
           ) : (
-            <div className="mt-[var(--ds-space-snug)] flex max-h-40 flex-col overflow-y-auto">
-              {vector.results.map((entry) => {
-                const tone = OUTCOME_TONE[entry.outcome];
-                return (
-                  <BareButton
-                    key={entry.runId}
-                    type="button"
-                    onClick={() => { onReviewed(); onSelectRun(entry.runId); }}
-                    className={cn(
-                      "flex min-w-0 cursor-pointer items-center text-left",
-                      "h-[var(--ds-h-sm)] gap-[var(--ds-space-base)] px-[var(--ds-space-tight)]",
-                      dsRadius.sm,
-                      dsText.meta,
-                      dsFocus,
-                      dsMotion.fast,
-                      "hover:bg-[var(--ds-surface-3)]",
-                    )}
-                  >
-                    <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
-                    <span className={cn(dsText.caps, "w-16 shrink-0", tone.text)}>{tone.word}</span>
-                    {/* Keep sent subjects with results; unknown subjects display their real ID rather than an invented name. */}
-                    <span className="w-40 shrink-0 truncate text-[color:var(--ds-fg-secondary)]">
-                      {reviewing.subjects.get(entry.runId) ?? entry.runId}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{entry.detail}</span>
-                    {entry.outcome === "conflict" && (
-                      <span
-                        className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
-                      >
-                        now rev {entry.currentVersion} — refresh
-                      </span>
-                    )}
-                    {entry.outcome === "refused" && (
-                      <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-danger)]")}>
-                        {entry.code}
-                      </span>
-                    )}
-                  </BareButton>
-                );
-              })}
+            <div className="flex max-h-40 flex-col overflow-y-auto">
+              {vector.results.map((entry) => (
+                <BulkResultRow key={entry.runId} outcome={entry.outcome} subject={reviewing.subjects.get(entry.runId) ?? entry.runId}
+                  reason={entry.outcome === "conflict" ? `Changed before the ${reviewing.plan.label.toLowerCase()}` : entry.detail.replace(/\.$/u, "")}
+                  onOpen={() => { onReviewed(); onSelectRun(entry.runId); }} />
+              ))}
+              {/* Skipped rows keep a place so missing outcomes reconcile with the original selection. */}
+              {reviewing.plan.skipped.map(row => <BulkResultRow key={row.runId} outcome="not-attempted" subject={row.title} reason={`Not offered ${reviewing.plan.label.toLowerCase()}`}
+                onOpen={() => { onReviewed(); onSelectRun(row.runId); }} />)}
             </div>
-          )}
-
-          {/* Name skipped rows after dispatch so missing outcomes can be reconciled with the original selection. */}
-          {reviewing.plan.skipped.length > 0 && (
-            <Disclosure className="mt-[var(--ds-space-snug)]" summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary={<>
-                <span className={dsText.nums}>{reviewing.plan.skipped.length}</span> selected{" "}
-                {reviewing.plan.skipped.length === 1 ? "row" : "rows"} never offered {reviewing.plan.label.toLowerCase()} —
-                nothing was attempted for {reviewing.plan.skipped.length === 1 ? "it" : "them"}
-              </>}>
-              <div className="mt-[var(--ds-space-tight)] flex max-h-28 flex-col gap-[var(--ds-space-hair)] overflow-y-auto pl-[var(--ds-space-cozy)]">
-                {reviewing.plan.skipped.map((row) => (
-                  <span key={row.runId} className={cn(dsText.meta, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
-                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ds-fg-muted)]" />
-                    <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]">{row.title}</span>
-                  </span>
-                ))}
-              </div>
-            </Disclosure>
           )}
 
           {/* Unavailable rows retain their IDs; no served titles exist to display. */}
@@ -427,7 +383,7 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
               {assurance === "needs-review" ? (
                 <>
                   <AlertTriangle aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-status-waiting-fg)]")} />
-                  Nothing was applied for conflicted, refused, errored, or unattempted rows. Open each one and look before you decide again — a conflict means the row changed under you.
+                  Open each run to check it before trying again.
                 </>
               ) : (
                 <>

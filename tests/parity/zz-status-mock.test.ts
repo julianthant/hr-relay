@@ -620,6 +620,8 @@ for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, as
   await panel.getByRole("button", { name: /Retry: partial result/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await settle(page);
+  const gap = await page.getByRole("dialog").evaluate(node => Math.round(node.querySelector("[data-queue-bulk-result] button")!.getBoundingClientRect().top - document.getElementById(node.getAttribute("aria-describedby")!)!.getBoundingClientRect().bottom));
+  expect(gap).toBe(16);
   await page.screenshot({ path: join(OUT, `command-results-review-${theme}-${WIDTH}.png`) });
   expect(errors).toEqual([]);
 });
