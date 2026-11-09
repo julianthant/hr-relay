@@ -24,7 +24,7 @@ import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/to
  * primary — the ONE affirmative action on a surface (Approve, Run, Save) */
 const BUTTON_TEXT = "text-[13px]";
 const SOFT = cn(
-  "bg-[var(--ds-soft-bg)] text-[color:var(--ds-fg)] border-[color:var(--ds-soft-border)]",
+  "rounded-[10px] bg-[var(--ds-soft-bg)] text-[color:var(--ds-fg)] border-transparent",
   "hover:bg-[var(--ds-soft-bg-hover)]",
 );
 const buttonVariants = cva(

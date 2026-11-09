@@ -626,7 +626,7 @@ function PopoverSurface({
         ref={surfaceRef}
         className={cn(
           POPOVER_WIDTH[width],
-          "ds-menu-surface !p-0 max-w-[calc(100vw-var(--ds-space-section))]",
+          "ds-menu-surface max-w-[calc(100vw-var(--ds-space-section))]",
           dsLayer.menu,
           dsMotion.enter,
           POPOVER_ORIGIN,
@@ -637,7 +637,7 @@ function PopoverSurface({
         {showHeader && (
           <header
             className={cn(
-              "flex items-start gap-[var(--ds-space-base)] border-b px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
+              "flex items-start gap-[var(--ds-space-base)] border-b px-[10px] py-[6px]",
               "border-[color:var(--ds-border-subtle)]",
             )}
           >
@@ -654,7 +654,7 @@ function PopoverSurface({
             )}
           </header>
         )}
-        <div className={cn(dsText.body, "px-[var(--ds-space-cozy)] py-[var(--ds-space-base)] text-[color:var(--ds-fg-secondary)]")}>
+        <div className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
           {children}
         </div>
       </FloatingSurface>

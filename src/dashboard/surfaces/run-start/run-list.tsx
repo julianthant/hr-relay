@@ -7,7 +7,7 @@ const TITLE = "text-[length:var(--ds-row-title)] font-normal leading-[var(--ds-r
 const NOTE = "mt-[var(--ds-row-gap)] truncate text-[length:var(--ds-row-desc)] font-normal leading-[var(--ds-row-desc-lh)] text-[color:var(--ds-fg-secondary)]";
 
 function RunHeading({ title, description, aside }: { title: string; description?: ReactNode; aside?: ReactNode }) {
-  return <div className="flex flex-col gap-0.5"><div className="flex items-baseline justify-between gap-3"><h4 className="m-0 text-[16px] font-normal leading-[22px] text-[color:var(--ds-fg)]">{title}</h4>{aside && <span className="text-[13px] text-ui-muted">{aside}</span>}</div>{description && <p className="m-0 text-[13px] leading-4 text-[color:var(--ds-fg-secondary)]">{description}</p>}</div>;
+  return <div className="flex flex-col gap-0.5"><div className="flex items-baseline justify-between gap-3"><h4 className="m-0 text-[length:var(--ds-row-heading)] font-normal leading-[var(--ds-row-heading-lh)] text-[color:var(--ds-fg)]">{title}</h4>{aside && <span className="text-[13px] text-ui-muted">{aside}</span>}</div>{description && <p className="m-0 text-[13px] leading-4 text-[color:var(--ds-fg-secondary)]">{description}</p>}</div>;
 }
 
 /** The one card every list in the Run and Rerun dialogs uses (input, spreadsheets, options, steps, blockers), so their rows cannot drift. Without children it is just the heading. */

@@ -16,7 +16,9 @@
    Depth in this product comes from surface + hairline border, never from */
   --ds-soft-bg: color-mix(in srgb, var(--ds-fg) 5%, var(--ui-panel)); /* soft buttons and fields: a subtle step above the card */
   --ds-soft-bg-hover: color-mix(in srgb, var(--ds-fg) 9%, var(--ui-panel));
-  --ds-soft-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); /* faint edge; the fill separates */
+  --ds-soft-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); /* faint edge for fields and pickers */
+  --ds-picker-bg: var(--ui-canvas); /* pickers and value chips: darker than the card */
+  --ds-picker-bg-hover: color-mix(in srgb, var(--ds-fg) 5%, var(--ui-canvas));
   --ds-surface-page: var(--background); /* app background, behind everything */
   --ds-surface-1: var(--card); /* panels, cards, bars — the default plane */
   --ds-surface-2: var(--muted); /* inset wells, table headers, code blocks */
@@ -223,17 +225,20 @@
   /* ROWS — the one default size for card rows and data-table rows. Two-line row 60px, one-line 52px, table head 32px. */
   --ds-row-pad-x: 16px;
   --ds-row-pad-y: 11px; /* a row with a grey line */
-  --ds-row-pad-y-1: 12px; /* a one-line row */
-  --ds-row-h-1: 52px;
+  --ds-row-pad-y-1: 8px; /* a one-line row */
+  --ds-row-h-1: 44px;
   --ds-row-h-2: 60px;
   --ds-row-head-h: 32px;
-  --ds-row-title: 14px;
+  --ds-row-heading: 15px;
+  --ds-row-heading-lh: 22px;
+  --ds-row-title: 13px;
   --ds-row-title-lh: 18px;
-  --ds-row-desc: 13px;
+  --ds-row-desc: 12px;
   --ds-row-desc-lh: 18px;
   --ds-row-gap: 2px;
-  --ds-row-radius: 12px;
+  --ds-row-radius: 16px;
   --ds-row-control-h: 28px;
+  --ds-toolbar-control-h: 32px; /* a search field and the pill triggers beside it */
   --ds-radius-body-group: var(--ds-row-radius);
   --ds-radius-body-dialog: 14.4px;
   --ds-w-body-switch: 36px;
@@ -1008,12 +1013,13 @@ body[data-demo-theme="light"] {
 .ds-menu-separator { height: 1px; margin: 6px 10px; background: var(--ui-stroke); }
 /* Fields and pickers inside a row: 28px, subtle fill, faint edge. */
 .ds-body-row .input, .ds-body-row .ds-secret-input, .hub-settings-row .input, .settings-compact-control .input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-soft-bg); font-size: 14px; }
-.ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger, .hub-settings-row .ds-select-control { padding-inline: 12px; border-radius: 10px; }
+.ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger, .hub-settings-row .ds-select-control { padding-inline: 12px; }
 /* Controls inside a row are 28px. */
 .ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); }
 /* A menu's trigger: soft bordered, 32px, 10px radius, 14px label, grey 14px chevron. */
-.ds-menu-trigger, .ds-select-control { height: 32px; min-height: 32px; border: 1px solid var(--ds-soft-border); border-radius: 10px; background: var(--ds-soft-bg); font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ui-primary); }
-.ds-menu-trigger:hover, .ds-select-control:hover { background: var(--ds-soft-bg-hover); }
+.ds-menu-trigger, .ds-select-control { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border: 1px solid var(--ds-soft-border); border-radius: 999px; background: var(--ds-picker-bg); font-size: 13px; font-weight: 400; line-height: 18px; color: var(--ui-primary); }
+.ds-toolbar-row .ds-menu-trigger, .ds-toolbar-row .ds-select-control, :has(> .ds-search-field) > :is(.ds-menu-trigger, .ds-select-control) { height: var(--ds-toolbar-control-h); min-height: var(--ds-toolbar-control-h); }
+.ds-menu-trigger:hover, .ds-select-control:hover { background: var(--ds-picker-bg-hover); }
 .ds-menu-trigger > svg, .ds-select-control [data-slot="select-trigger"] > svg, .ds-select-control > svg { width: 14px; height: 14px; color: var(--ui-muted); }
 
 /* Two-way switch: track a clear step above the card, thumb a step above the track, unselected label in the secondary text colour (AA on the track). */
@@ -1377,8 +1383,8 @@ th.ds-text-caps {
   --border-width-field: 1px;
   --field-shadow: none;
 }
-/* The one search field: a pill, 34px, a faint border, filled one step above its surface, a 16px magnifier inset on the left, 14px text. */
-.ds-search-field [data-slot="search-field-group"] { width: 100%; height: 34px; min-height: 34px; box-sizing: border-box; gap: 8px; padding-inline: 12px 6px; border-radius: 9999px; background: var(--field); color: var(--field-foreground); }
+/* The one search field: a pill, 32px, a faint border, filled one step above its surface, a 16px magnifier inset on the left, 14px text. */
+.ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-toolbar-control-h); min-height: var(--ds-toolbar-control-h); box-sizing: border-box; gap: 8px; padding-inline: 12px 6px; border-radius: 9999px; background: var(--field); color: var(--field-foreground); }
 .ds-search-field [data-slot="search-field-search-icon"] { width: 16px; height: 16px; flex-shrink: 0; color: var(--field-placeholder); }
 .ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 14px; font-weight: 400; line-height: 20px; }
 .ds-search-field [data-slot="search-field-input"]::placeholder { color: var(--field-placeholder); opacity: 1; }

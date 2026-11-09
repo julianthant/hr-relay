@@ -5,7 +5,6 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { cn } from "../../lib/utils.js";
 import { Input } from "./primitives-form.js";
 import { Popover, PopoverAnchor, PopoverContent } from "./primitives-overlay.js";
-import { dsLayer } from "../theme/tokens.js";
 
 function dateValue(value: string | undefined): CalendarDate | null {
   if (value === undefined || value === "") return null;
@@ -93,7 +92,7 @@ export function DateInput({ name, label, value, onChange, min, max, inline = fal
       <DateField.Suffix><HeroDatePicker.Trigger ref={calendarTrigger} aria-label={pickerLabel} aria-controls={calendarOpen ? id : undefined}><HeroDatePicker.TriggerIndicator /></HeroDatePicker.Trigger></DateField.Suffix>
     </DateField.Group>
     </HeroDatePicker></PopoverAnchor>
-    <PopoverContent id={id} title={pickerLabel} hideTitle hideClose align={hideLabel ? "end" : "start"} className={cn("date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)] [&>div]:p-0", dsLayer.modal)}>
+    <PopoverContent id={id} title={pickerLabel} hideTitle hideClose align={hideLabel ? "end" : "start"} className={cn("date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)] !p-0")}>
       <Calendar label={pickerLabel} value={selected} onChange={setDate} minValue={boundValue("min", min)} maxValue={boundValue("max", max)} autoFocus />
       {typeof footer === "function" ? footer(next => setDate(dateValue(next))) : footer}
     </PopoverContent>
@@ -177,7 +176,7 @@ export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "St
         </HeroDatePicker>;
       })}
     </div></PopoverAnchor>
-    <PopoverContent id={id} title={label} hideTitle hideClose align="center" className={cn("date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)] [&>div]:p-0", dsLayer.modal)}>
+    <PopoverContent id={id} title={label} hideTitle hideClose align="center" className={cn("date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)] !p-0")}>
       <RangeCalendar label={label} value={selected} focusedValue={from ?? to ?? undefined} minValue={minimum} maxValue={maximum} disabled={disabled}
         onChange={dates => { const next = { from: dates.start.toString(), to: dates.end.toString() }; setDraft(next); onChange(next); changeOpen(null); }} />
     </PopoverContent>
