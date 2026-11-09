@@ -1,4 +1,4 @@
-export function completedResponseStream(output: readonly unknown[], model = "gpt-6.1-sol", responseId = "resp_synthetic"): string {
+export function completedResponseStream(output: readonly unknown[], model = "gpt-6.1-sol", responseId = "resp_synthetic", usage?: unknown): string {
   const items = output.map((item, index) => typeof item === "object" && item !== null ? { id: `item_synthetic_${String(index)}`, ...item } : item);
   const events: unknown[] = [];
   for (const [output_index, item] of items.entries()) {
@@ -20,7 +20,7 @@ export function completedResponseStream(output: readonly unknown[], model = "gpt
       { type: "response.function_call_arguments.done", output_index, item_id, arguments: value.arguments });
     events.push({ type: "response.output_item.done", output_index, item });
   }
-  events.push({ type: "response.completed", response: { id: responseId, model, status: "completed", output: [] } });
+  events.push({ type: "response.completed", response: { id: responseId, model, status: "completed", output: [], ...(usage === undefined ? {} : { usage }) } });
   return events.map(event => `data: ${JSON.stringify(event)}\n\n`).join("");
 }
 

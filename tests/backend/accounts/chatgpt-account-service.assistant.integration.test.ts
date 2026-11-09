@@ -375,7 +375,8 @@ it("fences every pre-POST checkpoint with the caller's currentness callback and 
   try {
     await f.connected();
     let checks = 0, atPost = -1;
-    f.setResponse(() => { atPost = checks; return new Response(terminal(syntheticAssistantResponse(turn).output), { headers: { "Content-Type": "text/event-stream" } }); });
+    f.setResponse(() => { atPost = checks; return new Response(completedResponseStream(syntheticAssistantResponse(turn).output, request.model, "resp_usage_fenced",
+      { input_tokens: 12, output_tokens: 3, total_tokens: 15 }), { headers: { "Content-Type": "text/event-stream" } }); });
     await f.service.inferAssistant(request, undefined, () => { checks++; });
     assert.ok(atPost > 0, "the callback runs before the POST");
     assert.ok(checks > atPost, "the callback also runs while the response streams");
@@ -407,4 +408,32 @@ it("closes the caller-owned inference operation on success, failure, abort, stal
       assert.equal(await settle(f.service.close()), "closed", name);
     } finally { await f.cleanup(); }
   }
+});
+
+
+it("carries only validated completed-response usage, independently of subscription availability and OCR", async () => {
+  const f = await chatGptFixture(undefined, profiles.create);
+  try {
+    await f.connected();
+    const output = syntheticAssistantResponse(turn).output;
+    const measured = { input_tokens: 12, output_tokens: 5, total_tokens: 17,
+      input_tokens_details: { cached_tokens: 8 }, output_tokens_details: { reasoning_tokens: 3 }, private: "PRIVATE_USAGE_CANARY" };
+    const cases: readonly (readonly [unknown, unknown])[] = [
+      [measured, { state: "measured", inputTokens: 12, outputTokens: 5, totalTokens: 17 }],
+      [{ input_tokens: 0, output_tokens: 0, total_tokens: 0 }, { state: "measured", inputTokens: 0, outputTokens: 0, totalTokens: 0 }],
+      [undefined, { state: "unavailable", reason: "missing" }], [null, { state: "unavailable", reason: "missing" }],
+      ...[{}, "private", { ...measured, total_tokens: 18 }, { ...measured, input_tokens: -1 }, { ...measured, output_tokens: 0.5 },
+        { ...measured, input_tokens: Number.MAX_SAFE_INTEGER + 1 }, { ...measured, output_tokens: "5" }]
+        .map(value => [value, { state: "unavailable", reason: "invalid" }] as const),
+    ];
+    for (const [usage, expected] of cases) {
+      f.setSse(completedResponseStream(output, request.model, "resp_synthetic", usage));
+      const result = await f.service.inferAssistant(request);
+      assert.deepEqual(result.usage, expected);
+      assert.equal(JSON.stringify(result).includes("PRIVATE_USAGE_CANARY"), false);
+      const account = f.service.readAccount(); assert.ok(account.state === "connected"); assert.equal(account.planUsage, "enabled");
+    }
+    f.setSse(completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "OCR unchanged" }] }], request.model, "resp_ocr", { input_tokens: "invalid" }));
+    assert.equal((await f.service.extractText({ model: request.model, instruction: "Read", input: { kind: "image", mediaType: "image/png", base64: "YQ==" } })).text, "OCR unchanged");
+  } finally { await f.cleanup(); }
 });
