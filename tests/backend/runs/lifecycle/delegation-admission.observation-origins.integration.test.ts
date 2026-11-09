@@ -6,6 +6,9 @@ import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { observationLeafPaths, readObservationPath, resolveObservationOrigin } from "../../../../src/models/events/data-observation-origin.js";
 import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
+import { PreparedOcrPagesSchema, ReadOcrSourcePages } from "../../../../src/models/workflows/ocr/read-source-pages.js";
+import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
+import type { TimelineEventRecord } from "../../../../src/models/events/timeline.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -30,6 +33,32 @@ it("authenticates every observation against its native event and producer before
     refuse(repositories => ({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
       page: query => repositories.timelineEvents.page(query).filter(record => record.payload.kind !== "span" || record.payload.event.t !== "data.observed"),
     } }),/delegation-observation-event-mismatch/);
+    for (const full of [false, true]) for (const invalid of ["empty-array", "missing-leaf", "extra-leaf"] as const) {
+      let changed = 0;
+      refuse(repositories => ({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+        page: query => repositories.timelineEvents.page(query).map(record => {
+          if (record.payload.kind !== "span" || record.payload.event.t !== "data.observed" || record.payload.event.taskId !== ReadOcrSourcePages.id) return record;
+          const event = record.payload.event;
+          return { ...record, payload: { ...record.payload, event: { ...event, points: event.points.map(point => {
+            if (point.field !== "pages") return point;
+            assert.equal(point.values.length, 1);
+            const value = point.values[0];
+            assert.ok(value.state === "allowed");
+            const [first, ...rest] = PreparedOcrPagesSchema.shape.pages.parse(value.value);
+            assert.ok(first);
+            const { sourcePage: _omitted, ...pageWithoutLeaf } = first.page;
+            const pages = JsonValueSchema.parse(invalid === "empty-array" ? [] : [
+              { ...first, page: invalid === "missing-leaf" ? pageWithoutLeaf : { ...first.page, extraLeaf: true } }, ...rest,
+            ]);
+            changed++;
+            return { ...point, values: [{ ...value, value: pages, rawValue: undefined }], origins: full
+              ? observationLeafPaths(pages).map(path => ({ path: [...path], origin: resolveObservationOrigin(event, { field: point.field }, path) }))
+              : undefined };
+          }) } } };
+        }),
+      } }),/delegation-observation-event-mismatch/);
+      assert.ok(changed > 0, `${invalid} must replace a ${full ? "full-origin" : "compact"} observation`);
+    }
     for (const invalid of ["node", "task", "attempt", "span", "origin"] as const) {
       refuse(repositories => ({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
         page: query => repositories.timelineEvents.page(query).map(record => {
@@ -68,7 +97,7 @@ it("authenticates every observation against its native event and producer before
   } finally { probe.mockRestore(); }
 });
 
-it("accepts retained full-origin events and ignores earlier attempts' fields absent from the successful checkpoint", async () => {
+for (const opaque of [false, true]) it(`accepts retained full-origin events with ${opaque ? "redacted" : "retained"} values and ignores earlier attempts' unrelated fields`, async () => {
   const native = admission.admitDelegation;
   let expanded = 0;
   const probe = vi.spyOn(admission, "admitDelegation").mockImplementationOnce((dependencies, batch, plans, lifecycle) => {
@@ -77,12 +106,9 @@ it("accepts retained full-origin events and ignores earlier attempts' fields abs
       if (key === "evidenceSchemaHash") return target.evidenceSchemaHash.bind(target);
       if (key === "withAuthorityTransaction") return <Result>(work: (repositories: AuthorityRepositories) => Result) =>
         target.withAuthorityTransaction(repositories => work({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
-          page: query => repositories.timelineEvents.page(query).flatMap(record => {
+          page: query => repositories.timelineEvents.page(query).flatMap<TimelineEventRecord>(record => {
             if (record.payload.kind !== "span" || record.payload.event.t !== "data.observed") return record;
             const event = record.payload.event;
-            const checkpoint = repositories.runCheckpoints.listByAttempt(batch.run.envelope.workflow, batch.run.envelope.itemId, event.nodeId, event.attempt)
-              .find(checkpoint => checkpoint.runId === event.runId);
-            assert.ok(checkpoint);
             const failed = { ...record, payload: { ...record.payload, event: SpanEventWireSchema.parse({ ...event,
               spanPath: event.spanPath.replace(/\.\d+$/u, ".999"),
               points: [{ direction: "read", field: "failedRead", values: [{ key: "failedRead", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "Earlier failed read" }] }],
@@ -90,8 +116,13 @@ it("accepts retained full-origin events and ignores earlier attempts' fields abs
             return [failed, { ...record, payload: { ...record.payload, event: { ...event, points: event.points.map(point => {
               assert.equal(point.origins, undefined);
               expanded++;
-              return { ...point, origins: observationLeafPaths(readObservationPath(checkpoint.output.value, point.field.split(".")))
-                .map(path => ({ path: [...path], origin: resolveObservationOrigin(event, point, path) })) };
+              const paths = point.values.flatMap(value => {
+                assert.ok(value.state === "allowed");
+                return observationLeafPaths(JsonValueSchema.parse(value.value), value.key === point.field ? [] : value.key.slice(point.field.length + 1).split("."));
+              });
+              return { ...point, origins: paths.map(path => ({ path: [...path], origin: resolveObservationOrigin(event, point, path) })),
+                values: opaque && point.field === "pages" ? point.values.map(value => ({ key: value.key, state: "redacted" as const,
+                  classification: "sensitive-hr" as const, transform: "drop" as const })) : point.values };
             }) } } }];
           }),
         } }));

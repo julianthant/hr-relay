@@ -12,7 +12,7 @@ import { readRunPreviewResult, delegationDependencyRecord, delegationEvidenceOut
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { assertDelegationReplayMatches, type DelegationPlan } from "../../../models/workflow/delegation.js";
 import { projectTransactionOutcome, type AnyWorkflowRef } from "../../../models/workflow/graph.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { delegationInvocationCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -36,7 +36,7 @@ import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../models/workflow/gates.js";
 import { taskSpanPath } from "../../logs/span-emitter.js";
-import { readObservationPath, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
+import { observationLeafPaths, readObservationPath, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { DelegationManifestIdSchema, DependencyIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 
@@ -414,11 +414,22 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
         for (const point of event.points) {
           const field = point.field.split(".");
           const origins = new Map((point.origins ?? []).map(entry => [canonicalJsonStringify(entry.path), entry.origin]));
-          for (const entry of checkpoint.observationOrigins) {
-            if (!field.every((part, index) => part === entry.path[index])) continue;
-            const path = entry.path.slice(field.length);
+          const paths = point.values.flatMap((value): readonly (readonly (string | number)[])[] => {
+            if (value.key !== point.field && !value.key.startsWith(`${point.field}.`)) throw new Error("delegation-observation-event-mismatch");
+            const path = value.key === point.field ? [] : value.key.slice(point.field.length + 1).split(".");
+            if (value.rawValue !== undefined) return observationLeafPaths(JsonValueSchema.parse(value.rawValue), path);
+            if (value.state === "allowed") return observationLeafPaths(JsonValueSchema.parse(value.value), path);
+            const retained = (point.origins ?? []).filter(entry => path.every((part, index) => part === entry.path[index]));
+            return retained.length === 0 ? [path] : retained.map(entry => entry.path);
+          });
+          const addresses = new Set(paths.map(path => canonicalJsonStringify(path)));
+          const expected = new Set(checkpoint.observationOrigins.filter(entry => field.every((part, index) => part === entry.path[index]))
+            .map(entry => canonicalJsonStringify(entry.path.slice(field.length))));
+          if (expected.size !== addresses.size || addresses.size !== paths.length || [...expected].some(path => !addresses.has(path))
+            || [...origins.keys()].some(path => !addresses.has(path))) continue;
+          for (const path of paths) {
             const origin = origins.get(canonicalJsonStringify(path)) ?? resolveObservationOrigin(event, { field: point.field }, path);
-            observed.add(canonicalJsonStringify([entry.path,origin]));
+            observed.add(canonicalJsonStringify([[...field, ...path],origin]));
           }
         }
       }
