@@ -1,5 +1,5 @@
 .dashboard-shell { --shell-rail-width: 264px; }
-.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: clamp(176px, calc(25vw - 128px), 232px); }
+.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: 244px; }
 .dashboard-shell .dashboard-workspace > main { margin-left: var(--shell-rail-width); }
 .dashboard-shell[data-settings-takeover="true"] .workspace-rail { display: none; }
 .dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { margin-left: 0; }

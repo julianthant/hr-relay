@@ -59,6 +59,7 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
       panelBottom: box.bottom - rect(".notification-panel").bottom };
   });
   console.log(`MEASURE ${theme} ${JSON.stringify(m)}`);
+  expect(m.width).toBe(244);
   await page.mouse.move(1, 1);
   await shot(page, "panel-mixed", theme);
   await panel(page).getByRole("button", { name: /Run waiting for you/ }).hover();
@@ -78,10 +79,6 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await page.mouse.move(1, 1);
   await expect(panel(page).getByRole("button", { name: /Run waiting for you/ })).toHaveAttribute("aria-current", "true");
   await shot(page, "run-clicked", theme);
-  // The Settings sidebar width (about 244px), scene-only: the shared width is lane E's.
-  await page.addStyleTag({ content: ".dashboard-shell.dashboard-shell { --shell-rail-width: 244px !important; }" });
-  await page.waitForTimeout(300);
-  await shot(page, "panel-mixed-244", theme);
 
   // A ChatGPT item opens Settings > Subscription; the read marks survive the visit.
   await panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ }).click();
