@@ -465,14 +465,18 @@ export const AssistantReplyPartSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("answered"), attribution: AssistantCommandAttributionSchema, at: IsoInstantSchema }),
 ]);
 export type AssistantReplyPart = z.infer<typeof AssistantReplyPartSchema>;
-export const AssistantReplyPartsSchema = z.array(AssistantReplyPartSchema).min(1).max(40).superRefine((parts, context) => {
+/** Semantic UTF-16 shown text; metadata and model replay are not display units. */
+export function assistantReplyDisplayUnits(parts: readonly AssistantReplyPart[]): number {
   let display = 0;
   for (const part of parts) {
     if (part.kind === "session") display += part.label.length + part.meta.length;
     if (part.kind === "text" || part.kind === "bullets") for (const run of part.kind === "text" ? part.runs : part.items.flat())
       display += run.kind === "link" ? run.label.length : run.kind === "value" ? run.value.length + (run.previous?.length ?? 0) : run.text.length;
   }
-  if (display > 8000 || new TextEncoder().encode(JSON.stringify(parts)).byteLength > 80_000) context.addIssue({ code: "custom", message: "assistant-reply-budget-exceeded" });
+  return display;
+}
+export const AssistantReplyPartsSchema = z.array(AssistantReplyPartSchema).min(1).max(40).superRefine((parts, context) => {
+  if (assistantReplyDisplayUnits(parts) > 8000 || new TextEncoder().encode(JSON.stringify(parts)).byteLength > 80_000) context.addIssue({ code: "custom", message: "assistant-reply-budget-exceeded" });
 });
 export const AssistantReplySchema = z.strictObject({ parts: AssistantReplyPartsSchema, acceptedTurn: AssistantAcceptedTurnSchema, usage: AssistantTurnUsageSchema }).refine(reply => new TextEncoder().encode(JSON.stringify(reply)).byteLength <= 80_000, "assistant-reply-budget-exceeded");
 const AssistantStopDescriptorSchema = ActionDescriptorWireSchema.transform((action, context) => {
@@ -485,3 +489,17 @@ export const AssistantSessionViewSchema = AssistantSessionPartSchema.omit({ kind
 }).refine(view => view.stop === null || !TERMINAL_QUEUE_STATUSES.has(view.state) && view.state !== "cancelling"
   && view.stop.runId === view.runId && view.stop.descriptor.kind === "command" && view.stop.descriptor.expectedVersion === view.rowRevision);
 export type AssistantSessionView = z.infer<typeof AssistantSessionViewSchema>;
+
+
+const AssistantUnrecordedPartsSchema = z.union([
+  z.tuple([]),
+  z.tuple([z.strictObject({ kind: z.literal("text"), runs: z.tuple([z.strictObject({ kind: z.literal("plain"), text: ReplyTextSchema })]) })]),
+]);
+export const AssistantM1MessagePayloadSchema = z.union([
+  z.strictObject({ parts: AssistantUnrecordedPartsSchema, recording: z.strictObject({ kind: z.literal("unrecorded"), usage: z.strictObject({ state: z.literal("unrecorded") }) }) }),
+  z.strictObject({ parts: AssistantReplyPartsSchema, recording: z.strictObject({ kind: z.literal("accepted-turn"), acceptedTurn: AssistantAcceptedTurnSchema,
+    usage: z.union([z.strictObject({ state: z.literal("pending") }), AssistantTurnUsageSchema]),
+  }) }),
+  z.strictObject({ parts: AssistantReplyPartsSchema, recording: z.strictObject({ kind: z.literal("reply"), acceptedMessageId: z.uuid() }) }),
+]).refine(payload => new TextEncoder().encode(JSON.stringify(payload)).byteLength <= 80_000, "assistant-message-payload-budget-exceeded");
+export type AssistantM1MessagePayload = z.infer<typeof AssistantM1MessagePayloadSchema>;

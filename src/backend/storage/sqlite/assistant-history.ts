@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import {
-  ASSISTANT_CHATS_MAX, ASSISTANT_CHAT_TTL_MS, type AssistantAttachmentMediaType, type AssistantAttachmentRecord, ASSISTANT_HISTORY_METADATA_MAX_UNITS, ASSISTANT_MESSAGES_MAX, AssistantConversationRecordSchema, AssistantMessageRecordSchema,
+  ASSISTANT_CHATS_MAX, ASSISTANT_CHAT_TTL_MS, type AssistantAttachmentMediaType, type AssistantAttachmentRecord, ASSISTANT_HISTORY_METADATA_MAX_UNITS, ASSISTANT_MESSAGES_MAX, AssistantConversationRecordSchema, AssistantMessageRecordSchema, AssistantM1MessagePayloadSchema, type AssistantM1MessagePayload,
   type AssistantConversationRecord, type AssistantConversationView, type AssistantDeliverySchema, type AssistantFailureCode, type AssistantHistoryOperation,
   type AssistantHistoryResult, type AssistantHistoryView, type AssistantMessageRecord,
 } from "../../../models/dashboard/assistant.js";
@@ -62,6 +62,13 @@ export function assistantMessageFromRow(input: unknown): AssistantMessageRecord 
   return AssistantMessageRecordSchema.parse({ id: row.id, conversationId: row.conversation_id, ordinal: row.ordinal, role: row.role, kind: row.kind,
     modelText: row.model_text, subjectRef: row.subject_ref, actionId: row.action_id, delivery: row.delivery, code: row.code, text: payload.text,
     createdAt: row.created_at, updatedAt: row.updated_at });
+}
+
+/** Unregistered payload conversion; row ownership and correlation admission remain with the native owner. */
+export function convertAssistantHistoryPayloadToM1(input: unknown): AssistantM1MessagePayload {
+  const { text } = z.strictObject({ text: z.string().max(8000) }).parse(input);
+  return AssistantM1MessagePayloadSchema.parse({ parts: text === "" ? [] : [{ kind: "text", runs: [{ kind: "plain", text }] }],
+    recording: { kind: "unrecorded", usage: { state: "unrecorded" } } });
 }
 
 /** A refused history write; the code is a catalog code the route and service return as data. */
