@@ -39,7 +39,7 @@ test("sheets design D scenes @ light 1280x720", async ({ page }) => {
     "drawer": async () => { await open({ relaySheetsScenario: "all" }); await library().getByText("Example contact roster.xlsx", { exact: true }).click(); await expect(dialog()).toBeVisible(); await shot("drawer"); },
     "fix-columns": async () => {
       await open({ relaySheetsScenario: "all" }); await library().getByText("Example I-9 actions.csv", { exact: true }).click(); await expect(dialog()).toBeVisible();
-      await shot("fix-columns-before"); await dialog().getByLabel("Name column", { exact: true }).selectOption("Employee"); await shot("fix-columns");
+      await shot("fix-columns-before"); await dialog().getByRole("combobox", { name: "Name column", exact: true }).click(); await page.getByRole("option", { name: "Employee", exact: true }).click(); await shot("fix-columns");
       await dialog().getByRole("button", { name: "Save columns", exact: true }).click(); await expect(dialog()).toHaveCount(0); await shot("fix-columns-after");
     },
     "import-1-file": async () => {

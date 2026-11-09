@@ -13,8 +13,9 @@ import '../../run-start/launch-presentation.css';
 const noop = async () => ({ state: 'confirmed' as const });
 const when = (iso: string) => formatInstantDate(iso);
 const ROWS = 'grid items-center gap-x-4 px-3 py-2.5 text-body';
-const COLS = 'grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_64px_92px_240px_44px]';
-const COLS_CHECK = 'grid-cols-[22px_minmax(0,1.5fr)_minmax(0,0.9fr)_64px_92px_240px_44px]';
+const COLS = 'grid-cols-[minmax(0,2fr)_minmax(0,0.7fr)_56px_92px_220px_44px]';
+const COLS_CHECK = 'grid-cols-[22px_minmax(0,2fr)_minmax(0,0.7fr)_56px_92px_220px_44px]';
+const COLS_RESULTS = 'grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_56px_92px_220px_44px]';
 const frame = 'overflow-hidden rounded-[10px] border border-ui-stroke';
 const NEEDS = DECLARED_FIELDS.map(key => ({ key, label: FIELD_LABELS[key], required: REQUIRED_FIELDS.includes(key) }));
 
@@ -22,12 +23,12 @@ const Dot = () => <span aria-hidden className="size-1.5 shrink-0 rounded-full bg
 const needsText = (file: SheetFile) => `Needs ${missingRequired(file).map(key => `${key === 'eid' ? 'an' : 'a'} ${FIELD_LABELS[key]} column`).join(' and ')}`;
 const readyText = (file: SheetFile) => { const ready = readyWorkflows(file); return ready.length ? `Ready for ${ready.join(', ')}` : 'No workflow can use it yet'; };
 
-function ListHead({ cells, check }: { cells: readonly string[]; check?: ReactNode }) {
-  return <div className={`${ROWS} ${check ? COLS_CHECK : COLS} border-b border-ui-stroke bg-ui-table text-caption text-ui-muted`}>{check}{cells.map((cell, index) => <span key={index}>{cell}</span>)}<span className={cells.length > 4 ? '' : 'col-span-2'} /></div>;
+function ListHead({ cells, check, cols }: { cells: readonly string[]; check?: ReactNode; cols?: string }) {
+  return <div className={`${ROWS} ${cols ?? (check ? COLS_CHECK : COLS)} border-b border-ui-stroke bg-ui-table text-caption text-ui-muted`}>{check}{cells.map((cell, index) => <span key={index}>{cell}</span>)}<span className={cells.length > 4 ? '' : 'col-span-2'} /></div>;
 }
-function ListRow({ lead, sub, second, rows, updated, status, end, check, onActivate }: { lead: ReactNode; sub?: ReactNode; second?: ReactNode; rows?: ReactNode; updated?: ReactNode; status?: ReactNode; end?: ReactNode; check?: ReactNode; onActivate?: () => void }) {
+function ListRow({ cols, lead, sub, second, rows, updated, status, end, check, onActivate }: { lead: ReactNode; sub?: ReactNode; second?: ReactNode; rows?: ReactNode; updated?: ReactNode; status?: ReactNode; end?: ReactNode; check?: ReactNode; cols?: string; onActivate?: () => void }) {
   const keys = onActivate ? { tabIndex: 0, onKeyDown: (event: { key: string; target: unknown; currentTarget: unknown; preventDefault: () => void }) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) { event.preventDefault(); onActivate(); } } } : {};
-  return <div onClick={onActivate} {...keys} className={`${ROWS} ${check ? COLS_CHECK : COLS} border-t border-ui-stroke first:border-t-0 ${onActivate ? `cursor-pointer hover:bg-ui-hover ${dsFocus}` : ''}`}>{check && <div onClick={event => event.stopPropagation()}>{check}</div>}
+  return <div onClick={onActivate} {...keys} className={`${ROWS} ${cols ?? (check ? COLS_CHECK : COLS)} border-t border-ui-stroke first:border-t-0 ${onActivate ? `cursor-pointer hover:bg-ui-hover ${dsFocus}` : ''}`}>{check && <div onClick={event => event.stopPropagation()}>{check}</div>}
     <div className="min-w-0"><div className="truncate font-medium">{lead}</div>{sub && <div className="text-caption text-ui-muted">{sub}</div>}</div>
     <div className="min-w-0">{second}</div><span className="tabular-nums">{rows}</span><span>{updated}</span>{status !== undefined && <div className="min-w-0">{status}</div>}<div className={`flex items-center justify-end gap-1 ${status === undefined ? 'col-span-2' : ''}`} onClick={event => event.stopPropagation()}>{end}</div>
   </div>;
@@ -58,9 +59,9 @@ function ResultsList({ groups, actions }: { groups: readonly ResultGroup[]; acti
   if (!groups.length) return <p className="hub-sheets-empty rounded-[10px] border border-dashed border-ui-stroke">Workbooks made by workflows will appear here, one for each run.</p>;
   const asOpen = (file: ResultFile) => actions.open({ id: file.id, name: file.name, rows: 0, updatedAt: file.createdAt });
   const download = (file: ResultFile) => <IconButton label={`Download ${file.name}`} icon={<Download size={16} />} />;
-  return <div className={frame} role="table" aria-label="Results"><ListHead cells={['Workflow', 'Newest workbook', '', 'Created']} />{groups.map(group => {
+  return <div className={frame} role="table" aria-label="Results"><ListHead cols={COLS_RESULTS} cells={['Workflow', 'Newest workbook', '', 'Created']} />{groups.map(group => {
     const [newest, ...older] = group.files;
-    return <ListRow key={group.workflow} lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} onActivate={() => asOpen(newest)}
+    return <ListRow key={group.workflow} cols={COLS_RESULTS} lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} onActivate={() => asOpen(newest)}
       end={<>{download(newest)}{older.length > 0 && <DropdownMenu><DropdownMenuTrigger render={<IconButton label={`Actions for ${newest.name}`} icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setEarlier(group)}>Earlier results ({older.length})</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}</>} />;
   })}
     <Dialog open={!!earlier} onOpenChange={open => { if (!open) setEarlier(undefined); }}><DialogContent className="launch-design" size="md" title="Earlier results" description={earlier?.workflow}>
@@ -77,7 +78,7 @@ function FileDrawer({ file, focusColumns, onClose, onSave, onReplace }: { file: 
   useEffect(() => { if (focusColumns) document.getElementById('sheets-drawer-columns')?.scrollIntoView({ block: 'start' }); }, [focusColumns, file?.id]);
   const entry = file ? libraryEntry(file) : undefined;
   const changed = DECLARED_FIELDS.some(key => values[key] !== initial[key]), complete = REQUIRED_FIELDS.every(key => values[key] !== '');
-  return <Drawer open={!!file} onOpenChange={open => { if (!open) onClose(); }}><DrawerContent title={file?.name ?? ''} description={file ? `${file.sharePoint ? 'SharePoint' : 'This Mac'}, ${file.rows.toLocaleString()} rows` : undefined} size="560px">
+  return <Drawer open={!!file} onOpenChange={open => { if (!open) onClose(); }}><DrawerContent className="launch-design" title={file?.name ?? ''} description={file ? `${file.sharePoint ? 'SharePoint' : 'This Mac'}, ${file.rows.toLocaleString()} rows` : undefined} size="560px">
     {file && sheet && entry && <div className="flex h-full min-h-0 flex-col text-body">
       <div className="grid min-h-0 flex-1 content-start gap-6 overflow-y-auto p-6">
         <section aria-label="Preview"><h3 className="mb-2 text-title font-semibold">Preview</h3><div className="overflow-hidden rounded-[7px] border border-ui-stroke"><table className="w-full text-caption"><thead><tr className="bg-ui-table text-left text-ui-muted">{sheet.headers.map(name => <th key={name} className="px-2.5 py-1.5 font-medium">{name}</th>)}</tr></thead><tbody>{sheet.rows.map((row, index) => <tr key={index} className="border-t border-ui-stroke">{row.map((cell, column) => <td key={column} className="whitespace-nowrap px-2.5 py-1">{cell}</td>)}</tr>)}</tbody></table></div><p className="mt-1.5 text-caption text-ui-muted">First 8 of {file.rows.toLocaleString()} rows. Updated {when(file.updatedAt)}.</p></section>
