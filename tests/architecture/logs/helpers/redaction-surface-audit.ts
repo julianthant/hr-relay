@@ -982,6 +982,19 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
     ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
     ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
+    ...LIBRARY_MUTABLE_TYPE_ORIGINS.flatMap(path => [
+      { surface: 'wire/bootstrap', path: `workbookReferences[].type.${path}`, origin: 'captured-hr-value' as const },
+      { surface: 'wire/bootstrap', path: `workbookReferences[].current.entry.type.${path}`, origin: 'captured-hr-value' as const },
+    ]),
+    ...LIBRARY_STATE_ORIGINS.map(entry => ({ surface: 'wire/bootstrap', path: `workbookReferences[].current.entry.state.${entry.path}`,
+      origin: entry.origin })),
+    ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/bootstrap',
+      path: `workbookReferences[].current.entry.${path}`, origin: 'captured-hr-value' as const })),
+    { surface: 'wire/bootstrap', path: 'workbookReferences[].typeId', origin: 'repository-authored' },
+    { surface: 'wire/bootstrap', path: 'workbookReferences[].current.entry.libraryId', origin: 'repository-authored' },
+    { surface: 'wire/bootstrap', path: 'workbookReferences[].workflowLabel', origin: 'repository-authored' },
+    ...['current.columns[].sheetId', 'current.columns[].sheetName'].map(path => ({ surface: 'wire/bootstrap',
+      path: `workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),
     { surface: 'request/workbook-reference', path: 'versionId', origin: 'repository-authored' },
     { surface: 'request/workbook-reference', path: 'selectedRow.sheetId', origin: 'captured-hr-value' },
@@ -1078,6 +1091,11 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/activity-population", path: "report.volume.timeZone", origin: "external-text" },
   { surface: "wire/activity-population", path: "report.workflows[].registration.label", origin: "repository-authored" },
   { surface: "wire/activity-population", path: "report.workflows[].registration.reason", origin: "repository-authored" },
+  ...['wire/activity-population', 'wire/activity-population-selected', 'wire/activity-population-export', 'wire/activity-report'].flatMap(surface => {
+    const prefix = surface === 'wire/activity-report' ? '' : surface === 'wire/activity-population' ? 'report.' : 'selection.report.';
+    return ['failures[].registration.label', 'failures[].registration.reason', 'failures[].sentence', 'workflows[].typicalTime.meanMs.reason']
+      .map(path => ({ surface, path: `${prefix}${path}`, origin: 'repository-authored' as const }));
+  }),
   { surface: "wire/activity-population", path: "successfulTiming[].workflowId", origin: "repository-authored" },
   { surface: "wire/activity-population-selected", path: "browse.identity.browse.query", origin: "operator-authored" },
   { surface: "wire/activity-population-selected", path: "browse.identity.browse.workflow", origin: "repository-authored" },
@@ -1242,6 +1260,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/assistant", path: "candidates[].displayName", origin: "captured-hr-value" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
   { surface: "wire/profile-first-run-check", path: "report.results[].summary", origin: "local-filesystem-name" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].availableFor[]", origin: "repository-authored" },
   { surface: "wire/profile-first-run-check", path: "report.results[].impact", origin: "repository-authored" },
   { surface: "wire/profile-first-run-check", path: "report.results[].remediation", origin: "repository-authored" },
   { surface: "wire/chatgpt-ocr-test", path: "message", origin: "repository-authored" },

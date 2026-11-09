@@ -203,7 +203,7 @@ function setupAccount() {
   const signedIn = ChatGptAccountStateSchema.parse({ state: "connected", name: 'Fixture Operator', email: 'operator@example.test',
     expiresAt: new Date(Date.now() + 60000).toISOString(), planUsage: "enabled" });
   const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async () => {
-    reads++; return Response.json(verified ? signedIn : unavailable);
+    reads++; return Response.json(chatGptStatusFixture(verified ? signedIn : unavailable));
   } });
   const port = createServedChatGptAccountPort(client);
   return { port, verify: () => { verified = true; }, get reads() { return reads; } };

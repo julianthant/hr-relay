@@ -828,7 +828,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         return value;
       })() };
       statusCheck = check;
-      void check.result.finally(() => { if (statusCheck === check) statusCheck = undefined; }).catch(() => undefined);
+      const clearCheck = () => { if (statusCheck === check) statusCheck = undefined; };
+      void check.result.then(clearCheck, clearCheck);
       shared = check;
     }
     shared.readers++;
