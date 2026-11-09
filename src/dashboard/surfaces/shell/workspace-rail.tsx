@@ -23,6 +23,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   onOpenNotification: (destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => void;
 }) {
   const [open, setOpen] = useViewState("notifications", false);
+  const [showPriority, setShowPriority] = useState(true);
   const [activeId, setActiveId] = useViewState("notificationActive", "", "replace");
   const [notice, setNotice] = useState("");
   const notificationRail = useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification, onActive: setActiveId, served: inbox });
@@ -38,7 +39,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
       </div>
     </header>
     <div className="workspace-rail-body">
-      {open ? <NotificationsPanel activeId={activeId} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
+      {open ? <NotificationsPanel activeId={activeId} showPriority={showPriority} onShowPriority={setShowPriority} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
         : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
     </div>
     {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} />}

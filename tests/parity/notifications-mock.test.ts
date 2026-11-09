@@ -58,10 +58,14 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
     return { width: box.width, header: rect("h2").left - box.left, label: labels[0].left - box.left, text: rect(".notification-item-title").left - box.left,
       dotRight: box.right - 1 - rect(".notification-unread-dot").right, tagGap: rect(".notification-unread-dot").left - rect(".notification-item-tag").right,
       readTagRight: box.right - 1 - rect(".notification-item-tag", 3).right, menuCentre: box.right - 1 - (rect(".notification-group-head button").left + rect(".notification-group-head button").width / 2),
-      pitch: rows[1].top - rows[0].top, rowHeight: rows[0].height, labelToTitle: rect(".notification-item-title", 4).top + 10 - (labels[1].top + 10), icons: rail.querySelectorAll(".notification-item svg").length, bellHeader: rect(".workspace-rail-header").height };
+      pitch: rows[1].top - rows[0].top, rowHeight: rows[0].height, labelToTitle: rect(".notification-item-title", 4).top + 10 - (labels[1].top + 10), icons: rail.querySelectorAll(".notification-item svg").length, bellHeader: rect(".workspace-rail-header").height,
+      titleToPreview: rect(".notification-item-line").top - rect(".notification-item-title").top, previewLine: parseFloat(getComputedStyle(rail.querySelector(".notification-item-line")!).lineHeight),
+      size: [".notification-item-title", ".notification-group-label", ".notification-item-line", ".notification-item-tag"].map(q => getComputedStyle(rail.querySelector(q)!).fontSize + "/" + getComputedStyle(rail.querySelector(q)!).fontWeight),
+      buttons: [rect(".rail-notification-toggle"), rect(".workspace-rail-header button:not(.rail-notification-toggle)"), rect(".notification-group-head button")].map(r => `${r.width}x${r.height}`),
+      headerCentres: [rect(".rail-notification-toggle"), rect(".workspace-rail-header button:not(.rail-notification-toggle)"), rect(".notification-group-head button")].map(r => box.right - 1 - (r.left + r.width / 2)) };
   });
   console.log(`MEASURE ${theme} ${JSON.stringify(m)}`);
-  expect(m.width).toBe(244);
+  expect(m.width).toBe(312);
   expect(m.icons).toBe(0);
   await page.mouse.move(1, 1);
   await shot(page, "panel-mixed", theme);
@@ -92,17 +96,27 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await expect(panel(page).getByRole("button", { name: /Run waiting for you/ })).not.toHaveAttribute("aria-current", "true");
   await expect(panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ }).locator(".notification-unread-dot")).toHaveCount(0);
 
+  // The ··· menu: unread variant, then Mark all as read, then Escape returns to workflows.
   await open(page, "centre");
   await bell(page).click();
   await panel(page).getByRole("button", { name: "Notification actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Mark all as read" })).toBeEnabled();
   await page.mouse.move(1, 1);
   await shot(page, "menu-open", theme);
-  await page.getByRole("menuitem", { name: "Mark all read" }).click();
+  const menuBox = await page.getByRole("menu").evaluate(menu => { const r = menu.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
+  const buttonBox = await panel(page).getByRole("button", { name: "Notification actions" }).evaluate(b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
+  console.log(`MENU ${theme} ${JSON.stringify({ width: menuBox.width, leftOfButtonCentre: buttonBox.x + buttonBox.width / 2 - menuBox.x, below: menuBox.y - (buttonBox.y + buttonBox.height) })}`);
+  await page.getByRole("menuitem", { name: "Mark all as read" }).click();
   await expect(dot(page)).toHaveCount(0);
   await expect(page.getByRole("menu")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(panel(page)).toBeHidden();
   await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
+
+  // Bell tooltip: shared tooltip, no shortcut chip.
+  await bell(page).hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Notifications");
+  await shot(page, "bell-tooltip", theme);
 
   await open(page, "centre-resolved");
   await bell(page).click();
@@ -111,6 +125,18 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await expect(dot(page)).toHaveCount(0);
   await page.mouse.move(1, 1);
   await shot(page, "panel-priority-empty", theme);
+  // All read: Mark all as read is disabled; the Priority section check hides and shows the section.
+  await panel(page).getByRole("button", { name: "Notification actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Mark all as read" })).toBeDisabled();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Priority section" })).toHaveAttribute("aria-checked", "true");
+  await page.mouse.move(1, 1);
+  await shot(page, "menu-open-all-read", theme);
+  await page.getByRole("menuitemcheckbox", { name: "Priority section" }).click();
+  await expect(panel(page).getByRole("heading", { name: "Priority", exact: true })).toHaveCount(0);
+  await expect(panel(page).getByRole("button", { name: "Notification actions" })).toBeVisible();
+  await panel(page).getByRole("button", { name: "Notification actions" }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Priority section" })).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Escape");
 
   await open(page, "empty");
   await bell(page).click();

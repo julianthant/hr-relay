@@ -1,5 +1,5 @@
 .dashboard-shell { --shell-rail-width: 264px; }
-.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: 244px; }
+.dashboard-shell:not([data-settings-takeover="true"]) { --shell-rail-width: 312px; }
 .dashboard-shell .dashboard-workspace > main { margin-left: var(--shell-rail-width); }
 .dashboard-shell[data-settings-takeover="true"] .workspace-rail { display: none; }
 .dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { margin-left: 0; }
@@ -18,7 +18,8 @@
 @media (prefers-reduced-motion: reduce) { .dashboard-shell .settings-content { transition: none; } }
 .workspace-rail { position: absolute; inset: 0 auto 0 0; z-index: 30; width: var(--shell-rail-width); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--ui-stroke); background: var(--ds-surface-1); color: var(--ui-primary); pointer-events: none; }
 
-.workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (30px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
+.workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (28px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
+.workspace-rail-header button, .workspace-rail-header .rail-notification-toggle { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
 .workspace-rail-header h2 { margin: 0; font-size: 23px; line-height: 1.4; font-weight: 500; }
 .workspace-rail-body { display: flex; flex: 1; min-height: 0; flex-direction: column; pointer-events: auto; }
 

@@ -1,6 +1,6 @@
-import { Bell, MoreHorizontal } from "lucide-react";
+import { Bell, Check, MoreHorizontal } from "lucide-react";
 import { forwardRef, useEffect, useRef, type ReactNode } from "react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, IconButton, Skeleton, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
 import { itemDay, itemPreview, itemSource, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
@@ -33,12 +33,11 @@ function dayGroups(items: readonly NotificationItem[]) {
   return days.map(day => ({ day, items: items.filter(item => itemDay(item) === day) }));
 }
 
-/** The sidebar body while the bell is pressed: Priority, then day groups. The sidebar header stays the workflow view's. */
-export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack, notice }: {
-  state: NotificationsState; activeId: string; onReadAll: () => void; onOpen: Open; onBack: () => void; notice: string;
+/** The sidebar body while the bell is pressed: Priority (when shown), then day groups. The sidebar header stays the workflow view's. */
+export function NotificationsPanel({ state, activeId, showPriority, onShowPriority, onReadAll, onOpen, onBack, notice }: {
+  state: NotificationsState; activeId: string; showPriority: boolean; onShowPriority: (show: boolean) => void; onReadAll: () => void; onOpen: Open; onBack: () => void; notice: string;
 }) {
   const items = state.state === "ready" ? state.items : [];
-  const priority = items.filter(item => item.priority);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || document.querySelector('[role="dialog"], [role="menu"]')) return;
@@ -48,15 +47,22 @@ export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack,
     return () => document.removeEventListener("keydown", escape);
   }, [onBack]);
   const menu = <DropdownMenu><DropdownMenuTrigger asChild><IconButton label="Notification actions" size="xs" icon={<MoreHorizontal aria-hidden className={dsIcon.md} />} /></DropdownMenuTrigger>
-    <DropdownMenuContent align="end"><DropdownMenuItem disabled={!items.some(item => !item.read)} onClick={onReadAll}>Mark all read</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
+    <DropdownMenuContent align="start" alignOffset={3} className="notification-menu">
+      <DropdownMenuGroup><DropdownMenuLabel>Show</DropdownMenuLabel>
+      <DropdownMenuItem role="menuitemcheckbox" aria-checked={showPriority} className="pr-[34px]" onClick={() => onShowPriority(!showPriority)}>Priority section<span className="ds-menu-indicator">{showPriority && <Check aria-hidden className="ds-menu-check" />}</span></DropdownMenuItem></DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem disabled={!items.some(item => !item.read)} onClick={onReadAll}>Mark all as read</DropdownMenuItem>
+    </DropdownMenuContent></DropdownMenu>;
+  const groups = [
+    ...(showPriority ? [{ label: "Priority", items: items.filter(item => item.priority), empty: "Nothing needs attention" }] : []),
+    ...dayGroups(items.filter(item => !showPriority || !item.priority)).map(group => ({ label: group.day, items: group.items, empty: undefined })),
+  ];
   return <section aria-label="Notifications" className="notification-panel font-ui">
     <div className="notification-panel-scroll rail-scroll">
       {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="h-10 flex-1" /></div>)}</div></LoadingRegion>
         : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>
-        : <>
-          <NotificationGroup label="Priority" items={priority} activeId={activeId} onOpen={onOpen} action={menu} empty="Nothing needs attention" />
-          {dayGroups(items.filter(item => !item.priority)).map(group => <NotificationGroup key={group.day} label={group.day} items={group.items} activeId={activeId} onOpen={onOpen} />)}
-        </>}
+        : groups.length === 0 ? <div className="notification-group-head justify-end">{menu}</div>
+        : groups.map((group, index) => <NotificationGroup key={group.label} label={group.label} items={group.items} activeId={activeId} onOpen={onOpen} empty={group.empty} action={index === 0 ? menu : undefined} />)}
     </div>
     {notice && <p role="status" className="notification-notice">{notice}</p>}
   </section>;
@@ -64,8 +70,8 @@ export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack,
 
 /** The sidebar header's bell: pressed while the list is open, a small dot when anything is unread. */
 export const NotificationBell = forwardRef<HTMLButtonElement, { label: string; open: boolean; unread: boolean; onToggle: () => void }>(function NotificationBell({ label, open, unread, onToggle }, ref) {
-  return <IconButton ref={ref} variant="ghost" size="sm" className="rail-notification-toggle" aria-pressed={open} label={label} onClick={onToggle}
-    icon={<><Bell aria-hidden className="size-4" />{unread && <span data-testid="notification-unread-dot" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ui-info" />}</>} />;
+  return <Tooltip side="bottom" content="Notifications"><IconButton ref={ref} variant="ghost" size="sm" className="rail-notification-toggle" aria-pressed={open} label={label} title="" onClick={onToggle}
+    icon={<><Bell aria-hidden className="size-4" />{unread && <span data-testid="notification-unread-dot" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ui-info" />}</>} /></Tooltip>;
 });
 
 export function NotificationPing({ item }: { item: NotificationItem }) {
