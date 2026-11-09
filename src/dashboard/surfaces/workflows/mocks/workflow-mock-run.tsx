@@ -110,7 +110,6 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
               <RunListRow title="Document type" description="How OnBase files the imported pages."><div className="w-[250px]"><ChoicePicker hideLabel label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /></div></RunListRow>
             </RunList>}
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
-            {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
           {workflowId === "emergency-contact" && mock === "run-a" && <StatusMockReadiness frame="run-a" />}
           {spreadsheetPicker && mock !== "run-a" && <StatusMockRosterPicker picks={picks} onPicks={setPicks} />}
