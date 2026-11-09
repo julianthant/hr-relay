@@ -960,6 +960,9 @@ body[data-demo-theme="light"] {
   letter-spacing: var(--ds-tracking-caps);
   font-weight: 600;
 }
+/* Two-way switch: the selected side is white in light and lighter than the track in dark. */
+.ds-segment { --ds-segment-thumb: #fff; }
+[data-demo-theme="dark"] .ds-segment { --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 16%, var(--ds-surface-3)); }
 /* Small table headings are 11px. */
 th.ds-text-caps {
   font-size: var(--ds-text-meta);

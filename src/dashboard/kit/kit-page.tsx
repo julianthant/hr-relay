@@ -319,6 +319,7 @@ function StatusSection() {
 function ActionsSection() {
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [browserMode, setBrowserMode] = useState<"headed" | "headless">("headed");
   return (
     <Section
       id="actions"
@@ -339,7 +340,8 @@ function ActionsSection() {
         <IconButton label="More" icon={<MoreHorizontal aria-hidden className="size-3.5" />} />
       </Row>
       <Row label="Two-way switch">
-        <SegmentedChoice label="Theme" value={theme} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={setTheme} />
+        <SegmentedChoice hideLabel label="Theme" value={theme} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={setTheme} />
+        <SegmentedChoice hideLabel label="Browser mode" value={browserMode} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} onChange={setBrowserMode} />
       </Row>
       <Row label="Blue primary">
         <Button variant="brand" size="toolbar" icon={<Play aria-hidden className="size-3.5" />}>

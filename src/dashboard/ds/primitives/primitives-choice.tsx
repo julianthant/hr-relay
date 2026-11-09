@@ -36,16 +36,19 @@ export function ChoicePicker({ label, value, options, onChange, disabled, hideLa
   </div>;
 }
 
-/** Compact mutually exclusive options; arrow keys follow the selected radio. */
-export function SegmentedChoice<T extends string>({ label, value, options, onChange }: {
-  label: string; value: T; options: readonly { value: T; label: string }[]; onChange: (value: T) => void;
+/** Compact two-way switch: a soft grey pill with one raised thumb that slides to the selected side (no slide under reduced motion). Arrow keys follow the selected radio. `hideLabel` keeps the legend for screen readers when a Field names it. */
+export function SegmentedChoice<T extends string>({ label, value, options, onChange, hideLabel = false }: {
+  label: string; value: T; options: readonly { value: T; label: string }[]; onChange: (value: T) => void; hideLabel?: boolean;
 }) {
   const name = useId();
-  return <fieldset className="min-w-0"><legend className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]")}>{label}</legend>
-    <div className="flex h-[var(--ds-h-md)] rounded-full bg-[var(--ds-surface-3)] p-[2px]">
-      {options.map(option => <label key={option.value} className="relative min-w-0 flex-1 cursor-pointer">
+  const selected = options.findIndex(option => option.value === value);
+  return <fieldset className="min-w-0"><legend className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]", hideLabel && "sr-only")}>{label}</legend>
+    <div className="ds-segment relative flex h-[var(--ds-h-md)] rounded-full bg-[var(--ds-surface-3)] p-[2px]">
+      {selected >= 0 && <span aria-hidden className="pointer-events-none absolute inset-y-[2px] left-[2px] rounded-full bg-[var(--ds-segment-thumb)] shadow-[0_1px_2px_rgb(0_0_0/0.14)] transition-transform duration-[180ms] ease-out motion-reduce:transition-none"
+        style={{ width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${selected * 100}%)` }} />}
+      {options.map(option => <label key={option.value} className="relative z-10 min-w-0 flex-1 cursor-pointer">
         <input type="radio" name={`${label}-${name}`} value={option.value} checked={option.value === value} onChange={() => onChange(option.value)} className="peer sr-only" />
-        <span className="flex h-full items-center justify-center rounded-full px-[var(--ds-space-base)] text-center text-[13px] leading-none text-[color:var(--ds-fg-muted)] peer-checked:bg-[var(--ds-surface-1)] peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)]">{option.label}</span>
+        <span className="flex h-full items-center justify-center rounded-full px-[var(--ds-space-base)] text-center text-[13px] leading-none text-[color:var(--ds-fg-muted)] transition-colors duration-[180ms] ease-out peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)] motion-reduce:transition-none">{option.label}</span>
       </label>)}
     </div>
   </fieldset>;

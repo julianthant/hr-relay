@@ -46,12 +46,12 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
-    } else if (id === "run-rerun-confirm") {
+    } else if (id === "run-rerun-options") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await page.getByRole("button", { name: "Rerun", exact: true }).click();
       const dialog = page.getByRole("dialog");
-      for (const name of ["Continue", "Continue", "Preview plan"]) await dialog.getByRole("button", { name, exact: true }).click();
-      await expect(dialog.getByText("Review the plan")).toBeVisible();
+      for (let step = 0; step < 2; step++) await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(dialog.getByText("ChatGPT is disconnected")).toBeVisible();
     } else if (id === "run-rerun") {
       // Reruns happen only in the Rerun dialog: Emergency Contact in the rail, the run's Rerun button, then Continue to the Values stage.
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
@@ -67,10 +67,9 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await dialog.locator('input[type="file"]').setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
       await expect(dialog.getByText("Scan_0412.pdf").first()).toBeVisible();
-      if (id === "run-b") {
+      if (id === "run-b" || id === "run-options") {
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
-        await expect(dialog.getByText("Before you start")).toBeVisible();
+        await expect(id === "run-b" ? dialog.getByText("ChatGPT is disconnected") : dialog.getByRole("button", { name: /^Start (dry|live) run$/ })).toBeVisible();
       }
     }
     if (settings === "general") await expect(page.getByText(id.endsWith("limit") ? "Usage limit reached" : id.endsWith("disconnected") ? "Disconnected" : "Working · checked 2 min ago").first()).toBeVisible();
@@ -122,5 +121,30 @@ test(`kit compact dialog ${WIDTH}`, async ({ page }) => {
   await page.mouse.move(1, 1);
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(OUT, `kit-dialog-compact-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});
+
+// The two-way switch's thumb slides to the chosen side, and does not under reduced motion.
+for (const motion of ["no-preference", "reduce"] as const) test(`kit switch slide ${motion}`, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.emulateMedia({ reducedMotion: motion });
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+  const group = page.getByRole("group", { name: "Theme" });
+  const thumb = group.locator("span[aria-hidden]").first();
+  await group.scrollIntoViewIfNeeded();
+  const offset = () => thumb.evaluate(node => new DOMMatrixReadOnly(getComputedStyle(node).transform).m41);
+  expect(await offset()).toBe(0);
+  await group.getByText("Dark", { exact: true }).click();
+  await page.waitForTimeout(70);
+  const middle = await offset();
+  await page.screenshot({ path: join(OUT, `kit-switch-${motion}-mid-${WIDTH}.png`), clip: await group.boundingBox() ?? undefined });
+  await page.waitForTimeout(400);
+  const end = await offset();
+  expect(end).toBeGreaterThan(20);
+  if (motion === "reduce") expect(middle).toBe(end);
+  else { expect(middle).toBeGreaterThan(0); expect(middle).toBeLessThan(end); }
+  await page.screenshot({ path: join(OUT, `kit-switch-${motion}-end-${WIDTH}.png`), clip: await group.boundingBox() ?? undefined });
   expect(errors).toEqual([]);
 });

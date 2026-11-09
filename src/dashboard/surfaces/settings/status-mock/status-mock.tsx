@@ -23,12 +23,9 @@ function MockRow({ label, description, value }: { label: ReactNode; description?
 }
 const MockCard = ({ children }: { children: ReactNode }) => <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">{children}</div>;
 
-/** Readiness blockers inside the real Run dialog: one row each, reason on the left, its fix on the right. */
-export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" | "run-rerun" }) {
-  return <section aria-label="Before you start" className="flex flex-col gap-2">
-    <h4 className="m-0 text-heading font-semibold">Before you start</h4>
-    <MockCard>{STATUS_MOCK_BLOCKERS[frame].map(blocker => <MockRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}</MockCard>
-  </section>;
+/** A readiness blocker at the top of the dialog: one row, reason on the left, its fix on the right. */
+export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
+  return <section aria-label="Before you start"><MockCard>{STATUS_MOCK_BLOCKERS[frame].map(blocker => <MockRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}</MockCard></section>;
 }
 
 /** Picked spreadsheet value -> version number. */
@@ -49,11 +46,6 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
     })}</MockCard>
     <p className="m-0 text-caption text-ui-muted">Uses: {STATUS_MOCK_REQUIRED_FIELDS}</p>
   </fieldset>;
-}
-
-/** The picked spreadsheets as Confirm lists them: name left, version right. */
-export function statusMockPickedRows(picks: StatusMockPicks): readonly { label: string; value: string }[] {
-  return STATUS_MOCK_SPREADSHEETS.filter(sheet => picks[sheet.value] !== undefined).map(sheet => ({ label: sheet.label, value: `v${picks[sheet.value]}` }));
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */
