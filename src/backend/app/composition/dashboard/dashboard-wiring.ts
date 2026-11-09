@@ -1,3 +1,4 @@
+import { resolveWriteCommandTarget } from "../../../runs/commands/write-command-target.js";
 import { randomUUID } from "node:crypto";
 import { emitFaultWithCauses } from "../../../logs/debug-events.js";
 import { join } from "node:path";
@@ -334,6 +335,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     data: composeDataQueries(runDetailDeps),
     diagnosticBundles: trustReads.diagnosticBundles,
     commands,
+    resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
     commandJournal: database.authority.commands,
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
     bulkCommandAcceptances: {

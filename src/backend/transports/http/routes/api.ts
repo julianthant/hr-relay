@@ -131,7 +131,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerIntakeRoutes(app, deps);
   registerOcrRoutes(app, deps);
   registerWorkbookRoutes(app, deps);
-  registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
+  registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, resolveWriteCommand: deps.resolveWriteCommand, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     intake: deps.intake, ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }) });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));

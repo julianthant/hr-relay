@@ -45,3 +45,24 @@ it("reads an audited worker command as recorded and every unproved id as unavail
     assert.deepEqual(query(other.commandId), { state: "unavailable" });
   } finally { await f.dispose(); }
 });
+
+it("keeps a held-check's private occurrence digest out of worker-command readback", async () => {
+  const f = await foundationFixture();
+  try {
+    const at = f.clock.now().toISOString(), privateDigest = "b".repeat(64);
+    const request = WorkerBrowserCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: at, requestedBy: "local-operator", source: "run-detail",
+      family: "worker-browser", type: "check-parked-write", target: {
+        workerId: "person-lookup-1", lifetimeId: randomUUID(), expectedVersion: 1, installationId: randomUUID(), profileId: randomUUID(),
+        workflowId: f.run.envelope.workflow, itemId: f.run.envelope.itemId, runId: f.run.envelope.runId, runVersion: 1,
+        runAttempt: f.run.envelope.attempt, traceId: f.run.envelope.traceId, nodeId: "terminate", writeIntentId: randomUUID(),
+        intentVersion: 1, intentGeneration: 1, writeAttemptId: randomUUID(), bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: privateDigest,
+      } });
+    f.db.authority.commands.insert(request);
+    const result = CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "Fixture no check" });
+    f.db.authority.commandAudits.insert({ auditId: randomUUID(), request, result, completedAt: at, versionChanges: [], affectedDependencyIds: [] });
+    const served = createWorkerCommandResultQuery(f.db)(request.commandId);
+    assert.equal(served.state, "recorded");
+    assert.equal(JSON.stringify(served).includes(privateDigest), false);
+    assert.equal(JSON.stringify(f.db.authority.commands.get(request.commandId)).includes(privateDigest), true);
+  } finally { await f.dispose(); }
+});
