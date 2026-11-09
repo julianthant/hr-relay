@@ -81,6 +81,8 @@ serves that action. Member lines keep their existing navigation behavior.
 
 Run Options omit the policy/version footer; Confirm retains the workflow version. Parsed identifier entries use two columns with a total count and named remove buttons. Leaving the textbox normalizes delimited entries; Match tuples retain raw identifiers in the editor and mask the preview.
 
+Search fields above a list (Settings sidebar, Run dialog workflow list) are one `SearchInput variant="sidebar"`: a full-radius pill on a 7% fill, no border, 36 px, 16 px magnifier, 14 px grey placeholder. Every runnable workflow's Run and Rerun dialog shows the per-spreadsheet Reference rows below its input; the OnBase Document type row sits above the PDF documents section, and Report start and Report end sit under a `Report period` title.
+
 The app has a 1024×720 CSS-pixel minimum canvas. Queue remains beside Logs. Below the floor, the
 page scrolls rather than switching to a phone layout. Workspace/workflow rails, the top bar, and
 Sessions are shell chrome; Settings and intake replace the main region through `TakeoverFrame`.

@@ -5,6 +5,8 @@
 
 :root {
   --ds-sidebar-width: 312px; /* Settings sidebar and workflow rail: one width, never shrinks */
+  --ds-layer-bar: 20; /* Sessions bar < floating assistant < drawer 30 < dialog and scrim 40 < menu 45 < toast 50 < tooltip 60 */
+  --ds-layer-assistant: 25;
   --ds-layer-skip-focus: 1000;
   --ds-layer-toast-viewport: 100;
   --ds-layer-toast-card: 1000;
