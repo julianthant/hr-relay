@@ -30,7 +30,7 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
   </div>;
   if (entry.kind === "click") return <div>
     <div className="flex items-center gap-3">
-      <time className="w-log-time shrink-0 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time>
+      <time className="w-log-time shrink-0 font-data text-caption tabular-nums text-ui-muted max-[1100px]:hidden">{entry.time}</time>
       <span className="inline-flex min-w-0 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-2.5 py-1.5 text-body font-medium"><MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" />{entry.label}</span>
     </div>
   </div>;

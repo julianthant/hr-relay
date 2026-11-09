@@ -132,6 +132,10 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
       await value.hover();
       await expect(page.getByRole("tooltip").getByText("emergency-contacts.pdf", { exact: true })).toBeVisible();
     }
+    // The single-action pill wraps to at most two lines at 1024 (no own timestamp).
+    const pill = await page.getByText("Split pages and recognize the form blocks", { exact: true }).evaluate(node => Math.round(node.closest("span")!.getBoundingClientRect().height));
+    console.log(`PILL ${theme} ${width} ${pill}`);
+    if (width === 1024) expect(pill).toBeLessThan(60);
     await page.screenshot({ path: `${OUT}/timeline-strip-${theme}-${width}.png` });
     await page.mouse.move(1, 1);
   }
