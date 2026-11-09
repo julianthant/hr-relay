@@ -11,7 +11,11 @@ export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
-  kind?: NotificationKind; earlier?: boolean;
+  kind?: NotificationKind;
+  /** Priority: still needs the operator. Resolved items fall into their day group. */
+  priority?: boolean;
+  /** Day group label once out of Priority: Today, Yesterday, a weekday or a date. */
+  day?: string;
 }>;
 export type NotificationPinned = Readonly<{ id: string; title: string; detail: string }>;
 export type NotificationsState = Readonly<{ state: "ready"; items: readonly NotificationItem[]; pinned: readonly NotificationPinned[] }>
@@ -39,7 +43,8 @@ export function applyNotificationReads(state: NotificationsState, reads: Readonl
   return { ...state, items: state.items.map(item => reads[item.id] === undefined || reads[item.id] === item.read ? item : { ...item, read: reads[item.id] }) };
 }
 
-/** "2 min ago" -> "2m": the centre shows a short time on the right. */
-export function shortAge(age: string): string {
-  return age.replace(/ min ago$/, "m").replace(/ hr ago$/, "h").replace(/ days? ago$/, "d");
-}
+export const itemDay = (item: NotificationItem) => item.day ?? "Today";
+/** The grey tag on the title line: the workflow, or the system the notice is about. */
+export const itemSource = (item: NotificationItem) => item.kind === "storage" ? "Storage" : item.kind === "chatgpt" ? "ChatGPT" : item.workflow;
+/** Runs name the subject on the grey preview; the other notices carry their own sentence. */
+export const itemPreview = (item: NotificationItem) => item.kind === "run" ? `${item.subject} · ${item.detail}` : item.detail;

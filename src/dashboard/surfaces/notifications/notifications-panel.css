@@ -1,26 +1,22 @@
 /* Notification centre: the sidebar body while the bell is pressed. Rows sit on the workflow rail's 8px insets. */
 .notification-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 8px 8px 16px; }
-.notification-panel-head { display: flex; height: 30px; min-height: 30px; flex: none; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 15px; padding: 0 0 0 8px; }
-.notification-panel-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; font-size: 20px; font-weight: 600; line-height: 28px; }
-.notification-panel-head button { flex: none; width: 30px; height: 30px; border-radius: 9999px; }
-.notification-panel-actions { display: flex; align-items: center; }
 .notification-panel-scroll { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 16px; overflow-y: auto; overscroll-behavior: contain; }
-.notification-group-label { margin: 0; padding: 0 8px 6px; font-size: 14px; font-weight: 400; color: var(--ui-muted); }
+.notification-group-head { display: flex; height: 20px; align-items: center; justify-content: space-between; padding: 0 4px 0 0; margin-bottom: 3px; }
+.notification-group-head button { width: 24px; height: 24px; margin-block: -2px; border-radius: 8px; color: var(--ui-muted); }
+.notification-group-label { margin: 0; padding: 0 8px; font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ui-muted); }
 .notification-list { margin: 0; padding: 0; list-style: none; }
-.notification-list li + li { margin-top: 2px; }
+.notification-list li + li { margin-top: 1px; }
 .notification-item {
-  display: grid; width: 100%; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 6px; align-items: start; box-sizing: border-box;
-  padding: 6px 4px 6px 8px; border: 0; border-radius: 10px; background: transparent; text-align: left; font-weight: 400; color: var(--ui-primary); cursor: pointer;
+  display: flex; width: 100%; flex-direction: column; box-sizing: border-box; padding: 8px 4px 8px 8px;
+  border: 0; border-radius: 10px; background: transparent; text-align: left; font-weight: 400; color: var(--ui-primary); cursor: pointer;
 }
 .notification-item:hover, .notification-item:focus-visible { background: var(--ds-surface-3); outline: none; }
 .notification-item[aria-current] { background: var(--ds-surface-selected); }
-.notification-item > svg { width: 16px; height: 16px; margin-top: 2px; }
-.notification-item-copy { display: flex; min-width: 0; flex-direction: column; }
-.notification-item-title { display: -webkit-box; overflow: hidden; font-size: 14px; line-height: 20px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.notification-item-line { display: -webkit-box; overflow: hidden; font-size: 12px; line-height: 16px; color: var(--ui-secondary); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.notification-item-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 20px; color: var(--ui-muted); }
+.notification-item-head { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.notification-item-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
+.notification-item-tag { max-width: 45%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; color: var(--ui-muted); }
 .notification-unread-dot { width: 6px; height: 6px; flex: none; border-radius: 9999px; background: var(--ui-info); }
-.notification-unread-dot[data-read="true"] { visibility: hidden; }
-.notification-empty { margin: 0; padding: 0 8px; font-size: 13px; line-height: 20px; color: var(--ui-secondary); }
+.notification-item-line { display: -webkit-box; overflow: hidden; padding-right: 8px; font-size: 13px; line-height: 16px; color: var(--ui-muted); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.notification-empty { margin: 0; padding: 10px 8px 0; font-size: 14px; line-height: 20px; color: var(--ui-muted); opacity: .7; }
 .notification-notice { margin: 0; padding: 8px 8px 0; border-top: 1px solid var(--ui-stroke); font-size: 12px; line-height: 16px; color: var(--ui-secondary); }
-.rail-notification-toggle[aria-pressed="true"] { background: var(--ds-surface-selected); color: var(--ui-primary); }
+.rail-notification-toggle[aria-pressed="true"] { border-radius: 8px; background: color-mix(in srgb, var(--ui-info) 16%, transparent); color: var(--ui-info); }

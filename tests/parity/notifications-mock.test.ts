@@ -47,19 +47,22 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await expect(panel(page)).toBeVisible();
   await expect(bell(page)).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toHaveCount(0);
-  await expect(panel(page).getByText("Today", { exact: true })).toBeVisible();
-  await expect(panel(page).getByText("Earlier", { exact: true })).toBeVisible();
+  for (const label of ["Priority", "Today", "Yesterday", "Friday", "November 3"]) await expect(panel(page).getByRole("heading", { name: label, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Back to workflows" })).toHaveCount(0);
   const m = await page.locator(".workspace-rail").evaluate(rail => {
     const box = rail.getBoundingClientRect();
     const rect = (q: string, n = 0) => rail.querySelectorAll(q)[n].getBoundingClientRect();
     const rows = [...rail.querySelectorAll(".notification-item")].map(row => row.getBoundingClientRect());
-    return { width: box.width, head: rect("h2", 1).left - box.left, label: rect(".notification-group-label").left - box.left, icon: rect(".notification-item > svg").left - box.left,
-      text: rect(".notification-item-copy").left - rect(".notification-item > svg").left, dotRight: box.right - 1 - rect(".notification-unread-dot").right,
-      backRight: box.right - 1 - rect(".notification-panel-actions button", 1).right, pitch: rows[1].top - rows[0].top, timeGap: rect(".notification-unread-dot").left - rect(".notification-item-time").right,
-      panelBottom: box.bottom - rect(".notification-panel").bottom };
+    const labels = [...rail.querySelectorAll(".notification-group-label")].map(label => label.getBoundingClientRect());
+    return { width: box.width, header: rect("h2").left - box.left, label: labels[0].left - box.left, text: rect(".notification-item-title").left - box.left,
+      dotRight: box.right - 1 - rect(".notification-unread-dot").right, tagGap: rect(".notification-unread-dot").left - rect(".notification-item-tag").right,
+      readTagRight: box.right - 1 - rect(".notification-item-tag", 3).right, menuCentre: box.right - 1 - (rect(".notification-group-head button").left + rect(".notification-group-head button").width / 2),
+      pitch: rows[1].top - rows[0].top, rowHeight: rows[0].height, labelToTitle: rect(".notification-item-title", 4).top + 10 - (labels[1].top + 10), icons: rail.querySelectorAll(".notification-item svg").length, bellHeader: rect(".workspace-rail-header").height };
   });
   console.log(`MEASURE ${theme} ${JSON.stringify(m)}`);
   expect(m.width).toBe(244);
+  expect(m.icons).toBe(0);
   await page.mouse.move(1, 1);
   await shot(page, "panel-mixed", theme);
   await panel(page).getByRole("button", { name: /Run waiting for you/ }).hover();
@@ -67,14 +70,14 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
 
   // A storage item just marks read: no navigation, the list stays.
   await panel(page).getByRole("button", { name: /Your disk is full/ }).click();
-  await expect(panel(page).getByRole("button", { name: /Your disk is full/ }).locator(".notification-unread-dot")).toHaveAttribute("data-read", "true");
+  await expect(panel(page).getByRole("button", { name: /Your disk is full/ }).locator(".notification-unread-dot")).toHaveCount(0);
   await expect(panel(page)).toBeVisible();
   await expect(page.locator(".ds-page-heading-title")).toHaveCount(0);
 
   // A run item opens its Logs in the main area; the sidebar stays on Notifications.
   await panel(page).getByRole("button", { name: /Run waiting for you/ }).click();
   await expect(panel(page)).toBeVisible();
-  await expect(panel(page).getByRole("button", { name: /Run waiting for you/ }).locator(".notification-unread-dot")).toHaveAttribute("data-read", "true");
+  await expect(panel(page).getByRole("button", { name: /Run waiting for you/ }).locator(".notification-unread-dot")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /Morrow, Bea/ }).first()).toBeVisible();
   await page.mouse.move(1, 1);
   await expect(panel(page).getByRole("button", { name: /Run waiting for you/ })).toHaveAttribute("aria-current", "true");
@@ -87,31 +90,32 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await page.getByRole("button", { name: /^(Back|Close settings)/ }).first().click();
   await expect(panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ })).toHaveAttribute("aria-current", "true");
   await expect(panel(page).getByRole("button", { name: /Run waiting for you/ })).not.toHaveAttribute("aria-current", "true");
-  await expect(panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ }).locator(".notification-unread-dot")).toHaveAttribute("data-read", "true");
+  await expect(panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ }).locator(".notification-unread-dot")).toHaveCount(0);
 
-  await expect(panel(page).getByRole("button", { name: "Mark all read", exact: true })).toBeDisabled();
-  await expect(dot(page)).toHaveCount(0);
   await open(page, "centre");
   await bell(page).click();
-  await panel(page).getByRole("button", { name: "Mark all read", exact: true }).click();
+  await panel(page).getByRole("button", { name: "Notification actions" }).click();
+  await page.mouse.move(1, 1);
+  await shot(page, "menu-open", theme);
+  await page.getByRole("menuitem", { name: "Mark all read" }).click();
   await expect(dot(page)).toHaveCount(0);
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(panel(page)).toBeHidden();
   await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
-  await bell(page).click();
-  await panel(page).getByRole("button", { name: "Back to workflows" }).click();
-  await expect(panel(page)).toBeHidden();
 
-  await open(page, "centre-earlier");
+  await open(page, "centre-resolved");
   await bell(page).click();
-  await expect(panel(page).getByText("Today", { exact: true })).toHaveCount(0);
+  await expect(panel(page).getByText("Nothing needs attention")).toBeVisible();
+  await expect(panel(page).getByRole("heading", { name: "Today", exact: true })).toBeVisible();
   await expect(dot(page)).toHaveCount(0);
   await page.mouse.move(1, 1);
-  await shot(page, "panel-earlier", theme);
+  await shot(page, "panel-priority-empty", theme);
 
   await open(page, "empty");
   await bell(page).click();
-  await expect(panel(page).getByText("You're all caught up.")).toBeVisible();
+  await expect(panel(page).getByText("Nothing needs attention")).toBeVisible();
+  await expect(panel(page).locator(".notification-group")).toHaveCount(1);
   await shot(page, "panel-empty", theme);
 
   await open(page, "centre", "&statusMock=toasts-live");

@@ -15,23 +15,26 @@ const run = (n: number) => RunIdSchema.parse(`00000000-000${n}-4000-8000-0000000
 const settings = (section: "subscription") => ({ kind: "settings", section }) as const;
 /** Storage notices have no destination: they live only here. */
 const storage = { kind: "none" } as const;
-/** Notification centre frames: unread and read items, Today and Earlier. */
-const centreItems: NotificationItem[] = [
-  { id: "c-disk", kind: "storage", title: "Your disk is full", subject: "", workflow: "", detail: "Free up space; Relay cannot save.", tone: "danger", age: "2 min ago", read: false, action: "", destination: storage },
-  { id: "c-limit", kind: "chatgpt", title: "ChatGPT usage limit reached", subject: "", workflow: "", detail: "Runs that read scans wait until 3:40 PM.", tone: "warning", age: "14 min ago", read: false, action: "Open settings", destination: settings("subscription") },
-  { id: "c-waiting", kind: "run", title: "Run waiting for you", subject: "Morrow, Bea", workflow: "Person Lookup", detail: "Waiting on identity review.", tone: "warning", age: "35 min ago", read: false, action: "Review run", destination: { kind: "run", runId: run(5), day: "2026-08-03" } },
-  { id: "c-failed", kind: "run", title: "Run failed", subject: "EID 10555001", workflow: "Person Lookup", detail: "Cross Verification failed.", tone: "danger", age: "2 hr ago", read: true, action: "Open log", destination: { kind: "run", runId: run(4), day: "2026-08-03" } },
-  { id: "c-repair", kind: "storage", title: "Relay repaired a saved file", subject: "", workflow: "", detail: "Nothing needs your attention.", tone: "info", age: "1 days ago", read: true, earlier: true, action: "", destination: storage },
-  { id: "c-window", kind: "storage", title: "Relay is open in another window", subject: "", workflow: "", detail: "Close the other Relay.", tone: "warning", age: "2 days ago", read: true, earlier: true, action: "", destination: storage },
-  { id: "c-disconnected", kind: "chatgpt", title: "ChatGPT disconnected", subject: "", workflow: "", detail: "Reconnect it in Settings > Subscription.", tone: "danger", age: "3 days ago", read: true, earlier: true, action: "Open settings", destination: settings("subscription") },
-  { id: "c-newer", kind: "storage", title: "Your data is newer than this Relay", subject: "", workflow: "", detail: "Update Relay.", tone: "warning", age: "5 days ago", read: true, earlier: true, action: "", destination: storage },
+/** Notification centre frames: Priority items still need the operator; the rest carry their day group. */
+const priorityItems: NotificationItem[] = [
+  { id: "c-disk", kind: "storage", priority: true, title: "Your disk is full", subject: "", workflow: "", detail: "Free up space; Relay cannot save anything until then.", tone: "danger", age: "2 min ago", read: false, action: "", destination: storage },
+  { id: "c-limit", kind: "chatgpt", priority: true, title: "ChatGPT usage limit reached", subject: "", workflow: "", detail: "Runs that read scans wait until 3:40 PM.", tone: "warning", age: "14 min ago", read: false, action: "Open settings", destination: settings("subscription") },
+  { id: "c-waiting", kind: "run", priority: true, title: "Run waiting for you", subject: "Morrow, Bea", workflow: "Person Lookup", detail: "Waiting on identity review.", tone: "warning", age: "35 min ago", read: false, action: "Review run", destination: { kind: "run", runId: run(5), day: "2026-08-03" } },
+  { id: "c-failed", kind: "run", priority: true, title: "Run failed", subject: "EID 10555001", workflow: "Person Lookup", detail: "Cross Verification failed.", tone: "danger", age: "2 hr ago", read: true, action: "Open log", destination: { kind: "run", runId: run(4), day: "2026-08-03" } },
+];
+const historyItems: NotificationItem[] = [
+  { id: "c-repair", kind: "storage", title: "Relay repaired a saved file", subject: "", workflow: "", detail: "Nothing needs your attention.", tone: "info", age: "3 hr ago", read: false, action: "", destination: storage },
+  { id: "c-done", kind: "run", title: "Run completed", subject: "EID 10101010", workflow: "Person Lookup", detail: "Completed successfully.", tone: "positive", age: "5 hr ago", read: true, action: "Open log", destination: { kind: "run", runId: run(3), day: "2026-08-03" } },
+  { id: "c-window", kind: "storage", day: "Yesterday", title: "Relay is open in another window", subject: "", workflow: "", detail: "Close the other Relay window, then reopen this one.", tone: "warning", age: "1 days ago", read: true, action: "", destination: storage },
+  { id: "c-disconnected", kind: "chatgpt", day: "Friday", title: "ChatGPT disconnected", subject: "", workflow: "", detail: "Reconnect it in Settings > Subscription.", tone: "danger", age: "3 days ago", read: true, action: "Open settings", destination: settings("subscription") },
+  { id: "c-newer", kind: "storage", day: "November 3", title: "Your data is newer than this Relay", subject: "", workflow: "", detail: "Update Relay to open it.", tone: "warning", age: "6 days ago", read: true, action: "", destination: storage },
 ];
 
 export function notificationsSample(scenario: string): NotificationsState {
   if (scenario === "loading") return { state: "loading" };
   if (scenario === "unavailable") return { state: "unavailable", reason: "Notification data could not be loaded." };
-  if (scenario === "centre") return { state: "ready", items: centreItems, pinned: [] };
-  if (scenario === "centre-earlier") return { state: "ready", items: centreItems.filter(item => item.earlier), pinned: [] };
+  if (scenario === "centre") return { state: "ready", items: [...priorityItems, ...historyItems], pinned: [] };
+  if (scenario === "centre-resolved") return { state: "ready", items: historyItems.map(item => ({ ...item, read: true })), pinned: [] };
   if (scenario === "empty") return { state: "ready", items: [], pinned: [] };
   if (["normal", "ping"].includes(scenario)) return sample;
   throw new Error("notification-sample-missing");

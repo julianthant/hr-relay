@@ -1,42 +1,44 @@
-import { ArrowLeft, Bell, CheckCheck, CircleAlert, CircleCheck, Clock, HardDrive, Info, Unplug, type LucideIcon } from "lucide-react";
-import { forwardRef, useEffect, useRef } from "react";
-import { IconButton, Skeleton, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
+import { Bell, MoreHorizontal } from "lucide-react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, IconButton, Skeleton, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
-import { shortAge, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { itemDay, itemPreview, itemSource, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 import "./notifications-panel.css";
 
-const TONE_COLOR = { danger: "text-ui-danger", warning: "text-ui-warning", positive: "text-ui-positive", info: "text-ui-muted" } as const;
+type Open = (item: NotificationItem) => void;
 
-function itemIcon(item: NotificationItem): LucideIcon {
-  if (item.kind === "storage") return HardDrive;
-  if (item.kind === "chatgpt") return Unplug;
-  return item.tone === "danger" ? CircleAlert : item.tone === "warning" ? Clock : item.tone === "positive" ? CircleCheck : Info;
-}
-
-/** Runs name the subject and workflow on the grey line; the other notices carry their own sentence. */
-const itemLine = (item: NotificationItem) => item.kind === "run" ? `${item.subject} · ${item.workflow}` : item.detail;
-
-function NotificationRow({ item, active, onOpen }: { item: NotificationItem; active: boolean; onOpen: (item: NotificationItem) => void }) {
-  const Icon = itemIcon(item);
+/** Codex rows: title and source tag on one line, a two-line grey preview below; the dot marks unread. */
+function NotificationRow({ item, active, onOpen }: { item: NotificationItem; active: boolean; onOpen: Open }) {
   return <li><button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
-    <Icon aria-hidden className={TONE_COLOR[item.tone]} />
-    <span className="notification-item-copy"><span className="notification-item-title">{item.title}</span><span className="notification-item-line">{itemLine(item)}</span></span>
-    <span className="notification-item-meta"><span className="notification-item-time">{shortAge(item.age)}</span><span aria-hidden className="notification-unread-dot" data-read={item.read} />{!item.read && <span className="sr-only">Unread</span>}</span>
+    <span className="notification-item-head">
+      <span className="notification-item-title">{item.title}</span>
+      <span className="notification-item-tag">{itemSource(item)}</span>
+      {!item.read && <><span aria-hidden className="notification-unread-dot" /><span className="sr-only">Unread</span></>}
+    </span>
+    <span className="notification-item-line">{itemPreview(item)}</span>
   </button></li>;
 }
 
-function NotificationGroup({ label, items, activeId, onOpen }: { label: string; items: readonly NotificationItem[]; activeId: string; onOpen: (item: NotificationItem) => void }) {
-  if (items.length === 0) return null;
-  return <section aria-label={label}><h3 className="notification-group-label">{label}</h3><ul className="notification-list">{items.map(item => <NotificationRow key={item.id} item={item} active={item.id === activeId} onOpen={onOpen} />)}</ul></section>;
+function NotificationGroup({ label, items, activeId, onOpen, action, empty }: { label: string; items: readonly NotificationItem[]; activeId: string; onOpen: Open; action?: ReactNode; empty?: string }) {
+  return <section aria-label={label} className="notification-group"><div className="notification-group-head"><h3 className="notification-group-label">{label}</h3>{action}</div>
+    {items.length === 0 ? <p className="notification-empty">{empty}</p>
+      : <ul className="notification-list">{items.map(item => <NotificationRow key={item.id} item={item} active={item.id === activeId} onOpen={onOpen} />)}</ul>}
+  </section>;
 }
 
-/** The sidebar body while the bell is pressed: header, Today and Earlier groups, or one grey line when there is nothing. */
+/** Day groups in the order their first item appears. */
+function dayGroups(items: readonly NotificationItem[]) {
+  const days = [...new Set(items.map(itemDay))];
+  return days.map(day => ({ day, items: items.filter(item => itemDay(item) === day) }));
+}
+
+/** The sidebar body while the bell is pressed: Priority, then day groups. The sidebar header stays the workflow view's. */
 export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack, notice }: {
-  state: NotificationsState; activeId: string; onReadAll: () => void; onOpen: (item: NotificationItem) => void; onBack: () => void; notice: string;
+  state: NotificationsState; activeId: string; onReadAll: () => void; onOpen: Open; onBack: () => void; notice: string;
 }) {
   const items = state.state === "ready" ? state.items : [];
-  const empty = state.state === "ready" && items.length === 0;
+  const priority = items.filter(item => item.priority);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || document.querySelector('[role="dialog"], [role="menu"]')) return;
@@ -45,18 +47,16 @@ export function NotificationsPanel({ state, activeId, onReadAll, onOpen, onBack,
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
   }, [onBack]);
+  const menu = <DropdownMenu><DropdownMenuTrigger asChild><IconButton label="Notification actions" size="xs" icon={<MoreHorizontal aria-hidden className={dsIcon.md} />} /></DropdownMenuTrigger>
+    <DropdownMenuContent align="end"><DropdownMenuItem disabled={!items.some(item => !item.read)} onClick={onReadAll}>Mark all read</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
   return <section aria-label="Notifications" className="notification-panel font-ui">
-    <header className="settings-nav-header notification-panel-head"><h2>Notifications</h2>
-      <div className="notification-panel-actions">
-        <IconButton label="Mark all read" size="sm" disabled={!items.some(item => !item.read)} icon={<CheckCheck className={dsIcon.md} />} onClick={onReadAll} />
-        <IconButton label="Back to workflows" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={onBack} />
-      </div>
-    </header>
     <div className="notification-panel-scroll rail-scroll">
-      {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="size-4 rounded-full" /><Skeleton className="h-8 flex-1" /></div>)}</div></LoadingRegion>
+      {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="h-10 flex-1" /></div>)}</div></LoadingRegion>
         : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>
-        : empty ? <p className="notification-empty">You're all caught up.</p>
-        : <><NotificationGroup label="Today" items={items.filter(item => !item.earlier)} activeId={activeId} onOpen={onOpen} /><NotificationGroup label="Earlier" items={items.filter(item => item.earlier)} activeId={activeId} onOpen={onOpen} /></>}
+        : <>
+          <NotificationGroup label="Priority" items={priority} activeId={activeId} onOpen={onOpen} action={menu} empty="Nothing needs attention" />
+          {dayGroups(items.filter(item => !item.priority)).map(group => <NotificationGroup key={group.day} label={group.day} items={group.items} activeId={activeId} onOpen={onOpen} />)}
+        </>}
     </div>
     {notice && <p role="status" className="notification-notice">{notice}</p>}
   </section>;
