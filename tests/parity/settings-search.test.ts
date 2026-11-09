@@ -60,7 +60,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.locator('[data-settings-path="urls.crm.prod.onboardingSearch"]')).toBeVisible();
 
       await search.fill("UCPath password");
-      await page.getByRole("link", { name: "UCPath password Credentials" }).click();
+      await page.getByRole("link", { name: "UCPath password Account" }).click();
       const password = page.locator('[data-settings-path="protected.ucpathPassword"]');
       await expect(password).toBeFocused();
       await expect(password.locator("input")).toHaveAttribute("type", "password");

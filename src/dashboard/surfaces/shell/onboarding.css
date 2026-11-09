@@ -1,5 +1,5 @@
 .hub-onboarding {
-  --form-width:440px; --rail-gap:25.2px; --section-gap:24px; --control-height:36px; --button-bg:var(--hub-primary); --button-ink:var(--hub-primary-ink);
+  --form-width:440px; --rail-gap:25.2px; --section-gap:24px; --control-height:32px; --button-bg:var(--ui-info); --button-ink:var(--ui-canvas);
 }
 [data-demo-theme="dark"] .hub-onboarding { }
 .hub-onboarding { font-size:13.5px; line-height:1.5; -webkit-font-smoothing:antialiased; }
@@ -42,8 +42,8 @@
 .hub-onboarding .secret { display:flex; gap:0; align-items:center; border:1px solid var(--ui-stroke-control); border-radius:8px; background:var(--ui-table); }
 .hub-onboarding .secret input { border:0; background:transparent; }
 .hub-onboarding .secret .show-password { border:0; background:transparent; color:var(--ui-secondary); border-radius:6px; padding:2px 8px; min-height:28px; margin-right:4px; font-size:12px; }
-.hub-onboarding .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:var(--control-height); padding:7px 14px; border:1px solid var(--ui-stroke-control); border-radius:8px; background:var(--ui-panel); color:var(--ui-primary); font-size:inherit; font-weight:500; white-space:nowrap; text-decoration:none; }
-.hub-onboarding .btn.primary { background:var(--button-bg); color:var(--button-ink); }
+.hub-onboarding .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:var(--control-height); padding:7px 14px; border:1px solid var(--ui-stroke); border-radius:10px; background:var(--ui-panel); color:var(--ui-primary); font-size:inherit; font-weight:400; white-space:nowrap; text-decoration:none; }
+.hub-onboarding .btn.primary { background:var(--button-bg); color:var(--button-ink); border-color:transparent; }
 .hub-onboarding .btn.full { width:100%; }
 .hub-onboarding .btn:active:not(:disabled) { transform:translateY(1px); }
 .hub-onboarding .text-link { display:inline-flex; align-items:center; gap:6px; color:var(--ui-primary); text-decoration:underline; text-decoration-color:var(--ui-stroke-control); text-underline-offset:3px; background:transparent; border:0; padding:2px 0; border-radius:3px; font-size:inherit; }
@@ -72,7 +72,7 @@
 .hub-onboarding .ready-list li { display:flex; align-items:center; gap:10px; }
 .hub-onboarding .ready-list .icon { color:var(--ui-primary); }
 @media(min-width:1920px) {
-  .hub-onboarding { --form-width:560px; --rail-gap:39.6px; --section-gap:28px; --control-height:40px; }
+  .hub-onboarding { --form-width:560px; --rail-gap:39.6px; --section-gap:28px; --control-height:36px; }
   .hub-onboarding { font-size:15px; }
   .hub-onboarding h1 { font-size:32px; }
   .hub-onboarding h2 { font-size:24px; }
@@ -82,7 +82,7 @@
   .hub-onboarding .progress-marker { width:28px; height:28px; }
 }
 @media(min-width:2560px) {
-  .hub-onboarding { --form-width:640px; --rail-gap:50.4px; --section-gap:32px; --control-height:44px; }
+  .hub-onboarding { --form-width:640px; --rail-gap:50.4px; --section-gap:32px; --control-height:40px; }
   .hub-onboarding { font-size:16px; }
   .hub-onboarding h1 { font-size:36px; }
   .hub-onboarding h2 { font-size:26px; }

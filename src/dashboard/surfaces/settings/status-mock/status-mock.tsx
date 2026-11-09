@@ -1,15 +1,15 @@
-import { Check, ChevronDown, ExternalLink, LoaderCircle, X } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
-import { BodySection, Button, ButtonLink, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, FormGroup, IconButton, PageHeading, ResultRow, SearchInput, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
-import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, PageHeading, SearchInput, Select, dsIcon, useToasts } from "../../../ds/ui.js";
+import { AccountSettings, type AccountChatGpt, type AccountValues } from "../account/account-settings.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
 import { ACTIVITY_DATE_PRESETS } from "../../activity/activity-model.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
 import { OutcomeBar, OutcomeLegend, RunsPerDayChart, ShareBar } from "./status-mock-charts.js";
-import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_SPREADSHEETS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockCounts, type StatusMockId } from "./status-mock-model.js";
+import { STATUS_MOCK_ACCOUNT, STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_SPREADSHEETS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockCounts, type StatusMockId } from "./status-mock-model.js";
 
 const noop = () => undefined;
 
@@ -70,16 +70,17 @@ function ToastsLiveMock() {
   return null;
 }
 
-/** General's ChatGPT section carries its own state, checked automatically. */
-export function StatusMockChatGpt({ state }: { state: "working" | "limit" | "disconnected" }) {
-  const dot = state === "working" ? "verifiedDone" : state === "limit" ? "parked" : "failed";
-  const head = (label: string) => <span className="inline-flex items-center gap-2"><StatusDot status={dot} />{label}</span>;
-  return <BodySection title="ChatGPT"><FormGroup label="ChatGPT">
-    {state === "disconnected"
-      ? <ResultRow label={head("Disconnected")} description="Connect your ChatGPT account to Relay." value={<Button variant="primary">Connect ChatGPT</Button>} />
-      : <ResultRow label={head("Jordan Lee · jordan.lee@example.com")} description={state === "limit" ? "Usage limit reached · resets 9:40 PM" : "Working · checked 2 min ago"}
-        value={<span className="inline-flex items-center gap-2"><ButtonLink variant={state === "limit" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink><Button variant="ghost">Disconnect</Button></span>} />}
-  </FormGroup></BodySection>;
+/** The Account page on fixtures: every frame starts from its own state, and edits stay local. */
+export function StatusMockAccount({ frame }: { frame: StatusMockId }) {
+  const [values, setValues] = useState<AccountValues>(STATUS_MOCK_ACCOUNT.values);
+  const [duo, setDuo] = useState<"ready" | "setup">(frame === "account-duo-setup" ? "setup" : "ready");
+  const [chatgpt, setChatGpt] = useState<AccountChatGpt>(frame === "general-a-chatgpt-disconnected" ? { state: "disconnected" }
+    : frame === "general-a-chatgpt-limit" ? { state: "limit", email: STATUS_MOCK_ACCOUNT.email, note: STATUS_MOCK_ACCOUNT.limitNote } : { state: "connected", email: STATUS_MOCK_ACCOUNT.email });
+  return <AccountSettings values={values} duo={duo} chatgpt={chatgpt}
+    initialEdit={frame === "account-edit" ? "name" : undefined} initialConfirmDelete={frame === "account-delete"}
+    onSave={(field, value) => { if (field !== "ucpathPassword") setValues(current => ({ ...current, [field]: value })); }}
+    onDuoSetup={() => setDuo("ready")} onSignOut={noop}
+    onChatGptConnect={() => setChatGpt({ state: "connected", email: STATUS_MOCK_ACCOUNT.email })} onChatGptDisconnect={() => setChatGpt({ state: "disconnected" })} onDelete={noop} />;
 }
 
 function Tile({ tile }: { tile: (typeof STATUS_MOCK_ANALYTICS.tiles)[number] }) {

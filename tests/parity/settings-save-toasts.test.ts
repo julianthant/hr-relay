@@ -103,11 +103,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(toasts).toHaveCount(0, { timeout: 6000 });
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
-      await page.getByRole("link", { name: "Credentials", exact: true }).click();
+      await page.getByRole("link", { name: "Account", exact: true }).click();
       const username = page.getByRole("textbox", { name: "UCPath username", exact: true });
       await username.fill("synthetic-toast-user");
       await expect(toasts).toHaveCount(0);
-      await page.getByRole("heading", { name: "Credentials", exact: true }).click();
+      await page.getByRole("heading", { name: "Account", exact: true }).click();
       await expect(toasts.filter({ hasText: "Saved UCPath username" })).toBeVisible();
       await expect(toasts).not.toContainText("synthetic-toast-user");
       await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
@@ -115,7 +115,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await page.route("**/api/v1/commands", route => route.fulfill({ status: 403, json: { state: "error", code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "private-server-sentinel", retryable: false } }), { times: 1 });
       await username.fill("private-refused-sentinel");
-      await page.getByRole("heading", { name: "Credentials", exact: true }).click();
+      await page.getByRole("heading", { name: "Account", exact: true }).click();
       const refused = toasts.filter({ hasText: "Credentials weren't saved" });
       await expect(refused).toHaveCount(1);
       await expect(page.getByText("Credentials weren't saved", { exact: true })).toBeVisible();

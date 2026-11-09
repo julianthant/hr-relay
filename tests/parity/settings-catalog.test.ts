@@ -85,7 +85,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     expect(protectedBaseline).toBe(server.protectedRevision());
     await page.setViewportSize({ width: 1024, height: 720 }); await installTheme(page, theme);
     await page.goto(`${server.url}/?settings=general`);
-    await page.getByRole("link", { name: "Credentials", exact: true }).click();
+    await page.getByRole("link", { name: "Account", exact: true }).click();
     const password = page.getByLabel("UCPath password", { exact: true });
     await expect(password).toHaveAttribute("type", "password"); await expect(password).toHaveValue("disposable-fixture-password");
     await password.fill(secret);
@@ -109,7 +109,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     expect(ProtectedSettingsCommandRequestSchema.parse(attempts[1]).payload.writeId).toBe(original.payload.writeId);
     await expect(password).toHaveValue(secret);
     await expect(password).toHaveAttribute("type", "password");
-    await page.getByRole("link", { name: "Credentials", exact: true }).click();
+    await page.getByRole("link", { name: "Account", exact: true }).click();
     await page.getByRole("button", { name: "Remove UCPath password", exact: true }).click();
     const removal = page.getByRole("dialog", { name: "Remove UCPath password?", exact: true });
     await expect(removal).toBeVisible();
@@ -153,7 +153,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     const files = readdirSync(join(server.root, ".tracker"), { recursive: true, withFileTypes: true }).filter(file => file.isFile() && /\.(?:sqlite|db)(?:-wal|-shm)?$/u.test(file.name));
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) expect(readFileSync(join(file.parentPath, file.name)).includes(Buffer.from(secret))).toBe(false);
-    await page.getByRole("link", { name: "Credentials", exact: true }).click();
+    await page.getByRole("link", { name: "Account", exact: true }).click();
     const count = attempts.length;
     await password.fill("");
     await expect(page.getByText("Enter a valid value for this credential.", { exact: true })).toBeVisible();

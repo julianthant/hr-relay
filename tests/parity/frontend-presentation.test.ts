@@ -34,7 +34,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(performanceLink).toHaveCSS('color', 'rgb(178, 178, 178)');
       expect(colors.radius).toBe('10px');
       const selectedBounds = (await general.boundingBox())!;
-      const otherBounds = (await sidebar.getByRole("link", { name: "Credentials", exact: true }).boundingBox())!;
+      const otherBounds = (await sidebar.getByRole("link", { name: "Account", exact: true }).boundingBox())!;
       expect(selectedBounds.height).toBe(33.5);
       expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(0);
       await expect(sidebar.getByText('Personal', { exact: true })).toHaveCSS('font-size', '11px');

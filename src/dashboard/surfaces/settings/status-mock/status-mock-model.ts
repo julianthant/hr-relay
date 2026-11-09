@@ -1,6 +1,13 @@
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "settings-storage", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "settings-storage", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-duo-setup", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
+
+/** Account page fixtures: Email is not served after sign-in, so the page has no email row. */
+export const STATUS_MOCK_ACCOUNT = {
+  values: { name: "Jordan Lee", initials: "JL", timekeeper: "Lee, Jordan", ucpathUsername: "jlee", lastSignedIn: "Aug 3, 2026, 8:41 AM" },
+  email: "jordan.lee@example.com",
+  limitNote: "Usage limit reached · resets 9:40 PM",
+} as const;
 
 /** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. */
 const LOADED_MOCK: StatusMockId | undefined = typeof window === "undefined" ? undefined
