@@ -85,10 +85,6 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
     download: [click("Open iDocs and enumerate attachments"), read("Attachments", [["Documents", "2"], ["Selected files", "entry-sheet.pdf, onboarding-packet.pdf"]]), click("Download the selected PDFs"), read("Download readback", [["Files", "entry-sheet.pdf, onboarding-packet.pdf"], ["Folder", "$name"]])],
     archive: [read("Archive identity", [["Legal name", "$name"], ["Lived name", "$name"]]), click("Create the employee's document archive"), read("Archive output", [["PDFs", "2"], ["Folder", "$name"], ["Archive ZIP", "Jordan-Lee-documents.zip"]])],
   },
-  "sharepoint-download": {
-    navigate: [read("Configured destination", [["Spreadsheet", "Onboarding Roster"], ["Provider", "SharePoint"]]), click("Open Excel Online"), read("Viewer", [["Workbook", "Onboarding Roster"], ["Authentication", "Authenticated"]])],
-    download: [click("File → Create a Copy → Download a Copy"), read("Downloaded workbook", [["Spreadsheet", "Onboarding Roster"], ["Filename", "onboarding-roster.xlsx"], ["Saved to", "Roster folder"], ["File validation", "Workbook readable"]])],
-  },
   "old-kronos-reports": {
     searching: [fill("Workforce Central search", [["Employee ID", "$employeeId"]]), click("Search employees"), read("Search result", [["Found", "Yes"], ["Matching rows", "1"]])],
     extracting: [read("Selected employee", [["Employee ID", "$employeeId"], ["Employee name", "$name"]])],

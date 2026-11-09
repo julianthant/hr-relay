@@ -328,7 +328,6 @@ describe_m3("legacy workflow previews", () => {
     const files = [file, { ...file, name: "second.pdf", digest: "second" }];
     expect_m3(mockLaunchCount_m3("emergency-contact", draft("emergency-contact", { files }))).toBe(2);
     expect_m3(mockLaunchCount_m3("onbase", draft("onbase", { files }))).toBe(1);
-    expect_m3(mockLaunchCount_m3("sharepoint-download", draft("sharepoint-download"))).toBe(1);
     expect_m3(mockLaunchCount_m3("onbase", draft("onbase", { files: [] }))).toBe(0);
   });
   it_m3("shows only the current processing mode's customizable steps", () => {

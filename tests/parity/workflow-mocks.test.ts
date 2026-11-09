@@ -124,7 +124,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
           await expect(logs.getByRole("heading", { level: 2 })).toHaveText(sample.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");
-          if (flow.id === "sharepoint-download") { await expect(logs).toContainText("Onboarding Roster.xlsx"); await expect(logs).toContainText("Download roster"); }
           await expect(logs.getByRole("button", { name: "Rerun", exact: true })).toHaveCount(0);
 
           continue;

@@ -232,7 +232,7 @@ export function seedMockRuns(): readonly MockRun[] {
     });
     return delegateMockOcr(parent);
   });
-  return runs.map(run => ["i9-lookup", "sharepoint-download"].includes(run.workflowId) ? { ...run, parentId: "mock:onbase:sample", parentWorkflowId: "onbase" } : run);
+  return runs.map(run => run.workflowId === "i9-lookup" ? { ...run, parentId: "mock:onbase:sample", parentWorkflowId: "onbase" } : run);
 }
 
 export function mockRunSubset(runs: readonly MockRun[], include: (run: MockRun) => boolean): readonly MockRun[] {
