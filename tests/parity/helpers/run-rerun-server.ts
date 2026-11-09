@@ -25,7 +25,7 @@ import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { assertServedBundle, PARITY_DIST_DIR } from "./bundle.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
-import { populatedProtectedRecord } from "../../support/fixtures/preflight/runtime-fixture.js";
+import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
 
 const retainedRunRerunFixtureOwners = new Set<object>();
@@ -42,7 +42,7 @@ export async function startRunRerunServer() {
 export async function startSeparationsStartServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
   const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig, {
-    descriptor: separationsDescriptor, protectedSecrets: { read: populatedProtectedRecord },
+    descriptor: separationsDescriptor, protectedSecrets: protectedSecretSource({ ucpathUserId: "private-marker", ucpathPassword: "private-marker", profileName: "Synthetic Timekeeper" }),
   });
   const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
   retainedRunRerunFixtureOwners.add(held);
