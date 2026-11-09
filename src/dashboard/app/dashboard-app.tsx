@@ -45,8 +45,8 @@ SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
 import { StatusMockHost } from "../surfaces/settings/status-mock/status-mock.js";
-import { STATUS_MOCK_UNKNOWN_COMMAND, statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
-import { Banner,Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { STATUS_MOCK_BULK_OUTCOME, STATUS_MOCK_COMMAND_RESULTS, STATUS_MOCK_UNKNOWN_COMMAND, statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
+import { Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
@@ -413,7 +413,7 @@ function LoadedApp({
   }, [dayResource]);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
-  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
+  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => statusMock() === "command-results" ? STATUS_MOCK_COMMAND_RESULTS : []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
@@ -468,7 +468,7 @@ function LoadedApp({
   /** Keep partial batch results until dismissed so every outcome can be read. */
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
   const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
-  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(null);
+  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
   const commandLabels = useRef(new Map<string, string>());
@@ -1178,7 +1178,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
         />
-        {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">{PAUSE_ALL_EFFECT}</Banner>}
+        {quitting && <Notice sticky tone="info" title="Relay quits after runs pause" description={PAUSE_ALL_EFFECT} />}
         {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held. Reload Relay to check the connection." />}
         {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
           .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}

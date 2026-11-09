@@ -532,3 +532,57 @@ test("sidebar click-through shows the mock pages", async ({ page }) => {
   }
   expect(errors).toEqual([]);
 });
+
+// Logs footer states: waiting for review (Records) and failed (Rerun), with the footer tooltips; the old assistant launcher is hidden so the footer's right group shows.
+for (const theme of THEMES) test(`logs footer states @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  const logs = page.locator(".dashboard-log-column");
+  const shot = async (name: string) => { await settle(page); await page.screenshot({ path: join(OUT, `${name}-${theme}-${WIDTH}.png`) }); };
+  await page.getByRole("button", { name: "Emergency Contact" }).first().click();
+  await page.getByRole("button", { name: /emergency-contacts\.pdf/ }).first().click();
+  await expect(logs.getByRole("button", { name: /^Records \d+$/ })).toBeVisible();
+  await shot("logs-waiting");
+  await logs.getByRole("button", { name: /^Records \d+$/ }).hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(OUT, `logs-waiting-tooltip-${theme}-${WIDTH}.png`) });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  await page.locator(".notification-panel").getByRole("button", { name: /Run failed/ }).click();
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+  await expect(logs.getByRole("button", { name: "Rerun", exact: true })).toBeVisible();
+  await shot("logs-failed");
+  await logs.getByRole("button", { name: "Rerun", exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(OUT, `logs-failed-tooltip-${theme}-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});
+
+// Banner audit: command results that used to be inline strips above the columns are sticky toasts; the bulk result opens in a dialog.
+for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+  const queueTop = () => page.locator(".dashboard-log-column").evaluate(node => Math.round(node.getBoundingClientRect().top));
+  const top = await queueTop();
+  const toasts = page.locator("[data-slot=toast]");
+  await expect(toasts).toHaveCount(3);
+  expect(await queueTop()).toBe(top);
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-results-toasts-${theme}-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});

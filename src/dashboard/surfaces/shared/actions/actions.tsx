@@ -2,7 +2,6 @@ import { useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
-  Ban,
   CheckCircle2,
   ChevronsUp,
   CircleSlash,
@@ -32,8 +31,7 @@ import {
   Dialog,
   DialogContent,
   DialogFooter,
-  IconButton,
-  dsBorder,
+  Notice,
   dsFocus,
   dsIcon,
   dsMotion,
@@ -69,72 +67,12 @@ export function CommandResultFeed({
   onDismiss: (id: string) => void;
   onRefreshRow: (entry: CommandResultFeedEntry) => void;
 }) {
-  if (results.length === 0) return null;
-  return (
-    <div
-      className={cn(
-        "flex shrink-0 flex-col border-b bg-[var(--ds-recess-bg)]",
-        dsBorder.subtle,
-        "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
-      )}
-      aria-live="polite"
-      data-queue-command-result-feed=""
-    >
-      {results.map((entry) => {
-        const conflict = entry.settlement.reason === "conflict";
-        const tone = conflict
-          ? {
-            wrap: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)]",
-            text: "text-[color:var(--ds-status-waiting-fg)]",
-            icon: <AlertTriangle aria-hidden className={dsIcon.md} />,
-            word: "Conflict",
-          }
-          : {
-            wrap: "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
-            text: "text-[color:var(--ds-danger)]",
-            icon: <Ban aria-hidden className={dsIcon.md} />,
-            word: "Rejected",
-          };
-        return (
-          <div key={entry.id} className={cn("border px-[var(--ds-space-base)] py-[var(--ds-space-snug)]", dsRadius.md, tone.wrap)}>
-            <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-              <span className={cn("inline-flex shrink-0", tone.text)}>{tone.icon}</span>
-              <span className={cn(dsText.caps, "shrink-0", tone.text)}>{tone.word}</span>
-              <span className={cn(dsText.body, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-                {entry.actionLabel} — {entry.subject}
-              </span>
-              <span className={cn(dsText.micro, dsText.nums, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                {entry.actionLabel} · {entry.clock}
-              </span>
-              <IconButton
-                size="sm"
-                label="Dismiss this result"
-                onClick={() => onDismiss(entry.id)}
-                icon={<X aria-hidden className={dsIcon.sm} />}
-              />
-            </div>
-            <p className={cn(dsText.meta, "mt-[var(--ds-space-hair)] pl-5 leading-relaxed text-[color:var(--ds-fg-muted)]")}>
-              {entry.settlement.message}
-            </p>
-            {conflict ? (
-              <div className="mt-[var(--ds-space-tight)] flex items-center gap-[var(--ds-space-base)] pl-5">
-                <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-status-waiting-fg)]")}>
-                  row rev {entry.expectedVersion} → server {entry.settlement.currentVersion}
-                </span>
-                <Button size="sm" variant="outline" onClick={() => onRefreshRow(entry)}>
-                  Refresh this row
-                </Button>
-              </div>
-            ) : (
-              <p className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] pl-5 text-[color:var(--ds-danger)]")}>
-                code {(entry.settlement.reason === "rejected" ? entry.settlement.code : "confirmation-required")} · {entry.subject} · {entry.workflowLabel}
-              </p>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+  return <>{results.map(entry => {
+    const conflict = entry.settlement.reason === "conflict";
+    return <Notice key={entry.id} sticky tone={conflict ? "warning" : "danger"} title={`${entry.actionLabel}: ${conflict ? "row changed" : "rejected"}`}
+      description={`${entry.subject} · ${entry.settlement.message}`} onClose={() => onDismiss(entry.id)}
+      action={conflict ? { label: "Refresh row", onClick: () => onRefreshRow(entry) } : undefined} />;
+  })}</>;
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
