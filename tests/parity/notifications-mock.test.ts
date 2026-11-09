@@ -235,7 +235,12 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   await palette.getByRole("button", { name: "Workflows", exact: true }).click();
   await expect(palette.getByRole("button", { name: "Workflows", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(label("Runs")).toHaveCount(0);
-  await page.mouse.move(1, 1);
+  const hovered = palette.getByRole("button", { name: "Spreadsheets", exact: true });
+  await hovered.hover();
+  const fill = (name: string) => palette.getByRole("button", { name, exact: true }).evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(await fill("Spreadsheets")).not.toBe("rgba(0, 0, 0, 0)");
+  expect(await fill("Spreadsheets")).not.toBe(await fill("Workflows"));
+  expect(await palette.getByRole("button", { name: "Runs", exact: true }).evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
   await shot(page, "palette-chip", theme);
 
   // No matches is one grey line.
