@@ -1,5 +1,5 @@
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "toasts", "toasts-storage", "toasts-restored", "general-a", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "toasts", "toasts-storage", "toasts-restored", "general-a", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 /** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. */
@@ -29,14 +29,17 @@ export const STATUS_MOCK_TOASTS = {
 /** Readiness blockers by frame. The roster blocker shows only when the library has no usable spreadsheet; otherwise the picker preselects the last one used. */
 export const STATUS_MOCK_BLOCKERS = {
   "run-a": [{ id: "roster", title: "Import a roster first", note: "Relay matches each scan against it.", action: "Import" }],
+  "run-rerun": [{ id: "chatgpt", title: "ChatGPT is disconnected", note: "Relay reads the scans with your ChatGPT plan.", action: "Reconnect" }],
   "run-b": [{ id: "chatgpt", title: "ChatGPT is disconnected", note: "Relay reads the scans with your ChatGPT plan.", action: "Reconnect" }],
 } as const;
 
-/** The workflow's spreadsheets in the library; the first is the last one used for Emergency Contact. */
+/** The workflow's spreadsheets in the library. A spreadsheet that lacks a required column is listed disabled with the reason; `used` is the last selection for the workflow. */
 export const STATUS_MOCK_SPREADSHEETS = [
-  { value: "ec-roster-oct", label: "EC roster Oct 2026", description: "Last used · updated Nov 2" },
-  { value: "ec-roster-sep", label: "EC roster Sep 2026", description: "Updated Oct 3" },
+  { value: "ec-roster-oct", label: "EC roster Oct 2026", description: "Updated Nov 2", used: true },
+  { value: "student-staff", label: "Student staff roster", description: "Updated Oct 28", used: true },
+  { value: "old-contacts", label: "Old contacts list", description: "No Name column", disabled: true, used: false },
 ] as const;
+export const STATUS_MOCK_REQUIRED_FIELDS = "EID, Name";
 
 export const STATUS_MOCK_FIRST_RUN = [
   { id: "browser", label: "Browser for workflows", state: "ok" },

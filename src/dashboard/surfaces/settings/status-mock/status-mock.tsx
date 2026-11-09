@@ -1,6 +1,6 @@
 import { Check, ExternalLink, LoaderCircle } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { BodySection, Button, ButtonLink, ChoicePicker, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { BodySection, Button, ButtonLink, Checkbox, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
 import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
@@ -23,17 +23,23 @@ function MockRow({ label, description, value }: { label: ReactNode; description?
 const MockCard = ({ children }: { children: ReactNode }) => <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">{children}</div>;
 
 /** Readiness blockers inside the real Run dialog: one row each, reason on the left, its fix on the right. */
-export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
+export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" | "run-rerun" }) {
   return <section aria-label="Before you start" className="flex flex-col gap-2">
     <h4 className="m-0 text-heading font-semibold">Before you start</h4>
     <MockCard>{STATUS_MOCK_BLOCKERS[frame].map(blocker => <MockRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}</MockCard>
   </section>;
 }
 
-/** The dialog's roster picker: the person chooses the reference spreadsheet; the last one used is preselected. */
+/** The dialog's roster picker: one or more spreadsheets, looked up together. Only spreadsheets with the required columns can be chosen; the last selection is preselected. */
 export function StatusMockRosterPicker() {
-  const [value, setValue] = useState<string>(STATUS_MOCK_SPREADSHEETS[0].value);
-  return <ChoicePicker label="Reference spreadsheet" value={value} options={STATUS_MOCK_SPREADSHEETS} onChange={setValue} />;
+  const [chosen, setChosen] = useState<readonly string[]>(STATUS_MOCK_SPREADSHEETS.filter(sheet => sheet.used).map(sheet => sheet.value));
+  return <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0"><legend className="mb-1 p-0 text-meta font-medium text-ui-secondary">Reference spreadsheets</legend>
+    <MockCard>{STATUS_MOCK_SPREADSHEETS.map(sheet => <div key={sheet.value} className="border-b border-ui-stroke px-4 py-3 last:border-b-0">
+      <Checkbox label={sheet.label} description={sheet.description} disabled={"disabled" in sheet} checked={chosen.includes(sheet.value)}
+        onCheckedChange={value => setChosen(current => value === true ? [...current, sheet.value] : current.filter(item => item !== sheet.value))} />
+    </div>)}</MockCard>
+    <p className="m-0 text-caption text-ui-muted">Uses: {STATUS_MOCK_REQUIRED_FIELDS}</p>
+  </fieldset>;
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */
