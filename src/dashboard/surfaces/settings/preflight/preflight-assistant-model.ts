@@ -66,7 +66,9 @@ export function createServedPreflightAssistantPort(client: Pick<AssistantQueries
         if (next.state === "passed") expiry = setTimeout(() => { if (mine === epoch) set({ state: "idle" }); }, ASSISTANT_VERIFICATION_WINDOW_MS);
       };
       try {
-        const result = await client.assistantRespond({ message: ASSISTANT_VERIFY_COMMAND }, abort.signal);
+        // Verification stores nothing, so it needs no served chat.
+        const envelope = await client.assistantRespond({ conversationId: crypto.randomUUID(), expectedRevision: 1, messageId: crypto.randomUUID(), message: ASSISTANT_VERIFY_COMMAND }, abort.signal);
+        const result = envelope.kind === "result" ? envelope.result : { state: "refused" as const, code: "ASSISTANT_VERIFICATION_FAILED" as const };
         settle(result.state === "answered" ? { state: "passed" } : { state: "failed", message: result.state === "refused" ? ASSISTANT_FAILURES[result.code] : ASSISTANT_FAILURES.ASSISTANT_VERIFICATION_FAILED });
         if (mine !== epoch) return;
         refreshing = true;

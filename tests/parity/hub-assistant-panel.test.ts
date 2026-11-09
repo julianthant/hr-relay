@@ -1,8 +1,9 @@
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 import { z } from 'zod';
+import { ASSISTANT_UNKNOWN_NOTICE } from '../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { ERROR_CATALOG } from '../../src/models/failures/error-catalog.js';
-import { ASSISTANT_START_PROPOSAL } from '../support/fixtures/dashboard/assistant-start.js';
+import { ASSISTANT_PAUSE_PROPOSAL, ASSISTANT_RERUN_PROPOSAL, ASSISTANT_SEPARATIONS_MULTI_PROPOSAL, ASSISTANT_START_PROPOSAL } from '../support/fixtures/dashboard/assistant-start.js';
 import { createServer as createHttpServer } from 'node:http';
 import { resolve } from 'node:path';
 import { preview, type PreviewServer } from 'vite';
@@ -85,8 +86,9 @@ test('assistant menu selection, popup and motion contracts', { annotation: [{ ty
   const effort = page.getByRole('button', { name: 'Thinking effort: Medium', exact: true });
   await effort.focus(); await effort.press('Space'); await expect(page.getByRole('menu')).toBeVisible();
   await page.keyboard.press('Home'); await expect(page.getByRole('menuitemradio', { name: 'Light', exact: true })).toBeFocused();
-  await page.keyboard.press('ArrowDown'); await expect(page.getByRole('menuitemradio', { name: 'Low', exact: true })).toBeFocused(); await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: 'Thinking effort: Low', exact: true })).toBeFocused();
+  await expect(page.getByRole('menuitemradio')).toHaveText(['Light', 'Medium', 'High', 'xHigh', 'Max']);
+  await page.keyboard.press('End'); await expect(page.getByRole('menuitemradio', { name: 'Max', exact: true })).toBeFocused(); await page.keyboard.press('Space');
+  await expect(page.getByRole('button', { name: 'Thinking effort: Max', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Voice input', exact: true }).click();
   const menu = page.getByRole('menu'), anchor = await page.getByRole('button', { name: 'Voice input', exact: true }).boundingBox();
   expect(await menu.evaluate(element => getComputedStyle(element).transform)).toBe('none');
@@ -129,20 +131,19 @@ for (const scene of ['new', 'ask-read', 'ask-write', 'permission-changed', 'work
   });
 }
 
-test('served local action uses the existing card and keeps lost confirmation non-retryable', async ({ page }, info) => {
+test('served run action uses the card; a lost confirmation is the one unknown line and is never retried', async ({ page }, info) => {
   for (const lost of [false, true]) {
     await page.goto(`${baseUrl}?served=1&lost=${lost ? '1' : '0'}`);
     const input = page.getByRole('textbox', { name: 'Message Relay' });
-    await expect(input).toBeEnabled(); await input.fill('mark notifications read');
+    await expect(input).toBeEnabled(); await input.fill('pause it');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    const card = page.getByRole('article', { name: 'Proposed Mark a notification read' });
+    const card = page.getByRole('article', { name: `Proposed ${ASSISTANT_PAUSE_PROPOSAL.label}` });
     await expect(card).toContainText('Local change');
-    await expect(card).toContainText('Local notification');
-    await expect(card).not.toContainText('Dry run'); await expect(card).not.toContainText('Alex Rivera');
+    await expect(card).not.toContainText('Dry run');
     const confirm = card.getByRole('button', { name: 'Confirm', exact: true }); await expect(confirm).toBeEnabled();
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost' : 'ready'}.png`) });
     await confirm.click();
-    if (lost) { await expect(card).toContainText('Action outcome is unknown. Do not retry'); await expect(confirm).toBeDisabled(); }
+    if (lost) { await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1); await expect(card).toHaveCount(0); }
     else await expect(page.getByLabel('Resolved proposal')).toContainText('Done');
     await expect(page.locator('body')).toHaveAttribute('data-decisions', '1');
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'unknown' : 'complete'}.png`) });
@@ -154,37 +155,37 @@ test('served automatic unknown and lost respond have no Retry or new Send', asyn
     await page.goto(`${baseUrl}?served=1&${mode}=1`);
     const input = page.getByRole('textbox', { name: 'Message Relay' }); await expect(input).toBeEnabled();
     await input.fill('mark notifications read'); await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    await expect(page.getByText(/Action outcome is unknown/).first()).toBeVisible();
+    await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1);
     await expect(page.getByRole('button', { name: 'Retry reply' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
-    if (mode === 'autoUnknown') {
-      const card = page.getByRole('article', { name: /^Proposed / });
-      await expect(card).toContainText('25 current notifications'); await expect(card.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
-    } else await expect(page.getByRole('article', { name: /^Proposed / })).toHaveCount(0);
+    await expect(page.getByRole('article', { name: /^Proposed / })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(Confirm|Cancel)$/u })).toHaveCount(0);
     await expect(page.locator('body')).not.toHaveAttribute('data-decisions');
     await page.screenshot({ path: info.outputPath(`automatic-${mode}.png`) });
   }
 });
 
-const LOCAL_PROPOSAL = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1, expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', subject: 'none', effect: 'local-write' };
 const CONNECTED = { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' };
 const SERVED_SCENES = {
-  'signed-out': { account: { state: 'signed-out' }, strip: 'Reconnect the ChatGPT account' },
+  'signed-out': { account: { state: 'signed-out' }, strip: 'Reconnect ChatGPT to use the assistant.' },
   unverified: { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/ },
   'unverified-narrow': { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/, width: 300 },
   disabled: { account: { ...CONNECTED, planUsage: 'disabled' }, strip: /Open Settings/ },
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
-  proposal: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL } },
+  'local-change': { account: CONNECTED, respond: { state: 'answered', text: 'Marked 2 notifications read.' }, answer: 'Marked 2 notifications read.' },
   'start-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } },
-  confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'applied' },
-  unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'lost' },
+  'rerun-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Person', 'Sample, Avery EID 10101010'], ['Options', 'Read only']] },
+  'pause-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Person', 'Sample, Avery EID 10101010'], ['Options', 'Local change · Pause']] },
+  'separations-multi-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_SEPARATIONS_MULTI_PROPOSAL }, facts: [['Document', '4501'], ['Document', '4502'], ['Total', '2'], ['Options', 'Read only']] },
+  confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, confirm: 'applied' },
+  unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL }, confirm: 'lost' },
   refused: { account: CONNECTED, respond: 'fail' },
 } as const;
 for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Object.entries(SERVED_SCENES)) {
   test(`assistant served ${scene} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-served-${scene}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
     await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: spec.account }));
-    if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => spec.respond === 'fail' ? route.fulfill({ json: { state: 'refused', code: 'ASSISTANT_VERIFICATION_FAILED', message: 'x' } }) : route.fulfill({ json: spec.respond }));
-    await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: LOCAL_PROPOSAL.actionId } }));
+    if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => route.fulfill({ json: { kind: 'result', result: spec.respond === 'fail' ? { state: 'refused', code: 'ASSISTANT_VERIFICATION_FAILED', message: 'x' } : spec.respond } }));
+    await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: ASSISTANT_PAUSE_PROPOSAL.actionId } }));
     await page.goto(`${baseUrl}/?served=1&transport=1&theme=${theme}`);
     const panel = page.locator('#hub-panel-assistant'), input = panel.getByRole('textbox', { name: 'Message Relay' });
     if ('width' in spec) await panel.evaluate((element, width) => { element.style.width = `${width}px`; }, spec.width);
@@ -194,13 +195,17 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
       await expect(panel.locator('.hub-composer')).toBeVisible();
     } else {
       await expect(input).toBeEnabled(); await input.fill('do it'); await input.press('Enter');
-      if ('confirm' in spec) { await panel.getByRole('button', { name: 'Confirm', exact: true }).click(); await expect(panel.getByLabel(spec.confirm === 'lost' ? 'Proposed Mark a notification read' : 'Resolved proposal')).toBeVisible(); }
+      if ('confirm' in spec) { await panel.getByRole('button', { name: 'Confirm', exact: true }).click(); if (spec.confirm === 'lost') { await expect(panel.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1); await expect(panel.getByRole('article')).toHaveCount(0); } else await expect(panel.getByLabel('Resolved proposal')).toBeVisible(); }
       else if (spec.respond === 'fail') await expect(panel.getByText(/Assistant verification failed/)).toBeVisible();
+      else if ('answer' in spec) { await expect(panel.getByText(spec.answer, { exact: true })).toBeVisible(); await expect(panel.getByRole('article')).toHaveCount(0); }
       else await expect(panel.getByRole('article')).toBeVisible();
+      if ('facts' in spec) expect(await panel.locator('.hub-facts dt').evaluateAll(terms => terms.map(term => [term.textContent, term.nextElementSibling?.textContent]))).toEqual(spec.facts);
     }
     const boxes = await panel.locator('.hub-toolbar').first().locator('> *').evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return [box.left, box.right]; }));
     boxes.forEach((box, index) => { if (index > 0) expect(box[0]).toBeGreaterThanOrEqual(boxes[index - 1][1] - 0.5); });
     await attachShellA11y(page, info, `hub-assistant-served-${scene}-${theme}.a11y.yml`);
-    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-served-${scene}`, theme, viewport: '1280x720', adapter: 'component-fixture', fixtureId: `hub-assistant-served-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
+    const capture = (viewport: string) => captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-served-${scene}`, theme, viewport, adapter: 'component-fixture', fixtureId: `hub-assistant-served-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
+    await capture('1280x720');
+    if ('wide' in spec) { await page.setViewportSize({ width: 1440, height: 900 }); await capture('1440x900'); }
   });
 }

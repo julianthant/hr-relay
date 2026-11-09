@@ -7,14 +7,16 @@ import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODELS, useComposer, 
 import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import './composer-input.css';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { ASSISTANT_EFFORT_LABELS, assistantModelLabel } from '../../../models/config/assistant-model-preference.js';
 
 export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference }: AssistantPorts & {
   modelPreference?: AssistantModelPreferenceView['preference']; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
   const id = useId();
-  const displayedModel = preview ? composer.model : modelPreference?.slug ?? 'Model unavailable';
-  const displayedEffort = preview ? composer.effort : modelPreference?.effort ?? 'Effort unavailable';
+  const displayedModel = preview ? composer.model : modelPreference === undefined ? 'Model unavailable' : assistantModelLabel(modelPreference.slug);
+  const displayedEffort = preview ? composer.effort : modelPreference === undefined ? undefined : ASSISTANT_EFFORT_LABELS[modelPreference.effort];
+  // Without a served model there is no effort to show; only "Model unavailable" fits the panel toolbar.
   const focusMessageOnClose = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
@@ -37,7 +39,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
     <InputGroup aria-label="Message composer" onSubmit={event => { event.preventDefault(); void composer.send(); }}>
       {composer.files.map(file => <div key={file.id} className="hub-attachment"><Paperclip aria-hidden /><span>{file.name}</span><button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
       <label className="hub-sr-only" htmlFor={id}>Message Relay</label>
-      <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={2} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
+      <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={1} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
         onChange={event => { composer.setText(event.target.value); onEdit?.(event.target.value); }} onKeyDown={event => {
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void composer.send(); }
         }} />
@@ -50,7 +52,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
         {menu('model', `Model: ${displayedModel}`, <><span>{displayedModel}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.model} onValueChange={composer.setModel}>
           {ASSISTANT_MODELS.map((value, index) => <DropdownMenuGroup key={value}>{index === 1 ? <DropdownMenuSeparator className="hub-menu-separator" /> : null}<DropdownMenuRadioItem closeOnClick className="hub-menu-option" value={value}><span className="hub-option-copy"><span>{value}</span>{index === 0 ? <small>Recommended set of models</small> : null}</span></DropdownMenuRadioItem></DropdownMenuGroup>)}
         </DropdownMenuRadioGroup></>, 'sm')}
-        {menu('effort', `Thinking effort: ${displayedEffort}`, <><span>{displayedEffort}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
+        {displayedEffort !== undefined && menu('effort', `Thinking effort: ${displayedEffort}`, <><span>{displayedEffort}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
           {ASSISTANT_EFFORTS.map(value => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={value} value={value}><span className="hub-option-copy">{value}</span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>, 'sm')}
         {menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}

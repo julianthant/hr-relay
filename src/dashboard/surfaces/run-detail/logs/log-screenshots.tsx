@@ -29,7 +29,7 @@ function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: 
       {!failed && <span className="log-capture-expand"><Expand aria-hidden className="size-3.5" /></span>}
       {screenshot.kind === "form" && !failed && <span className="log-form-hint">Full form · open to scroll</span>}
     </button></DialogTrigger>
-    <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? screenshot.time}</span>{submit && !failed && <time className="font-data text-ui-muted">{screenshot.time}</time>}{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
+    <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? screenshot.time}</span>{submit && !failed && <time className="tabular-nums text-ui-muted">{screenshot.time}</time>}{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
   </figure>;
 }
 function ImagePane({ capture, mode, zoom, rotation, onScale }: { capture: LogScreenshot; mode: CaptureMode; zoom?: number; rotation: number; onScale?: (scale: number) => void }) {

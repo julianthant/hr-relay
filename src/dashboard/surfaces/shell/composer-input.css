@@ -1,7 +1,6 @@
-#hub-panel-assistant .hub-composer-wrap{position:relative;flex:none;display:flex;flex-direction:column;padding:10px 12px 12px;background:var(--ui-panel)}
+#hub-panel-assistant .hub-composer-wrap{position:relative;flex:none;display:flex;flex-direction:column;padding:10px 12px 12px;background:var(--ui-panel);border-radius:0 0 8px 8px}
 #hub-panel-assistant .hub-composer{position:relative;display:flex;flex-direction:column;min-width:0;border:1px solid var(--ui-stroke-control);border-radius:12px;background:var(--ui-field)}
-#hub-panel-assistant .hub-composer:has(textarea:focus-visible){outline:2px solid var(--ui-primary);outline-offset:2px}
-#hub-panel-assistant .hub-composer textarea{display:block;resize:none;width:100%;max-height:120px;min-height:50px;border:0!important;border-radius:0;padding:6px 12px 4px;outline:none;background:transparent;font-size:13px;line-height:20px}
+#hub-panel-assistant .hub-composer textarea{display:block;resize:none;width:100%;max-height:120px;min-height:40px;border:0!important;border-radius:0;padding:10px 12px;outline:none;background:transparent;font-size:13px;line-height:20px}
 #hub-panel-assistant .hub-toolbar{display:flex;align-items:center;gap:4px;min-width:0;padding:6px 8px 8px}
 #hub-panel-assistant .hub-toolbar .hub-input-button{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;height:28px;min-width:28px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:var(--ui-primary);font-size:12px;font-weight:500;white-space:nowrap;touch-action:manipulation}
 #hub-panel-assistant .hub-toolbar [data-size=icon-sm]{width:28px;padding:0;color:var(--ui-secondary)}
@@ -53,3 +52,4 @@ html[data-demo-theme=dark] .hub-assistant-menu.hub-menu{box-shadow:var(--hub-sha
 html[data-motion=off] .hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}
 @media(prefers-reduced-motion:reduce){.hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}}
 #hub-panel-assistant .hub-composer .hub-attachment{margin:6px 8px 0;padding:1px 4px 1px 8px}
+#hub-panel-assistant .hub-toolbar .hub-input-button:disabled>span+svg{display:none}

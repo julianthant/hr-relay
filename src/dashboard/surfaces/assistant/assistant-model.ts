@@ -1,7 +1,8 @@
+import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
 import type { AssistantActionIdentity, AssistantActionProposal } from "../../../models/dashboard/assistant.js";
 import type { AssistantFailureCode } from "../../../models/dashboard/assistant.js";
-export const ASSISTANT_UNKNOWN_NOTICE = 'Action outcome is unknown. Check the current run or notification state before starting a new request. Do not retry this request.';
+export const ASSISTANT_UNKNOWN_NOTICE = ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text;
 export interface AssistantSource {
   readonly id: string;
   readonly title: string;
@@ -20,15 +21,14 @@ export interface AssistantMessage {
 }
 
 export interface AssistantMockProposal {
+  /** The exact served proposal; its digest is the Confirm evidence. */
+  readonly issued?: AssistantActionProposal;
   readonly action?: AssistantActionIdentity;
-  readonly startPlan?: Extract<AssistantActionProposal, { effect: 'workflow-start' }>['startPlan'];
-  readonly person?: { readonly name?: string; readonly employeeId?: string };
   readonly expiresAt?: string;
   readonly id: string;
   readonly revision: string;
   readonly prompt: string;
   readonly workflow: { readonly id: string; readonly label: string; readonly version: string };
-  readonly subjects: readonly { readonly id: string; readonly name: string }[];
   readonly values: readonly { readonly label: string; readonly value: string }[];
   readonly mode: 'dry-run' | 'read-only' | 'local-change';
   readonly effects: readonly string[];
@@ -58,7 +58,7 @@ export type AssistantAction =
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
   | { readonly type: 'action-state'; readonly id: string; readonly disposition: 'confirming' | 'confirmed' | 'cancelled' | 'stale' | 'unknown'; readonly message?: AssistantMessage };
 
-export function assistantCanVerify(turn: AssistantTurn): boolean {
+function assistantCanVerify(turn: AssistantTurn): boolean {
   return turn.state !== 'waiting' && turn.state !== 'unknown'
     && (turn.state !== 'proposal' || turn.disposition !== 'review' && turn.disposition !== 'confirming' && turn.disposition !== 'unknown');
 }
@@ -104,17 +104,11 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
   }
 }
 
-export const ASSISTANT_STARTERS = [
-  'Check a person in Person Lookup (read-only)',
-  'Dry-run separations for 2 people',
-  'Explain what Emergency Contact does',
-] as const;
-
 export function assistantConfirmRefusal(state: AssistantState, revision: string, accountAvailable: boolean): string | undefined {
   const turn = state.turn;
   if (turn.state !== 'proposal') return 'No proposal to confirm.';
   if (turn.disposition === 'confirming') return 'Confirming the action…';
-  if (turn.disposition === 'unknown') return 'Action outcome is unknown. Do not retry this action.';
+  if (turn.disposition === 'unknown') return ASSISTANT_UNKNOWN_NOTICE;
   if (turn.disposition === 'confirmed') return turn.proposal.action === undefined ? 'Mock confirmation recorded. No run was started.' : 'Action completed.';
   if (turn.disposition === 'cancelled') return 'Proposal cancelled. No run was started.';
   if (!accountAvailable) return 'ChatGPT account unavailable. Confirmation is disabled.';

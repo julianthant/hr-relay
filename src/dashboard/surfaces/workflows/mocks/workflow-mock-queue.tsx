@@ -8,8 +8,9 @@ import { queueRunHeader } from "../../run-detail/run-header-model.js";
 import { mockApprovalError, mockFailedStepKey, mockNeedsReview, mockQueueStatus, mockReviewRun, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
 import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
+import { renameMockRun, useMockRunNames } from "./mock-run-names.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
-import type { QueueSortKey, QueueSurfaceWire } from "../../queue/queue-model.js";
+import { queueItemKey, type QueueSortKey, type QueueSurfaceWire } from "../../queue/queue-model.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { mockReviewProps, reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
@@ -29,16 +30,21 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const queueRoot = useRef<HTMLDivElement>(null);
   const deleted = useRef(false);
   const deleteLauncher = useRef<HTMLElement | null>(null);
-  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns), [runs, anchorIso, allRuns]);
+  const names = useMockRunNames();
+  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns).map(surface => {
+    const name = names.get(surface.runId);
+    return name === undefined ? surface : { ...surface, displayName: { state: "present" as const, value: name } };
+  }), [runs, anchorIso, allRuns, names]);
   const outcomes = useMemo(() => mockQueueOutcomes(runs), [runs]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const queueState = useMemo(() => ({
     selectedRunId: selected ? mockQueueId(selected) : undefined,
-    openWells: new Set<string>(),
+    openWells: new Set(surfaces.filter(surface => surface.surfaceKind === "operation").map(queueItemKey)),
     panelWorkflowId: runs[0]?.workflowId,
     nowIso,
-  }), [selected, runs, nowIso]);
+  }), [selected, runs, nowIso, surfaces]);
   const queueHandlers = useMemo(() => ({
+    onRenameTitle: renameMockRun,
     onSelect: (id: string) => {
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);

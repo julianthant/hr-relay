@@ -1112,8 +1112,8 @@ describe_m3("shell and queue structural fidelity", () => {
     assert_m3.ok(toastEnd < tooltipEnd && tooltipEnd < rootEnd, "the root must close after both providers");
     assert_m3.match(
       APP.slice(rootStart, tooltipStart),
-      /"--ds-toast-inset-bottom": "calc\(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\)"/u,
-      "the outer root is the one place that sets the Session-bar toast floor",
+      /"--ds-toast-inset-bottom": "calc\(2 \* \(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\) \+ var\(--ds-space-loose\)\)"/u,
+      "the outer root is the one place that sets the toast floor above the Sessions bar, the Logs footer and the docked launcher",
     );
     assert_m3.match(
       OVERLAY,

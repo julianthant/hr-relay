@@ -72,11 +72,8 @@ the current served account binding once, without a polling or activation loop.
 owns durable preference and private account authority. Neither a mounted control nor source wiring
 establishes live model or operator acceptance.
 
-The assistant's selected subject reference is the visible served run and its exact version. It is
-resolved locally through the canonical run reader; the Responses request receives only a fresh opaque
-reference and workflow/mode metadata. Workflow confirmation uses the existing assistant action endpoint,
-then the same command service as dashboard Run. It preserves the ordinary start planner, preflight,
-worker capacity and once-only command/audit authority. The workflow-start action projects its canonical plan ID, revision, fingerprints, one input display label, mode, browser, captures and expiry. Its displayed expiry cannot exceed the retained plan expiry.
+The assistant's selected subject reference is the visible served run. The service turns it into an opaque run
+reference for the model; read tools resolve it locally through the canonical run-detail and search owners.
 
 Bootstrap projects the admitted person registry name as the actor label. Appearance uses that label with the existing person/epoch preference owner and claims saved state only after confirmed settings readback. Preference commands use `source: person-preferences`; the ordinary editor recovers only its own `settings-surface` attempts, so simultaneous preference saves cannot become ordinary editor retries.
 

@@ -125,6 +125,9 @@ import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegation
 import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
+import { assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
+import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
+import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
@@ -575,6 +578,7 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 export type AuthorityRepositories = Readonly<{
   assistantModelPreference: ReturnType<typeof createAssistantModelPreferenceRepository>;
   assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
+  assistantHistory: ReturnType<typeof createAssistantHistoryRepository>;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
   failures: FailureRepository;
@@ -1273,7 +1277,8 @@ function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => P
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
   const readRun = inspectionRunReader(expectedSchemaVersion);
   const convertPreferences = (table: string, row: unknown) => {
-    return expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
   };
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
@@ -1303,6 +1308,9 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
         else if (table === "worker_controls") workerControlFromRow(raw);
         else if (table === "browser_sessions") workerBrowserFromRow(raw);
         else if (table === "exclusive_session_leases") exclusiveSessionLeaseFromRow(raw);
+        else if (table === "assistant_conversations") assistantConversationFromRow(raw);
+        else if (table === "assistant_messages") assistantMessageFromRow(raw);
+        else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
         else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw),false,readRun);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
@@ -1360,19 +1368,20 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
     && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
-  if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
+  // Below schema 25 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
+  if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
 
 function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
   const hash = createHash("sha256");
-  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
+  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)]));
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
       if (table === "database_upgrades" && row.id === excludedUpgradeRecord) continue;
-      hash.update(canonicalJsonStringify(rowSchema.parse(row)));
+      hash.update(canonicalJsonStringify(byteAwareRow(rowSchema.parse(row))));
     }
   }
   return hash.digest("hex");
@@ -1398,7 +1407,7 @@ function fixedLayoutUnchangedAuthorityFingerprint(database: DatabaseSync, intent
           record.payload_json = canonicalJsonStringify(moved); record.auth_fingerprint = moved.configFingerprint;
         }
       }
-      hash.update(canonicalJsonStringify(record));
+      hash.update(canonicalJsonStringify(byteAwareRow(record)));
     }
   }
   return hash.digest("hex");
@@ -1424,7 +1433,7 @@ function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: Database
     const fingerprint = (database: DatabaseSync): string => {
       const hash = createHash("sha256");
       for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-        hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
+        hash.update(canonicalJsonStringify(byteAwareRow(z.record(z.string(), z.unknown()).parse(row))));
       }
       return hash.digest("hex");
     };
@@ -1588,7 +1597,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1678,6 +1687,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
         }
         database.exec(statement);
         if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+        if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       }
     }
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -5183,6 +5193,8 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({
       assistantModelPreference: createAssistantModelPreferenceRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work) }),
       assistantAuthorization: createAssistantAuthorizationRepository({ database: this.#database, mutate: (table, work) => this.#authorityWrite(table, work) }),
+      assistantHistory: createAssistantHistoryRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work),
+        profileId: () => z.object({ profile_id: z.uuid() }).parse(this.#database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()).profile_id }),
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),

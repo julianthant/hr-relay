@@ -483,10 +483,16 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   };
 }
 
-export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">) {
+/** Assistant chat rows an accepted send writes; a fault check that spans a send names its exact history writes. */
+export const ASSISTANT_HISTORY_TABLES = Object.freeze(["assistant_conversations", "assistant_messages"]);
+export interface HistoryWrites { readonly tables: readonly string[]; readonly writes: number }
+const NO_HISTORY_WRITES: HistoryWrites = { tables: [], writes: 0 };
+
+export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">, history: HistoryWrites = NO_HISTORY_WRITES) {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
-    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all();
+    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all()
+      .filter(row => typeof row.name !== "string" || !history.tables.includes(row.name));
     const rows = tables.map(row => {
       if (typeof row.name !== "string" || !/^[a-z_]+$/u.test(row.name)) throw new Error("fixture table identity invalid");
       return { table: row.name, rows: raw.prepare(`SELECT * FROM ${row.name} ORDER BY rowid`).all() };
@@ -497,8 +503,9 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
   } finally { raw.close(); }
 }
 
-export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
-  const after = faultAuthoritySnapshot(h);
+export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number,
+  history: HistoryWrites = NO_HISTORY_WRITES) {
+  const after = faultAuthoritySnapshot(h, history);
   assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
   assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);
@@ -509,7 +516,7 @@ export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, 
     if (record.payload.kind !== "debug") throw new Error("HTTP refusal wrote non-debug authority");
     assert.equal(record.payload.event.category, "http");
   }
-  assert.equal(after.generation, Number(before.generation) + expected);
+  assert.equal(after.generation, Number(before.generation) + expected + history.writes);
 }
 
 export function rawSettingsPatchFingerprint(patch: unknown): string {

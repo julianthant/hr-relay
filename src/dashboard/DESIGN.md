@@ -97,6 +97,8 @@ The Baton mark appears only in the sign-up and login title: the 24 px accent sym
 
 Waiting, parked and failed runs sit under Needs you. Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same served name: Enter or blur saves, Escape cancels, and an empty name restores the default name (the PDF or run name).
 
+A queue row draws its served subtitle ("12 people") as a muted line under the title when it differs from the title.
+Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same name: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
@@ -110,7 +112,8 @@ Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step 
 Settings navigation uses the workflow rail's row height, spacing, padding, and hover/selected fills. Appearance has a Light/Dark toggle and an Animations switch without row descriptions or person names; preference feedback sits below the rows. Delete account is the last section in General. Its confirmation belongs to the active profile/session epoch, checked atomically by the server before deletion effects; pending and uncertain deletion stay disabled with visible feedback. General has no assistant permission row.
 Storage's Clear run history row uses the existing destructive dialog with Cancel focused first. Active runs disable it with a visible reason; uncertain results offer a result-only Check clear result for the original action. Not recorded requires a new destructive confirmation. The Run picker hides parent-only previews; Explorer keeps them available for inspection.
 Assistant proposals use a card with a tinted title row: the workflow, the served plan title (Name and Employee ID rows appear only when the proposal serves them), the mode, then Cancel and Confirm. Plan ids, fingerprints and stop-point text stay in logs. Confirmed and cancelled proposals collapse to a resolved line; unknown outcomes keep the disabled card.
-The assistant is a floating, draggable bottom-right panel: tinted header (history, new chat, close), flat replies, filled operator bubbles with name-only attachment pills, a rounded composer and a quiet status strip above it. The strip shows the served account reason with its action (Sign in, Open Settings or Open Preflight) and never blocks the dashboard or the composer. Replies show only the answer, with no sources or failure codes. Test assistant lives in Settings › Preflight, and its result clears on account change or after 15 minutes. Served model and effort labels use the selected person’s preference. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
+When a run the assistant started cannot finish, the chat shows one plain line, "Couldn't finish this.", with no card and no buttons; Relay never retries it. Small local changes (notification read, unread, snooze) happen at once with no card, and the reply says what changed.
+When open, the assistant docks as a right column beside Logs, full height above the Sessions bar. Logs narrows and the Queue keeps its width. The column is not draggable. The Orbit mark in the Sessions bar, left of Add workers, Settings and Log out, opens and closes it (tooltip "Ask Relay (⌘J)"); ⌘J (Ctrl+J) toggles it too. There is no floating launcher. The whole Sessions bar opens and closes the sessions panel: one real button (chevron, people icon, "Sessions", then one quiet summary line "2 running · 1 starting · 1 idle" with only the running count green, the colour of the rail's running pill) fills the bar up to the icon group, so a click anywhere on it toggles and the button carries aria-expanded; the counts are text inside it, not controls. The icon group (Orbit, Add workers, Settings, Log out) sits outside that button, keeps its own actions and never toggles. Hover takes the soft tint over the whole toggling area and not the icon group, press is a darker tint, keyboard focus uses the light focus tint over the same area, and the icons keep their own hover. Icon controls are 32px hit targets with equal spacing and a tooltip each; hover is a soft tint on the hovered control only, press is a darker tint, and nothing moves, scales or glows; colour transitions last at most 120 ms (ease-out) and stop with reduced motion. It has a tinted header (history, new chat, close), flat replies, filled operator bubbles with name-only attachment pills, a rounded composer and a quiet status strip above it. The strip shows the served account reason with its action (Sign in, Open Settings or Open Preflight) and never blocks the dashboard or the composer. Replies show only the answer, with no sources or failure codes. The composer is one line with its text vertically centred and no focus ring on the box. The model and effort pickers stay editable, and the effort menu offers Light, Medium, High, xHigh and Max. Served model and effort labels use the selected person's preference; with no served model only "Model unavailable" shows and the effort trigger is hidden. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
 Browser captures stay inline as their own screenshot rows, with equal cards and captions below. Before- and after-submit captures each keep their boundary caption.
 
 Warnings and failures are toasts (`Notice`, or `useToasts`): a title and at most one short line, with no code, outcome or explanatory paragraph. A one-off result (an action failed or was refused) dismisses itself. A state the operator must act on (unavailable storage, unread settings, a pending check) is `sticky`, stays until closed, and shows again whenever its surface mounts while the state still holds. A toast only notifies: a title and at most one short line, never a button or an X; clicking it (or Enter) dismisses it. Toasts sit top centre, newest in front; at most 3 show and older ones fold behind, and hovering the stack opens it. It names where to act in plain words ("Run it again in Settings > Preflight."); the control lives on that surface. These stay inline: field validation beside its input, anything inside a dialog or drawer (toasts are inert while one is open; the Start run dialog uses `Banner`/`Refusal`), confirmations that need two choices, empty states, and a failed step's decision in Logs.
@@ -178,8 +181,78 @@ Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-ca
 - An Emergency Contact batch is one parent run for the PDF plus one member run per person, each with its own log. The queue row is titled with the PDF file name ("Scan_0412.pdf", subtitle "12 people") and shows the standard member list with each person's status; there is no summary line. A failed member's own log shows the failure; Retry is the icon button in that log's header, and a rejected value adds the fix-and-retry input in the body. The parent log reads the document, records the approval and lists the records handed to members.
 - A cancel in progress is one line with a loading icon. It has no actions.
 - A refused command is a toast (title and one line). The transcript does not change.
+- Toasts sit above the Logs footer. While the assistant column is open, toasts sit at the bottom of the Logs column, left of it.
 - Buttons are standard size: Confirm, then Cancel run. Cancel run is secondary, never ghost text.
 - No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
+
+### Status signals
+
+Each state keeps its own badge in the queue row and the run header, its own word in the step's time column, and its own timeline bar. Waiting uses one colour everywhere: the warning colour of the queue's Needs you band, the hatched timeline bar and the time column. Waiting, failed and parked runs sit under Needs you.
+
+| State | Header and queue | Time column under the step time |
+| --- | --- | --- |
+| Waiting for you | Review (`waiting`), hatched warning timeline bar | "Waiting" and the wait time, warning colour |
+| Write parked or uncertain submit | Write parked (`parked`, dashed), dashed warning outline timeline bar | "Parked" and the wait time, warning colour |
+| Failed | Failed (`failed`) | "Failed", danger colour |
+| Stalled | Failed with the label Stalled | "No progress" and the time, danger colour |
+| Paused | Queued with the label Paused | "Paused", muted |
+| Cancelling | Cancelling (`cancelling`), muted timeline bar | "Cancelling", muted |
+
+## Explorer
+
+Explorer is a generated review spec of what a workflow does. It never shows simulated runs or action buttons.
+
+- Run options sit above the step list as a "Run options" section: a label above each select, in one row.
+- Step 1 is "Open browser sessions", with a chip for each system the run signs in to. Logs never show this step.
+- A step reads: title and system, one description line, check lines (outside page cards), page cards, clicks as plain lines ("Clicks Search").
+- A decision point is a select under the evidence it reads, including terminal reads such as employment status (Active, Inactive, Not found). It lists every outcome declared there, ending with "Anything else", with what happens next beside it. Changing it changes the steps below.
+- When an outcome stops the run, the steps after it are hidden and the run's end line states the stop in the danger colour, once.
+- There is no "If" label. Fill values keep their source button. Sample values come from the definition's examples.
+
+## Assistant
+
+The assistant mark is **Orbit**: a core, a thin orbit and one satellite (`surfaces/shell/assistant-mark.tsx`). It is the message avatar, the panel header icon, the launcher and the Logs "by the assistant" line, and it never uses a sparkle or another brand's shape. Its state shows in shape and colour; motion is CSS only, short, and stops with reduced motion or Animations off.
+
+| State | Mark | Motion |
+| --- | --- | --- |
+| idle | Ring, core and the satellite at the top right | None |
+| thinking (the model is writing) | Hollow blue core, blue satellite | The satellite orbits slowly |
+| working (a session or run is going) | Blue core, dashed blue orbit | The satellite orbits fast |
+| done | Green core; the satellite docked at the top | One settle |
+| needs you (a decision waits; launcher) | Amber core and a halo | A gentle halo pulse |
+| error | Red core, broken orbit, no satellite | None |
+
+The assistant operates the dashboard through the operator's own commands and checks; it never edits workflows or code. It writes like a person: the answer sentence comes first, and it never explains behaviour that Relay enforces.
+
+### How the panel shows data
+
+Everything in the panel is conversation: sentences and bullets. Links are blue (underlined on hover, with a pointer cursor), and they only open data: a person, a run, a log, or Show in Queue. A link never acts. Actions happen only when the operator asks, or replies yes to a question. The panel has no buttons, checkbox rows, cards, tables, tokens, tinted boxes or Undo controls. Red appears only on a failure word.
+
+| Amount | Shape |
+| --- | --- |
+| One fact | One sentence; the value in medium weight. |
+| A list (people, runs, values, options) | A sentence, then one bullet per item; names and run ids are blue links that open the run. |
+| More than 8 items that are not an approval | One sentence with the count and a "Show in Queue" or "Save to library" link. |
+
+- **Changed and new values** are blue, the same as Fill values in Logs. A changed value shows the old one struck through and muted, then the new one in blue. A source shared by every value is named once in the sentence ("From Kuali SIM-50112."). A value with its own source names it in brackets after the value ("(Scan_0412.pdf · page 2)"). Relay refuses a manual value with no source: a toast "Value needs a source", and a sentence saying what to provide.
+- **Starting a run** (anything that leaves the machine: saves, submits, re-filing, gate answers, starting OCR) is a sentence and bullets with the exact values, then one line: "Reply yes to file it, or tell me what to change." A batch lists every person and says "Reply yes to save all 3, or tell me which to skip or change." A run is real unless the operator asks for a dry run; then the sentence starts "Dry run, saves nothing."
+- **Approval is a typed yes that Relay recognises, never the model.** Relay treats the operator's next message as approval only when it is a short, explicit yes ("yes", "yes file it", "approve", "go ahead", "do it"). Anything else goes to the model as a change request, and it proposes again. The model can never approve. After a yes, a muted line under the operator's message records it ("Filed by you · 09:31").
+- **Running** is the session chip, which sits in the assistant message column with the assistant avatar to its left, like any reply. It has a spinner aligned to the title line, what is happening ("Checking UCPath…"), a muted line naming the workflow and person, and a fully rounded Stop pill. Read-only sessions (Person Lookup, UCPath or Kuali checks) start without asking and appear in Queue and Logs, with the line "Started by the assistant for <person> · read only". Watching runs uses the same chip; it lasts while any run started today is active, and a decision that needs the operator raises a sticky toast with Open.
+- **Edits** (spreadsheets, library, settings, run names, filters) apply at once: one sentence with the old value struck through and the new value in blue, plus a success toast with no action. To undo, the operator asks ("undo the tracker change"); the assistant finds the change in its Activity, reverts it, and states it the same way ("Changed Separations tracker row 65 back: 04/24/2031 → 04/23/2031.").
+- **A stopped run** is the reason in one sentence (the failure word red), then a question ("Want me to retry from Read timecard?"); the operator replies yes.
+- **A failure** is "Failed: <what>. Nothing was saved." followed by a question ("Want me to try again?"), never a link.
+- **A choice** lists the options as bullets and asks for a reply ("Reply with its number."); ids may link to the record they name.
+- **Refusals and blocks** are one sentence: what was not done, the real reason and one link ("Not started: T00042871 is already pending, filed today 09:33. Open log"). A message with no reply is a danger toast "No reply" with Retry; the message stays in the composer.
+- **Several matches for a navigation** ("Open today's EC failures"): Relay filters the Queue to them and opens the first in Logs, and the chat lists each one as a bullet link.
+
+### Decisions in Logs
+
+- The Logs `DecisionCard` has no assistant suggestion. What the assistant thinks about a decision lives in its panel.
+- The assistant answers a decision only when Relay confirms the evidence the decision declares. The check is its own step in that log ("Checked by the assistant for <person> · read only"), and the card collapses to "Answered: <choice> · <time> · by assistant on behalf of <person>".
+
+### History
+
+The history icon opens History, with two tabs: Chats (the chat list) and Activity (today's reads, sessions, edits, approvals and refusals as rows, each opening its log).
 
 ## Motion
 

@@ -44,6 +44,7 @@ function credentialSearchBytes(capturedSecrets: readonly string[]): readonly Buf
 
 function containsCredentialValue(value: unknown, secrets: readonly string[]): boolean {
   if (typeof value === "string") return secrets.some(secret => secret.length > 0 && value.includes(secret));
+  if (value instanceof Uint8Array) return secrets.some(secret => secret.length > 0 && Buffer.from(value.buffer, value.byteOffset, value.byteLength).includes(secret));
   if (Array.isArray(value)) return value.some(member => containsCredentialValue(member, secrets));
   if (typeof value === "object" && value !== null) return Object.entries(value).some(([key, member]) =>
     containsCredentialValue(key, secrets) || containsCredentialValue(typeof member === "string" && key.endsWith("Json") ? JSON.parse(member) : member, secrets));

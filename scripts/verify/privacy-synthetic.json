@@ -12,6 +12,7 @@
   "sourcePaths": [
     ".agents/skills/hr-scan/SKILL.md",
     "config/test-data.json",
+    "src/backend/assistant/plugins/workflows/facts.json",
     "src/dashboard/assets/ocr/documents.json",
     "src/dashboard/kit/kit-page.tsx",
     "src/dashboard/surfaces/notifications/notifications-fixture.ts",
@@ -63,6 +64,7 @@
     "01839dc846761db26d645d18cd524ca4e789f0e3ed1f7c55279b60fc6fa73215",
     "06ed00621fd7227140fd308f5aef05d251d15f29586441c2201a8dcc157e1e22",
     "0a3aba30950ce16aee014c4e7a5c332f3a524cda893edc1b74b37f05d05a7f75",
+    "0b7d75c068ed5165be960279e7dacd2e900d50cbae19b654d02efc5b0fa68ee8",
     "106605fe6565524753544c403c836ec2fa3b7da1122a57dd5a7fed651e64e0de",
     "110af96bb30138fdf03461ab270f7692342a94cdf8926ac81f0bf4300bce8ee4",
     "184bc413df9d45c35c0670614235d9c0569a1b6a8699486ac0c55ed5495c5bc5",
@@ -85,6 +87,7 @@
     "4692ff05dd72674175987d9d3cce229a4949403a8f562c19a238f627fb549bfa",
     "4f56f63038fa1807e734eef4863b142d4075a3092cb992f8cfe1648b935d3f0a",
     "50f16d5b9b76d75c11c9d08515457a6a57d91152094617dfaccc5889478572fc",
+    "5320067a29bf09be940e41bb8b1ed7609dae551cfaf5b3c073dbcd2dfe1a2ea1",
     "55fd1753fedf434d02ed5e05868f82bbdfef80117221158f897f188dda104398",
     "59070b594fba22b1450acd6614f56a1f6913a9c6cc4ec54d44a14bf98de536d4",
     "5b1bbcdbec87bc8d189294094554fb1c90bc225e20ad0cb6b437925c6b9bbd90",

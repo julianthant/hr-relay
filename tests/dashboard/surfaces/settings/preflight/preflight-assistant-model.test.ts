@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, it, vi } from "vitest";
-import type { AssistantResult } from "../../../../../src/models/dashboard/assistant.js";
+import type { AssistantRespondEnvelope, AssistantResult } from "../../../../../src/models/dashboard/assistant.js";
 import type { AssistantQueries } from "../../../../../src/dashboard/client/queries/assistant-queries.js";
 import type { ChatGptAccountPort, ChatGptAccountSnapshot } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
 import { ASSISTANT_VERIFICATION_WINDOW_MS, createServedPreflightAssistantPort } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-assistant-model.js";
@@ -16,10 +16,10 @@ function harness() {
   };
   const change = (next: ChatGptAccountSnapshot) => { snapshot = next; for (const listener of listeners) listener(); };
   const signals: (AbortSignal | undefined)[] = [];
-  let release: (value: AssistantResult) => void = () => {};
-  const client: Pick<AssistantQueries, "assistantRespond"> = { assistantRespond: (_input, signal) => { signals.push(signal); return new Promise<AssistantResult>(resolve => { release = resolve; }); } };
-  const answered: AssistantResult = { state: "answered", text: "Verified.", citations: [] };
-  return { port: createServedPreflightAssistantPort(client, account), change, signals, setRefresh: (fn: () => Promise<void>) => { refresh = fn; }, finish: () => release(answered) };
+  let release: (value: AssistantRespondEnvelope) => void = () => {};
+  const client: Pick<AssistantQueries, "assistantRespond"> = { assistantRespond: (_input, signal) => { signals.push(signal); return new Promise<AssistantRespondEnvelope>(resolve => { release = resolve; }); } };
+  const answered: AssistantResult = { state: "answered", text: "Verified." };
+  return { port: createServedPreflightAssistantPort(client, account), change, signals, setRefresh: (fn: () => Promise<void>) => { refresh = fn; }, finish: () => release({ kind: "result", result: answered }) };
 }
 it("drops a late settlement after the account authority changes", async () => {
   const h = harness(); const pending = h.port.testAssistant();
