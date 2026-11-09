@@ -1,5 +1,5 @@
 import { ReadWorkbookResult } from "../../../../models/processing/workbooks/read-result.js";
-import { ReadRetentionRow } from "../../../../models/workflows/i9-check/check.js";
+import { ReadRetentionRow } from "../../../../models/workflows/i9-check/read-retention-row.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
 import { ReadI9CheckRows } from "../../../../models/workflows/i9-check-start/read-rows.js";
 import { ReadI9CheckPublication } from "../../../../models/workflows/i9-check-start/read-publication.js";
@@ -12,7 +12,25 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildDocuments } from "../documents/step.js";
 import { buildRosterReference } from "../roster-reference/step.js";
 
-const step = defineWorkflowStep({ key: "retention", label: "Check retention and save results" });
+const step = Object.freeze({
+  ...defineWorkflowStep({ key: "retention", label: "Check retention and save results" }),
+  review: {
+    pages: [
+      {
+        id: "results-workbook",
+        title: "I-9 Check results",
+        mode: "Read only",
+        nodeIds: ["read-rows", "save-workbook", "publish-results"],
+        lines: [
+          { id: "rows", kind: "check", text: "Account for each approved person’s settled retention result.", nodeIds: ["read-rows"] },
+          { id: "save", kind: "action", text: "Save one results workbook and verify its publication receipt.", nodeIds: ["save-workbook", "publish-results"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const
+});
 const entries = defineStepEntries(step);
 type Author = WorkflowAuthor<typeof I9CheckStartInput>;
 export function buildRetention(author: Author, reference: ReturnType<typeof buildRosterReference>) {

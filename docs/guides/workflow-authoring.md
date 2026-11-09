@@ -145,7 +145,7 @@ of `[group, entries[]]`. Tuple order controls presentation. References control e
 | `parallel(identity, branches)` | Explicit branches with task or delegate leaves; see §8. |
 | `delegate(identity, references, { bind, deriveChildItemId })` | Typed child-run target and policy; see §8. |
 | `result(schema, references, derive)` | Terminal result schema, references and pure derivation. |
-| `group(step, { omission, description, system, operatorFields })` | Whole-step omission declaration (see §7), plus the step's description, system and operator fields (see §4.1). |
+| `group(step, { omission, description, system, operatorFields, review })` | Whole-step omission declaration (see §7), plus the step's description, system, operator fields and Explorer review (see §4.4). |
 
 Binds receive `input`, referenced `outputs`, optional `protectedInputBindings` and optional `dryRun`.
 Declare all dependencies. For required nullable facts, use `requireFact(value, nodeId, path)` from
@@ -177,6 +177,31 @@ contract objects. Fix the named owner rather than copying a declaration.
 
 `workflowExplorerDeclaration` projects the definition; the backend checks graph and timeline
 coverage. Keep stable entry/leaf IDs and exact contracts. Branch choices are hypothetical.
+
+Each owning group declares `review` through
+[`WorkflowStepReview`](../../src/models/workflow/review-spec.ts): ordered pages, action/check/read
+lines and fields. A field references a visible `operatorField` by label, or declares its own
+`label` with `transactionFields` pointing to the owning transaction's prepare input or output
+paths. Fixed workflow choices use `constant` with the owning transaction `nodeIds` and value.
+Compilation checks each transaction path against its prepare contract; the backend derives its
+finite options from that contract or the field's display mapping. These review declarations do
+not add transaction sources to Logs operator fields. Use real page names and the modes
+`Fill form` or `Read only`; local or gate-only steps can have no pages. Source drawer prose belongs
+beside the field reference. A source `read` names an exact step key, page title and field label;
+its ordered `chain` can refer to earlier reads in the same workflow. Every declared branch case
+needs a label when the group supplies review metadata. Compilation rejects unknown, ambiguous or
+out-of-step references.
+
+Source paths may name structured values such as a Kuali field's present/absent object. Those
+references remain intact; automatic dropdown options require a complete finite scalar vocabulary
+for every source of the field.
+
+The backend derives `reviewSpec` from these groups, existing run surfaces, omission forms, task
+session declarations, graph policies and declared failure codes. Control kinds and options use only
+the input alternatives admitted by each control's declared modes. Register each normalized failure
+sentence in the error catalog. Session requirements describe preparation and use, never observed
+sign-ins or acquired locks. Explorer serves child-only definitions for inspection without adding
+them to the Run picker.
 
 ## 5 · Person Lookup: reuse and a pure fold
 

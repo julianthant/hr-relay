@@ -17,6 +17,53 @@ const group = Object.freeze({
     { label: "Row resolution", sources: [{ nodeId: "document-rows", kind: "output", fieldPath: "people.resolution.state" }] },
     { label: "Worksheet", sources: [{ nodeId: "document-rows", kind: "output", fieldPath: "people.resolution.selected.row.worksheetName" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "saved-roster",
+        title: "Saved roster",
+        mode: "Read only",
+        nodeIds: ["workbook-reference", "document-rows", "document-row-choice"],
+        lines: [
+          { id: "reference", kind: "read", text: "Read the roster version captured for this run.", nodeIds: ["workbook-reference"] },
+          { id: "rows", kind: "check", text: "Match verified CRM identities to legal and lived names in the saved worksheet rows.", nodeIds: ["document-rows"] }
+        ],
+        fields: [
+          {
+            id: "reference-version",
+            operatorField: "Reference version",
+            source: {
+              origin: "Saved roster",
+              detail: "The exact version captured for this run.",
+              chain: [],
+              read: { stepKey: "reference", page: "Saved roster", field: "Reference version" }
+            }
+          },
+          {
+            id: "row-resolution",
+            operatorField: "Row resolution",
+            source: {
+              origin: "Saved roster",
+              detail: "Whether the verified identity identifies one worksheet row or needs an operator choice.",
+              chain: [],
+              read: { stepKey: "reference", page: "Saved roster", field: "Row resolution" }
+            }
+          },
+          {
+            id: "worksheet",
+            operatorField: "Worksheet",
+            source: {
+              origin: "Saved roster",
+              detail: "The worksheet selected for the verified person.",
+              chain: [],
+              read: { stepKey: "reference", page: "Saved roster", field: "Worksheet" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 const entries = defineStepEntries(group);
 

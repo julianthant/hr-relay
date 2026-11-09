@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
-import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { READABLE_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { EidSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
@@ -20,7 +20,8 @@ describe("explorer prose is declared for every registered workflow", () => {
   const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
 
   it("serves the descriptor's OWN summary for every registered workflow", () => {
-    assert.equal(wire.workflows.length, WORKFLOW_MODULES.length);
+    assert.equal(wire.workflows.length, READABLE_WORKFLOW_MODULES.length);
+    assert.deepEqual(wire.workflows.map(workflow => workflow.id), READABLE_WORKFLOW_MODULES.map(module => module.descriptor.id));
     for (const workflow of wire.workflows) {
       assert.equal(
         workflow.summary.state,
@@ -45,7 +46,7 @@ describe("explorer prose is declared for every registered workflow", () => {
   });
 
   it("takes each sentence from the descriptor, never from a label or a contract title", () => {
-    for (const module of WORKFLOW_MODULES) {
+    for (const module of READABLE_WORKFLOW_MODULES) {
       const workflow = wire.workflows.find((one) => String(one.id) === String(module.descriptor.id));
       assert.ok(workflow !== undefined);
       assert.deepEqual(

@@ -1,5 +1,6 @@
 import { PDFDocument } from "pdf-lib";
-import { OnbaseImportError, OnbaseReadSourcePage, OnbaseTargetSchema } from "../../../../models/systems/onbase/import-document.js";
+import { OnbaseImportError, OnbaseTargetSchema } from "../../../../models/systems/onbase/import-document.js";
+import { OnbaseReadSourcePage } from "../../../../models/systems/onbase/read-source-page.js";
 import { createHash } from "node:crypto";
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { onbaseDriver } from "../driver-declaration.js";

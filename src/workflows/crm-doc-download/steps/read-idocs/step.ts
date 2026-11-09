@@ -14,6 +14,53 @@ const group = Object.freeze({
     { label: "Available documents", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.totalDocuments" }] },
     { label: "Downloaded PDF", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.documents.fileName" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "crm-idocs",
+        title: "CRM onboarding record",
+        mode: "Read only",
+        nodeIds: ["document-pdfs"],
+        lines: [
+          { id: "open-record", kind: "action", text: "Reopen and verify the selected CRM identity.", nodeIds: ["document-pdfs"] },
+          { id: "download-pdfs", kind: "action", text: "Download the selected iDocs PDFs and retain verified bytes.", nodeIds: ["document-pdfs"] }
+        ],
+        fields: [
+          {
+            id: "employee-id",
+            operatorField: "Employee ID",
+            source: {
+              origin: "CRM",
+              detail: "Employee ID verified for this document set.",
+              chain: [],
+              read: { stepKey: "read-idocs", page: "CRM onboarding record", field: "Employee ID" }
+            }
+          },
+          {
+            id: "available-documents",
+            operatorField: "Available documents",
+            source: {
+              origin: "CRM",
+              detail: "Number of documents shown for the person.",
+              chain: [],
+              read: { stepKey: "read-idocs", page: "CRM onboarding record", field: "Available documents" }
+            }
+          },
+          {
+            id: "downloaded-pdf",
+            operatorField: "Downloaded PDF",
+            source: {
+              origin: "CRM",
+              detail: "Filename of each downloaded PDF.",
+              chain: [],
+              read: { stepKey: "read-idocs", page: "CRM onboarding record", field: "Downloaded PDF" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 
 export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>, reference?: ReturnType<typeof buildReference>) {
