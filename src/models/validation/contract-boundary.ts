@@ -283,6 +283,7 @@ function relativeLeaves(
   schema: z.core.$ZodType,
   presence: "always" | "sometimes",
   ancestors: readonly object[],
+  collections = false,
 ): readonly ContractSchemaLeaf[] {
   const currentObject = schema;
   if (ancestors.includes(currentObject)) {
@@ -296,7 +297,7 @@ function relativeLeaves(
     const nested = [...ancestors, currentObject];
     const shape = definition.shape as { readonly [key: string]: z.core.$ZodType };
     return Object.entries(shape).flatMap(([key, child]) =>
-      relativeLeaves(child, presence, nested).map((leaf) => Object.freeze({
+      relativeLeaves(child, presence, nested, collections).map((leaf) => Object.freeze({
         ...leaf,
         path: leaf.path.length === 0 ? key : `${key}.${leaf.path}`,
       })));
@@ -304,7 +305,7 @@ function relativeLeaves(
   if (type === "union") {
     const nested = [...ancestors, currentObject];
     const allArms = (definition.options as z.core.$ZodType[])
-      .map((option) => indexLeaves(relativeLeaves(option, presence, nested)));
+      .map((option) => indexLeaves(relativeLeaves(option, presence, nested, collections)));
     // Null-only arms weaken child presence without naming the container as a field.
     const named = allArms.filter((arm) => [...arm.keys()].some((path) => path.length > 0));
     const arms = named.length === 0 ? allArms : named;
@@ -327,22 +328,25 @@ function relativeLeaves(
   if (type === "intersection") {
     const nested = [...ancestors, currentObject];
     return [...indexLeaves([
-      ...relativeLeaves(definition.left as z.core.$ZodType, presence, nested),
-      ...relativeLeaves(definition.right as z.core.$ZodType, presence, nested),
+      ...relativeLeaves(definition.left as z.core.$ZodType, presence, nested, collections),
+      ...relativeLeaves(definition.right as z.core.$ZodType, presence, nested, collections),
     ]).values()];
   }
   if (type === "lazy") {
     const nested = [...ancestors, currentObject];
-    return relativeLeaves((definition.getter as () => z.core.$ZodType)(), presence, nested);
+    return relativeLeaves((definition.getter as () => z.core.$ZodType)(), presence, nested, collections);
   }
   if (type === "pipe") {
-    return relativeLeaves(definition.out as z.core.$ZodType, presence, ancestors);
+    return relativeLeaves(definition.out as z.core.$ZodType, presence, ancestors, collections);
   }
   if (type === "nonoptional" || type === "readonly") {
-    return relativeLeaves(definition.innerType as z.core.$ZodType, presence, ancestors);
+    return relativeLeaves(definition.innerType as z.core.$ZodType, presence, ancestors, collections);
   }
   if (["optional", "nullable", "default", "prefault", "catch"].includes(type)) {
-    return relativeLeaves(definition.innerType as z.core.$ZodType, SOMETIMES, ancestors);
+    return relativeLeaves(definition.innerType as z.core.$ZodType, SOMETIMES, ancestors, collections);
+  }
+  if (type === "array" && collections) {
+    return relativeLeaves(definition.element as z.core.$ZodType, presence, [...ancestors, currentObject], collections);
   }
   if (ONE_LEAF_CONTAINER_ZOD_TYPES.has(type)) {
     return [Object.freeze({ path: "", kind: "list" as const, presence })];
@@ -401,4 +405,9 @@ function vocabularyOf(
     return [...new Set(values.map((value) => String(value)))].sort();
   }
   return undefined;
+}
+
+/** Operator paths address each collection member without selecting a row. */
+export function contractCollectionFieldLeaves(schema: z.core.$ZodType): readonly ContractSchemaLeaf[] {
+  return Object.freeze([...indexLeaves(relativeLeaves(schema, ALWAYS, [], true)).values()]);
 }

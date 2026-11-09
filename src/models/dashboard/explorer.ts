@@ -1,5 +1,7 @@
 /** The read-only Workflow Explorer wire: a projection of registration state derived at the server from the one composition root, never a second authority. */
 import { z } from "zod";
+import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
+import { ExplorerReviewSpecSchema } from "./explorer-review-spec.js";
 import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
 
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../task/task-contract.js";
@@ -318,6 +320,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   version: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
   /** Authored tuple order, kept apart from the graph's typed execution edges. */
+  reviewSpec: ExplorerReviewSpecSchema,
   definitionPreview: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
     z.strictObject({
@@ -395,6 +398,37 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     module: SourceLinkWireSchema,
   }),
 }).superRefine((workflow, context) => {
+  const reviewSteps = workflow.reviewSpec.steps;
+  if (JSON.stringify(reviewSteps.map(step => step.id)) !== JSON.stringify(workflow.timeline.map(group => group.key))) {
+    context.addIssue({ code: "custom", path: ["reviewSpec", "steps"], message: "review steps must cover the ordered timeline exactly" });
+  }
+  for (const [stepIndex, step] of reviewSteps.entries()) {
+    const group = workflow.timeline.find(candidate => candidate.key === step.id);
+    if (group === undefined) continue;
+    const ownNodes = workflow.nodes.filter(node => group.nodes.includes(node.id));
+    const ids = step.decisions.map(decision => decision.id);
+    if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: "review repeats decision id" });
+    for (const decision of step.decisions) {
+      const node = ownNodes.find(candidate => candidate.id === decision.nodeId);
+      if (node === undefined) context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: `review decision names unknown or outside node ${decision.nodeId}` });
+      if (decision.kind === "failure" && (decision.action !== "stop" || decision.failureCode !== failureCodeFromTaskCode(decision.outcome)
+        || !node?.tasks.some(task => task.taskId === decision.taskId && task.errorCodes.some(code => code === decision.outcome)))) {
+        context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: "review failure must stop for an exact declared task code" });
+      }
+    }
+    for (const node of ownNodes) {
+      if (node.shape.kind === "branch") for (const branch of node.shape.cases) {
+        if (!step.decisions.some(decision => decision.nodeId === node.id && decision.kind === "branch" && decision.outcome === branch.name)) {
+          context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: `review omits branch outcome ${node.id}/${branch.name}` });
+        }
+      }
+      for (const task of node.tasks) for (const code of task.errorCodes) {
+        if (!step.decisions.some(decision => decision.nodeId === node.id && decision.kind === "failure" && decision.taskId === task.taskId && decision.outcome === code)) {
+          context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: `review omits declared failure ${node.id}/${task.taskId}/${code}` });
+        }
+      }
+    }
+  }
   const graphNodeIds = new Set(workflow.nodes.map(({ id }) => String(id)));
   const groupKeys = new Set<string>();
   const timelineNodeIds = new Set<string>();
