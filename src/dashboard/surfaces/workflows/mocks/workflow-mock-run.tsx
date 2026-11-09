@@ -11,6 +11,8 @@ import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-star
 import { TypedInput, RunFlagChips } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
+import { StatusMockReadiness } from "../../settings/status-mock/status-mock.js";
+import { statusMock } from "../../settings/status-mock/status-mock-model.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
 export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit, initialDraft, onDraftChange }: {
@@ -19,8 +21,10 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   onSubmit: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   const flow = mockWorkflow(workflowId);
+  const mock = statusMock();
   const [draft, setDraft] = useState<MockDraft>(() => editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)));
   const [stage, setStage] = useViewState("launchStage", source ? "Steps" : "Input");
+  const blocked = workflowId === "emergency-contact" && (mock === "run-a" && stage === "Input" || mock === "run-b" && stage === "Confirm");
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);
   const [optionalSteps, setOptionalSteps] = useViewState("launchCustomize", false);
@@ -75,6 +79,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </>)}
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
+            {mock === "run-a" && <StatusMockReadiness />}
             <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && workflowId === "onbase" && "grid-cols-2")}>
             {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
             {workflowId === "onbase" && <ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} />}
@@ -121,13 +126,14 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           description={source ? "A new run linked to the source." : pdf && !uploadOnly ? workflowId === "onbase" ? "One combined document sent to OCR for review." : "One run per PDF. OCR reviews records before downstream work." : "One run for each accepted entry."}
           facts={[...mockConfirmationFacts(workflowId, draft), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
+          {mock === "run-b" && <StatusMockReadiness />}
         </RunConfirmLayout>}
         </div>
 
       </DialogBody></div>
     <DialogFooter meta={<MetaLine tone="faint" items={[source ? "Source run · new run" : `${count} ${count === 1 ? "run" : "runs"}`, flow.label, ...(stage === "Confirm" ? [`${count} to create`] : [])]} />}>
       {index > 0 && <Button variant="ghost" icon={<ArrowLeft className="size-3" aria-hidden />} onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="muted" onClick={onClose}>Cancel</Button>
-      <Button variant="primary" icon={stage === "Confirm" ? <Play className="size-[14px]" aria-hidden /> : undefined} iconAfter={stage !== "Confirm" ? <ArrowRight className="size-[14px]" aria-hidden /> : undefined} disabled={Boolean(error) || reading} onClick={() => stage === "Confirm" ? onSubmit(workflowId, draft, source?.id) : setStage(stages[index + 1])}>{stage === "Confirm" ? source ? "Create rerun" : "Start preview" : stages[index + 1] === "Confirm" ? "Preview plan" : "Continue"}</Button>
+      <Button variant="primary" icon={stage === "Confirm" ? <Play className="size-[14px]" aria-hidden /> : undefined} iconAfter={stage !== "Confirm" ? <ArrowRight className="size-[14px]" aria-hidden /> : undefined} disabled={blocked || Boolean(error) || reading} onClick={() => stage === "Confirm" ? onSubmit(workflowId, draft, source?.id) : setStage(stages[index + 1])}>{stage === "Confirm" ? source ? "Create rerun" : "Start preview" : stages[index + 1] === "Confirm" ? "Preview plan" : "Continue"}</Button>
     </DialogFooter>
   </>;
 }

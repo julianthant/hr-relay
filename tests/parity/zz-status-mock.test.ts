@@ -43,7 +43,19 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     const firstToast = { toasts: "UCPath is down for maintenance", "toasts-storage": "Your disk is full", "toasts-restored": "Restored a damaged file from the 6:30 PM backup" }[id as string];
     if (firstToast) await expect(page.getByText(firstToast)).toBeVisible();
-    if (id.startsWith("run")) await expect(page.getByRole("dialog")).toBeVisible();
+    if (id.startsWith("run")) {
+      // The way the operator opens it: Emergency Contact in the rail, then Start a run, then choose the scan.
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
+      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await dialog.locator('input[type="file"]').setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
+      await expect(dialog.getByText("Scan_0412.pdf").first()).toBeVisible();
+      if (id === "run-b") {
+        await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
+        await expect(dialog.getByText("Before you start")).toBeVisible();
+      }
+    }
     if (settings === "general") await expect(page.getByText(id.endsWith("limit") ? "Usage limit reached" : id.endsWith("disconnected") ? "Disconnected" : "Working · checked 2 min ago").first()).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
