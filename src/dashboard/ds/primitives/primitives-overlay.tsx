@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
-import { ToastIcon as BaseToastIcon, Toast as BaseToast, ToastContent as BaseToastContent, ToastTitle as BaseToastTitle, ToastDescription as BaseToastDescription, ToastClose as BaseToastClose, ToastViewport as BaseToastViewport } from "./base-toast.js";
+import { ToastIcon as BaseToastIcon, Toast as BaseToast, ToastContent as BaseToastContent, ToastTitle as BaseToastTitle, ToastDescription as BaseToastDescription, ToastViewport as BaseToastViewport } from "./base-toast.js";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
@@ -747,7 +747,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     },
     dismiss: id => manager.close(id),
   }), [manager]);
-  return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager}>
+  return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager} limit={3}>
     {children}<ToastViewport />
   </ToastPrimitive.Provider></ToastContext.Provider>;
 }
@@ -766,13 +766,14 @@ export function Notice({ tone, title, description, sticky = false }: Pick<DsToas
 }
 
 function ToastViewport() {
-  const { toasts } = ToastPrimitive.useToastManager();
+  const { toasts, close } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
-    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success") && "pointer-events-none")}>
+    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
+      onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
+      className={cn((inert || item.type === "success") && "pointer-events-none")}>
       <BaseToastContent><BaseToastIcon type={item.type} />
         <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
-        <BaseToastClose disabled={inert} className={!inert && item.type === "success" ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
       </BaseToastContent>
     </BaseToast>)}
   </BaseToastViewport>;

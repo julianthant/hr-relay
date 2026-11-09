@@ -122,7 +122,7 @@ function SignupCheckMock({ variant }: { variant: "a" | "b" }) {
 /** Mounted once under the toast provider; draws the dialog, toast and sign-up frames. */
 export function StatusMockHost() {
   const id: StatusMockId | undefined = statusMock();
-  if (id === "toasts" || id === "toasts-storage" || id === "toasts-restored") return <ToastsMock set={id} />;
+  if (id === "toasts" || id === "toasts-open" || id === "toasts-storage" || id === "toasts-restored") return <ToastsMock set={id} />;
   if (id === "signup-a" || id === "signup-b") return <div className="fixed inset-0 z-50 bg-[color:var(--ds-surface-page)]"><SignupCheckMock variant={id === "signup-a" ? "a" : "b"} /></div>;
   return null;
 }
