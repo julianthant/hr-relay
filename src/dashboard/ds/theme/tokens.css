@@ -1007,8 +1007,8 @@ body[data-demo-theme="light"] {
 .ds-menu-label { padding: 6px 10px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
 .ds-menu-separator { height: 1px; margin: 6px 10px; background: var(--ui-stroke); }
 /* Fields and pickers inside a row: 28px, subtle fill, faint edge. */
-.ds-body-row .input, .ds-body-row .ds-secret-input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-soft-bg); font-size: 14px; }
-.ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { padding-inline: 12px; border-radius: 10px; }
+.ds-body-row .input, .ds-body-row .ds-secret-input, .hub-settings-row .input, .settings-compact-control .input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-soft-bg); font-size: 14px; }
+.ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger, .hub-settings-row .ds-select-control { padding-inline: 12px; border-radius: 10px; }
 /* Controls inside a row are 28px. */
 .ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); }
 /* A menu's trigger: soft bordered, 32px, 10px radius, 14px label, grey 14px chevron. */
@@ -1464,10 +1464,10 @@ th.ds-text-caps {
 }
 
 .ds-body-scope .ds-result-row-value {
-  color: var(--ds-fg);
-  font-size: var(--ds-text-body-value);
-  line-height: var(--ds-lh-body-value);
-  font-weight: 500;
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-row-title);
+  line-height: var(--ds-row-title-lh);
+  font-weight: 400;
 }
 
 .ds-body-scope .ds-result-row-copy .ds-field-label {
