@@ -28,12 +28,12 @@
 .shortcut-reference-copy p { margin: 0; font-size: var(--ds-row-title); line-height: var(--ds-row-title-lh); font-weight: 400; }
 .shortcut-reference-copy span { display: block; margin-top: var(--ds-row-gap); color: var(--ds-fg-secondary); font-size: var(--ds-row-desc); line-height: var(--ds-row-desc-lh); }
 .shortcut-reference-card { border: 1px solid var(--ui-stroke); border-radius: var(--ds-row-radius); background: var(--ds-card-bg); padding: 0 var(--ds-row-pad-x); }
-.shortcut-reference-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: var(--ds-row-h-2); padding: var(--ds-row-pad-y) 0; }
-.shortcut-reference-copy { flex: 1; min-width: 0; }
+.shortcut-reference-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px; align-items: center; column-gap: 16px; row-gap: 6px; min-height: var(--ds-row-h-2); padding: var(--ds-row-pad-y) 0; }
+.shortcut-reference-copy { min-width: 0; }
 .shortcut-reference-row + .shortcut-reference-row { border-top: 1px solid var(--ui-stroke); }
-.shortcut-reference-bindings { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.shortcut-reference-binding { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.shortcut-reference-binding > :last-child { margin-left: 16px; }
+.shortcut-reference-binding { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
+.shortcut-reference-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.shortcut-reference-unassigned { color: var(--ds-fg-secondary); font-size: var(--ds-row-title); line-height: var(--ds-row-title-lh); }
 .shortcut-reference-binding kbd { min-width: 32px; border: 0; border-radius: 999px; background: var(--ui-hover); color: var(--ui-secondary); padding: 4px 10px; box-shadow: none; text-align: center; font-size: 12px; }
 .settings-data-section table thead th { height: var(--ds-row-head-h); padding-block: 0; }
 .settings-data-section table tbody :is(th, td) { height: var(--ds-row-h-1); padding-block: var(--ds-row-pad-y-1); }
