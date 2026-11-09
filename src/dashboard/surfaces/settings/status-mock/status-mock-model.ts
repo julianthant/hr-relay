@@ -18,9 +18,9 @@ export const STATUS_MOCK_SUBSCRIPTION = {
   limitReached: [{ label: "5-hour limit", resets: "1h 25m", left: 0 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
 } as const;
 
-/** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. */
+/** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. The combined mock needs no parameter: without one the design renders as `general-a`. */
 const LOADED_MOCK: StatusMockId | undefined = typeof window === "undefined" ? undefined
-  : STATUS_MOCK_IDS.find(id => id === new URLSearchParams(window.location.search).get("statusMock"));
+  : STATUS_MOCK_IDS.find(id => id === new URLSearchParams(window.location.search).get("statusMock")) ?? "general-a";
 /** Mock-only: one Pause all whose response was lost, so the sticky toast and its Priority notification have something to show. */
 export const STATUS_MOCK_UNKNOWN_COMMAND = { inFlightKey: "mock-pause-all", label: "Pause all requested", targets: Array.from({ length: 13 }, (_, index) => ({ runId: `mock-run-${index}`, title: `Run ${index + 1}`, expectedVersion: 1 })) } as const;
 /** Mock-only: a rejected and a conflicted single command plus a partly applied bulk Retry, so their sticky toasts and the Review dialog have something to show. */

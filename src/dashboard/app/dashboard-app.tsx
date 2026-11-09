@@ -95,7 +95,7 @@ DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockReviewRun, mockRunsForDraft, retryMockFault, mockRunSubset, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockReviewRun, mockRunsForDraft, retryMockFault, mockRunSubset, initialMockDraft, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
 import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
@@ -445,8 +445,8 @@ function LoadedApp({
   const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
   const launchWorkflow = route.view?.launchWorkflow;
   const launchSource = route.view?.launchSource;
-  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) && workflowComposition.sourceForRoute(launchWorkflow, true) === "mock" ? { workflowId: mockWorkflow(launchWorkflow).id,
-    source: launchSource ? mockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, mockRuns, workflowComposition]);
+  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) && (statusMock() !== undefined || workflowComposition.sourceForRoute(launchWorkflow, true) === "mock") ? { workflowId: mockWorkflow(launchWorkflow).id,
+    source: launchSource ? allMockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, allMockRuns, workflowComposition]);
   const setMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun } | null) => setRoute(current => ({ ...current, start: next !== null,
     view: { ...current.view, launchWorkflow: next?.workflowId, launchSource: next?.source?.id, launchStage: next ? next.source ? "Steps" : "Input" : undefined, launchCustomize: next ? false : undefined } })), [setRoute]);
   const rememberLauncher = launch.rememberLauncher;
@@ -458,8 +458,8 @@ function LoadedApp({
   const [mockNotificationTimes, setMockNotificationTimes] = useState<Readonly<Record<string, string>>>({});
   const servedOpenStart = launch.openStart;
   const openStart = useCallback(() => {
-    // The design mock (`statusMock=…`) opens the redesigned dialog for every workflow that has a mock definition, served ones included.
-    const mockStartId = railPreview ?? (statusMock() !== undefined && MOCK_WORKFLOWS.some(flow => flow.id === activeWorkflowId && flow.runnable) ? activeWorkflowId : null);
+    // The design mock opens the redesigned dialog for every workflow that has a mock definition, served ones included.
+    const mockStartId = railPreview ?? (statusMock() !== undefined ? MOCK_WORKFLOWS.find(flow => flow.id === activeWorkflowId && flow.runnable)?.id ?? MOCK_WORKFLOWS.find(flow => flow.runnable)?.id ?? null : null);
     if (mockStartId && mockWorkflow(mockStartId).runnable) openMockLaunch({ workflowId: mockWorkflow(mockStartId).id });
     else { setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } })); servedOpenStart(); }
   }, [railPreview, servedOpenStart, openMockLaunch, activeWorkflowId, setRoute]);
@@ -770,6 +770,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (action.kind === "navigation") {
         if (action.navigate.kind === "rerun") {
           const row = dayWire?.queueSurfaces.find(entry => String(entry.runId) === target.runId);
+          const rerunFlow = row !== undefined && statusMock() !== undefined ? MOCK_WORKFLOWS.find(flow => flow.id === row.workflowId && flow.runnable) : undefined;
+          if (row !== undefined && rerunFlow !== undefined) {
+            // The design mock reruns a served run in the redesigned dialog, from a mock run that stands for it.
+            const source: MockRun = { id: String(row.runId), workflowId: rerunFlow.id, title: row.title, subject: row.title, draft: initialMockDraft(rerunFlow.id), approved: true, seeded: true };
+            setMockRuns(previous => previous.some(run => run.id === source.id) ? previous : [...previous, source]);
+            openMockLaunch({ workflowId: rerunFlow.id, source });
+            return;
+          }
           openRerun({ ...RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }),
             ...(row === undefined ? {} : { label: row.title, traceId: String(row.traceId) }) });
         }

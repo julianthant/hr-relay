@@ -5,6 +5,7 @@ import { useViewNavigation, useViewState } from "../../app/navigation/view-route
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
 import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
+import { statusMock } from "../settings/status-mock/status-mock-model.js";
 import { WorkflowMockRunForm } from "../workflows/mocks/workflow-mock-run.js";
 import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
@@ -436,10 +437,11 @@ export function RunStartDialog({
     selectedWorkflowRef.current = id;
     ++launchInstance.current;
     setBusy(false);
-    if (entry.served) {
+    if (entry.preview && (statusMock() !== undefined && entry.preview.runnable || !entry.served)) setPreviewSelection({ workflowId: entry.preview.id });
+    else if (entry.served) {
       setPreviewSelection(undefined);
       selectWorkflow(id);
-    } else if (entry.preview) setPreviewSelection({ workflowId: entry.preview.id });
+    }
   }, [catalog, selectWorkflow, onSubmitPreview, setPreviewSelection]);
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
