@@ -43,7 +43,10 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     const firstToast = { toasts: "UCPath is down for maintenance", "toasts-storage": "Your disk is full", "toasts-restored": "Restored a damaged file from the 6:30 PM backup" }[id as string];
     if (firstToast) await expect(page.getByText(firstToast)).toBeVisible();
-    if (id === "run-rerun") {
+    if (id === "queue-toolbar") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+    } else if (id === "run-rerun") {
       // Reruns happen only in the Rerun dialog: Emergency Contact in the rail, the run's Rerun button, then Continue to the Values stage.
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await page.getByRole("button", { name: "Rerun", exact: true }).click();
@@ -85,5 +88,18 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}-more.png`) });
     }
   }
+  expect(errors).toEqual([]);
+});
+
+// Every button variant on the kit page.
+test(`kit buttons ${WIDTH}`, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+  const actions = page.locator("#actions");
+  await expect(actions).toBeVisible();
+  await page.mouse.move(1, 1);
+  await actions.screenshot({ path: join(OUT, `kit-buttons-${WIDTH}.png`) });
   expect(errors).toEqual([]);
 });

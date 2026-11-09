@@ -211,7 +211,7 @@
   --ds-lh-body-description: 16.2px;
   --ds-text-body-value: 13.5px;
   --ds-lh-body-value: 18px;
-  --ds-h-body-control: 32.4px;
+  --ds-h-body-control: 28px;
   --ds-h-body-row: 62.5px;
   --ds-h-body-ranked-row: 48.6px;
   --ds-size-body-choice: 14.4px;
@@ -283,7 +283,7 @@
   --ds-space-body-section-heading-gap: 9.9px;
   --ds-space-body-caption-gap: 10px;
   --ds-space-body-toolbar-inline: 9.9px;
-  --ds-text-body-caption: 12.6px;
+  --ds-text-body-caption: 12px;
   --ds-lh-body-caption: 19px;
   --ds-text-body-section: 16.2px;
   --ds-lh-body-section: 21px;
@@ -960,6 +960,11 @@ body[data-demo-theme="light"] {
   letter-spacing: var(--ds-tracking-caps);
   font-weight: 600;
 }
+/* Small table headings are 11px. */
+th.ds-text-caps {
+  font-size: var(--ds-text-meta);
+  line-height: var(--ds-lh-meta);
+}
 /* Collapse the line box to the em. Compose AFTER a `ds-text-*` size class on a
    single-line label that shares a flex/grid row with an icon or a taller */
 .ds-leading-flush {
@@ -1077,6 +1082,9 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-scope .ds-page-heading-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin-top: var(--ds-space-heading-description);
   font-size: var(--ds-text-body-caption);
   line-height: var(--ds-lh-body-caption);
@@ -1162,6 +1170,9 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-scope .ds-field-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin: var(--ds-space-tight) 0 0;
   color: var(--ds-fg-secondary);
   font-size: var(--ds-text-body-description);
