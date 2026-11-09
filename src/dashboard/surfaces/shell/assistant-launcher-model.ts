@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { MARK_STATES, type MarkState } from "./assistant-mark-model.js";
 
 function param(name: string): string | null {
   return typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(name);
@@ -30,4 +31,26 @@ export function useAssistantOpen(): boolean {
 /** Returns focus to whichever launcher is on screen (the panel closed from inside). */
 export function focusAssistantLauncher(): void {
   document.querySelector<HTMLElement>("[data-assistant-launcher]")?.focus();
+}
+
+/** What the assistant is doing, for the launcher mark: replying, confirming, or the short done / error that follows. `assistantMark=<state>` pins a state in stills. */
+export type AssistantTurnPhase = "waiting" | "confirming" | "failed" | "settled";
+let activity: MarkState | undefined, lastPhase: AssistantTurnPhase = "settled", settle: ReturnType<typeof setTimeout> | undefined;
+const setActivity = (next: MarkState | undefined) => { activity = next; emit(); };
+export const assistantActivity = {
+  report(phase: AssistantTurnPhase) {
+    const was = lastPhase; lastPhase = phase; clearTimeout(settle);
+    if (phase === "waiting") return setActivity("thinking");
+    if (phase === "confirming") return setActivity("working");
+    if (was !== "waiting" && was !== "confirming") return setActivity(undefined);
+    setActivity(phase === "failed" ? "error" : "done"); settle = setTimeout(() => { setActivity(undefined); }, 2400);
+  },
+  get: () => activity,
+};
+
+/** The launcher mark's state: the turn's activity, else needs-you, else idle. */
+export function useAssistantMarkState(): MarkState {
+  const live = useSyncExternalStore(subscribe, assistantActivity.get, () => undefined);
+  const pinned = MARK_STATES.find(state => state === param("assistantMark"));
+  return pinned ?? live ?? (assistantNeedsYou() > 0 ? "needs-you" : "idle");
 }

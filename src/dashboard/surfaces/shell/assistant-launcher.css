@@ -15,14 +15,13 @@
 .session-pill-title { color: var(--ds-fg-list); font-weight: 400; }
 .session-pill-counts { color: var(--ui-secondary); }
 .session-toggle:focus-visible, .assistant-launcher:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 1px; }
-.assistant-launcher { position: relative; display: inline-flex; flex: none; height: 46px; min-width: 46px; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); color: var(--ui-primary); font-size: 13px; font-weight: 400; line-height: 18px; cursor: pointer; transition: background-color 120ms ease-out; }
-.assistant-launcher:hover, .assistant-launcher[aria-expanded="true"] { background: color-mix(in srgb, var(--ds-fg) 4%, var(--ui-panel)); }
+.assistant-launcher-card { display: flex; flex: none; height: 46px; align-items: center; padding: 8px; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-lg); background: var(--ui-panel); }
+.assistant-launcher { display: inline-flex; flex: none; height: 28px; min-width: 28px; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 1px solid var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); color: var(--ui-primary); font-size: 13px; font-weight: 400; line-height: 18px; cursor: pointer; transition: background-color 120ms ease-out; }
+.assistant-launcher:hover, .assistant-launcher[aria-expanded="true"] { background: var(--ds-picker-bg-hover); }
 .assistant-launcher svg { flex: none; color: var(--ui-secondary); }
-.assistant-launcher-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--ui-info); }
 @media (max-width: 1099px) {
-  .assistant-launcher { width: 46px; padding: 0; }
+  .assistant-launcher { width: 28px; padding: 0; }
   .assistant-launcher-text { display: none; }
-  .assistant-launcher-dot { position: absolute; top: 9px; right: 9px; box-shadow: 0 0 0 2px var(--ui-panel); }
 }
 @media (prefers-reduced-motion: reduce) { .assistant-launcher, .session-bar { transition: none; } }
 .session-bar-end button[aria-pressed="true"] { background: var(--ds-picker-bg-hover); color: var(--ui-primary); }

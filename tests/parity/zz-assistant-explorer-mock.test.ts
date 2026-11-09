@@ -17,6 +17,7 @@ const RUN = { preview: "separations", mockRun: "mock:separations:sample" };
 const launcherFrames: Frame[] = [
   { id: "launcher-closed", query: "assistantOpen=0", view: RUN },
   { id: "launcher-needs", query: "assistantOpen=0&assistantNeeds=2", view: RUN },
+  ...(["thinking", "working", "done", "error"] as const).map(state => ({ id: `launcher-${state}`, query: `assistantOpen=0&assistantMark=${state}`, view: RUN })),
   { id: "launcher-open", query: "assistantOpen=1&assistantNeeds=2&assistantMock=01-chat-basics", view: RUN },
 ];
 const FRAMES: Frame[] = [
