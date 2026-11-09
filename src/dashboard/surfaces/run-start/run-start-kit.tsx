@@ -28,7 +28,7 @@ import { fmtClock } from "../shared/status/format.js";
 import type { CommandResult } from "../../../rules/commands/commands.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
-import { RunList, RunListRow } from "./run-list.js";
+import { RunList, RunListRow, RunSection } from "./run-list.js";
 import { typedInputMode, typedInputDefaults, inputRunFieldLabel, inputRunDelimiterHint, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */
@@ -475,8 +475,9 @@ export function TypedInput({
       ?? (editableParser.split.delimiters.includes("\n") ? "\n" : editableParser.split.delimiters[0])
     : "";
   const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
-  const field = <Field label={mode?.inputLabel ?? inputRunFieldLabel(surface.parser)} description={presentation === "mock" ? (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(/semicolon or a new line\./u, "semicolon or Shift+Enter.") : mode?.hint ?? inputRunDelimiterHint(surface.parser)} error={presentation === "served" ? preview.problem : undefined}>
-    <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text}
+  const inputLabel = mode?.inputLabel ?? inputRunFieldLabel(surface.parser);
+  const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(presentation === "mock" ? /semicolon or a new line\./u : /$^/u, "semicolon or Shift+Enter.");
+  const box = <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text} aria-label={presentation === "mock" ? inputLabel : undefined}
       placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
       onChange={event => onText(event.target.value)}
       onBlur={() => {
@@ -484,8 +485,8 @@ export function TypedInput({
           const normalized = entryText(preview.entries);
           if (normalized !== text) onText(normalized);
         }
-      }} />
-  </Field>;
+      }} />;
+  const field = <Field label={inputLabel} description={hint} error={presentation === "served" ? preview.problem : undefined}>{box}</Field>;
   const controls = declaration && <>
     <SegmentedChoice label={declaration.modeLabel} value={mode?.value ?? ""}
       options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
@@ -505,7 +506,7 @@ export function TypedInput({
           <Checkbox label={control.label} className="[&_.ds-checkbox-copy]:sr-only" checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />
         </RunListRow>)}
     </RunList>
-    <div className="flex flex-col gap-[var(--ds-space-snug)]">{field}</div>
+    <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}</RunSection>
     {preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
       {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className="font-mono">{entry.sourceText}</span>}>
         {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}

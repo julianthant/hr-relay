@@ -208,7 +208,7 @@
   --ds-text-body-section: 16px;
   --ds-lh-body-section: 22px;
   --ds-text-body-row: 14px;
-  --ds-lh-body-row: 20px;
+  --ds-lh-body-row: 18px;
   --ds-text-body-description: 13px;
   --ds-lh-body-description: 18px;
   --ds-text-body-value: 14px;
@@ -219,7 +219,7 @@
   --ds-size-body-choice: 14.4px;
   --ds-space-body-copy-gap: 2px;
   --ds-radius-body-control: 8.1px;
-  --ds-radius-body-group: 16px;
+  --ds-radius-body-group: 14px;
   --ds-radius-body-dialog: 14.4px;
   --ds-w-body-switch: 35.1px;
   --ds-h-body-switch: 21.6px;
@@ -280,7 +280,7 @@
   --ds-space-body-catalog-title-bottom: 6.3px;
   --ds-space-body-catalog-section-gap: 25.2px;
   --ds-text-body-catalog-small: 10.8px;
-  --ds-space-body-group-inline: 20px;
+  --ds-space-body-group-inline: 16px;
   --ds-space-body-section-gap: 32.4px;
   --ds-space-body-section-heading-gap: 9.9px;
   --ds-space-body-caption-gap: 10px;
@@ -1145,9 +1145,12 @@ th.ds-text-caps {
   align-items: center;
   gap: var(--ds-space-loose);
   min-width: 0;
-  min-height: 0;
-  padding-block: 16px;
+  min-height: 42px;
+  padding-block: 12px;
 }
+
+/* A one-line row is shorter than one with a grey description. */
+.ds-body-scope .ds-body-row:not(:has(.ds-field-description)) { padding-block: 10px; }
 
 .ds-body-scope .ds-body-row[data-control-width="wide"] {
   grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control-wide));
@@ -1185,7 +1188,7 @@ th.ds-text-caps {
   margin: var(--ds-space-body-copy-gap) 0 0;
   color: var(--ds-fg-secondary);
   font-size: var(--ds-text-body-description);
-  line-height: var(--ds-lh-body-description);
+  line-height: 16px;
 }
 
 .ds-body-scope .ds-field-error {
@@ -1340,7 +1343,7 @@ th.ds-text-caps {
   width: 100%;
   min-height: 0;
   justify-content: space-between;
-  padding-block: 16px;
+  padding-block: 12px;
 }
 
 .ds-body-scope .ds-date-picker--inline .date-picker__trigger-indicator {
@@ -1371,7 +1374,7 @@ th.ds-text-caps {
 
 .ds-body-scope .ds-disclosure-body .ds-disclosure-trigger {
   min-height: 0;
-  padding-block: 16px;
+  padding-block: 12px;
   padding-inline: 0;
 }
 .ds-disclosure-body .ds-disclosure-trigger > svg:first-child { order: 3; }
