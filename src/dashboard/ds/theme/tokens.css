@@ -228,6 +228,7 @@
   --ds-row-pad-y-1: 8px; /* a one-line row */
   --ds-row-h-1: 44px;
   --ds-row-h-2: 60px;
+  --ds-menu-fg: color-mix(in srgb, var(--ui-primary) 90%, #fff); /* menu item text: a touch dimmer than primary */
   --ds-card-bg: var(--ui-panel); /* light: the page fill, the card is drawn by its border */
   --ds-menu-item-h: 28px; /* one-line menu item; a two-line item grows to fit */
   --ds-row-head-h: 32px;
@@ -1001,16 +1002,16 @@ body[data-demo-theme="light"] {
 .ds-menu-item {
   position: relative; display: flex; min-height: var(--ds-menu-item-h); align-items: center; gap: 8px; box-sizing: border-box;
   padding: 4px 10px; border-radius: 8px; outline: none; cursor: default; user-select: none;
-  font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ui-primary);
+  font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ds-menu-fg);
 }
-.ds-menu-item[data-highlighted], .ds-menu-item[data-popup-open], .ds-menu-item[data-open] { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); color: var(--ui-primary); }
+.ds-menu-item[data-highlighted], .ds-menu-item[data-popup-open], .ds-menu-item[data-open] { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); color: var(--ds-menu-fg); }
 .ds-menu-item[data-disabled], .ds-menu-item[aria-disabled="true"] { pointer-events: none; opacity: 0.5; }
 .ds-menu-item > svg:not(.ds-menu-check) { width: 16px; height: 16px; flex: none; color: var(--ui-muted); }
 .ds-menu-item[data-selected] , .ds-menu-item[data-checked] { padding-right: 34px; }
-.ds-menu-check { position: absolute; top: 50%; right: 10px; width: 16px; height: 16px; transform: translateY(-50%); color: var(--ui-primary); }
+.ds-menu-check { position: absolute; top: 50%; right: 10px; width: 16px; height: 16px; transform: translateY(-50%); stroke-width: 1.5; color: var(--ds-menu-fg); }
 .ds-menu-item:has(.ds-menu-copy) { padding-block: 5px; }
 .ds-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
-.ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ui-primary); }
+.ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ds-menu-fg); }
 .ds-menu-copy > span + span { font-size: 13px; line-height: 20px; color: var(--ui-secondary); }
 .ds-menu-label { padding: 6px 10px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
 .ds-menu-separator { height: 1px; margin: 4px 10px; background: var(--ui-stroke); }
@@ -1388,12 +1389,16 @@ th.ds-text-caps {
   --border-width-field: 1px;
   --field-shadow: none;
 }
+/* Toolbar search edge: a step stronger than the faint field border (Codex). */
+.ds-search-field:not(.ds-search-field--menu) { --field-border: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-canvas)); }
+[data-demo-theme="dark"] .ds-search-field:not(.ds-search-field--menu) { --field-border: color-mix(in srgb, var(--ds-fg) 23%, var(--ui-canvas)); }
 /* The one search field: a pill, 32px, a faint border, filled one step above its surface, a 16px magnifier inset on the left, 14px text. */
 .ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-toolbar-control-h); min-height: var(--ds-toolbar-control-h); box-sizing: border-box; gap: 8px; padding-inline: 12px 6px; border-radius: 9999px; background: var(--field); color: var(--field-foreground); }
 .ds-search-field [data-slot="search-field-search-icon"] { width: 16px; height: 16px; flex-shrink: 0; color: var(--field-placeholder); }
 .ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 14px; font-weight: 400; line-height: 20px; }
 .ds-search-field [data-slot="search-field-input"]::placeholder { color: var(--field-placeholder); opacity: 1; }
 /* Inside a dropdown menu the same look at 28px. */
+.ds-search-field--menu { --field-border: var(--ds-soft-border); --field-border-hover: var(--ds-soft-border); --field-border-focus: var(--ds-soft-border); }
 .ds-search-field--menu [data-slot="search-field-group"] { height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box; padding-inline: 10px 4px; }
 .ds-search-field--menu [data-slot="search-field-search-icon"] { width: 14px; height: 14px; }
 .ds-search-field--menu [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
@@ -2053,3 +2058,4 @@ body[data-demo-theme],
 .ds-layer-toast-card { z-index: calc(var(--ds-layer-toast-card) - var(--toast-index)); }
 
 [data-demo-theme="light"] { --ds-card-bg: var(--ui-canvas); }
+[data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; }
