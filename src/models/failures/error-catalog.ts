@@ -486,6 +486,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The worker changed since this view was loaded. Refresh and try again.",
     EmptyParametersSchema,
   ),
+  WORKER_PAUSE_SETTLING: catalogEntry(
+    "This worker is still pausing its run. Resolve any unknown write in Logs before resuming the worker.",
+    EmptyParametersSchema,
+  ),
   WORKER_BUSY: catalogEntry(
     "The worker is busy with a run or another control. Try again when it is idle.",
     EmptyParametersSchema,
