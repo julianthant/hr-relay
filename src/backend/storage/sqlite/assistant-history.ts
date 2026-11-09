@@ -362,6 +362,8 @@ export type AssistantM1Acceptance =
   | Readonly<{ state: "repeat"; ordinal: number; revision: number; delivery: Exclude<Delivery, "settled">;
     conversationCreatedAt: string; acceptedTurn: AssistantAcceptedTurn; usage: Extract<AssistantM1MessagePayload["recording"], { kind: "accepted-turn" }>["usage"] }>;
 
+type AssistantM1RepeatInput = Readonly<{ conversationId: string; messageId: string; text: string; subjectRef: string | null; attachments: readonly string[]; now: string }>;
+
 export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epoch(): number; afterCommit(publish: () => void): void }>) {
   const { database } = ports, profileId = z.uuid().parse(ports.profileId());
   const liveAttempts = new Map<string, AssistantM1Attempt>();
@@ -416,6 +418,16 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
   const messageRow = (id: string) => {
     const row = database.prepare("SELECT * FROM assistant_messages WHERE id=?").get(id);
     return row === undefined ? undefined : assistantM1MessageFromRow(row);
+  };
+  const duplicate = (prior: AssistantM1MessageRecord, record: AssistantConversationRecord, input: AssistantM1RepeatInput): Extract<AssistantM1Acceptance, { state: "repeat" }> => {
+    const recording = prior.payload.recording;
+    if (recording.kind !== "accepted-turn" || prior.kind !== "turn" || prior.role !== "operator" || prior.delivery === "settled") return refuse("ASSISTANT_CONVERSATION_STALE");
+    if (prior.conversationId !== input.conversationId || recording.acceptedTurn.profileId !== profileId || recording.acceptedTurn.epoch !== ports.epoch()
+      || canonicalJsonStringify(prior.payload.parts) !== canonicalJsonStringify([{ kind: "text", runs: [{ kind: "plain", text: input.text }] }])
+      || prior.subjectRef !== input.subjectRef || canonicalJsonStringify(fileNames(prior.id).map(file => file.id)) !== canonicalJsonStringify(input.attachments)) refuse("ASSISTANT_CONVERSATION_STALE");
+    validateMembership(prior, record);
+    return { state: "repeat", ordinal: prior.ordinal, revision: record.revision, delivery: prior.delivery,
+      conversationCreatedAt: record.createdAt, acceptedTurn: recording.acceptedTurn, usage: recording.usage };
   };
   const nextOrdinal = (conversationId: string) => z.object({ next: z.number().int() }).parse(
     database.prepare("SELECT COALESCE(MAX(ordinal),0)+1 AS next FROM assistant_messages WHERE conversation_id=?").get(conversationId)).next;
@@ -559,23 +571,21 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
         return { result: files.stage({ ...input, chatExpiresAt: chat.expiresAt }), changes: 1 };
       });
     },
+    repeat(input: AssistantM1RepeatInput): Extract<AssistantM1Acceptance, { state: "repeat" }> | undefined {
+      return ports.read(() => {
+        const record = requireOwned(input.conversationId, input.now), prior = messageRow(input.messageId);
+        return prior === undefined ? undefined : duplicate(prior, record, input);
+      });
+    },
     /** Repeats return stored facts; only a new acceptance belongs to the orchestration attempt. */
     accept(input: Readonly<{ conversationId: string; expectedRevision: number; messageId: string; text: string; modelText: string; subjectRef: string | null;
       attachments: readonly string[]; proposalAnswer: AssistantAcceptedTurn["proposalAnswer"]; now: string }>): AssistantM1Acceptance {
       return ports.mutate("assistant_messages", (): { result: AssistantM1Acceptance; changes: number } => {
         const record = requireOwned(input.conversationId, input.now), prior = messageRow(input.messageId);
         if (prior !== undefined) {
-          const recording = prior.payload.recording;
-          if (recording.kind !== "accepted-turn" || prior.delivery === "settled") return refuse("ASSISTANT_CONVERSATION_STALE");
-          if (prior.conversationId !== input.conversationId || prior.modelText !== input.modelText
-            || recording.acceptedTurn.profileId !== profileId || recording.acceptedTurn.epoch !== ports.epoch()
-            || canonicalJsonStringify(prior.payload.parts) !== canonicalJsonStringify([{ kind: "text", runs: [{ kind: "plain", text: input.text }] }])
-            || canonicalJsonStringify(recording.acceptedTurn.proposalAnswer) !== canonicalJsonStringify(input.proposalAnswer)
-            || prior.subjectRef !== input.subjectRef
-            || canonicalJsonStringify(fileNames(prior.id).map(file => file.id)) !== canonicalJsonStringify(input.attachments)) refuse("ASSISTANT_CONVERSATION_STALE");
-          validateMembership(prior, record);
-          return { result: { state: "repeat", ordinal: prior.ordinal, revision: record.revision, delivery: prior.delivery,
-            conversationCreatedAt: record.createdAt, acceptedTurn: recording.acceptedTurn, usage: recording.usage }, changes: 0 };
+          const repeated = duplicate(prior, record, input);
+          if (prior.modelText !== input.modelText || canonicalJsonStringify(repeated.acceptedTurn.proposalAnswer) !== canonicalJsonStringify(input.proposalAnswer)) refuse("ASSISTANT_CONVERSATION_STALE");
+          return { result: repeated, changes: 0 };
         }
         if (record.revision !== input.expectedRevision) refuse("ASSISTANT_CONVERSATION_STALE");
         if (hasSending(input.conversationId)) refuse("ASSISTANT_CONVERSATION_BUSY");

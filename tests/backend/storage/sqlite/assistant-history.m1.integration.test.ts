@@ -1,11 +1,11 @@
+import { aggregateAssistantUsage } from "../../../../src/models/dashboard/assistant-usage.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
-import { ASSISTANT_HISTORY_MIGRATION, ASSISTANT_M1_HISTORY_STATEMENTS, assistantMessageFromRow, assistantM1MessageFromRow,
-  createAssistantM1HistoryRepository } from "../../../../src/backend/storage/sqlite/assistant-history.js";
-import { ASSISTANT_ATTACHMENTS_MIGRATION } from "../../../../src/backend/storage/sqlite/assistant-attachments.js";
-import { ASSISTANT_CHATS_MAX, AssistantM1MessagePayloadSchema, aggregateAssistantUsage } from "../../../../src/models/dashboard/assistant.js";
+import { assistantMessageFromRow, assistantM1MessageFromRow } from "../../../../src/backend/storage/sqlite/assistant-history.js";
+import { assistantM1HistoryFixture } from "../../../support/helpers/assistant-m1-history-fixture.js";
+import { ASSISTANT_CHATS_MAX, AssistantM1MessagePayloadSchema } from "../../../../src/models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
 const NOW = "2026-11-08T12:00:00.000Z", LATER = "2026-11-08T12:05:00.000Z";
@@ -13,45 +13,9 @@ const databases: DatabaseSync[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
 const parts = (text: string) => [{ kind: "text" as const, runs: [{ kind: "plain" as const, text }] }];
 function world() {
-  const database = new DatabaseSync(":memory:"); databases.push(database);
-  database.exec("PRAGMA foreign_keys=ON");
-  for (const statement of [...ASSISTANT_HISTORY_MIGRATION.statements, ...ASSISTANT_ATTACHMENTS_MIGRATION.statements, ...ASSISTANT_M1_HISTORY_STATEMENTS]) database.exec(statement);
-  const profileId = randomUUID();
-  let epoch = 7, generation = 0, depth = 0, sequence = 0, dirty = false;
-  const callbacks: (() => void)[] = [];
-  function transaction<T>(work: () => T): T {
-    const nested = depth > 0, savepoint = `prepared_${String(++sequence)}`, before = callbacks.length, dirtyBefore = dirty;
-    database.exec(nested ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE"); depth++;
-    let result: T;
-    try {
-      result = work();
-      database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : "COMMIT");
-    } catch (error) {
-      if (nested) { database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`); database.exec(`RELEASE SAVEPOINT ${savepoint}`); }
-      else database.exec("ROLLBACK");
-      callbacks.splice(before); dirty = dirtyBefore; throw error;
-    } finally { depth--; }
-    if (!nested) {
-      if (dirty) generation++;
-      dirty = false;
-      const committed = callbacks.splice(0); for (const publish of committed) publish();
-    }
-    return result;
-  }
-  const schemaBefore = database.prepare("SELECT name,sql FROM sqlite_schema ORDER BY name").all();
-  const ports: Parameters<typeof createAssistantM1HistoryRepository>[0] = { database, profileId: () => profileId, epoch: () => epoch,
-    afterCommit: publish => { if (depth === 0) publish(); else callbacks.push(publish); },
-    read: work => { if (depth > 0) return work(); database.exec("BEGIN"); try { const result = work(); database.exec("COMMIT"); return result; } catch (error) { database.exec("ROLLBACK"); throw error; } },
-    mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) };
-  const history = createAssistantM1HistoryRepository(ports);
-  assert.deepEqual(database.prepare("SELECT name,sql FROM sqlite_schema ORDER BY name").all(), schemaBefore, "prepared construction never changes schema");
-  const create = (title = "Chat") => { const id = randomUUID(); history.apply({ operation: "create", conversationId: id, title }, NOW); return id; };
-  const revision = (id: string) => { const chat = history.conversation(id, NOW); assert.ok(chat); return chat.revision; };
-  const input = (id: string, text = "Explain") => ({ conversationId: id, expectedRevision: revision(id), messageId: randomUUID(), text,
-    modelText: `masked ${text}`, subjectRef: null, attachments: [], proposalAnswer: null, now: LATER });
-  return { database, history, create, revision, input, outer: transaction, restart: () => createAssistantM1HistoryRepository(ports), generation: () => generation, epoch: () => epoch, profileId: () => profileId,
-    changeEpoch: () => epoch++ };
+  const fixture = assistantM1HistoryFixture({ now: NOW, acceptedAt: LATER }); databases.push(fixture.database); return fixture;
 }
+
 it("prepares real accepted metadata, pending usage and one atomic structured reply settlement", () => {
   const w = world(), id = w.create(), input = w.input(id), accepted = w.history.accept(input);
   assert.equal(accepted.state, "accepted"); if (accepted.state !== "accepted") assert.fail();
@@ -330,4 +294,20 @@ it("discards inner-savepoint publications while committing unrelated outer work"
   assert.equal(w.history.conversation(id, LATER)?.draft, "retained");
   assert.equal(w.history.sending(attempt, LATER), true);
   assert.equal(w.history.settle(attempt, { delivery: "answered", usage: aggregateAssistantUsage([]) }, LATER), 3);
+});
+
+it("reads authentic repeats before remasking without exposing replay or granting a live identity", () => {
+  const w = world(), id = w.create(), input = w.input(id), attempt = w.history.accept(input);
+  const query = { conversationId: id, messageId: input.messageId, text: input.text, subjectRef: input.subjectRef, attachments: input.attachments, now: LATER };
+  const repeat = w.restart().repeat(query); assert.ok(repeat);
+  assert.equal(repeat.state, "repeat"); assert.equal(repeat.delivery, "sending");
+  assert.deepEqual(repeat.acceptedTurn, attempt.acceptedTurn); assert.deepEqual(repeat.usage, { state: "pending" });
+  assert.equal("modelText" in repeat, false); assert.equal("subjectRef" in repeat, false);
+  assert.equal(w.history.sending(repeat, LATER), false); assert.equal(w.history.sending(attempt, LATER), true);
+  assert.equal(w.history.repeat({ ...query, messageId: randomUUID() }), undefined);
+  for (const patch of [{ text: "changed" }, { subjectRef: "run_other_1" }, { attachments: [randomUUID()] }, { conversationId: w.create() }])
+    assert.throws(() => w.history.repeat({ ...query, ...patch }), /ASSISTANT_CONVERSATION_STALE/u);
+  w.history.settle(attempt, { delivery: "refused", code: "ASSISTANT_UNAVAILABLE", usage: aggregateAssistantUsage([]) }, LATER);
+  assert.equal(w.restart().repeat(query)?.delivery, "refused");
+  w.changeEpoch(); assert.throws(() => w.history.repeat(query), /ASSISTANT_CONVERSATION_STALE/u);
 });

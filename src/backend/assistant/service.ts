@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { aggregateAssistantUsage, type AssistantCallUsage } from "../../models/dashboard/assistant-usage.js";
+import { ASSISTANT_M1_READ_RETRY_FAILURES, AssistantM1RespondEnvelopeSchema, AssistantReplySchema, type AssistantAcceptedTurn, type AssistantM1RespondEnvelope } from "../../models/dashboard/assistant.js";
+import type { AssistantM1Acceptance, AssistantM1HistoryRepository } from "../storage/sqlite/assistant-history.js";
+import { resolveAssistantReply, type ServerReplyBinding } from "./replies.js";
 import type { DebugEventSchema } from "../../models/events/timeline.js";
 import { emitFaultWithCauses } from "../logs/debug-events.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
@@ -348,3 +352,233 @@ function selectedRunReference(subjectRef: string): { runId: string; revision: nu
   return { runId: match[1], revision };
 }
 export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'stage' | 'models' | 'modelPreference' | 'historyView' | 'conversation' | 'history'>>;
+
+export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions, "plugins" | "history" | "decideAction" | "debugEvents"> {
+  readonly history: () => AssistantM1HistoryRepository;
+  readonly debugEvents: NonNullable<AssistantServiceOptions["debugEvents"]>;
+  readonly reads: () => Readonly<{ plugins: readonly AssistantPlugin[];
+    bindings(table: AssistantReferenceTable, acceptedTurn: AssistantAcceptedTurn): readonly ServerReplyBinding[] | Promise<readonly ServerReplyBinding[]> }>;
+}
+
+/** Prepared read-only replacement; composition and the served wire switch together at C0. */
+export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
+  const references = createAssistantReferences(), live = new Map<string, AbortController>();
+  const now = () => options.clock.now().toISOString();
+  type Accepted = Extract<AssistantM1Acceptance, { state: "accepted" }>;
+  type Turn = Readonly<{ reason: AssistantFailureCode }> | Readonly<{ uncertain: true }>
+    | Readonly<{ modelText: string; parts: z.infer<typeof AssistantReplySchema>["parts"] }>;
+  const noReply = (reason: AssistantFailureCode): AssistantM1RespondEnvelope => ({ kind: "result", result: { state: "no-reply", reason, canRetry: false, turn: null } });
+  const failure = (error: unknown, signal: AbortSignal): AssistantFailureCode => {
+    if (closure(error)) return "CHATGPT_RESOURCE_CLOSURE_UNPROVED";
+    if (signal.aborted) return "ASSISTANT_CANCELLED";
+    if (error instanceof AssistantHistoryRefusal || error instanceof AssistantToolRefusal) return error.code;
+    if (error instanceof AssistantReferenceError) return error.reason === "reference-limit" ? "ASSISTANT_LIMIT" : "ASSISTANT_READ_STALE";
+    if (error instanceof AssistantModelChangedError) return "ASSISTANT_MODEL_CHANGED";
+    if (error instanceof ChatGptAccountError) {
+      const mapped = { CHATGPT_USAGE_LIMIT: "ASSISTANT_USAGE_LIMIT", CHATGPT_PLAN_DISABLED: "ASSISTANT_PLAN_DISABLED",
+        CHATGPT_ACCOUNT_EXPIRED: "ASSISTANT_ACCOUNT_EXPIRED", CHATGPT_ASSISTANT_REFUSED: "ASSISTANT_RESPONSE_REFUSED",
+        CHATGPT_OCR_CANCELLED: "ASSISTANT_CANCELLED", CHATGPT_OCR_INCOMPLETE: "ASSISTANT_RESPONSE_INCOMPLETE",
+        CHATGPT_OCR_FAILED: "ASSISTANT_RESPONSE_FAILED", CHATGPT_OCR_INVALID: "ASSISTANT_INVALID" } as const;
+      for (const [code, reason] of Object.entries(mapped)) if (error.code === code) return reason;
+      const parsed = z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]).safeParse(error.code);
+      if (parsed.success) return parsed.data;
+    }
+    if (error instanceof AssistantProtocolError || error instanceof z.ZodError || error instanceof SyntaxError) return "ASSISTANT_INVALID";
+    return "ASSISTANT_UNAVAILABLE";
+  };
+  const repeated = (value: Extract<AssistantM1Acceptance, { state: "repeat" }>): AssistantM1RespondEnvelope => ({ kind: "delivery",
+    receipt: { conversationId: value.acceptedTurn.conversationId, messageId: value.acceptedTurn.messageId, ordinal: value.ordinal,
+      revision: value.revision, delivery: value.delivery }, acceptedTurn: value.acceptedTurn, usage: value.usage, history: { state: "observed" } });
+
+  async function respond(input: unknown, requestSignal: AbortSignal): Promise<AssistantM1RespondEnvelope> {
+    const parsed = AssistantRequestSchema.safeParse(input);
+    if (!parsed.success) return noReply("ASSISTANT_INVALID");
+    const request = parsed.data, { conversationId, messageId } = request;
+    const controller = new AbortController(), signal = AbortSignal.any([requestSignal, controller.signal]);
+    const calls: (AssistantCallUsage | undefined)[] = [];
+    let accepted: Accepted | undefined;
+    let history: AssistantM1HistoryRepository;
+    let owner: ReturnType<AssistantM1ServiceOptions["owner"]>;
+    const assertOwner = () => {
+      options.assertComposition?.();
+      const current = options.owner();
+      if (current.profileId !== owner.profileId || current.epoch !== owner.epoch) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE");
+      if (accepted !== undefined && (accepted.acceptedTurn.profileId !== owner.profileId || accepted.acceptedTurn.epoch !== owner.epoch)) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE");
+    };
+    const original = () => ({ conversationId, messageId, text: request.message, subjectRef: request.subjectRef ?? null, attachments: request.attachments ?? [], now: now() });
+    try {
+      signal.throwIfAborted();
+      owner = { ...options.owner() };
+      assertOwner();
+      history = options.history();
+      const prior = history.repeat(original());
+      if (prior !== undefined) {
+        if (prior.acceptedTurn.profileId !== owner.profileId || prior.acceptedTurn.epoch !== owner.epoch) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE");
+        assertOwner();
+        return AssistantM1RespondEnvelopeSchema.parse(repeated(prior));
+      }
+      const selected = options.selectedModel();
+      const modelCurrent = () => { try { selected.assertCurrent(); } catch (error) { if (closure(error)) throw error; throw new AssistantModelChangedError(); } };
+      const assertCurrent = () => {
+        signal.throwIfAborted(); assertOwner(); modelCurrent();
+        if (accepted !== undefined && !history.sending(accepted, now())) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
+      };
+      assertCurrent();
+      const table = references.table(conversationId, owner, history.nextOrdinal(conversationId, now()));
+      const masked = maskOperatorText(request.message, table);
+      const acceptance = history.accept({ ...original(), expectedRevision: request.expectedRevision, modelText: masked, proposalAnswer: null });
+      if (acceptance.state === "repeat") return AssistantM1RespondEnvelopeSchema.parse(repeated(acceptance));
+      accepted = acceptance;
+      live.set(conversationId, controller);
+      const turn = await runTurn();
+      const usage = aggregateAssistantUsage(calls), attempt = accepted;
+      let observedRevision = attempt.revision;
+      let settled = false;
+      const readback = () => {
+        assertOwner();
+        const stored = history.repeat(original());
+        if (stored === undefined || canonicalJsonStringify(stored.acceptedTurn) !== canonicalJsonStringify(attempt.acceptedTurn)) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
+        observedRevision = stored.revision;
+        return stored;
+      };
+      const unavailable = (code: AssistantFailureCode): AssistantM1RespondEnvelope => ({ kind: "delivery", acceptedTurn: attempt.acceptedTurn, usage,
+        receipt: { conversationId, messageId, ordinal: attempt.ordinal, revision: observedRevision, delivery: "delivery-unknown" }, history: { state: "unavailable", code } });
+      const settle = (outcome: Turn): AssistantM1RespondEnvelope => {
+        assertOwner();
+        const reason = "reason" in outcome ? outcome.reason : undefined;
+        const reply = "parts" in outcome ? { id: randomUUID(), kind: "answer" as const, parts: outcome.parts, modelText: outcome.modelText } : undefined;
+        const revision = history.settle(attempt, { delivery: "uncertain" in outcome ? "delivery-unknown" : reason === undefined ? "answered" : "refused",
+          usage, ...(reason === undefined ? {} : { code: reason }), ...(reply === undefined ? {} : { reply }) }, now());
+        if (revision === undefined) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
+        settled = true;
+        observedRevision = revision;
+        const stored = readback();
+        if ("uncertain" in outcome) return repeated(stored);
+        if (stored.usage.state === "pending") throw new AssistantProtocolError("assistant-settled-usage-missing");
+        const receipt: AssistantReceipt = { conversationId, messageId, ordinal: stored.ordinal, revision: stored.revision, delivery: stored.delivery };
+        if (reason !== undefined) {
+          const canRetry = ASSISTANT_M1_READ_RETRY_FAILURES.some(code => code === reason);
+          return { kind: "result", receipt, result: { state: "no-reply", reason, canRetry, turn: { acceptedTurn: stored.acceptedTurn, usage: stored.usage } } };
+        }
+        const view = history.conversation(conversationId, now()), row = view?.messages.find(message => message.id === reply?.id);
+        if (row?.payload.recording.kind !== "reply" || row.payload.recording.acceptedMessageId !== messageId) throw new AssistantProtocolError("assistant-reply-readback-missing");
+        return { kind: "result", receipt, result: { state: "answered", reply: AssistantReplySchema.parse({ parts: row.payload.parts, acceptedTurn: stored.acceptedTurn, usage: stored.usage }) } };
+      };
+      let envelope: AssistantM1RespondEnvelope;
+      try { envelope = settle(turn); }
+      catch (error) {
+        if (settled) envelope = unavailable(closure(error) ? "CHATGPT_RESOURCE_CLOSURE_UNPROVED" : "ASSISTANT_HISTORY_UNAVAILABLE");
+        else try {
+          const budgetRefusal = error instanceof AssistantHistoryRefusal && ["ASSISTANT_CHAT_FULL", "ASSISTANT_HISTORY_FULL"].includes(error.code);
+          envelope = settle(budgetRefusal ? { reason: error.code } : { uncertain: true });
+        } catch (unavailableError) { envelope = unavailable(closure(error) ? "CHATGPT_RESOURCE_CLOSURE_UNPROVED" : failure(unavailableError, signal)); }
+      }
+      try { options.debugEvents.emit({ category: "http", phase: "settled", correlationId: randomUUID(), area: "assistant-usage", reason: "accepted-turn", assistantUsage: usage }); }
+      catch (error) {
+        envelope = { ...envelope, diagnostic: { code: closure(error) ? "CHATGPT_RESOURCE_CLOSURE_UNPROVED" : "ASSISTANT_USAGE_LOG_UNAVAILABLE" } };
+        if (envelope.kind === "result" && envelope.result.state === "no-reply") envelope = { ...envelope, result: { ...envelope.result, canRetry: false } };
+      }
+      return AssistantM1RespondEnvelopeSchema.parse(envelope);
+
+      async function runTurn(): Promise<Turn> {
+        try {
+          assertCurrent();
+          const reads = options.reads();
+          if (reads.plugins.some(plugin => plugin.tools.some(tool => tool.kind !== "read"))) return { reason: "ASSISTANT_UNAVAILABLE" };
+          let facts: AssistantWorkflowFacts;
+          try { facts = options.facts(); } catch (error) { if (closure(error)) throw error; return { reason: "ASSISTANT_CONTEXT_UNAVAILABLE" }; }
+          const registry = assistantToolRegistry(reads.plugins);
+          const { catalog, authority } = await options.account.listAssistantModels(signal);
+          assertCurrent();
+          if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError();
+          const { slug: model, effort } = selected.preference;
+          if (!catalog.models.some(entry => entry.slug === model)) return { reason: "ASSISTANT_MODEL_UNAVAILABLE" };
+          const assertAuthority = () => { assertCurrent(); if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError(); };
+          let textBytes = 0;
+          const files = (messageId: string) => {
+            const rows = history.turnAttachments(messageId, now());
+            for (const row of rows) if (ASSISTANT_ATTACHMENT_TYPES[row.mediaType].content === "text") textBytes += row.byteLength;
+            return rows;
+          };
+          const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
+          const input: AssistantInputItem[] = [
+            { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined : table.issue("R", selectedRun.runId,
+              options.runReferenceLabel(selectedRun.runId, selectedRun.revision), selectedRun.runId, selectedRun.revision), now().slice(0, 10)) },
+            ...history.replay(conversationId, acceptance.ordinal, now()).map(row => row.messageId === undefined ? replayed(row) : userTurn(row.modelText, files(row.messageId), table)),
+            userTurn(masked, files(messageId), table),
+          ];
+          if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { reason: "ASSISTANT_ATTACHMENT_TOO_LARGE" };
+          if (structureBytes(input) > MAX_HISTORY_BYTES) return { reason: "ASSISTANT_CHAT_FULL" };
+          const outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>(), unrecovered = new Map<string, AssistantFailureCode>();
+          const context = { signal, references: table, actorId: options.actorId, conversationId, operatorText: masked, assertCurrent: assertAuthority,
+            assertRetainedCurrent: () => { assertOwner(); modelCurrent(); if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError(); } };
+          for (let step = 0; step < MAX_MODEL_CALLS; step++) {
+            assertAuthority();
+            if (structureBytes(input) > MAX_HISTORY_BYTES) return { reason: "ASSISTANT_LIMIT" };
+            const slot = calls.length; calls.push(undefined);
+            const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model, reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[effort] }, input, tools: [registry.namespace] }, signal, assertAuthority));
+            calls[slot] = turn.usage;
+            assertAuthority();
+            if (turn.model !== model) return { reason: "ASSISTANT_INVALID" };
+            input.push(...turn.output);
+            const toolCalls = turn.output.filter(item => item.type === "function_call"), messages = turn.output.filter(item => item.type === "message");
+            if (toolCalls.length === 0) {
+              if (messages.length !== 1) return { reason: "ASSISTANT_INVALID" };
+              const reason = unrecovered.values().next().value;
+              if (reason !== undefined) return { reason };
+              const modelText = messages[0].content.map(part => part.text).join("");
+              const bindings = await reads.bindings(table, acceptance.acceptedTurn);
+              assertAuthority();
+              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings)] };
+            }
+            if (toolCalls.length !== 1 || messages.length !== 0) return { reason: "ASSISTANT_INVALID" };
+            const call = toolCalls[0], tool = call.namespace === ASSISTANT_TOOL_NAMESPACE ? registry.tools.find(entry => entry.name === call.name) : undefined;
+            if (tool?.kind !== "read" || callIds.has(call.call_id)) return { reason: "ASSISTANT_INVALID" };
+            callIds.add(call.call_id);
+            const argumentsValue = JsonValueSchema.parse(JSON.parse(call.arguments)), parameters = JsonValueSchema.parse(tool.parameters.parse(argumentsValue));
+            if (canonicalJsonStringify(parameters) !== canonicalJsonStringify(argumentsValue)) return { reason: "ASSISTANT_INVALID" };
+            const key = canonicalJsonStringify({ name: tool.name, arguments: parameters });
+            let outcome = outcomes.get(key);
+            if (outcome === undefined) {
+              try {
+                const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(await tool.invoke(parameters, context))));
+                assertAuthority();
+                if (Buffer.byteLength(output) > MAX_TOOL_OUTPUT_BYTES) throw new AssistantToolRefusal("ASSISTANT_LIMIT");
+                outcome = { output };
+              } catch (error) {
+                const code = toolRefusalCode(error);
+                if (code === undefined) throw error;
+                outcome = { code, output: canonicalJsonStringify({ error: code, text: ASSISTANT_FAILURES[code] }) };
+              }
+              outcomes.set(key, outcome);
+            }
+            if (outcome.code === undefined) unrecovered.delete(tool.name);
+            else if (!unrecovered.has(tool.name)) unrecovered.set(tool.name, outcome.code);
+            input.push({ type: "function_call_output", call_id: call.call_id, namespace: call.namespace, name: call.name,
+              ...(call.caller === undefined ? {} : { caller: call.caller }), output: outcome.output });
+          }
+          return { reason: "ASSISTANT_LIMIT" };
+        } catch (error) {
+          if (error instanceof ChatGptDeliveryUncertainError) return { uncertain: true };
+          return { reason: failure(error, signal) };
+        }
+      }
+    } catch (error) {
+      if (accepted !== undefined) throw error;
+      return AssistantM1RespondEnvelopeSchema.parse(noReply(failure(error, signal)));
+    } finally { if (live.get(conversationId) === controller) live.delete(conversationId); }
+  }
+  return Object.freeze({ respond,
+    historyView: () => options.history().list(now()),
+    conversation: (id: string) => options.history().conversation(z.uuid().parse(id), now()),
+    history(input: unknown): AssistantHistoryResult {
+      const operation = AssistantHistoryOperationSchema.safeParse(input);
+      if (!operation.success) return { state: "refused", code: "ASSISTANT_INVALID" };
+      try {
+        const result = options.history().apply(operation.data, now());
+        if (result.state === "cleared") { live.get(result.conversationId)?.abort(); references.clear(result.conversationId); }
+        return result;
+      } catch (error) { if (error instanceof AssistantHistoryRefusal) return { state: "refused", code: error.code }; throw error; }
+    },
+  });
+}

@@ -129,6 +129,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is unavailable.", EmptyParametersSchema),
   ASSISTANT_READ_UNAVAILABLE: catalogEntry("Run details are unavailable. Check the run in Logs.", EmptyParametersSchema),
   ASSISTANT_READ_STALE: catalogEntry("The run changed. Ask again.", EmptyParametersSchema),
+  ASSISTANT_USAGE_LOG_UNAVAILABLE: catalogEntry("Token usage could not be logged.", EmptyParametersSchema),
   ASSISTANT_HISTORY_UNAVAILABLE: catalogEntry("Chat history didn't load. Refresh to try again.", EmptyParametersSchema),
   ASSISTANT_HISTORY_UNSAVED: catalogEntry("Chat not saved. Sending is paused.", EmptyParametersSchema),
   ASSISTANT_CHAT_FULL: catalogEntry("This chat is too long. Start a new chat.", EmptyParametersSchema),

@@ -1,3 +1,4 @@
+import { AssistantCallUsageSchema, AssistantTurnUsageSchema } from "./assistant-usage.js";
 import { AssistantCommandAttributionSchema } from "../../rules/commands/commands.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
@@ -82,46 +83,6 @@ export function assistantInputMedia(input: readonly AssistantInputItem[]): Reado
   }
   return { base64Chars, bytes };
 }
-const TokenCountSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const TokenTotalsSchema = z.strictObject({ inputTokens: TokenCountSchema, outputTokens: TokenCountSchema, totalTokens: TokenCountSchema });
-const validTokenTotal = (value: z.infer<typeof TokenTotalsSchema>) => value.inputTokens <= Number.MAX_SAFE_INTEGER - value.outputTokens
-  && value.totalTokens === value.inputTokens + value.outputTokens;
-export const AssistantCallUsageSchema = z.discriminatedUnion("state", [
-  TokenTotalsSchema.extend({ state: z.literal("measured") }).refine(validTokenTotal),
-  z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["missing", "invalid"]) }),
-]);
-export type AssistantCallUsage = z.infer<typeof AssistantCallUsageSchema>;
-export const AssistantTurnUsageSchema = z.discriminatedUnion("state", [
-  TokenTotalsSchema.extend({ state: z.literal("measured"), callCount: TokenCountSchema }).refine(value => validTokenTotal(value) && (value.callCount !== 0 || value.totalTokens === 0)),
-  z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["missing", "invalid"]), callCount: TokenCountSchema.min(1), measuredCallCount: TokenCountSchema,
-    partialInputTokens: TokenCountSchema, partialOutputTokens: TokenCountSchema, partialTotalTokens: TokenCountSchema,
-  }).refine(value => value.measuredCallCount < value.callCount
-    && (value.measuredCallCount !== 0 || value.partialTotalTokens === 0)
-    && validTokenTotal({ inputTokens: value.partialInputTokens, outputTokens: value.partialOutputTokens, totalTokens: value.partialTotalTokens })),
-]);
-export type AssistantTurnUsage = z.infer<typeof AssistantTurnUsageSchema>;
-/** One slot per attempted inference. Partial totals/count include only complete measurements whose safe sums fit. */
-export function aggregateAssistantUsage(calls: readonly (AssistantCallUsage | undefined)[]): AssistantTurnUsage {
-  let inputTokens = 0, outputTokens = 0, totalTokens = 0, measuredCallCount = 0;
-  let reason: "missing" | "invalid" | undefined = undefined;
-  for (const call of calls) {
-    if (call?.state !== "measured") {
-      if (reason !== "invalid") reason = call?.reason ?? "missing";
-      continue;
-    }
-    if (inputTokens > Number.MAX_SAFE_INTEGER - call.inputTokens || outputTokens > Number.MAX_SAFE_INTEGER - call.outputTokens
-      || totalTokens > Number.MAX_SAFE_INTEGER - call.totalTokens) {
-      reason = "invalid";
-      continue;
-    }
-    inputTokens += call.inputTokens; outputTokens += call.outputTokens; totalTokens += call.totalTokens; measuredCallCount++;
-  }
-  return AssistantTurnUsageSchema.parse(reason === undefined
-    ? { state: "measured", callCount: calls.length, inputTokens, outputTokens, totalTokens }
-    : { state: "unavailable", callCount: calls.length, measuredCallCount, reason,
-      partialInputTokens: inputTokens, partialOutputTokens: outputTokens, partialTotalTokens: totalTokens });
-}
-
 export const AssistantInferenceResultSchema = z.strictObject({ responseId: z.string().min(1).max(256), model: AssistantModelSlugSchema,
   output: z.array(AssistantResponseItemSchema).min(1).max(32), usage: AssistantCallUsageSchema,
 });
@@ -525,3 +486,41 @@ export const AssistantM1SettlementSchema = z.strictObject({ delivery: AssistantD
 }).refine(value => (value.delivery === "refused") === (value.code !== undefined)
   && (value.reply === undefined || (value.reply.kind === "proposal") === (value.reply.actionId !== undefined)), "assistant-settlement-mismatch");
 export type AssistantM1Settlement = z.infer<typeof AssistantM1SettlementSchema>;
+
+const AssistantM1UsageSnapshotSchema = z.union([z.strictObject({ state: z.literal("pending") }), AssistantTurnUsageSchema]);
+const AssistantM1DiagnosticSchema = z.union([
+  z.strictObject({ code: z.literal("ASSISTANT_USAGE_LOG_UNAVAILABLE") }),
+  z.strictObject({ code: z.literal("CHATGPT_RESOURCE_CLOSURE_UNPROVED") }),
+]);
+export const ASSISTANT_M1_READ_RETRY_FAILURES = Object.freeze(["ASSISTANT_READ_UNAVAILABLE", "ASSISTANT_CONTEXT_UNAVAILABLE", "ASSISTANT_RESPONSE_FAILED",
+  "ASSISTANT_RESPONSE_INCOMPLETE", "ASSISTANT_RESPONSE_REFUSED", "ASSISTANT_USAGE_LIMIT", "CHATGPT_RATE_LIMITED", "ASSISTANT_CANCELLED"] as const);
+export const AssistantM1NoReplySchema = z.strictObject({ state: z.literal("no-reply"), reason: FailureCode, canRetry: z.boolean(),
+  turn: z.strictObject({ acceptedTurn: AssistantAcceptedTurnSchema, usage: AssistantTurnUsageSchema }).nullable(),
+}).refine(value => !value.canRetry || value.turn !== null && value.turn.acceptedTurn.proposalAnswer === null
+  && ASSISTANT_M1_READ_RETRY_FAILURES.some(reason => reason === value.reason), "retry requires a recorded effect-free read refusal");
+export const AssistantM1RespondEnvelopeSchema = z.union([
+  z.strictObject({ kind: z.literal("result"), result: z.union([
+    z.strictObject({ state: z.literal("answered"), reply: AssistantReplySchema }), AssistantM1NoReplySchema,
+  ]), receipt: AssistantReceiptSchema.optional(), diagnostic: AssistantM1DiagnosticSchema.optional() }),
+  z.strictObject({ kind: z.literal("delivery"), receipt: AssistantReceiptSchema, acceptedTurn: AssistantAcceptedTurnSchema,
+    usage: AssistantM1UsageSnapshotSchema, history: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("observed") }), z.strictObject({ state: z.literal("unavailable"), code: FailureCode }),
+    ]), diagnostic: AssistantM1DiagnosticSchema.optional() }),
+]).superRefine((envelope, context) => {
+  const accepted = envelope.kind === "delivery" ? envelope.acceptedTurn : envelope.result.state === "answered" ? envelope.result.reply.acceptedTurn : envelope.result.turn?.acceptedTurn;
+  const receipt = envelope.receipt;
+  if (accepted === undefined ? receipt !== undefined : receipt === undefined || receipt.conversationId !== accepted.conversationId
+    || receipt.messageId !== accepted.messageId || receipt.ordinal !== accepted.ordinal || receipt.revision < accepted.acceptedRevision) {
+    context.addIssue({ code: "custom", message: "assistant-receipt-identity-mismatch" });
+  }
+  if (envelope.kind === "result") {
+    if (envelope.result.state === "answered" && receipt?.delivery !== "answered"
+      || envelope.result.state === "no-reply" && envelope.result.turn !== null && receipt?.delivery !== "refused"
+      || envelope.diagnostic !== undefined && envelope.result.state === "no-reply" && envelope.result.canRetry) context.addIssue({ code: "custom", message: "assistant-result-delivery-mismatch" });
+  } else if (envelope.history.state === "unavailable" && envelope.receipt.delivery !== "delivery-unknown"
+    || envelope.history.state === "observed" && (envelope.receipt.delivery === "sending" && envelope.usage.state !== "pending"
+      || (envelope.receipt.delivery === "answered" || envelope.receipt.delivery === "refused") && envelope.usage.state === "pending")) {
+    context.addIssue({ code: "custom", message: "assistant-usage-delivery-mismatch" });
+  }
+});
+export type AssistantM1RespondEnvelope = z.infer<typeof AssistantM1RespondEnvelopeSchema>;
