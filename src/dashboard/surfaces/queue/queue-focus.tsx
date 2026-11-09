@@ -25,7 +25,7 @@ export function FocusQueueToolbar({ leading, runStart, pauseControls, active, co
   const count = (status: StatusBucket) => status === 'all' ? totalCount(counts) : status === 'needsYou' ? needsYouCount(counts) : statusCount(counts, status);
   const filtered = !active.includes('all') && active.length > 0;
   const selected = filtered ? active.map(label).join(', ') : 'All';
-  return <OperationsToolbar label="Action panel controls" className="[--ds-h-toolbar:32px] [--ds-h-sm:32px] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]">
+  return <OperationsToolbar label="Action panel controls" className="[--ds-h-toolbar:28px] [--ds-h-sm:28px] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]">
     {leading}{runStart}
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild><Button variant="secondary" size="sm" className="queue-status-trigger ds-menu-trigger ds-filter-trigger" data-filtered={filtered} aria-label="Filter queue by status" aria-description={`Selected: ${selected}`} title={`Status: ${selected}`} icon={<ListFilter data-icon="inline-start" />}><span className="queue-status-label">{filtered ? active.length === 1 ? selected : `${active.length} statuses` : 'Status'}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>

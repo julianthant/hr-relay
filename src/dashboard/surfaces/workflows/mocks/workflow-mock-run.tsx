@@ -10,8 +10,8 @@ import { RunList, RunListRow, RunSection } from "../../run-start/run-list.js";
 import { TypedInput } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
-import { StatusMockReadiness, StatusMockRosterPicker, type StatusMockPicks } from "../../settings/status-mock/status-mock.js";
-import { statusMock, statusMockDefaultPicks } from "../../settings/status-mock/status-mock-model.js";
+import { StatusMockReadiness, StatusMockRosterPicker, statusMockDefaultPicks, statusMockPicksBlocked, type StatusMockPicks } from "../../settings/status-mock/status-mock.js";
+import { statusMock } from "../../settings/status-mock/status-mock-model.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
 export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit, initialDraft, onDraftChange }: {
@@ -21,12 +21,12 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
 }) {
   const flow = mockWorkflow(workflowId);
   const mock = statusMock();
-  const statusMockPicker = workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-a" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options");
+  const statusMockPicker = workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-a" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options" || mock?.startsWith("run-sheets") === true);
   const [draft, setDraft] = useState<MockDraft>(() => editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)));
   const [stage, setStage] = useViewState("launchStage", source ? "Steps" : "Input");
   const chatGptBlocked = workflowId === "emergency-contact" && (mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options");
   const blocked = workflowId === "emergency-contact" && mock === "run-a" && stage === "Input" || chatGptBlocked && (stage === "Options" || stage === "Steps" && !source);
-  const [picks, setPicks] = useState<StatusMockPicks>(statusMockDefaultPicks);
+  const [picks, setPicks] = useState<StatusMockPicks>(() => statusMockDefaultPicks(mock));
   const [priorityTouched, setPriorityTouched] = useState(false);
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);
@@ -46,7 +46,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   // Priority follows the run's size until the operator changes it: ticked for one person, unticked for several.
   const people = pdf ? draft.files.length : typedEntries.length;
   const priority = priorityTouched ? draft.priority === "interactive" : people <= 1;
-  const startDisabled = blocked || Boolean(error) || reading;
+  const startDisabled = blocked || Boolean(error) || reading || (statusMockPicker && statusMockPicksBlocked(picks));
   const advance = () => { if (startDisabled) return; if (last) onSubmit(workflowId, { ...draft, priority: priority ? "interactive" : "background" }, source?.id); else setStage(stages[index + 1]); };
   // Enter continues (or starts on the last step); Shift+Enter keeps its newline in a textbox. Buttons, links and open pickers keep Enter for themselves.
   // Listens on the document so Enter still works when focus fell back to the dialog after a step change.
@@ -112,7 +112,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
           {workflowId === "emergency-contact" && mock === "run-a" && <StatusMockReadiness frame="run-a" />}
-          {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options") && <StatusMockRosterPicker picks={picks} onPicks={setPicks} />}
+          {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options" || mock?.startsWith("run-sheets") === true) && <StatusMockRosterPicker picks={picks} onPicks={setPicks} />}
           {draft.method === "roster" && <RunList label="Spreadsheet"><RunListRow title="Spreadsheet" description="The library spreadsheet to download."><div className="w-[250px]"><ChoicePicker hideLabel label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} /></div></RunListRow></RunList>}
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}
           {workflowId === "work-study" && <RunList label="Dates"><RunListRow title="Effective date" description="The day the change takes effect."><div className="w-[200px]"><DateInput hideLabel label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} /></div></RunListRow></RunList>}

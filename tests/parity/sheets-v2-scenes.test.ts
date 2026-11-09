@@ -33,7 +33,7 @@ for (const theme of ["light", "dark"] as const) {
     };
     const open = async (query: Record<string, string> = {}) => {
       await page.setViewportSize({ width: 1280, height: 720 });
-      await page.goto(`${server.baseUrl}/?${new URLSearchParams({ settings: "spreadsheets", ...query })}`);
+      await page.goto(`${server.baseUrl}/?${new URLSearchParams({ settings: "spreadsheets", statusMock: "general-a", ...query })}`);
       await expect(page.getByRole("heading", { name: "Spreadsheets", exact: true })).toBeVisible();
     };
     const dialog = () => page.getByRole("dialog").first();
@@ -64,21 +64,24 @@ for (const theme of ["light", "dark"] as const) {
       },
       "detail-worksheets": async () => {
         await open(); await openSheet("Contact roster"); await expect(page.getByRole("tab")).toHaveCount(0); await page.getByRole("button", { name: "Worksheet", exact: true }).click();
-        await expect(page.getByRole("menuitemradio", { name: /^Roster/u })).toContainText("Runs"); await shot("detail-worksheets");
-        await page.getByRole("menuitemradio", { name: /^Terminated/u }).click(); await expect(page.getByText("View only. Runs read Roster.")).toBeVisible(); await shot("detail-sheet-terminated");
-        await page.getByRole("button", { name: "Worksheet", exact: true }).click(); await page.getByText("Use for runs", { exact: true }).last().click(); await expect(page.getByRole("menuitemradio", { name: /^Notes/u })).toContainText("Runs"); await shot("detail-sheet-notes-runs");
+        await expect(page.getByRole("menuitemradio", { name: /^Roster/u })).not.toContainText("Runs"); await expect(page.getByText("Use for runs")).toHaveCount(0); await shot("detail-worksheets");
+        await page.getByRole("menuitemradio", { name: /^Terminated/u }).click(); await expect(page.getByText(/View only/u)).toHaveCount(0); await expect(page.getByRole("button", { name: "Worksheet", exact: true })).toContainText("Terminated"); await shot("detail-sheet-terminated");
       },
       "detail-columns": async () => {
         await open(); await openSheet("Contact roster"); await page.getByRole("button", { name: "Columns" }).click(); await expect(page.getByRole("region", { name: "Fields" })).toBeVisible(); await expect(page.getByRole("region", { name: "Show columns" })).toBeVisible(); await shot("detail-columns");
-        await page.getByRole("button", { name: /^Legal name column/u }).click(); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toBeVisible(); await shot("detail-columns-pick"); await page.keyboard.press("Escape"); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toHaveCount(0); await expect(page.getByRole("region", { name: "Fields" })).toBeVisible();
+        await page.getByRole("button", { name: /^Name column/u }).click(); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toBeVisible(); await shot("detail-columns-pick"); await page.keyboard.press("Escape"); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toHaveCount(0); await expect(page.getByRole("region", { name: "Fields" })).toBeVisible();
         await page.getByRole("button", { name: /^Employee ID column/u }).hover(); await shot("detail-columns-hover");
       },
       "detail-unmapped": async () => {
-        await open(); await openSheet("I-9 tracker"); const columns = page.getByRole("button", { name: "Columns" }); await columns.hover(); await expect(page.getByRole("tooltip")).toContainText("Email isn't mapped"); await shot("detail-unmapped");
-        await columns.click(); const pill = page.getByRole("button", { name: /^Email column/u }); await expect(pill).toContainText("Choose column"); await shot("detail-unmapped-open");
+        await open(); await openSheet("Onboarding hires"); await expect(page.getByRole("button", { name: "Worksheet", exact: true })).toContainText("Aug 3 hires");
+        await page.getByRole("button", { name: "Worksheet", exact: true }).click(); await expect(page.getByRole("menuitemradio", { name: /^Aug 17 hires/u })).toContainText("Employee ID not matched");
+        await expect(page.getByRole("menuitemradio", { name: /^Aug 3 hires/u })).not.toContainText("not matched"); await shot("detail-worksheets-matched");
+        await page.getByRole("menuitemradio", { name: /^Aug 17 hires/u }).click();
+        const columns = page.getByRole("button", { name: "Columns" }); await columns.hover(); await expect(page.getByRole("tooltip")).toContainText("Employee ID isn't mapped"); await shot("detail-unmapped");
+        await columns.click(); const pill = page.getByRole("button", { name: /^Employee ID column/u }); await expect(pill).toContainText("Choose column"); await shot("detail-unmapped-open");
         await pill.click(); await shot("detail-unmapped-pick");
-        await page.getByRole("menuitemradio", { name: /^Notify address/u }).click(); await expect(pill).toContainText("Notify address"); await page.mouse.move(0, 0); await shot("detail-mapped");
-        await pill.click(); await page.getByRole("menuitemradio", { name: "None", exact: true }).click(); await expect(pill).toContainText("Choose column");
+        await page.getByRole("menuitemradio", { name: /^Emp #/u }).click(); await expect(pill).toContainText("Emp #"); await page.mouse.move(0, 0); await shot("detail-mapped");
+        await page.keyboard.press("Escape"); await page.getByRole("button", { name: "Worksheet", exact: true }).click(); await expect(page.getByText("not matched")).toHaveCount(0);
       },
       "detail-range": async () => {
         await open(); await openSheet("Contact roster"); const cells = page.locator("tbody td"), from = (await cells.nth(2).boundingBox())!, to = (await cells.nth(10).boundingBox())!;
@@ -97,7 +100,7 @@ for (const theme of ["light", "dark"] as const) {
       "import-columns": async () => {
         await open(); await page.getByRole("button", { name: "Import", exact: true }).click(); await dialog().locator('input[type="file"]').setInputFiles(file);
         await dialog().getByRole("button", { name: "Next", exact: true }).click(); await expect(dialog().getByRole("button", { name: "Back", exact: true })).toBeVisible(); await shot("import-columns");
-        await expect(page.getByRole("region", { name: "Fields" })).toBeVisible(); const pill = page.getByRole("button", { name: /^Email column/u }); await expect(pill).toContainText("Choose column");
+        await page.getByRole("button", { name: "Columns" }).click(); await expect(page.getByRole("region", { name: "Fields" })).toBeVisible(); const pill = page.getByRole("button", { name: /^Work email column/u }); await expect(pill).toContainText("Choose column");
         await page.keyboard.press("Escape"); await expect(page.getByRole("region", { name: "Fields" })).toHaveCount(0); await shot("import-columns-closed");
         await dialog().getByRole("button", { name: "Worksheet", exact: true }).click(); await shot("import-worksheets"); await page.getByRole("menuitemradio", { name: /^Archive/u }).click(); await shot("import-sheet-archive");
         await dialog().getByRole("button", { name: "Worksheet", exact: true }).click(); await page.getByRole("menuitemradio", { name: /^Contacts/u }).click();

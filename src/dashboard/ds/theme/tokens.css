@@ -4,6 +4,7 @@
    The single source of every color, size, radius, shadow, focus ring and */
 
 :root {
+  --ds-sidebar-width: 312px; /* Settings sidebar and workflow rail: one width, never shrinks */
   --ds-layer-skip-focus: 1000;
   --ds-layer-toast-viewport: 100;
   --ds-layer-toast-card: 1000;
@@ -999,6 +1000,12 @@ body[data-demo-theme="light"] {
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08);
 }
 [data-demo-theme="dark"] .ds-menu-surface { box-shadow: 0 10px 32px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4); }
+/* Tooltip (Codex): 28px, 14px text, one step above the menu surface, a faint inset edge instead of a border, 14px corner, key chip after the text. */
+.ds-tooltip { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; height: 28px; max-width: 280px; padding: 0 6px 0 12px; border-radius: 14px; font-size: 14px; line-height: 20px; white-space: nowrap; color: var(--ui-primary);
+  background: color-mix(in srgb, var(--ds-fg) 6%, var(--ui-field)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 6px 20px rgb(0 0 0 / 0.14); }
+[data-demo-theme="dark"] .ds-tooltip { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 8px 24px rgb(0 0 0 / 0.45); }
+.ds-tooltip:not(:has(.ds-tooltip-key)) { padding-right: 12px; }
+.ds-tooltip-key { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 8px; font: inherit; font-size: 13px; color: var(--ui-primary); background: color-mix(in srgb, var(--ds-fg) 20%, transparent); }
 .ds-menu-item {
   position: relative; display: flex; min-height: var(--ds-menu-item-h); align-items: center; gap: 8px; box-sizing: border-box;
   padding: 4px 8px; border-radius: 8px; outline: none; cursor: default; user-select: none;
@@ -1402,6 +1409,11 @@ th.ds-text-caps {
 .ds-search-field--menu [data-slot="search-field-group"] { height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box; padding-inline: 10px 4px; }
 .ds-search-field--menu [data-slot="search-field-search-icon"] { width: 14px; height: 14px; }
 .ds-search-field--menu [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
+/* Sidebar search (Codex): 36px, no border, a 15px corner, a fill one step above the sidebar; icon and text sit on the row icon and text x. */
+.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 7%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: transparent; --field-border-hover: transparent; --field-border-focus: transparent; --border-width-field: 0px; }
+[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: transparent; }
+.ds-search-field--sidebar [data-slot="search-field-group"] { height: 36px; min-height: 36px; max-height: 36px; padding-inline: 8px 4px; border-radius: 15px; border: 0; }
+.ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
 .navbar-search-command [cmdk-list] { max-height: 360px; padding-inline: var(--ds-space-base); }
@@ -1858,6 +1870,9 @@ th.ds-text-caps {
   }
 }
 
+/* The calendar button inside a date field is an icon button: rounded square, the row hover fill. */
+.ds-date-picker .date-picker__trigger { border-radius: 8px; }
+.ds-date-picker .date-picker__trigger:hover { background: var(--ds-surface-3); }
 .ds-date-picker--toolbar .date-input-group {
   height: var(--ds-h-toolbar);
 }
@@ -1889,12 +1904,35 @@ th.ds-text-caps {
 }
 
 .ds-calendar-popover {
-  background: var(--ui-panel);
-  color: var(--ui-primary);
-  border: 0;
-  border-radius: min(32px, calc(var(--radius) * 2.5));
-  box-shadow: var(--overlay-shadow);
+  padding: 8px;
   font-family: var(--ds-font-body);
+}
+
+/* Codex calendar: 32px day cells, regular 14px month heading, plain chevrons, ring for today, accent fill for the pick. */
+.ds-calendar:not(.ds-range-calendar) {
+  width: 224px;
+  max-width: 224px;
+}
+.ds-calendar .calendar__header,
+.ds-calendar .range-calendar__header { padding: 0 0 8px 4px; }
+.ds-calendar .calendar-year-picker__trigger-heading,
+.ds-calendar .calendar__heading,
+.ds-calendar .range-calendar__heading { font-size: 14px; line-height: 20px; font-weight: 400; color: var(--ui-primary); }
+.ds-calendar .calendar-year-picker__trigger-indicator { width: 12px; height: 12px; color: var(--ui-muted); }
+.ds-calendar .calendar__nav-button,
+.ds-calendar .range-calendar__nav-button { width: 28px; height: 28px; border-radius: 8px; color: var(--ui-muted); }
+.ds-calendar .calendar__nav-button-icon,
+.ds-calendar .range-calendar__nav-button-icon { width: 16px; height: 16px; }
+.ds-calendar .calendar__header-cell,
+.ds-calendar .range-calendar__header-cell { height: 24px; padding: 0; font-size: 11px; line-height: 16px; font-weight: 400; color: var(--ui-muted); }
+.ds-calendar .calendar__cell { width: 32px; height: 32px; aspect-ratio: auto; border-radius: 8px; font-size: 13px; line-height: 20px; font-weight: 400; }
+.ds-calendar .calendar__cell[data-today="true"]:not([data-selected="true"]) { background: transparent; box-shadow: inset 0 0 0 1px var(--ui-stroke-control); color: var(--ui-primary); }
+.ds-calendar .calendar__cell[data-selected="true"] { font-weight: 500; }
+.ds-calendar .calendar__cell[data-outside-month="true"] { opacity: 0.4; }
+@media (hover: hover) {
+  .ds-calendar .calendar__cell:hover:not([data-selected="true"]) { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); }
+  .ds-calendar .calendar__nav-button:hover,
+  .ds-calendar .range-calendar__nav-button:hover { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); }
 }
 
 .ds-range-calendar {

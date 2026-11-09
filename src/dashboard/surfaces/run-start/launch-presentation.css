@@ -5,7 +5,7 @@
   --ds-text-body: var(--text-body);
   --ds-text-meta: var(--text-caption);
   --ds-text-body-value: var(--text-body);
-  --ds-h-md: 32px;
+  --ds-h-md: 28px;
   --ds-accent: var(--ui-info);
   --ds-accent-hover: var(--ui-info);
   --ds-accent-fg: var(--ui-canvas);
@@ -113,9 +113,9 @@
 .launch-dialog > header > div { @apply gap-[2px]; }
 .launch-dialog > header h2 { @apply text-[16px] leading-[22px] font-semibold; }
 .launch-dialog > header p { @apply text-caption leading-[18px] text-ui-secondary; }
-.launch-dialog > header > button { @apply size-[30px]; }
+.launch-dialog > header > button { @apply size-7 rounded-[10px]; }
 .launch-dialog > footer { @apply h-[57px] bg-ui-table; }
-.launch-dialog > footer button { @apply h-8 px-3 text-body font-medium; }
+.launch-dialog > footer button { @apply h-7 px-3 text-body font-medium; }
 .launch-dialog .launch-stagebar { @apply h-[54px]; }
 .launch-dialog .launch-stagebar > li { @apply p-0; }
 .launch-dialog .launch-stagebar button { @apply flex items-center gap-[7px] rounded-md px-2 py-[5px] text-body; }

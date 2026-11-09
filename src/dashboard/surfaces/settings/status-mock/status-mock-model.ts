@@ -1,5 +1,5 @@
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-fix", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 /** Account and Subscription fixtures. Email is not served after sign-in, so the Account page has no email row; the ChatGPT email comes with the connected account. */
@@ -48,19 +48,7 @@ export const STATUS_MOCK_BLOCKERS = {
   "run-b": [{ id: "chatgpt", title: "ChatGPT is disconnected", note: "Relay reads the scans with your ChatGPT plan.", action: "Reconnect" }],
 } as const;
 
-/** The workflow's library spreadsheets. One lacking a column the workflow needs is greyed out with the reason; `used` marks the last selection; `current` is the newest version number. */
-export const STATUS_MOCK_SPREADSHEETS = [
-  { value: "contact-roster", label: "Contact roster", description: "SharePoint · Pinned", current: 6, used: true, pinned: true },
-  { value: "i9-tracker", label: "I-9 tracker", description: "Pinned", current: 3, used: true, pinned: true },
-  { value: "fall-hires", label: "Fall hires", description: "SharePoint", current: 4, used: false, pinned: false },
-  { value: "pl33065442", label: "PL33065442", description: "Needs Employee ID", current: 1, used: false, pinned: false, disabled: true },
-] as const;
 export const STATUS_MOCK_REQUIRED_FIELDS = "Employee ID, Name";
-
-/** The picks a run starts with: the last spreadsheets used, each on its current version. */
-export function statusMockDefaultPicks(): Readonly<Record<string, number>> {
-  return Object.fromEntries(STATUS_MOCK_SPREADSHEETS.filter(sheet => sheet.used).map(sheet => [sheet.value, sheet.current]));
-}
 
 export const STATUS_MOCK_FIRST_RUN = [
   { id: "browser", label: "Browser for workflows", state: "ok" },

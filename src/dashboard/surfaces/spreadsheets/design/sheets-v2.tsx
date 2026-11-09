@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeading, SearchInput, useToasts } from '../../../ds/ui.js';
 import { TagFilter } from './sheets-v2-tagfilter.js';
-import { DATASETS, FIELDS, IMPORT_SHEETS, NOW, guessColumn, initialSheets, newestFirst, tableOf, tagGroups, tagsOf, type FieldKey, type Sheet } from './sheets-v2-model.js';
+import { IMPORT_SHEETS, NOW, initialSheets, newestFirst, tableOf, tagGroups, tagsOf, withMapping, type Sheet } from './sheets-v2-model.js';
 import { sheetsParam, sheetsScenario } from './sheets-v2-mode.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
 import { SheetDetail } from './sheets-v2-detail.js';
@@ -47,8 +47,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
 
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {openId && sheets.some(item => item.id === openId) ? <SheetDetail key={openId} sheet={get(openId)} sheets={sheets} onBack={() => setOpenId(undefined)} onOpen={setOpenId} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })}
-      onRuns={name => change(openId, item => ({ ...item, runsSheet: name, mapping: Object.fromEntries(FIELDS.map(f => [f.key, guessColumn(f.key, DATASETS[item.worksheets.find(w => w.name === name)!.data].headers)])) as Record<FieldKey, string | null> }))}
-      onMap={patch => change(openId, item => ({ ...item, mapping: { ...item.mapping, ...patch } }))} /> : <>
+      onMap={(worksheet, patch) => change(openId, item => withMapping(item, worksheet, patch))} /> : <>
       <PageHeading title="Spreadsheets" description="Reference lists your runs look people up in." actions={<V2Button onClick={() => setImporting(true)}>Import</V2Button>} />
       <div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="w-[260px]" /><TagFilter groups={groups} value={filter} onChange={setFilter} /></div>
       <div ref={listRef}>{tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} all={sheets} narrow={narrow} actions={rows} limit={table.title === 'Created' ? CREATED_ROWS : undefined} />)
@@ -61,6 +60,6 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       rollback: version => change(target.id, item => note(item, `Rolled back to v${version}`)),
       remove: () => { setSheets(current => current.filter(item => item.id !== target.id)); if (openId === target.id) setOpenId(undefined); },
     }} />}
-    {importing && <ImportDialog onClose={() => setImporting(false)} onAdd={input => setSheets(current => [...current, { id: `imported-${current.length}`, name: input.name, tags: input.tags, pinned: false, sharePoint: input.sharePoint, from: null, createdAt: NOW, updatedAt: NOW, versions: [{ n: 1, at: NOW, note: input.sharePoint ? 'Synced from SharePoint' : 'Imported' }], mapping: input.mapping, worksheets: IMPORT_SHEETS.map(item => ({ name: item.name, data: item.data })), runsSheet: input.sheetName }])} />}
+    {importing && <ImportDialog onClose={() => setImporting(false)} onAdd={input => setSheets(current => [...current, { id: `imported-${current.length}`, name: input.name, tags: input.tags, pinned: false, sharePoint: input.sharePoint, from: null, createdAt: NOW, updatedAt: NOW, versions: [{ n: 1, at: NOW, note: input.sharePoint ? 'Synced from SharePoint' : 'Imported' }], worksheets: IMPORT_SHEETS.map(item => ({ name: item.name, data: item.data })), overrides: { [input.sheetName]: input.mapping }, variants: {} }])} />}
   </section>;
 }

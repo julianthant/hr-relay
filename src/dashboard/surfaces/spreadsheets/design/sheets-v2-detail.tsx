@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { PageBreadcrumbs } from '../../../ds/ui.js';
 import { MappingGrid } from './sheets-v2-grid.js';
-import { DATASETS, mergeOriginal, type FieldKey, type Sheet, stamp } from './sheets-v2-model.js';
+import { DATASETS, mappingOf, mergeOriginal, missingRequired, notMatchedNote, type Mapping, type Sheet, stamp } from './sheets-v2-model.js';
 import { DownloadIcon, SheetChips, SheetMenu, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
-export function SheetDetail({ sheet, sheets, onBack, onOpen, onMap, onRuns, onVersion, onMenu }: { sheet: Sheet; sheets: readonly Sheet[]; onBack: () => void; onOpen: (id: string) => void; onMap: (patch: Partial<Record<FieldKey, string | null>>) => void; onRuns: (name: string) => void; onVersion: () => void; onMenu: (action: MenuAction) => void }) {
-  const [tab, setTab] = useState(sheet.runsSheet);
+export function SheetDetail({ sheet, sheets, onBack, onOpen, onMap, onVersion, onMenu }: { sheet: Sheet; sheets: readonly Sheet[]; onBack: () => void; onOpen: (id: string) => void; onMap: (worksheet: string, patch: Partial<Mapping>) => void; onVersion: () => void; onMenu: (action: MenuAction) => void }) {
+  const [tab, setTab] = useState(sheet.worksheets[0].name);
   const worksheet = sheet.worksheets.find(item => item.name === tab) ?? sheet.worksheets[0];
   const parent = sheet.from && sheets.find(item => item.id === sheet.from!.id);
   return <div className="min-w-0">
@@ -20,7 +20,7 @@ export function SheetDetail({ sheet, sheets, onBack, onOpen, onMap, onRuns, onVe
           <span aria-hidden>·</span><span className="truncate">Updated {stamp(sheet.updatedAt)}</span></div></div>
       <div className="flex shrink-0 items-center gap-1"><V2Button look="plain" className="tabular-nums" aria-label={`Versions, now v${sheet.versions[0].n}`} onClick={onVersion}>v{sheet.versions[0].n}</V2Button><DownloadIcon name={sheet.name} /><SheetMenu sheet={sheet} original={mergeOriginal(sheet, sheets)} label={sheet.name} withDownload={false} onAction={onMenu} /></div>
     </div>
-    <MappingGrid key={worksheet.name} dataset={DATASETS[worksheet.data]} mapping={sheet.mapping} onMap={onMap}
-      worksheets={{ names: sheet.worksheets.map(item => item.name), current: worksheet.name, runs: sheet.runsSheet, onSelect: setTab, onUseForRuns: onRuns }} />
+    <MappingGrid key={worksheet.name} dataset={DATASETS[worksheet.data]} mapping={mappingOf(sheet, worksheet)} onMap={patch => onMap(worksheet.name, patch)}
+      worksheets={{ names: sheet.worksheets.map(item => item.name), current: worksheet.name, onSelect: setTab, notMatched: name => notMatchedNote(missingRequired(sheet, sheet.worksheets.find(item => item.name === name)!)) }} />
   </div>;
 }

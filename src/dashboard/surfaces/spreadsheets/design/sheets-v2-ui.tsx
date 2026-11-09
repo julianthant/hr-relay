@@ -82,5 +82,3 @@ export function SheetMenu({ sheet, original, onAction, withDownload, label }: { 
 }
 export const DownloadIcon = ({ name }: { name: string }) => <V2Icon label={`Download ${name}`}><Download size={16} aria-hidden /></V2Icon>;
 
-/** The small tag on the worksheet runs read. */
-export const RunsTag = () => <span className="rounded-[4px] bg-[color-mix(in_srgb,var(--ui-info)_16%,transparent)] px-1 text-[11px] text-ui-info">Runs</span>;
