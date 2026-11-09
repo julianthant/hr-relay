@@ -27,6 +27,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const chatGptBlocked = workflowId === "emergency-contact" && (mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options");
   const blocked = workflowId === "emergency-contact" && mock === "run-a" && stage === "Input" || chatGptBlocked && (stage === "Options" || stage === "Steps" && !source);
   const [picks, setPicks] = useState<StatusMockPicks>(statusMockDefaultPicks);
+  const [priorityTouched, setPriorityTouched] = useState(false);
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);
   const [optionalSteps, setOptionalSteps] = useViewState("launchCustomize", false);
@@ -42,8 +43,11 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const planSteps = [...preparation, ...steps];
   const included = (draft.ocrMode === "manual" ? Math.min(preparation.length, 1) : preparation.length) + steps.filter(step => draft.selectedSteps.includes(step.key)).length;
   const patch = (next: Partial<MockDraft>) => { const value = { ...draft, ...next }; setDraft(value); onDraftChange?.(value); };
+  // Priority follows the run's size until the operator changes it: ticked for one person, unticked for several.
+  const people = pdf ? draft.files.length : typedEntries.length;
+  const priority = priorityTouched ? draft.priority === "interactive" : people <= 1;
   const startDisabled = blocked || Boolean(error) || reading;
-  const advance = () => { if (startDisabled) return; if (last) onSubmit(workflowId, draft, source?.id); else setStage(stages[index + 1]); };
+  const advance = () => { if (startDisabled) return; if (last) onSubmit(workflowId, { ...draft, priority: priority ? "interactive" : "background" }, source?.id); else setStage(stages[index + 1]); };
   // Enter continues (or starts on the last step); Shift+Enter keeps its newline in a textbox. Buttons, links and open pickers keep Enter for themselves.
   // Listens on the document so Enter still works when focus fell back to the dialog after a step change.
   const enterRef = useRef(advance);
@@ -77,7 +81,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   return <>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <ol aria-label="Run configuration path" className="launch-stagebar m-0 list-none">
-        {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index}>
+        {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index + 1 || position === index + 1 && startDisabled}>
           <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span></BareButton></li>)}
       </ol><DialogBody key={stage} className="launch-content @container">
         {stage !== "Options" && <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="text-heading font-semibold">{stage === "Steps" ? "Steps" : source ? "Values for the new run" : "Run input"}</h3>{stage === "Steps" && <span className="text-[12px] text-ui-muted">{included} of {planSteps.length} included</span>}</div>
@@ -92,7 +96,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             text={draft.text} onText={text => patch({ text })} draft={mockTypedInputValues(workflowId, draft)}
             onValue={(field, value) => patch(changeMockTypedInput(workflowId, draft, field, value))}
             preview={{ entries: typedEntries.map((sourceText, index) => ({ index, sourceText })), submissions: [], problem: null }} /> : <>
-            <Field label={flow.inputLabel} description="Separate values with a comma or a new line.">
+            <Field label={flow.inputLabel} description="Separate values with a comma or Shift+Enter.">
               <Textarea autoFocus rows={4} value={draft.text} placeholder={flow.placeholder} onChange={event => patch({ text: event.target.value })} />
             </Field>
             {typedEntries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{typedEntries.map((entry, number) => <li key={number} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{number + 1}</span><span className="truncate">{entry}</span></li>)}</ul>}
@@ -118,11 +122,11 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           <RunList title="Run">
             {!source && planSteps.length > 0 && <RunListRow title="Customize steps" description="Choose optional steps."><Checkbox label="Customize steps" className="[&_.ds-checkbox-copy]:sr-only" checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} /></RunListRow>}
             {pdf && !uploadOnly && <RunListRow title="Extract with OCR" description="Turn off to enter records manually in OCR review."><Checkbox label="Extract with OCR" className="[&_.ds-checkbox-copy]:sr-only" checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /></RunListRow>}
-            {flow.dryRun && <RunListRow title="Dry run" description="Fill and check every step without submitting."><Switch hideLabel label="Dry run" checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} className="!w-auto" /></RunListRow>}
+            {flow.dryRun && <RunListRow title="Dry run" description="Fill and check every step without submitting."><Switch hideLabel label="Dry run" checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
             <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
-            <RunListRow title="Priority" description="Interactive runs go first."><SegmentedChoice hideLabel label="Priority" value={draft.priority === "background" ? "bulk" : "interactive"} onChange={priority => patch({ priority: priority === "bulk" ? "background" : "interactive" })} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /></RunListRow>
-            <RunListRow title="Browser" description="Headless runs in the background."><SegmentedChoice hideLabel label="Browser mode" value={draft.browser} onChange={browser => patch({ browser })} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></RunListRow>
-            {workflowId === "onboarding" && <RunListRow title="Hire type" description="Applies to every item."><SegmentedChoice hideLabel label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} /></RunListRow>}
+            <RunListRow title="Priority" description="Runs before bulk batches."><Checkbox label="Priority" className="[&_.ds-checkbox-copy]:sr-only" checked={priority} onCheckedChange={value => { setPriorityTouched(true); patch({ priority: value === true ? "interactive" : "background" }); }} /></RunListRow>
+            <RunListRow title="Browser" description="Headless runs in the background."><div className="w-[250px]"><SegmentedChoice hideLabel label="Browser mode" value={draft.browser} onChange={browser => patch({ browser })} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></div></RunListRow>
+            {workflowId === "onboarding" && <RunListRow title="Hire type" description="Applies to every item."><div className="w-[250px]"><SegmentedChoice hideLabel label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} /></div></RunListRow>}
           </RunList>
         </div>}
         {stage === "Steps" && <section aria-label="Steps" className="flex flex-col gap-[var(--ds-space-cozy)]"><RunList label="Steps">{planSteps.length ? planSteps.map(step => {
@@ -140,14 +144,14 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
               {fields.map(field => <Field key={field.key} label={field.label}><InputOrSelect field={field} value={draft.manualValues?.[step.key]?.[field.key] ?? ""} onChange={value => patch({ manualValues: { ...draft.manualValues, [step.key]: { ...draft.manualValues?.[step.key], [field.key]: value } } })} /></Field>)}
             </div> : undefined}>
             {source && <Badge tone={state === "completed" ? "success" : "neutral"} className="launch-step-status" data-status={state}>{state === "completed" ? "Completed" : state === "skipped" ? "Skipped" : "Not started"}</Badge>}
-            {required && fields.length > 0 && <><span aria-hidden className="cursor-pointer text-[12px] text-ui-secondary" onClick={() => setManual(!manual)}>Enter manually</span><Switch hideLabel label={`Enter manually for ${step.label}`} checked={manual} onCheckedChange={setManual} className="!w-auto" /></>}
+            {required && fields.length > 0 && <><span aria-hidden className="cursor-pointer text-[12px] text-ui-secondary" onClick={() => setManual(!manual)}>Enter manually</span><Switch hideLabel label={`Enter manually for ${step.label}`} checked={manual} onCheckedChange={setManual} className="!min-h-0 !w-auto !py-0" /></>}
           </RunListRow>;
         }) : <RunListRow title="OCR preparation reads and matches the PDF records." />}</RunList>{mockStepInputError(workflowId, draft) && <p role="alert" className="text-caption text-ui-danger">{mockStepInputError(workflowId, draft)}</p>}</section>}
         {index === stages.length - 1 && stage !== "Steps" && error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </div>
 
       </DialogBody></div>
-    <DialogFooter meta={<MetaLine tone="faint" items={[flow.label, `${included} of ${planSteps.length} steps`, ...(pdf && !uploadOnly ? [`OCR ${draft.ocrMode === "manual" ? "off" : "on"}`] : []), draft.priority === "interactive" ? "Interactive" : "Bulk"]} />}>
+    <DialogFooter meta={<MetaLine tone="faint" items={[flow.label, `${included} of ${planSteps.length} steps`, ...(pdf && !uploadOnly ? [`OCR ${draft.ocrMode === "manual" ? "off" : "on"}`] : []), ...(priority ? ["Priority"] : [])]} />}>
       {!startDisabled && <span className="text-[12px] text-ui-muted">{last ? "Enter to start" : "Enter to continue"}</span>}
       {index > 0 && <Button variant="ghost" icon={<ArrowLeft className="size-3" aria-hidden />} onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="muted" onClick={onClose}>Cancel</Button>
       {last ? <Button variant="primary" icon={<Play className="size-[14px]" aria-hidden />} disabled={startDisabled} onClick={advance}>{flow.dryRun ? draft.dryRun ? "Start dry run" : "Start live run" : "Start run"}</Button>

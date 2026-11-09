@@ -61,9 +61,10 @@ const buttonVariants = cva(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
         ),
+        /** Soft red: a red-tinted fill with red text; never solid red. */
         danger: cn(
-          "bg-[var(--ds-danger-solid)] text-[color:var(--ds-danger-fg)] border-transparent",
-          "hover:brightness-110",
+          "bg-[color-mix(in_srgb,var(--ds-danger)_14%,transparent)] text-[color:var(--ds-danger)] border-transparent",
+          "hover:bg-[color-mix(in_srgb,var(--ds-danger)_22%,transparent)]",
         ),
         dangerGhost: cn(
           "bg-transparent text-[color:var(--ds-danger)]",

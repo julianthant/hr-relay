@@ -18,7 +18,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { dsElev, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
-import { IconButton } from "./primitives-core.js";
+import { Button, IconButton } from "./primitives-core.js";
 import { FloatingSurface } from "./primitives-layout.js";
 
 /** Floating surfaces: Dialog, Drawer, Popover, Tooltip, Toast. */
@@ -292,6 +292,86 @@ export function DialogFooter({
       )}
       <span className="flex shrink-0 items-center gap-[var(--ds-space-base)]">{children}</span>
     </footer>
+  );
+}
+
+/** Confirm: the one dialog every confirmation uses.
+ * No close ×: Escape and Cancel close it, and Cancel takes focus (ringed). A destructive action is a soft red button named for the action;
+ * any other confirm is the blue primary. Never offers "Don't ask again" for deleting or merging data. */
+export function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  detail,
+  confirmLabel,
+  onConfirm,
+  destructive = false,
+  cancelLabel = "Cancel",
+  busy = false,
+  onCloseAutoFocus,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: ReactNode;
+  description?: ReactNode;
+  /** The exact thing affected: a file name, path or ID. */
+  detail?: ReactNode;
+  confirmLabel: ReactNode;
+  onConfirm: () => void;
+  destructive?: boolean;
+  cancelLabel?: ReactNode;
+  busy?: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <ConfirmSurface title={title} description={description} detail={detail} confirmLabel={confirmLabel} onConfirm={onConfirm}
+          destructive={destructive} cancelLabel={cancelLabel} busy={busy} onCloseAutoFocus={onCloseAutoFocus} />
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+function ConfirmSurface({
+  title, description, detail, confirmLabel, onConfirm, destructive, cancelLabel, busy, onCloseAutoFocus,
+}: {
+  title: ReactNode; description?: ReactNode; detail?: ReactNode; confirmLabel: ReactNode; onConfirm: () => void;
+  destructive: boolean; cancelLabel: ReactNode; busy: boolean; onCloseAutoFocus?: (event: Event) => void;
+}) {
+  const entered = useEntered();
+  useRegisterModal();
+  return (
+    <>
+      <Scrim layer={dsLayer.modal} entered={entered} />
+      <DialogPrimitive.Content
+        {...(!description ? { "aria-describedby": undefined } : {})}
+        onCloseAutoFocus={onCloseAutoFocus}
+        onOpenAutoFocus={event => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-confirm-cancel]")?.focus(); }}
+        className={cn(
+          "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] max-w-[440px] -translate-x-1/2 -translate-y-1/2",
+          dsLayer.modal,
+          "flex flex-col gap-[var(--ds-space-loose)] border p-6 outline-none",
+          "rounded-[20px] border-[color:var(--ds-border)] bg-[var(--ds-surface-overlay)]",
+          dsElev.high,
+          dsMotion.enter,
+          entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-2">
+          <DialogPrimitive.Title className="m-0 text-[18px] font-semibold leading-6 text-[color:var(--ds-fg)]">{title}</DialogPrimitive.Title>
+          {description && <DialogPrimitive.Description className="m-0 text-[14px] leading-5 text-[color:var(--ds-fg-muted)]">{description}</DialogPrimitive.Description>}
+          {detail && <p className="m-0 break-all font-mono text-[13px] leading-5 text-[color:var(--ds-fg-muted)]">{detail}</p>}
+        </div>
+        <div className="flex justify-end gap-[var(--ds-space-base)]">
+          <DialogPrimitive.Close asChild>
+            <Button data-confirm-cancel variant="muted" disabled={busy} className="focus:[outline-style:solid] focus:outline-[length:var(--ds-focus-ring-w)] focus:outline-offset-[var(--ds-focus-ring-offset)] focus:outline-[color:var(--ds-focus-ring)]">{cancelLabel}</Button>
+          </DialogPrimitive.Close>
+          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm}>{confirmLabel}</Button>
+        </div>
+      </DialogPrimitive.Content>
+    </>
   );
 }
 

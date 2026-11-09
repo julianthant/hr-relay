@@ -46,6 +46,20 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+    } else if (id === "run-person-lookup" || id === "run-person-lookup-many") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).last().click();
+      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await expect(dialog.getByText("Workflow preview")).toBeVisible();
+      await dialog.getByRole("textbox").first().fill(id === "run-person-lookup" ? "10000001" : "10000001; 10000002; Lee, Jordan");
+      await expect(dialog.getByText("Parsed input")).toBeVisible();
+    } else if (id === "run-options-many") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
+      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await dialog.getByRole("textbox").first().fill("48216, 48220");
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(dialog.getByRole("checkbox", { name: "Priority", exact: true })).not.toBeChecked();
     } else if (id === "run-steps" || id === "run-rerun-steps") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
       if (id === "run-rerun-steps") {
@@ -123,20 +137,31 @@ test(`kit buttons ${WIDTH}`, async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-// A compact confirm dialog on the kit page: title, one grey line, the buttons.
-test(`kit compact dialog ${WIDTH}`, async ({ page }) => {
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Open destructive dialog", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Delete this run?" });
-  await expect(dialog).toBeVisible();
-  await page.mouse.move(1, 1);
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: join(OUT, `kit-dialog-compact-${WIDTH}.png`) });
-  expect(errors).toEqual([]);
-});
+// The shared confirm dialog on the kit page: destructive (soft red) and non-destructive (blue), no close ×, Cancel focused and ringed, Escape closes.
+for (const [trigger, title, button, destructive] of [["Open destructive dialog", "Delete this spreadsheet?", "Delete spreadsheet", true], ["Open confirm dialog", "Start a live run?", "Start live run", false]] as const) {
+  test(`kit confirm dialog ${destructive ? "destructive" : "primary"} ${WIDTH}`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+    await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+    for (const theme of ["dark", "light"] as const) {
+      await page.evaluate(value => { for (const el of [document.documentElement, document.body]) { el.setAttribute("data-demo-theme", value); el.classList.toggle("dark", value === "dark"); } }, theme);
+      await page.getByRole("button", { name: trigger, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: title });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+      await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+      expect(await dialog.getByRole("button", { name: "Cancel", exact: true }).evaluate(node => getComputedStyle(node).outlineStyle)).toBe("solid");
+      await expect(dialog.getByRole("button", { name: button, exact: true })).toBeVisible();
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(OUT, `kit-confirm-${destructive ? "destructive" : "primary"}-${theme}-${WIDTH}.png`) });
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+    }
+    expect(errors).toEqual([]);
+  });
+}
 
 // The two-way switch's thumb slides to the chosen side, and does not under reduced motion.
 for (const motion of ["no-preference", "reduce"] as const) test(`kit switch slide ${motion}`, async ({ page }) => {
@@ -189,5 +214,63 @@ test("run dialog keys", async ({ page }) => {
   await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$/ })).toBeEnabled();
   await page.keyboard.press("Enter");
   await expect(dialog).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+// Priority follows the run's size (ticked for one person, unticked for several) until the operator changes it; the footer names it only when ticked.
+test("run dialog priority", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  for (const [workflow, text, ticked] of [["Separations", "48216", true], ["Separations", "48216, 48220", false], ["Person Lookup", "10000001", true], ["Person Lookup", "10000001; 10000002", false]] as const) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+    await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: workflow, exact: true }).last().click();
+    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await dialog.getByRole("textbox").first().fill(text);
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    const box = dialog.getByRole("checkbox", { name: "Priority", exact: true });
+    const footer = dialog.locator("footer");
+    await expect(box).toBeChecked({ checked: ticked });
+    await expect(footer).not.toContainText(/Interactive|Bulk/);
+    if (ticked) await expect(footer).toContainText("Priority"); else await expect(footer).not.toContainText("Priority");
+    await box.click();
+    await expect(box).toBeChecked({ checked: !ticked });
+    if (ticked) await expect(footer).not.toContainText("Priority"); else await expect(footer).toContainText("Priority");
+  }
+  expect(errors).toEqual([]);
+});
+
+// Ticking Customize steps adds the Steps step after Options, enables its tab, and moves the start button there, for every workflow in the rail, Person Lookup included.
+test("customize steps every workflow", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
+  const reached: string[] = [];
+  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+    await rail.getByRole("button", { name, exact: true }).last().click();
+    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await expect(dialog.getByText("Workflow preview"), `${name}: redesigned dialog`).toBeVisible();
+    const file = dialog.locator('input[type="file"]');
+    if (await file.count()) await file.setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
+    else await dialog.getByRole("textbox").first().fill(name === "Onboarding" ? "jordan.lee@example.com" : name === "Separations" ? "48216" : "10000001");
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    const customize = dialog.getByRole("checkbox", { name: "Customize steps", exact: true });
+    await expect(customize, `${name}: Customize steps`).toBeVisible();
+    await customize.click();
+    await expect(dialog.getByRole("button", { name: "3 Steps", exact: true }), `${name}: Steps tab`).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$/ }), `${name}: start moved`).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(dialog.getByText(/\d+ of \d+ included/), `${name}: Steps step`).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$|^Start run$/ }), `${name}: start on Steps`).toBeVisible();
+    reached.push(name);
+  }
+  expect(reached).toEqual(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]);
   expect(errors).toEqual([]);
 });
