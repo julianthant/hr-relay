@@ -92,7 +92,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       {toggle}<span className="session-bar-end">{addControl}{account && <>
         <Tooltip side="top" content="Settings"><IconButton id={SETTINGS_GEAR_ID} variant="ghost" size="sm" label="Settings" title="" aria-pressed={account.settingsOpen} onClick={account.onSettings} icon={<Settings aria-hidden className="size-4" />} /></Tooltip>
         <Tooltip side="top" content="Log out"><IconButton className="hub-logout" variant="ghost" size="sm" label="Log out" title="" onClick={account.onLogout} icon={<LogOut aria-hidden className="size-4" />} /></Tooltip>
-      </>}</span>
+      </>}<AssistantLauncher /></span>
     </div>
     {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
       {operations.add && ['uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 px-3 pb-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}
@@ -101,6 +101,5 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       </div>
     </div>}
   </section>
-    <AssistantLauncher />
   </div>;
 }
