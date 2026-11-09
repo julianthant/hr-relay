@@ -1,13 +1,12 @@
-import { RequiredCaptureStatus } from "../../run-detail/logs/log-screenshots.js";
 import { useViewState } from "../../../app/navigation/view-route-model.js";
-import { useState } from "react";
-import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, ArrowLeft, ArrowRight, Lock, Play } from "lucide-react";
 import { BareButton, Banner, Button, Checkbox, Switch, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockTypedInputValues, changeMockTypedInput, initialMockDraft, mockDraftError, mockDraftInputError, mockInputEntries, mockSelectableSteps, mockOcrReadSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
-import { RunOptionsLayout, RunStepsList } from "../../run-start/run-launch-layout.js";
+import { RunList, RunListRow } from "../../run-start/run-list.js";
 import { TypedInput } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
@@ -43,6 +42,24 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const planSteps = [...preparation, ...steps];
   const included = (draft.ocrMode === "manual" ? Math.min(preparation.length, 1) : preparation.length) + steps.filter(step => draft.selectedSteps.includes(step.key)).length;
   const patch = (next: Partial<MockDraft>) => { const value = { ...draft, ...next }; setDraft(value); onDraftChange?.(value); };
+  const startDisabled = blocked || Boolean(error) || reading;
+  const advance = () => { if (startDisabled) return; if (last) onSubmit(workflowId, draft, source?.id); else setStage(stages[index + 1]); };
+  // Enter continues (or starts on the last step); Shift+Enter keeps its newline in a textbox. Buttons, links and open pickers keep Enter for themselves.
+  // Listens on the document so Enter still works when focus fell back to the dialog after a step change.
+  const enterRef = useRef(advance);
+  enterRef.current = advance;
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented || event.isComposing) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target === null || (target !== document.body && target.closest('[role="dialog"]') === null)) return;
+      if (target.closest('a, button:not([role="checkbox"]):not([role="switch"]), [role="combobox"], [role="listbox"], [role="menu"], [role="option"]')) return;
+      event.preventDefault();
+      enterRef.current();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
   const chooseFiles = async (files: readonly File[]) => {
     setReading(true); setFileError(undefined);
     try {
@@ -63,8 +80,8 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index}>
           <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span></BareButton></li>)}
       </ol><DialogBody key={stage} className="launch-content @container">
-        {stage !== "Options" && <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="text-heading font-semibold">{stage === "Steps" ? source ? "Choose what to run again" : "Workflow steps" : source ? "Values for the new run" : "Run input"}</h3>{stage === "Steps" && <span className="text-caption text-ui-muted">{included} / {planSteps.length} included</span>}</div>
-          <p className="text-body text-ui-secondary">{stage === "Steps" ? source ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included." : flow.methods[0] === "delegated" ? "I-9 Lookup runs inside its parent workflow." : pdf ? "Choose the documents to process." : "Each entry starts one run."}</p>
+        {stage !== "Options" && <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="text-heading font-semibold">{stage === "Steps" ? "Steps" : source ? "Values for the new run" : "Run input"}</h3>{stage === "Steps" && <span className="text-[12px] text-ui-muted">{included} of {planSteps.length} included</span>}</div>
+          <p className={stage === "Steps" ? "text-[12px] text-ui-muted" : "text-body text-ui-secondary"}>{stage === "Steps" ? source ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included." : flow.methods[0] === "delegated" ? "I-9 Lookup runs inside its parent workflow." : pdf ? "Choose the documents to process." : "Each entry starts one run."}</p>
         </section>}
         <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
         {(stage === "Input" || stage === "Values") && <section aria-label={stage} className="flex flex-col gap-3">
@@ -97,44 +114,44 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           {error && draft.method !== "delegated" && (draft.text || draft.files.length || fileError) && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </section>}
         {stage === "Options" && chatGptBlocked && <StatusMockReadiness frame="run-b" />}
-        {stage === "Options" && <RunOptionsLayout workflowLabel={flow.label} priority={draft.priority === "background" ? "bulk" : "interactive"} onPriorityChange={priority => patch({ priority: priority === "bulk" ? "background" : "interactive" })} browserMode={draft.browser} onBrowserModeChange={browser => patch({ browser })}
-          flags={<>
-            {!source && planSteps.length > 0 && <Checkbox label="Customize steps" description="Choose optional steps." checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} />}
-            {pdf && !uploadOnly && <Checkbox label="Extract with OCR" description="Turn off to enter records manually in OCR review." checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} />}
-            {flow.dryRun && <Switch label="Dry run" description="Fill and check every step without submitting." checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} />}
-            <RequiredCaptureStatus state="required" />
-          </>}>
-          {workflowId === "onboarding" && <Field orientation="horizontal" label="Hire type" description="Applies to every item.">
-            <SegmentedChoice label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} />
-          </Field>}
-        </RunOptionsLayout>}
-        {stage === "Steps" && <section aria-label="Steps" className="flex flex-col gap-[var(--ds-space-cozy)]"><h4 id="run-start-steps" className="sr-only">Steps</h4><RunStepsList>{planSteps.length ? planSteps.map(step => {
+        {stage === "Options" && <div className="flex flex-col gap-[var(--ds-space-loose)]">
+          <RunList title="Run">
+            {!source && planSteps.length > 0 && <RunListRow title="Customize steps" description="Choose optional steps."><Checkbox label="Customize steps" className="[&_.ds-checkbox-copy]:sr-only" checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} /></RunListRow>}
+            {pdf && !uploadOnly && <RunListRow title="Extract with OCR" description="Turn off to enter records manually in OCR review."><Checkbox label="Extract with OCR" className="[&_.ds-checkbox-copy]:sr-only" checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /></RunListRow>}
+            {flow.dryRun && <RunListRow title="Dry run" description="Fill and check every step without submitting."><Switch hideLabel label="Dry run" checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} className="!w-auto" /></RunListRow>}
+            <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
+            <RunListRow title="Priority" description="Interactive runs go first."><SegmentedChoice hideLabel label="Priority" value={draft.priority === "background" ? "bulk" : "interactive"} onChange={priority => patch({ priority: priority === "bulk" ? "background" : "interactive" })} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /></RunListRow>
+            <RunListRow title="Browser" description="Headless runs in the background."><SegmentedChoice hideLabel label="Browser mode" value={draft.browser} onChange={browser => patch({ browser })} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></RunListRow>
+            {workflowId === "onboarding" && <RunListRow title="Hire type" description="Applies to every item."><SegmentedChoice hideLabel label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} /></RunListRow>}
+          </RunList>
+        </div>}
+        {stage === "Steps" && <section aria-label="Steps" className="flex flex-col gap-[var(--ds-space-cozy)]"><RunList label="Steps">{planSteps.length ? planSteps.map(step => {
           const state = source ? mockStepState(source, step) : undefined;
-          const locked = mockStepIsLocked(workflowId, step), dependency = mockStepIsDependency(step);
+          const required = mockStepIsLocked(workflowId, step) || mockStepIsDependency(step);
           const fields = manualReadFields(workflowId, step.key), manual = usesManualRead(draft, step.key);
           const setManual = (value: boolean) => patch({ manualSteps: value ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
-          return <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2"><div className="flex items-start gap-[var(--ds-space-base)]">
-            {step.key === "prep:ocr" ? <Checkbox label={step.label} description={step.system} checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /> : dependency ? <span className="text-body">{step.label}{" "}<span className="ml-2 text-caption text-ui-muted">{["wait-approval", "read-document"].includes(step.key) ? "Approval required" : "Automatic"}</span></span> : <Checkbox label={step.label} description={locked ? mockStepIsRequiredSignIn(workflowId, step) ? `${step.system ?? "Sign-in"} · required` : "Form action · required" : step.system} disabled={locked} checked={draft.selectedSteps.includes(step.key)} onCheckedChange={value => {
-              const included = value === true;
-              patch({ selectedSteps: included ? [...new Set([...draft.selectedSteps, step.key])] : draft.selectedSteps.filter(key => key !== step.key),
-                manualSteps: !included && fields.length ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
-            }} />}
+          const note = step.key === "prep:ocr" ? step.system : mockStepIsDependency(step) ? ["wait-approval", "read-document"].includes(step.key) ? "Approval required" : "Automatic" : required ? mockStepIsRequiredSignIn(workflowId, step) ? `${step.system ?? "Sign-in"} · required` : "Form action · required" : step.system;
+          const toggle = (value: boolean) => step.key === "prep:ocr" ? patch({ ocrMode: value ? "extract" : "manual" }) : patch({
+            selectedSteps: value ? [...new Set([...draft.selectedSteps, step.key])] : draft.selectedSteps.filter(key => key !== step.key),
+            manualSteps: !value && fields.length ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
+          return <RunListRow key={step.key} title={step.label} description={note}
+            {...(step.key === "prep:ocr" || !required ? { check: { checked: step.key === "prep:ocr" ? draft.ocrMode !== "manual" : draft.selectedSteps.includes(step.key), onChange: toggle } } : { locked: true })}
+            below={manual ? <div role="group" aria-label={`Manual values for ${step.label}`} className="grid grid-cols-2 gap-3">
+              {fields.map(field => <Field key={field.key} label={field.label}><InputOrSelect field={field} value={draft.manualValues?.[step.key]?.[field.key] ?? ""} onChange={value => patch({ manualValues: { ...draft.manualValues, [step.key]: { ...draft.manualValues?.[step.key], [field.key]: value } } })} /></Field>)}
+            </div> : undefined}>
             {source && <Badge tone={state === "completed" ? "success" : "neutral"} className="launch-step-status" data-status={state}>{state === "completed" ? "Completed" : state === "skipped" ? "Skipped" : "Not started"}</Badge>}
-          </div>
-          {locked && fields.length > 0 && <Checkbox className="ml-6" label={`Enter reading values manually for ${step.label.toLowerCase()}`} checked={manual} onCheckedChange={value => setManual(value === true)} />}
-          {manual && <div role="group" aria-label={`Manual values for ${step.label}`} className="ml-6 space-y-3 border-l border-ui-stroke pl-3"><p className="m-0 text-caption text-ui-secondary">Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.</p><div className="grid grid-cols-2 gap-3">
-            {fields.map(field => <Field key={field.key} label={field.label}><InputOrSelect field={field} value={draft.manualValues?.[step.key]?.[field.key] ?? ""} onChange={value => patch({ manualValues: { ...draft.manualValues, [step.key]: { ...draft.manualValues?.[step.key], [field.key]: value } } })} /></Field>)}
-          </div></div>}
-          </li>;
-        }) : <li className="p-3 text-body text-ui-secondary">OCR preparation reads and matches the PDF records.</li>}</RunStepsList>{mockStepInputError(workflowId, draft) && <p role="alert" className="text-caption text-ui-danger">{mockStepInputError(workflowId, draft)}</p>}</section>}
+            {required && fields.length > 0 && <><span aria-hidden className="cursor-pointer text-[12px] text-ui-secondary" onClick={() => setManual(!manual)}>Enter manually</span><Switch hideLabel label={`Enter manually for ${step.label}`} checked={manual} onCheckedChange={setManual} className="!w-auto" /></>}
+          </RunListRow>;
+        }) : <RunListRow title="OCR preparation reads and matches the PDF records." />}</RunList>{mockStepInputError(workflowId, draft) && <p role="alert" className="text-caption text-ui-danger">{mockStepInputError(workflowId, draft)}</p>}</section>}
         {index === stages.length - 1 && stage !== "Steps" && error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </div>
 
       </DialogBody></div>
     <DialogFooter meta={<MetaLine tone="faint" items={[flow.label, `${included} of ${planSteps.length} steps`, ...(pdf && !uploadOnly ? [`OCR ${draft.ocrMode === "manual" ? "off" : "on"}`] : []), draft.priority === "interactive" ? "Interactive" : "Bulk"]} />}>
+      {!startDisabled && <span className="text-[12px] text-ui-muted">{last ? "Enter to start" : "Enter to continue"}</span>}
       {index > 0 && <Button variant="ghost" icon={<ArrowLeft className="size-3" aria-hidden />} onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="muted" onClick={onClose}>Cancel</Button>
-      {last ? <Button variant="primary" icon={<Play className="size-[14px]" aria-hidden />} disabled={blocked || Boolean(error) || reading} onClick={() => onSubmit(workflowId, draft, source?.id)}>{flow.dryRun ? draft.dryRun ? "Start dry run" : "Start live run" : "Start run"}</Button>
-        : <Button variant="primary" iconAfter={<ArrowRight className="size-[14px]" aria-hidden />} disabled={blocked || Boolean(error) || reading} onClick={() => setStage(stages[index + 1])}>Continue</Button>}
+      {last ? <Button variant="primary" icon={<Play className="size-[14px]" aria-hidden />} disabled={startDisabled} onClick={advance}>{flow.dryRun ? draft.dryRun ? "Start dry run" : "Start live run" : "Start run"}</Button>
+        : <Button variant="primary" iconAfter={<ArrowRight className="size-[14px]" aria-hidden />} disabled={startDisabled} onClick={advance}>Continue</Button>}
     </DialogFooter>
   </>;
 }

@@ -495,8 +495,10 @@ export function Switch({
   description,
   disabled,
   className,
+  hideLabel = false,
 }: {
   name?: string;
+  hideLabel?: boolean;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: ReactNode;
@@ -520,7 +522,7 @@ export function Switch({
           ? "ds-switch-thumb-checked bg-[var(--ds-accent-fg)]"
           : "bg-[var(--ds-fg-muted)]",
         )} /></HeroSwitch.Control>
-        <span className="ds-switch-copy flex min-w-0 flex-1 flex-col">
+        <span className={cn("ds-switch-copy flex min-w-0 flex-1 flex-col", hideLabel && "sr-only")}>
           <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
           {description && <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>}
         </span>

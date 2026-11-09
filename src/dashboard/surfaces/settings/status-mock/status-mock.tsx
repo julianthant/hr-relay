@@ -1,7 +1,7 @@
 import { Check, ExternalLink, LoaderCircle } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
-import { cn } from "../../../lib/utils.js";
-import { BodySection, Button, ButtonLink, Checkbox, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { useEffect } from "react";
+import { RunList, RunListRow } from "../../run-start/run-list.js";
+import { BodySection, Button, ButtonLink, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
 import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
@@ -14,18 +14,9 @@ import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_REQUIRED_FIELD
 const noop = () => undefined;
 
 
-/** One field row: title and description on the left, its value or button on the right, vertically centred. */
-function MockRow({ label, description, value }: { label: ReactNode; description?: ReactNode; value: ReactNode }) {
-  return <div className="flex items-center justify-between gap-4 border-b border-ui-stroke px-4 py-3 last:border-b-0">
-    <div className="min-w-0"><div className="text-body font-medium">{label}</div>{description && <div className="text-caption text-ui-muted">{description}</div>}</div>
-    <div className="shrink-0 text-body">{value}</div>
-  </div>;
-}
-const MockCard = ({ children }: { children: ReactNode }) => <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">{children}</div>;
-
 /** A readiness blocker at the top of the dialog: one row, reason on the left, its fix on the right. */
 export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
-  return <section aria-label="Before you start"><MockCard>{STATUS_MOCK_BLOCKERS[frame].map(blocker => <MockRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}</MockCard></section>;
+  return <RunList label="Before you start">{STATUS_MOCK_BLOCKERS[frame].map(blocker => <RunListRow key={blocker.id} title={blocker.title} description={blocker.note}><Button variant="secondary">{blocker.action}</Button></RunListRow>)}</RunList>;
 }
 
 /** Picked spreadsheet value -> version number. */
@@ -33,19 +24,15 @@ export type StatusMockPicks = Readonly<Record<string, number>>;
 
 /** The dialog's spreadsheet picker: pick one or more; each picked one has a version picker on the right. A spreadsheet lacking a needed column is greyed out with the reason. */
 export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPicks; onPicks: (next: StatusMockPicks) => void }) {
-  return <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0"><legend className="mb-1 p-0 text-meta font-medium text-ui-secondary">Reference spreadsheets</legend>
-    <MockCard>{STATUS_MOCK_SPREADSHEETS.map(sheet => {
-      const version = picks[sheet.value];
-      return <div key={sheet.value} className={cn("flex items-center justify-between gap-4 border-b border-ui-stroke px-4 py-3 last:border-b-0", "disabled" in sheet && "opacity-50")}>
-        <Checkbox className="min-w-0" label={sheet.label} description={sheet.description} disabled={"disabled" in sheet} checked={version !== undefined}
-          onCheckedChange={value => onPicks(value === true ? { ...picks, [sheet.value]: sheet.current } : Object.fromEntries(Object.entries(picks).filter(([key]) => key !== sheet.value)))} />
-        {version !== undefined && <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[72px] !border-[color:var(--ds-border)] !bg-transparent" value={String(version)} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
-          {Array.from({ length: sheet.current }, (_, index) => sheet.current - index).map(number => <option key={number} value={number}>v{number}</option>)}
-        </Select>}
-      </div>;
-    })}</MockCard>
-    <p className="m-0 text-caption text-ui-muted">Uses: {STATUS_MOCK_REQUIRED_FIELDS}</p>
-  </fieldset>;
+  return <div className="flex min-w-0 flex-col gap-2"><RunList title="Reference spreadsheets">{STATUS_MOCK_SPREADSHEETS.map(sheet => {
+    const version = picks[sheet.value];
+    return <RunListRow key={sheet.value} title={sheet.label} description={sheet.description} dimmed={"disabled" in sheet}
+      check={{ checked: version !== undefined, disabled: "disabled" in sheet, onChange: value => onPicks(value ? { ...picks, [sheet.value]: sheet.current } : Object.fromEntries(Object.entries(picks).filter(([key]) => key !== sheet.value))) }}>
+      {version !== undefined && <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[72px] !border-[color:var(--ds-border)] !bg-transparent" value={String(version)} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
+        {Array.from({ length: sheet.current }, (_, index) => sheet.current - index).map(number => <option key={number} value={number}>v{number}</option>)}
+      </Select>}
+    </RunListRow>;
+  })}</RunList><p className="m-0 text-[12px] text-ui-muted">Uses: {STATUS_MOCK_REQUIRED_FIELDS}</p></div>;
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */

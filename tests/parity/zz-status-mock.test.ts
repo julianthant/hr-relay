@@ -46,6 +46,20 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+    } else if (id === "run-steps" || id === "run-rerun-steps") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
+      if (id === "run-rerun-steps") {
+        await page.getByRole("button", { name: "Rerun", exact: true }).click();
+        await expect(page.getByRole("dialog").getByText(/\d+ of \d+ included/)).toBeVisible();
+      } else {
+        await page.getByRole("button", { name: "Start a run", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+        await dialog.getByRole("textbox").first().fill("10555001");
+        await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).click();
+        await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        await expect(dialog.getByText(/\d+ of \d+ included/)).toBeVisible();
+      }
     } else if (id === "run-rerun-options") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await page.getByRole("button", { name: "Rerun", exact: true }).click();
@@ -146,5 +160,34 @@ for (const motion of ["no-preference", "reduce"] as const) test(`kit switch slid
   if (motion === "reduce") expect(middle).toBe(end);
   else { expect(middle).toBeGreaterThan(0); expect(middle).toBeLessThan(end); }
   await page.screenshot({ path: join(OUT, `kit-switch-${motion}-end-${WIDTH}.png`), clip: await group.boundingBox() ?? undefined });
+  expect(errors).toEqual([]);
+});
+
+// Enter continues in the Run dialog (starts on the last step unless disabled); Shift+Enter keeps its newline in a textbox.
+test("run dialog keys", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
+  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+  await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
+  await page.getByRole("button", { name: "Start a run", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+  const box = dialog.getByRole("textbox").first();
+  await expect(dialog.getByText("Enter to continue")).toHaveCount(0);
+  // Disabled (nothing typed yet): Enter does nothing and the textbox keeps its content.
+  await box.press("Enter");
+  await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  await box.fill("10555001");
+  await box.press("Shift+Enter");
+  await box.pressSequentially("10555002");
+  await expect(box).toHaveValue("10555001\n10555002");
+  await expect(dialog.getByText("Enter to continue")).toBeVisible();
+  await box.press("Enter");
+  await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+  await expect(dialog.getByText("Enter to start")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$/ })).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
   expect(errors).toEqual([]);
 });

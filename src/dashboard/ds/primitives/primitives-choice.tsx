@@ -48,7 +48,7 @@ export function SegmentedChoice<T extends string>({ label, value, options, onCha
         style={{ width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${selected * 100}%)` }} />}
       {options.map(option => <label key={option.value} className="relative z-10 min-w-0 flex-1 cursor-pointer">
         <input type="radio" name={`${label}-${name}`} value={option.value} checked={option.value === value} onChange={() => onChange(option.value)} className="peer sr-only" />
-        <span className="flex h-full items-center justify-center rounded-full px-[var(--ds-space-base)] text-center text-[13px] leading-none text-[color:var(--ds-fg-muted)] transition-colors duration-[180ms] ease-out peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)] motion-reduce:transition-none">{option.label}</span>
+        <span className="flex h-full items-center justify-center rounded-full px-4 text-center text-[13px] leading-none text-[color:var(--ds-fg-muted)] transition-colors duration-[180ms] ease-out peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)] motion-reduce:transition-none">{option.label}</span>
       </label>)}
     </div>
   </fieldset>;
