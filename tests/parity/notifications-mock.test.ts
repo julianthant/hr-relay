@@ -62,6 +62,7 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
       unreadTitle: rect(".notification-unread-dot ~ .notification-item-title").left - rect(".notification-unread-dot").right,
       unreadPreview: rect(".notification-item-line").left - rect(".notification-item").left,
       readTitle: (() => { const row = [...rail.querySelectorAll(".notification-item")].find(item => !item.querySelector(".notification-unread-dot"))!; return row.querySelector(".notification-item-title")!.getBoundingClientRect().left - row.getBoundingClientRect().left; })(), dotMiddle: rect(".notification-unread-dot").top + 3 - (rect(".notification-item-title").top + 12.5),
+      tagInset: rect(".notification-item", 3).right - rect(".notification-item-tag", 3).right, menuInset: rect(".notification-item", 0).right - rect(".notification-group-head button svg").right,
       readTagRight: box.right - 1 - rect(".notification-item-tag", 3).right, menuCentre: box.right - 1 - (rect(".notification-group-head button").left + rect(".notification-group-head button").width / 2),
       pitch: rows[1].top - rows[0].top, rowHeight: rows[0].height, labelToTitle: rect(".notification-item-title", 4).top + 10 - (labels[1].top + 10), icons: rail.querySelectorAll(".notification-item svg").length, bellHeader: rect(".workspace-rail-header").height,
       titleToPreview: rect(".notification-item-line").top - rect(".notification-item-title").top, previewLine: parseFloat(getComputedStyle(rail.querySelector(".notification-item-line")!).lineHeight),
@@ -87,6 +88,9 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   expect(m.unreadTitle).toBe(8);
   expect(m.unreadPreview).toBe(8);
   expect(m.readTitle).toBe(8);
+  // Right inset equals the left: the source tag and the Priority menu glyph end 8px inside the row box.
+  expect(m.tagInset).toBe(m.readTitle);
+  expect(m.menuInset).toBe(m.readTitle);
   await expect(page.locator(".notification-unread-dot").first()).toBeVisible();
   expect(Math.abs(m.dotMiddle)).toBeLessThanOrEqual(1);
   // Row hover: the tag gives way to Mark as read / Dismiss (Priority rows only get the read toggle); header icons fill on hover.
@@ -95,6 +99,8 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await expect(hoverRow(/Relay is open in another window/).getByRole("button", { name: "Mark as unread" })).toBeVisible();
   await expect(hoverRow(/Relay is open in another window/).getByRole("button", { name: "Dismiss" })).toBeVisible();
   await expect(hoverRow(/Relay is open in another window/).locator(".notification-item-tag")).toHaveCSS("visibility", "hidden");
+  const glyphInset = await hoverRow(/Relay is open in another window/).evaluate(li => li.querySelector(".notification-item")!.getBoundingClientRect().right - [...li.querySelectorAll(".notification-item-actions svg")].at(-1)!.getBoundingClientRect().right);
+  expect(glyphInset).toBe(m.readTitle);
   await shot(page, "row-hover", theme);
   await hoverRow(/Your disk is full/).hover();
   await expect(hoverRow(/Your disk is full/).getByRole("button", { name: "Dismiss" })).toBeHidden();
