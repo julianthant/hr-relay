@@ -1,6 +1,6 @@
 .settings-takeover { --ds-settings-section-gap:48px;--ds-settings-card-gap:40px; }
 .dashboard-shell .settings-takeover > nav.settings-panel-nav { width:var(--ds-sidebar-width);flex-shrink:0;padding:24px 14px;gap:0;background:var(--ui-canvas); }
-.settings-nav-header { padding:0 8px;min-height:30px;height:30px;margin-bottom:15px; }
+.settings-nav-header { padding:0 9px 0 8px;min-height:30px;height:30px;margin-bottom:15px; }
 .settings-nav-header h2 { font-size:18px;font-weight:600; }
 .settings-nav-search { margin:0 0 15px;width:100%; }
 .settings-nav-group { gap:var(--ds-space-hair);margin-bottom:18px; }
@@ -48,7 +48,7 @@
 .settings-takeover .ds-field-label>span[aria-hidden="true"][class*="--ds-danger"] { display:none; }
 
 
-.settings-nav-header button { width:30px;height:30px;border-radius:8px; }
+.settings-nav-header button { width:28px;height:28px;min-width:28px;min-height:28px;border-radius:8px; }
 .settings-nav-header button svg { width:16px;height:16px; }
 .settings-credentials-page .settings-compact-form>.ds-body-section+.ds-body-section { margin-top:var(--ds-settings-section-gap); }
 @media (min-width:1024px) and (max-width:1150px) {
