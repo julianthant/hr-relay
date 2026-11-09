@@ -65,7 +65,7 @@ function FieldValue({ value }: { value: string }) {
 export type LogDecisionHandler = (id: string, option: Parameters<DecisionAnswerHandler>[0], answer: Parameters<DecisionAnswerHandler>[1]) => void;
 
 /** Shared presentation for the operator stream and the isolated design preview. */
-export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, onDecision, initialStepId, loading = false }: {
+export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, footerActions, navigation, onDecision, initialStepId, loading = false }: {
   steps: readonly LogStep[];
   onDecision?: LogDecisionHandler;
   onCancelRun?: () => void;
@@ -77,6 +77,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
   afterStep?: (id: string) => ReactNode;
   trailingContent?: ReactNode;
   footerContent?: ReactNode;
+  footerActions?: ReactNode;
   navigation?: (jump: (stepId: string, entryId?: string) => void) => ReactNode;
 }) {
   const [query, setQuery] = useState("");
@@ -165,6 +166,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
       {footerContent}
       <span className="ml-auto inline-flex shrink-0 items-center gap-1">
         <span className="mr-2 text-caption text-ui-muted" role="status">{copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy unavailable" : ""}</span>
+        {footerActions}
         <IconButton label="Copy logs" icon={copyState === "copied" ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />} onClick={() => void copy()} disabled={!count} />
         <IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-4" />} onClick={() => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); jumpFrame.current = undefined; if (end.current) end.current.style.height = "0px"; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); }} disabled={!count} />
       </span>
