@@ -59,7 +59,7 @@ export function MappingGrid({ title, dataset, mapping, onMap, maxHeight = 'max-h
     <div className={`${maxHeight} overflow-auto rounded-md border border-ui-stroke`}>
       <table className="w-full select-none border-collapse text-[12px]">
         <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => { const field = fieldOf(header); return <th key={header} className="whitespace-nowrap px-1 py-0.5 text-left text-[11px] font-medium text-ui-muted">
-          <DropdownMenu><DropdownMenuTrigger render={<button type="button" aria-label={`Column ${header}`} className={`flex h-6 items-center gap-1.5 rounded-md px-1.5 hover:bg-ui-hover ${dsFocus}`}><span>{header}</span>{field && <span className={FIELD_TAG}>{field.label}</span>}<ChevronDown size={11} aria-hidden /></button>} /><DropdownMenuContent align="start" className="min-w-[200px]">
+          <DropdownMenu><DropdownMenuTrigger render={<button type="button" aria-label={`Column ${header}`} className={`flex h-6 items-center gap-1.5 rounded-md px-1.5 hover:bg-ui-hover ${dsFocus}`}>{field?.label !== header && <span>{header}</span>}{field && <span className={FIELD_TAG}>{field.label}</span>}<ChevronDown size={11} aria-hidden /></button>} /><DropdownMenuContent align="start" className="min-w-[200px]">
             <DropdownMenuGroup><DropdownMenuLabel>Use as</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={field?.key ?? 'none'} onValueChange={value => assignTo(header, value)}>
               {FIELDS.map(item => <DropdownMenuRadioItem closeOnClick key={item.key} value={item.key}>{item.label}</DropdownMenuRadioItem>)}<DropdownMenuRadioItem closeOnClick value="none">None</DropdownMenuRadioItem>

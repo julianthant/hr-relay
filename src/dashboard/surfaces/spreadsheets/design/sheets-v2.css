@@ -11,3 +11,6 @@
 @media (prefers-reduced-motion: reduce) { :is(.sv2-in-right, .sv2-in-left, .sv2-out-left, .sv2-out-right) { animation: none; } .sv2-height { transition: none; } }
 html[data-motion=off] :is(.sv2-in-right, .sv2-in-left, .sv2-out-left, .sv2-out-right) { animation: none; }
 html[data-motion=off] .sv2-height { transition: none; }
+
+/* Dialogs keep their compact size and take the dashboard's blue primary. */
+.sv2-dialog { --ds-accent: var(--ui-info); --ds-accent-hover: var(--ui-info); --ds-accent-fg: var(--ui-canvas); }

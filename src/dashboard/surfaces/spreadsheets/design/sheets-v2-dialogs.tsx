@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Dialog, DialogBody, DialogContent, DialogFooter, Field, Input } from '../../../ds/ui.js';
 import { type Sheet, mergePreview, stamp } from './sheets-v2-model.js';
+import './sheets-v2.css';
 import { Grey, Picker, TagEditor, V2Button } from './sheets-v2-ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/ui.js';
 
@@ -8,7 +9,7 @@ export type DialogKind = 'rename' | 'tags' | 'link' | 'merge' | 'rollback' | 'de
 const field = '!bg-[var(--ui-field)] !border-[color:var(--ui-stroke-control)]';
 
 function Shell({ title, description, onClose, footer, children, size = 'sm' }: { title: string; description?: string; onClose: () => void; footer: ReactNode; children?: ReactNode; size?: 'sm' | 'md' }) {
-  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent size={size} title={title} description={description}>
+  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="sv2-dialog" size={size} title={title} description={description}>
     {children && <DialogBody>{children}</DialogBody>}
     <DialogFooter>{footer}</DialogFooter>
   </DialogContent></Dialog>;

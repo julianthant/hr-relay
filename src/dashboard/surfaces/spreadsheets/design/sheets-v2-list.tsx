@@ -39,7 +39,7 @@ export function SheetRow({ sheet, sheets, narrow, actions }: { sheet: Sheet; she
     </div>
     <TagsFit sheet={sheet} />
     <div className="truncate text-ui-muted"><SourceCell sheet={sheet} sheets={sheets} onOpen={actions.open} /></div>
-    <div onClick={stop}><V2Button look="plain" className="-ml-2 tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.versions[0].n}`} onClick={() => actions.version(sheet.id)}>v{sheet.versions[0].n}</V2Button></div>
+    <div onClick={stop}><V2Button look="plain" className="-ml-3 tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.versions[0].n}`} onClick={() => actions.version(sheet.id)}>v{sheet.versions[0].n}</V2Button></div>
     <div className="flex justify-end" onClick={stop}>{!narrow && <DownloadIcon name={sheet.name} />}<SheetMenu sheet={sheet} label={sheet.name} withDownload={narrow} onAction={action => actions.menu(sheet.id, action)} /></div>
   </li>;
 }
