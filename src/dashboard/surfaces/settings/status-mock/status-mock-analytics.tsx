@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Fragment, useState } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, dsIcon } from "../../../ds/ui.js";
@@ -16,7 +16,7 @@ const finished = (row: StatusMockCounts) => STATUS_MOCK_OUTCOMES.reduce((n, outc
 const counts = ([done, failed, attention]: readonly number[]): StatusMockCounts => ({ done: done ?? 0, failed: failed ?? 0, attention: attention ?? 0 });
 
 /** Analytics for an HR operator: a toolbar, then Runs, Workflows, Time and Why runs failed as sections of cards. A puts the key figures under the chart, B a slim row of them above it. */
-export function StatusMockAnalytics({ variant }: { variant: "a" | "b" }) {
+export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" | "b"; onOpenWorkflow?: (workflowId: string) => void }) {
   const data = STATUS_MOCK_ANALYTICS;
   const [period, setPeriod] = useState<(typeof PERIODS)[number]["value"]>("7d");
   const [workflow, setWorkflow] = useState("all");
@@ -59,13 +59,26 @@ export function StatusMockAnalytics({ variant }: { variant: "a" | "b" }) {
       <BodySection title="Workflows" description="Open a row to see what went wrong.">
         <div className="ds-table-list-frame"><table aria-label="Workflows">
           <thead><tr><th scope="col" className="w-10 !pr-0"><span className="sr-only">Details</span></th><th scope="col" className="!pl-0">Workflow</th><th scope="col" className={NUMBER}>Runs</th><th scope="col" className={NUMBER}>Done</th><th scope="col" className={NUMBER}>Failed</th><th scope="col" className={NUMBER}>Typical time</th></tr></thead>
-          <tbody>{rows.map(row => <Fragment key={row.id}>
-            <tr className={open.has(row.id) ? "!border-b-0" : undefined}>
-              <td className="!pr-0"><IconButton size="xs" label={`${open.has(row.id) ? "Hide" : "Show"} ${row.label} details`} aria-expanded={open.has(row.id)} icon={<ChevronRight aria-hidden className={`${dsIcon.md} transition-transform motion-reduce:transition-none ${open.has(row.id) ? "rotate-90" : ""}`} />} onClick={() => toggle(row.id)} /></td>
-              <td className="!pl-0">{row.label}</td><td className={NUMBER}>{finished(row)}</td><td className={NUMBER}>{Math.round(row.done / finished(row) * 100)}%</td><td className={`${NUMBER} ${row.failed ? "text-ui-danger" : ""}`}>{row.failed}</td><td className={NUMBER}>{row.time}</td>
-            </tr>
-            {open.has(row.id) && <tr><td /><td colSpan={5} className="!h-auto !pl-0 !pt-0"><ul className="m-0 flex list-none flex-col gap-1 p-0 text-[12px] leading-[18px] text-ui-secondary">{row.lines.map(line => <li key={line}>{line}</li>)}</ul></td></tr>}
-          </Fragment>)}</tbody>
+          <tbody>{rows.map(row => {
+            const isOpen = open.has(row.id), total = finished(row), failedAt: readonly (readonly [string, number])[] = row.failedAt;
+            const percent = (n: number) => `${Math.round(n / total * 100)}%`;
+            const details: readonly { label: string; values: readonly (readonly [string, string])[] }[] = [
+              { label: "Outcome", values: [["Done", percent(row.done)], ["Failed", percent(row.failed)], ["Waiting", percent(row.attention)]] },
+              ...(failedAt.length === 0 ? [] : [{ label: "Failed at", values: failedAt.map(([step, n]) => [step, String(n)] as const) }]),
+            ];
+            return <Fragment key={row.id}>
+              <tr className={`cursor-pointer ${isOpen ? "!border-b-0 bg-[var(--ds-soft-bg)]" : ""}`} onClick={() => toggle(row.id)}>
+                <td className="!pr-0"><IconButton size="xs" label={`${isOpen ? "Hide" : "Show"} ${row.label} details`} aria-expanded={isOpen} icon={<ChevronRight aria-hidden className={`${dsIcon.md} transition-transform motion-reduce:transition-none ${isOpen ? "rotate-90" : ""}`} />} onClick={event => { event.stopPropagation(); toggle(row.id); }} /></td>
+                <td className="!pl-0">{row.label}</td><td className={NUMBER}>{total}</td><td className={NUMBER}>{percent(row.done)}</td><td className={`${NUMBER} ${row.failed ? "text-ui-danger" : ""}`}>{row.failed}</td><td className={NUMBER}>{row.time}</td>
+              </tr>
+              {isOpen && <tr className="bg-[var(--ds-soft-bg)]"><td /><td colSpan={5} className="!h-auto !pl-0 !pt-1 !pb-4">
+                <dl className="m-0 grid grid-cols-[88px_repeat(3,minmax(0,148px))] gap-y-3 text-[13px] leading-[18px]">
+                  {details.map(detail => <Fragment key={detail.label}><dt className="text-ui-muted">{detail.label}</dt>{detail.values.map(([name, figure]) => <dd key={name} className="m-0 min-w-0 truncate">{name} <span className="ml-1 text-ui-secondary tabular-nums">{figure}</span></dd>)}{Array.from({ length: 3 - detail.values.length }, (_, index) => <dd key={index} aria-hidden className="m-0" />)}</Fragment>)}
+                </dl>
+                {onOpenWorkflow && <button type="button" className="mt-4 inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] leading-[18px] text-ui-primary hover:underline" onClick={() => onOpenWorkflow(row.id)}>Open runs <ArrowUpRight aria-hidden className={dsIcon.md} /></button>}
+              </td></tr>}
+            </Fragment>;
+          })}</tbody>
         </table></div>
       </BodySection>
       <BodySection title="Time" description="How long finished runs take.">

@@ -73,11 +73,11 @@ export const STATUS_MOCK_ANALYTICS = {
   typicalTime: "2m 14s",
   dayLabels: ["Sun 20", "Mon 21", "Tue 22", "Wed 23", "Thu 24", "Fri 25", "Sat 26"],
   workflows: [
-    { id: "separations", label: "Separations", time: "2m 41s", lines: ["Failed reading the scan · 1", "Saved, not checked afterward · 2", "Waiting for you · 1"], seconds: [190, 170, 160, 165, 150, 175, 155],
+    { id: "separations", label: "Separations", time: "2m 41s", failedAt: [["Reading the scan", 1]], seconds: [190, 170, 160, 165, 150, 175, 155],
       byDay: [[2, 0, 1], [3, 0, 0], [4, 0, 1], [2, 0, 0], [4, 0, 1], [2, 1, 0], [2, 0, 0]] },
-    { id: "emergency-contact", label: "Emergency Contact", time: "1m 38s", lines: ["Failed at UCPath save · 2", "Saved, not checked afterward · 1", "Waiting for you · 1"], seconds: [110, 95, 100, 92, 98, 90, 96],
+    { id: "emergency-contact", label: "Emergency Contact", time: "1m 38s", failedAt: [["UCPath save", 2]], seconds: [110, 95, 100, 92, 98, 90, 96],
       byDay: [[1, 0, 0], [2, 1, 0], [2, 0, 1], [2, 1, 1], [3, 0, 0], [1, 0, 0], [1, 0, 0]] },
-    { id: "person-lookup", label: "Person Lookup", time: "0m 52s", lines: ["Waiting for you · 1"], seconds: [60, 55, 52, 50, 54, 48, 51],
+    { id: "person-lookup", label: "Person Lookup", time: "0m 52s", failedAt: [], seconds: [60, 55, 52, 50, 54, 48, 51],
       byDay: [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [2, 0, 0], [0, 0, 1]] },
   ],
   reasons: [
