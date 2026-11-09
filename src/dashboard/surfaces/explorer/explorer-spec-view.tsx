@@ -9,7 +9,7 @@ type WorkflowOption = Readonly<{ id: string; title: string; disabled?: boolean }
 
 function PageCard({ title, mode, children }: { title: string; mode: string; children: ReactNode }) {
   return <div className="overflow-hidden rounded-lg border border-ui-stroke bg-ui-table">
-    <div className="flex min-h-11 items-center gap-2.5 border-b border-ui-stroke px-3 py-2.5"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-semibold">{title}</h4><span className="ml-auto text-caption text-ui-muted">{mode}</span></div>
+    <div className="flex min-h-11 items-center gap-2.5 border-b border-ui-stroke px-3 py-2.5"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-medium">{title}</h4><span className="ml-auto text-caption text-ui-muted">{mode}</span></div>
     {children}
   </div>;
 }
