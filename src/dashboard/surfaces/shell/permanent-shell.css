@@ -13,8 +13,10 @@
 .settings-nav-group a { display: flex; min-width: 0; height: 36px; align-items: center; gap: 10px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
 .settings-nav-group a svg { width: 16px; height: 16px; }
 .dashboard-shell .settings-content { padding: 32px; }
-/* The floating dock stays over Settings: the last row scrolls clear of it (48px dock + gap). */
-.dashboard-shell .settings-content { padding-bottom: 76px; }
+/* The Sessions bar (46px + 12px edge gap) sits under the main area; Settings keeps its sidebar full height and ends the content above the bar. */
+.dashboard-workspace > main { padding-bottom: 58px; }
+.dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { padding-bottom: 0; }
+.dashboard-shell .settings-content { margin-bottom: 58px; }
 .dashboard-shell .settings-content { opacity: 1; transition: opacity var(--ds-dur-enter) var(--ds-ease-out); }
 .dashboard-shell .settings-takeover[data-demo-enter="from"] > .settings-content { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .dashboard-shell .settings-content { transition: none; } }
@@ -71,8 +73,6 @@
 .dashboard-action-panel > .operations-toolbar { flex: 1; min-width: 0; height: 44px; min-height: 44px; margin: 0; border: 0; border-radius: 0; background: transparent; }
 .dashboard-log-column { gap: var(--ds-space-cozy); }
 .dashboard-log-column > section:not(.dashboard-action-panel) { flex: 1; min-height: 0; }
-/* The floating dock sits in a 44px strip under the Logs footer (8px + 28px dock + 8px) so it never touches the card edge. */
-.dashboard-log-column .log-footer { padding-bottom: 44px; }
 .dashboard-log-date { display: flex; flex-shrink: 0; align-items: center; }
 .dashboard-log-date .date-input-group { height: 28px; }
 

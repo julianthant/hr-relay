@@ -72,8 +72,8 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
           </DialogContent>
         </Dialog>;
   const launcher = assistantLauncher();
-  const pill = <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title="" onClick={() => onOpenChange(!open)} className={cn("session-pill", launcher !== "b" && "dock-surface")}>
-    <span className="session-pill-title">Sessions</span><span aria-hidden className="text-ui-muted">·</span><span className="session-pill-counts"><BarCounts data={data} /></span>
+  const toggle = <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title="" onClick={() => onOpenChange(!open)} className="session-toggle">
+    <UsersRound aria-hidden /><span className="session-pill-title">Sessions</span><span aria-hidden className="text-ui-muted">·</span><span className="session-pill-counts"><BarCounts data={data} /></span>
     {open ? <ChevronDown aria-hidden /> : <ChevronUp aria-hidden />}
   </button>;
   return <section aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
@@ -84,8 +84,8 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       {data.state === "ready" ? data.workers.length ? <div data-session-strip className="flex items-stretch gap-3 overflow-x-auto pb-1">{data.workers.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={(id, control) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); }} />)}</div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
       </div>
     </div>}
-    <div className="dock-row" aria-label="Session actions" role="group">
-      {launcher === "b" ? <div className="dock-group dock-surface">{pill}<span aria-hidden className="dock-divider" /><AssistantDockField /></div> : <>{pill}{launcher === "a" && <AssistantIconLauncher />}</>}
+    <div className="session-bar" aria-label="Session actions" role="group">
+      {toggle}{launcher === "a" && <AssistantIconLauncher />}{launcher === "b" && <AssistantDockField />}
     </div>
   </section>;
 }
