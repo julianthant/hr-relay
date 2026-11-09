@@ -4,7 +4,7 @@ import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { cn } from "../../lib/utils.js"
 
 import { Button } from "./primitives-core.js"
-import { OctagonXIcon, XIcon, CircleCheckIcon, InfoIcon, TriangleAlertIcon, Loader2Icon } from "lucide-react"
+import { OctagonAlertIcon, XIcon, CircleCheckIcon, InfoIcon, TriangleAlertIcon, Loader2Icon } from "lucide-react"
 
 const toast = ToastPrimitive.createToastManager()
 
@@ -137,7 +137,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
 
   if (type === "error") {
     icon = (
-      <OctagonXIcon aria-hidden className="size-4" />
+      <OctagonAlertIcon aria-hidden className="size-4 text-[color:var(--ds-danger)]" />
     )
   }
 
