@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, Check, Download, MoreHorizontal } from 'lucide-react';
+import { AlertTriangle, Check, Download, FileSpreadsheet, MoreHorizontal } from 'lucide-react';
 import { Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field, IconButton, Input, Select, Tab, TabList, TabPanel, Tabs } from '../../../ds/ui.js';
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
 import { libraryEntry, sheetsOther, sheetsReferences, sheetsResults, type Reference, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
 import { SheetsImportDialog } from './sheets-design-import.js';
 import { sheetsScenario, sheetsStep, type SheetsDesign } from './sheets-design-mode.js';
+import '../../run-start/launch-presentation.css';
 
 export type DialogKind = 'rename' | 'remove' | 'merge' | 'link';
 export interface Actions { versions: (file: SheetFile, kind: 'reference' | 'other') => void; dialog: (kind: DialogKind, files: readonly SheetFile[]) => void; open: (file: SheetFile) => void; importFor: (referenceId?: string) => void }
@@ -95,11 +96,16 @@ export function Section({ title, description, children }: { title: string; descr
 export function ActionDialog({ state, onClose }: { state: { kind: DialogKind; files: readonly SheetFile[] } | undefined; onClose: () => void }) {
   const [value, setValue] = useState('');
   const kind = state?.kind;
-  return <Dialog open={!!state} onOpenChange={open => { if (!open) onClose(); }}><DialogContent title={kind === 'merge' ? 'Merge spreadsheets' : kind === 'remove' ? 'Remove spreadsheets?' : kind === 'rename' ? 'Rename spreadsheet' : 'Link to SharePoint'}><DialogBody>
-    {kind === 'merge' ? <div className="grid gap-4"><p>The originals are retained in version history. The merged spreadsheet becomes local reference data.</p><ul>{state!.files.map(file => <li key={file.id}>{file.name} · {file.rows} rows</li>)}</ul><Field label="Merged spreadsheet name"><Input value={value} onChange={event => setValue(event.target.value)} /></Field><Field label="People in both spreadsheets"><Select><option>Keep both and ask during lookups</option><option>Keep the row from the newer saved spreadsheet</option></Select></Field></div>
-      : kind === 'remove' ? <><p>These spreadsheets will no longer be available for lookups. Retained run evidence stays available. SharePoint files are unchanged.</p><ul>{state!.files.map(file => <li key={file.id}>{file.name}</li>)}</ul></>
-      : <Field label={kind === 'rename' ? 'Spreadsheet name' : 'SharePoint file URL'}><Input value={value || (kind === 'rename' ? state!.files[0].name : '')} onChange={event => setValue(event.target.value)} /></Field>}
-  </DialogBody><DialogFooter><Button onClick={onClose}>Cancel</Button><Button onClick={onClose}>{kind === 'merge' ? 'Merge spreadsheets' : kind === 'remove' ? 'Remove' : 'Save'}</Button></DialogFooter></DialogContent></Dialog>;
+  const field = '!bg-[var(--ui-field)] !border-[color:var(--ui-stroke-control)]';
+  const mergedName = value || `${state?.files[0]?.name.replace(/\.[^.]+$/u, '') ?? 'Spreadsheet'} merged`;
+  const list = (files: readonly SheetFile[]) => <ul className="divide-y divide-ui-stroke rounded-[7px] border border-ui-stroke">{files.map(file => <li key={file.id} className="flex items-center gap-2 px-3 py-2"><FileSpreadsheet size={16} aria-hidden className="shrink-0 text-ui-muted" /><span className="min-w-0 flex-1 truncate text-body">{file.name}</span><span className="text-caption text-ui-muted">{file.rows.toLocaleString()} rows</span></li>)}</ul>;
+  return <Dialog open={!!state} onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="launch-design" size="md" title={kind === 'merge' ? 'Merge spreadsheets' : kind === 'remove' ? 'Remove spreadsheets?' : kind === 'rename' ? 'Rename spreadsheet' : 'Link to SharePoint'}><DialogBody>
+    {kind === 'merge' ? <div className="grid gap-4"><p className="text-body text-ui-muted">Combines the rows into a new spreadsheet. The originals stay in version history.</p>{list(state!.files)}
+      <Field label="Name"><Input className={field} value={mergedName} onChange={event => setValue(event.target.value)} /></Field>
+      <Field label="If a person is in both"><Select className={field}><option>Keep both and ask during lookups</option><option>Keep the row from the newer file</option></Select></Field></div>
+      : kind === 'remove' ? <div className="grid gap-4"><p className="text-body text-ui-muted">These spreadsheets will no longer be available for lookups. Run evidence stays. SharePoint files are unchanged.</p>{list(state!.files)}</div>
+      : <Field label={kind === 'rename' ? 'Name' : 'SharePoint file URL'}><Input className={field} value={value || (kind === 'rename' ? state!.files[0].name : '')} onChange={event => setValue(event.target.value)} /></Field>}
+  </DialogBody><DialogFooter><Button variant="muted" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onClose}>{kind === 'merge' ? 'Merge' : kind === 'remove' ? 'Remove' : 'Save'}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 export function SheetsDesignPage({ design }: { design: SheetsDesign }) {
