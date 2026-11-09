@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema, CommandIdSchema } from "../../rules/identity/ids.js";
 import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema } from "./workbooks.js";
 
@@ -54,13 +55,10 @@ export const WorkbookLibraryEntrySchema = z.strictObject({
   && entry.updatedAt === entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.savedAt);
 export const WorkbookLibraryCatalogSchema = z.array(WorkbookLibraryEntrySchema)
   .refine(entries => new Set(entries.map(entry => entry.libraryId)).size === entries.length);
-export const WorkbookLibraryChangeSchema = z.discriminatedUnion("kind", [
+const CurrentWorkbookLibraryChanges = [
   z.strictObject({ kind: z.literal("sync") }),
   z.strictObject({ kind: z.literal("link"), url: WorkbookLinkSchema.shape.url }),
   z.strictObject({ kind: z.literal("unlink") }),
-  z.strictObject({ kind: z.literal("merge"), name: NameSchema, duplicates: z.enum(["keep-newer", "keep-both"]),
-    sources: z.array(z.strictObject({ libraryId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema, expectedRevision: WorkbookRevisionSchema })).min(1)
-      .refine(sources => new Set(sources.map(source => source.libraryId)).size === sources.length) }),
   z.strictObject({ kind: z.literal("rename"), name: NameSchema }),
   z.strictObject({ kind: z.literal("metadata"), metadata: WorkbookMetadataSchema }),
   z.strictObject({ kind: z.literal("create-version"), name: NameSchema,
@@ -74,25 +72,40 @@ export const WorkbookLibraryChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("delete-version"), versionId: WorkbookIdSchema }),
   z.strictObject({ kind: z.literal("use-version"), versionId: WorkbookIdSchema }),
   z.strictObject({ kind: z.literal("remove") }),
+] as const;
+export const WorkbookLibraryChangeSchema = z.discriminatedUnion("kind", CurrentWorkbookLibraryChanges);
+const RetainedWorkbookLibraryChangeSchema = z.discriminatedUnion("kind", [
+  ...CurrentWorkbookLibraryChanges,
+  z.strictObject({ kind: z.literal("merge"), name: NameSchema, duplicates: z.enum(["keep-newer", "keep-both"]),
+    sources: z.array(z.strictObject({ libraryId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema, expectedRevision: WorkbookRevisionSchema })).min(1)
+      .refine(sources => new Set(sources.map(source => source.libraryId)).size === sources.length) }),
 ]);
 export const WorkbookLibraryActionSchema = z.strictObject({
   operationId: WorkbookIdSchema, expectedRevision: WorkbookRevisionSchema,
   expectedVersion: WorkbookRevisionSchema, change: WorkbookLibraryChangeSchema,
 });
+const RetainedWorkbookLibraryActionSchema = WorkbookLibraryActionSchema.extend({ change: RetainedWorkbookLibraryChangeSchema });
+const ActionRecordFields = { libraryId: WorkbookIdSchema, at: IsoInstantSchema, result: WorkbookLibraryStateSchema };
+const actionRecordIdentity = (record: { libraryId: string; action: { expectedRevision: number }; result: { libraryId: string; revision: number } }) =>
+  record.libraryId === record.result.libraryId && record.result.revision === record.action.expectedRevision + 1;
 export const WorkbookLibraryActionRecordSchema = z.strictObject({
-  libraryId: WorkbookIdSchema, action: WorkbookLibraryActionSchema, at: IsoInstantSchema,
-  result: WorkbookLibraryStateSchema,
-}).refine(record => record.libraryId === record.result.libraryId
-  && record.result.revision === record.action.expectedRevision + 1);
+  ...ActionRecordFields, action: RetainedWorkbookLibraryActionSchema,
+}).refine(actionRecordIdentity);
+export const WorkbookLibraryActionResultSchema = z.strictObject({
+  ...ActionRecordFields, action: WorkbookLibraryActionSchema,
+}).refine(actionRecordIdentity);
+
 export const WorkbookLibraryActionStatusSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent") }),
-  z.strictObject({ state: z.literal("recorded"), record: WorkbookLibraryActionRecordSchema }),
+  z.strictObject({ state: z.literal("retired"), code: z.literal("WORKBOOK_ACTION_RETIRED"), message: z.literal(ERROR_CATALOG.WORKBOOK_ACTION_RETIRED.text) }),
+  z.strictObject({ state: z.literal("recorded"), record: WorkbookLibraryActionResultSchema }),
 ]);
 
 export type WorkbookLibraryState = z.infer<typeof WorkbookLibraryStateSchema>;
 export type WorkbookLibraryEntry = z.infer<typeof WorkbookLibraryEntrySchema>;
 export type WorkbookLibraryVersion = z.infer<typeof WorkbookLibraryVersionSchema>;
 export type WorkbookLibraryAction = z.infer<typeof WorkbookLibraryActionSchema>;
+export type WorkbookLibraryActionResult = z.infer<typeof WorkbookLibraryActionResultSchema>;
 export type WorkbookLibraryActionRecord = z.infer<typeof WorkbookLibraryActionRecordSchema>;
 
 export const WorkbookReferenceSlotSchema = z.strictObject({

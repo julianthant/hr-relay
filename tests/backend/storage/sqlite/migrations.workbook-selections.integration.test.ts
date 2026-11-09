@@ -1,8 +1,9 @@
+import { installRetainedMergeFixture } from '../../../support/fixtures/storage/retained-workbook-merge.js';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, it } from 'vitest';
 import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, auditMigrationTableCoverage, tableClassification, deriveAuthorityUpgradePlanDigest } from '../../../../src/backend/storage/sqlite/migrations.js';
-import { createWorkbookLibraryRepository } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, validateWorkbookLibrary } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { nativeOrdinaryRecordFromRow } from '../../../../src/backend/storage/sqlite/native-record-row.js';
 import { WorkflowWorkbookSelectionRecordSchema } from '../../../../src/models/dashboard/workbook-library.js';
 import { SavedWorkbookSchema, CapturedWorkbookWriteSourceSchema, WorkbookOperationSchema } from '../../../../src/models/dashboard/workbooks.js';
@@ -61,8 +62,10 @@ it('adds an empty selection authority at 24 and preserves prior mappings, metada
     f.repository.operation(other.libraryId, { operationId: 'metadata-other', source: { kind: 'operator' }, at,
       change: { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } } });
     const revision = f.repository.revision(first.libraryId, 1);
-    const merge = f.repository.libraryAction(other.libraryId, { operationId: 'merge', expectedRevision: 2, expectedVersion: 2,
-      change: { kind: 'merge', name: 'Merged', duplicates: 'keep-both', sources: [{ libraryId: first.libraryId, expectedVersion: 2, expectedRevision: 2 }] } }, at);
+    const merge = installRetainedMergeFixture(f.database);
+    const mergedRevision = f.repository.revision(merge.libraryId, 2);
+    const sourceRevision = f.repository.revision('historical-source', 1);
+    expect(mergedRevision.workbook.name).toBe('Merged.xlsx');
     const authorityReason = { version: 1, code: 'post-click-verifier-unknown', evidence: { kind: 'probe', digest: 'a'.repeat(64) } };
     const intent = WriteIntentRecordSchema.parse({ ...WRITE_INTENT_ATTEMPTING, status: 'parked', parkedCode: 'unknown', message: 'fixture unresolved submit', authorityReason });
     if (intent.status !== 'parked') throw new Error('parked fixture required');
@@ -75,7 +78,11 @@ it('adds an empty selection authority at 24 and preserves prior mappings, metada
     upgrade(f);
     expect(rows(f)).toEqual(before);
     expect(f.repository.revision(first.libraryId, 1)).toEqual(revision);
-    expect(f.repository.libraryActionRecord(other.libraryId, 'merge')).toEqual(merge);
+    expect(f.repository.libraryActionRecord(merge.libraryId, merge.action.operationId)).toEqual(merge);
+    expect(f.repository.revision(merge.libraryId, 2)).toEqual(mergedRevision);
+    expect(f.repository.revision('historical-source', 1)).toEqual(sourceRevision);
+    expect(f.repository.libraryState('historical-source').removed).toBe(true);
+    expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
     expect(f.repository.lastUsed('person-lookup')).toBeUndefined();
     expect(f.database.prepare('SELECT * FROM workflow_workbook_selections').all()).toEqual([]);
     expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(24);

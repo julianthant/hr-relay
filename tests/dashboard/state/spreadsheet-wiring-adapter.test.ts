@@ -208,22 +208,17 @@ describe('named library actions', () => {
     assert.equal(adapter.draft('saved')?.document, document); assert(adapter.draft('saved')?.dirty);
     assert.equal(adapter.snapshot().catalog[0].state.selectedVersionId, 'original');
   });
-  it('retains uncertain actions and reserves every merge source without a second POST', async () => {
-    const { client, adapter } = setup(), file = entry(), other = { ...entry(), libraryId: 'other', state: { ...entry().state, libraryId: 'other' } };
-    client.workbookCatalog.mockResolvedValue([file, other]); client.workbookTypes.mockResolvedValue([file.type]);
-    client.workbookLibraryAction.mockRejectedValue(new Error('lost response')); client.workbookLibraryActionStatus.mockResolvedValue({ state: 'absent' });
+  it('keeps a retired action unavailable without posting it again', async () => {
+    const { client, adapter } = setup(), file = entry();
+    client.workbookCatalog.mockResolvedValue([file]); client.workbookTypes.mockResolvedValue([file.type]);
+    client.workbookLibraryAction.mockRejectedValue(new Error('lost response'));
+    client.workbookLibraryActionStatus.mockResolvedValue({ state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: 'This library action has been retired. Its retained evidence is unavailable here.' });
     await adapter.refreshCatalog();
-    const change = { kind: 'merge' as const, name: 'Merged.xlsx', duplicates: 'keep-both' as const, sources: [{ libraryId: 'other', expectedVersion: 3, expectedRevision: 1 }] };
-    assert.equal((await adapter.changeLibrary(file, change)).state, 'uncertain');
-    assert.deepEqual(adapter.snapshot().pendingLibraries, ['saved', 'other']);
-    assert.equal((await adapter.changeLibrary(other, { kind: 'remove' })).state, 'uncertain');
-    assert.equal((await adapter.settleLibrary('other')).state, 'uncertain'); assert.equal(client.workbookLibraryAction.mock.calls.length, 1);
-    const action = client.workbookLibraryAction.mock.calls[0][1];
-    const result = { ...file.state, revision: 2 };
-    client.workbookLibraryActionStatus.mockResolvedValue({ state: 'recorded', record: { libraryId: 'saved', action, at: file.state.versions[0].savedAt, result } });
-    client.workbookCatalog.mockResolvedValue([{ ...file, name: 'Merged.xlsx', state: result }]);
-    assert.equal((await adapter.settleLibrary('saved')).state, 'confirmed'); assert.deepEqual(adapter.snapshot().pendingLibraries, []);
+    const result = await adapter.changeLibrary(file, { kind: 'remove' });
+    assert.equal(result.state, 'refused');
+    assert.equal((await adapter.settleLibrary(file.libraryId)).state, 'refused');
     assert.equal(client.workbookLibraryAction.mock.calls.length, 1);
+    assert.deepEqual(adapter.snapshot().pendingLibraries, [file.libraryId]);
   });
   it('ignores superseded catalogue reads and refuses changes based on stale authority', async () => {
     const { client, adapter } = setup(), file = entry();

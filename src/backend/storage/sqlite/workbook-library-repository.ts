@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { WorkflowWorkbookSelectionInputSchema, WorkflowWorkbookSelectionRecordSchema, WorkbookLibraryStateSchema, WorkbookLibraryEntrySchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, type WorkbookLibraryState, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
+import { WorkflowWorkbookSelectionInputSchema, WorkflowWorkbookSelectionRecordSchema, WorkbookLibraryStateSchema, WorkbookLibraryEntrySchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryActionResultSchema, type WorkbookLibraryState, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { applyMasterChange, mergeMasterWorkbooks, WorkbookOwnershipSchema, workbookMatches } from "../../workbooks/master-changes.js";
+import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches } from "../../workbooks/master-changes.js";
 import { WorkbookSnapshotRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookNamedReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -358,136 +358,111 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     libraryState: id => storage(() => deps.read(() => libraryState(id))),
     libraryVersion: (id, versionId) => storage(() => deps.read(() => libraryVersion(id, versionId))),
     libraryActionRecord: (id, operationId) => storage(() => deps.read(() => libraryActionRecord(id, operationId))),
-    libraryAction: (id, value, atValue, sharePointWorkbook) => storage(() => deps.mutate(() => {
-      const at = IsoInstantSchema.parse(atValue);
-      const action = WorkbookLibraryActionSchema.parse(value), replay = libraryActionRecord(id, action.operationId);
-      if (replay !== undefined) {
-        if (canonicalJsonStringify(replay.action) !== canonicalJsonStringify(action)) throw new WorkbookLibraryError('WORKBOOK_OPERATION_CONFLICT');
-        return { result: replay, changes: 0 };
-      }
-      const state = libraryState(id), before = required(id), change = action.change;
-      if (state.removed) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
-      if (state.revision !== action.expectedRevision || before.version !== action.expectedVersion) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
-      let next = structuredClone(state), changes = 0;
-      const apply = (operation: z.infer<typeof WorkbookOperationSchema>) => {
-        changes += enqueueWork(id, operation).changes;
-        let drained;
-        do { drained = drainWork(id); changes += drained.changes; } while (drained.result);
-        const result = receipt(z.object({ receipt_json: z.string() }).parse(database.prepare('SELECT receipt_json FROM workbook_operations WHERE workbook_id=? AND operation_id=?').get(id, operation.operationId)).receipt_json);
-        if (result.state !== 'applied') throw new WorkbookLibraryError(result.reason === 'metadata-unsupported' ? 'WORKBOOK_METADATA_UNSUPPORTED' : 'WORKBOOK_INVALID');
-        next = libraryState(id);
-      };
-      const selected = (versionId: string) => {
-        const version = state.versions.find(version => version.id === versionId);
-        if (version === undefined) throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
-        return version;
-      };
-      if (change.kind === 'merge') {
-        if (change.sources.some(source => source.libraryId === id)) throw new WorkbookLibraryError('WORKBOOK_INVALID');
-        const sources = [{ libraryId: id, expectedRevision: state.revision, expectedVersion: before.version }, ...change.sources].map(source => {
-          const state = libraryState(source.libraryId), record = required(source.libraryId), meta = metadata(source.libraryId);
-          if (state.removed) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
-          if (state.revision !== source.expectedRevision || record.version !== source.expectedVersion) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
-          if (inUse(source.libraryId, at)) throw new WorkbookLibraryError('WORKBOOK_LIBRARY_IN_USE');
-          if (meta.typeId !== metadata(id).typeId || state.origin.kind !== 'local') throw new WorkbookLibraryError('WORKBOOK_MERGE_INVALID');
-          return { state, record, meta, view: libraryVersion(source.libraryId) };
-        });
-        const workbookType = type(metadata(id).typeId);
-        if (workbookType === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-        const merged = mergeMasterWorkbooks(sources.map(source => ({ libraryId: source.record.libraryId,
-          savedAt: source.view.version.savedAt, workbook: source.view.workbook })), workbookType, change.name, change.duplicates);
-        if (merged === undefined) throw new WorkbookLibraryError('WORKBOOK_MERGE_INVALID');
-        apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
-          change: { kind: 'save', expectedVersion: before.version, workbook: merged } });
-        apply({ operationId: `library:${action.operationId}:metadata`, source: { kind: 'operator' }, at,
-          change: { kind: 'metadata', expectedVersion: required(id).version, metadata: { ...metadata(id), sharePoint: null } } });
-        for (const source of sources.slice(1)) {
-          const snapshotId = putLibrarySnapshot(id, `${action.operationId}:${source.record.libraryId}`, { ...source.view.workbook, libraryId: id });
-          next.versions.push({ id: `${action.operationId}:${source.record.libraryId}`, name: `From ${source.record.workbook.name}`,
-            snapshotId, version: source.view.version.version, savedAt: source.view.version.savedAt, source: 'retained' });
-          putLibraryState({ ...source.state, revision: source.state.revision + 1, removed: true });
-          changes += 2;
+    libraryAction: (id, value, atValue, sharePointWorkbook) => {
+      const parsed = WorkbookLibraryActionSchema.safeParse(value);
+      if (!parsed.success) throw new WorkbookLibraryError('WORKBOOK_INVALID', { cause: parsed.error });
+      const action = parsed.data;
+      return storage(() => deps.mutate(() => {
+        const at = IsoInstantSchema.parse(atValue);
+        const replay = libraryActionRecord(id, action.operationId);
+        if (replay !== undefined) {
+          if (canonicalJsonStringify(replay.action) !== canonicalJsonStringify(action)) throw new WorkbookLibraryError('WORKBOOK_OPERATION_CONFLICT');
+          return { result: WorkbookLibraryActionResultSchema.parse(replay), changes: 0 };
         }
-        if (change.sources.some(source => source.libraryId === workbookType.defaultWorkbookId)) {
-          database.prepare('UPDATE workbook_types SET payload_json=? WHERE id=?').run(canonicalJsonStringify({ ...workbookType, defaultWorkbookId: id }), workbookType.id);
-          changes++;
-        }
-      } else if (change.kind === 'create-version') {
-        let version: number, snapshotId: string;
-        if (change.from.kind === 'sharepoint') {
-          const meta = metadata(id);
-          if (sharePointWorkbook === undefined || meta.sharePoint === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
-          const mapped = applyMasterChange({ workbook: encodeSavedWorkbook(before).workbook, ownership: {}, version: before.version,
-            type: type(meta.typeId), libraryId: id, sequence: 1,
-            operation: { operationId: action.operationId, source: { kind: 'sync', syncId: action.operationId }, at,
-              change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } } });
-          if (mapped.receipt.state !== 'applied') throw new WorkbookLibraryError('WORKBOOK_SYNC_LAYOUT_CHANGED');
-          snapshotId = putLibrarySnapshot(id, action.operationId, mapped.workbook);
-          changes++;
-          version = before.version;
-        } else if (change.from.kind === 'values') {
-          const workbook = change.from.workbook;
-          if (workbook.libraryId !== id || workbook.hasFormulas || workbook.unsupportedMetadata || Object.values(workbook.themes).length
-            || workbook.sheets.some(sheet => sheet.rows.some(row => row.cells.some(cell => Object.keys(cell).some(key => key !== 'value'))))) throw new WorkbookLibraryError('WORKBOOK_INVALID');
-          snapshotId = putLibrarySnapshot(id, action.operationId, workbook);
-          version = before.version;
-          changes++;
-        } else {
-          const source = selected(change.from.versionId);
-          version = source.version;
-          snapshotId = source.snapshotId;
-        }
-        if (change.useNow && snapshotId !== selected(state.selectedVersionId).snapshotId) {
-          const snapshot = librarySnapshot(id, snapshotId);
+        const state = libraryState(id), before = required(id), change = action.change;
+        if (state.removed) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
+        if (state.revision !== action.expectedRevision || before.version !== action.expectedVersion) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
+        let next = structuredClone(state), changes = 0;
+        const apply = (operation: z.infer<typeof WorkbookOperationSchema>) => {
+          changes += enqueueWork(id, operation).changes;
+          let drained;
+          do { drained = drainWork(id); changes += drained.changes; } while (drained.result);
+          const result = receipt(z.object({ receipt_json: z.string() }).parse(database.prepare('SELECT receipt_json FROM workbook_operations WHERE workbook_id=? AND operation_id=?').get(id, operation.operationId)).receipt_json);
+          if (result.state !== 'applied') throw new WorkbookLibraryError(result.reason === 'metadata-unsupported' ? 'WORKBOOK_METADATA_UNSUPPORTED' : 'WORKBOOK_INVALID');
+          next = libraryState(id);
+        };
+        const selected = (versionId: string) => {
+          const version = state.versions.find(version => version.id === versionId);
+          if (version === undefined) throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
+          return version;
+        };
+        if (change.kind === 'create-version') {
+          let version: number, snapshotId: string;
+          if (change.from.kind === 'sharepoint') {
+            const meta = metadata(id);
+            if (sharePointWorkbook === undefined || meta.sharePoint === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
+            const mapped = applyMasterChange({ workbook: encodeSavedWorkbook(before).workbook, ownership: {}, version: before.version,
+              type: type(meta.typeId), libraryId: id, sequence: 1,
+              operation: { operationId: action.operationId, source: { kind: 'sync', syncId: action.operationId }, at,
+                change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } } });
+            if (mapped.receipt.state !== 'applied') throw new WorkbookLibraryError('WORKBOOK_SYNC_LAYOUT_CHANGED');
+            snapshotId = putLibrarySnapshot(id, action.operationId, mapped.workbook);
+            changes++;
+            version = before.version;
+          } else if (change.from.kind === 'values') {
+            const workbook = change.from.workbook;
+            if (workbook.libraryId !== id || workbook.hasFormulas || workbook.unsupportedMetadata || Object.values(workbook.themes).length
+              || workbook.sheets.some(sheet => sheet.rows.some(row => row.cells.some(cell => Object.keys(cell).some(key => key !== 'value'))))) throw new WorkbookLibraryError('WORKBOOK_INVALID');
+            snapshotId = putLibrarySnapshot(id, action.operationId, workbook);
+            version = before.version;
+            changes++;
+          } else {
+            const source = selected(change.from.versionId);
+            version = source.version;
+            snapshotId = source.snapshotId;
+          }
+          if (change.useNow && snapshotId !== selected(state.selectedVersionId).snapshotId) {
+            const snapshot = librarySnapshot(id, snapshotId);
+            apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
+              change: { kind: 'save', expectedVersion: before.version, workbook: { ...snapshot.workbook, name: before.workbook.name } } });
+            next.versions = [...state.versions];
+          }
+          next.versions.push({ id: action.operationId, snapshotId, name: change.name, version, savedAt: at,
+            source: change.from.kind === 'sharepoint' ? 'sharepoint' : 'operator' });
+          next.selectedVersionId = change.useNow ? action.operationId : state.selectedVersionId;
+        } else if (change.kind === 'sync') {
+          if (sharePointWorkbook === undefined || metadata(id).sharePoint === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
+          apply({ operationId: `library:${action.operationId}`, source: { kind: 'sync', syncId: action.operationId }, at,
+            change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } });
+        } else if (change.kind === 'rename-version') {
+          selected(change.versionId);
+          next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name: change.name } : version);
+        } else if (change.kind === 'delete-version') {
+          const version = selected(change.versionId);
+          if (state.selectedVersionId === version.id || inUse(id, at, version)) throw new WorkbookLibraryError('WORKBOOK_VERSION_IN_USE');
+          next.versions = next.versions.filter(candidate => candidate.id !== version.id);
+        } else if (change.kind === 'use-version') {
+          const version = selected(change.versionId), snapshot = librarySnapshot(id, version.snapshotId);
           apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
             change: { kind: 'save', expectedVersion: before.version, workbook: { ...snapshot.workbook, name: before.workbook.name } } });
           next.versions = [...state.versions];
+          next.selectedVersionId = version.id;
+        } else if (change.kind === 'rename') {
+          apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
+            change: { kind: 'save', expectedVersion: before.version, workbook: encodeSavedWorkbook({ ...before, workbook: { ...before.workbook, name: change.name } }).workbook } });
+        } else if (change.kind === 'metadata') {
+          apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
+            change: { kind: 'metadata', expectedVersion: before.version, metadata: change.metadata } });
+        } else if (change.kind === 'link' || change.kind === 'unlink') {
+          apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
+            change: { kind: 'metadata', expectedVersion: before.version, metadata: { ...metadata(id), sharePoint: change.kind === 'unlink' ? null : { url: change.url, verifiedAt: at } } } });
+        } else {
+          if (inUse(id, at)) throw new WorkbookLibraryError('WORKBOOK_LIBRARY_IN_USE');
+          next.removed = true;
+          const workbookType = type(metadata(id).typeId);
+          if (workbookType?.defaultWorkbookId === id) {
+            database.prepare('UPDATE workbook_types SET payload_json=? WHERE id=?').run(canonicalJsonStringify({ ...workbookType, defaultWorkbookId: null }), workbookType.id);
+            changes++;
+          }
         }
-        next.versions.push({ id: action.operationId, snapshotId, name: change.name, version, savedAt: at,
-          source: change.from.kind === 'sharepoint' ? 'sharepoint' : 'operator' });
-        next.selectedVersionId = change.useNow ? action.operationId : state.selectedVersionId;
-      } else if (change.kind === 'sync') {
-        if (sharePointWorkbook === undefined || metadata(id).sharePoint === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
-        apply({ operationId: `library:${action.operationId}`, source: { kind: 'sync', syncId: action.operationId }, at,
-          change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } });
-      } else if (change.kind === 'rename-version') {
-        selected(change.versionId);
-        next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name: change.name } : version);
-      } else if (change.kind === 'delete-version') {
-        const version = selected(change.versionId);
-        if (state.selectedVersionId === version.id || inUse(id, at, version)) throw new WorkbookLibraryError('WORKBOOK_VERSION_IN_USE');
-        next.versions = next.versions.filter(candidate => candidate.id !== version.id);
-      } else if (change.kind === 'use-version') {
-        const version = selected(change.versionId), snapshot = librarySnapshot(id, version.snapshotId);
-        apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
-          change: { kind: 'save', expectedVersion: before.version, workbook: { ...snapshot.workbook, name: before.workbook.name } } });
-        next.versions = [...state.versions];
-        next.selectedVersionId = version.id;
-      } else if (change.kind === 'rename') {
-        apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
-          change: { kind: 'save', expectedVersion: before.version, workbook: encodeSavedWorkbook({ ...before, workbook: { ...before.workbook, name: change.name } }).workbook } });
-      } else if (change.kind === 'metadata') {
-        apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
-          change: { kind: 'metadata', expectedVersion: before.version, metadata: change.metadata } });
-      } else if (change.kind === 'link' || change.kind === 'unlink') {
-        apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
-          change: { kind: 'metadata', expectedVersion: before.version, metadata: { ...metadata(id), sharePoint: change.kind === 'unlink' ? null : { url: change.url, verifiedAt: at } } } });
-      } else {
-        if (inUse(id, at)) throw new WorkbookLibraryError('WORKBOOK_LIBRARY_IN_USE');
-        next.removed = true;
-        const workbookType = type(metadata(id).typeId);
-        if (workbookType?.defaultWorkbookId === id) {
-          database.prepare('UPDATE workbook_types SET payload_json=? WHERE id=?').run(canonicalJsonStringify({ ...workbookType, defaultWorkbookId: null }), workbookType.id);
-          changes++;
-        }
-      }
-      next.revision = state.revision + 1;
-      putLibraryState(next);
-      const result = WorkbookLibraryActionRecordSchema.parse({ libraryId: id, action, at, result: next });
-      database.prepare('INSERT INTO workbook_library_actions(id,workbook_id,operation_id,digest,payload_json) VALUES(?,?,?,?,?)')
-        .run(JSON.stringify([id, action.operationId]), id, action.operationId, sha256Hex(canonicalJsonStringify(action)), canonicalJsonStringify(result));
-      return { result, changes: changes + 2 };
-    })),
+        next.revision = state.revision + 1;
+        putLibraryState(next);
+        const result = WorkbookLibraryActionResultSchema.parse({ libraryId: id, action, at, result: next });
+        database.prepare('INSERT INTO workbook_library_actions(id,workbook_id,operation_id,digest,payload_json) VALUES(?,?,?,?,?)')
+          .run(JSON.stringify([id, action.operationId]), id, action.operationId, sha256Hex(canonicalJsonStringify(action)), canonicalJsonStringify(result));
+        return { result, changes: changes + 2 };
+      }));
+    },
     create: (recordValue, origin = { kind: 'local' }) => storage(() => deps.mutate(() => {
       const record = SavedWorkbookSchema.parse(recordValue);
       if (record.version !== 1 || current(record.libraryId)) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');

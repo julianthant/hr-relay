@@ -7,7 +7,7 @@ import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema
   WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookOperationSchema, WorkbookOperatorOperationRequestSchema,
   WorkbookOperationReceiptSchema, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
-import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema,
+import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema,
   WorkbookLibraryStateSchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionRecordSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { PlannedRunOutputSchema } from "../../../../src/models/dashboard/run-outputs.js";
 import { ProfileFirstRunCheckSchema } from "../../../../src/models/profiles/public-profile.js";
@@ -737,6 +737,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/workbook-library-catalog", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryCatalogSchema },
   { id: "wire/workbook-library-version", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryVersionViewSchema },
   { id: "request/workbook-library-action", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionSchema },
+  { id: "wire/workbook-library-action-result", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionResultSchema },
   { id: "wire/workbook-library-action-status", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionStatusSchema },
   { id: "durable/workbook-library-state", egress: "durable-authority", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryStateSchema },
   { id: "durable/workbook-library-snapshot", egress: "durable-authority", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibrarySnapshotSchema },
@@ -846,7 +847,7 @@ const LIBRARY_STATE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigi
   ...LIBRARY_VERSION_ORIGINS.map(entry => ({ ...entry, path: `versions[].${entry.path}` })),
 ];
 const LIBRARY_ACTION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
-  ...['operationId', 'change.from.versionId', 'change.versionId', 'change.sources[].libraryId'].map(path => ({ path, origin: 'repository-authored' as const })),
+  ...['operationId', 'change.from.versionId', 'change.versionId'].map(path => ({ path, origin: 'repository-authored' as const })),
   { path: 'change.name', origin: 'operator-authored' }, { path: 'change.metadata.typeId', origin: 'captured-hr-value' },
   ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, path: `change.from.workbook.${entry.path}` })),
 ];
@@ -960,6 +961,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       ['wire/workbook-library-catalog', '[].state.', LIBRARY_STATE_ORIGINS],
       ['wire/workbook-library-version', 'version.', LIBRARY_VERSION_ORIGINS],
       ['request/workbook-library-action', '', LIBRARY_ACTION_ORIGINS],
+      ['wire/workbook-library-action-result', 'action.', LIBRARY_ACTION_ORIGINS],
+      ['wire/workbook-library-action-result', 'result.', LIBRARY_STATE_ORIGINS],
       ['wire/workbook-library-action-status', 'record.action.', LIBRARY_ACTION_ORIGINS],
       ['wire/workbook-library-action-status', 'record.result.', LIBRARY_STATE_ORIGINS],
       ['durable/workbook-library-state', '', LIBRARY_STATE_ORIGINS],
@@ -973,7 +976,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     ]),
     { surface: 'durable/workbook-library-snapshot', path: 'id', origin: 'repository-authored' },
     { surface: 'durable/workbook-library-action', path: 'libraryId', origin: 'repository-authored' },
+    { surface: 'durable/workbook-library-action', path: 'action.change.sources[].libraryId', origin: 'repository-authored' },
     { surface: 'wire/workbook-library-action-status', path: 'record.libraryId', origin: 'repository-authored' },
+    { surface: 'wire/workbook-library-action-result', path: 'libraryId', origin: 'repository-authored' },
     { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
     ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
     ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),

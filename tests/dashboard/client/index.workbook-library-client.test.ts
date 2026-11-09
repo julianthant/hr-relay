@@ -4,7 +4,7 @@ import { createDashboardClient, DashboardClientError } from "../../../src/dashbo
 import { WorkbookImportRequestSchema, EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, encodeSavedWorkbook, encodeEditableWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_INTAKE_MAPPING } from "../../support/fixtures/dashboard/fixture-intake.js";
-import { WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
+import { WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
 
 const NOW = IsoInstantSchema.parse("2026-01-01T00:00:00.000Z");
 const draft = EditableWorkbookSchema.parse({ name: "Dates.xlsx", themes: { theme1: "theme" }, hasFormulas: false,
@@ -180,4 +180,25 @@ it('reads grouped results through the typed facade and rejects malformed group d
   assert.deepEqual(await h.client.workbookResults(), { workflows: [], unavailable: [] });
   assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/results');
   await assert.rejects(harness({ workflows: [], unavailable: [], extra: true }).client.workbookResults(), schemaFailure);
+});
+
+it('rejects merge requests before transport and refuses historical merge records on active result/status wires', async () => {
+  const action = { operationId: 'retired-merge', expectedRevision: 1, expectedVersion: 1,
+    change: { kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [{ libraryId: 'source', expectedVersion: 1, expectedRevision: 1 }] } };
+  const result = WorkbookLibraryActionRecordSchema.parse({ libraryId: 'target', action, at: NOW,
+    result: { libraryId: 'target', revision: 2, selectedVersionId: 'original', origin: { kind: 'local' }, removed: false,
+      versions: [{ id: 'original', snapshotId: '["target","original"]', name: 'Original', version: 1, savedAt: NOW, source: 'import' }] } });
+  assert.equal(WorkbookLibraryActionSchema.safeParse(action).success, false);
+  assert.equal(WorkbookLibraryActionResultSchema.safeParse(result).success, false);
+  assert.equal(WorkbookLibraryActionStatusSchema.safeParse({ state: 'recorded', record: result }).success, false);
+  const h = harness(result);
+  const current = WorkbookLibraryActionSchema.parse({ ...action, change: { kind: 'remove' } });
+  Reflect.set(current, 'change', action.change);
+  await assert.rejects(h.client.workbookLibraryAction('target', current), schemaFailure);
+  assert.equal(h.calls.length, 0);
+  await assert.rejects(harness(result).client.workbookLibraryAction('target', { ...current, change: { kind: 'remove' } }), schemaFailure);
+  await assert.rejects(harness({ state: 'recorded', record: result }).client.workbookLibraryActionStatus('target', action.operationId), schemaFailure);
+  const retired = { state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: 'This library action has been retired. Its retained evidence is unavailable here.' };
+  assert.deepEqual(await harness(retired).client.workbookLibraryActionStatus('target', action.operationId), retired);
+  await assert.rejects(harness({ ...retired, record: result }).client.workbookLibraryActionStatus('target', action.operationId), schemaFailure);
 });

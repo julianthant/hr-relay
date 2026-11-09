@@ -748,6 +748,7 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_VERSION_IN_USE: catalogEntry("This version is in use. Choose another version and finish runs using it before deleting it.", EmptyParametersSchema),
   WORKBOOK_LIBRARY_IN_USE: catalogEntry("This spreadsheet is in use by a run or pending change. Finish that work before removing it.", EmptyParametersSchema),
   WORKBOOK_MERGE_INVALID: catalogEntry("These spreadsheets cannot be merged with that duplicate policy. Check their types, worksheet layouts, and matching keys, or keep both rows.", EmptyParametersSchema),
+  WORKBOOK_ACTION_RETIRED: catalogEntry("This library action has been retired. Its retained evidence is unavailable here.", EmptyParametersSchema),
   WORKBOOK_ROW_CHOICE_UNAVAILABLE: catalogEntry("No matching row is available in this run's captured worksheets. Review the workbook before choosing again.", EmptyParametersSchema),
   WORKBOOK_REVISION_UNAVAILABLE: catalogEntry("This saved workbook revision cannot be reconstructed from its retained evidence.", EmptyParametersSchema),
   WORKBOOK_SYNC_LINK_REQUIRED: catalogEntry("Link a SharePoint workbook before syncing.", EmptyParametersSchema),

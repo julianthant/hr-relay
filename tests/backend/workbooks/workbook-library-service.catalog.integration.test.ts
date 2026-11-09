@@ -1,7 +1,8 @@
+import { installRetainedMergeFixture } from '../../support/fixtures/storage/retained-workbook-merge.js';
 import { projectWorkflowStartReadiness } from '../../../src/backend/runs/queries/bootstrap.js';
 import { ERROR_CATALOG } from '../../../src/models/failures/error-catalog.js';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { WorkbookLibraryOriginSchema, WorkbookLibraryChangeSchema, WorkbookReferenceSlotSchema } from '../../../src/models/dashboard/workbook-library.js';
@@ -158,25 +159,30 @@ it('names a SharePoint version atomically and keeps the prior version in use whe
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });
 
-it('merges atomically, retains both originals as named versions, archives sources and refuses stale source authority', async () => {
-  const f = fixture(), id = f.record.libraryId;
-  f.service.putType({ id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid', 'fullName'], defaultWorkbookId: null });
-  await f.apply({ kind: 'metadata', metadata: { typeId: 'roster', sharePoint: null } });
-  const other = f.service.create({ ...f.record.workbook, libraryId: undefined, name: 'Other.xlsx' });
-  await f.service.libraryAction(other.libraryId, { operationId: 'type', expectedRevision: 1, expectedVersion: 1,
-    change: { kind: 'metadata', metadata: { typeId: 'roster', sharePoint: null } } }, new AbortController().signal);
-  const source = { libraryId: other.libraryId, expectedRevision: f.repository.libraryState(other.libraryId).revision, expectedVersion: f.service.read(other.libraryId).version };
-  const stale = f.action({ kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [{ ...source, expectedRevision: source.expectedRevision - 1 }] });
-  await expect(f.service.libraryAction(id, stale, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_VERSION_CONFLICT' });
-  expect(f.service.catalog()).toHaveLength(2);
-  const action = f.action({ kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [source] });
-  const result = await f.service.libraryAction(id, action, new AbortController().signal);
-  expect(f.service.catalog()).toHaveLength(1);
-  expect(f.service.catalog()[0]).toMatchObject({ name: 'Merged.xlsx', rowCount: 2, metadata: { typeId: 'roster', sharePoint: null } });
-  expect(result.result.versions.some(version => version.name === 'From Other.xlsx')).toBe(true);
-  expect(f.service.revision(other.libraryId, 1)).toEqual(other);
-  expect(f.repository.libraryVersion(id, 'original').workbook.sheets[0].rows).toHaveLength(2);
-  expect(await f.service.libraryAction(id, action, new AbortController().signal)).toEqual(result);
+it('rejects retired merge commands before lookup or mutation, including completed operation identities', async () => {
+  const f = fixture(), historical = installRetainedMergeFixture(f.database);
+  const before = f.database.prepare('SELECT * FROM workbook_library_actions').all();
+  const mutation = vi.fn(() => { throw new Error('unexpected mutation'); });
+  const rejectingRepository = createWorkbookLibraryRepository({ database: f.database, read: work => work(), mutate: mutation });
+  const lookup = vi.fn((libraryId: string, operationId: string) => f.repository.libraryActionRecord(libraryId, operationId));
+  const service = createWorkbookLibraryService({ repository: { ...f.repository, libraryActionRecord: lookup }, clock: f.clock, sync: unexpectedWorkbookSync });
+  for (const operationId of ['new-merge', historical.action.operationId]) {
+    const request = { ...historical.action, operationId };
+    expect(WorkbookLibraryChangeSchema.safeParse(request.change).success).toBe(false);
+    await expect(service.libraryAction(historical.libraryId, request, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'WORKBOOK_INVALID' });
+    expect(() => rejectingRepository.libraryAction(historical.libraryId, request, historical.at)).toThrow(expect.objectContaining({ code: 'WORKBOOK_INVALID' }));
+  }
+  expect(lookup).not.toHaveBeenCalled();
+  expect(mutation).not.toHaveBeenCalled();
+  await expect(service.libraryAction(historical.libraryId, { ...historical.action, change: { kind: 'remove' } }, new AbortController().signal))
+    .rejects.toMatchObject({ code: 'WORKBOOK_OPERATION_CONFLICT' });
+  expect(f.database.prepare('SELECT * FROM workbook_library_actions').all()).toEqual(before);
+  expect(f.repository.libraryActionRecord(historical.libraryId, historical.action.operationId)).toEqual(historical);
+  expect(service.libraryActionStatus(historical.libraryId, historical.action.operationId)).toEqual({
+    state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: ERROR_CATALOG.WORKBOOK_ACTION_RETIRED.text,
+  });
+  expect(f.service.revision(historical.libraryId, 2).workbook.name).toBe('Merged.xlsx');
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });
 

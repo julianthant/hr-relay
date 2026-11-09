@@ -13,7 +13,7 @@ import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encode
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { workbookMatches } from "./master-changes.js";
-import { WorkbookReferenceSlotsSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
+import { WorkbookReferenceSlotsSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 
 export class WorkbookLibraryError extends Error {
@@ -47,7 +47,7 @@ export interface WorkbookLibraryRepository {
   libraryState(libraryId: string): WorkbookLibraryState;
   libraryVersion(libraryId: string, versionId?: string): z.infer<typeof WorkbookLibraryVersionViewSchema>;
   libraryActionRecord(libraryId: string, operationId: string): WorkbookLibraryActionRecord | undefined;
-  libraryAction(libraryId: string, value: unknown, at: string, sharePointWorkbook?: EditableWorkbookWire): WorkbookLibraryActionRecord;
+  libraryAction(libraryId: string, value: unknown, at: string, sharePointWorkbook?: EditableWorkbookWire): WorkbookLibraryActionResult;
 }
 function input<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
@@ -171,7 +171,12 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     },
     catalog: () => deps.repository.catalog(),
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
-    libraryActionRecord: (libraryId: string, operationId: string) => deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId)),
+    libraryActionStatus(libraryId: string, operationId: string) {
+      const record = deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId));
+      return WorkbookLibraryActionStatusSchema.parse(record === undefined ? { state: 'absent' }
+        : record.action.change.kind === 'merge' ? { state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: ERROR_CATALOG.WORKBOOK_ACTION_RETIRED.text }
+          : { state: 'recorded', record });
+    },
     async libraryAction(libraryId: string, value: unknown, signal: AbortSignal) {
       const action = input(WorkbookLibraryActionSchema, value);
       const replay = deps.repository.libraryActionRecord(libraryId, action.operationId);

@@ -9,8 +9,8 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { httpError, schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
-import { WorkbookResultsSchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
-  type WorkbookLibraryEntry, type WorkbookLibraryAction, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
+import { WorkbookResultsSchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
+  type WorkbookLibraryEntry, type WorkbookLibraryAction, type WorkbookLibraryActionResult } from "../../../models/dashboard/workbook-library.js";
 
 export interface WorkbookLibraryQueries {
   workbookResults(): Promise<z.infer<typeof WorkbookResultsSchema>>;
@@ -20,7 +20,7 @@ export interface WorkbookLibraryQueries {
   workbookPutType(type: z.infer<typeof WorkbookTypeSchema>): Promise<z.infer<typeof WorkbookTypeSchema>>;
 
   workbookLibraryVersion(libraryId: string, versionId: string): Promise<z.infer<typeof WorkbookLibraryVersionViewSchema>>;
-  workbookLibraryAction(libraryId: string, action: WorkbookLibraryAction): Promise<WorkbookLibraryActionRecord>;
+  workbookLibraryAction(libraryId: string, action: WorkbookLibraryAction): Promise<WorkbookLibraryActionResult>;
   workbookLibraryActionStatus(libraryId: string, operationId: string): Promise<z.infer<typeof WorkbookLibraryActionStatusSchema>>;
   workbookList(): Promise<readonly SavedWorkbook[]>;
   workbookOpen(libraryId: string): Promise<SavedWorkbook>;
@@ -82,7 +82,7 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
     async workbookLibraryAction(libraryId: string, value: WorkbookLibraryAction) {
       const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/library-actions`;
       const action = parseOrThrow(WorkbookLibraryActionSchema, path, value);
-      const record = parseOrThrow(WorkbookLibraryActionRecordSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(action) }));
+      const record = parseOrThrow(WorkbookLibraryActionResultSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(action) }));
       if (record.libraryId !== libraryId || canonicalContent(record.action) !== canonicalContent(action)) throw schemaError(path, 'library action identity mismatch');
       return record;
     },

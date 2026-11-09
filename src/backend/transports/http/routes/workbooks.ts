@@ -27,8 +27,7 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
     return c.json(await service().library.libraryAction(c.req.param('libraryId'), request, c.req.raw.signal));
   });
   app.get("/api/v1/workbooks/:libraryId/library-actions/:operationId", c => {
-    const record = service().library.libraryActionRecord(c.req.param('libraryId'), c.req.param('operationId'));
-    return c.json(record === undefined ? { state: 'absent' as const } : { state: 'recorded' as const, record });
+    return c.json(service().library.libraryActionStatus(c.req.param('libraryId'), c.req.param('operationId')));
   });
   app.post("/api/v1/workbooks", async c => {
     const request = workbookRequest(WorkbookCreateRequestSchema, await c.req.json());
