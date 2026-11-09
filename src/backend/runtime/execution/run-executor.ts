@@ -24,6 +24,7 @@ import type { AnyTask, TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport, workflowPreviewDependencyIds, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { observationLeafPaths, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { TransactionDryRunPreviewSchema, TransactionOutcomeSchema, type TransactionDryRunPreview } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -1341,7 +1342,9 @@ export async function executeClaimedRun(
         contractFingerprint: descriptor.contractFingerprint,
         implFingerprint: taskImplFingerprint(contract),
         provenance: provenance.provenance,
-        observationOrigins: provenance.points.flatMap(point => (point.origins ?? []).map(entry => ({ path: [...point.field.split("."), ...entry.path], origin: entry.origin }))),
+        observationOrigins: provenance.points.flatMap(point => observationLeafPaths(point.value).map(path => ({
+          path: [...point.field.split("."), ...path], origin: resolveObservationOrigin({ ...point.execution, spanPath }, point, path),
+        }))),
         writtenAt: instant(),
       });
     };
