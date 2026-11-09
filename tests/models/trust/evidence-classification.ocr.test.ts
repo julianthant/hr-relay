@@ -110,13 +110,16 @@ describe("OCR producer evidence classifications", () => {
 
   it("drops captured readings, identities and source references at diagnostic export", () => {
     const declarations = [
-      [ExtractPdfPages.id, "pages"], [ReadOcrSourcePages.id, "pages"],
+      [ExtractPdfPages.id, "pages"], [ReadOcrSourcePages.id, "manifest.fingerprint"],
       [ReadOcrReviewSeed.id, "records"], [ReadOcrReviewSeed.id, "accounting.outcomes"],
       [ReadOcrResult.id, "identities"], [ReadOcrResult.id, "review.roster.rows"],
       [ReadManualOcrReading.id, "extraction.record.answers"], [ReadManualOcrReading.id, "extraction.source.actorId"],
       [ReadOcrPageReading.id, "extraction.source.modelId"], [ReadOcrPageReading.id, "extraction.source.providerId"],
       [ReadOcrPageReading.id, "input.image.sha256"],
     ] as const;
+    for (const path of ["pages", "manifest.pages"]) {
+      assert.throws(() => classifyEvidenceLeaf({ kind: "task-output", taskId: ReadOcrSourcePages.id }, path), /no declared evidence classification/u);
+    }
     for (const [taskId, path] of declarations) {
       const declaration = classifyEvidenceLeaf({ kind: "task-output", taskId }, path);
       assert.equal(declaration.classification, "sensitive-hr");

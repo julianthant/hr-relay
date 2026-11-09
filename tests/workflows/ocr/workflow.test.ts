@@ -21,10 +21,20 @@ import { OcrPageOutcomeSchema, bindManualOcrPageReading, accountOcrPages } from 
 import { buildOcrReviewSeed } from "../../../src/models/workflows/ocr/review-seed.js";
 import { OCR_FORMS } from "../../../src/models/ocr/form-registry.js";
 import { I9ReadSection2Signer } from "../../../src/models/systems/i9/read-section2-signer.js";
-import { ItemIdSchema } from "../../../src/rules/identity/ids.js";
+import { ItemIdSchema, TraceIdSchema } from "../../../src/rules/identity/ids.js";
 import { sourceFixture, donePage, submittedPage, READING_ID, SOURCE_RUN_ID } from "../../support/fixtures/ocr/source-pages.js";
 import { readOcrPageFixture } from "../../support/fixtures/ocr/read-page.js";
 import { ocrTaskContext } from "../../support/fixtures/ocr/task-context.js";
+import { Buffer } from "node:buffer";
+import { DataPointSchema, RecordedDataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
+import { observationLeafPaths } from "../../../src/models/events/data-observation-origin.js";
+import { redactObservedDataPoints } from "../../../src/backend/logs/observed-data.js";
+import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath } from "../../../src/backend/logs/span-emitter.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { TimelineAppendSchema } from "../../../src/models/events/timeline.js";
+import { PDF_PAGE_LIMIT } from "../../../src/models/processing/extraction/extract-pdf-pages.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
 
 const descriptor = compileWorkflow(ocrWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
@@ -48,7 +58,7 @@ async function reviewFixture(pageCount = 3) {
   const fixture = requestFixture(pageCount);
   const { request, rendered, inputs } = fixture;
   const source = ReadOcrSourcePages.output.parse(await readOcrSourcePagesTask.impl.run({ input: ReadOcrSourcePages.input.parse(prepare.bind({ input: request, outputs: { "render-pages": rendered } })), ctx: ocrTaskContext().ctx }));
-  const bound = OcrPageWorkflowInputSchema.array().parse(children.bind({ input: request, outputs: { "read-source-pages": source } }));
+  const bound = OcrPageWorkflowInputSchema.array().parse(children.bind({ input: request, outputs: { "render-pages": rendered, "read-source-pages": source } }));
   assert.equal(bound.length, pageCount);
   const outcomes = [];
   for (const [index, child] of bound.entries()) {
@@ -56,8 +66,28 @@ async function reviewFixture(pageCount = 3) {
     outcomes.push(OcrPageOutcomeSchema.parse({ ...donePage(inputs[index]), output: reading }));
   }
   const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: ReadOcrReviewSeed.input.parse(reviewNode.bind({ input: request,
-    outputs: { "read-source-pages": source, "read-pages": outcomes } })), ctx: ocrTaskContext().ctx }));
+    outputs: { "render-pages": rendered, "read-source-pages": source, "read-pages": outcomes } })), ctx: ocrTaskContext().ctx }));
   return { ...fixture, source, review, outcomes };
+}
+
+/** Bytes of the data.observed timeline record for one recorded batch, with one origin per scalar leaf as task provenance assigns them. */
+function observedEventBytes(nodeId: string, points: readonly unknown[]) {
+  const node = nodes.find(entry => entry.id === nodeId);
+  assert.ok(node?.kind === "task");
+  const traceId = TraceIdSchema.parse("oc-000000-1111"), spanPath = taskSpanPath(traceId, node.id, 1, 1), recordedAt = "2026-11-08T00:00:00.000Z";
+  const execution = { runId: "11111111-2222-4333-8444-555555555555", traceId, attempt: 1, workflowId: descriptor.id, nodeId: node.id, taskId: node.uses.id };
+  const recorded = DataPointSchema.array().parse(points).map(point => RecordedDataPointSchema.parse({ ...point, execution, recordedAt,
+    origins: observationLeafPaths(point.value).map(path => ({ path: [...path], origin: { runId: execution.runId, attempt: 1, spanPath,
+      nodeId: node.id, taskId: node.uses.id, field: point.field, path: [...path] } })) }));
+  let bytes = 0;
+  createTimelineEmitter({ clock: manualClock(new Date(recordedAt)), pid: 1, repository: { append: (input: unknown) => {
+    const record = TimelineAppendSchema.parse(input);
+    bytes = Buffer.byteLength(canonicalJsonStringify(record), "utf8");
+    return { state: "inserted", record };
+  } } as never }).emit(ExecutorSpanEventSchema.parse({ t: "data.observed", ts: recordedAt, workflow: descriptor.id, runId: execution.runId,
+    attempt: 1, traceId, spanPath, parentSpanPath: runSpanPath(traceId), nodeId: node.id, taskId: node.uses.id, observedAt: recordedAt,
+    points: redactObservedDataPoints(node.uses.id, recorded) }));
+  return bytes;
 }
 
 async function finishFixture(scope: Parameters<typeof completed.bind>[0]) {
@@ -153,13 +183,43 @@ describe("child-only OCR document graph", () => {
       "lookup-identities": [{ ...outcome, itemId: READING_ID }] } }), /do not match/);
   });
 
+  it("records only the manifest head and binds page work from the rendered pages", async () => {
+    const { request, rendered, inputs, manifest } = requestFixture(3);
+    const recorded = ocrTaskContext();
+    const source = await readOcrSourcePagesTask.impl.run({ input: { request, rendered }, ctx: recorded.ctx });
+    const head = { document: manifest.document, pageCount: 3, fingerprint: manifest.fingerprint };
+    assert.deepEqual(source, { manifest: head });
+    assert.deepEqual(recorded.recorded, [{ direction: "read", field: "manifest", value: head }]);
+    assert.deepEqual(children.dependsOn, ["render-pages", "read-source-pages"]);
+    assert.deepEqual(children.bind({ input: request, outputs: { "render-pages": rendered, "read-source-pages": source } }),
+      inputs.map(page => ({ page, reading: { kind: "subscription" } })));
+    assert.throws(() => children.bind({ input: request, outputs: { "render-pages": rendered,
+      "read-source-pages": { manifest: { ...head, fingerprint: "f".repeat(64) } } } }), /changed after they were bound/u);
+    const reviewed = await reviewFixture(3);
+    assert.deepEqual(reviewed.review.accounting.manifest, reviewed.manifest);
+  });
+
+  it("keeps the rendered pages and the source binding inside one timeline event up to the page limit", async () => {
+    for (const pageCount of [62, PDF_PAGE_LIMIT]) {
+      const { request, rendered } = requestFixture(pageCount);
+      const renderBytes = observedEventBytes("render-pages", [
+        { direction: "read", field: "pageCount", value: rendered.pageCount }, { direction: "read", field: "pages", value: rendered.pages }]);
+      const source = ocrTaskContext();
+      await readOcrSourcePagesTask.impl.run({ input: { request, rendered }, ctx: source.ctx });
+      const sourceBytes = observedEventBytes("read-source-pages", source.recorded);
+      assert.ok(renderBytes < 256 * 1024, `${String(pageCount)} rendered pages: ${String(renderBytes)} bytes`);
+      assert.ok(sourceBytes < 8 * 1024, `${String(pageCount)} pages bound: ${String(sourceBytes)} bytes`);
+    }
+  });
+
   it("requires complete manual page assertions and refuses partial render windows or outcomes", async () => {
-    const { request, rendered, inputs } = requestFixture(2);
+    const { request, rendered, inputs, manifest } = requestFixture(2);
     const assertions = inputs.map(input => ({ sourcePage: input.sourcePage, extraction: bindManualOcrPageReading(input, "local-operator", { ...submittedPage(input),
       source: { kind: "operator", actorId: "local-operator" } }).extraction }));
     const manual = OcrInputSchema.parse({ ...request, reading: { kind: "manual", actorId: "local-operator", assertions } });
     const output = await readOcrSourcePagesTask.impl.run({ input: { request: manual, rendered }, ctx: ocrTaskContext().ctx });
-    assert.equal(output.pages.every(page => page.reading.kind === "manual"), true);
+    const bound = OcrPageWorkflowInputSchema.array().parse(children.bind({ input: manual, outputs: { "render-pages": rendered, "read-source-pages": output } }));
+    assert.equal(bound.every(page => page.reading.kind === "manual"), true);
     for (const subset of [[assertions[0]], [assertions[0], assertions[0]], [assertions[0], { ...assertions[1], sourcePage: 3 }]]) {
       const refused = ocrTaskContext();
       await assert.rejects(readOcrSourcePagesTask.impl.run({ input: ReadOcrSourcePages.input.parse({ request: { ...manual,
@@ -168,16 +228,16 @@ describe("child-only OCR document graph", () => {
     }
     await assert.rejects(readOcrSourcePagesTask.impl.run({ input: { request, rendered: { pageCount: 2, pages: [rendered.pages[0]] } }, ctx: ocrTaskContext().ctx }), /do not match/);
     await assert.rejects(readOcrReviewSeedTask.impl.run({ input: ReadOcrReviewSeed.input.parse({ sourceRunId: SOURCE_RUN_ID,
-      roster: null, manifest: output.manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [donePage(inputs[0])] }), ctx: ocrTaskContext().ctx }), /do not account/);
+      roster: null, manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [donePage(inputs[0])] }), ctx: ocrTaskContext().ctx }), /do not account/);
   });
 
   it("retains all-failed page outcomes with an explicit empty lookup fanout", async () => {
-    const { request, source, inputs } = await reviewFixture(1);
+    const { request, manifest, inputs } = await reviewFixture(1);
     const child = donePage(inputs[0]);
     const failed = OcrPageOutcomeSchema.parse({ runId: child.runId, itemId: child.itemId, state: "failed",
       failureId: "00000000-0000-4000-8000-000000000777" });
     const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: { sourceRunId: SOURCE_RUN_ID, roster: null,
-      manifest: source.manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [failed] }, ctx: ocrTaskContext().ctx }));
+      manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [failed] }, ctx: ocrTaskContext().ctx }));
     assert.deepEqual(review.pages, [{ sourcePage: 1, disposition: "failed" }]);
     assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review } }), []);
     const result = await finishFixture({ input: request, outputs: { "build-review": review, "lookup-identities": [], "lookup-signers": [] } });

@@ -4,7 +4,6 @@ import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js
 import { OcrPageWorkflowInputSchema } from "../../../models/workflows/ocr-page/input.js";
 import { OcrInputSchema } from "../../../models/workflows/ocr/input.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
-import { PreparedOcrPagesSchema } from "../../../models/workflows/ocr/read-source-pages.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -17,7 +16,8 @@ import { ExtractFormPage } from "../../../models/processing/ocr/extract-form-pag
 import { ReadManualOcrReading } from "../../../models/workflows/ocr-page/read-manual-reading.js";
 import { ReadOcrPageReading } from "../../../models/workflows/ocr-page/read-page-reading.js";
 import { ReadOcrResult } from "../../../models/workflows/ocr/read-result.js";
-import { ReadOcrSourcePages } from "../../../models/workflows/ocr/read-source-pages.js";
+import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../models/workflows/ocr/read-source-pages.js";
+import { ExtractPdfPages, ExtractPdfPagesOutputSchema } from "../../../models/processing/extraction/extract-pdf-pages.js";
 import { OcrResultSchema } from "../../../models/workflows/ocr/result.js";
 import { publishOcrReview, authenticateOcrOperator } from "./ocr-review-authority.js";
 import { taskId } from "../../../rules/identity/ids.js";
@@ -31,6 +31,23 @@ export class OcrPublicationRefusedError extends Error {
 
 function same(left: unknown, right: unknown): boolean {
   return canonicalJsonStringify(left) === canonicalJsonStringify(right);
+}
+
+/** The OCR run's page inputs, derived from its rendered pages and bound to its read-source-pages manifest. */
+function boundOcrPages(repositories: AuthorityRepositories, parent: RunRecord, request: Parameters<typeof ocrPageWorkInputs>[0], resolve?: ResolveDescriptor) {
+  const latest = (nodeId: string) => repositories.runCheckpoints.listByAttempt(parent.envelope.workflow, parent.envelope.itemId,
+    nodeId, parent.envelope.attempt).filter(row => row.runId === parent.envelope.runId).at(-1);
+  const rendered = latest("render-pages"), source = latest("read-source-pages");
+  if (rendered === undefined || source === undefined
+    || rendered.contractFingerprint !== parent.envelope.contractFingerprint || source.contractFingerprint !== parent.envelope.contractFingerprint
+    || rendered.output.schemaHash !== deriveSchemaHash(ExtractPdfPagesOutputSchema, "output")
+    || source.output.schemaHash !== deriveSchemaHash(ReadOcrSourcePages.output, "output")
+    || resolve !== undefined && (rendered.implFingerprint !== declaredImplFingerprint(resolve, parent, "render-pages", ExtractPdfPages)
+      || source.implFingerprint !== declaredImplFingerprint(resolve, parent, "read-source-pages", ReadOcrSourcePages))) throw new OcrPublicationRefusedError();
+  let work;
+  try { work = ocrPageWorkInputs(request, ExtractPdfPagesOutputSchema.parse(rendered.output.value)); } catch { throw new OcrPublicationRefusedError(); }
+  if (work.manifest.fingerprint !== ReadOcrSourcePages.output.parse(source.output.value).manifest.fingerprint) throw new OcrPublicationRefusedError();
+  return work.pages;
 }
 
 export function admitOcrRunResources(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, captured: RunRecord): void {
@@ -50,11 +67,7 @@ export function admitOcrRunResources(repositories: AuthorityRepositories, reader
     || request.reading.kind === "manual" && request.reading.actorId !== actor) throw new OcrPublicationRefusedError();
   if (run.envelope.workflow === "ocr-page") {
     const page = OcrPageWorkflowInputSchema.parse(run.input.parsed.value);
-    const source = repositories.runCheckpoints.listByAttempt(parent.run.envelope.workflow, parent.run.envelope.itemId,
-      "read-source-pages", parent.run.envelope.attempt).filter(row => row.runId === parent.run.envelope.runId).at(-1);
-    if (source === undefined || source.contractFingerprint !== parent.run.envelope.contractFingerprint
-      || source.output.schemaHash !== deriveSchemaHash(PreparedOcrPagesSchema, "output")
-      || PreparedOcrPagesSchema.parse(source.output.value).pages.filter(entry => same(entry, page)).length !== 1
+    if (boundOcrPages(repositories, parent.run, request).filter(entry => same(entry, page)).length !== 1
       || page.reading.kind !== request.reading.kind || page.reading.kind === "manual" && page.reading.actorId !== actor) throw new OcrPublicationRefusedError();
   }
 }
@@ -103,14 +116,7 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
       const parent = read(run.envelope.parent.runId);
       if (parent.envelope.workflow !== "ocr") throw new OcrPublicationRefusedError();
       const request = OcrInputSchema.parse(parent.input.parsed.value);
-      const source = repositories.runCheckpoints.listByAttempt(parent.envelope.workflow, parent.envelope.itemId,
-        "read-source-pages", parent.envelope.attempt).filter(row => row.runId === parent.envelope.runId).at(-1);
-      if (source === undefined || source.contractFingerprint !== parent.envelope.contractFingerprint
-        || source.output.schemaHash !== deriveSchemaHash(PreparedOcrPagesSchema, "output")
-        || source.implFingerprint !== declaredImplFingerprint(resolve, parent, "read-source-pages", ReadOcrSourcePages)) throw new OcrPublicationRefusedError();
-      const prepared = PreparedOcrPagesSchema.parse(source.output.value);
-      if (!same(prepared.manifest.document, request.document)
-        || prepared.pages.filter(page => same(page, input)).length !== 1) throw new OcrPublicationRefusedError();
+      if (boundOcrPages(repositories, parent, request, resolve).filter(page => same(page, input)).length !== 1) throw new OcrPublicationRefusedError();
       let root = parent;
       const ancestors = new Set<string>();
       while (root.envelope.parent !== undefined) {

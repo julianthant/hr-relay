@@ -449,12 +449,16 @@ function ocrArtifactLeaves(scope: EvidenceValueScope, prefix: string): unknown[]
   ];
 }
 
-function ocrManifestLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+function ocrManifestHeadLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...ocrArtifactLeaves(scope, `${prefix}document.`),
     ...open(scope, `${prefix}pageCount`),
-    ...ocrPrivateLeaves(scope, `${prefix}fingerprint`, `${prefix}pages`),
+    ...ocrPrivateLeaves(scope, `${prefix}fingerprint`),
   ];
+}
+
+function ocrManifestLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrManifestHeadLeaves(scope, prefix), ...ocrPrivateLeaves(scope, `${prefix}pages`)];
 }
 
 function ocrPageInputLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
@@ -631,8 +635,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
-  ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
-  ...ocrPrivateLeaves(taskOutput("workflow:ocr/read-source-pages"), "pages"),
+  ...ocrManifestHeadLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
   ...[taskOutput("workflow:ocr-page/read-page-reading"), taskOutput("workflow:ocr-page/read-manual-reading")].flatMap(ocrPageReadingLeaves),
   ...ocrReviewSeedLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
   ...ocrResultLeaves(taskOutput("workflow:ocr/read-result")),
@@ -652,8 +655,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrResultLeaves(workflowResult("ocr")),
   ...ocrPrivateLeaves(workflowResult("ocr"), "approvedSnapshot", "approvedSnapshot.snapshotId", "approvedSnapshot.sourceRunId", "approvedSnapshot.digest"),
   ...open(workflowResult("ocr"), "approvedSnapshot.revision"),
-  ...ocrManifestLeaves(workflowResult("ocr-source-pages"), "manifest."),
-  ...ocrPrivateLeaves(workflowResult("ocr-source-pages"), "pages"),
+  ...ocrManifestHeadLeaves(workflowResult("ocr-source-pages"), "manifest."),
   ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
   ...open(gateResult("ocr", "approve-records"), "revision"),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].flatMap(id => [

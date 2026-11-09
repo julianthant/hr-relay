@@ -10,7 +10,8 @@ import { PersonLookupInput } from "../../../../src/models/workflows/person-looku
 import { PersonLookupResultSchema } from "../../../../src/models/workflows/person-lookup/result.js";
 import { ReadOcrResult } from "../../../../src/models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../../src/models/workflows/ocr/read-review-seed.js";
-import { ReadOcrSourcePages } from "../../../../src/models/workflows/ocr/read-source-pages.js";
+import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../../src/models/workflows/ocr/read-source-pages.js";
+import { buildOcrSourceManifest } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { OcrPageWorkflowInputSchema } from "../../../../src/models/workflows/ocr-page/input.js";
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
@@ -85,12 +86,12 @@ const definition = defineWorkflow({
       ({ input, outputs }) => ({ request: input, rendered: outputs["render-pages"] }));
     const pages = delegate({ id: "read-pages", label: "Read every original page",
       target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
-      edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled", policy }, [source], {
-      bind: ({ outputs }) => outputs["read-source-pages"].pages, deriveChildItemId: (_input, context) => context.canonicalItemId,
+      edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled", policy }, [rendered, source], {
+      bind: ({ input, outputs }) => ocrPageWorkInputs(input, outputs["render-pages"]).pages, deriveChildItemId: (_input, context) => context.canonicalItemId,
     });
-    const review = task({ id: "build-review", contract: reviewContract, replay: "checkpoint" }, [source, pages],
+    const review = task({ id: "build-review", contract: reviewContract, replay: "checkpoint" }, [rendered, source, pages],
       ({ input, outputs }) => ({ ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster,
-        formType: input.formType, manifest: outputs["read-source-pages"].manifest, readingId: input.readingId, outcomes: [...outputs["read-pages"]] }));
+        formType: input.formType, manifest: buildOcrSourceManifest(input.document, outputs["render-pages"]), readingId: input.readingId, outcomes: [...outputs["read-pages"]] }));
     const identities = delegate({ id: "lookup-identities", label: "Verify proposed identities",
       target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
       edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy }, [review], {
