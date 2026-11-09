@@ -1,10 +1,9 @@
 import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PreflightAssistantContext } from "../settings/preflight/preflight-assistant-model.js";
-import { createPortal } from "react-dom";
-import { History, LogOut, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Button, Dialog, DialogContent, DialogFooter, EmptyState, SearchInput, Tab, TabList, TabPanel, Tabs } from "../../ds/ui.js";
+import { History, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter, EmptyState, SearchInput, Tab, TabList, TabPanel, Tabs } from "../../ds/ui.js";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockActivity } from "./assistant-mock-thread.js";
 import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";

@@ -30,7 +30,7 @@ function SessionsBarHarness() {
   const [open, setOpen] = useState(query.get('open') === '1');
   useLayoutEffect(() => { setFooter(anchor.current?.closest('.dashboard-shell')?.querySelector<HTMLElement>('[aria-label="Session actions"] > span:last-child') ?? null); }, []);
   return <div className="dashboard-shell">
-    <SessionsView open={open} onOpenChange={setOpen} onControl={() => {}} onAdd={() => {}} onSettings={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample('active')} />
+    <SessionsView open={open} onOpenChange={setOpen} onControl={() => {}} onAdd={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample('active')} />
     {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout sessions-bar-icon" aria-label="Log out" title="Log out" icon={<LogOut aria-hidden className="size-4" />} />, footer)}
     <span ref={anchor} className="sr-only" />
   </div>;
