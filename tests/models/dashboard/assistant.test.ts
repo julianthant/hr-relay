@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { AssistantActionDecisionSchema, AssistantActionProposalSchema, AssistantCallUsageSchema, AssistantTurnUsageSchema, aggregateAssistantUsage, type AssistantCallUsage } from "../../../src/models/dashboard/assistant.js";
+import { AssistantActionDecisionSchema, AssistantActionProposalSchema, AssistantCallUsageSchema, AssistantTurnUsageSchema, aggregateAssistantUsage, type AssistantCallUsage, AssistantDataTargetSchema, AssistantInlineSchema, AssistantReplyPartSchema, AssistantAcceptedTurnSchema, AssistantSessionViewSchema } from "../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_START_PROPOSAL } from "../../support/fixtures/dashboard/assistant-start.js";
 
 it("refuses missing or inconsistent plan facts, extra fields and rows outside the source bound", () => {
@@ -90,4 +90,26 @@ it("excludes an unsafe sum's whole call from exact partial totals rather than cl
   assert.deepEqual(aggregateAssistantUsage([measured, huge, measured]), {
     state: "unavailable", callCount: 3, measuredCallCount: 2, reason: "invalid", partialInputTokens: 24, partialOutputTokens: 6, partialTotalTokens: 30,
   });
+});
+
+
+it("admits only stable data targets, complete workbook coordinates and inert stored session parts", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  const workbook = { kind: "workbook", libraryId: "book", revision: 2, location: { kind: "master" } };
+  assert.equal(AssistantDataTargetSchema.safeParse(workbook).success, true);
+  for (const target of [{ kind: "url", url: "https://example.invalid" }, { kind: "command", command: "cancel" },
+    { kind: "person", identityRef: "[[P1.g1]]" }, { ...workbook, location: { kind: "cell", rowId: "r", fieldId: "name" } },
+    { ...workbook, location: { kind: "sheet", sheetId: "s", rowId: "r" } }, { ...workbook, url: "https://example.invalid" }])
+    assert.equal(AssistantDataTargetSchema.safeParse(target).success, false);
+  const session = { kind: "session", runId: id, label: "Lookup", meta: "queued" };
+  assert.equal(AssistantReplyPartSchema.safeParse(session).success, true);
+  assert.equal(AssistantReplyPartSchema.safeParse({ ...session, stop: { command: "cancel" } }).success, false);
+  assert.equal(AssistantInlineSchema.safeParse({ kind: "value", value: "new", command: "apply" }).success, false);
+  assert.equal(AssistantInlineSchema.safeParse({ kind: "failure", code: "ASSISTANT_READ_STALE", text: "Forged" }).success, false);
+  const turn = { profileId: id, epoch: 1, conversationId: id, messageId: id, ordinal: 1, acceptedRevision: 2, acceptedAt: "2026-11-08T12:00:00.000Z", proposalAnswer: null };
+  assert.equal(AssistantAcceptedTurnSchema.safeParse(turn).success, true);
+  assert.equal(AssistantAcceptedTurnSchema.safeParse({ ...turn, createdAt: turn.acceptedAt }).success, false);
+  assert.equal(AssistantSessionViewSchema.safeParse({ runId: id, rowRevision: 1, label: "Lookup", meta: "done", state: "done", stop: null }).success, true);
+  assert.equal(AssistantSessionViewSchema.safeParse({ runId: id, rowRevision: 1, label: "Lookup", meta: "done", state: "done", stop: { runId: id,
+    descriptor: { kind: "command", key: "cancel", command: "cancel", label: "Cancel", expectedVersion: 1, intent: "destructive", placement: ["footer"] } } }).success, false);
 });

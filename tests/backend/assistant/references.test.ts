@@ -89,3 +89,11 @@ it("pins a version on a reference separately from the unpinned reference to the 
   assert.equal(table.issue("R", "run-a", "the selected run", "run-a", 3), pinned);
   assert.equal(table.display(pinned), label, "the useful first label is retained without mutable relabeling");
 });
+
+
+it("splits strict current reference segments without treating model wording as markup", () => {
+  const table = createAssistantReferenceTable(8), token = table.issue("V", "value", "Value");
+  assert.deepEqual(table.segments(`**literal** ${token} and ${token}`), [{ kind: "text", text: "**literal** " },
+    { kind: "reference", token, entry: table.resolve(token, ["V"]) }, { kind: "text", text: " and " }, { kind: "reference", token, entry: table.resolve(token, ["V"]) }]);
+  for (const text of ["[[V1.g7]]", "[[V8.g8]]", "[[X1.g8]]"]) assert.throws(() => table.segments(text), AssistantReferenceError);
+});

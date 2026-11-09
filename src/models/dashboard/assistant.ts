@@ -1,8 +1,13 @@
+import { ActionDescriptorWireSchema } from "./actions.js";
+import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
+import { RowRevisionSchema, RunDetailSectionSchema } from "./primitives.js";
+import { CrossDateSearchQuerySchema } from "./search.js";
+import { WorkbookCellChangeSchema, WorkbookIdSchema, WorkbookRevisionSchema } from "./workbooks.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { OcrFormTypeSchema } from "../ocr/form-registry.js";
-import { ERROR_CATALOG } from "../failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { z } from "zod";
-import { FingerprintSchema } from "../../rules/identity/ids.js";
+import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema } from "../../rules/identity/ids.js";
 import { StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
@@ -404,3 +409,79 @@ export const AssistantRespondEnvelopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("delivery"), receipt: AssistantReceiptSchema }),
 ]);
 export type AssistantRespondEnvelope = z.infer<typeof AssistantRespondEnvelopeSchema>;
+
+
+const ReplyTextSchema = z.string().min(1).max(8000);
+const ReplyLabelSchema = z.string().min(1).max(160);
+const WorkbookCellLocationSchema = WorkbookCellChangeSchema.pick({ sheetId: true, rowId: true, fieldId: true });
+export const AssistantWorkbookLocationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("master") }),
+  z.strictObject({ kind: z.literal("sheet"), sheetId: WorkbookIdSchema }),
+  WorkbookCellLocationSchema.extend({ kind: z.literal("cell") }),
+]);
+const PersonRunIdentitySchema = z.strictObject({ runId: RunIdSchema, inputSchemaHash: FingerprintSchema, inputFingerprint: FingerprintSchema });
+export const AssistantDataTargetSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, day: LocalDateSchema, section: RunDetailSectionSchema }),
+  z.strictObject({ kind: z.literal("person"), identityRef: PersonRunIdentitySchema }),
+  z.strictObject({ kind: z.literal("queue"), query: CrossDateSearchQuerySchema.pick({ q: true, scope: true, facets: true }) }),
+  z.strictObject({ kind: z.literal("workbook"), libraryId: WorkbookIdSchema, revision: WorkbookRevisionSchema, location: AssistantWorkbookLocationSchema }),
+  z.strictObject({ kind: z.literal("attachment"), attachmentId: z.uuid(), sha256: FingerprintSchema, page: PositiveIntSchema.optional() }),
+]).refine(target => !/\[\[[A-Za-z][0-9]+\.g[0-9]+\]\]/u.test(JSON.stringify(target)), "reply-target-must-be-stable");
+export type AssistantDataTarget = z.infer<typeof AssistantDataTargetSchema>;
+export const AssistantValueSourceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("operator"), profileId: z.uuid(), conversationId: z.uuid(), messageId: z.uuid(), at: IsoInstantSchema, valueFingerprint: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("attachment"), attachmentId: z.uuid(), sha256: FingerprintSchema, page: PositiveIntSchema, valueFingerprint: FingerprintSchema }),
+  WorkbookCellLocationSchema.extend({ kind: z.literal("workbook"), libraryId: WorkbookIdSchema, revision: WorkbookRevisionSchema, valueFingerprint: FingerprintSchema }),
+  PersonRunIdentitySchema.extend({ kind: z.literal("run-input"), fieldPath: z.array(z.string().min(1).max(128)).min(1).max(16), valueFingerprint: FingerprintSchema }),
+]);
+export type AssistantValueSource = z.infer<typeof AssistantValueSourceSchema>;
+export const AssistantInlineSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("plain"), text: ReplyTextSchema }),
+  z.strictObject({ kind: z.literal("bold"), text: ReplyTextSchema }),
+  z.strictObject({ kind: z.literal("value"), value: ReplyTextSchema, previous: ReplyTextSchema.optional(), source: AssistantValueSourceSchema.optional() }),
+  z.strictObject({ kind: z.literal("failure"), code: ErrorCatalogCodeSchema, text: z.literal("Failed") }),
+  z.strictObject({ kind: z.literal("link"), label: ReplyLabelSchema, target: AssistantDataTargetSchema }),
+]);
+export type AssistantInline = z.infer<typeof AssistantInlineSchema>;
+export const AssistantActionBindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("proposal"), proposalId: z.uuid(), rowId: z.uuid() }),
+  z.strictObject({ kind: z.enum(["session", "local-edit"]), actionId: z.uuid() }),
+]);
+export const AssistantCommandAttributionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("unrecorded") }),
+  z.strictObject({ kind: z.literal("assistant"), requestedBy: ActorIdSchema, profileId: z.uuid(), conversationId: z.uuid(), acceptedMessageId: z.uuid(), binding: AssistantActionBindingSchema }),
+]);
+export const AssistantAcceptedTurnSchema = z.strictObject({
+  conversationId: z.uuid(), messageId: z.uuid(), ordinal: PositiveIntSchema, acceptedRevision: PositiveIntSchema, acceptedAt: IsoInstantSchema,
+  profileId: z.uuid(), epoch: PositiveIntSchema,
+  proposalAnswer: z.strictObject({ proposalId: z.uuid(), proposalRevision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema }).nullable(),
+});
+export type AssistantAcceptedTurn = z.infer<typeof AssistantAcceptedTurnSchema>;
+export const AssistantSessionPartSchema = z.strictObject({ kind: z.literal("session"), runId: RunIdSchema, label: ReplyLabelSchema, meta: z.string().min(1).max(500) });
+export const AssistantReplyPartSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("text"), runs: z.array(AssistantInlineSchema).min(1).max(500) }),
+  z.strictObject({ kind: z.literal("bullets"), items: z.array(z.array(AssistantInlineSchema).min(1).max(500)).min(1).max(20) }),
+  AssistantSessionPartSchema,
+  z.strictObject({ kind: z.literal("answered"), attribution: AssistantCommandAttributionSchema, at: IsoInstantSchema }),
+]);
+export type AssistantReplyPart = z.infer<typeof AssistantReplyPartSchema>;
+export const AssistantReplyPartsSchema = z.array(AssistantReplyPartSchema).min(1).max(40).superRefine((parts, context) => {
+  let display = 0;
+  for (const part of parts) {
+    if (part.kind === "session") display += part.label.length + part.meta.length;
+    if (part.kind === "text" || part.kind === "bullets") for (const run of part.kind === "text" ? part.runs : part.items.flat())
+      display += run.kind === "link" ? run.label.length : run.kind === "value" ? run.value.length + (run.previous?.length ?? 0) : run.text.length;
+  }
+  if (display > 8000 || new TextEncoder().encode(JSON.stringify(parts)).byteLength > 80_000) context.addIssue({ code: "custom", message: "assistant-reply-budget-exceeded" });
+});
+export const AssistantReplySchema = z.strictObject({ parts: AssistantReplyPartsSchema, acceptedTurn: AssistantAcceptedTurnSchema, usage: AssistantTurnUsageSchema }).refine(reply => new TextEncoder().encode(JSON.stringify(reply)).byteLength <= 80_000, "assistant-reply-budget-exceeded");
+const AssistantStopDescriptorSchema = ActionDescriptorWireSchema.transform((action, context) => {
+  if (action.kind === "command" && action.command === "cancel") return { ...action, command: "cancel" as const };
+  context.addIssue({ code: "custom", message: "assistant-session-requires-cancel-descriptor" });
+  return z.NEVER;
+});
+export const AssistantSessionViewSchema = AssistantSessionPartSchema.omit({ kind: true }).extend({ rowRevision: RowRevisionSchema, state: QueueStatusSchema,
+  stop: z.strictObject({ runId: RunIdSchema, descriptor: AssistantStopDescriptorSchema }).nullable(),
+}).refine(view => view.stop === null || !TERMINAL_QUEUE_STATUSES.has(view.state) && view.state !== "cancelling"
+  && view.stop.runId === view.runId && view.stop.descriptor.kind === "command" && view.stop.descriptor.expectedVersion === view.rowRevision);
+export type AssistantSessionView = z.infer<typeof AssistantSessionViewSchema>;
