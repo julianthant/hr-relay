@@ -1,6 +1,9 @@
 import { WORKFLOW_SOURCES, workflowSource, type WorkflowComposition, type WorkflowSourcePolicy } from "../../../src/dashboard/app/workflow-sources.js";
 import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
 import { seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { MOCK_WORKFLOW_CATALOG } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+
+export const PREVIEW_FIXTURE_WORKFLOWS = Object.freeze(MOCK_WORKFLOW_CATALOG.workflows.filter(flow => WORKFLOW_SOURCES[flow.id] !== "hidden"));
 
 /** Explicit served inputs for backend capability tests, with the other mock scenes retained. */
 export function servedFixtureSources(workflows: readonly RunStartWorkflow[]): WorkflowSourcePolicy {
