@@ -89,8 +89,10 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         </section>}
         <div className="flex min-w-0 flex-col gap-8">
         {(stage === "Input" || stage === "Values") && <section aria-label={stage} className="flex flex-col gap-8">
-          {flow.methods.length > 1 && <SegmentedChoice label="Input method" value={draft.method} options={flow.methods.map(value => ({ value, label: value === "typed" ? "Employee IDs" : "PDFs" }))} onChange={method => patch({ method })} />}
-          {workflowId === "oath-upload" && <SegmentedChoice label="Processing mode" value={draft.uploadMode} options={[{ value: "full", label: "Full process" }, { value: "upload-only", label: "Upload-only" }]} onChange={uploadMode => patch({ uploadMode })} />}
+          {(flow.methods.length > 1 || workflowId === "oath-upload") && <RunList label="Input options">
+            {flow.methods.length > 1 && <RunListRow title="Input method" description="Type Employee IDs or upload PDF scans."><div className="w-[250px]"><SegmentedChoice hideLabel label="Input method" value={draft.method} options={flow.methods.map(value => ({ value, label: value === "typed" ? "Employee IDs" : "PDFs" }))} onChange={method => patch({ method })} /></div></RunListRow>}
+            {workflowId === "oath-upload" && <RunListRow title="Processing mode" description="Full process reads, matches and uploads each scan."><div className="w-[250px]"><SegmentedChoice hideLabel label="Processing mode" value={draft.uploadMode} options={[{ value: "full", label: "Full process" }, { value: "upload-only", label: "Upload-only" }]} onChange={uploadMode => patch({ uploadMode })} /></div></RunListRow>}
+          </RunList>}
           {draft.method === "typed" && (flow.typedInput ? <TypedInput presentation="mock" workflowId={workflowId}
             surface={{ typedInput: flow.typedInput, placeholder: flow.placeholder, parser: { split: { kind: "whole-text" }, rules: [{ when: { kind: "otherwise" }, emit: "value" }] } }}
             text={draft.text} onText={text => patch({ text })} draft={mockTypedInputValues(workflowId, draft)}
@@ -103,18 +105,18 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </>)}
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
-            {(workflowId === "onbase" || flow.roster && !uploadOnly && !statusMockPicker) && <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && workflowId === "onbase" && "grid-cols-2")}>
-            {flow.roster && !uploadOnly && !statusMockPicker && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
-            {workflowId === "onbase" && <ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} />}
-            </div>}
+            {(workflowId === "onbase" || flow.roster && !uploadOnly && !statusMockPicker) && <RunList label="Documents setup">
+              {flow.roster && !uploadOnly && !statusMockPicker && <RunListRow title="Roster" description="The spreadsheet Relay matches each scan against."><div className="w-[250px]"><ChoicePicker hideLabel label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} /></div></RunListRow>}
+              {workflowId === "onbase" && <RunListRow title="Document type" description="How OnBase files the imported pages."><div className="w-[250px]"><ChoicePicker hideLabel label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /></div></RunListRow>}
+            </RunList>}
             {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
           {workflowId === "emergency-contact" && mock === "run-a" && <StatusMockReadiness frame="run-a" />}
           {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options") && <StatusMockRosterPicker picks={picks} onPicks={setPicks} />}
-          {draft.method === "roster" && <ChoicePicker label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} />}
+          {draft.method === "roster" && <RunList label="Spreadsheet"><RunListRow title="Spreadsheet" description="The library spreadsheet to download."><div className="w-[250px]"><ChoicePicker hideLabel label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} /></div></RunListRow></RunList>}
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}
-          {workflowId === "work-study" && <DateInput label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} />}
-          {workflowId === "old-kronos-reports" && <div className="grid grid-cols-2 gap-4"><DateInput label="Report start" required value={draft.startDate} onChange={startDate => patch({ startDate })} /><DateInput label="Report end" required value={draft.endDate} onChange={endDate => patch({ endDate })} /></div>}
+          {workflowId === "work-study" && <RunList label="Dates"><RunListRow title="Effective date" description="The day the change takes effect."><div className="w-[200px]"><DateInput hideLabel label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} /></div></RunListRow></RunList>}
+          {workflowId === "old-kronos-reports" && <RunList label="Dates"><RunListRow title="Report start" description="First day of the report."><div className="w-[200px]"><DateInput hideLabel label="Report start" required value={draft.startDate} onChange={startDate => patch({ startDate })} /></div></RunListRow><RunListRow title="Report end" description="Last day of the report."><div className="w-[200px]"><DateInput hideLabel label="Report end" required value={draft.endDate} onChange={endDate => patch({ endDate })} /></div></RunListRow></RunList>}
           {error && draft.method !== "delegated" && (draft.text || draft.files.length || fileError) && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </section>}
         {stage === "Options" && chatGptBlocked && <StatusMockReadiness frame="run-b" />}

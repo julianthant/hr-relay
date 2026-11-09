@@ -14,9 +14,9 @@
   --ds-h-desktop-min: 720px;
   /* SURFACE — the elevation ladder, darkest (page) to lightest (raised).
    Depth in this product comes from surface + hairline border, never from */
-  --ds-soft-bg: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-panel)); /* soft buttons: one clear step above the card */
-  --ds-soft-bg-hover: color-mix(in srgb, var(--ds-fg) 18%, var(--ui-panel));
-  --ds-soft-border: var(--ui-stroke-control); /* 3:1 edge */
+  --ds-soft-bg: color-mix(in srgb, var(--ds-fg) 5%, var(--ui-panel)); /* soft buttons and fields: a subtle step above the card */
+  --ds-soft-bg-hover: color-mix(in srgb, var(--ds-fg) 9%, var(--ui-panel));
+  --ds-soft-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); /* faint edge; the fill separates */
   --ds-surface-page: var(--background); /* app background, behind everything */
   --ds-surface-1: var(--card); /* panels, cards, bars — the default plane */
   --ds-surface-2: var(--muted); /* inset wells, table headers, code blocks */
@@ -220,17 +220,17 @@
   --ds-size-body-choice: 14.4px;
   --ds-space-body-copy-gap: var(--ds-row-gap);
   --ds-radius-body-control: 8.1px;
-  /* ROWS — the one default size for card rows and data-table rows. Two-line row 52px, one-line 40px, table head 32px. */
+  /* ROWS — the one default size for card rows and data-table rows. Two-line row 60px, one-line 52px, table head 32px. */
   --ds-row-pad-x: 16px;
-  --ds-row-pad-y: 8px; /* a row with a grey line */
-  --ds-row-pad-y-1: 6px; /* a one-line row, so a 28px control fits its 40px */
-  --ds-row-h-1: 40px;
-  --ds-row-h-2: 52px;
+  --ds-row-pad-y: 11px; /* a row with a grey line */
+  --ds-row-pad-y-1: 12px; /* a one-line row */
+  --ds-row-h-1: 52px;
+  --ds-row-h-2: 60px;
   --ds-row-head-h: 32px;
   --ds-row-title: 14px;
   --ds-row-title-lh: 18px;
-  --ds-row-desc: 12px;
-  --ds-row-desc-lh: 16px;
+  --ds-row-desc: 13px;
+  --ds-row-desc-lh: 18px;
   --ds-row-gap: 2px;
   --ds-row-radius: 12px;
   --ds-row-control-h: 28px;
@@ -814,9 +814,9 @@ body[data-demo-theme="light"] {
   --ds-control-bg-hover: var(--accent);
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, #d5dbe4);
   --ds-control-fg: var(--foreground);
-  --ds-soft-bg: #ffffff; /* soft buttons: white with a 3:1 edge in light */
-  --ds-soft-bg-hover: #f1f1f1;
-  --ds-soft-border: var(--ui-stroke-control);
+  --ds-soft-bg: #f1f1f1; /* soft buttons: a grey barely off the card, faint edge */
+  --ds-soft-bg-hover: #e9e9e9;
+  --ds-soft-border: var(--ui-stroke);
 
   --ds-accent: #4338ca;
   --ds-accent-mark: #4f46e5;
@@ -1006,11 +1006,14 @@ body[data-demo-theme="light"] {
 .ds-menu-copy > span + span { font-size: 13px; line-height: 16px; color: var(--ui-secondary); }
 .ds-menu-label { padding: 6px 10px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
 .ds-menu-separator { height: 1px; margin: 6px 10px; background: var(--ui-stroke); }
+/* Fields and pickers inside a row: 28px, subtle fill, faint edge. */
+.ds-body-row .input, .ds-body-row .ds-secret-input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-soft-bg); font-size: 14px; }
+.ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { padding-inline: 12px; border-radius: 10px; }
 /* Controls inside a row are 28px. */
 .ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); }
 /* A menu's trigger: soft bordered, 32px, 10px radius, 14px label, grey 14px chevron. */
-.ds-menu-trigger, .ds-select-control { height: 32px; min-height: 32px; border: 1px solid var(--ui-stroke); border-radius: 10px; background: transparent; font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ui-primary); }
-.ds-menu-trigger:hover, .ds-select-control:hover { background: color-mix(in srgb, var(--ds-fg) 6%, transparent); }
+.ds-menu-trigger, .ds-select-control { height: 32px; min-height: 32px; border: 1px solid var(--ds-soft-border); border-radius: 10px; background: var(--ds-soft-bg); font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ui-primary); }
+.ds-menu-trigger:hover, .ds-select-control:hover { background: var(--ds-soft-bg-hover); }
 .ds-menu-trigger > svg, .ds-select-control [data-slot="select-trigger"] > svg, .ds-select-control > svg { width: 14px; height: 14px; color: var(--ui-muted); }
 
 /* Two-way switch: track a clear step above the card, thumb a step above the track, unselected label in the secondary text colour (AA on the track). */

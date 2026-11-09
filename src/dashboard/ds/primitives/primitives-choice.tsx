@@ -22,7 +22,7 @@ export function ChoicePicker({ label, value, options, onChange, disabled, hideLa
   return <div className={cn("ds-choice-picker flex min-w-0 flex-col gap-[var(--ds-space-tight)]", className)}>
     <label htmlFor={id} data-slot="label" className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]", hideLabel && "sr-only")}>{label}</label>
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild><Button id={id} disabled={disabled} aria-label={`${selected.label} ${label}`} className="w-full justify-between">
+      <DropdownMenuTrigger asChild><Button id={id} disabled={disabled} aria-label={`${selected.label} ${label}`} className="ds-menu-trigger w-full justify-between">
         <span className="min-w-0 flex-1 truncate text-left">{selected.label}</span><ChevronDown aria-hidden data-icon="inline-end" className={cn(dsIcon.md, "shrink-0")} />
       </Button></DropdownMenuTrigger>
       <DropdownMenuContent aria-label={label} className="w-[var(--anchor-width)]">

@@ -325,3 +325,20 @@ test(`kit menus and rows ${WIDTH}`, async ({ page }) => {
   }
   expect(errors).toEqual([]);
 });
+
+// Every Settings page, to audit that they share the row tokens.
+for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  for (const id of ["general", "credentials", "paths", "routes", "preflight", "activity", "keyboard", "storage"]) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}`);
+    await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
+    await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+    await settle(page);
+    await page.screenshot({ path: join(OUT, `settings-${id}-${theme}-${WIDTH}.png`) });
+  }
+  expect(errors).toEqual([]);
+});
