@@ -16,7 +16,8 @@
 #hub-panel-assistant .hub-toolbar .hub-full-access{color:var(--hub-full-access)!important}
 #hub-panel-assistant{--hub-full-access:#b4561a}
 html[data-demo-theme=dark] #hub-panel-assistant{--hub-full-access:#e58a4f}
-#hub-panel-assistant #hub-send:enabled:hover{opacity:.85}
+#hub-panel-assistant #hub-send:enabled:not([aria-disabled]):hover{opacity:.85}
+#hub-panel-assistant #hub-send[aria-disabled]{cursor:default}
 #hub-panel-assistant #hub-send:focus-visible{background:var(--ui-primary)!important;color:var(--ui-panel)!important}
 #hub-panel-assistant .hub-attachment{display:inline-flex;max-width:calc(100% - 16px);align-self:flex-start;align-items:center;gap:6px;padding:3px 7px;background:var(--ui-table);border:1px solid var(--ui-stroke);border-radius:999px;font-size:11px;margin:8px 7px 6px}
 #hub-panel-assistant .hub-attachment .hub-icon{height:26px;width:26px;min-width:26px;padding:0;border:0;border-radius:6px;background:transparent}

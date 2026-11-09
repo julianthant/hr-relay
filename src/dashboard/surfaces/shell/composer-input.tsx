@@ -60,7 +60,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
           {ASSISTANT_EFFORTS.map(value => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={value} value={value}><span className="hub-option-copy">{value}</span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>}</>, 'sm')}
         {menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}
-        <InputGroupButton type="submit" id="hub-send" aria-label="Send message" disabled={disabled || attaching || !composer.text.trim()}><ArrowUp aria-hidden /></InputGroupButton>
+        <InputGroupButton type="submit" id="hub-send" aria-label="Send message" disabled={disabled || attaching} aria-disabled={!composer.text.trim() || undefined}><ArrowUp aria-hidden /></InputGroupButton>
       </InputGroupAddon>
     </InputGroup>
     <input type="file" hidden ref={composer.fileInput} onChange={event => {
