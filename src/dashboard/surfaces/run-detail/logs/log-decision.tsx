@@ -27,9 +27,9 @@ function OptionInput({ option, answer, setAnswer, disabled }: { option: Decision
 }
 
 function Compare({ rows }: { rows: NonNullable<LogDecision["comparison"]> }) {
-  return <div className="overflow-hidden rounded-lg border border-ui-stroke bg-ui-table"><table aria-label="Request and UCPath values" className="w-full border-collapse text-left text-body">
+  return <div className="overflow-hidden rounded-lg border border-[var(--ds-soft-border)] bg-[var(--ds-picker-bg)]"><table aria-label="Request and UCPath values" className="w-full border-collapse text-left text-body">
     <thead><tr className="text-caption text-ui-muted"><th className="px-3 py-2 font-normal"><span className="sr-only">Field</span></th><th className="px-3 py-2 font-normal">Request</th><th className="px-3 py-2 text-right font-normal">UCPath</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.label} className="border-t border-ui-stroke"><th scope="row" className="px-3 py-2.5 text-left font-medium">{row.label}</th><td className="px-3 py-2.5 tabular-nums text-ui-secondary">{row.expected}</td>
+    <tbody>{rows.map(row => <tr key={row.label} className="border-t border-[var(--ds-soft-border)]"><th scope="row" className="px-3 py-2.5 text-left font-medium">{row.label}</th><td className="px-3 py-2.5 tabular-nums text-ui-secondary">{row.expected}</td>
       <td className={cn("px-3 py-2.5 text-right tabular-nums", row.expected === row.observed ? "text-ui-secondary" : "font-semibold text-ui-warning")}>{row.observed}{row.expected !== row.observed && <span className="sr-only"> (differs)</span>}</td></tr>)}</tbody>
   </table></div>;
 }

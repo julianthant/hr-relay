@@ -54,23 +54,29 @@
 .log-viewer-caption .ds-select-control { width: 250px; max-width: 100%; }
 .log-capture-open:focus-visible, .log-capture-tab:focus-visible, .log-image-viewport:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
 .log-decision { overflow: hidden; border: 1px solid var(--ui-stroke); border-radius: 8px; background: var(--ui-panel); }
-.log-decision-header { display: flex; min-height: 53px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--ui-stroke); background: var(--ui-table); }
+.log-decision-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--ui-stroke); background: var(--ui-table); }
 .log-decision-header h4 { margin: 0; font-size: var(--text-body); line-height: var(--text-body--line-height); font-weight: 500; }
 .log-decision-badge { display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 5px; padding: 3px 7px; font-size: 12px; font-weight: 500; background: color-mix(in srgb, currentColor 9%, transparent); white-space: nowrap; }
-.log-decision-body { padding: 16px 18px; font-size: 12px; line-height: 20px; background: var(--ui-table); }
+.log-decision-body { display: flex; flex-direction: column; gap: 12px; padding: 16px; font-size: var(--text-body); line-height: var(--text-body--line-height); background: var(--ui-table); }
 .log-decision-body > p { margin: 0; }
 .log-decision-body strong { font-weight: 500; }
 .log-attempted { margin: 0 !important; color: var(--ui-secondary); }
 .log-attempted strong { color: var(--ui-primary); }
-.log-last-completed { display: flex; align-items: center; gap: 6px; margin: 0 !important; color: var(--ui-muted); font-size: 12px; }
+.log-last-completed { display: flex; align-items: center; gap: 6px; margin: 0 !important; color: var(--ui-muted); font-size: var(--text-caption); }
+.log-attempted + .log-last-completed { margin-top: -4px !important; }
 .log-last-completed svg { color: var(--ui-positive); }
-.log-caution { display: block; width: fit-content; max-width: calc(100% - 18px); margin: 12px 0 0 18px !important; padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--ui-warning) 30%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--ui-warning) 8%, var(--ui-panel)); color: var(--ui-warning); }
-.log-failed-field { display: flex; align-items: center; gap: 12px; padding: 9px 11px; margin: 0; border: 1px solid var(--ui-stroke); border-radius: 6px; background: var(--ui-canvas); font-size: 12px; }
+.log-caution { display: block; width: fit-content; max-width: 100%; margin: 0 !important; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--ui-warning) 30%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--ui-warning) 8%, var(--ui-panel)); color: var(--ui-warning); }
+.log-failed-field { display: flex; align-items: center; gap: 12px; padding: 8px 12px; margin: 0; border: 1px solid var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); font-size: var(--text-body); }
+.log-failed-field > span { white-space: nowrap; }
+.log-failed-field > strong { min-width: 0; }
 .log-failed-field > span:first-child { color: var(--ui-secondary); }
-.log-failed-field > span:last-child { margin-left: auto; color: var(--ui-danger); }
-.log-capture-unavailable { display: flex; align-items: center; gap: 9px; padding: 12px; margin-top: 14px; border: 1px dashed var(--ui-stroke); border-radius: 6px; font-size: 12px; color: var(--ui-muted); }
-.log-decision-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-top: 1px solid var(--ui-stroke); background: var(--ui-table); }
-.log-decision-footer > span { color: var(--ui-muted); font-size: 12px; }
+.log-failed-field > strong { font-weight: 400; color: var(--ui-primary); }
+.log-failed-field > span:last-child { margin-left: auto; color: var(--ui-secondary); }
+[data-decision-state="held"] .log-failed-field > span:last-child, [data-decision-state="parked"] .log-failed-field > span:last-child, [data-decision-state="unconfirmed"] .log-failed-field > span:last-child { color: var(--ui-warning); }
+[data-decision-state] .log-capture-group:not(.log-capture-group--browsers) { grid-template-columns: minmax(0, 1fr); max-width: none; margin-top: 0; }
+.log-capture-unavailable { display: flex; align-items: center; gap: 8px; padding: 12px; margin: 0; border: 1px dashed var(--ui-stroke); border-radius: 6px; font-size: 12px; color: var(--ui-muted); }
+.log-decision-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--ui-stroke); background: var(--ui-table); }
+.log-decision-footer > span { color: var(--ui-muted); font-size: var(--text-body); }
 .log-decision-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .log-decision-loading { display: flex; flex-direction: column; gap: 10px; }
 @media (max-width: 1100px) { .log-viewer-toolbar { gap: 3px; padding-inline: 8px; } .log-viewer-toolbar button { padding-inline: 4px; } .log-capture-group--browsers { gap: 8px; } }

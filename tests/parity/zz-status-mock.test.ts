@@ -645,22 +645,24 @@ for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, as
 
 // Logs cards: identity review, held and failure cards, image viewer, batch member Logs.
 const LOGS_OUT = process.env.LOGS_CARDS_OUT ?? OUT;
+const LOGS_ONLY = process.env.LOGS_CARDS_ONLY?.split(",");
+const LOGS_HEIGHT = Number(process.env.LOGS_CARDS_HEIGHT ?? 1100);
 for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
-  await page.setViewportSize({ width: WIDTH, height: 1100 });
+  await page.setViewportSize({ width: WIDTH, height: LOGS_HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   const logs = page.locator(".dashboard-log-column");
   const shot = async (name: string) => { await settle(page); await page.screenshot({ path: join(LOGS_OUT, `${name}-${theme}-${WIDTH}.png`) }); };
-  await page.getByRole("button", { name: /^Notifications/ }).click();
-  await page.locator(".notification-panel").getByRole("button", { name: /Run waiting for you/ }).click();
-  await expect(page.getByRole("heading", { name: /Morrow, Bea/ }).first()).toBeVisible();
-  await page.getByRole("button", { name: /^Notifications/ }).click();
-  await shot("logs-identity-review");
-  await logs.getByRole("button", { name: "Review", exact: true }).click().catch(() => undefined);
-  await shot("logs-identity-review-focus");
-  writeFileSync(join(LOGS_OUT, `logs-identity-review-${theme}.txt`), await logs.innerText());
+  const wanted = (name: string) => LOGS_ONLY === undefined || LOGS_ONLY.includes(name);
+  await page.getByRole("button", { name: "Person Lookup" }).first().click();
+  const queue = page.locator(".dashboard-queue-column");
+  const open = async (name: string | RegExp) => { await queue.getByText(name).first().click(); await page.waitForTimeout(400); };
+  if (wanted("identity")) { await open("Waiting on identity review"); await shot("logs-identity"); }
+  if (wanted("held")) { await open("EID 10333015"); await shot("logs-held"); }
+  if (wanted("failed")) { await open("EID 10555001"); await shot("logs-failed"); }
+  if (wanted("parked")) { await open("EID 10777012"); await shot("logs-parked"); }
   expect(errors).toEqual([]);
 });
