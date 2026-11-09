@@ -31,6 +31,89 @@ export const SEARCHING_STEP = Object.freeze({
     { label: "Drop reason", visibility: "logs", sources: [{ nodeId: "matching", kind: "output", fieldPath: "dropped.reason" }] },
     { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "search-identity", kind: "output", fieldPath: "method" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "person-search",
+        title: "Person Organizational Summary search",
+        mode: "Fill form",
+        nodeIds: ["searching"],
+        lines: [{ id: "search", kind: "action", text: "In Search mode, enter the requested employee ID or name and search.", nodeIds: ["searching"] }],
+        fields: []
+      },
+      {
+        id: "person-match",
+        title: "Smart HR person search",
+        mode: "Fill form",
+        nodeIds: ["matching"],
+        lines: [{ id: "match", kind: "action", text: "In Match mode, search by name with the supplied date of birth or SSN.", nodeIds: ["matching"] }],
+        fields: []
+      },
+      {
+        id: "person-details",
+        title: "Person Organizational Summary detail",
+        mode: "Read only",
+        nodeIds: ["searching", "matching", "search-identity"],
+        lines: [
+          { id: "read-person", kind: "read", text: "Read candidate names, employee IDs and employment assignments.", nodeIds: ["searching", "matching"] },
+          { id: "confirm-person", kind: "check", text: "Confirm a unique identity or retain the unresolved matches.", nodeIds: ["search-identity"] }
+        ],
+        fields: [
+          {
+            id: "employee-id",
+            operatorField: "Employee ID",
+            source: {
+              origin: "UCPath",
+              detail: "Employee ID from the search result or confirmed match.",
+              chain: [],
+              read: { stepKey: "searching", page: "Person Organizational Summary detail", field: "Employee ID" }
+            }
+          },
+          {
+            id: "name",
+            operatorField: "Name",
+            source: {
+              origin: "UCPath",
+              detail: "Name shown on the matching person record.",
+              chain: [],
+              read: { stepKey: "searching", page: "Person Organizational Summary detail", field: "Name" }
+            }
+          },
+          {
+            id: "department",
+            operatorField: "Department",
+            source: {
+              origin: "UCPath",
+              detail: "Department shown for the selected person.",
+              chain: [],
+              read: { stepKey: "searching", page: "Person Organizational Summary detail", field: "Department" }
+            }
+          },
+          {
+            id: "job-title",
+            operatorField: "Job title",
+            source: {
+              origin: "UCPath",
+              detail: "Job title shown for the selected person.",
+              chain: [],
+              read: { stepKey: "searching", page: "Person Organizational Summary detail", field: "Job title" }
+            }
+          },
+          {
+            id: "hr-status",
+            operatorField: "HR status",
+            source: {
+              origin: "UCPath",
+              detail: "HR status shown for the selected person.",
+              chain: [],
+              read: { stepKey: "searching", page: "Person Organizational Summary detail", field: "HR status" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 
 const searchingEntries = defineStepEntries(SEARCHING_STEP);

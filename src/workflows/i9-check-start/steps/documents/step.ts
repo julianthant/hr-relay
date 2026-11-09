@@ -8,7 +8,10 @@ import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-ki
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
-const step = defineWorkflowStep({ key: "documents", label: "Read and approve PDFs" });
+const step = Object.freeze({
+  ...defineWorkflowStep({ key: "documents", label: "Read and approve PDFs" }),
+  review: { pages: [], branchLabels: [] } as const
+});
 const entries = defineStepEntries(step);
 type Author = WorkflowAuthor<typeof I9CheckStartInput>;
 export function buildDocuments(author: Author) {

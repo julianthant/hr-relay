@@ -31,6 +31,74 @@ export const CROSS_VERIFY_STEP = Object.freeze({
     { label: "CRM", visibility: "logs", example: "Found", sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }] },
     { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "crm-search",
+        title: "CRM onboarding search results",
+        mode: "Read only",
+        nodeIds: ["cross-verify", "crm-identity"],
+        lines: [
+          { id: "search-crm", kind: "action", text: "Search CRM for the person identified in UCPath.", nodeIds: ["cross-verify"] },
+          { id: "compare-records", kind: "check", text: "Compare CRM candidates with the searched identity.", nodeIds: ["crm-identity"] }
+        ],
+        fields: []
+      },
+      {
+        id: "crm-record",
+        title: "CRM onboarding record",
+        mode: "Read only",
+        nodeIds: ["cross-verify", "crm-identity", "crm-selected-record", "crm-results"],
+        lines: [
+          { id: "verify-record", kind: "check", text: "Verify the selected CRM record and read any remaining results.", nodeIds: ["crm-selected-record", "crm-results"] },
+          { id: "read-identity", kind: "read", text: "Read the name, department, employee ID and start date.", nodeIds: ["crm-selected-record", "crm-results"] }
+        ],
+        fields: [
+          {
+            id: "name",
+            operatorField: "Name",
+            source: {
+              origin: "CRM",
+              detail: "Name on the selected onboarding record.",
+              chain: [],
+              read: { stepKey: "cross-verify", page: "CRM onboarding record", field: "Name" }
+            }
+          },
+          {
+            id: "department",
+            operatorField: "Department",
+            source: {
+              origin: "CRM",
+              detail: "Department on the selected onboarding record.",
+              chain: [],
+              read: { stepKey: "cross-verify", page: "CRM onboarding record", field: "Department" }
+            }
+          },
+          {
+            id: "employee-id",
+            operatorField: "Employee ID",
+            source: {
+              origin: "CRM",
+              detail: "Employee ID on the selected onboarding record.",
+              chain: [],
+              read: { stepKey: "cross-verify", page: "CRM onboarding record", field: "Employee ID" }
+            }
+          },
+          {
+            id: "start-date",
+            operatorField: "Start date",
+            source: {
+              origin: "CRM",
+              detail: "First day of service on the selected onboarding record.",
+              chain: [],
+              read: { stepKey: "cross-verify", page: "CRM onboarding record", field: "Start date" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 
 const crossVerifyEntries = defineStepEntries(CROSS_VERIFY_STEP);
