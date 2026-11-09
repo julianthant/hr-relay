@@ -1,6 +1,7 @@
 import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useCallback, useMemo, useState } from "react";
 import { ListChecks, RotateCcw } from "lucide-react";
+import { LogActionButton } from "./log-action-button.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
@@ -81,7 +82,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
     if (retry !== undefined) onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
   const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton size="md" label={resource.snapshot.detail.childRetry.label}
-    icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewAvailable && resource.snapshot?.detail.ocrRecordCount !== undefined && onReview !== undefined && <Button size="md" variant={reviewOpen ? "secondary" : "outline"} aria-pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={reviewOpen ? onLogs : onReview}>Records {resource.snapshot.detail.ocrRecordCount}</Button>}
+    icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewAvailable && resource.snapshot?.detail.ocrRecordCount !== undefined && onReview !== undefined && <LogActionButton label={`Records ${resource.snapshot.detail.ocrRecordCount}`} variant={reviewOpen ? "secondary" : "outline"} aria-pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={reviewOpen ? onLogs : onReview} />}
       {batchRetry !== undefined && <IconButton size="md" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,reviewOpen,onLogs,reviewAvailable,onReview,retry,onAction,retryEnabled,retryRun,feedback]);
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}

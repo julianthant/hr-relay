@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, GitBranch, ListChecks, RotateCcw } from "lucide-react";
+import { ArrowUpRight, GitBranch, ListChecks, RotateCcw, RotateCw } from "lucide-react";
+import { LogActionButton } from "../../run-detail/logs/log-action-button.js";
 import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
@@ -113,9 +114,9 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
   const openRecords = useCallback(() => setRecordsVisible(true), [setRecordsVisible]);
   const decide = useCallback((_id: string, option: { id: string }) => { if (option.id === "retry-step") onRetry(); }, [onRetry]);
   const toolbar = useMemo(() => <span className="flex items-center gap-2">
-        {hasRecords && <Button ref={recordsButton} size="md" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(reviewRun).length}</Button>}
+        {hasRecords && <LogActionButton ref={recordsButton} label={`Records ${reviewRecords(reviewRun).length}`} variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)} />}
         {run.role === "person" && mockFailedStepKey(run) !== undefined && <IconButton size="md" variant="outline" label="Retry" icon={<RotateCcw aria-hidden className="size-4" />} onClick={onRetry} />}
-        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <Button size="md" onClick={onRerun}>Rerun</Button>}
+        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <LogActionButton label="Rerun" icon={<RotateCw aria-hidden className="size-4" />} onClick={onRerun} />}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
           <PopoverTrigger asChild><IconButton size="md" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
           <PopoverContent title="Linked runs" align="end" width="md">

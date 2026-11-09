@@ -29,7 +29,7 @@ export function RunReview({ selection, focus }: { selection: LogSelection; focus
   return <>
     {resource.state === "failed" ? <Notice tone="danger" title="Review unavailable" description={resource.error} /> : resource.state === "loading" ? <Badge tone="neutral">Refreshing</Badge> : undefined}
     {resource.feedback && <Notice sticky tone="warning" title="Review changes" description={resource.feedback} />}
-    {resource.feedback && (resource.check ?? resource.reload) && <Button variant="secondary" className="self-start rounded-[8px]" onClick={resource.check ?? resource.reload}>{resource.check ? "Check result" : "Discard local changes"}</Button>}
+    {resource.feedback && (resource.check ?? resource.reload) && <Button variant="secondary" className="self-start" onClick={resource.check ?? resource.reload}>{resource.check ? "Check result" : "Discard local changes"}</Button>}
     <RecordReview runId={selection.row.runId} subject={selection.row.title} cards={cards.map(card => ({ ...card,
       disposition: resource.readOnly ? card.disposition : discarded ? { label: "Discarded", tone: "neutral" } : undefined }))} readOnly={resource.readOnly || discarded}
       disabled={resource.disabled} actionsDisabled={resource.actionsDisabled} discarded={discarded} selectedCount={ready} focusId={focus?.recordId ?? resource.addedRecordId}
@@ -151,15 +151,15 @@ export function RecordReview({ runId, subject, cards, readOnly, discarded, selec
     {(onApprove || onDiscard) && !discarded && <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-table px-3 py-3">
       {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}</div>}
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        {!readOnly && onAdd && <Button className="rounded-[8px]" disabled={disabled || actionsDisabled} icon={<Plus aria-hidden className="size-4" />} onClick={() => {
+        {!readOnly && onAdd && <Button disabled={disabled || actionsDisabled} icon={<Plus aria-hidden className="size-4" />} onClick={() => {
           focusId.current = onAdd();
           addedFocus.current = focusId.current || undefined;
           requestAnimationFrame(() => focusRecord(focusId.current, 'input[name="employeeId"]'));
         }}>Add record</Button>}
-        {onDiscard && !discarded && <Button className="rounded-[8px]" disabled={disabled || actionsDisabled} onClick={() => {
+        {onDiscard && !discarded && <Button disabled={disabled || actionsDisabled} onClick={() => {
           onDiscard(); requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true));
         }}>Discard</Button>}
-        {onApprove && <Button variant="primary" className="rounded-[8px]" disabled={actionsDisabled || disabled || count === 0 || Boolean(approvalError)} onClick={() => { onApprove(); requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true)); }}>Approve records</Button>}
+        {onApprove && <Button variant="primary" disabled={actionsDisabled || disabled || count === 0 || Boolean(approvalError)} onClick={() => { onApprove(); requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true)); }}>Approve records</Button>}
       </div>
     </footer>}
   </section>;

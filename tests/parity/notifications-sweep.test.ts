@@ -118,6 +118,10 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
     console.log(`STRIP ${theme} ${width} ${JSON.stringify(fit)}`);
     expect(fit.overflow).toBeLessThanOrEqual(0);
     expect(fit.lastRight).toBeLessThanOrEqual(fit.navRight);
+    // Header and footer stay on one row (a 28px control row) at both widths.
+    const rows = await page.getByRole("region", { name: "Selected run logs" }).evaluate(root => ({ header: Math.round(root.querySelector("header")!.getBoundingClientRect().height), footer: Math.round(root.querySelector("footer")!.getBoundingClientRect().height) }));
+    console.log(`ROWS ${theme} ${width} ${JSON.stringify(rows)}`);
+    expect(rows).toEqual({ header: 53, footer: 49 });
     await page.screenshot({ path: `${OUT}/timeline-strip-${theme}-${width}.png` });
   }
   await page.setViewportSize({ width: 1280, height: 720 });

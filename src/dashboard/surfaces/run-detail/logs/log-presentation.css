@@ -75,14 +75,14 @@
 .log-decision-loading { display: flex; flex-direction: column; gap: 10px; }
 @media (max-width: 1100px) { .log-viewer-toolbar { gap: 3px; padding-inline: 8px; } .log-viewer-toolbar button { padding-inline: 4px; } .log-capture-group--browsers { gap: 8px; } }
 @media (prefers-reduced-motion: reduce) { .log-capture-expand { transition: none; } }
-.log-decision-actions button { min-height: 28px; height: 28px; border-radius: 8px; padding-inline: 11px; font-size: 12px; line-height: 18px; }
+.log-decision-actions button { min-height: 28px; height: 28px; padding-inline: 11px; font-size: 12px; line-height: 18px; }
 
 .ucpath-found .log-decision-body { padding:18px 20px 14px;font-size:var(--text-control); }
 .ucpath-found h3 { margin:0;line-height:24px; }
 .ucpath-found .ucpath-found-subtitle { margin-top:4px;color:var(--ui-muted); }
 .ucpath-found-table-title { margin-top:14px;margin-bottom:8px; }
 .ucpath-found .log-decision-footer { padding:14px 20px;margin-top:8px; }
-.ucpath-found .log-decision-footer button { min-height:28px;height:28px;border-radius:8px;padding-inline:11px;font-size:12px;line-height:18px; }
+.ucpath-found .log-decision-footer button { min-height:28px;height:28px;padding-inline:11px;font-size:12px;line-height:18px; }
 
 .dry-run-result { max-width:560px; }
 .dry-run-result .log-decision-header { min-height:0;padding:12px 14px; }
