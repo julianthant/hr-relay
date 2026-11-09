@@ -1417,8 +1417,6 @@ th.ds-text-caps {
 .ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
-.navbar-search-command [cmdk-list] { max-height: 360px; padding-inline: var(--ds-space-base); }
-.navbar-search-command [cmdk-item] { border-radius: var(--ds-radius-lg); padding: var(--ds-space-base); }
 
 
 .ds-body-scope .ds-date-picker--inline {
