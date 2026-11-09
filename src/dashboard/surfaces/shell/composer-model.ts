@@ -5,8 +5,10 @@ export const ASSISTANT_MODELS = ['Default', 'GPT-6.1 Sol', 'GPT-6 Astra', 'GPT-6
 export const ASSISTANT_EFFORTS = ['Light', 'Medium', 'High', 'xHigh', 'Max'] as const;
 export const ASSISTANT_APPROVALS = [
   { label: 'Ask before every action', description: 'Confirm each proposed change.' },
+  { label: 'Full access', description: 'Relay acts without asking each time.' },
 ] as const;
-export type ComposerMenu = 'attach' | 'approval' | 'model' | 'effort' | 'voice';
+export const FULL_ACCESS = ASSISTANT_APPROVALS[1].label;
+export type ComposerMenu = 'attach' | 'approval' | 'model' | 'voice';
 export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
 export interface ComposerDraft { readonly text: string; readonly files: readonly AssistantFile[] }
 export interface ComposerDraftPort { read(): ComposerDraft; retain(draft: ComposerDraft): void }
@@ -51,7 +53,7 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
     const field = textarea.current;
     if (!field) return;
     field.style.height = 'auto';
-    field.style.height = `${Math.min(120, Math.max(50, field.scrollHeight))}px`;
+    field.style.height = `${Math.min(120, Math.max(54, field.scrollHeight))}px`;
   }, [text]);
   async function send() {
     if (!text.trim() || sending.current) return;
