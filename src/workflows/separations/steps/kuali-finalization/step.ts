@@ -23,6 +23,7 @@ import {
   KualiTransactionNumberSchema,
 } from "../../../../models/ui/kuali-separation-document.js";
 import {
+  KUALI_FINALIZATION_ASSERTIONS,
   KualiFinalizationCommentsSchema,
   KualiPayrollTitleCodeSchema,
   KualiPayrollTitleSchema,
@@ -124,7 +125,120 @@ const KUALI_FINALIZATION_DISPLAY = {
           { id: "verify-staged", kind: "check", text: "Verify the exact document and staged finalization values.", nodeIds: ["finalize-kuali"] },
           { id: "save-document", kind: "action", text: "In a live run, save the reviewed Kuali document.", nodeIds: ["finalize-kuali"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "kuali-document-department",
+            label: "Department",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.department" }],
+            source: {
+              origin: "Matched department option",
+              detail: "The Kuali option matched to the active UCPath department.",
+              chain: [],
+              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Kuali department option" }
+            }
+          },
+          {
+            id: "kuali-document-payroll-title-code",
+            label: "Payroll title code",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.payrollTitleCode" }],
+            source: { origin: "UCPath employment", detail: "The payroll title code read from the selected active job.", chain: [] }
+          },
+          {
+            id: "kuali-document-payroll-title",
+            label: "Payroll title",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.payrollTitle" }],
+            source: {
+              origin: "UCPath employment",
+              detail: "The payroll title read from the selected active job.",
+              chain: [],
+              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Payroll title" }
+            }
+          },
+          {
+            id: "kuali-document-timekeeper-name",
+            label: "Timekeeper name",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.timekeeperName" }],
+            source: { origin: "Configured timekeeper", detail: "The timekeeper name supplied in the admitted run input.", chain: [] }
+          },
+          {
+            id: "kuali-document-last-day-worked",
+            label: "Last day worked",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.lastDayWorked" }],
+            source: {
+              origin: "Reconciled separation dates",
+              detail: "Use the reconciled last day worked.",
+              chain: [],
+              read: { stepKey: "kronos-timecard", page: "Timecard", field: "Last day worked" }
+            }
+          },
+          {
+            id: "kuali-document-separation-date",
+            label: "Separation date",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.separationDate" }],
+            source: {
+              origin: "Reconciled separation dates",
+              detail: "Use the reconciled separation date.",
+              chain: [],
+              read: { stepKey: "kronos-timecard", page: "Timecard", field: "Separation date" }
+            }
+          },
+          {
+            id: "kuali-document-termination-effective-date",
+            label: "Termination effective date",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.terminationEffectiveDate" }],
+            source: {
+              origin: "Reconciled separation dates and UCPath receipt",
+              detail: "Use the reconciled effective date checked against the current UCPath filing.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Effective date" }
+            }
+          },
+          {
+            id: "kuali-document-transaction-number",
+            label: "Transaction number",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.transactionNumber" }],
+            source: {
+              origin: "Verified UCPath receipt",
+              detail: "Use the exact transaction whose current filing was independently verified.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Transaction number" }
+            }
+          },
+          {
+            id: "kuali-document-timekeeper-comments",
+            label: "Timekeeper comments",
+            transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.timekeeperComments" }],
+            source: {
+              origin: "Existing comments and filing details",
+              detail: "Preserve existing Kuali comments, add any date-change explanation and append the verified filing line.",
+              chain: [
+                { label: "Existing Kuali comments", detail: "Read the existing text from the separation document and preserve it." },
+                { label: "Filing details", detail: "Append the transaction number, document number, timekeeper initials and reference date." }
+              ]
+            }
+          },
+          {
+            id: "kuali-document-request-acknowledged",
+            label: "Request acknowledged",
+            constant: { nodeIds: ["finalize-kuali"], value: KUALI_FINALIZATION_ASSERTIONS.requestAcknowledged },
+            example: "Checked",
+            source: { origin: "Workflow rule", detail: "Use the declared separation finalization choice.", chain: [] }
+          },
+          {
+            id: "kuali-document-termination-template-submitted",
+            label: "Termination template submitted",
+            constant: { nodeIds: ["finalize-kuali"], value: KUALI_FINALIZATION_ASSERTIONS.submittedTerminationTemplate },
+            example: "Checked",
+            source: { origin: "Workflow rule", detail: "Use the declared separation finalization choice.", chain: [] }
+          },
+          {
+            id: "kuali-document-final-pay",
+            label: "Final pay",
+            constant: { nodeIds: ["finalize-kuali"], value: KUALI_FINALIZATION_ASSERTIONS.finalPay },
+            example: "Does not need final pay · student",
+            source: { origin: "Workflow rule", detail: "Use the declared separation finalization choice.", chain: [] }
+          }
+        ]
       }
     ],
     branchLabels: []

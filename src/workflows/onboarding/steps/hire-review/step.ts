@@ -150,7 +150,50 @@ const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label:
           { id: "profile", kind: "action", text: "Fill and verify the reviewed employee profile and worksite.", nodeIds: ["i9-profile-save"] },
           { id: "save-profile", kind: "action", text: "In a live run, save the profile and verify its profile ID.", nodeIds: ["i9-profile-save"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "new-employee-first-name",
+            label: "First name",
+            transactionFields: [{ nodeId: "i9-profile-save", kind: "input", fieldPath: "firstName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire identity and department from CRM and the saved roster.", chain: [] }
+          },
+          {
+            id: "new-employee-last-name",
+            label: "Last name",
+            transactionFields: [{ nodeId: "i9-profile-save", kind: "input", fieldPath: "lastName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire identity and department from CRM and the saved roster.", chain: [] }
+          },
+          {
+            id: "new-employee-middle-name",
+            label: "Middle name",
+            transactionFields: [{ nodeId: "i9-profile-save", kind: "input", fieldPath: "middleName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire identity and department from CRM and the saved roster.", chain: [] }
+          },
+          {
+            id: "new-employee-date-of-birth",
+            label: "Date of birth",
+            transactionFields: [{ nodeId: "i9-profile-save", kind: "input", fieldPath: "dob" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire identity and department from CRM and the saved roster.", chain: [] }
+          },
+          {
+            id: "new-employee-ssn",
+            label: "SSN",
+            transactionFields: [{ nodeId: "i9-profile-save", kind: "input", fieldPath: "ssn" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire identity and department from CRM and the saved roster.", chain: [] }
+          },
+          {
+            id: "new-employee-email",
+            label: "Email",
+            transactionFields: [{ nodeId: "i9-profile-save", kind: "input", fieldPath: "email" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire identity and department from CRM and the saved roster.", chain: [] }
+          },
+          {
+            id: "new-employee-worksite",
+            label: "Worksite",
+            transactionFields: [{ nodeId: "i9-profile-save", kind: "input", fieldPath: "departmentNumber" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire identity and department from CRM and the saved roster.", chain: [] }
+          }
+        ]
       },
       {
         id: "remote-i9",
@@ -161,7 +204,26 @@ const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label:
           { id: "remote", kind: "action", text: "Select Remote - Section 1 Only and the reviewed start date.", nodeIds: ["i9-remote-create"] },
           { id: "create", kind: "action", text: "In a live run, create the I-9 and verify its exact profile and date.", nodeIds: ["i9-remote-create"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "remote-i9-profile-id",
+            label: "Profile ID",
+            transactionFields: [{ nodeId: "i9-remote-create", kind: "input", fieldPath: "profileId" }],
+            source: { origin: "Verified profile and reviewed hire data", detail: "Use the ID independently verified after saving the I-9 profile.", chain: [] }
+          },
+          {
+            id: "remote-i9-start-date",
+            label: "Start date",
+            transactionFields: [{ nodeId: "i9-remote-create", kind: "input", fieldPath: "startDate" }],
+            source: { origin: "Verified profile and reviewed hire data", detail: "Use the effective date from the reviewed hire data.", chain: [] }
+          },
+          {
+            id: "remote-i9-i-9-type",
+            label: "I-9 type",
+            constant: { nodeIds: ["i9-remote-create"], value: "Remote - Section 1 Only" },
+            source: { origin: "Workflow rule", detail: "The declared I-9 creation path uses Remote - Section 1 Only.", chain: [] }
+          }
+        ]
       }
     ],
     branchLabels: [
@@ -179,7 +241,35 @@ const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", la
         mode: "Fill form",
         nodeIds: ["hire-create", "concurrent-hire-create"],
         lines: [{ id: "setup", kind: "action", text: "Select the reviewed hire template, effective date and person.", nodeIds: ["hire-create", "concurrent-hire-create"] }],
-        fields: []
+        fields: [
+          {
+            id: "hire-setup-template",
+            label: "Template",
+            transactionFields: [{ nodeId: "hire-create", kind: "output", fieldPath: "template" }, { nodeId: "concurrent-hire-create", kind: "output", fieldPath: "template" }],
+            source: { origin: "Approved hire path", detail: "The prepared template corresponds to the approved new-hire or existing-person path.", chain: [] }
+          },
+          {
+            id: "hire-setup-transaction-date",
+            label: "Transaction date",
+            transactionFields: [
+              { nodeId: "hire-create", kind: "input", fieldPath: "employee.effectiveDate" },
+              { nodeId: "concurrent-hire-create", kind: "input", fieldPath: "employee.effectiveDate" }
+            ],
+            source: { origin: "Approved hire path", detail: "Use the effective date from the reviewed hire data.", chain: [] }
+          },
+          {
+            id: "hire-setup-action-reason",
+            label: "Action reason",
+            transactionFields: [{ nodeId: "hire-create", kind: "output", fieldPath: "reason" }, { nodeId: "concurrent-hire-create", kind: "output", fieldPath: "reason" }],
+            source: { origin: "Approved hire path", detail: "The prepared action reason corresponds to the approved hire path.", chain: [] }
+          },
+          {
+            id: "hire-setup-employee-id",
+            label: "Employee ID",
+            transactionFields: [{ nodeId: "concurrent-hire-create", kind: "input", fieldPath: "emplId" }],
+            source: { origin: "Approved existing person", detail: "Use the independently confirmed employee ID for the existing-person hire path.", chain: [] }
+          }
+        ]
       },
       {
         id: "personal-data",
@@ -195,7 +285,128 @@ const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", la
           },
           { id: "existing-person", kind: "check", text: "For an existing person, confirm the independently verified identity.", nodeIds: ["concurrent-hire-create"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "personal-data-legal-first-name",
+            label: "Legal first name",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.firstName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-legal-last-name",
+            label: "Legal last name",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.lastName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-legal-middle-name",
+            label: "Legal middle name",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.middleName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-preferred-first-name",
+            label: "Preferred first name",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.preferredFirstName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-preferred-last-name",
+            label: "Preferred last name",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.preferredLastName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-preferred-middle-name",
+            label: "Preferred middle name",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.preferredMiddleName" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-date-of-birth",
+            label: "Date of birth",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.dob" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-national-id",
+            label: "National ID",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.ssn" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-address",
+            label: "Address",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.address" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-address-line-2",
+            label: "Address line 2",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.addressLine2" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-city",
+            label: "City",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.city" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-state",
+            label: "State",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.state" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-postal-code",
+            label: "Postal code",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.postalCode" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-phone",
+            label: "Phone",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.phone" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-phone-type",
+            label: "Phone type",
+            constant: { nodeIds: ["hire-create"], value: "Mobile - Personal" },
+            source: { origin: "Workflow rule", detail: "When a phone is supplied, use the personal mobile phone type.", chain: [] }
+          },
+          {
+            id: "personal-data-preferred-phone",
+            label: "Preferred phone",
+            constant: { nodeIds: ["hire-create"], value: true },
+            example: "Checked when a phone is supplied",
+            source: { origin: "Workflow rule", detail: "Mark the supplied personal mobile phone as preferred.", chain: [] }
+          },
+          {
+            id: "personal-data-email-type",
+            label: "Email type",
+            constant: { nodeIds: ["hire-create"], value: "Home" },
+            source: { origin: "Workflow rule", detail: "Use the home email type for the reviewed email address.", chain: [] }
+          },
+          {
+            id: "personal-data-email",
+            label: "Email",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "employee.email" }],
+            source: { origin: "Reviewed hire data", detail: "Use the validated hire values from CRM and the captured roster row.", chain: [] }
+          },
+          {
+            id: "personal-data-tracker-profile-id",
+            label: "Tracker Profile ID",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "profileId" }],
+            source: {
+              origin: "Verified I-9 profile",
+              detail: "Use the profile ID verified by the completed I-9 creation path.",
+              chain: [],
+              read: { stepKey: "i9-creation", page: "Remote - Section 1 Only", field: "Profile ID" }
+            }
+          }
+        ]
       },
       {
         id: "job-data",
@@ -211,7 +422,56 @@ const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", la
           },
           { id: "verify-job", kind: "check", text: "Read every staged job and pay value back.", nodeIds: ["hire-create", "concurrent-hire-create"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "job-data-position-number",
+            label: "Position number",
+            transactionFields: [
+              { nodeId: "hire-create", kind: "input", fieldPath: "employee.positionNumber" },
+              { nodeId: "concurrent-hire-create", kind: "input", fieldPath: "employee.positionNumber" }
+            ],
+            source: { origin: "Reviewed hire data", detail: "Use the validated job and pay values from the reviewed hire data, formatted for UCPath.", chain: [] }
+          },
+          {
+            id: "job-data-employee-classification",
+            label: "Employee classification",
+            transactionFields: [
+              { nodeId: "hire-create", kind: "input", fieldPath: "employee.employeeClassification" },
+              { nodeId: "concurrent-hire-create", kind: "input", fieldPath: "employee.employeeClassification" }
+            ],
+            source: { origin: "Reviewed hire data", detail: "Use the validated job and pay values from the reviewed hire data, formatted for UCPath.", chain: [] }
+          },
+          {
+            id: "job-data-expected-job-end-date",
+            label: "Expected job end date",
+            transactionFields: [
+              { nodeId: "hire-create", kind: "input", fieldPath: "employee.expectedJobEndDate" },
+              { nodeId: "concurrent-hire-create", kind: "input", fieldPath: "employee.expectedJobEndDate" }
+            ],
+            source: { origin: "Reviewed hire data", detail: "Use the validated job and pay values from the reviewed hire data, formatted for UCPath.", chain: [] }
+          },
+          {
+            id: "job-data-hourly-rate",
+            label: "Hourly rate",
+            transactionFields: [
+              { nodeId: "hire-create", kind: "input", fieldPath: "employee.hourlyRateMinor" },
+              { nodeId: "concurrent-hire-create", kind: "input", fieldPath: "employee.hourlyRateMinor" }
+            ],
+            source: { origin: "Reviewed hire data", detail: "Use the validated job and pay values from the reviewed hire data, formatted for UCPath.", chain: [] }
+          },
+          {
+            id: "job-data-compensation-rate-code",
+            label: "Compensation rate code",
+            constant: { nodeIds: ["hire-create", "concurrent-hire-create"], value: "UCHRLY" },
+            source: { origin: "Workflow rule", detail: "Use the declared hourly compensation rate code.", chain: [] }
+          },
+          {
+            id: "job-data-compensation-frequency",
+            label: "Compensation frequency",
+            constant: { nodeIds: ["hire-create", "concurrent-hire-create"], value: "H" },
+            source: { origin: "Workflow rule", detail: "Use the declared hourly compensation frequency.", chain: [] }
+          }
+        ]
       },
       {
         id: "earnings-distribution",
@@ -243,7 +503,20 @@ const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", la
           },
           { id: "submit", kind: "action", text: "In a live run, click Save and Submit for the reviewed hire.", nodeIds: ["hire-create", "concurrent-hire-create"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "hire-submission-comments",
+            label: "Comments",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "comments" }, { nodeId: "concurrent-hire-create", kind: "input", fieldPath: "comments" }],
+            source: { origin: "Approved hire explanation", detail: "Both UCPath comment fields receive the reviewed hire explanation.", chain: [] }
+          },
+          {
+            id: "hire-submission-initiator-comments",
+            label: "Initiator comments",
+            transactionFields: [{ nodeId: "hire-create", kind: "input", fieldPath: "comments" }, { nodeId: "concurrent-hire-create", kind: "input", fieldPath: "comments" }],
+            source: { origin: "Approved hire explanation", detail: "Both UCPath comment fields receive the reviewed hire explanation.", chain: [] }
+          }
+        ]
       },
       {
         id: "hire-receipt",

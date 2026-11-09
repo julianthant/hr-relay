@@ -180,7 +180,12 @@ coverage. Keep stable entry/leaf IDs and exact contracts. Branch choices are hyp
 
 Each owning group declares `review` through
 [`WorkflowStepReview`](../../src/models/workflow/review-spec.ts): ordered pages, action/check/read
-lines and fields referencing visible `operatorFields` by label. Use real page names and the modes
+lines and fields. A field references a visible `operatorField` by label, or declares its own
+`label` with `transactionFields` pointing to the owning transaction's prepare input or output
+paths. Fixed workflow choices use `constant` with the owning transaction `nodeIds` and value.
+Compilation checks each transaction path against its prepare contract; the backend derives its
+finite options from that contract or the field's display mapping. These review declarations do
+not add transaction sources to Logs operator fields. Use real page names and the modes
 `Fill form` or `Read only`; local or gate-only steps can have no pages. Source drawer prose belongs
 beside the field reference. A source `read` names an exact step key, page title and field label;
 its ordered `chain` can refer to earlier reads in the same workflow. Every declared branch case

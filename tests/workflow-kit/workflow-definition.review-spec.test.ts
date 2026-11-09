@@ -4,6 +4,7 @@ import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../../src/mod
 import { compileWorkflow } from "../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { onboardingWorkflow } from "../../src/workflows/onboarding/workflow.js";
+import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
 
 const review = Object.freeze({ pages: Object.freeze([Object.freeze({
   id: "employee-search", title: "Employee search", mode: "Read only" as const, nodeIds: ["searching", "matching", "search-identity"],
@@ -61,4 +62,29 @@ it("requires every declared case when a branch step supplies review metadata", (
     { nodeId: "i9-route", outcome: "create", label: "Create the I-9 record." },
     { nodeId: "i9-route", outcome: "existing", label: "Reuse the existing I-9 record." },
   ]));
+});
+
+it("validates transaction input, staged-output, constant and clickable source references", () => {
+  const candidate = { pages: [{ id: "wizard", title: "Wizard", mode: "Fill form", nodeIds: ["file-termination"], lines: [], fields: [
+    { id: "template", label: "Template", transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "template" }],
+      source: { origin: "Termination type", detail: "The resolved template.", chain: [], read: { stepKey: "ucpath-transaction", page: "Wizard", field: "Template" } } },
+    { id: "override", label: "Override", transactionFields: [{ nodeId: "file-termination", kind: "output", fieldPath: "lastDateWorkedOverridden" }],
+      source: { origin: "Workflow rule", detail: "The staged checkbox state.", chain: [] } },
+    { id: "fixed", label: "Fixed choice", constant: { nodeIds: ["file-termination"], value: true },
+      source: { origin: "Workflow rule", detail: "The declared fixed choice.", chain: [] } },
+  ] }], branchLabels: [] } satisfies WorkflowStepReview;
+  const compile = (review: WorkflowStepReview) => compileWorkflow({ ...separationsWorkflow,
+    steps: separationsWorkflow.steps.map(([group, entries]) => [{ ...group, review: group.key === "ucpath-transaction" ? review : undefined }, entries] as const) });
+  assert.doesNotThrow(() => compile(candidate));
+  const page = candidate.pages[0], input = page.fields[0];
+  for (const transactionFields of [
+    [{ nodeId: "receipt", kind: "input" as const, fieldPath: "proof" }],
+    [{ nodeId: "file-termination", kind: "input" as const, fieldPath: "missingField" }],
+    [{ nodeId: "clear-pending", kind: "input" as const, fieldPath: "emplId" }],
+  ]) assert.throws(() => compile({ ...candidate, pages: [{ ...page, fields: [{ ...input, transactionFields }] }] }), /transaction|schema field|outside page/u);
+  assert.throws(() => compile({ ...candidate, pages: [{ ...page, nodeIds: ["receipt"], fields: [{ ...input,
+    transactionFields: [{ nodeId: "receipt", kind: "input", fieldPath: "proof" }] }] }] }), /requires a transaction source/u);
+  assert.throws(() => compile({ ...candidate, pages: [{ ...page, fields: [{ id: "fixed", label: "Fixed choice",
+    constant: { nodeIds: ["clear-pending"], value: true }, source: input.source }] }] }), /outside page/u);
+  assert.equal(WorkflowStepReviewSchema.safeParse({ ...candidate, pages: [{ ...page, fields: [{ ...input, transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "template", extra: true }] }] }] }).success, false);
 });

@@ -60,7 +60,11 @@ export const ExplorerReviewSpecSchema = z.strictObject({
           nodeIds: z.array(NodeIdSchema).min(1) })),
         fields: z.array(z.strictObject({ id: TextSchema, label: TextSchema, example: TextSchema.optional(),
           display: OperatorFieldDisplaySchema.optional(), options: z.array(z.string()).min(1).optional(),
-          sources: z.array(z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema })).min(1),
+          sources: z.array(z.union([
+            z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema }),
+            z.strictObject({ nodeId: NodeIdSchema, arm: z.literal("prepare"), taskId: TaskIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema }),
+            z.strictObject({ nodeId: NodeIdSchema, kind: z.literal("constant"), value: z.union([z.string().min(1), z.boolean(), z.number().finite()]) }),
+          ])).min(1),
           source: WorkflowReviewSourceSchema,
         })),
       })) }),

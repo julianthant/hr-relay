@@ -144,6 +144,23 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       id: group.key, title: group.label, ...(group.system === undefined ? {} : { system: group.system }),
       pages: review === undefined ? { state: "unavailable" as const, reason: "This step has no authored page review metadata." }
         : { state: "authored" as const, items: review.pages.map(page => ({ ...page, fields: page.fields.map(field => {
+          if (!("operatorField" in field)) {
+            if ("constant" in field) return { id: field.id, label: field.label,
+              example: field.example ?? String(field.constant.value),
+              sources: field.constant.nodeIds.map(nodeId => ({ nodeId, kind: "constant" as const, value: field.constant.value })), source: field.source };
+            const sources = field.transactionFields.map(reference => {
+              const node = runtimeNodes.find(node => node.id === reference.nodeId);
+              if (node?.kind !== "transaction") throw new Error(`workflow ${module.descriptor.id} review field ${field.id} requires transaction source ${reference.nodeId}`);
+              const leaf = contractCollectionFieldLeaves(node.prepare.uses[reference.kind]).find(leaf => leaf.path === reference.fieldPath);
+              if (leaf === undefined) throw new Error(`workflow ${module.descriptor.id} review field ${field.id} names unknown transaction field ${reference.nodeId}/${reference.fieldPath}`);
+              return { binding: { ...reference, arm: "prepare" as const, taskId: node.prepare.uses.id }, leaf };
+            });
+            const options = field.display !== undefined ? field.display.cases.map(entry => entry.text)
+              : sources.some(source => source.leaf.options === undefined) ? [] : [...new Set(sources.flatMap(source => source.leaf.options ?? []))];
+            return { id: field.id, label: field.label, ...(field.example === undefined ? {} : { example: field.example }),
+              ...(field.display === undefined ? {} : { display: field.display }), ...(options.length === 0 ? {} : { options }),
+              sources: sources.map(source => source.binding), source: field.source };
+          }
           const operator = group.operatorFields?.find(candidate => candidate.label === field.operatorField && candidate.visibility !== "logs");
           if (operator === undefined) throw new Error(`workflow ${module.descriptor.id} review field ${field.id} has no visible operator field ${field.operatorField}`);
           const options = operator.display === undefined ? [...new Set(operator.sources.flatMap(source => {

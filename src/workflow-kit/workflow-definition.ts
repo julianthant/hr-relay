@@ -1,4 +1,5 @@
 import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../models/workflow/review-spec.js";
+import { assertSchemaOffersCollectionPath } from "../models/validation/contract-boundary.js";
 import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
@@ -1200,7 +1201,7 @@ export function compileWorkflow<
       const pages = target.review?.pages.filter(page => page.title === read.page) ?? [];
       const [page] = pages;
       if (pages.length !== 1 || page === undefined) throw new Error(`workflow ${definition.id} review source names unknown or ambiguous page ${read.stepKey}/${read.page}`);
-      if (page.fields.filter(field => field.operatorField === read.field).length !== 1) {
+      if (page.fields.filter(field => ("operatorField" in field ? field.operatorField : field.label) === read.field).length !== 1) {
         throw new Error(`workflow ${definition.id} review source names unknown or ambiguous field ${read.stepKey}/${read.page}/${read.field}`);
       }
     };
@@ -1214,13 +1215,29 @@ export function compileWorkflow<
         if (!page.nodeIds.includes(nodeId)) throw new Error(`workflow ${definition.id} review line ${line.id} is outside page ${page.id}`);
       }
       for (const field of page.fields) {
-        const matches = (group.operatorFields ?? []).filter(candidate => candidate.label === field.operatorField);
-        const [operatorField] = matches;
-        if (matches.length !== 1 || operatorField === undefined || operatorField.visibility === "logs") {
-          throw new Error(`workflow ${definition.id} review field ${field.id} requires one visible operator field ${field.operatorField}`);
-        }
-        if (operatorField.sources.some(source => !page.nodeIds.some(nodeId => nodeId === source.nodeId))) {
-          throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
+        if ("operatorField" in field) {
+          const matches = (group.operatorFields ?? []).filter(candidate => candidate.label === field.operatorField);
+          const [operatorField] = matches;
+          if (matches.length !== 1 || operatorField === undefined || operatorField.visibility === "logs") {
+            throw new Error(`workflow ${definition.id} review field ${field.id} requires one visible operator field ${field.operatorField}`);
+          }
+          if (operatorField.sources.some(source => !page.nodeIds.some(nodeId => nodeId === source.nodeId))) {
+            throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
+          }
+        } else {
+          const transactionSource = (nodeId: string) => {
+            assertOwnNode(nodeId);
+            if (!page.nodeIds.some(id => id === nodeId)) throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
+            const node = ownNodes.find(node => node.id === nodeId);
+            if (node?.kind !== "transaction") throw new Error(`workflow ${definition.id} review field ${field.id} requires a transaction source ${nodeId}`);
+            return node;
+          };
+          if ("transactionFields" in field) {
+            for (const reference of field.transactionFields) assertSchemaOffersCollectionPath(transactionSource(reference.nodeId).prepare.uses[reference.kind], reference.fieldPath,
+              `workflow ${definition.id} review transaction field ${field.id}`);
+          } else {
+            field.constant.nodeIds.forEach(transactionSource);
+          }
         }
         assertRead(field.source.read);
         field.source.chain.forEach(link => assertRead(link.read));

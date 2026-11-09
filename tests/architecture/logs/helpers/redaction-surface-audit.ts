@@ -936,6 +936,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       "steps[].pages.items[].fields[].id", "steps[].pages.items[].fields[].label", "steps[].pages.items[].fields[].example",
       "steps[].pages.items[].fields[].display.cases[].value", "steps[].pages.items[].fields[].display.cases[].text",
       "steps[].pages.items[].fields[].options[]", "steps[].pages.items[].fields[].source.origin",
+      "steps[].pages.items[].fields[].sources[].value",
       "steps[].pages.items[].fields[].source.detail", "steps[].pages.items[].fields[].source.read.page",
       "steps[].pages.items[].fields[].source.read.field", "steps[].pages.items[].fields[].source.chain[].label",
       "steps[].pages.items[].fields[].source.chain[].detail", "steps[].pages.items[].fields[].source.chain[].read.page",

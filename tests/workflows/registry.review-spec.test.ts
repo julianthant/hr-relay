@@ -14,7 +14,7 @@ it("authors every registered step and retains every visible operator field exact
     for (const [group] of definition.steps) {
       assert.ok(group.review, `${definition.id}/${group.key} has no review metadata`);
       const review = WorkflowStepReviewSchema.parse(group.review);
-      const fields = review.pages.flatMap(page => page.fields.map(field => field.operatorField));
+      const fields = review.pages.flatMap(page => page.fields.flatMap(field => "operatorField" in field ? [field.operatorField] : []));
       const visible = descriptor.timeline.find(step => step.key === group.key)?.operatorFields?.filter(field => field.visibility !== "logs") ?? [];
       assert.deepEqual([...fields].sort(), visible.map(field => field.label).sort(), `${definition.id}/${group.key}`);
       assert.equal(Object.isFrozen(group.review), true);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OnbaseCommitImport, OnbaseInputSchema, OnbasePrepareImport, OnbaseSavedDocumentSchema } from "../../../../models/systems/onbase/import-document.js";
+import { ONBASE_DOCUMENT_TYPE, OnbaseCommitImport, OnbaseInputSchema, OnbasePrepareImport, OnbaseSavedDocumentSchema } from "../../../../models/systems/onbase/import-document.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildSource } from "../source-page/step.js";
@@ -23,7 +23,74 @@ export const ONBASE_IMPORT_STEP = Object.freeze({ ...defineWorkflowStep({ key: "
           },
           { id: "import-pdf", kind: "action", text: "In a live run, import the selected PDF once.", nodeIds: ["import-document"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "import-document-employee-id",
+            label: "Employee ID",
+            transactionFields: [{ nodeId: "import-document", kind: "input", fieldPath: "ucpathId" }],
+            source: { origin: "Approved import request", detail: "Use the employee ID supplied to this per-person import.", chain: [] }
+          },
+          {
+            id: "import-document-pdf-page",
+            label: "PDF page",
+            transactionFields: [{ nodeId: "import-document", kind: "input", fieldPath: "sourcePage" }],
+            source: { origin: "Approved import request", detail: "Use exactly the original PDF page selected for this person.", chain: [] }
+          },
+          {
+            id: "import-document-source-pdf",
+            label: "Source PDF",
+            transactionFields: [{ nodeId: "import-document", kind: "input", fieldPath: "document.id" }],
+            source: { origin: "Approved import request", detail: "Use the verified original PDF supplied to this import.", chain: [] }
+          },
+          {
+            id: "import-document-document-type",
+            label: "Document type",
+            constant: { nodeIds: ["import-document"], value: ONBASE_DOCUMENT_TYPE },
+            source: { origin: "Workflow rule", detail: "The import uses the registered Emergency Contact document type.", chain: [] }
+          },
+          {
+            id: "import-document-document-name",
+            label: "Document name",
+            transactionFields: [{ nodeId: "import-document", kind: "output", fieldPath: "keywords.documentName" }],
+            source: { origin: "Verified OnBase keyword set", detail: "Use the keyword values resolved and checked for the selected employee before import.", chain: [] }
+          },
+          {
+            id: "import-document-last-name",
+            label: "Last name",
+            transactionFields: [{ nodeId: "import-document", kind: "output", fieldPath: "keywords.lastName" }],
+            source: { origin: "Verified OnBase keyword set", detail: "Use the keyword values resolved and checked for the selected employee before import.", chain: [] }
+          },
+          {
+            id: "import-document-first-name",
+            label: "First name",
+            transactionFields: [{ nodeId: "import-document", kind: "output", fieldPath: "keywords.firstName" }],
+            source: { origin: "Verified OnBase keyword set", detail: "Use the keyword values resolved and checked for the selected employee before import.", chain: [] }
+          },
+          {
+            id: "import-document-department",
+            label: "Department",
+            transactionFields: [{ nodeId: "import-document", kind: "output", fieldPath: "keywords.departmentName" }],
+            source: { origin: "Verified OnBase keyword set", detail: "Use the keyword values resolved and checked for the selected employee before import.", chain: [] }
+          },
+          {
+            id: "import-document-department-code",
+            label: "Department code",
+            transactionFields: [{ nodeId: "import-document", kind: "output", fieldPath: "keywords.departmentCode" }],
+            source: { origin: "Verified OnBase keyword set", detail: "Use the keyword values resolved and checked for the selected employee before import.", chain: [] }
+          },
+          {
+            id: "import-document-vice-chancellor",
+            label: "Vice chancellor",
+            transactionFields: [{ nodeId: "import-document", kind: "output", fieldPath: "keywords.viceChancellor" }],
+            source: { origin: "Verified OnBase keyword set", detail: "Use the keyword values resolved and checked for the selected employee before import.", chain: [] }
+          },
+          {
+            id: "import-document-vice-chancellor-code",
+            label: "Vice chancellor code",
+            transactionFields: [{ nodeId: "import-document", kind: "output", fieldPath: "keywords.viceChancellorCode" }],
+            source: { origin: "Verified OnBase keyword set", detail: "Use the keyword values resolved and checked for the selected employee before import.", chain: [] }
+          }
+        ]
       },
       {
         id: "document-retrieval",
