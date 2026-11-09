@@ -350,17 +350,17 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
     {summary !== undefined && <Notice sticky tone={summary.tone} title={summary.title} description={summary.detail} />}
     <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
       {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
-        <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-cozy)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
+        <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-tight)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
           {vector === undefined ? (
             /* Whole-request refusal reached no run; the served sentence is the complete answer. */
-            <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-danger)]")}>
+            <p className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
               {reviewing.response.state === "refused" ? reviewing.response.message : ""}
             </p>
           ) : (
-            <div className="mt-[var(--ds-space-snug)] flex max-h-40 flex-col overflow-y-auto">
+            <div className="flex max-h-40 flex-col overflow-y-auto">
               {vector.results.map((entry) => (
                 <BulkResultRow key={entry.runId} outcome={entry.outcome} subject={reviewing.subjects.get(entry.runId) ?? entry.runId}
-                  reason={entry.outcome === "conflict" ? `Changed before the ${reviewing.plan.label.toLowerCase()}` : entry.detail}
+                  reason={entry.outcome === "conflict" ? `Changed before the ${reviewing.plan.label.toLowerCase()}` : entry.detail.replace(/\.$/u, "")}
                   onOpen={() => { onReviewed(); onSelectRun(entry.runId); }} />
               ))}
               {/* Skipped rows keep a place so missing outcomes reconcile with the original selection. */}
