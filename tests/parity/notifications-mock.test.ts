@@ -69,6 +69,13 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
       buttons: [rect(".rail-notification-toggle"), rect(".workspace-rail-header button:not(.rail-notification-toggle)"), rect(".notification-group-head button")].map(r => `${r.width}x${r.height}`),
       headerCentres: [rect(".rail-notification-toggle"), rect(".workspace-rail-header button:not(.rail-notification-toggle)"), rect(".notification-group-head button")].map(r => box.right - 1 - (r.left + r.width / 2)) };
   });
+  // The ··· hover square stays whole inside the scrolling list: nothing clips it on any side.
+  const clip = await page.locator(".notification-panel-scroll").evaluate(scroll => {
+    const box = scroll.getBoundingClientRect(); const button = scroll.querySelector(".notification-group-head button")!.getBoundingClientRect();
+    return { top: button.top - box.top, right: box.right - button.right, bottom: box.bottom - button.bottom, left: button.left - box.left, viewport: scroll.clientWidth === scroll.getBoundingClientRect().width };
+  });
+  console.log(`CLIP ${theme} ${JSON.stringify(clip)}`);
+  expect(Math.min(clip.top, clip.right, clip.bottom, clip.left)).toBeGreaterThanOrEqual(0);
   console.log(`MEASURE ${theme} ${JSON.stringify(m)}`);
   expect(m.width).toBe(312);
   await expect(page.locator(".workspace-rail-header h2")).toHaveCSS("font-size", "18px");

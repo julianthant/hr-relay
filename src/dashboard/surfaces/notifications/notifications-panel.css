@@ -1,6 +1,6 @@
 /* Notification centre: the sidebar body while the bell is pressed. Rows sit on the workflow rail's 8px insets. */
-.notification-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 8px 8px 16px; }
-.notification-panel-scroll { margin-inline: -8px; padding-inline: 8px; display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 20.5px; overflow-y: auto; overscroll-behavior: contain; }
+.notification-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 4px 8px 16px; }
+.notification-panel-scroll { margin-inline: -8px; padding: 4px 8px 0; display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 20.5px; overflow-y: auto; overscroll-behavior: contain; }
 .notification-group-head { display: flex; height: 20px; align-items: center; justify-content: space-between; padding: 0 2px 0 0; margin-bottom: 5.25px; }
 .notification-group-head button { width: 28px; height: 28px; margin-block: -4px; border-radius: 8px; color: var(--ds-sidebar-grey); }
 .notification-group-head button:hover, .notification-group-head button[data-popup-open] { background: var(--rail-hover-fill); color: var(--ui-primary); }
