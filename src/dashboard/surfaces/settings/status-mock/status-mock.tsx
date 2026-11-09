@@ -1,6 +1,7 @@
-import { Check, LoaderCircle } from "lucide-react";
+import { Check, ExternalLink, LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
-import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DsBodyScope, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, useToasts } from "../../../ds/ui.js";
+import { Banner, BodySection, Button, ButtonLink, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DsBodyScope, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
 import { ACTIVITY_DATE_PRESETS } from "../../activity/activity-model.js";
@@ -62,7 +63,7 @@ export function StatusMockStatusBlock({ problem }: { problem: boolean }) {
   return <BodySection title="Status"><FormGroup label="Status">
     <ResultRow label="Storage" description={problem ? "Saved data needs attention · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago"}
       value={problem ? <span className="inline-flex gap-2"><Button variant="secondary">Restore from 12 min ago</Button><Button variant="secondary">Check again</Button></span> : <StatusDot status="verifiedDone" />} />
-    <ResultRow label="ChatGPT" description="Connected as Jordan Lee" value={<Button variant="secondary">Check connection</Button>} />
+    <ResultRow label="ChatGPT" description="Connected as Jordan Lee" value={<span className="inline-flex flex-wrap items-center justify-end gap-2"><Button variant="secondary">Check connection</Button><ButtonLink variant="secondary" href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink><Button variant="ghost">Disconnect</Button></span>} />
   </FormGroup></BodySection>;
 }
 
