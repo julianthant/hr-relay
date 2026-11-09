@@ -28,7 +28,9 @@ export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], includ
         : { state: "unavailable", label: "No direct start", reason: `This served workflow has no standalone launch input. ${flow.inputRun.reason}` } };
   });
   if (includePreviews) for (const preview of MOCK_WORKFLOW_CATALOG.workflows) {
-    if (workflowSource(preview.id, sources) !== "mock") {
+    const source = workflowSource(preview.id, sources);
+    if (source === "hidden") continue;
+    if (source !== "mock") {
       if (!seen.has(preview.id)) throw new Error(`WORKFLOW_SERVED_REGISTRATION_MISSING: ${preview.id}`);
       continue;
     }
