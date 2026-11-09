@@ -68,6 +68,13 @@ function ToastsMock({ set }: { set: keyof typeof STATUS_MOCK_TOASTS }) {
   return null;
 }
 
+/** Hands the live toast function to the page so a browser session can fire real toasts one after another. */
+function ToastsLiveMock() {
+  const { toast } = useToasts();
+  useEffect(() => { Reflect.set(window, "relayFireToast", toast); return () => { Reflect.deleteProperty(window, "relayFireToast"); }; }, [toast]);
+  return null;
+}
+
 /** General's ChatGPT section carries its own state, checked automatically. */
 export function StatusMockChatGpt({ state }: { state: "working" | "limit" | "disconnected" }) {
   const dot = state === "working" ? "verifiedDone" : state === "limit" ? "parked" : "failed";
@@ -137,6 +144,7 @@ function SignupCheckMock({ variant }: { variant: "a" | "b" }) {
 export function StatusMockHost() {
   const id: StatusMockId | undefined = statusMock();
   if (id === "toasts" || id === "toasts-open" || id === "toasts-storage" || id === "toasts-restored") return <ToastsMock set={id} />;
+  if (id === "toasts-live") return <ToastsLiveMock />;
   if (id === "signup-a" || id === "signup-b") return <div className="fixed inset-0 z-50 bg-[color:var(--ds-surface-page)]"><SignupCheckMock variant={id === "signup-a" ? "a" : "b"} /></div>;
   return null;
 }

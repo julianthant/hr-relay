@@ -771,7 +771,7 @@ function ToastViewport() {
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
     {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
       onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
-      className={cn((inert || item.type === "success") && "pointer-events-none")}>
+      className={cn(inert && "pointer-events-none")}>
       <BaseToastContent><BaseToastIcon type={item.type} />
         <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
       </BaseToastContent>
