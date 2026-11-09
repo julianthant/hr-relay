@@ -821,7 +821,7 @@ export function RunStartDialog({
         onCloseAutoFocus={onCloseAutoFocus}
         size="xl"
         band
-        title={previewSelection?.source || isRerun ? "Rerun" : "Start a run"}
+        title={previewSelection?.source || isRerun ? "Rerun" : "Start run"}
         description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `New work · ${workflow.label}` : "Choose a workflow to begin"}
         className={cn("launch-design launch-dialog", (previewSelection?.source || isRerun) && "launch-rerun")}
       >
