@@ -43,7 +43,7 @@ export function ImportDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (
         : <Input aria-label="SharePoint workbook link" className={field} placeholder="Paste a SharePoint workbook link" value={link} onChange={event => { setLink(event.target.value); setName(current => current || (event.target.value ? 'SharePoint workbook' : '')); }} />}</Slide>
       <Labeled label="Name"><Input aria-label="Name" className={field} value={name} onChange={event => setName(event.target.value)} /></Labeled>
       <Labeled label="Tags"><TagEditor tags={tags} onChange={setTags} /></Labeled>
-    </div> : <MappingGrid key={sheetName} title="First rows" dataset={sheet.dataset} mapping={mapping} onMap={patch => setMapping(current => ({ ...current, ...patch }))} maxHeight="max-h-[260px]"
+    </div> : <MappingGrid key={sheetName} dataset={sheet.dataset} mapping={mapping} onMap={patch => setMapping(current => ({ ...current, ...patch }))} maxHeight="max-h-[260px]"
       tabs={<SheetTabs names={IMPORT_SHEETS.map(item => item.name)} current={sheetName} runs={sheetName} onSelect={next => { setSheetName(next); setMapping(guess(next)); }} />} />}</DialogBody>
     <DialogFooter>{step === 1 ? <><V2Button onClick={onClose}>Cancel</V2Button><V2Button look="primary" disabled={!ready} onClick={() => setStep(2)}>Next</V2Button></>
       : <><V2Button look="plain" className="mr-auto" onClick={() => setStep(1)}>Back</V2Button><V2Button onClick={onClose}>Cancel</V2Button><V2Button look="primary" onClick={() => { onAdd({ name: name.trim() || IMPORT_FILE.suggested, tags, sharePoint: mode === 'local' ? null : link.trim(), sheetName, mapping }); onClose(); }}>Add to library</V2Button></>}</DialogFooter>

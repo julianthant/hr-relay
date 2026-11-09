@@ -46,6 +46,10 @@ for (const theme of ["light", "dark"] as const) {
         await page.keyboard.press("Escape"); await expect(page.getByRole("listitem", { name: "I-9 tracker", exact: true })).toHaveCount(0); await shotPage("list-filter");
       },
       "list-search": async () => { await open(); await page.getByRole("searchbox", { name: "Search spreadsheets" }).fill("roster"); await expect(page.getByRole("listitem", { name: "I-9 tracker", exact: true })).toHaveCount(0); await shot("list-search"); },
+      "list-tags-menu": async () => {
+        await open(); await page.getByRole("button", { name: "Filter by tag", exact: true }).click(); await expect(page.getByRole("textbox", { name: "Find a tag" })).toBeVisible(); await shot("list-tags-menu");
+        await page.getByRole("textbox", { name: "Find a tag" }).fill("f"); await shot("list-tags-menu-search");
+      },
       "list-tags": async () => { await open(); await page.getByRole("button", { name: /^\d+ more tags/u }).first().hover(); await expect(page.getByRole("tooltip")).toBeVisible(); await shot("list-tags-tooltip"); },
       menu: async () => { await open(); await menu("Contact roster"); await shot("menu-sharepoint"); await page.keyboard.press("Escape"); await menu("I-9 tracker"); await shot("menu-created"); },
       many: async () => {
@@ -54,8 +58,17 @@ for (const theme of ["light", "dark"] as const) {
       },
       empty: async () => { await open({ relaySheetsScenario: "empty" }); await shotPage("empty"); },
       detail: async () => { await open(); await openSheet("Contact roster"); await shotPage("detail"); },
-      "detail-pill-open": async () => { await open(); await openSheet("Contact roster"); await page.getByRole("button", { name: /^Legal name column/u }).click(); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toBeVisible(); await shot("detail-pill-open"); },
+      "detail-pill-open": async () => { await open(); await openSheet("Contact roster"); await page.getByRole("button", { name: /^Legal name column/u }).click(); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toBeVisible(); await expect(page.getByRole("tooltip")).toHaveCount(0); await shot("detail-pill-open"); },
       "detail-pill-hover": async () => { await open(); await openSheet("Contact roster"); await page.getByRole("button", { name: /^Legal name column/u }).hover(); await expect(page.getByRole("tooltip")).toBeVisible(); await shot("detail-pill-hover"); },
+      "detail-search": async () => {
+        await open(); await openSheet("Contact roster"); await page.getByRole("searchbox", { name: "Search this sheet" }).fill("person1"); await expect(page.locator("mark").first()).toBeVisible(); await shot("detail-search");
+      },
+      "detail-tabs": async () => {
+        await open(); await openSheet("Contact roster"); await expect(page.getByRole("tab", { name: /^Roster/u })).toContainText("Runs"); await shot("detail-tabs");
+        await page.getByRole("tab", { name: "Terminated", exact: true }).click(); await expect(page.getByText("View only. Runs read Roster.")).toBeVisible(); await shot("detail-tab-terminated");
+        await page.getByRole("button", { name: "Menu for Notes", exact: true }).click(); await shot("detail-tab-menu");
+        await page.getByRole("menuitem", { name: "Use for runs", exact: true }).click(); await expect(page.getByRole("tab", { name: /^Notes/u })).toContainText("Runs"); await shot("detail-tab-notes-runs");
+      },
       "detail-columns": async () => { await open(); await openSheet("Contact roster"); await page.getByRole("button", { name: /^Columns/u }).click(); await shot("detail-columns"); },
       "detail-unmapped": async () => {
         await open(); await openSheet("I-9 tracker"); const pill = page.getByRole("button", { name: /^Email column/u }); await expect(pill).toContainText("Choose column"); await shot("detail-unmapped");
@@ -80,7 +93,10 @@ for (const theme of ["light", "dark"] as const) {
       "import-columns": async () => {
         await open(); await page.getByRole("button", { name: "Import", exact: true }).click(); await dialog().locator('input[type="file"]').setInputFiles(file);
         await dialog().getByRole("button", { name: "Next", exact: true }).click(); await expect(dialog().getByRole("button", { name: "Back", exact: true })).toBeVisible(); await shot("import-columns");
-        await dialog().getByRole("button", { name: /^Email column/u }).click(); await shot("import-pill-open"); await page.keyboard.press("Escape");
+        await expect(dialog().getByRole("tab", { name: /^Contacts/u })).toContainText("Runs");
+        await dialog().getByRole("button", { name: /^Email column/u }).click(); await expect(page.getByRole("tooltip")).toHaveCount(0); await shot("import-pill-open"); await page.keyboard.press("Escape");
+        await dialog().getByRole("button", { name: /^Email column/u }).hover(); await shot("import-pill-hover-unmapped");
+        await dialog().getByRole("tab", { name: "Archive", exact: true }).click(); await shot("import-tab-archive"); await dialog().getByRole("tab", { name: "Contacts", exact: true }).click();
         await dialog().getByRole("button", { name: /^Employee ID column/u }).hover(); await shot("import-pill-hover"); await page.mouse.move(0, 0);
         await dialog().getByRole("button", { name: "Add to library", exact: true }).click(); await expect(dialog()).toHaveCount(0); await expect(page.getByRole("listitem", { name: "Contacts export", exact: true })).toBeVisible(); await shotPage("import-added");
       },
@@ -94,7 +110,7 @@ for (const theme of ["light", "dark"] as const) {
         await menu("I-9 tracker"); await expect(page.getByRole("menuitem", { name: /^Merge/u })).toHaveCount(0);
       },
       merge: async () => {
-        await open(); await menu("PL33065442", "Merge into I-9 tracker"); await expect(dialog().getByText("Merge PL33065442 into I-9 tracker?")).toBeVisible(); await expect(dialog().getByText("12 added · 3 updated", { exact: false })).toBeVisible(); await shot("merge");
+        await open(); await menu("PL33065442", "Merge into I-9 tracker"); await expect(dialog().getByText("Merge PL33065442 into I-9 tracker?")).toBeVisible(); await expect(dialog().getByText("12 added · 3 updated.", { exact: false })).toBeVisible(); await shot("merge");
         await dialog().getByRole("button", { name: "Merge", exact: true }).click(); await expect(dialog()).toHaveCount(0); await expect(page.getByRole("listitem", { name: "PL33065442", exact: true })).toHaveCount(1);
         await page.getByRole("button", { name: "Versions of I-9 tracker, now v4", exact: true }).click(); await expect(dialog().getByRole("radio", { name: /Merged from PL33065442/u })).toBeVisible(); await shot("rollback-merged");
       },
@@ -104,9 +120,10 @@ for (const theme of ["light", "dark"] as const) {
       },
       rollback: async () => {
         await open(); await page.getByRole("button", { name: "Versions of Contact roster, now v6", exact: true }).click(); await dialog().getByRole("radio", { name: /^v3 /u }).click(); await shot("rollback");
+        await dialog().getByRole("button", { name: "Roll back", exact: true }).click(); await expect(dialog().getByText("Roll back to v3?")).toBeVisible(); await shot("rollback-confirm");
         await dialog().getByRole("button", { name: "Roll back", exact: true }).click(); await expect(page.getByRole("button", { name: "Versions of Contact roster, now v7", exact: true })).toBeVisible();
       },
-      clone: async () => { await open(); await menu("Contact roster", "Clone"); await expect(page.getByRole("listitem", { name: "Contact roster copy", exact: true })).toBeVisible(); await menu("EC51820377", "Clone"); await expect(page.getByRole("listitem", { name: "EC51820377 copy", exact: true })).toBeVisible(); await shotPage("clone"); },
+      clone: async () => { await open(); await menu("Contact roster", "Clone"); await expect(page.getByRole("listitem", { name: "Contact roster copy", exact: true })).toBeVisible(); await expect(page.getByRole("menuitem")).toHaveCount(0); await menu("EC51820377", "Clone"); await expect(page.getByRole("listitem", { name: "EC51820377 copy", exact: true })).toBeVisible(); await shotPage("clone"); },
       delete: async () => {
         await open(); await menu("Contact roster", "Delete"); await expect(dialog().getByText("Delete Contact roster?")).toBeVisible(); await shot("delete");
         await dialog().getByRole("button", { name: "Delete", exact: true }).click(); await expect(page.getByRole("listitem", { name: "Contact roster", exact: true })).toHaveCount(0);

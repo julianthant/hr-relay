@@ -20,7 +20,7 @@ export function SheetDetail({ sheet, sheets, onBack, onOpen, onMap, onRuns, onVe
           <span aria-hidden>·</span><span className="truncate">Updated {stamp(sheet.updatedAt)}</span></div></div>
       <div className="flex shrink-0 items-center gap-1"><V2Button look="plain" className="tabular-nums" aria-label={`Versions, now v${sheet.versions[0].n}`} onClick={onVersion}>v{sheet.versions[0].n}</V2Button><DownloadIcon name={sheet.name} /><SheetMenu sheet={sheet} original={mergeOriginal(sheet, sheets)} label={sheet.name} withDownload={false} onAction={onMenu} /></div>
     </div>
-    <MappingGrid key={worksheet.name} title="Preview" dataset={DATASETS[worksheet.data]} mapping={sheet.mapping} onMap={onMap} viewOnly={worksheet.name === sheet.runsSheet ? undefined : `View only. Runs read ${sheet.runsSheet}.`}
+    <MappingGrid key={worksheet.name} dataset={DATASETS[worksheet.data]} mapping={sheet.mapping} onMap={onMap} viewOnly={worksheet.name === sheet.runsSheet ? undefined : `View only. Runs read ${sheet.runsSheet}.`}
       tabs={sheet.worksheets.length > 1 ? <SheetTabs names={sheet.worksheets.map(item => item.name)} current={worksheet.name} runs={sheet.runsSheet} onSelect={setTab} onUseForRuns={onRuns} /> : undefined} />
   </div>;
 }

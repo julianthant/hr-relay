@@ -9,7 +9,6 @@ type Range = { r0: number; c0: number; r1: number; c1: number };
 type Patch = Partial<Record<FieldKey, string | null>>;
 const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const style = (cell: Cell) => `${cell.bold ? 'font-weight:700;' : ''}${cell.fill ? `background:${cell.fill};` : ''}${cell.align ? `text-align:${cell.align};` : ''}`;
-const WORKFLOWS = [...new Set(FIELDS.flatMap(field => field.usedBy))];
 const tint = (percent: number) => `linear-gradient(color-mix(in srgb, var(--ui-info) ${percent}%, transparent), color-mix(in srgb, var(--ui-info) ${percent}%, transparent))`;
 
 /** One field pill: soft when mapped, dashed and grey when not. Opens the sheet's columns with two sample values each. */
@@ -17,7 +16,7 @@ function FieldPill({ field, dataset, value, onChange, onActive }: { field: Field
   const [open, setOpen] = useState(false);
   return <Tooltip open={open ? false : undefined} content={`Used by ${field.usedBy.join(', ')}`}><span className="inline-flex" onMouseEnter={() => onActive(true)} onMouseLeave={() => !open && onActive(false)} onFocus={() => onActive(true)} onBlur={() => !open && onActive(false)}>
     <DropdownMenu open={open} onOpenChange={next => { setOpen(next); onActive(next); }}><DropdownMenuTrigger render={value
-      ? <V2Button look="soft" aria-label={`${field.label} column, ${value}`}>{field.label} → {value}<ChevronDown size={14} aria-hidden className="text-ui-muted" /></V2Button>
+      ? <V2Button look="soft" aria-label={`${field.label} column, ${value}`}>{value === field.label ? field.label : `${field.label} → ${value}`}<ChevronDown size={14} aria-hidden className="text-ui-muted" /></V2Button>
       : <V2Button look="line" className="!border-dashed !border-[color:var(--ui-stroke-control)] !text-[color:var(--ds-fg-muted)] hover:!border-[color:var(--ui-muted)] focus-visible:!border-[color:var(--ui-muted)] data-[popup-open]:!border-[color:var(--ui-muted)]" aria-label={`${field.label} column, not mapped`}>{field.label} → Choose column<ChevronDown size={14} aria-hidden /></V2Button>} />
       <DropdownMenuContent align="start" className={`min-w-[400px] ${MENU}`}><DropdownMenuGroup><DropdownMenuLabel>{field.label} column</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={value ?? ''} onValueChange={next => onChange(next === '' ? null : next)}>
@@ -35,7 +34,7 @@ const Highlight = ({ text, query }: { text: string; query: string }) => {
 };
 
 /** `viewOnly` (a note) shows the sheet without the mapping strip; `tabs` render under the grid. */
-export function MappingGrid({ title, dataset, mapping: given, onMap, viewOnly, tabs, maxHeight = 'max-h-[min(58vh,440px)]' }: { title: string; dataset: Dataset; mapping: Readonly<Record<FieldKey, string | null>>; onMap: (patch: Patch) => void; viewOnly?: string; tabs?: ReactNode; maxHeight?: string }) {
+export function MappingGrid({ dataset, mapping: given, onMap, viewOnly, tabs, maxHeight = 'max-h-[min(58vh,440px)]' }: { dataset: Dataset; mapping: Readonly<Record<FieldKey, string | null>>; onMap: (patch: Patch) => void; viewOnly?: string; tabs?: ReactNode; maxHeight?: string }) {
   const mapping = viewOnly ? NO_MAPPING : given;
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
@@ -63,22 +62,21 @@ export function MappingGrid({ title, dataset, mapping: given, onMap, viewOnly, t
     try { await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })]); toast({ tone: 'success', title: `Copied ${cellCount === 1 ? '1 cell' : `${cellCount} cells`}` }); }
     catch { toast({ tone: 'danger', title: "Couldn't copy the cells" }); }
   };
-  return <section aria-label={title} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'c' && box) { event.preventDefault(); void copy(); } }}>
-    <div className="mb-2 flex items-center justify-between gap-4"><h2 className="text-[13px] font-semibold">{title}</h2>
-      <div className="flex items-center gap-2">
+  return <section aria-label="Preview" onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'c' && box) { event.preventDefault(); void copy(); } }}>
+    <div className="mb-2 flex items-center justify-between gap-3">
+      {viewOnly ? <Grey>{viewOnly}</Grey> : <div role="group" aria-label="Field mapping" className="flex min-w-0 flex-wrap items-center gap-2">
+        {FIELDS.map(field => <FieldPill key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onActive={on => setActive(current => on ? field.key : current === field.key ? null : current)}
+          onChange={header => { setSelection(undefined); onMap({ [field.key]: header }); }} />)}
+      </div>}
+      <div className="flex shrink-0 items-center gap-2">
         {box && <V2Button onClick={() => void copy()}>Copy</V2Button>}
-        <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" variant="toolbar" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="w-[200px] [&_[data-slot=search-field-group]]:!h-7 [&_[data-slot=search-field-group]]:!min-h-7" />
+        <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" variant="toolbar" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="w-[160px] [&_[data-slot=search-field-group]]:!h-7 [&_[data-slot=search-field-group]]:!min-h-7" />
         <DropdownMenu><DropdownMenuTrigger render={<Picker aria-label="Columns">{unseen ? `Columns · ${unseen} more` : 'Columns'}</Picker>} /><DropdownMenuContent align="end" className={`min-w-[240px] ${MENU}`}><DropdownMenuGroup>
           <DropdownMenuLabel>Show other columns (view only)</DropdownMenuLabel>
           {others.map(header => <DropdownMenuCheckboxItem className={ROW} key={header} checked={extra.includes(header)} onCheckedChange={checked => { setSelection(undefined); setExtra(current => checked ? [...current, header] : current.filter(item => item !== header)); }} onSelect={event => event.preventDefault()}>{header}</DropdownMenuCheckboxItem>)}
         </DropdownMenuGroup></DropdownMenuContent></DropdownMenu>
-      </div></div>
-    {viewOnly ? <div className="mb-2"><Grey>{viewOnly}</Grey></div> : <>
-      <div role="group" aria-label="Field mapping" className="flex flex-wrap items-center gap-2">
-        {FIELDS.map(field => <FieldPill key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onActive={on => setActive(current => on ? field.key : current === field.key ? null : current)}
-          onChange={header => { setSelection(undefined); onMap({ [field.key]: header }); }} />)}
       </div>
-      <div className="mb-2 mt-1.5"><Grey className="block truncate">Used by {WORKFLOWS.join(', ')}</Grey></div></>}
+    </div>
     <div className={`${maxHeight} overflow-auto rounded-md border border-ui-stroke`}>
       <table className="w-full select-none border-collapse text-[12px]">
         <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => <th key={header} style={{ backgroundImage: columnTint(header), boxShadow: mappedOrder.includes(header) ? 'inset 0 2px 0 var(--ui-info)' : undefined }} className="whitespace-nowrap px-2.5 py-1.5 text-left text-[11px] font-medium text-ui-muted">{header}</th>)}</tr></thead>
