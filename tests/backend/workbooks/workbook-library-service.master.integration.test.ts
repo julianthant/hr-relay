@@ -1,4 +1,3 @@
-import { applyProductionConnectionPolicy } from "../../support/helpers/backend/sqlite-connection-policy.js";
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -7,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { z } from 'zod';
 import { Workbook, writeXlsx } from '@shbernal/ts-xlsx';
+import { configureWritableConnection } from '../../../src/backend/storage/sqlite/connection-policy.js';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { encodeSavedWorkbook, type WorkbookOperation } from '../../../src/models/dashboard/workbooks.js';
@@ -17,7 +17,7 @@ const at = IsoInstantSchema.parse('2026-11-02T00:00:00.000Z');
 const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 function open(path = ':memory:', initialize = true) {
-  const database = new DatabaseSync(path); databases.push(database); applyProductionConnectionPolicy(database);
+  const database = new DatabaseSync(path); databases.push(database); configureWritableConnection(database, 5000);
   if (initialize) for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
   const tx = <T>(work: () => T): T => {
     database.exec('BEGIN IMMEDIATE');

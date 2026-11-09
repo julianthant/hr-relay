@@ -15,6 +15,7 @@ import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
 import { DatabaseSync,backup as sqliteBackup } from "node:sqlite";
+import { configureWritableConnection } from "./connection-policy.js";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
@@ -4312,12 +4313,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #configureConnection(): void {
-    this.#database.exec("PRAGMA foreign_keys = ON");
-    // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
-    this.#database.exec("PRAGMA secure_delete = ON");
-    this.#database.exec("PRAGMA journal_mode = WAL");
-    this.#database.exec("PRAGMA synchronous = FULL");
-    this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
+    configureWritableConnection(this.#database, this.#busyTimeoutMs);
   }
 
   #configureReadOnlyConnection(): void {
