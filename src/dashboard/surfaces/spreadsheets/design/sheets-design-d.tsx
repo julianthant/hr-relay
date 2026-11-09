@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronRight, Download, MoreHorizontal } from 'lucide-react';
-import { Badge, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Drawer, DrawerContent, IconButton, useToasts } from '../../../ds/ui.js';
+import { Check, Download, MoreHorizontal } from 'lucide-react';
+import { Badge, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Drawer, DrawerContent, IconButton, dsFocus, useToasts } from '../../../ds/ui.js';
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
 import { ActionDialog, FileMenu, Section, type Actions, type DialogKind } from './sheets-design-page.js';
@@ -15,7 +15,6 @@ const ROWS = 'grid items-center gap-x-4 px-3 py-2.5 text-body';
 const COLS = 'grid-cols-[minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_150px_130px]';
 const COLS_CHECK = 'grid-cols-[22px_minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_150px_130px]';
 const frame = 'overflow-hidden rounded-[10px] border border-ui-stroke';
-const link = 'text-left underline-offset-2 hover:underline';
 const NEEDS = [{ key: 'eid', need: 'EID' }, { key: 'person', need: 'Name' }] as const;
 type Key = (typeof NEEDS)[number]['key'];
 
@@ -28,7 +27,7 @@ function ListHead({ cells, check }: { cells: readonly string[]; check?: ReactNod
 }
 function ListRow({ lead, sub, second, rows, updated, status, end, check, onActivate }: { lead: ReactNode; sub?: ReactNode; second?: ReactNode; rows?: ReactNode; updated?: ReactNode; status?: ReactNode; end?: ReactNode; check?: ReactNode; onActivate?: () => void }) {
   const keys = onActivate ? { tabIndex: 0, onKeyDown: (event: { key: string; target: unknown; currentTarget: unknown; preventDefault: () => void }) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) { event.preventDefault(); onActivate(); } } } : {};
-  return <div onClick={onActivate} {...keys} className={`${ROWS} ${check ? COLS_CHECK : COLS} border-t border-ui-stroke first:border-t-0 ${onActivate ? 'cursor-pointer hover:bg-ui-hover' : ''}`}>{check}
+  return <div onClick={onActivate} {...keys} className={`${ROWS} ${check ? COLS_CHECK : COLS} border-t border-ui-stroke first:border-t-0 ${onActivate ? `cursor-pointer hover:bg-ui-hover ${dsFocus}` : ''}`}>{check && <div onClick={event => event.stopPropagation()}>{check}</div>}
     <div className="min-w-0"><div className="truncate font-medium">{lead}</div>{sub && <div className="text-caption text-ui-muted">{sub}</div>}</div>
     <div className="min-w-0">{second}</div><span className="tabular-nums">{rows}</span><span>{updated}</span>{status !== undefined && <div className="min-w-0">{status}</div>}<div className={`flex items-center justify-end gap-1 ${status === undefined ? 'col-span-2' : ''}`} onClick={event => event.stopPropagation()}>{end}</div>
   </div>;
@@ -48,19 +47,21 @@ function UsedList({ items, sync, actions, onOpen, onReplace }: { items: readonly
   })}</div>;
 }
 
-function ResultsList({ groups, actions, forceOpen }: { groups: readonly ResultGroup[]; actions: Actions; forceOpen: boolean }) {
-  const [open, setOpen] = useState<string[]>(forceOpen && groups[0] ? [groups[0].workflow] : []);
+function ResultsList({ groups, actions }: { groups: readonly ResultGroup[]; actions: Actions }) {
+  const [earlier, setEarlier] = useState<ResultGroup>();
   if (!groups.length) return <p className="hub-sheets-empty rounded-[10px] border border-dashed border-ui-stroke">Workbooks made by workflows will appear here, one for each run.</p>;
   const asOpen = (file: ResultFile) => actions.open({ id: file.id, name: file.name, rows: 0, updatedAt: file.createdAt });
-  const buttons = (file: ResultFile) => <><Button onClick={() => asOpen(file)}>Open</Button><IconButton label={`Download ${file.name}`} icon={<Download size={16} />} /></>;
+  const download = (file: ResultFile) => <IconButton label={`Download ${file.name}`} icon={<Download size={16} />} />;
   return <div className={frame} role="table" aria-label="Results"><ListHead cells={['Workflow', 'Newest workbook', '', 'Created']} />{groups.map(group => {
-    const [newest, ...older] = group.files, expanded = open.includes(group.workflow);
-    return <div key={group.workflow} className="border-t border-ui-stroke first:border-t-0">
-      <ListRow lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} end={buttons(newest)} />
-      {older.length > 0 && <div className="px-3 pb-2"><button type="button" className="flex items-center gap-1 text-caption text-ui-muted hover:text-ui-primary" aria-expanded={expanded} onClick={() => setOpen(current => expanded ? current.filter(name => name !== group.workflow) : [...current, group.workflow])}><ChevronRight size={12} aria-hidden className={expanded ? 'rotate-90' : ''} />{expanded ? 'Hide earlier results' : `${older.length} earlier ${older.length === 1 ? 'result' : 'results'}`}</button></div>}
-      {expanded && <div className="bg-ui-table/40">{older.map(file => <ListRow key={file.id} lead={<span className="font-normal">{file.run}</span>} second={file.name} updated={when(file.createdAt)} end={buttons(file)} />)}</div>}
-    </div>;
-  })}</div>;
+    const [newest, ...older] = group.files;
+    return <ListRow key={group.workflow} lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} onActivate={() => asOpen(newest)}
+      end={<>{download(newest)}{older.length > 0 && <DropdownMenu><DropdownMenuTrigger render={<IconButton label={`Actions for ${newest.name}`} icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setEarlier(group)}>Earlier results ({older.length})</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}</>} />;
+  })}
+    <Dialog open={!!earlier} onOpenChange={open => { if (!open) setEarlier(undefined); }}><DialogContent className="launch-design" size="md" title="Earlier results" description={earlier?.workflow}>
+      <DialogBody><ul className="divide-y divide-ui-stroke rounded-[7px] border border-ui-stroke">{earlier?.files.slice(1).map(file => <li key={file.id} className="flex items-center gap-3 px-3 py-2">
+        <button type="button" className={`min-w-0 flex-1 rounded-[5px] text-left hover:bg-ui-hover ${dsFocus}`} onClick={() => asOpen(file)}><span className="block truncate text-body font-medium">{file.name}</span><span className="block text-caption text-ui-muted">{file.run}, {when(file.createdAt)}</span></button>{download(file)}</li>)}</ul></DialogBody>
+      <DialogFooter><Button variant="muted" onClick={() => setEarlier(undefined)}>Close</Button></DialogFooter>
+    </DialogContent></Dialog></div>;
 }
 
 function OtherList({ files, sync, actions }: { files: readonly SheetFile[]; sync: string | null; actions: Actions }) {
@@ -71,9 +72,9 @@ function OtherList({ files, sync, actions }: { files: readonly SheetFile[]; sync
     {selected.length > 0 && <div className="flex items-center gap-2 border-b border-ui-stroke bg-ui-table px-3 py-2 text-body"><span className="flex-1">{selected.length} selected</span><Button disabled={selected.length < 2} onClick={() => actions.dialog('merge', selected)}>Merge</Button><Button onClick={() => actions.dialog('remove', selected)}>Remove</Button><Button onClick={() => setSelection([])}>Clear</Button></div>}
     <div role="table" aria-label="Other spreadsheets"><ListHead cells={['Spreadsheet', 'Source', 'Rows', 'Updated']} check={<Checkbox label={<span className="sr-only">Select all spreadsheets</span>} checked={selection.length === files.length ? true : selection.length ? 'indeterminate' : false} onCheckedChange={checked => setSelection(checked ? files.map(file => file.id) : [])} />} />
       {files.map(file => <ListRow key={file.id} check={<Checkbox label={<span className="sr-only">Select {file.name}</span>} checked={selection.includes(file.id)} onCheckedChange={checked => setSelection(current => checked ? [...current, file.id] : current.filter(id => id !== file.id))} />}
-        lead={<button type="button" title={file.name} className={`${link} block max-w-full truncate`} onClick={() => actions.open(file)}>{file.name}</button>}
+        lead={<span title={file.name}>{file.name}</span>} onActivate={() => actions.open(file)}
         second={file.sharePoint ? <><div>SharePoint</div>{sync === 'failed' ? <span className="flex items-center gap-1.5 text-caption text-ui-muted"><Dot />Sync failed</span> : sync === 'ok' ? <span className="text-caption text-ui-muted">Synced 5 min ago</span> : null}</> : 'This Mac'} rows={file.rows.toLocaleString()} updated={when(file.updatedAt)}
-        end={<><Button onClick={() => actions.versions(file, 'other')}>Versions</Button><FileMenu file={file} kind="other" actions={actions} label={file.name} /></>} />)}
+        end={<FileMenu file={file} kind="other" actions={actions} label={file.name} />} />)}
     </div></div>;
 }
 
@@ -137,7 +138,7 @@ export function SheetsDesignD() {
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page hub-sheets-library min-w-0 text-body">
     {head}
     <Section title="Used by workflows"><UsedList items={refs} sync={sync} actions={actions} onOpen={(id, columns) => setDrawer({ id, columns })} onReplace={setReplacing} /></Section>
-    <Section title="Results"><ResultsList groups={results} actions={actions} forceOpen={sheetsParam('relaySheetsExpanded') === '1'} /></Section>
+    <Section title="Results"><ResultsList groups={results} actions={actions} /></Section>
     <Section title="Other spreadsheets"><OtherList files={others} sync={sync} actions={actions} /></Section>
     <ReferenceDrawer key={drawer?.id ?? 'closed'} item={refs.find(item => item.id === drawer?.id)} focusColumns={drawer?.columns ?? false} onClose={() => setDrawer(undefined)} onSave={saveColumns} onReplace={id => { setDrawer(undefined); setReplacing(id); }} />
     <ReplaceDialog key={replacing ?? 'none'} item={refs.find(item => item.id === replacing)} onClose={() => setReplacing(undefined)} onConfirm={replaced} />

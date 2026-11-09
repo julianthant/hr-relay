@@ -31,7 +31,11 @@ test("sheets design D scenes @ light 1280x720", async ({ page }) => {
   const scenes: Record<string, () => Promise<void>> = {
     "d-all": async () => { await open({ relaySheetsScenario: "all" }); await shot("d-all"); await scrollTo("Other spreadsheets"); await shot("d-all-other"); },
     "d-many": async () => { await open({ relaySheetsScenario: "many" }); await shot("d-many"); await scrollTo("Results"); await shot("d-many-results"); await scrollTo("Other spreadsheets"); await shot("d-many-other"); },
-    "d-many-expanded": async () => { await open({ relaySheetsScenario: "many" }); await page.getByRole("button", { name: "2 earlier results", exact: true }).click(); await scrollTo("Results"); await shot("d-many-expanded"); },
+    "d-many-earlier": async () => {
+      await open({ relaySheetsScenario: "many" }); await scrollTo("Results");
+      await page.getByRole("button", { name: "Actions for Emergency contacts 0412.xlsx", exact: true }).click(); await shot("d-many-results-menu");
+      await page.getByRole("menuitem", { name: "Earlier results (2)", exact: true }).click(); await expect(dialog()).toBeVisible(); await shot("d-many-earlier-results");
+    },
     "drawer": async () => { await open({ relaySheetsScenario: "all" }); await used().getByText("OCR roster", { exact: true }).click(); await expect(dialog()).toBeVisible(); await shot("drawer"); },
     "fix-columns": async () => {
       await open({ relaySheetsScenario: "all" }); await used().getByText("I-9 action history", { exact: true }).click(); await expect(dialog()).toBeVisible();
