@@ -10,6 +10,7 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
+import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 
 /** What the operator has asked this worker to do; only commands write it. */
 export const WorkerDirectiveSchema = z.enum(["run", "pause", "stop"]);
@@ -26,6 +27,10 @@ export type WorkerControl = z.infer<typeof WorkerControlSchema>;
 
 export const WorkerStopReasonSchema = z.enum(["operator", "shutdown", "crashed"]);
 export type WorkerStopReason = z.infer<typeof WorkerStopReasonSchema>;
+/** Stop directives Relay writes itself when it drains workers; a lifetime they end stopped for shutdown, not by the operator. */
+export const WORKER_SHUTDOWN_STOP_REASON = "application-shutdown";
+export const WORKER_LOGOUT_STOP_REASON = "profile-logout";
+export const isDrainStopReason = (reason: string | undefined): boolean => reason === WORKER_SHUTDOWN_STOP_REASON || reason === WORKER_LOGOUT_STOP_REASON;
 
 /** The descriptor's ordered browser-system set, frozen when this worker lease starts. */
 export const WorkerBrowserSystemsSchema = z.array(BrowserSystemIdSchema).superRefine((systems, context) => {
@@ -51,6 +56,8 @@ export const WorkerLifecycleSchema = z.discriminatedUnion("state", [
     startedAt: IsoInstantSchema,
     stoppedAt: IsoInstantSchema,
     reason: WorkerStopReasonSchema,
+    /** A crashed lifetime's named refusal, shown on its card. */
+    failureCode: ErrorCatalogCodeSchema.optional(),
   }),
 ]);
 export type WorkerLifecycle = z.infer<typeof WorkerLifecycleSchema>;

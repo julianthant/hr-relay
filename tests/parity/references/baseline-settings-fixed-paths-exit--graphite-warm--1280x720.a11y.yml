@@ -46,8 +46,6 @@
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR": OCR 0 · 5
-      - listitem:
         - button "CRM Doc Download": CRM Doc Download 0 · 1
       - listitem:
         - button "SharePoint Download": SharePoint Download 0 · 1
@@ -361,8 +359,7 @@
 - status
 - region "Session Panel":
   - group "Session actions":
-    - button "Sessions"
-    - text: 2 running 1 starting 1 idle
+    - button "Sessions 2 running·1 starting·1 idle"
     - button "Add workers"
     - button "Settings"
     - button "Log out"

@@ -33,6 +33,7 @@ import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 import { assertStoppedProfileResourcesClosed } from "../../../../src/backend/storage/maintenance/profile-custody.js";
+import { BrowserRootUnavailableError } from "../../../../src/backend/storage/browser-roots.js";
 
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
@@ -78,7 +79,7 @@ async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, e
   const member = workerPoolMember(slot), children: FakeWorkerChild[] = [];
   stopped(h, workerId);
   let nextPid = process.pid + 10000;
-  const gates: { beforeBirth: () => Promise<void>; beforeClose: () => Promise<void>; close?: (commandId: string) => Promise<void> } = { beforeBirth: async () => undefined, beforeClose: async () => undefined };
+  const gates: { beforeBirth: () => Promise<void>; beforeClose: () => Promise<void>; close?: (commandId: string) => Promise<void>; beforeRetirement?: () => void } = { beforeBirth: async () => undefined, beforeClose: async () => undefined };
   const faults: Error[] = [];
   const supervisor = createDashboardWorkerProcessSupervisor({
     onExit: () => undefined,
@@ -114,6 +115,7 @@ async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, e
       return { requestedAt: directive.requestedAt, leaseVersions: { before: lease.version, after: controlled.lease.version } };
     } },
     proveRetirement: target => {
+      gates.beforeRetirement?.();
       h.database.assertWorkerLifecycleRelease(workerId);
       return { proof: WorkerRetirementProofSchema.parse({ workerId, membershipRevision: target.membershipRevision, checkedAt: h.authority.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true }),
         assertCurrent: () => { h.database.assertWorkerLifecycleRelease(workerId); } };
@@ -250,6 +252,25 @@ describe("exact lifecycle reservation", () => {
     expect(controlled).toBe(true);
     expect(report.outcomes.map(outcome => outcome.state)).toEqual(["done"]);
     expect(h.database.authority.workerControls.get(f.record.commandId)?.phase.state).toBe("succeeded");
+  });
+
+  it("Retry initialization probes each system's browser profile before its warm sign-in", async () => {
+    const h = await fixture(), f = await retryStarting(h, "initialize", true);
+    if (f.binding.operation.kind !== "retry") throw new Error("missing retry");
+    const configFingerprint = f.binding.operation.configFingerprint;
+    const calls: string[] = [];
+    const sessionFactory = { ...h.deps.sessionFactory,
+      probeProfile: async (input: Parameters<typeof h.deps.sessionFactory.probeProfile>[0]) => { calls.push(`probe:${input.system}`); return h.deps.sessionFactory.probeProfile(input); },
+      open: async (input: Parameters<typeof h.deps.sessionFactory.open>[0]) => { calls.push(`open:${input.system}`); return h.deps.sessionFactory.open(input); } };
+    await runWorkerLoop({ ...h.deps, sessionFactory,
+      browserObservation: observation => { h.database.authority.workerControls.observe({ ...observation, leaseGeneration: f.lease.leaseGeneration }); },
+      initialize: async (sessions, signal) => {
+        await initializeRetryWorker({ database: h.database, commandId: f.record.commandId, leaseGeneration: f.lease.leaseGeneration,
+          descriptor: personLookupDescriptor, configFingerprint, sessions, signal, clock: h.authority.clock, scheduler: h.scheduler });
+      },
+    });
+    expect(calls).toEqual(["probe:ucpath", "open:ucpath", "probe:crm", "open:crm"]);
+    expect(h.database.authority.workerControls.get(f.record.commandId)?.readiness?.state).toBe("ready");
   });
 
   it("Stop aborts actual Retry authentication and durably releases readiness before the next real claim", async () => {
@@ -593,13 +614,29 @@ describe("exact lifecycle reservation", () => {
     const kernel = kernelOver(h.database, h.authority.clock, pool), command = request(h, h.deps.workerId, "retry-worker");
     expect(await kernel.executeWorkerPool(command)).toMatchObject({ state: "pending" }); await preparing;
     const drain = owner.supervisor.drainOwnedChildren(WorkerStopDirectiveContextSchema.parse({ requestedAt: command.requestedAt, requestedBy: "local-operator" }));
-    const failedDrain = expect(drain).rejects.toThrow("could not observe every owned worker exit");
-    release(); await failedDrain;
+    release(); await drain;
     expect(owner.children).toHaveLength(1);
     expect(h.database.authority.workerLeases.get(h.deps.workerId)?.leaseGeneration).toBe(2);
-    expect(h.database.authority.workerControls.get(command.commandId)?.phase.state).toBe("uncertain");
-    expect(h.database.authority.commandAudits.findByCommand(command.commandId)).toBeUndefined();
+    expect(h.database.authority.workerControls.get(command.commandId)).toMatchObject({ phase: { state: "refused", message: "worker-lifecycle-supervisor-unavailable" } });
+    expect(h.database.authority.commandAudits.findByCommand(command.commandId)?.result).toMatchObject({ state: "rejected" });
+    expect(await kernel.executeWorkerPool(command)).toMatchObject({ state: "rejected" });
+  });
+
+  it("refuses a Retry whose retirement proof fails before birth and still drains clean", async () => {
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
+    stopped(h, h.deps.workerId); owner.children[0]?.emitExit(1, null);
+    owner.gates.beforeRetirement = () => { throw new BrowserRootUnavailableError(); };
+    const pool = createWorkerPoolRuntimeExecutor(owner.supervisor, h.database.authority.workerSlots, { database: h.database, clock: h.authority.clock });
+    const kernel = kernelOver(h.database, h.authority.clock, pool), command = request(h, h.deps.workerId, "retry-worker");
     expect(await kernel.executeWorkerPool(command)).toMatchObject({ state: "pending" });
+    for (let turn = 0; turn < 20 && h.database.authority.workerControls.get(command.commandId)?.phase.state === "executing"; turn += 1) await new Promise<void>(resolve => { setImmediate(resolve); });
+    expect(h.database.authority.workerControls.get(command.commandId)).toMatchObject({ phase: { state: "refused", message: "worker-retry-never-started" } });
+    expect(h.database.authority.workerControls.get(command.commandId)?.auditedAt).toBeDefined();
+    expect(h.database.authority.commandAudits.findByCommand(command.commandId)?.result).toMatchObject({ state: "rejected" });
+    expect(h.database.authority.workerLeases.get(h.deps.workerId)?.controlCommandId).toBeUndefined();
+    expect(owner.children).toHaveLength(1);
+    expect(owner.faults).toEqual([]);
+    await owner.supervisor.drainOwnedChildren(WorkerStopDirectiveContextSchema.parse({ requestedAt: command.requestedAt, requestedBy: "local-operator" }));
   });
 
   it("refuses an unborn uncertain Retry at startup and leaves a clean stop", async () => {

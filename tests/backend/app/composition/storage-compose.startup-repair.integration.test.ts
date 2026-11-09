@@ -42,6 +42,8 @@ const held = {
   foreign: "STORAGE_AUTOMATIC_REPAIR_REFUSED",
   future: "STORAGE_PROFILE_NEWER_VERSION",
   unsupported: "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
+  "unpublished-assistant26": "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
+  "unpublished-assistant26-projection-missing": "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
   "recovery-refusal": "STARTUP_CRASH_RECOVERY_REFUSED",
 } as const;
 
@@ -70,6 +72,9 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
       } else if (state === "future" || state === "unsupported") {
         const version = state === "future" ? CURRENT_AUTHORITY_SCHEMA_VERSION + 1 : 7;
         native.exec(`BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=${version} WHERE id=1; PRAGMA user_version=${version}; COMMIT`);
+      } else if (state === "unpublished-assistant26" || state === "unpublished-assistant26-projection-missing") {
+        native.exec("DROP INDEX timeline_worker_claim_idx; UPDATE database_states SET schema_version=26; PRAGMA user_version=26");
+        if (state === "unpublished-assistant26-projection-missing") native.exec("DROP TABLE run_search");
       } else if (state === "unknown-record-field") {
         assert.equal(native.prepare("UPDATE settings SET payload_json=json_set(payload_json,'$.fieldFromANewerBuild',true) WHERE id='current'").run().changes, 1);
       } else if (state !== "recovery-refusal") native.exec(state === "critical-fence-missing" ? "DROP TABLE write_attempts" : "DROP TABLE run_search");

@@ -2,8 +2,34 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { BrowserSystemIdSchema } from "../../../../src/rules/identity/ids.js";
-import { BrowserLoginError, BrowserLandingStallError, DuoTerminalRefusalError, browserLoginFailure } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import {
+  BrowserLoginError,
+  BrowserLandingStallError,
+  DuoTerminalRefusalError,
+  browserLoginFailure,
+  ucpathMaintenanceFailureCode,
+} from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import type { BrowserLandingStallCode } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+
+it("maps the UCPath maintenance page to its own code and leaves discovery, SSO and the application unchanged", () => {
+  const maintenance = "https://ucpath-notifications.universityofcalifornia.edu/ucpath-maintenance.html";
+  assert.equal(ucpathMaintenanceFailureCode(maintenance), "UCPATH_MAINTENANCE");
+  assert.equal(ucpathMaintenanceFailureCode(`${maintenance}?notice=1#later`), "UCPATH_MAINTENANCE");
+  const error = new BrowserLoginError("ucpath", "navigate-login-entry", "private diagnostic", maintenance, undefined, "UCPATH_MAINTENANCE");
+  assert.equal(error.code, "UCPATH_MAINTENANCE");
+  assert.equal(error.message, ERROR_CATALOG.UCPATH_MAINTENANCE.text);
+  assert.equal(error.message, "UCPath is down for maintenance. Try again later.");
+  assert.doesNotMatch(error.message, /private diagnostic/);
+  for (const unchanged of [
+    "https://ucpath.universityofcalifornia.edu/ucpathdiscovery/disco?entity=ucsd",
+    "https://a5.ucsd.edu/idp/profile/SAML2/Redirect/SSO",
+    "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app",
+    "https://ucpath-notifications.universityofcalifornia.edu/other.html",
+    "https://ucpath.universityofcalifornia.edu/ucpath-maintenance.html",
+  ]) {
+    assert.equal(ucpathMaintenanceFailureCode(unchanged), undefined, unchanged);
+  }
+});
 
 it("maps every browser system to its own fixed sign-in failure and retains diagnostic metadata", () => {
   const cause = new Error("original diagnostic");

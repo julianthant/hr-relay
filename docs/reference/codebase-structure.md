@@ -1,6 +1,7 @@
 # Codebase structure
 
 This map names the current source, test, and documentation owners. Relay runs locally for one operator.
+[Project vocabulary](terminology.md) describes workflow and dashboard terms.
 
 ## Repository folders
 
@@ -29,7 +30,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 owns the contract fingerprint and build id.
 `npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Git worktrees live in its gitignored `.worktrees/<branch>/` folder.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Git instructions](../../AGENTS.md#git) own worktree naming and lifecycle.
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
@@ -82,7 +83,7 @@ Paths in this table are relative to `src/backend/`.
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` composes credential maintenance assessment, including stopped machine-control inventory; `storage/maintenance/profile-inventory.ts` owns canonical copy/resource membership and retained browser-root validation shared with stopped READY-profile upgrade. Its required `ProfileBrowserClosure` port binds browser work to the actual runtime admission or the finite flat-store lease. `storage/maintenance/upgrade.ts` runs profile SQLite upgrade and the separate stopped machine-control upgrade. `storage-compose.ts` coordinates registered READY-person health and backed-up forward migration before dashboard runtime admission; ordinary sign-in remains current-only. `storage/maintenance/existing-data-backup.ts` owns the raw-byte flat native6 archive writer for startup migration and stopped CLI backup; registered-person SQLite backups remain in `upgrade.ts`. `storage/maintenance/existing-data-backup-files.ts` owns strict schema2 flat archive source/receipt membership, private copy and independent verification without opening authority databases. `storage/maintenance/cancel-queued-runs.ts` owns digest-bound offline cancellation of never-claimed flat native6 queues, using the finite `AuthorityDatabase.cancelQueuedRunsNative6` transaction and shared run transition/row-update primitives; `storage/maintenance/process-closure.ts` supplies the current startup and offline process/open-file/cwd absence checks. `storage/admission/bootstrap-admission.ts` runs the verified flat-store start-clean migration before profile composition; `installation.ts` owns its durable deletion intent and empty-registry publication. |
 | `app/composition/dashboard/` | `compose.ts` retains the public exports. `runtime-contracts.ts` owns runtime and input contracts. `runtime-startup.ts` owns the public runtime wrapper and reverse startup unwind; `runtime-resources.ts` owns synchronous environment and authority preparation. `worker-process.ts` owns worker launch, control and spawning. `profile-session-routes.ts` owns public profile, session and onboarding routes and application HTTP binding. `shutdown-custody.ts` owns runtime detach, application stop and backup custody classification. `timeline.ts` owns timeline admission and polling. `write-safety.ts` binds write resolution, canonical artifacts, intake parsing and trust readers. `notification-wiring.ts` binds notification publication and route projections. `dashboard-wiring.ts` owns async startup orchestration, service and worker wiring, shell and API assembly, HTTP startup and observer polling. |
 | `app/registries/` | Workflow module composition from `src/workflows/registry.ts`, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |
-| `logs/` | Spans, observed data, artifacts, confirmed actions, declared step results, and diagnostics. `debug-events.ts` owns repository-backed debug persistence and redaction. `emergency-faults.ts` constructs boot faults for the native local timeline spool. `duo-diagnostics.ts` writes closed Duo codes and timings under the admitted machine root’s `logs/`, rotating four files of at most 256 KiB each; request and profile identifiers never enter these files. |
+| `logs/` | Spans, observed data, artifacts, and diagnostics. `debug-events.ts` owns repository-backed debug persistence and redaction. `emergency-faults.ts` constructs boot faults for the native local timeline spool. `duo-diagnostics.ts` writes closed Duo codes and timings under the admitted machine root’s `logs/`, rotating four files of at most 256 KiB each; request and profile identifiers never enter these files. |
 | `logs/diagnostics/` | Diagnostic capture and retention. |
 | `processing/` | Extraction, normalization, OCR, provider calls, roster processing, and spreadsheets. Task families register beside their implementations. `providers/nominatim-owner.ts` owns the parent serial geocode queue and worker IPC client; `providers/geocode-adapters.ts` owns provider request/response mapping. `ocr/tasks/read-approved-records.ts` exposes that read to workflow graphs. `providers/chatgpt-ocr-adapter.ts` owns the fixed OCR model and scoped page reader shared by the canonical provider adapter and the fixed Settings diagnostic. |
 | `profiles/` | Control-authenticated registry, credential inventory and session authority. `profile-session.ts` owns private draft/session publication, `profile-onboarding.ts` owns issued draft attempts and verified method receipts, and `onboarding-duo.ts` defines the provider capability contract. Browser enrollment lives in `runtime/browser/onboarding-duo-provider.ts`. `profile-errors.ts` owns shared profile refusals. Native verifier publication and its cryptography live in `storage/configuration/verifier-store.ts` and `storage/configuration/synthetic-verifier.ts`. Browser-safe schemas live in `models/profiles/`. |
@@ -116,10 +117,10 @@ Paths in this table are relative to `src/backend/`.
 | --- | --- |
 | `src/cli.ts` | CLI entrypoint. |
 | `src/dashboard/app/` | Renderer composition, navigation, commands, and workflow data-source selection. `navigation/run-navigation.ts` validates exact served day/run destinations for notifications, search and linked Queue chips before opening Logs. |
-| `src/dashboard/client/` | Shared backend client, queries, commands, and subscriptions. |
-| `src/dashboard/ds/` and `src/dashboard/kit/` | Design system and shared UI components. |
-| `src/dashboard/state/` and `src/dashboard/lib/` | Renderer state and utilities. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |
-| `src/dashboard/surfaces/` | Product screens and their view models. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
+| `src/dashboard/client/` | Shared backend transport, entered through `index.ts`, `queries.ts` and `commands.ts`, plus subscriptions. |
+| `src/dashboard/ds/` and `src/dashboard/kit/` | Design system and specimen preview. `ds/ui.tsx` is the barrel; `primitives/` and `theme/` implement it. `kit.html` is the separate preview entry. |
+| `src/dashboard/state/` and `src/dashboard/lib/` | Resource hooks, bootstrap, day and served clock state; framework-free utilities live in `lib/`. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |
+| `src/dashboard/surfaces/` | Feature components, sibling `*-model.ts` view models, styles and mock producers. `surfaces/shared/` holds cross-feature components. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. `failures/error-origins.ts` owns the closed constructor-bound cause vocabulary and its value-free serializer shared by backend events and browser reports. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
 | `src/models/storage/file-identity.ts` | Exact JSON file-identity values shared by credential, installation and logout witnesses: safe numbers or canonical decimal strings. |
@@ -130,10 +131,10 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/dashboard/activity-population.ts` | Canonical Analytics population, selected browse, export and AP1 snapshot schemas. `activity-selection.ts` owns the nested AS1 report selection used by summary and XLSX exports. |
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
-| `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer parts, authored walkthrough schema and finite local choice projection. Registered workflow definitions own the content; the Explorer query serves it after definition identity checks. |
+| `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer flow parts the timeline renders. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
 | `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/runtime/build-id.ts` owns the worker-scoped app build id. |
-| `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
+| `src/models/events/` | Timeline, stored confirmed-action, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
 | `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
@@ -219,9 +220,8 @@ sit beside their owning families. Shared packages and renderer code do not load 
 
 ## Tests and evidence
 
-Tests mirror their source modules, including tracked shell scripts. Paths under `src/` drop that prefix; script, Duo, and root configuration
-paths retain their full path. Unit files use `.test.ts`; integration files use `.integration.test.ts`
-beside them. Topic suffixes split larger suites.
+The [root codebase instructions](../../AGENTS.md#codebase) own test naming and source mirroring.
+The resulting layout is:
 
 ```text
 tests/

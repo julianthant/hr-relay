@@ -29,7 +29,7 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
     await expect(logs).toBeVisible();
     if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
   }
-  for (const flow of MOCK_WORKFLOWS) {
+  for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
     if (["person-lookup", "separations"].includes(flow.id)) {
       await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: flow.id, mockRun: `mock:${flow.id}:sample` }))}`);
     } else {
@@ -43,8 +43,7 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
     await expect(logs.getByRole("heading", { level: 2 })).toHaveText(seedMockRuns().find(run => run.workflowId === flow.id)!.subject);
     await expect(page.getByRole("heading", { level: 1, name: `${flow.label} queue`, exact: true })).toBeVisible();
     await attachPresentationReference(page, info, `workflow-queue-logs-${workflowReferenceId(flow.id)}.png`);
-    if (["ocr", "oath-signature", "oath-upload", "emergency-contact", "i9-check-start", "onbase"].includes(flow.id)) {
-      if (flow.id !== "ocr") await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
+    if (["oath-signature", "oath-upload", "emergency-contact", "i9-check-start", "onbase"].includes(flow.id)) {
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
       await attachPresentationReference(page, info, `workflow-records-${workflowReferenceId(flow.id)}.png`);
@@ -85,7 +84,7 @@ for (const theme of PARITY_THEMES) {
       const picker = explorer.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await picker.click();
       const options = await page.locator('[data-slot="select-content"][data-open]').getByRole("option").evaluateAll(nodes => nodes.map(node => ({ label: node.textContent, value: node.getAttribute("data-value") })));
-      expect(options).toHaveLength(15);
+      expect(options).toHaveLength(14);
       await page.keyboard.press("Escape");
       for (const option of options) {
         if (option.value === null) throw new Error("explorer-workflow-option-value-missing");

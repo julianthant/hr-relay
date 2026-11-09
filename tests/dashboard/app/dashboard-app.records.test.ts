@@ -41,7 +41,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
     runId: owner.runId, workflowId: owner.workflowId, traceId: owner.traceId, attempt: owner.attempt, title: owner.title, status: owner.status },
     timeline: { steps: [], events: [] }, gate: { state: "absent", reason: "Fixture read" }, outcome: { state: "absent", reason: "Fixture read" },
     context: { dataFacts: 0, evidenceFacts: 0, attempts: 1 }, captures: { state: "absent", reason: "Not captured" }, availableSections: ["logs", "review"] });
-  const logs = NotePageSchema.parse({ runId: owner.runId, rows: [], notes: [], confirmedActions: [], confirmedActionBindings: [], nextCursor: { state: "absent", reason: "end-of-page" } });
+  const logs = NotePageSchema.parse({ runId: owner.runId, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } });
   const { app } = createFixtureBff();
   const requestedRuns: string[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {

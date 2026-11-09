@@ -10,7 +10,7 @@ import { generateAssistantKnowledge } from "../../../scripts/build/generate-assi
 import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts, loadAssistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 
 const served = () => {
-  const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
+  const sources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources);
   return DESCRIPTORS.filter(descriptor => sources[descriptor.id] === "served");
 };
 

@@ -39,7 +39,6 @@ Every contract has the following fields.
 | `example` | Required output fixture, parsed and canonicalized at declaration. |
 | `requires` | Optional declared secret names. Resolution belongs to [clock, config, and secrets](clock-config-secrets.md). |
 | `providers` | Optional capability list, allowed only on service reads. |
-| `operation` | Optional reusable display structure, checked against this contract. |
 
 The effect adds these fields and capabilities.
 
@@ -53,11 +52,6 @@ The effect adds these fields and capabilities.
 `crm`, `onbase`, `kuali`, `servicenow`, `i9`, `new-kronos`, `old-kronos`, and `sharepoint`.
 Service namespaces are `extraction`, `normalization`, `ocr`, `roster`, and `workbooks`.
 `TaskStoreId` also accepts `workflow:<workflow-id>`.
-
-`operation` uses `TaskOperationDeclaration` in `src/models/workflow/operation-display.ts`.
-It declares semantic actions, logical session and page identity, schema-resolved value slots,
-templates, and pure transforms. It contains no selector or execution authority.
-`assertTaskOperationDeclaration` validates it during sealing.
 
 #### Freshness and provenance policies
 
@@ -158,8 +152,8 @@ A browser store requires the exact declaration object used by all its tasks.
 
 ### 2.3 Task context and observations
 
-`TaskCtxCommon` in `src/workflow-kit/task.ts` exposes `signal`, `log`, `fail`, `recordData`, and
-optional `confirmed`. The remaining members depend on the contract.
+`TaskCtxCommon` in `src/workflow-kit/task.ts` exposes `signal`, `log`, `fail` and `recordData`.
+The remaining members depend on the contract.
 
 | Task | Additional context |
 | --- | --- |
@@ -449,36 +443,10 @@ They receive prior output through typed inputs. They cannot acquire browser sess
 make an external write, or declare provider or artifact capabilities.
 Reusable system operations belong to their system store. Shared pure rules have one home under `src/rules/`.
 
-## 4. Confirmed actions
-
-`TaskCtxCommon.confirmed` is optional. The executor supplies it for an invocation with a complete
-frozen operation display. `src/backend/logs/confirmed-actions.ts` implements `ConfirmedTaskActions`.
-It validates frozen action and verifier identities, execution occurrence, attempt, and physical session.
-
-### 4.1 Action methods
-
-| Method | Required verifier purpose | Result |
-| --- | --- | --- |
-| `read` | `read-validation` | Performed JSON value and confirmed evidence. |
-| `fill` | `readback` | Confirmation only when observed JSON equals the expected value and the matcher accepts it. |
-| `click`, `keypress` | `interaction-effect` | Confirmation of the declared interaction. Undeclared and `external-commit` targets are refused. |
-| `verify` | `read-validation` | Validated JSON observation. |
-| `confirmOutcome` | `read-validation` | Frozen outcome observation: `value` or `empty`. `unavailable` is refused. |
-| `result` | Exact confirmed outcome evidence | `DeclaredStepResult` for the task role. |
-
-### 4.2 Observation and write confirmation
-
-A completed action alone is not a confirmed fact. Its declared verifier must match the observation
-on the same occurrence and browser session.
-The methods cannot confirm a submit. `src/backend/logs/confirmed-submit.ts` and the write sequencer
-own saved-effect publication after protected transaction verification.
-[Dashboard surfaces](dashboard-surfaces.md) owns event presentation and timestamps.
-
-### 4.3 Output isolation
+## 4. Output isolation
 
 `defineTask` freezes the task binding. Each node produces its own typed output.
-A later task receives only its declared input mapping. Confirmed-action evidence cannot mutate
-another node's output or replace a contract schema.
+A later task receives only its declared input mapping and cannot replace a contract schema.
 `decorateTask`, workflow `.decorate`, and `.instrument` hooks are absent.
 
 ## 5. Workflow composition
@@ -582,7 +550,7 @@ remains operator-only. Retrieval mapping still requires live acceptance.
 
 ### 9.3 Instrumentation boundary
 
-The runtime owns spans, observed data, and failure diagnostics. §4 owns confirmed task actions.
+The runtime owns spans, observed data, and failure diagnostics.
 Every declared browser task boundary requires capture before its checkpoint. Browser read
 implementations can declare `screenshots: "task"` to place captures through
 `ctx.captureScreenshot(): Promise<void>` at their own boundaries. Other browser tasks capture

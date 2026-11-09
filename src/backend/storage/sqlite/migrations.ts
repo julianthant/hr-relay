@@ -14,13 +14,13 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 26;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 27;
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
 export const PRE_BUILD_RUN_DELETION_ID = "pre-build-run-deletion:v1";
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -954,6 +954,9 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: 22, statements: [
     `SELECT '${PRE_BUILD_RUN_DELETION_ID}'`,
   ] },
+  { version: 23, statements: [
+    "CREATE INDEX timeline_worker_claim_idx ON timeline_events(json_extract(payload_json,'$.payload.event.workerId'),cursor) WHERE kind='run.claimed'",
+  ] },
   ASSISTANT_HISTORY_MIGRATION,
   ASSISTANT_EFFORT_SCALE_MIGRATION,
   ASSISTANT_ATTACHMENTS_MIGRATION,
@@ -961,8 +964,8 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24 && toSchemaVersion !== 25)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24 && toSchemaVersion !== 25 && toSchemaVersion !== 26)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
@@ -974,14 +977,14 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
     && (version >= 9 || name !== "assistant_model_preference")
-    && (version >= 23 || (name !== "assistant_conversations" && name !== "assistant_messages"))
-    && (version >= 25 || name !== "assistant_attachments")
+    && (version >= 24 || (name !== "assistant_conversations" && name !== "assistant_messages"))
+    && (version >= 26 || name !== "assistant_attachments")
     && (version >= 14 || name !== "exclusive_session_leases")
     && (version >= 17 || !name.startsWith("ocr_"))
     && (version >= 18 || !["workbook_library_state", "workbook_library_actions", "workbook_library_snapshots"].includes(name))
     && (version >= 13 || !["workbook_creations", "workbook_types", "workbook_operations"].includes(name)))];
   // The retired grant table keeps its registry position (after settings) so predecessor content fingerprints are unchanged.
-  if (version < 8 || version >= 26) return names;
+  if (version < 8 || version >= 27) return names;
   const at = names.indexOf("settings") + 1;
   return [...names.slice(0, at), RETIRED_ASSISTANT_GRANT_TABLE, ...names.slice(at)];
 }

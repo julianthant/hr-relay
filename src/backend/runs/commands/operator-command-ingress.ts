@@ -248,7 +248,7 @@ export interface OperatorCommandIngress {
   ): Promise<CommandResult>;
   executeBulk(
     input: unknown,
-    execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse,
+    execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse | Promise<BulkRunCommandResponse>,
   ): Promise<BulkRunCommandResponse>;
 }
 
@@ -299,7 +299,7 @@ export function createOperatorCommandIngress(input: Readonly<{
     },
     executeBulk(
       command: unknown,
-      execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse,
+      execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse | Promise<BulkRunCommandResponse>,
     ): Promise<BulkRunCommandResponse> {
       const intent = parseOperatorBulkCommand(command, input.clock);
       if (intent.state === "refused") return Promise.resolve(intent.response);
@@ -309,7 +309,7 @@ export function createOperatorCommandIngress(input: Readonly<{
             acceptOperatorBulkCommand(intent.request, input.clock, repository));
           return acceptance.state === "refused"
             ? acceptance.response
-            : execute(acceptance.request);
+            : await execute(acceptance.request);
         } catch (error) {
           if (!(error instanceof CommandIdentityConflictError)) throw error;
           return Object.freeze({ state: "refused", code: "command-divergent", message: error.message });

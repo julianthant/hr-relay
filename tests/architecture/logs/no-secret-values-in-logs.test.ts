@@ -505,7 +505,8 @@ function directDiagnosticSinkKind(
     return undefined;
   }
   const receiver = expression.expression;
-  if (ts.isIdentifier(receiver) && sinkContainers.has(receiver.text)) {
+  if (ts.isIdentifier(receiver) && sinkContainers.has(receiver.text)
+    || ts.isPropertyAccessExpression(receiver) && sinkContainers.has(receiver.name.text)) {
     return "all-arguments";
   }
   const receiverName = bindingName(receiver);
@@ -1251,6 +1252,18 @@ describe("no secret values in logs", () => {
       "}",
     ].join("\n"));
     assert.equal(violations.length, 8, violations.join("\n"));
+  });
+
+  it("flags person values in a member logger's fields", () => {
+    const violations = findSecretInterpolations("src/core/field-leak.ts", [
+      "declare const deps: { log: { info(message: string, fields?: object): void } };",
+      "export function leak(ctx: typeof deps, output: { method: string; candidateEids: string[] }) {",
+      '  ctx.log.info("Identity cross-check", { method: output.method, candidateEids: output.candidateEids.join(", ") });',
+      '  deps.log.warn("Identity cross-check", { eids: output.candidateEids });',
+      '  ctx.log.info("Identity cross-check", { method: output.method, candidates: output.candidateEids.length });',
+      "}",
+    ].join("\n"));
+    assert.equal(violations.length, 2, violations.join("\n"));
   });
 
   it("exempts only a canonical imported redaction helper, including an import alias", () => {

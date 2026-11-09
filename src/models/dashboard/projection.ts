@@ -1,6 +1,6 @@
 import { QueueParentSchema } from "./queue-parent.js";
 import { DelegatedRecordRefSchema } from "../workflow/delegated-record.js";
-import { RunPauseSchema } from "../run/record.js";
+import { RunOutcomeSchema, RunPauseSchema } from "../run/record.js";
 import { z } from "zod";
 import { WorkerControlRecordSchema } from "../run/worker-control.js";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
@@ -9,6 +9,7 @@ import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifica
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../rules/notifications/notification-triggers.js";
 /** The two worker vocabularies are IMPORTED, not mirrored; the queue's priority enum is a copy only because the envelope module reaches a checkpoint module. */
 import { WorkerControlBasisSchema, WorkerDirectiveSchema, WorkerStopReasonSchema } from "../run/worker.js";
+import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import { RunSessionOriginSchema } from "../run/session.js";
 import {
@@ -20,6 +21,8 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
+  NodeIdSchema,
+  TaskIdSchema,
   LocalDateSchema,
   NotificationIdSchema,
   PositiveIntSchema,
@@ -164,6 +167,13 @@ export const QueueBusinessOutcomeSchema = z.strictObject({
 });
 export type QueueBusinessOutcome = z.infer<typeof QueueBusinessOutcomeSchema>;
 
+/** A pending Pause or Stop on claimed work: the current step is cancelled, or its fenced save finishes first. */
+export const StepInterruptWireSchema = z.strictObject({
+  action: z.enum(["pause", "stop"]),
+  step: z.enum(["cancel", "finish-write"]),
+});
+export type StepInterruptWire = z.infer<typeof StepInterruptWireSchema>;
+
 const QueueBaseFields = {
   runId: RunIdSchema,
   itemId: ItemIdSchema,
@@ -183,6 +193,7 @@ const QueueBaseFields = {
   pause: RunPauseSchema.optional(),
   pauseControl: z.strictObject({ state: z.enum(["running", "pause-pending", "paused", "unavailable"]),
     expectedVersion: PositiveIntSchema, command: z.enum(["pause", "resume"]).optional() }).optional(),
+  interrupt: StepInterruptWireSchema.optional(),
     /* The scheduling class, read from the run envelope (its one home) exactly as `dryRun` is; there is no absent arm and there must never be one. */
   priority: QueuePrioritySchema,
     /* This run's ORDINAL within its workflow — the footer's `#N`; durable and assigned at enqueue, never derived from a row's position in a day's page. */
@@ -221,6 +232,8 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   status: QueueStatusSchema,
+    /* Who cancelled a cancelled run: the operator, or Relay when the profile logged out or the queue went stale. */
+  cancelledBy: z.enum(["operator", "logout", "stale-queue"]).optional(),
   outcome: QueueBusinessOutcomeSchema.optional(),
   liveMessage: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
@@ -387,6 +400,8 @@ export const WorkerBrowserWireSchema = z.strictObject({
       instance: z.string().optional(), browserMode: z.enum(["headed", "headless"]), configFingerprint: FingerprintSchema }),
     z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
   ]).optional(),
+  /** needs-duo: this worker holds the live Duo lease for the system; signed-out is never served without recorded authentication history. */
+  signIn: z.enum(["signed-in", "signing-in", "needs-duo", "signed-out", "unknown"]).optional(),
 });
 
 /** The browser systems a worker for this workflow may need, independently of whether any session is open yet; this block is descriptor authority, and optional is read-forward compatibility only. */
@@ -398,6 +413,8 @@ export const WorkerBrowserRequirementsWireSchema = z.discriminatedUnion("state",
         context.addIssue({ code: "custom", message: "worker browser requirement systems must be unique" });
       }
     }),
+    /** Required systems with no open, authenticated session. */
+    missing: z.array(BrowserSystemIdSchema).optional(),
   }),
   z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
 ]);
@@ -410,6 +427,26 @@ export const WorkerControlWireSchema = z.strictObject({
     state: z.enum(["admitted", "ready", "executing", "succeeded", "refused", "uncertain"]), at: IsoInstantSchema,
     browserSessionId: BrowserSessionIdSchema.optional(), message: z.string().optional(), unresolved: z.boolean() }).optional(),
 });
+
+/** The run this worker last claimed, read durably so it survives a restart; outcome and endedAt are the run's own terminal facts. */
+export const WorkerLastRunWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema,
+    outcome: RunOutcomeSchema.optional(), endedAt: IsoInstantSchema.optional(),
+    /** The worker's last task span on its claimed attempt; an open span is the step a crashed worker died in. */
+    step: z.strictObject({ nodeId: NodeIdSchema, taskId: TaskIdSchema.optional(), state: z.enum(["open", "failed", "done"]), startedAt: IsoInstantSchema }).optional() }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["no-run-recorded", "run-unavailable"]) }),
+]);
+
+export const WorkerCardUnavailableReasonSchema = z.enum(["worker-member-authority-unavailable", "worker-current-owner-unavailable",
+  "worker-browser-closure-or-health-unavailable", "worker-current-run-authority-unavailable", "worker-lifetime-unavailable",
+  "worker-current-phase-unavailable", "worker-card-unavailable"]);
+
+/** A standing member whose card could not be built; its siblings still serve full cards. */
+export const UnavailableWorkerCardWireSchema = z.strictObject({
+  member: WorkerPoolMemberSchema,
+  workerId: WorkerIdSchema,
+  availability: z.strictObject({ state: z.literal("unavailable"), reason: WorkerCardUnavailableReasonSchema }),
+}).refine(card => card.member.workerId === card.workerId, { path: ["member"], message: "worker card must bind its exact member" });
 
 export const WorkerCardWireSchema = z.strictObject({
   member: WorkerPoolMemberSchema,
@@ -425,6 +462,8 @@ export const WorkerCardWireSchema = z.strictObject({
   endedAt: IsoInstantSchema.optional(),
   /** Present iff the lease is terminal — the recorded reason, never inferred. */
   stopReason: WorkerStopReasonSchema.optional(),
+  /** Present iff the crashed lease recorded its named refusal. */
+  failureCode: ErrorCatalogCodeSchema.optional(),
   currentRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),
@@ -432,9 +471,29 @@ export const WorkerCardWireSchema = z.strictObject({
   browserRequirements: WorkerBrowserRequirementsWireSchema.optional(),
   closedBrowserSystems: z.array(BrowserSystemIdSchema).optional(),
   browsers: z.array(WorkerBrowserWireSchema),
+  /** Failed cards only: the final lease generation's sessions as last observed. */
+  lastBrowsers: z.array(WorkerBrowserWireSchema).optional(),
+  waitingActivity: z.enum(["acquiring", "authenticating", "closing"]).optional(),
+  interrupt: StepInterruptWireSchema.optional(),
+  lastRun: WorkerLastRunWireSchema.optional(),
+  /** Whether the current or last run's steps can be shown; the steps themselves stay on its queue row. */
+  timeline: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present") }),
+    z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["run-not-in-day", "timeline-incompatible", "no-steps-recorded", "run-unavailable"]) }),
+  ]).optional(),
+  availability: z.strictObject({ state: z.literal("available") }).optional(),
   leaseVersion: RowRevisionSchema,
   revision: RowRevisionSchema,
 }).superRefine((card, context) => {
+  if (card.lastRun?.state === "present" && (card.lastRun.outcome === undefined) !== (card.lastRun.endedAt === undefined)) {
+    context.addIssue({ code: "custom", path: ["lastRun"], message: "a last run carries outcome and endedAt together" });
+  }
+  if (card.lastBrowsers !== undefined && card.state !== "failed") {
+    context.addIssue({ code: "custom", path: ["lastBrowsers"], message: "only a failed worker card carries last browsers" });
+  }
+  if (card.waitingActivity !== undefined && card.state !== "waiting") {
+    context.addIssue({ code: "custom", path: ["waitingActivity"], message: "only a waiting worker card carries waitingActivity" });
+  }
   const terminal = card.state === "failed";
   if (terminal !== (card.endedAt !== undefined)) {
     context.addIssue({
@@ -624,6 +683,7 @@ export const DashboardDayWireSchema = z.strictObject({
   attemptHistory: z.array(z.strictObject({ runId: QueueBaseFields.runId, startedAt: QueueBaseFields.startedAt, endedAt: QueueBaseFields.endedAt })).optional(),
   workerOperations: z.array(WorkerControlRecordSchema),
   workerCards: z.array(WorkerCardWireSchema),
+  unavailableWorkerCards: z.array(UnavailableWorkerCardWireSchema).optional(),
   workerAuthority: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), members: z.array(WorkerSlotRecordSchema) }),
     z.strictObject({ state: z.literal("unavailable"), members: z.array(WorkerSlotRecordSchema), reason: z.string().min(1) }),
@@ -649,13 +709,14 @@ export const DashboardDayWireSchema = z.strictObject({
       }
     }
   }
-  requireUnique(day.workerCards.map(({ workerId }) => workerId), "workerCards", context);
+  const cards = [...day.workerCards, ...day.unavailableWorkerCards ?? []];
+  requireUnique(cards.map(({ workerId }) => workerId), "workerCards", context);
   requireUnique(day.workerAuthority.members.map(({ workerId }) => workerId), "workerAuthority", context);
   requireUnique(day.workerOperations.map(({ commandId }) => commandId), "workerOperations", context);
-  if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== day.workerCards.length
-    || day.workerAuthority.members.some(member => member.retiredAt !== null || !day.workerCards.some(card =>
+  if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== cards.length
+    || day.workerAuthority.members.some(member => member.retiredAt !== null || !cards.some(card =>
       card.workerId === member.workerId && card.member.membershipRevision === member.membershipRevision
-      && card.member.ordinal === member.ordinal && card.member.poolIndex === member.poolIndex && card.workflowId === member.workflow)))) {
+      && card.member.ordinal === member.ordinal && card.member.poolIndex === member.poolIndex && card.member.workflowId === member.workflow)))) {
     context.addIssue({ code: "custom", path: ["workerAuthority"], message: "available worker authority requires every exact standing member card" });
   }
   requireUnique(day.workerPools.map(({ workflowId }) => workflowId), "workerPools", context);

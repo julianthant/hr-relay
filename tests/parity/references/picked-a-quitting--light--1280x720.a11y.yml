@@ -1,7 +1,7 @@
 # picked-a-quitting--light--1280x720
 # adapter: fixture
 # fixture: picked-dashboard-a
-# descriptorHash: bb4e6205beffa33f37bd41e635894074c0bc49937b14d51119ae2e411e89e30f
+# descriptorHash: 5902cae11b4a5f7d95e142b7366b807886e3f75ab5b1de56ef7806d2109fd0c6
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: light  variant: default
 # capturedAt: 2026-08-03
@@ -16,51 +16,51 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup 1 · 1
+        - button "Person Lookup": Person Lookup 1
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup 0 · 1
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations 0 · 0
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check 1 · 1
+        - button "I-9 Check"
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
-        - button "Onboarding": Onboarding 0 · 0
+        - button "Onboarding"
       - listitem:
-        - button "Oath Signature": Oath Signature 1 · 1
+        - button "Emergency Contact"
       - listitem:
-        - button "Oath Upload": Oath Upload 1 · 1
+        - button "Oath Signature": Oath Signature 1
       - listitem:
-        - button "Emergency Contact": Emergency Contact 1 · 1
+        - button "Oath Upload": Oath Upload 1
     - heading "Work Study" [level=3]
     - list:
       - listitem:
-        - button "Work-Study": Work-Study 0 · 1
+        - button "Work-Study"
     - heading "Payroll" [level=3]
     - list:
       - listitem:
-        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+        - button "Kronos Pay Rule"
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR": OCR 0 · 5
+        - button "CRM Document Download"
       - listitem:
-        - button "CRM Doc Download": CRM Doc Download 0 · 1
+        - button "OCR"
       - listitem:
-        - button "SharePoint Download": SharePoint Download 0 · 1
+        - button "SharePoint Download"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1 · 1
+        - button "OnBase": OnBase 1
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:
-        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+        - button "Old Kronos Reports"
 - main:
-  - status: Relay quits after runs pause Each run finishes its current step first. A submit in progress is never interrupted.
+  - status: Relay quits after runs pause A save in progress finishes first. Other steps restart on Resume.
   - region "Commands awaiting recovery":
     - text: Command outcome unknown. Review the original request to recover its result.
     - button "Review Quit requested (1 run)"
@@ -68,7 +68,7 @@
   - region "Queue":
     - text: Active 1
     - button "Battistessa, Johnnie — pausing" [pressed]:
-      - text: Battistessa, Johnnie Pausing Pauses after this step finishes 0 / 4 steps 9:52 AM
+      - text: Battistessa, Johnnie Pausing Finishing the save first 0 / 4 steps 9:52 AM
       - button "Attempts for Battistessa, Johnnie": "#1"
       - text: PL42795458 13m 0s
       - button "Cancel run"
@@ -79,7 +79,7 @@
       - combobox "Sort the queue": Newest first
       - button "Attention first" [pressed]
       - button "Pause all runs" [disabled]
-      - status: Finishing current steps; pauses and shutdown are not yet confirmed.
+      - status: Pauses are not yet confirmed. A save in progress finishes first.
     - group "Log date controls":
       - text: Dashboard date*
       - group "Dashboard date*":
@@ -93,18 +93,16 @@
     - navigation "Run timeline":
       - list:
         - listitem:
-          - button "Search for employee · Pauses after this step · 10:05:00": Search for employee Pauses after this step
+          - button "Search for employee · Finishing the save first · 10:05:00": Search for employee Finishing the save first
     - region "Run logs":
       - region "Search for employee":
         - time: 10:05:00
         - heading "Search for employee" [level=3]
         - time: 10:05:00
-        - paragraph: In progress
-        - time: 10:05:00
         - paragraph: Read employee search
     - group:
       - searchbox "Search logs"
-    - status: 2 actions
+    - status: 1 action
     - status
     - button "Copy logs"
     - button "Go to latest action"
@@ -112,8 +110,7 @@
 - status
 - region "Session Panel":
   - group "Session actions":
-    - button "Sessions"
-    - text: 2 running 1 starting 1 idle
+    - button "Sessions 2 running·1 starting·1 idle"
     - button "Add workers"
     - button "Settings"
     - button "Log out"

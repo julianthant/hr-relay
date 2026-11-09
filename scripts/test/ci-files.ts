@@ -44,6 +44,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",
   "tests/backend/storage/sqlite/backup-service.test.ts",
+  "tests/backend/storage/sqlite/migrations.assistant-numbering.integration.test.ts",
   "tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts",
   "tests/backend/storage/sqlite/offline-restore.browser-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/offline-restore.browser-root-predecessor.integration.test.ts",

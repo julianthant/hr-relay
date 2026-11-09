@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { it } from 'vitest';
 import { projectRunLogs, type RunLogSnapshot } from '../../../src/dashboard/state/run-wiring-adapter.js';
 import { workbookReferenceChoiceId } from '../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js';
+import { projectDecision, rowActionOption } from '../../../src/backend/runs/decisions/project-decision.js';
 import { workbookReferenceLogs } from '../../support/fixtures/workbook-reference-choice.js';
 import { RunWorkbookWritesWireSchema, NativeRunEventWireSchema } from '../../../src/models/dashboard/run-detail.js';
 
 function snapshot(state: Parameters<typeof workbookReferenceLogs>[0]): RunLogSnapshot {
   const f = workbookReferenceLogs(state);
   if (f.logs.section !== 'logs') throw new Error('reference logs fixture invalid');
-  return { detail: f.detail, logs: f.logs.payload, sections: [f.workbooks], unavailableEvidence: [],
-    actionEvidence: { state: 'available', events: [], missingPages: [] }, confirmedActionBindings: [] };
+  return { detail: f.detail, logs: f.logs.payload, sections: [f.workbooks], unavailableEvidence: [] };
 }
 const client = { artifactUrl: (id: string) => `/artifacts/${id}` };
 for (const state of ['unavailable', 'available', 'resolved'] as const) it(`places ${state} roster choices by retained native order without duplicating the gate`, () => {
@@ -23,7 +23,7 @@ for (const state of ['unavailable', 'available', 'resolved'] as const) it(`place
   if (decision.entries[0].kind !== 'decision') throw new Error('decision missing');
   assert.equal(decision.entries[0].decision.state, state === 'resolved' ? 'recorded' : state === 'unavailable' ? 'failed' : 'review');
   assert.equal(decision.time === '—', state === 'unavailable');
-  assert.equal(decision.entries[0].decision.actions?.length, state === 'available' ? 1 : 0);
+  assert.equal(decision.entries[0].decision.served?.options.length, state === 'available' ? 1 : undefined);
   if (state !== 'unavailable') assert.equal(projected.timeline.find(stage => stage.id === 'roster-reference')?.stepId, id);
 });
 
@@ -59,4 +59,24 @@ it('keeps two batch members distinct and uses each retained selection time while
   assert.equal(new Set(steps.map(step => step.id)).size, 2);
   assert.notEqual(steps[0].time, steps[1].time);
   assert.ok(steps.every(step => step.entries[0]?.kind === 'decision' && step.entries[0].decision.state === 'recorded'));
+});
+
+it('closes the log with the run-level decision, draws a cancel as a line, and leaves a failed member retry to the header', () => {
+  const base = snapshot('available');
+  const rowActions = [
+    { kind: 'command', key: 'resume', label: 'Resume', command: 'resume' },
+    { kind: 'command', key: 'cancel', label: 'Cancel run', command: 'cancel' },
+  ];
+  const withDecision = (decision: ReturnType<typeof projectDecision>): RunLogSnapshot => ({ ...base, detail: { ...base.detail, decision } });
+  const paused = projectRunLogs(withDecision(projectDecision('paused', [...rowActionOption('resume', 'resume', rowActions), ...rowActionOption('cancel-run', 'cancel', rowActions)])), client);
+  const last = paused.steps.at(-1)!;
+  assert.equal(last.id, 'run-decision'); assert.equal(last.entries[0].kind, 'decision');
+  if (last.entries[0].kind === 'decision') {
+    assert.equal(last.entries[0].decision.state, 'held');
+    assert.deepEqual(last.entries[0].decision.served?.options.map(option => option.id), ['resume', 'cancel-run']);
+  }
+  const cancelling = projectRunLogs(withDecision(projectDecision('cancelling', [])), client).steps.at(-1)!;
+  assert.deepEqual(cancelling.entries.map(entry => entry.kind), ['note']);
+  const member = projectRunLogs(withDecision(projectDecision('member-failed', [{ id: 'retry', send: { via: 'action', actionKey: 'retry-child' } }])), client);
+  assert.equal(member.steps.some(step => step.id === 'run-decision'), false);
 });

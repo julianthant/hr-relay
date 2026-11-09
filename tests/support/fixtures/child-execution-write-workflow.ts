@@ -25,7 +25,7 @@ export const childWriteRecoveryRoot = compileWorkflow(defineWorkflow({ id, versi
     return { steps: [[{ key: "write", label: "Write child" }, [child]]], result: result(output, [child], ({ outputs }) => {
       if (outputs.write.state !== "done") throw new Error("write-child-not-done");
       return outputs.write.output;
-    }, [{ path: "transactionId", source: { kind: "child-output", entryId: "write", path: "transactionId" } }]) };
+    }) };
   } }));
 
 const crashChildId = "fixture-child-crash-write", crashRootId = "fixture-child-crash-write-root";
@@ -53,7 +53,7 @@ export const childCrashWriteRoot = compileWorkflow(defineWorkflow({ ...crashComm
     return { steps: [[{ key: "write", label: "Write child" }, [child]]], result: result(output, [child], ({ outputs }) => {
       if (outputs.write.state !== "done") throw new Error("write-child-not-done");
       return outputs.write.output;
-    }, [{ path: "transactionId", source: { kind: "child-output", entryId: "write", path: "transactionId" } }]) };
+    }) };
   } }));
 
 export function childCrashWriteModules(world: WriteFixtureWorld) {
@@ -79,11 +79,7 @@ export const childPrerequisiteRoot = compileWorkflow(defineWorkflow({ ...crashCo
       [{ key: "child", label: "Child" }, [child]]], result: result(Plan1Output, [child], ({ outputs }) => {
       if (outputs.child.state !== "done") throw new Error("child-not-done");
       return outputs.child.output;
-    }, [
-      { path: "eid", source: { kind: "child-output", entryId: "child", path: "eid" } },
-      { path: "disposition", source: { kind: "child-output", entryId: "child", path: "disposition" } },
-      { path: "providerState", source: { kind: "child-output", entryId: "child", path: "providerState" } },
-    ]) };
+    }) };
   } }));
 
 export const childReadPreviewRoot = compileWorkflow(defineWorkflow({ ...crashCommon,

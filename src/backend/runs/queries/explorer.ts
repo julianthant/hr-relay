@@ -37,13 +37,11 @@ import {
   type SourceLinkWire,
   type WorkflowExplorerWire,
 } from "../../../models/dashboard/explorer.js";
-import type { ExplorerOperationStructureWire } from "../../../models/dashboard/operation-structure.js";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import type { UiTaskLink } from "../../systems/ui-task-links.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { currentBuildId } from "../../runtime/build-id.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import {
@@ -538,20 +536,6 @@ function proseWire(
     : { state: "authored", text };
 }
 
-function operationStructureWire(descriptor: AnyWorkflowDescriptor): ExplorerOperationStructureWire {
-  const definition = freezeWorkflowOperationDisplaySnapshot({
-    workflowId: descriptor.id,
-    definitionFingerprint: descriptor.contractFingerprint,
-    display: descriptor.operationDisplay,
-  });
-  return definition === undefined
-    ? {
-      state: "legacy",
-      reason: "this workflow has no complete versioned operation declaration",
-    }
-    : { state: "declared", definition };
-}
-
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
@@ -605,9 +589,11 @@ function workflowWire(
   const descriptorPath = workflowSourcePath(workflowId, module.role);
   const modulePath = descriptorPath;
 
-  const purposeByNode = new Map(
-    descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
-  );
+  // A node without its own purpose is described by its timeline group.
+  const purposeByNode = new Map([
+    ...descriptor.timeline.flatMap((group) => group.description === undefined ? [] : group.nodes.map((member) => [String(member.id), group.description] as const)),
+    ...descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose] as const),
+  ]);
 
 
 
@@ -622,8 +608,6 @@ function workflowWire(
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
-    operationStructure: operationStructureWire(descriptor),
-    ...(definition?.explorerPreview === undefined ? {} : { walkthrough: definition.explorerPreview }),
     definitionPreview: declaration === undefined
       ? { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" }
       : { state: "compiled", groups: declaration, systemsFirstUse },
@@ -674,7 +658,7 @@ function workflowWire(
       purpose: proseWire(
         purposeByNode.get(String(node.id)),
         `${workflowId} node ${String(node.id)}`,
-        `${descriptorPath}'s \`nodePurposes\``,
+        `${descriptorPath}'s \`nodePurposes\` or its timeline group's \`description\``,
       ),
       dependsOn: [...node.dependsOn],
       shape: nodeShape(node),

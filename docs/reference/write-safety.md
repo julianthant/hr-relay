@@ -167,7 +167,7 @@ A selected repeat reaches fresh prepare, binding, fence, commit, and verificatio
 | Fence | Check the monotonic probe-to-fence budget and CAS the intent and attempt into durable `attempting` | `StagedPageDiscardedError` or a lost fence prevents the click |
 | Commit | Mint the capability for the fenced generation and binding digest, retain the lease after the fence, and invoke the commit callback | A settled callback failure becomes post-fence uncertainty; an unsettled callback remains owned |
 | Verify | Parse commit output and run the completion contract's proof arm on the retained transaction page | Missing or invalid proof and every non-`present` saved-effect verdict park the write |
-| Settle | Atomically commit operation authority, checkpoint, confirmation publication, timeline history, and the run transition | A failed transaction leaves no partial accepted settlement |
+| Settle | Atomically commit operation authority, checkpoint, confirmation publication, timeline history, and the run transition | A failed transaction leaves no partial accepted settlement and parks the proven write `UNKNOWN` |
 
 A competing fence winner can be reused only if it has settled `committed` or `observed-present` proof. An unresolved winner refuses another click.
 
@@ -192,7 +192,7 @@ An unscoped commit requires a reviewed reason and a valid `UnscopedBindingProof`
 
 ### Fenced callback lifetime and verification
 
-After the durable fence, `withTransactionDriver` crosses `retainAfterFence()`. A deadline or parent abort requests cancellation but cannot prove the callback stopped. The sequencer waits for the callback's actual settlement before releasing its transaction page or parking. A callback that never settles remains process-owned with an `attempting` intent; process loss transfers responsibility to recovery.
+After the durable fence, `withTransactionDriver` crosses `retainAfterFence()`, and its lease signal stops following the run's abort. Pause, Stop, shutdown and heartbeat loss cannot reach the commit, the after-submit capture, verification or settlement; only task deadlines bound them. A deadline requests cancellation but cannot prove the callback stopped. The sequencer waits for the callback's actual settlement before releasing its transaction page or parking. A callback that never settles remains process-owned with an `attempting` intent; process loss transfers responsibility to recovery.
 
 Commit `recordData` batches are validated and timestamped at the call but delivered only after callback settlement. Fallible diagnostic delivery cannot interrupt fence-to-click. A task error remains primary when terminal observation delivery also fails.
 
@@ -214,8 +214,8 @@ with actual start and end instants. Only that operation's live scope admits its 
 the ordinary run window. Required probe captures bind the retained run and descriptor fingerprint.
 The scope remains open until the actual callback settles, sessions close and the canonical action
 notes drain in occurrence order. Notes retain their action timestamps; they do not rewrite run times
-or grant submission, settlement or retry authority. Declared action binding requires the retained
-display snapshot; runs without one record ordinary actions and captures without invented attribution.
+or grant submission, settlement or retry authority. Recovery records ordinary actions and captures
+without invented attribution.
 Cancellation and deadlines stop new action notes
 while cleanup waits for the callback. The scope seals before its durable end append; a crash-open
 record cannot reopen it. Start/end evidence is protected from ordinary timeline expiry. Failed open
@@ -389,7 +389,9 @@ The corresponding runtime tests exercise preview, parked resolution, proof verif
 
 The native worker-control journal binds an admitted reset to the exact member and process lifetime,
 reserved revision, current run/claim/attempt and queued cascade. The SQLite claim boundary and common
-`#writeFenceRefusal` used by `fenceAttempt` and `refenceRetryable` respect this reservation. An unsafe
+`#writeFenceRefusal` used by `fenceAttempt` and `refenceRetryable` respect this reservation. The
+fence also refuses while the run has a requested pause or cancellation, so each request lands either
+before the fence (no intent, the step restarts) or after it (the write finishes). An unsafe
 or foreign-owned cascade refuses before reservation. An unresolved historical Stop without reset
 identity remains authority-unavailable and blocks admission through its unknown effect.
 

@@ -3,9 +3,11 @@ import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-d
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { availableSections, buildRunDetail, buildRunSection, type RunDetailQueryDeps, type RunDetailWriteContractView } from "../../../../src/backend/runs/queries/run-detail.js";
+import { RepeatOccurrenceSchema, repeatOccurrenceKey } from "../../../../src/models/run/rerun.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
-import { WriteIntentRecordSchema, deriveWriteBindingProofDigest, type WriteIntentRecord } from "../../../../src/rules/write-safety/write-safety.js";
+import { WriteIntentRecordSchema, deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest, type WriteIntentRecord } from "../../../../src/rules/write-safety/write-safety.js";
 import { FIXTURE_PARKED_WRITE } from "../../../support/fixtures/dashboard/fixture-day.js";
 import { FIXTURE_PARKED_WRITE_INTENT } from "../../../support/fixtures/dashboard/run-detail/gates-park.js";
 import { IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, NOW, SUBJECT_PROOF, UNSCOPED_PROOF } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -32,6 +34,10 @@ function parkedIntentOf(input?: Readonly<{
   generation?: number;
   proof?: unknown;
   status?: "parked" | "attempting";
+  taskId?: string;
+  system?: string;
+  idempotencyKey?: string;
+  occurrence?: unknown;
 }>) {
   const proof = proofFor(input?.proof ?? SUBJECT_PROOF);
   const status = input?.status ?? "parked";
@@ -39,10 +45,12 @@ function parkedIntentOf(input?: Readonly<{
     writeIntentId: INTENT_ID,
     workflowId: "person-lookup",
     itemId: ITEM_ID,
-    taskId: "ucpath/terminate-person",
-    system: "ucpath",
-    idempotencyKey: IDEMPOTENCY_KEY,
-    idempotencyKeyDigest: IDEMPOTENCY_KEY_DIGEST,
+    taskId: input?.taskId ?? "ucpath/terminate-person",
+    system: input?.system ?? "ucpath",
+    idempotencyKey: input?.idempotencyKey ?? IDEMPOTENCY_KEY,
+    idempotencyKeyDigest: input?.idempotencyKey === undefined ? IDEMPOTENCY_KEY_DIGEST
+      : deriveIdempotencyKeyDigest(input.system ?? "ucpath", input.idempotencyKey),
+    ...(input?.occurrence === undefined ? {} : { occurrence: input.occurrence }),
     currentAttemptId: ATTEMPT_ID,
     generation: input?.generation ?? 1,
     runId: RUN_ID,
@@ -154,6 +162,12 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(payload.fencedAt, NOW);
     assert.equal(payload.parkedAt, NOW);
     assert.equal(payload.parkedCode, "unknown");
+    // An UNKNOWN park without a typed-ID contract asks Saved (Relay re-reads) or Not saved (confirmed absence), never Retry.
+    assert.equal(payload.decision?.type, "write-unknown");
+    assert.deepEqual(payload.decision?.options.map(({ id, send, recommended, input }) => [id, send, recommended, input]), [
+      ["saved", { via: "action", actionKey: "recheck-write" }, true, undefined],
+      ["not-saved", { via: "action", actionKey: "resolve-write-absent" }, undefined, undefined],
+    ]);
     assert.equal(payload.parkedMessage.includes(IDEMPOTENCY_KEY), false);
     assert.equal(payload.parkedMessage.includes("10101010"), false);
     assert.ok(payload.parkedMessage.includes(IDEMPOTENCY_KEY_DIGEST.slice(0, 12)));
@@ -419,5 +433,53 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     const payload = parkedSection(w);
     assert.equal(payload.generation, 2);
     assert.ok(payload.actions.every((action) => action.kind === "command" && action.expectedVersion === 5));
+  });
+
+  it("serves a repeat occurrence in the general wording and never names its occurrence key", async () => {
+    const w = await world();
+    const occurrence = RepeatOccurrenceSchema.parse({ nodeId: "termination", taskId: "ucpath/create-termination", system: "ucpath",
+      businessKeyDigest: "b".repeat(64), writeIntentId: uuidOf(21), evidenceDigest: "c".repeat(64),
+      confirmationCommandId: uuidOf(22), sourceRunId: uuidOf(23), sourceVersion: 3, warningDigest: "d".repeat(64),
+      baselineEvidence: [{ writeIntentId: uuidOf(21), evidenceDigest: "c".repeat(64) }] });
+    const idempotencyKey = repeatOccurrenceKey(occurrence.businessKeyDigest, occurrence.confirmationCommandId, occurrence.nodeId);
+    seed(w, { intent: parkedIntentOf({ taskId: "ucpath/create-termination", idempotencyKey, occurrence }) });
+    const payload = parkedSection(w);
+    assert.deepEqual(payload.decision?.options.map(({ id, send }) => [id, send]), [
+      ["saved", { via: "action", actionKey: "recheck-write" }],
+      ["not-saved", { via: "action", actionKey: "resolve-write-absent" }],
+    ]);
+    assert.equal(payload.decision?.context, "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions in UCPath.");
+    const serialized = JSON.stringify(payload);
+    assert.ok(!serialized.includes(idempotencyKey));
+    assert.ok(!serialized.includes("hrauto-repeat"));
+  });
+
+  describe("a Kuali finalization park names its document only for unprotected input", () => {
+    const KEY = "kuali:3170001|finalization|T00012345";
+    const kualiIntent = () => parkedIntentOf({ taskId: "kuali/save-separation-finalization", system: "kuali", idempotencyKey: KEY });
+
+    it("names the document in the context", async () => {
+      const w = await world();
+      seed(w, { intent: kualiIntent() });
+      assert.equal(parkedSection(w).decision?.context, "Kuali accepted the save, but Relay could not read its status. Check document 3170001 in Kuali.");
+    });
+
+    it("withholds the document number, key and digest from the whole payload when the run input is protected", async () => {
+      const w = await world();
+      seed(w, { intent: kualiIntent() });
+      const run = w.authority.getRun(RUN_ID);
+      const value = run?.input.parsed.value;
+      assert.ok(run && value !== null && typeof value === "object" && !Array.isArray(value));
+      w.authority.put(RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
+        value: { ...value, documentNumber: "3170001" }, protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
+          name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: uuidOf(24) }] } } }));
+      const payload = parkedSection(w);
+      const digest = deriveIdempotencyKeyDigest("kuali", KEY);
+      // The kernel fences typed resolutions on the exact occurrence digest, so only those command targets carry it.
+      const served = JSON.stringify(payload).replaceAll(`"occurrenceKeyDigest":"${digest}"`, "");
+      for (const secret of ["3170001", KEY, digest, digest.slice(0, 12)]) assert.ok(!served.includes(secret), secret);
+      assert.equal(payload.idempotencyKeyDigest, "withheld-protected-input");
+      assert.equal(payload.decision?.context, "Kuali accepted the save, but Relay could not read its status. Check the separation document in Kuali.");
+    });
   });
 });

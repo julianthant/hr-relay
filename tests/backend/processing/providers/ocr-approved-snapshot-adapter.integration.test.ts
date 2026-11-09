@@ -2,8 +2,6 @@ import { scaledMs } from "../../../support/time-scale.js";
 import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { readQueueRecordMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
-import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
-import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { approvedEmergencyContact, contactEffect } from "../../../../src/rules/ucpath/emergency-contact.js";
 import { interpretContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-operation.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../src/models/ui/ucpath-emergency-contact.js";
@@ -340,29 +338,16 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
   const surface = projection.queueSurface(f.parentRun.envelope.runId); assert.ok(surface?.surfaceKind === "operation");
   assert.deepEqual([...surface.memberRunIds].sort(), members.map(member => member.envelope.runId).sort());
   assert.deepEqual(surface.memberRollup, { total: 2, terminal: 2, failed: 0 });
-  assert.deepEqual(surface.linkedRuns.map(link => link.runId), [f.run.envelope.runId]);
+  assert.deepEqual(surface.linkedRuns, []);
   assert.deepEqual(surface.recordMembers?.members.map(row => row.kind === "record" ? row.record.recordId : row.kind), review.records.map(record => record.recordId));
   assert.deepEqual(surface.recordMembers?.members.map(row => row.statusLabel), ["Previewed", "Not approved", "Previewed"]);
   assert.ok(surface.recordMembers?.members.every(row => row.statusLabel !== "Saved"));
   const ocrSurface = projection.queueSurface(f.run.envelope.runId); assert.ok(ocrSurface);
   assert.equal(ocrSurface.parent?.runId, f.parentRun.envelope.runId);
-  assert.equal(ocrSurface.parent?.visibility, "linked");
+  assert.equal(ocrSurface.parent?.visibility, "hidden-unless-failed");
   for (const member of members) {
     const memberSurface = projection.queueSurface(member.envelope.runId); assert.ok(memberSurface);
     assert.equal(memberSurface.parent?.runId, f.parentRun.envelope.runId);
-    const current = f.database.authority.runs.get(member.envelope.runId); assert.ok(current);
-    const descriptor = f.resolve(current.envelope.workflow); assert.ok(descriptor);
-    const view = { ...descriptor, dataOrigins: dataOriginViewsOf({ descriptor, stores: f.stores.stores }) };
-    const logs = buildRunLogsSection({ stateRoot: f.harness.authority.stateRoot, timeline: f.database.authority.timelineEvents, projection,
-      runReader: f.canonical.lifecycle, canonical: { database: f.database, reader: f.canonical.lifecycle, descriptors: { resolve: f.resolve } },
-      authority: { getRun: f.database.authority.runs.get, latestCheckpoint: f.database.authority.runCheckpoints.latest,
-        listCheckpoints: f.database.authority.runCheckpoints.listByItem, getWriteIntent: f.database.authority.writeIntents.get,
-        listGateResults: f.database.authority.gateResults.listByRun }, descriptors: { resolve: () => view } }, current.envelope.runId, undefined, current);
-    assert.ok(logs.section === "logs");
-    const input = EmergencyContactMemberInputSchema.parse(current.input.parsed.value);
-    const planLines = (logs.payload.rows ?? []).flatMap(row => row.kind === "note" && row.note.operatorAction?.state === "confirmed"
-      && row.note.operatorAction.value !== undefined ? [row.note.operatorAction.value] : []);
-    assert.deepEqual(planLines, ["Uncheck Primary on row 1 (Taylor Sample)", `Add ${approvedEmergencyContact(input.record).contact.name} as Primary`]);
   }
   let cursor = 0;
   for (;;) {

@@ -193,7 +193,7 @@ describe_m0("Session Panel authority joins", () => {
     });
   });
 
-  it_m0("shows no browser slots on a retained terminal worker card", () => {
+  it_m0("shows the systems a retained terminal worker card needs as closed", () => {
     const day = sessionDay();
     const terminal = day.workerCards.find((card) => card.state === "failed");
     if (terminal === undefined) throw new Error("the real wire fixture needs a stopped retained worker card");
@@ -201,7 +201,7 @@ describe_m0("Session Panel authority joins", () => {
     assert_m0.deepEqual(workerBrowserView_m0({
       ...terminal,
       browserRequirements: { state: "present", systems: ["ucpath", "crm"] },
-    }), { slots: [] });
+    }), { slots: [{ state: "closed", system: "ucpath" }, { state: "closed", system: "crm" }] });
   });
 
   it_m0("folds one membership per served card, in wire order, for the strip to read by worker id", () => {
@@ -278,6 +278,15 @@ describe_m1("workflowStatusCounts — the band's scope selector", () => {
     expect_m1(totalCount_m1(none)).toBe(0);
     expect_m1(activeCount_m1(none)).toBe(0);
     expect_m1(needsYouCount_m1(none)).toBe(0);
+  });
+});
+
+describe_m1("running count — the rail pill", () => {
+  it_m1("reads the served running count from that workflow's own statusCounts", () => {
+    const served = WorkflowCountWireSchema_m1.parse({ workflowId: "person-lookup", count: 3,
+      statusCounts: [{ status: "running", count: 2 }, { status: "queued", count: 1 }] });
+    expect_m1(statusCount_m1(workflowStatusCounts_m1([served], "person-lookup"), "running")).toBe(2);
+    expect_m1(WorkflowCountWireSchema_m1.safeParse({ ...served, count: 2 }).success).toBe(false);
   });
 });
 

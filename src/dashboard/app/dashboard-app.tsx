@@ -22,7 +22,7 @@ import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { dsLayer } from "../ds/theme/tokens.js";
-import { productWorkflowComposition, workflowSource, type WorkflowComposition, type WorkflowSource } from "./workflow-sources.js";
+import { keepsMockRun, productWorkflowComposition, workflowSource, type WorkflowComposition, type SurfaceSource, surfaceSource } from "./workflow-sources.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
@@ -64,7 +64,7 @@ import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
-import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection } from "../surfaces/queue/queue-model.js";
+import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection, queueRenameDraft } from "../surfaces/queue/queue-model.js";
 import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import {
   attentionQueueKeys,
@@ -89,12 +89,12 @@ DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, mockRunSubset, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockReviewRun, mockRunsForDraft, retryMockFault, mockRunSubset, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
 import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
 import "../surfaces/shell/permanent-shell.css";
-import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
+import { PAUSE_ALL_EFFECT, PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
 import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -112,6 +112,7 @@ composeCommandRequest, verifyShellCommandEffect,
 type CommandAction,
 } from "./commands/command-dispatch.js";
 import { settleCommandResult } from "./commands/command-result.js";
+import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workflowWorkersStopped } from "./commands/worker-startup-toast.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
 } from "./dashboard-app-model.js";
@@ -424,7 +425,7 @@ function LoadedApp({
     : routeWorkflowId && workflowComposition.sourceForRoute(routeWorkflowId, requestedPreview !== null) === "mock" ? routeWorkflowId : null;
   const [allMockRuns, setMockRuns] = useState<readonly MockRun[]>(workflowComposition.initialMockRuns);
   const startRestrictions = useMemo(() => workflowStartRestrictions(boot.featureAvailability), [boot.featureAvailability]);
-  const mockRuns = useMemo(() => mockRunSubset(allMockRuns, run => !startRestrictions.has(run.workflowId) && workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition, startRestrictions]);
+  const mockRuns = useMemo(() => mockRunSubset(allMockRuns, run => !startRestrictions.has(run.workflowId) && keepsMockRun(workflowComposition, run)), [allMockRuns, workflowComposition, startRestrictions]);
   // The route selection clears after the removal commits; a run deleted here is not an unavailable destination.
   const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
   const launchWorkflow = route.view?.launchWorkflow;
@@ -480,7 +481,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       dismiss(warningId);
       unknownWarnings.current.delete(outcome.commandId);
     }
-    if (outcome.kind === "confirmed") return;
+    if (outcome.kind === "confirmed") {
+      const request = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
+      const warning = request === undefined ? undefined : appliedWorkerStartupToast(request, outcome.reply);
+      if (warning !== undefined) toast(warning);
+      return;
+    }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
     const toastId = toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
@@ -669,6 +675,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             return { ...child, detail: verified !== undefined ? verified.feedback.text : formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text };
           }) };
           setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response });
+          const bulkWarning = unconfirmedBulkWorkerToast(request, reply, outcome.kind === "confirmed");
+          if (bulkWarning !== undefined) toast(bulkWarning);
         }
         if (outcome.kind !== "confirmed") {
           if (!("targets" in request) && (request.family === "run" || request.family === "gate") && outcome.reply !== undefined && "state" in outcome.reply && "commandId" in outcome.reply) {
@@ -684,7 +692,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           }
           return;
         }
-        toast({ tone: "success", title: label, description: "Command confirmed." });
+        const warning = appliedWorkerStartupToast(request, outcome.reply);
+        if (warning === undefined || "targets" in request) toast({ tone: "success", title: label, description: "Command confirmed." });
         if (!("targets" in request) && request.family === "run" && request.type === "delete" && outcome.reply !== undefined && "affectedTargets" in outcome.reply) {
           const removed = new Set<string>(outcome.reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []));
           if (routeRef.current.run !== undefined && removed.has(routeRef.current.run)) setRoute({ ...routeRef.current, run: undefined, section: undefined });
@@ -831,10 +840,30 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
+  const renameQueueTitle = useCallback((runId: string, name: string) => {
+    const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === runId);
+    if (surface === undefined) {
+      toast({
+        tone: "danger",
+        title: "Nothing was sent",
+        description: `run ${runId} is not on the day this panel is showing, so there is no row to `
+          + "name. Open the day it ran on and rename it there.",
+      });
+      return;
+    }
+    const next = queueRenameDraft(surface, name);
+    if (next === undefined) return;
+    const action = surface.actions.find((entry): entry is CommandAction => entry.kind === "command" && entry.command === "rename");
+    if (action === undefined) {
+      toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text });
+      return;
+    }
+    dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
+  }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
     openWells, selectMode, bulkIds, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells, onBulkIds,
-    setBatchGrouping, exitQueueSelection, runQueueAction,
+    setBatchGrouping, exitQueueSelection, runQueueAction, renameTitle: renameQueueTitle,
   });
 
   const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, nowIso).map(entry => [entry.key, entry])), [surfaces, sort, nowIso]);
@@ -936,8 +965,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
     setMockRuns(previous => [...created, ...previous]);
     setMockNotificationTimes(previous => ({ ...previous, ...Object.fromEntries(created.map(run => [run.id, servedNowRef.current])) }));
-    const review = draft.ocrMode === "manual" ? created.find(run => run.workflowId === "ocr") : undefined;
-    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: review ? "ocr" : id, mockRun: review?.id ?? created[0]?.id, records: review?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
+    const ocrRun = draft.ocrMode === "manual" ? created.find(run => run.workflowId === "ocr") : undefined;
+    const review = ocrRun ? created.find(run => run.ocrRunId === ocrRun.id) : undefined;
+    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: id, mockRun: review?.id ?? created[0]?.id, records: review?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
     setLaunchOpen(false);
     toast({ tone: "success", title: sourceId ? "Rerun created" : "Run started", description: `${created.filter(run => !run.parentId).length} ${mockWorkflow(id).label} ${created.filter(run => !run.parentId).length === 1 ? "run" : "runs"} created.` });
   }, [mockRuns.length, setLaunchOpen, setRoute, toast]);
@@ -958,8 +988,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
   const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
-  const openInbox = useCallback(() => setRoute(current => ({ ...current, view: { ...current.view, notifications: true } })), [setRoute]);
-  const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast, openInbox });
+  const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
   const notifications = useWorkspaceNotifications(notificationScenario, {
     day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: mockRuns,
@@ -970,7 +999,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
-  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: WorkflowSource) => {
+  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
     if (source === "mock" && destination.kind === "run") {
       const validate = () => {
@@ -1114,10 +1143,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         <StorageNotice
           key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
-          onOpenSettings={openSettings}
         />
-        {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">Each run finishes its current step first. A submit in progress is never interrupted.</Banner>}
-        {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held." action={{ label: "Check connection", onAction: lifecycle.refresh }} />}
+        {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">{PAUSE_ALL_EFFECT}</Banner>}
+        {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held. Reload Relay to check the connection." />}
+        {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
+          .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
 
         <div className="flex min-h-0 flex-1">
 
@@ -1205,14 +1235,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} anchorIso={boot.serverClock.now} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => completeReview(railRow.id, "approve")}
+            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} anchorIso={boot.serverClock.now} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onRetry={() => setMockRuns(previous => retryMockFault(previous, [railRow.id, ...(railRow.ocrRunId ? [railRow.ocrRunId] : [])]))} onApprove={() => completeReview(mockReviewRun(railRow, mockRuns).id, "approve")}
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
-              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
+              onChange={records => setMockRuns(previous => updateMockReview(previous, mockReviewRun(railRow, previous).id, records))} onDiscard={() => completeReview(mockReviewRun(railRow, mockRuns).id, "discard")} onRestore={() => completeReview(mockReviewRun(railRow, mockRuns).id, "restore")}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} onAction={runLogAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
-                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={logRow.parent === null && workflowComposition.logsSources ? workflowSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
+                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={logRow.parent === null && workflowComposition.logsSources ? surfaceSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}
@@ -1255,6 +1285,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         onPreviewClose={closeMockLaunch}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
+        workersStopped={workflowId => dayResource.state === "loaded" && workflowWorkersStopped(dayResource.value, workflowId) !== undefined}
         onApplied={(workflowId) => {
           leaveSettings(() => {
             if (!setActiveWorkflowId(workflowId)) return;

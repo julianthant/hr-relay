@@ -105,7 +105,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
     owner.runtime = runtime;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-    const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
+    const sources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources);
     const target = join(f.workspace, ASSISTANT_WORKFLOW_FACTS_PATH);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, `${assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => sources[descriptor.id] === "served")).bytes}\n`);

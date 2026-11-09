@@ -6,6 +6,8 @@ import {
 type IdentityGateDetail
 } from "../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 import type { CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
+import { identityGateDecision } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import type { ActionDescriptorWire } from "../../../../src/models/dashboard/actions.js";
 import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 
 
@@ -89,6 +91,15 @@ hdh: true,
 
   function gateDetail(packet: IdentityEvidencePacket, overrides: Record<string, unknown> = {}): IdentityGateDetail {
     const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
+    const options = packet.approvableEids.map((eid) => ({
+        eid: String(eid),
+        chosenFrom: String(eid) === String(packet.emplId)
+          ? "checked" as const
+          : String(eid) === String(nameSearchEid) ? "name-search" as const : "manual" as const,
+        displayName: String(eid) === String(packet.emplId) ? packet.ucpathName : `EID ${String(eid)}`,
+        origin: "a UCPath search on the document's name listed this EID",
+      }));
+    const actions = (overrides.actions as ActionDescriptorWire[] | undefined) ?? [identityApprovalAction("Approve the chosen EID")];
     return IdentityGateDetailWireSchema.parse({
       runId: runId(1),
       gateId: "identity-approval",
@@ -100,16 +111,10 @@ hdh: true,
       evidenceDigest: deriveIdentityEvidenceDigest(packet),
       packet,
 
-      options: packet.approvableEids.map((eid) => ({
-        eid: String(eid),
-        chosenFrom: String(eid) === String(packet.emplId)
-          ? "checked"
-          : String(eid) === String(nameSearchEid) ? "name-search" : "manual",
-        displayName: String(eid) === String(packet.emplId) ? packet.ucpathName : `EID ${String(eid)}`,
-        origin: "a UCPath search on the document's name listed this EID",
-      })),
+      options,
       approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
-      actions: [identityApprovalAction("Approve the chosen EID")],
+      actions,
+      decision: identityGateDecision(options, actions, [], undefined, { documentName: packet.documentName }),
       ...overrides,
     });
   }

@@ -98,7 +98,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const unconfirmed = toasts.filter({ hasText: "Settings save unconfirmed" });
       await expect(unconfirmed).toHaveCount(1);
       await expect(unconfirmed).not.toContainText("Saved Task");
-      await unconfirmed.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
+      await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
       await expect(toasts.filter({ hasText: `Saved ${label}` })).toBeVisible();
       await expect(toasts).toHaveCount(0, { timeout: 6000 });
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
@@ -122,7 +122,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(username).toHaveValue("private-refused-sentinel");
       await expect(refused).not.toContainText("private-refused-sentinel");
       await expect(page.locator("body")).not.toContainText("private-server-sentinel");
-      await refused.getByRole("button", { name: "Retry edit", exact: true }).click();
+      await page.getByRole("button", { name: "Retry edit", exact: true }).click();
       await expect(toasts.filter({ hasText: "Saved UCPath username" })).toHaveCount(1);
       const savedUsername = toasts.filter({ hasText: "Saved UCPath username" });
       await savedUsername.locator('[data-slot="toast-close"]').hover();

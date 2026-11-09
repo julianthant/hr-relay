@@ -16,57 +16,55 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup 5 · 14
+        - button "Person Lookup": Person Lookup 3
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup 0 · 1
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations 0 · 1
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check 1 · 1
+        - button "I-9 Check": I-9 Check 1
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
-        - button "Onboarding": Onboarding 0 · 1
+        - button "Onboarding"
       - listitem:
-        - button "Oath Signature": Oath Signature 1 · 1
+        - button "Oath Signature": Oath Signature 1
       - listitem:
-        - button "Oath Upload": Oath Upload 1 · 1
+        - button "Oath Upload": Oath Upload 1
       - listitem:
-        - button "Emergency Contact": Emergency Contact 1 · 1
+        - button "Emergency Contact": Emergency Contact 1
     - heading "Work Study" [level=3]
     - list:
       - listitem:
-        - button "Work-Study": Work-Study 0 · 1
+        - button "Work-Study"
     - heading "Payroll" [level=3]
     - list:
       - listitem:
-        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+        - button "Kronos Pay Rule"
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR": OCR 0 · 5
+        - button "CRM Doc Download"
       - listitem:
-        - button "CRM Doc Download": CRM Doc Download 0 · 1
-      - listitem:
-        - button "SharePoint Download": SharePoint Download 0 · 1
+        - button "SharePoint Download"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1 · 1
+        - button "OnBase": OnBase 1
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:
-        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+        - button "Old Kronos Reports"
 - main:
   - heading "Oath Upload queue" [level=1]
   - region "Queue":
     - text: Active 1
     - button "multiple-oath.pdf — running" [pressed]:
-      - text: multiple-oath.pdf Running Read oath 0 / 6 steps 10:05 AM
+      - text: multiple-oath.pdf Running Review extracted records 2 / 8 steps 10:04 AM
       - button "Attempts for multiple-oath.pdf": "#1"
-      - text: OU95547578 0s
+      - text: OU95547578 44s
       - button "Retry"
       - button "Delete"
   - region "Action panel":
@@ -86,62 +84,114 @@
   - region "Selected run logs":
     - heading "multiple-oath.pdf" [level=2]
     - text: Running
-    - button "Open OCR"
+    - button "Review"
+    - button "Records 4"
     - button "Rerun"
-    - button "Linked runs (1)"
     - navigation "Run timeline":
       - list:
         - listitem:
-          - button "Read oath · Waiting · 09:10:00": Read oath Waiting
+          - button "Read oath · Completed · 09:10:00 · 36s": Read oath 36s
         - listitem:
-          - button "Wait for all signatures · Upcoming · 09:10:00": Wait for all signatures
+          - button "Match extracted people · Completed · 09:10:36 · 8s": Match extracted people 8s
         - listitem:
-          - button "Sign in to ServiceNow · Upcoming · 09:10:00": Sign in to ServiceNow
+          - button "Review extracted records · Waiting · 09:10:44": Review extracted records Waiting
         - listitem:
-          - button "Open HR inquiry · Upcoming · 09:10:00": Open HR inquiry
+          - button "Wait for all signatures · Upcoming · 09:10:44": Wait for all signatures
         - listitem:
-          - button "Attach oath PDF · Upcoming · 09:10:00": Attach oath PDF
+          - button "Sign in to ServiceNow · Upcoming · 09:10:44": Sign in to ServiceNow
         - listitem:
-          - button "File HR ticket · Upcoming · 09:10:00": File HR ticket
+          - button "Open HR inquiry · Upcoming · 09:10:44": Open HR inquiry
+        - listitem:
+          - button "Attach oath PDF · Upcoming · 09:10:44": Attach oath PDF
+        - listitem:
+          - button "File HR ticket · Upcoming · 09:10:44": File HR ticket
     - region "Run logs":
       - region "Read oath":
         - time: 09:10:00
         - heading "Read oath" [level=3]
         - text: OCR
+        - heading "PDF pages" [level=4]
         - time: 09:10:00
-        - paragraph: Read the predefined document fields into OCR Records; downstream work waits for approval.
+        - term: Source PDF
+        - definition: multiple-oath.pdf
+        - time: 09:10:00
+        - term: Form type
+        - definition: Oath
+        - time: 09:10:00
+        - term: Pages
+        - definition: "2"
+        - time: 09:10:00
+        - text: Split pages and recognize the form blocks
+        - heading "Extraction summary" [level=4]
+        - time: 09:10:00
+        - term: Records extracted
+        - definition: "4"
+        - time: 09:10:00
+        - term: Source pages
+        - definition: 1–2
+      - region "Match extracted people":
+        - time: 09:10:36
+        - heading "Match extracted people" [level=3]
+        - text: UCPath
+        - heading "Identity matching" [level=4]
+        - time: 09:10:36
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:10:36
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:36
+        - term: Roster match
+        - definition: Matched
+        - time: 09:10:36
+        - term: UCPath match
+        - definition: Confirmed
+        - time: 09:10:36
+        - term: HR status
+        - definition: Active
+      - region "Review extracted records":
+        - time: 09:10:44
+        - heading "Review extracted records" [level=3]
+        - time: 09:10:44
+        - paragraph: Release the reviewed records; downstream work waits for the release.
+        - group "Review extracted rows":
+          - time: 09:10:44
+          - article "Review extracted rows":
+            - heading "Review extracted rows" [level=4]
+            - text: Review
+            - paragraph: Review records before processing.
       - region "Wait for all signatures":
-        - time: 09:10:00
+        - time: 09:10:44
         - heading "Wait for all signatures" [level=3]
-        - time: 09:10:00
+        - time: 09:10:44
         - paragraph: Waiting for extracted records to be approved.
       - region "Sign in to ServiceNow":
-        - time: 09:10:00
+        - time: 09:10:44
         - heading "Sign in to ServiceNow" [level=3]
         - text: ServiceNow
-        - time: 09:10:00
+        - time: 09:10:44
         - paragraph: Waiting for extracted records to be approved.
       - region "Open HR inquiry":
-        - time: 09:10:00
+        - time: 09:10:44
         - heading "Open HR inquiry" [level=3]
         - text: ServiceNow
-        - time: 09:10:00
+        - time: 09:10:44
         - paragraph: Waiting for extracted records to be approved.
       - region "Attach oath PDF":
-        - time: 09:10:00
+        - time: 09:10:44
         - heading "Attach oath PDF" [level=3]
         - text: ServiceNow
-        - time: 09:10:00
+        - time: 09:10:44
         - paragraph: Waiting for extracted records to be approved.
       - region "File HR ticket":
-        - time: 09:10:00
+        - time: 09:10:44
         - heading "File HR ticket" [level=3]
         - text: ServiceNow
-        - time: 09:10:00
+        - time: 09:10:44
         - paragraph: Waiting for extracted records to be approved.
     - group:
       - searchbox "Search logs"
-    - status: 6 actions
+    - status: 18 actions
     - status
     - button "Copy logs"
     - button "Go to latest action"
@@ -149,8 +199,7 @@
 - status
 - region "Session Panel":
   - group "Session actions":
-    - button "Sessions"
-    - text: 2 running 1 starting 1 idle
+    - button "Sessions 2 running·1 starting·1 idle"
     - button "Add workers"
     - button "Settings"
     - button "Log out"

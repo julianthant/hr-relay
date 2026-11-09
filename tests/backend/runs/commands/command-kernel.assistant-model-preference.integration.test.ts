@@ -157,7 +157,7 @@ describe("operator assistant model preference", () => {
     await assert.rejects(h.kernel.executeAssistantModelPreference(first));
   });
 
-  it("converts a schema-23 stored low effort to light in the preference, its commands and audits, byte for byte", async () => {
+  it("converts a schema-24 stored low effort to light in the preference, its commands and audits, byte for byte", async () => {
     const h = await harness(async () => () => true as const), first = { ...request(h.profile.admission.profileBinding.profileId), payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: "light" as const } };
     assert.equal((await h.kernel.executeAssistantModelPreference(first)).state, "applied");
     assert.equal((await h.kernel.executeAssistantModelPreference({ ...request(first.target.profileId, 1), payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: "max" as const } })).state, "applied");
@@ -166,7 +166,7 @@ describe("operator assistant model preference", () => {
     const snapshot = () => ["assistant_model_preference", "commands", "command_audits"].map(table => raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
     try {
       const current = snapshot();
-      // Rewrite the stored rows to the schema-23 form: effort "low" and request digests over that request.
+      // Rewrite the stored rows to the schema-24 form: effort "low" and request digests over that request.
       raw.exec("DROP TRIGGER command_audits_immutable; DROP TRIGGER assistant_model_preference_monotonic");
       const low = (json: string) => json.replaceAll('"effort":"light"', '"effort":"low"');
       for (const row of raw.prepare("SELECT id,request_json,outcome_json FROM commands WHERE family='assistant-model-preference'").all()) {

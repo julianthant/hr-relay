@@ -1,15 +1,19 @@
+import { rowPickDecision } from '../../../src/backend/runs/workbooks.js';
+import { ActionDescriptorWireSchema } from '../../../src/models/dashboard/actions.js';
 import { RunDetailWireSchema, RunDetailSectionResponseSchema, RunWorkbookWritesWireSchema, type RunWorkbookWritesWire } from '../../../src/models/dashboard/run-detail.js';
 import { HASH_A, NOW, UUID_1, UUID_2, UUID_3 } from './phase1c-contract-fixtures.js';
 export function workbookReferenceChoice(version = 4, runId = UUID_1, traceId = 'onb-120000-0001') {
   const target = { runId, expectedVersion: version, libraryId: UUID_2, typeId: 'roster', referenceDigest: HASH_A,
     key: 'example@example.edu', workbookVersion: version - 1, gateId: 'choose-roster-row' };
+  const candidates = [
+    { sheetId: 'july', rowId: 'person-1', label: 'July 6 · Row 2', values: [{ fieldId: 'email', value: target.key }, { fieldId: 'fullName', value: 'Example, Person' }] },
+    { sheetId: 'august', rowId: 'person-2', label: 'August 2 · Row 3', values: [{ fieldId: 'email', value: target.key }, { fieldId: 'fullName', value: 'Another, Person' }] },
+  ];
+  const action = ActionDescriptorWireSchema.parse({ kind: 'command', command: 'resolve-workbook-reference-row', key: 'choose-roster-row', label: 'Choose row', intent: 'primary', placement: ['review'], expectedVersion: target.expectedVersion, referenceTarget: target });
   const section = RunWorkbookWritesWireSchema.parse({ runId, operations: [], referenceChoices: [{
     native: { eventId: UUID_3, order: 10, runId, attempt: 1, traceId, spanPath: traceId },
     libraryId: target.libraryId, typeId: target.typeId, referenceDigest: target.referenceDigest, key: target.key, reason: 'row-ambiguous',
-    resolution: { state: 'available', target, candidates: [
-      { sheetId: 'july', rowId: 'person-1', label: 'July 6 · Row 2', values: [{ fieldId: 'email', value: target.key }, { fieldId: 'fullName', value: 'Example, Person' }] },
-      { sheetId: 'august', rowId: 'person-2', label: 'August 2 · Row 3', values: [{ fieldId: 'email', value: target.key }, { fieldId: 'fullName', value: 'Another, Person' }] },
-    ], action: { kind: 'command', command: 'resolve-workbook-reference-row', key: 'choose-roster-row', label: 'Choose row', intent: 'primary', placement: ['review'], expectedVersion: target.expectedVersion, referenceTarget: target } },
+    resolution: { state: 'available', target, candidates, action, decision: rowPickDecision('pick-row', 'Roster rows', action, candidates) },
   }] });
   const choice = section.referenceChoices?.[0];
   if (!choice || choice.resolution.state !== 'available' || choice.resolution.action.kind !== 'command') throw new Error('reference choice fixture invalid');
@@ -51,7 +55,7 @@ export function workbookReferenceLogs(state: 'unavailable' | 'available' | 'reso
   });
   const logs = RunDetailSectionResponseSchema.parse({ section: 'logs', payload: { runId: choice.native.runId, notes,
     rows: notes.map(note => ({ kind: 'note', native: note.native, logId: note.noteId, sequence: note.sequence, note })),
-    confirmedActions: [], confirmedActionBindings: [], nextCursor: { state: 'absent', reason: 'end-of-page' } } });
+    nextCursor: { state: 'absent', reason: 'end-of-page' } } });
   const workbooks = RunDetailSectionResponseSchema.parse({ section: 'workbook-writes', payload: { runId: choice.native.runId, operations: [], referenceChoices: [choice] } });
   return { ...f, choice, detail, logs, workbooks };
 }

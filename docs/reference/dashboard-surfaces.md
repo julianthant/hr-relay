@@ -257,13 +257,17 @@ Machine-verified identity is not an approval ceremony. Operator approval binds t
 record/source set, corrected values, and revision. A completed command requires a matching result;
 an optimistic click or navigation cannot certify it.
 
-A served parked decision displays Write parked and offers Check again through the served
-`recheck-write` confirmation. The server's `acceptsTransactionId` field comes from the same
-completion-contract predicate used by the runtime probe. When true, Check result collects Yes
-and a transaction number, or No. Yes requests a read-only recheck of that number; No composes
-`resolve-write-absent`. Otherwise the second choice is It didn't land. Every choice uses its
-served command confirmation and binds the run version, intent, generation, write attempt,
-binding proof digest and occurrence key digest. Superseded choices refuse before dispatch.
+A served parked decision asks "Did the <record> save in <system>?" with the record, system and
+next step declared per write task in the decision catalog. Check again appears only when the held
+`check-parked-write` read is served. Saved sends `recheck-write`: Relay reads the record and settles
+only on valid proof, otherwise the write stays parked. When the server's `acceptsTransactionId`
+(the completion-contract predicate the runtime probe uses) is true, Saved requires the transaction
+number and sends it with the recheck. Not saved composes `resolve-write-absent`. No answer settles a
+write from the operator's statement alone. Every choice uses its served command confirmation and
+binds the run version, intent, generation, write attempt, binding proof digest and occurrence key
+digest. Superseded choices refuse before dispatch.
+A failure after a write the run settled offers Mark as failed or Add note; both send
+`annotate-failure` with the served resolution version and never run, retry or file anything.
 Pending, refused, uncertain with exact replay, and settled feedback use the existing command
 executor. Local result copy describes the request, without claiming verification or continuation.
 
@@ -379,7 +383,7 @@ separate filtered states.
 live in memory. Read is separate from urgency resolution. Opening a valid target marks read and
 closes the inbox; a missing target reports refusal without navigating to an approximate workflow.
 Escape returns focus to the bell unless an inner dialog/menu owns it. A removed read control
-restores focus to a reachable filter. A ping uses the shared toast and Open notifications action.
+restores focus to a reachable filter. A ping uses the shared toast; the bell opens the inbox.
 
 Durable delivery, read state, and full cross-day search still need producer replacement. The typed
 notification snapshot/status/target queries and command families exist, but the mounted inbox does
@@ -692,7 +696,7 @@ pending until the download settles and reports refusal without starting another 
 
 ## Explorer
 
-Person Lookup and Separations declare read-only Explorer walkthroughs in their registered workflow definitions. The query serves their node-bound steps, forms, actions, fictional examples, preview choices and field sources to the existing timeline components. Preview choices change only local presentation; they never approve gates or execute work. Definition admission requires complete registered-node coverage, and the renderer retains graph, operation and source-lineage validation before projecting the walkthrough. Person Lookup shows its current single-person Search and Match paths; delegation nodes remain absent. Other workflows use their registered timeline groups and operator fields, or declared task labels, purposes and actions. No run values are inferred.
+Every registered workflow's Explorer timeline is generated from its definition. A timeline group with operator fields is one step: its description and the fields' fictional examples. Other groups show one step per node with its label, purpose (or the group description) and structure. The renderer validates the graph before projecting. No run values are inferred.
 
 Explorer mounts in Settings and describes itself as fictional preview data. Its workflow picker
 uses stable fixture IDs and the shared catalog. Local scenario/choice controls alter the preview's
@@ -710,6 +714,7 @@ timeline from each registered backend definition and preserves existing componen
 ## Removed routes and specimen
 
 Archive has no mounted page, Queue action, search entry, notification shortcut, or version-bump UI.
+The dashboard has no row context menus or mobile capture.
 A legacy Archive URL shows Archive page removed and a guarded Return to dashboard. Existing stored
 run data is not deleted by that notice. `surfaces/archive/archive-model.ts` remains a model; backend
 archival, historical evidence, and upgrade/migration authority remain separate from product navigation.
@@ -791,11 +796,24 @@ operator interface until their canonical assistant binding is implemented.
 
 ### Run pause presentation
 
+While a claimed run has a pending pause or stop, its queue row and its worker card serve
+`interrupt: { action: "pause" | "stop", step: "cancel" | "finish-write" }`. `finish-write` means the
+run holds an `attempting` write intent, so the save finishes before the run pauses or stops; the row
+live message then reads "Finishing the save first", and a pending pause otherwise reads "Restarts
+this step on Resume".
+
 Queue footers expose Pause and Resume from served `pauseControl`, preserving their timing, attempt,
 trace and other actions. A recorded pause uses the outline Queued style with a Paused label; requests
 remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
 pauses every run in the application lifecycle snapshot, including runs outside the selected day.
-When every target is paused it offers Resume all, retaining each command outcome. Command-Q opens
+When every target is paused it offers Resume all, retaining each command outcome. A single Resume,
+Retry or Recover shows Start's worker warning instead of the confirmed toast when that result
+carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
+runs have no worker, including when another run keeps the batch from confirming. While a workflow
+has unpaused queued runs and every one of its workers has stopped, a sticky warning names how the
+worker stopped and points to Retry in Sessions. Queue rows serve `cancelledBy` for a cancelled run:
+the Cancelled pill credits the operator only for their own cancel and otherwise shows Relay's reason
+(the profile logged out, or a never-claimed run from a previous day was cancelled at startup). Command-Q opens
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a
 banner until the runtime settles; no submit is interrupted. Unavailable authority disables controls,
 and unknown closure never becomes a completed pause or clean shutdown. Exact command recovery keeps
@@ -832,9 +850,8 @@ Run and Rerun have no capture-off choice. Options show a locked “Always on” 
 summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
 capture failure (no click) from post-submit missing evidence with either independently proved or
 unknown write outcome. Submit captures use equal cards with captions below the image. Served task
-captures retain their verified node, attempt, browser session and boundary. A complete pair attaches
-only to the sole declared commit click for that node/session; ambiguous or incomplete associations
-remain separate. Capture log identities remain on the rendered figures. Structured capture-failure
+captures retain their verified node, attempt, browser session and boundary, and each shows as its own
+screenshot row. Capture log identities remain on the rendered figures. Structured capture-failure
 notes distinguish no click before submit, an unknown outcome after submit, and an independently
 proved outcome. The served dry-run result supplies exercise counts, Not clicked stages and tagged
 sample facts at the end of Logs. Missing preview authority remains explicitly unavailable. The

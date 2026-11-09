@@ -86,8 +86,9 @@ at the first idle claim result. Supervised launches additionally carry `--worker
 against the executing Spawn reservation before admitting the child.
 
 The loop handles browser controls, then reads the durable `run`, `pause`, or `stop` directive
-between complete runs. Pause claims nothing and keeps the process alive. Stop ends the loop after
-the current run settles. An unreadable or malformed directive fails the loop.
+between runs. Pause claims nothing and keeps the process alive. Stop ends the loop after the
+current run settles. An unreadable or malformed directive fails the loop. Worker Pause also pauses
+the worker's claimed run, so its current step is cancelled (section 11.2).
 
 SIGINT, SIGTERM, or an injected stop aborts the active run. The executor abandons interrupted
 ownership rather than inventing a terminal result. The controller recovers that claim on child exit or the next startup.
@@ -96,8 +97,9 @@ One heartbeat renews the exact worker and `claimGeneration`; lost renewal aborts
 `RunRecordService` re-reads authority versions before lifecycle mutation.
 Current execution also requires the retained physical worker lifetime, current profile admission,
 slot, lease and process birth. The executor checks this authority after a child await, and native
-worker mutations check it in their transaction. Pause and ordinary graceful stop do not revoke the
-current item; exact-worker reset, lifecycle and recovery reservations still fence it. An independent
+worker mutations check it in their transaction. A requested pause or cancellation cancels the
+current step (section 11.2); ordinary graceful stop does not revoke the current item. Exact-worker
+reset, lifecycle and recovery reservations still fence it. An independent
 delegation edge stops ancestor cancellation propagation, without bypassing the child's own home-worker
 or profile lifetime.
 
@@ -156,10 +158,6 @@ not force a reconnect or discard another row's patch.
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
 exclusive startup; workers do not reclaim each other's runs or leases.
-`runWorkerLoop` creates one confirmed-action publisher with a fresh stream id and capacity 256.
-It assigns sequence numbers within that incarnation. On exit it closes the publisher before
-browser teardown and warns about pending events. Publication health does not settle a run or an
-external write.
 
 An uncertain browser launch throws `WorkerLaunchUncertainError` with a strict report containing
 `state: "launch-uncertain"`, `custody: "held"`, worker and workflow identity. It retains root and
@@ -260,11 +258,13 @@ cancellation poison-closes the resource. Failed closure retains poison and refus
 Browser observations distinguish `starting` login from authenticated, leased unknown, failed and
 proved closed states. The dashboard keeps closed system history separate from live browser identities.
 
-`withTransactionDriver` adds the sequencer's one-way `retainAfterFence()` transition. Before the
-fence, abort races the callback normally. After the fence, cancellation reaches the task but
-cannot detach the callback or reset, close, or return its resource before actual settlement.
-Cancellation and callback failures remain visible together. A callback that never settles leaves
-the session and `attempting` write process-owned until process loss permits write recovery.
+`withTransactionDriver` gives the transaction a lease signal that follows the run's abort until
+the sequencer's one-way `retainAfterFence()`. Before the fence, abort races the callback normally.
+After the fence the lease stops following the run: only task deadlines bound the commit,
+verification and settlement, and the callback keeps its resource until actual settlement. The run
+then meets its abort at the next boundary, including after its last node. A callback that never
+settles leaves the session and `attempting` write process-owned until process loss permits write
+recovery.
 
 ### 4.1 Authentication proof
 
@@ -394,18 +394,23 @@ Confirmed application quit and whole-runtime shutdown first hold new-work admiss
 pause on every nonterminal run except parked UNKNOWN writes. Active callbacks, including an in-flight
 submit, settle before claim release and worker drainage. Queued, gate and delegation holds retain
 their exact state. Shutdown closure proves stopped resources and unchanged browser and credential
-membership while retaining paused runs and their exact parked write intents; credential-copy and
-logout closure still require settled writes and terminal runs. Settings saves cannot advance
+membership while retaining paused runs and their exact parked write intents. A failed profile
+activation closes the same way. Credential-copy closure requires settled writes and terminal runs;
+logout closure requires settled writes and accepts paused runs. Settings saves cannot advance
 the runtime generation while update or shutdown admission is held. Startup recovery classifies an
 interrupted read as failed with structured failure evidence; an unfinished submit remains parked
 UNKNOWN and is never automatically retried.
 
 Logout holds new-run admission and drains workers, command activity and account resources before
-publishing the logout operation or revoking the profile epoch. Worker cleanup and lease settlement
-retain their admitted generation throughout that drain. Revocation requires the completed
-controller-owned proof of the exact epoch and native custody snapshot; changed or unproved custody
-and UNKNOWN writes refuse logout. The hold stays bound to its runtime generation, and fresh dashboard
-activation advances that generation before admitting new work.
+publishing the logout operation or revoking the profile epoch. The drain cancels a claimed run that
+stands alone (no parent, no live children) with Relay's logout reason. It pauses every other live
+run, including claimed members of an operation or delegation, so never-claimed work and run graphs
+resume after the next sign-in, and it waits for those paused claims to settle at a step boundary
+before stopping workers, as quit does. Worker cleanup and lease settlement retain their admitted
+generation throughout that drain. Revocation requires the completed controller-owned proof of the
+exact epoch and native custody snapshot; changed or unproved custody and UNKNOWN writes refuse
+logout. The hold stays bound to its runtime generation, and fresh dashboard activation advances
+that generation before admitting new work.
 
 The application lifecycle query reports `installer-unavailable` without an update host and defers
 updates while run, worker, browser, write, Duo, control or artifact owners remain. The tested idle
@@ -588,6 +593,9 @@ Internal pool retirement and lifetime shutdown request the durable stop directiv
 SIGTERM, waits `WORKER_SIGTERM_TIMEOUT_MS = 30_000`, then sends SIGKILL. Observed escalation stages
 are a timestamped prefix of that policy. An initial acknowledgement records only the graceful
 request, not future signals or exit. Failed delivery and uncertain stop effects remain visible.
+A lifetime that a shutdown or logout drain's directive ends records stop reason `shutdown`; any other
+stop directive records `operator`. The worker card reads the directive's reason, so such a lifetime shows
+`shutdown` even if its stored reason says `operator`.
 During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_TIMEOUT_MS = 5_000`.
 
 ### 11.2 Durable worker and browser controls
@@ -599,6 +607,13 @@ binds every record to the exact stored command and any admitted roster. Fresh or
 controls also capture their authenticated member and full process lifetime at admission, after the
 exact control reservation. Worker cards project them only for that member and lifetime. Historical
 records without this binding remain unavailable; reads and replay never attach current identity.
+
+`pause-worker` also requests a pause on the worker's claimed run, under
+`lifecycleCommandId("worker-pause", { workerId, runId, claimGeneration })`. An existing pause is
+kept, and a pending cancellation wins. `resume-worker` resumes only runs paused under that id, and
+refuses `worker-pause-settling` while such a pause is still requested. Stop on a worker cancels the
+paused run its Pause holds, with its cascade-cancel children, through the operator Cancel arm in the
+same admission transaction.
 
 Pause and Resume carry `controlBasis` with `leaseGeneration` and `controlRevision`.
 Refresh and Reopen also name `browserSessionId`. Reservation increments the control revision.
@@ -624,6 +639,16 @@ member, process lifetime, reserved control revision, current run/claim/attempt o
 and queued cascade dependencies. A separately claimed child refuses as foreign custody. Admission
 atomically blocks subsequent claims and both write-fence paths. A prior fenced callback remains
 owned by its sequencer and may settle or park UNKNOWN; reset never cancels or retries that write.
+
+During a run the worker polls the run row and its reset every `WORK_CONTROL_POLL_MS` (250 ms). A
+requested pause, a requested cancellation or an admitted reset aborts the run's work signal. The
+executor settles the abort from the run row: a requested pause is acknowledged and the run requeues
+paused, a requested cancellation terminalizes, and any other abort abandons. The cancelled step has no
+checkpoint, so Resume replays completed checkpoints and runs it again under a new claim generation. A
+transaction step is restartable until its fence. After the fence its write finishes, and the run
+pauses or stops at the next boundary. A failure after the fence never becomes a pause: a settlement
+that does not commit parks the write `UNKNOWN`, and a pause is never acknowledged over an
+`attempting` write.
 
 The worker observes reset during current execution, acquisition and sign-in using a work abort
 signal separate from lifetime shutdown. Actual read callback promises retain run/claim/attempt
@@ -659,11 +684,13 @@ retained birth custody, and released process, browser, Duo and write custody. A 
 logical slot and advances its lease generation, using the admitted current descriptor and effective
 settings. Actual supervised birth produces the starting acknowledgement and application/audit;
 a separate same-generation initialization barrier prevents claims until required browser systems
-are physically authenticated. Initialization uses registered session needs without creating a run,
-releases its config binding on success or failure and retains warm resource provenance. Authentication
-failure remains a worker lifetime failure, independent of the starting acknowledgement. Stop can
-abort initialization work and, after actual closure, atomically cancel its readiness barrier while
-recording reusable browserless idle. Browserless replacement mode opens no session. Public Stop
+are physically authenticated. Initialization probes each required profile as a claim does, so the
+new lease takes over its predecessor's closed browser roots, then uses registered session needs
+without creating a run, releases its config binding on success or failure and retains warm resource
+provenance. Authentication failure remains a worker lifetime failure, independent of the starting
+acknowledgement. Stop can abort initialization work and, after actual closure, atomically cancel
+its readiness barrier while recording reusable browserless idle. Browserless replacement mode opens
+no session. Public Stop
 recovery for a dead failed lifetime retains its original reset binding and adds an exact browserless
 replacement binding. The supervisor records actual replacement birth before the fresh new owner
 can finalize original-to-replacement idle, application and audit. Missing effect evidence retains the
@@ -774,6 +801,9 @@ the request's expiry. `worker-browser-control.ts` consumes only ready requests f
 worker lifetime, between whole runs. Kernel admission and child execution both refuse busy
 workers with `worker-browser-busy`. A busy refusal queues no deferred browser effect.
 The claim transaction blocks while that lifetime has an unaudited browser control.
+Once that lifetime has stopped, the control can take no further effect: worker control
+reconciliation (at startup, every 250 ms, and right after a shutdown or logout drain stops its
+workers) refuses and audits it with `worker-browser-lifetime-ended`, which releases the pool scope.
 
 Refresh uses the selected resource's neutral reset and authentication proof, retaining the
 session id. Reopen proves closure and opens a replacement with a new session id, the same profile,

@@ -1,4 +1,3 @@
-import { ObservedOperationStructureWireSchema } from "../../../models/dashboard/operation-structure.js";
 /** Which tabs a run detail advertises, and which one opens. */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { z } from "zod";
@@ -195,22 +194,7 @@ export function appendLogPage(page: NotePage, requestedCursor: string, next: Not
   }
   const rows = [...existing, ...appended];
   const notes = rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
-  const left = page.operationStructure;
-  const right = next.operationStructure;
-  if (left?.state !== right?.state || (left?.state === "observed" && right?.state === "observed" && left.definition.contentDigest !== right.definition.contentDigest)) throw new Error("log-operation-frozen-definition-mismatch");
-  const operationStructure = left?.state === "observed" && right?.state === "observed"
-    ? ObservedOperationStructureWireSchema.parse({ ...left, observations: [...left.observations, ...right.observations] }) : left;
-  const confirmedActions = page.confirmedActions === undefined || next.confirmedActions === undefined
-    ? undefined : [...page.confirmedActions, ...next.confirmedActions];
-  if (confirmedActions !== undefined && new Set(confirmedActions.map(action => action.eventId)).size !== confirmedActions.length) {
-    throw new Error("log-confirmed-action-duplicate");
-  }
-  const confirmedActionBindings = page.confirmedActionBindings === undefined || next.confirmedActionBindings === undefined
-    ? undefined : [...page.confirmedActionBindings, ...next.confirmedActionBindings];
-  if (confirmedActionBindings !== undefined && new Set(confirmedActionBindings.map(binding => binding.eventId)).size !== confirmedActionBindings.length) {
-    throw new Error("log-confirmed-action-binding-duplicate");
-  }
-  return { runId: page.runId, rows, notes, ...(confirmedActionBindings === undefined ? {} : { confirmedActionBindings }), ...(confirmedActions === undefined ? {} : { confirmedActions }), nextCursor: next.nextCursor, ...(operationStructure === undefined ? {} : { operationStructure }) };
+  return { runId: page.runId, rows, notes, nextCursor: next.nextCursor };
 }
 
 export interface LogPagesState {

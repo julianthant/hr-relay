@@ -38,15 +38,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         for (const row of await group.getByRole('button').all()) {
           const label = (await row.locator('span').first().boundingBox())!;
           const card = (await row.boundingBox())!;
-          expect(Math.abs(label.x - headingTextX)).toBeLessThanOrEqual(0.5);
+          expect(Math.abs(label.x - (headingTextX + 10))).toBeLessThanOrEqual(0.5);
           expect(icon.x - card.x).toBe(8);
           expect(card.x).toBe(8);
           expect(card.x + card.width).toBe((await workflows.boundingBox())!.width - 8);
         }
       }
 
-      const meta = workflows.locator('.workflow-rail-meta').first();
-      await expect(meta).toBeVisible();
+      await expect(workflows.locator('.workflow-rail-running')).toHaveCount(await workflows.getByRole('button').count());
       await expect(workflows.getByText('Preview', { exact: true })).toHaveCount(0);
       const bell = rail.getByRole('button', { name: /^Notifications,/ }); await bell.click();
       await expect(rail.getByRole('heading', { name: 'Relay', exact: true })).toBeVisible();
@@ -79,10 +78,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const toggle = sessions.locator('button[aria-expanded][aria-controls]:not([aria-haspopup])');
       const priorOpen = await toggle.getAttribute('aria-expanded');
       await toggle.hover();
-      await expect.poll(() => toggle.evaluate(node => getComputedStyle(node, '::before').opacity)).toBe('1');
-      expect(await toggle.evaluate(node => getComputedStyle(node, '::before').maskImage)).toContain('linear-gradient');
+      const actionsGroup = sessions.getByRole('group', { name: 'Session actions', exact: true });
+      await expect(actionsGroup).toHaveCSS('background-color', theme.attribute === 'dark' ? 'rgb(50, 50, 50)' : 'rgb(235, 235, 235)');
+      await expect(sessions.getByRole('button', { name: 'Add workers', exact: true })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      expect(await toggle.evaluate(node => getComputedStyle(node, '::before').transitionDuration)).toBe('0s');
+      expect(await actionsGroup.evaluate(node => getComputedStyle(node).transitionDuration)).toBe('0s');
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       const actions = (await sessions.getByRole('group', { name: 'Session actions', exact: true }).boundingBox())!;
       await page.mouse.click(actions.x + actions.width - 90, actions.y + 2);

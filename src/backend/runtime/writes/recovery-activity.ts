@@ -6,12 +6,10 @@ import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { localDatePart } from "../../../rules/time/clock.js";
-import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
-import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { TaskError } from "../../../workflow-kit/errors.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
 import { drainBrowserActionNotes } from "../../logs/browser-action-drain.js";
 import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -160,38 +158,11 @@ async function executeRecoveryRead<Output>(input: RecoveryReadInput,
       let callbackSettlement: Promise<unknown> | undefined;
       let verdict: typeof outcome;
       try {
-        const snapshot = run.envelope.operationDisplaySnapshot;
         verdict = await read({ ...probe, sessions, taskDeadlineMs: resources?.taskDeadlineMs ?? probe.taskDeadlineMs,
           retainCallback: settlement => { callbackSettlement = settlement; probe.retainCallback?.(settlement); } }, {
           instance, signal: input.signal,
           onTaskSignal: signal => { taskSignal = signal; },
           screenshotOwner: { nodeId: activity.nodeId, attempt: activity.attempt, log: probe.log },
-          actionBinderForInput: snapshot === undefined ? undefined : (taskId, parsedInput) => {
-            try {
-            const system = probe.stores.stores.flatMap(store => Object.values(store.tasks))
-              .find(task => task.contract.id === taskId)?.driver?.system;
-            const invocation = createConfirmedInvocation({ binding: {
-              snapshot, runId: activity.runId, attempt: activity.attempt, claimGeneration: run.claimGeneration,
-              taskAttempt: 1, nodeId: activity.nodeId, taskId, contractRole: "probe",
-              parsedInput: JsonValueSchema.parse(parsedInput), protectedBindings: retainedRunProtectedBindings(run),
-              runInput: run.input.parsed.value,
-              ...(input.descriptor.operationDisplay?.capability === "complete" ? { transforms: input.descriptor.operationDisplay.transforms } : {}),
-              ...(run.envelope.parent === undefined ? {} : { childInvocation: { parentRunId: run.envelope.parent.runId, edgeId: run.envelope.parent.edgeId } }),
-            }, clock: probe.clock, traceId: activity.traceId, registeredDriverSystem: system });
-            return action => {
-              try {
-                if (probeFailure !== undefined) throw probeFailure;
-                input.signal.throwIfAborted();
-                taskSignal?.throwIfAborted();
-                assertOpen();
-                return invocation.binder(action);
-              } catch (error) {
-                if (probeFailure !== undefined || input.signal.aborted || taskSignal?.aborted === true) throw error;
-                noteFailure = new RecoveryActivityError(error); throw noteFailure;
-              }
-            };
-            } catch (error) { noteFailure = new RecoveryActivityError(error); throw noteFailure; }
-          },
         });
       } catch (error) {
         probeFailure = error instanceof Error ? error : new Error("Recovery probe failed", { cause: error });

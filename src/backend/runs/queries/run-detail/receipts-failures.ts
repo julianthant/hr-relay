@@ -12,6 +12,9 @@ import {
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
 } from "../../../../models/dashboard/run-detail.js";
+import type { FailureDetailWire } from "../../../../models/dashboard/run-detail.js";
+import type { RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import { projectDecision } from "../../decisions/project-decision.js";
 import {
   projectFailureForOperator,
   type FailureRecord,
@@ -93,17 +96,40 @@ export function buildReceiptFailureSection(
     traceId: failure.traceId, spanPath: source.spanPath,
     ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
   } };
-  return RunDetailSectionResponseSchema.parse({
-    section: "failure",
-    payload: { state: "available", value: { ...native,
-      ...failureRecovery(deps, authority, failure), ...failureDetailWire(
+  const value = FailureDetailWireSchema.parse({ ...native,
+    ...failureRecovery(deps, authority, failure), ...failureDetailWire(
       runId,
       failure,
       trust,
       retainedRunProtectedBindings(authority).length > 0,
       deps.captures,
-    ) } },
+    ) });
+  return RunDetailSectionResponseSchema.parse({
+    section: "failure",
+    payload: { state: "available", value: { ...value, decision: failureDecision(value) } },
   });
+}
+
+/** One decision per failure: a served correction is D10, a failure after a committed or verified write is D8 (Mark as failed or a note), anything else D7. */
+export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
+  // Both close the failure through annotate-failure; neither runs, retries or files anything.
+  const annotate = { via: "command" as const, family: "failure-resolution", type: "annotate-failure" };
+  const resolvable = failure.resolution?.capability.state === "available" && failure.resolution.capture.resolution.status === "unresolved";
+  const addNote = resolvable ? [{ id: "add-note", send: annotate, input: { kind: "text" as const, label: "Note" } }] : [];
+  const recovery = failure.recovery;
+  if (recovery !== undefined) {
+    // The run's typed input never crosses this wire, except a rejected value the correction declares display-safe.
+    const { correction, retry } = recovery;
+    return projectDecision("correct-value", [
+      { id: "retry-with-value", send: { via: "start-plan" }, label: correction.actionLabel, confirm: recovery.confirm,
+        input: { kind: "text", label: correction.label, ...(correction.pattern === undefined ? {} : { pattern: correction.pattern }), ...(recovery.prefill === undefined ? {} : { prefill: recovery.prefill }) } },
+      { id: "check-again", send: { via: "action", actionKey: retry.key }, ...(retry.kind === "command" && retry.confirm !== undefined ? { confirm: retry.confirm } : {}) },
+    ]);
+  }
+  if (failure.writeState === "committed" || failure.writeState === "verified") {
+    return projectDecision("failed-after-write", [...(resolvable ? [{ id: "mark-as-failed", send: annotate }] : []), ...addNote]);
+  }
+  return projectDecision("failed-retryable", addNote);
 }
 
 export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord): object {
@@ -123,7 +149,8 @@ export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failur
     if (error instanceof RerunRefusedError) return {};
     throw error;
   }
-  return { recovery: { correction, expectedVersion: run.version,
+  const rejected = correction.displaySafe === true ? (run.input.parsed.value as Record<string, unknown> | null)?.[correction.inputField] : undefined;
+  return { recovery: { correction, expectedVersion: run.version, ...(typeof rejected === "string" && rejected !== "" ? { prefill: rejected } : {}),
     retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: run.version,
       confirm: { title: "Check again", body: "Retry this run from its retained checkpoints.", confirmLabel: "Check again", tone: "neutral" } },
     confirm: { title: correction.actionLabel, body: "Relay reads the entered value in the real system before continuing. Identity still requires operator approval.", confirmLabel: correction.actionLabel, tone: "neutral" },

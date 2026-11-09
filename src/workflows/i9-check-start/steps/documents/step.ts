@@ -16,7 +16,7 @@ export function buildDocuments(author: Author) {
     target: { id: WorkflowIdSchema.parse("ocr"), input: OcrInputSchema, result: OcrWorkflowResultSchema },
     edgeId: "i9-documents", cardinality: "many", await: "terminal", join: "all-settled",
     policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
-  }, [], { bind: ({ input }) => input.documents.map(({ document, readingId, reading }) => ({ document, readingId, reading, formType: "i9" as const, approval: "release" as const, roster: null })),
+  }, [], { bind: ({ input }) => input.documents.map(({ document, fileName, readingId, reading }) => ({ document, fileName, readingId, reading, formType: "i9" as const, approval: "release" as const, roster: null })),
     deriveChildItemId: (_input, identity) => identity.canonicalItemId });
   const approved = author.task(entries.task("read-approved-records", ReadApprovedOcrRecords, { replay: "always-rerun" }), [documents], ({ outputs }) => ({
     delegationNodeId: NodeIdSchema.parse("read-documents"), outcomes: [...outputs["read-documents"]],

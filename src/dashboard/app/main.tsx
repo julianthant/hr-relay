@@ -32,6 +32,8 @@ const report = (error: unknown) => {
 };
 const onError = (event: ErrorEvent) => {
   if (event.error instanceof DashboardReportDeliveryError) return;
+  // The browser delivers the remaining ResizeObserver notifications next frame; nothing failed.
+  if (event.error === null && event.message.startsWith("ResizeObserver loop")) return;
   report(event.error ?? new Error(event.message));
 };
 const onRejection = (event: PromiseRejectionEvent) => report(event.reason);

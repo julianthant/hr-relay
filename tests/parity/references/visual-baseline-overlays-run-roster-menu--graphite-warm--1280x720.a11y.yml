@@ -10,7 +10,7 @@
 - dialog "Start a run":
   - banner:
     - heading "Start a run" [level=2]
-    - paragraph: OCR · Workflow preview
+    - paragraph: Emergency Contact · Workflow preview
     - button "Close"
   - complementary:
     - group:
@@ -20,8 +20,6 @@
       - list:
         - listitem:
           - button "Person Lookup"
-        - listitem:
-          - button "I-9 Lookup" [disabled]: I-9 Lookup Parent only
       - heading "Separations" [level=3]
       - list:
         - listitem:
@@ -49,11 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "OCR"
-        - listitem:
           - button "CRM Doc Download"
-        - listitem:
-          - button "SharePoint Download" [disabled]: SharePoint Download Parent only
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -86,6 +80,6 @@
     - text: Form type
     - button "Oath Form type": Oath
   - contentinfo:
-    - text: 0 runsOCR
+    - text: 0 runsEmergency Contact
     - button "Cancel"
     - button "Continue" [disabled]

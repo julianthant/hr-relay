@@ -61,7 +61,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
         expect(hover.fill).toBe(theme === 'light' ? 'rgb(235, 235, 235)' : 'rgb(50, 50, 50)');
         await page.mouse.move(0, 0); await page.keyboard.press('Home'); await expect(items.first()).toBeFocused();
         const focus = await items.first().evaluate(node => ({ fill: getComputedStyle(node).backgroundColor, ink: getComputedStyle(node).color }));
-        expect(focus.fill).toBe(theme === 'light' ? 'rgb(148, 148, 148)' : 'rgb(176, 176, 176)');
+        expect(focus.fill).toBe(theme === 'light' ? 'rgb(214, 214, 214)' : 'rgb(74, 74, 74)');
         await page.keyboard.press('End'); await expect(items.last()).toBeFocused();
         await page.keyboard.press('Home'); await expect(items.first()).toBeFocused();
         await page.keyboard.press('ArrowDown'); await expect(items.nth(label === 'Voice input' || label === 'Ask before every action' ? 0 : 1)).toBeFocused();

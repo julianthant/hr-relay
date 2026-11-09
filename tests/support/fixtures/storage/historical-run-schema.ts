@@ -7,43 +7,43 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Steps an empty current authority back to schema 25: the empty operator grant table still existed. */
-export function restoreSchema25AssistantGrants(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 26);
+/** Steps an empty current authority back to schema 26: the empty operator grant table still existed. */
+export function restoreSchema26AssistantGrants(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 27);
   const ddl = SQLITE_MIGRATIONS.find(migration => migration.version === 8)?.statements.join("\n");
   const table = ddl?.match(/CREATE TABLE assistant_grants \([\s\S]*?\n\) STRICT;/u)?.[0], trigger = ddl?.match(/CREATE TRIGGER assistant_grants_revision[\s\S]*?END;/u)?.[0];
   assert.ok(table && trigger);
   database.exec(`${table}\n${trigger}`);
+  database.exec("UPDATE database_states SET schema_version=26; PRAGMA user_version=26");
+}
+
+/** Steps an empty schema-26 authority back to schema 25: the attachments table did not exist yet. */
+export function removeEmptySchema26Attachments(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 27) restoreSchema26AssistantGrants(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 26);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_attachments").get()?.count, 0);
+  database.exec("DROP TABLE assistant_attachments");
   database.exec("UPDATE database_states SET schema_version=25; PRAGMA user_version=25");
 }
 
-/** Steps an empty schema-25 authority back to schema 24: the attachments table did not exist yet. */
-export function removeEmptySchema25Attachments(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 26) restoreSchema25AssistantGrants(database);
+/** Steps a schema-25 authority back to schema 24: schema 25 converts stored efforts in place and keeps the same layout. */
+export function regressSchema25EffortScale(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 26) removeEmptySchema26Attachments(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 25);
-  assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_attachments").get()?.count, 0);
-  database.exec("DROP TABLE assistant_attachments");
   database.exec("UPDATE database_states SET schema_version=24; PRAGMA user_version=24");
 }
 
-/** Steps a schema-24 authority back to schema 23: schema 24 converts stored efforts in place and keeps the same layout. */
-export function regressSchema24EffortScale(database: DatabaseSync): void {
-  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 25) removeEmptySchema25Attachments(database);
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 24);
-  database.exec("UPDATE database_states SET schema_version=23; PRAGMA user_version=23");
-}
-
 /** Steps an empty current authority back to schema 22: the two assistant history tables did not exist yet. */
-export function removeEmptySchema23AssistantHistory(database: DatabaseSync): void {
-  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 24) regressSchema24EffortScale(database);
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 23);
+export function removeEmptySchema24AssistantHistory(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 25) regressSchema25EffortScale(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 24);
   for (const table of ["assistant_messages", "assistant_conversations"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
-  database.exec("DROP TABLE assistant_messages; DROP TABLE assistant_conversations");
+  database.exec("DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP INDEX timeline_worker_claim_idx");
   database.exec("UPDATE database_states SET schema_version=22; PRAGMA user_version=22");
 }
 
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === CURRENT_AUTHORITY_SCHEMA_VERSION) removeEmptySchema23AssistantHistory(database);
+  if (database.prepare("PRAGMA user_version").get()?.user_version === CURRENT_AUTHORITY_SCHEMA_VERSION) removeEmptySchema24AssistantHistory(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 22);
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));

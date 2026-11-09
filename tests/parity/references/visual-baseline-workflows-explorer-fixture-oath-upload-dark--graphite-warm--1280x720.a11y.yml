@@ -58,13 +58,20 @@
           - text: Execution path
           - combobox "Execution path preview": Illustrate completion
         - listitem:
-          - heading "OCR prep" [level=2]
-          - text: OCR
-          - paragraph: Delegate the signed document to an OCR review, which keeps its own row in the OCR panel.
-          - text: Delegate to OCR; preserve its separate outcome.
+          - heading "Read forms" [level=2]
+          - text: I-9
+          - paragraph: Run the form spec over each page, pull the fields it defines, and flag anything illegible.
           - group:
-            - strong: OCR prep
-            - text: Read and process Signed oaths found 1
+            - strong: Read forms
+            - text: Read and process Records read 1 Records reported 1 Completeness gaps 0
+        - listitem:
+          - heading "Match extracted people" [level=2]
+          - text: UCPath
+          - paragraph: Look up everybody the roster did not settle. The child keeps its own row in the Person Lookup panel.
+          - text: Delegate to Person Lookup; preserve its separate outcome.
+          - group:
+            - strong: Match extracted people
+            - text: Read and process Active people 1 People resolved 1
         - listitem:
           - heading "Your review" [level=2]
           - text: Local
@@ -96,8 +103,7 @@
 - status
 - region "Session Panel":
   - group "Session actions":
-    - button "Sessions"
-    - text: 2 running 1 starting 1 idle
+    - button "Sessions 2 running·1 starting·1 idle"
     - button "Add workers"
     - button "Settings" [pressed]
     - button "Log out"

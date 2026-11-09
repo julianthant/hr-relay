@@ -25,12 +25,22 @@ export type BrowserLandingStallCode = Extract<ErrorCatalogCode,
   | "AUTHENTICATED_LANDING_MISSING"
 >;
 type BrowserLoginFailureCode = BrowserSignInCode | BrowserLandingStallCode
-  | Extract<ErrorCatalogCode, "DUO_TERMINAL_REFUSAL">;
+  | Extract<ErrorCatalogCode, "DUO_TERMINAL_REFUSAL" | "UCPATH_MAINTENANCE">;
 const SIGN_IN_CODES = {
   ucpath: "UCPATH_SIGN_IN_FAILED", crm: "CRM_SIGN_IN_FAILED", onbase: "ONBASE_SIGN_IN_FAILED",
   kuali: "KUALI_SIGN_IN_FAILED", servicenow: "SERVICENOW_SIGN_IN_FAILED", i9: "I9_SIGN_IN_FAILED",
   "new-kronos": "NEW_KRONOS_SIGN_IN_FAILED", "old-kronos": "OLD_KRONOS_SIGN_IN_FAILED", sharepoint: "SHAREPOINT_SIGN_IN_FAILED",
 } as const satisfies Record<BrowserSystemId, BrowserSignInCode>;
+
+const UCPATH_MAINTENANCE_HOST = "ucpath-notifications.universityofcalifornia.edu";
+const UCPATH_MAINTENANCE_PATH = "/ucpath-maintenance.html";
+
+// Scheduled UCPath maintenance, recognized by host and path. Query and fragment are ignored.
+export function ucpathMaintenanceFailureCode(observedUrl: string): "UCPATH_MAINTENANCE" | undefined {
+  const url = URL.parse(observedUrl);
+  if (url?.hostname !== UCPATH_MAINTENANCE_HOST || url.pathname !== UCPATH_MAINTENANCE_PATH) return undefined;
+  return "UCPATH_MAINTENANCE";
+}
 
 export class BrowserLoginError extends Error {
   constructor(

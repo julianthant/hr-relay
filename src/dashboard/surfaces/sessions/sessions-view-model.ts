@@ -1,12 +1,15 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
+import type { QueueSurfaceWire } from "../shell/shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
-import { SYSTEM_LABEL } from "../shared/status/system-chip-model.js";
-import { workerBrowserView, workerElapsedSeconds, workerRetryProblem, WORKER_STOP_REASON_LABEL } from "./session-panel-model.js";
+import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
+import { workerBrowserView, workerDirectiveNote, workerElapsedSeconds, workerRetryProblem } from "./session-panel-model.js";
 
 type WorkerCardWire = DashboardDayWire["workerCards"][number];
+type UnavailableWorkerCard = NonNullable<DashboardDayWire["unavailableWorkerCards"]>[number];
 
-export type SessionWorkerState = "running" | "starting" | "idle" | "waiting" | "paused" | "stopped" | "failed";
+export type SessionWorkerState = "running" | "starting" | "idle" | "waiting" | "paused" | "stopped" | "failed" | "unavailable";
+export type SessionBrowserState = "ready" | "active" | "starting" | "unopened" | "closed" | "unavailable" | "failed" | "needs-duo" | "signed-out";
 export type SessionControl = "pause" | "resume" | "retry" | "stop" | "remove";
 export type SessionNode = Readonly<{ id: string; label: string; state: "completed" | "active" | "pending" | "waiting" | "paused" | "failed" }>;
 export type SessionWorker = Readonly<{
@@ -22,7 +25,11 @@ export type SessionWorker = Readonly<{
   elapsed?: string;
   timeline?: readonly SessionNode[];
   problem?: string;
-  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "closed" | "unavailable" }>[];
+  note?: string;
+  /** Shown in the browser area when no session row applies; the default is "No browser sessions open". */
+  browsersNote?: string;
+  /** `name` is the full system name when `label` is a nickname. */
+  browsers: readonly Readonly<{ id: string; label: string; name?: string; state: SessionBrowserState; reason?: string }>[];
 }>;
 export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[] }>
   | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string; diagnostic?: unknown }>;
@@ -30,15 +37,37 @@ export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
   return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("SESSIONS_UNAVAILABLE", {})).text,
     ...(diagnostic === undefined ? {} : { diagnostic }) };
 }
+/** One plain sentence for how a settled lease ended; a deliberate stop is not an error. */
+const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly." };
 export const SESSION_STATE_LABELS: Readonly<Record<SessionWorkerState, string>> = {
-  running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", stopped: "Stopped", failed: "Failed",
+  running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", stopped: "Stopped", failed: "Failed", unavailable: "Unavailable",
+};
+/** Chips never wrap: a long system name gets a nickname. */
+const SYSTEM_NICKNAME: Readonly<Record<string, string>> = { servicenow: "SNow", sharepoint: "SP" };
+const systemLabel = (system: keyof typeof SYSTEM_NAME) => SYSTEM_NICKNAME[system] === undefined ? { label: SYSTEM_NAME[system] } : { label: SYSTEM_NICKNAME[system], name: SYSTEM_NAME[system] };
+const UNAVAILABLE_LINE: Readonly<Record<UnavailableWorkerCard["availability"]["reason"], string>> = {
+  "worker-member-authority-unavailable": "Relay can't confirm this worker exists.", "worker-current-owner-unavailable": "Relay can't confirm who runs this worker.",
+  "worker-browser-closure-or-health-unavailable": "Relay can't confirm this worker's browsers.", "worker-current-run-authority-unavailable": "Relay can't read this worker's run.",
+  "worker-lifetime-unavailable": "Relay can't read how long this worker ran.", "worker-current-phase-unavailable": "Relay can't read what this worker is doing.", "worker-card-unavailable": "Relay can't read this worker right now.",
+};
+/** The top line when no step or live message is served, so the step block always has one. */
+const RUNLESS_LINE: Readonly<Record<WorkerCardWire["state"], string>> = {
+  idle: "Ready for the next run", starting: "Preparing worker", waiting: "Preparing worker", paused: "Paused between runs", running: "Run in progress", failed: "Last step unknown",
+};
+const LAST_RUN_LINE: Readonly<Record<NonNullable<Extract<WorkerCardWire["lastRun"], { state: "present" }>["outcome"]>, string>> = {
+  done: "Last run finished.", failed: "Last run failed.", cancelled: "Last run was cancelled.", discarded: "Last run was discarded.", interrupted: "Last run was interrupted.", superseded: "Last run was replaced.",
+};
+const WAITING_LINE: Readonly<Record<NonNullable<WorkerCardWire["waitingActivity"]>, string>> = { acquiring: "Opening browser sessions", authenticating: "Signing in", closing: "Closing browser sessions" };
+const TIMELINE_REASON: Readonly<Record<NonNullable<Extract<WorkerCardWire["timeline"], { state: "unavailable" }>["reason"]>, string>> = {
+  "run-not-in-day": "Run timeline is not served on this day", "run-unavailable": "Run timeline is not served on this day",
+  "no-steps-recorded": "No steps are served for this run", "timeline-incompatible": "The current timeline contains states unavailable in this view",
 };
 export function sessionStateColor(state: SessionWorkerState): string {
-  return state === "failed" ? "text-ui-danger" : state === "waiting" || state === "starting" ? "text-ui-warning"
+  return state === "failed" ? "text-ui-danger" : state === "waiting" || state === "starting" || state === "unavailable" ? "text-ui-warning"
     : state === "running" ? "text-ui-positive" : "text-ui-muted";
 }
 export function sessionTallies(workers: readonly SessionWorker[]): readonly { state: SessionWorkerState; count: number }[] {
-  const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "stopped", "failed"];
+  const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "stopped", "failed", "unavailable"];
   return order.map(state => ({ state, count: workers.filter(worker => worker.state === state).length }))
     .filter(tally => tally.count > 0 || ["running", "starting", "idle"].includes(tally.state));
 }
@@ -62,34 +91,65 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
     const registration = catalog.find(entry => entry.id === card.workflowId);
     if (registration === undefined) return sessionsUnavailable({ code: "SESSION_WORKFLOW_UNREGISTERED", workflowId: card.workflowId });
     const currentRun = card.currentRun;
-    const row = currentRun.state === "present" ? day.queueSurfaces.find(run => run.runId === currentRun.runId && run.workflowId === card.workflowId) : undefined;
-    const timelineUnavailable = currentRun.state === "absent" ? currentRun.reason : row === undefined ? "Run timeline is not served on this day"
-      : row.pipeline.length === 0 ? "No steps are served for this run"
-      : row.pipeline.some(step => step.state === "skipped" || step.state === "cancelled") ? "The current timeline contains states unavailable in this view" : undefined;
+    const settled = card.state === "failed";
+    const lastRun = card.lastRun?.state === "present" ? card.lastRun : undefined;
+    // A settled worker keeps the run it last claimed, so its card shows the step it ended on.
+    const runId = currentRun.state === "present" ? currentRun.runId : settled ? lastRun?.runId : undefined;
+    const row = runId === undefined ? undefined : day.queueSurfaces.find(run => run.runId === runId && run.workflowId === card.workflowId);
+    const timelineUnavailable = runId === undefined ? currentRun.state === "absent" ? currentRun.reason : undefined
+      : card.timeline?.state === "unavailable" ? TIMELINE_REASON[card.timeline.reason]
+      : row === undefined ? TIMELINE_REASON["run-not-in-day"]
+      : row.pipeline.length === 0 ? TIMELINE_REASON["no-steps-recorded"]
+      : row.pipeline.some(step => step.state === "skipped" || step.state === "cancelled") ? TIMELINE_REASON["timeline-incompatible"] : undefined;
+    const frozenNode = settled && lastRun?.step !== undefined && lastRun.step.state !== "done" ? lastRun.step.nodeId : undefined;
+    const atStep = (step: QueueSurfaceWire["pipeline"][number]) => step.state === "active" || step.id === frozenNode && step.state === "pending";
     const timeline: SessionNode[] | undefined = timelineUnavailable === undefined ? row?.pipeline.map(step => ({ id: step.id, label: step.label,
-      state: step.state === "done" ? "completed" : step.state === "blocked" ? "waiting" : step.state === "active" && card.state === "paused" ? "paused"
-        : step.state === "active" ? "active" : step.state === "failed" ? "failed" : "pending" })) : undefined;
+      state: step.state === "done" ? "completed" : step.state === "blocked" ? "waiting" : atStep(step) && (card.state === "paused" || settled && card.stopReason !== "crashed") ? "paused"
+        : atStep(step) && settled ? "failed"
+        : atStep(step) ? "active" : step.state === "failed" ? "failed" : "pending" })) : undefined;
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
-    const problem = workerRetryProblem(card) ?? (card.stopReason === undefined ? browserView.unavailableReason : WORKER_STOP_REASON_LABEL[card.stopReason]);
+    const stepLabel = row?.pipeline.find(step => atStep(step) || step.state === "blocked" || step.state === "failed")?.label;
+    // How a settled lease ended: a crash names its recorded refusal when there is one (long, so it wraps under the bar).
+    const failureLine = card.failureCode === undefined ? undefined : operatorFailureSentence(card.failureCode);
+    const settledLine = card.stopReason === undefined ? undefined : failureLine ?? SETTLED_LINE[card.stopReason];
+    // A settled worker whose run left the day says what happened in the top line and why the step is unknown below the bar.
+    const recordGone = settled && row === undefined;
+    const problem = workerRetryProblem(card) ?? (recordGone ? failureLine ?? "Its run is no longer on record." : settledLine ?? (card.state === "idle" && lastRun?.outcome !== undefined ? LAST_RUN_LINE[lastRun.outcome] : undefined));
     const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
+    const note = workerDirectiveNote(card) ?? (card.waitingActivity === undefined ? undefined : WAITING_LINE[card.waitingActivity]);
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state,
       ...(row === undefined ? {} : { subject: row.title }),
-      action: currentRun.state === "present" && ["running", "waiting", "paused"].includes(card.state) && timelineUnavailable !== undefined ? timelineUnavailable
-        : row?.liveMessage.state === "present" ? row.liveMessage.value : row?.pipeline.find(step => step.state === "active" || step.state === "blocked")?.label
-        ?? (card.state === "idle" ? "Ready for the next run" : card.state === "starting" ? "Preparing worker" : SESSION_STATE_LABELS[card.state]),
-      ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s` }),
+      action: recordGone ? card.stopReason === undefined ? RUNLESS_LINE.failed : SETTLED_LINE[card.stopReason] : settled ? stepLabel ?? "Last step unknown" : row?.liveMessage.state === "present" ? row.liveMessage.value : stepLabel
+        ?? RUNLESS_LINE[card.state],
+      ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
       ...(problem === undefined ? {} : { problem }),
+      ...(note === undefined ? {} : { note }),
       browsers: browserView.slots.map((slot, index) => slot.state !== "open"
-        ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: slot.state === "closed" ? "closed" : card.state === "starting" ? "starting" : "unopened" }
-        : { id: slot.browser.sessionId, label: SYSTEM_LABEL[slot.browser.system],
-          state: slot.browser.observation?.state !== "present" ? "unavailable"
+        ? { id: `required:${card.workerId}:${index}:${slot.system}`, ...systemLabel(slot.system), state: slot.state === "closed" ? "closed" : "unopened" }
+        : { id: slot.browser.sessionId, ...systemLabel(slot.browser.system),
+          ...(slot.browser.observation?.state === "unavailable" ? { reason: slot.browser.observation.reason } : {}),
+          state: slot.browser.signIn === "needs-duo" ? "needs-duo" : slot.browser.signIn === "signed-out" ? "signed-out"
+            : slot.browser.observation?.state !== "present" ? "unavailable"
             : slot.browser.observation.health === "starting" ? "starting"
             : slot.browser.observation.health === "authenticated" ? "ready"
+            : slot.browser.observation.health === "failed" ? "failed"
             : slot.browser.observation.health === "unknown" && card.state === "running" ? "active" : "unavailable" }),
     });
+  }
+  // One card that could not be built never hides its siblings; it keeps its place in the member order.
+  for (const card of day.unavailableWorkerCards ?? []) {
+    const registration = catalog.find(entry => entry.id === card.member.workflowId);
+    if (registration === undefined) return sessionsUnavailable({ code: "SESSION_WORKFLOW_UNREGISTERED", workflowId: card.member.workflowId });
+    workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.member.workflowId, workflow: registration.label,
+      state: "unavailable", subject: `Worker ${card.member.ordinal}`, elapsed: "Time unavailable", action: "Details unavailable", problem: "No actions until it can be read.", browsersNote: UNAVAILABLE_LINE[card.availability.reason], browsers: [] });
+  }
+  if (day.unavailableWorkerCards?.length) {
+    const ordinals = new Map<string, number>([...day.workerCards, ...day.unavailableWorkerCards].map(card => [card.workerId, card.member.ordinal]));
+    const workflows = [...new Set(workers.map(worker => worker.workflowId))];
+    workers.sort((a, b) => workflows.indexOf(a.workflowId) - workflows.indexOf(b.workflowId) || ordinals.get(a.id)! - ordinals.get(b.id)!);
   }
   return { state: "ready", workers };
 }

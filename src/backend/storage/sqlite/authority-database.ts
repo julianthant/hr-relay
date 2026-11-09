@@ -27,7 +27,6 @@ import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
-import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
 import { TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
@@ -53,7 +52,6 @@ import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "
 import { WorkerSlotRecordSchema,workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { CanonicalCrashRecoveryRequestSchema,LIVE_WORKER_STATES,RunClaimTokenSchema,WorkerControlBasisSchema,WorkerLeaseRecordSchema,isLiveWorker,type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
-import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -61,7 +59,6 @@ import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationManifest,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
-import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { authenticateAuditedParkedWriteResolution,authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -112,7 +109,7 @@ import { admitWorkerVerification,createWorkerSlotRepository,readWorkerReservatio
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
 import { RunEvidenceReceiptSchema,type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
-import { FailureRecordSchema,type FailureRecord } from "../../../models/trust/failure.js";
+import { FailureRecordSchema,settledWriteState,type FailureRecord } from "../../../models/trust/failure.js";
 import { RunCheckpointRecordSchema,checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSchema,CommandIdSchema,DiagnosticBundleIdSchema,FailureIdSchema,FailureFingerprintSchema,FingerprintSchema,GateIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteIntentIdSchema } from "../../../rules/identity/ids.js";
@@ -122,7 +119,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
+import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
 import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
@@ -417,7 +414,7 @@ type RunRepository = Readonly<{
   requeue(input: unknown): RunUpdateOutcome;
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
-  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
+  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; errorSummary?: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
 
   setPause(input: unknown, accountingAuthorization?: object): RunUpdateOutcome;
@@ -436,7 +433,6 @@ type FailureRepository = Readonly<{
 
 
 type DiagnosticBundleRepository = Readonly<{
-  validateOperation(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<DiagnosticBundle>;
   insertPrepared(input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>): ImmutableInsertResult<DiagnosticBundle>;
   get(bundleId: string): DiagnosticBundle | undefined;
@@ -1364,7 +1360,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     }
   }
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
-  // Below schema 24 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
+  // Below schema 25 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
@@ -1553,7 +1549,17 @@ function nonProjectionFingerprint(database: DatabaseSync): string {
   return hash.digest("hex");
 }
 
+function assertPublishedAssistantNumbering(database: DatabaseSync): void {
+  const version = readIntPragma(database, "user_version");
+  if (version < 23 || version > 26) return;
+  const history = database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='assistant_conversations'").get();
+  const claimIndex = database.prepare("SELECT 1 FROM sqlite_schema WHERE type='index' AND name='timeline_worker_claim_idx'").get();
+  if (history !== undefined && claimIndex === undefined) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED",
+    { cause: new Error("assistant-unpublished-schema-numbering") });
+}
+
 function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION, withoutRunSearch = false): void {
+  assertPublishedAssistantNumbering(database);
   if (normalizedNativeSchema(database) !== expectedNativeSchema(version, withoutRunSearch)) throw new Error("authority-native-schema-shape-mismatch");
 }
 
@@ -1564,6 +1570,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
+  assertPublishedAssistantNumbering(database);
   if ((!isSupportedStoppedAuthoritySchemaVersion(expectedSchemaVersion) && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion, missingRunSearch);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
@@ -1593,7 +1600,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.enum(["explorer_overrides", RETIRED_ASSISTANT_GRANT_TABLE]), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1963,6 +1970,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
     database.exec("PRAGMA query_only=ON"); database.exec("BEGIN"); transactionOpen = true;
     if (readIntPragma(database,"application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("span-authority-application-mismatch");
     const version = readIntPragma(database,"user_version");
+    assertPublishedAssistantNumbering(database);
     if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
     assertNativeSchema(database);
     const meta = readMetaRow(database);
@@ -2055,7 +2063,8 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
           }
         }
       }
-      return Object.freeze([...references.values()].map(reference => Object.freeze(reference)));
+      // Table scans return rows in storage order, which a rebuild can change; inventories compare this list, so order it by content.
+      return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
 export class AuthorityDatabase implements Disposable {
@@ -2205,7 +2214,7 @@ export class AuthorityDatabase implements Disposable {
       catch (closeError) {
         throw retainAuthoritySourceClosure([error, closeError], { database: this.#database, admission: this.#admission });
       }
-      if (error instanceof AuthoritySchemaVersionError) throw error;
+      if (error instanceof AuthoritySchemaVersionError || error instanceof AuthorityFormatUnsupportedError) throw error;
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
 
@@ -2584,6 +2593,7 @@ export class AuthorityDatabase implements Disposable {
       return withReadonlyAuthoritySnapshot(path, database => {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
+        assertPublishedAssistantNumbering(database);
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_NEWER_VERSION", { cause: new AuthoritySchemaVersionError(version) });
         if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)) {
           throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: new AuthoritySchemaVersionError(version) });
@@ -3008,10 +3018,10 @@ export class AuthorityDatabase implements Disposable {
         const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
         if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
         const { probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
-        assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
+        assertLogoutResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
         const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-        assertCredentialCopyResourcesClosed(facts);
+        assertLogoutResourcesClosed(facts);
         const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
           : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
         const { resolveConfigWithProvenance } = await import("../../app/config/resolve.js");
@@ -3734,6 +3744,13 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  /** Systems whose live Duo ceremony lease this worker holds. */
+  heldDuoSystems(workerId: string): readonly string[] {
+    return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)
+      .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema))
+      .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => lease.holder.system));
+  }
+
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
     return this.#withReadSnapshot(read);
   }
@@ -3870,7 +3887,8 @@ export class AuthorityDatabase implements Disposable {
         fingerprint: sha256Hex(`hrauto:failure-class:v1\0${current.envelope.workflow}\0absent-node\0absent-task\0${code}`),
         runId: current.envelope.runId, traceId: current.envelope.traceId, attempt: current.envelope.attempt,
         workflowId: current.envelope.workflow, code, summary, transient: false,
-        writeState: intents.length === 0 ? "not-attempted" : intents.some(intent => intent.status === "observed-present") ? "verified" : "committed",
+        writeState: settledWriteState(AuthenticatedRunContinuation.authenticate(repositories, current.envelope)
+          .writeRunIds().flatMap(id => repositories.writeIntents.listByRun(id))),
         causeChain: [{ code, summary, role: "primary", transient: false }],
         remediation: [{ kind: "operator-action", message: summary }], occurredAt: request.now });
       const authorization = FailureTerminalAuthorizationRecordSchema.parse({ kind: "failed", runId: current.envelope.runId,
@@ -4613,6 +4631,7 @@ export class AuthorityDatabase implements Disposable {
   #admitExistingSchema(): number {
     if (this.#readIntPragma("application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority database is not the HR authority store");
     const version = this.#readIntPragma("user_version");
+    assertPublishedAssistantNumbering(this.#database);
     if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
     if (this.#readMetaRow().schema_version !== version) throw new Error("authority schema metadata disagrees with user_version");
     return version;
@@ -4922,38 +4941,8 @@ export class AuthorityDatabase implements Disposable {
       const rows = this.#database.prepare(sql).all(parameter);
       return Object.freeze(rows.map((row) => this.#parseNativeRow("diagnostic_files",row,DiagnosticAttachmentStorageRecordSchema)));
     };
-    const validateOperation = (input: unknown): void => {
-      const identity = DeclaredActionIdentitySchema.parse(input);
-      const run = readTimelineRun(this.#database, identity.runId);
-      if (run === undefined || identity.attempt !== run.envelope.attempt
-        || Number(identity.claimGeneration) !== Number(run.claimGeneration)
-        || identity.definitionFingerprint !== run.envelope.contractFingerprint) throw new Error("diagnostic-operation-owner-execution-mismatch");
-      const definition = requireWorkflowOperationDisplaySnapshot(run.envelope.operationDisplaySnapshot, { workflowId: run.envelope.workflow, definitionFingerprint: run.envelope.contractFingerprint });
-      requireOperationSourceDeclaration(definition, identity);
-      if (run.envelope.parent === undefined ? identity.childInvocation !== undefined : identity.childInvocation?.parentRunId !== run.envelope.parent.runId || identity.childInvocation.edgeId !== run.envelope.parent.edgeId) throw new Error("diagnostic-operation-child-identity-mismatch");
-      const expected = canonicalJsonStringify(identity);
-      let cursor = 0;
-      for (;;) {
-        const rows = this.#database.prepare("SELECT * FROM timeline_events WHERE run_id=? AND cursor>? ORDER BY cursor LIMIT 500").all(identity.runId, cursor);
-        for (const raw of rows) {
-          const record = timelineEventFromRow(raw);
-          cursor = record.cursor;
-          if (record.payload.kind !== "note") continue;
-          const note = record.payload.note;
-          const occurrence = note.action?.operation;
-          if (occurrence === undefined) continue;
-          const { value: _value, ...retained } = occurrence;
-          if (canonicalJsonStringify(retained) !== expected) continue;
-          if (!("runId" in note) || note.runId !== identity.runId || note.workflow !== run.envelope.workflow || note.attempt !== identity.attempt || note.traceId !== run.envelope.traceId) throw new Error("diagnostic-operation-note-owner-mismatch");
-          return;
-        }
-        if (rows.length < 500) break;
-      }
-      throw new Error("diagnostic-operation-exact-occurrence-not-retained");
-    };
     const insert = (input: unknown, publication?: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => {
         let record = DiagnosticBundleSchema.parse(input);
-        if (record.operation !== undefined) validateOperation(record.operation);
         let json = canonicalJsonStringify(record);
         return this.#authorityWrite("diagnostic_snapshots", () => {
           const existing = this.#readRecord("diagnostic_snapshots", record.bundleId, DiagnosticBundleSchema);
@@ -5032,7 +5021,6 @@ export class AuthorityDatabase implements Disposable {
         });
       };
     return Object.freeze({
-      validateOperation,
       insert: (input: unknown) => insert(input),
       insertPrepared: (input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => insert(input, publication),
       get: (bundleId: string) => this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema),
@@ -6767,7 +6755,7 @@ export class AuthorityDatabase implements Disposable {
           },
         );
       },
-      requestCancellation: ({ runId, expectedVersion, now, cancellationSource }) => this.#mutateRun(
+      requestCancellation: ({ runId, expectedVersion, now, errorSummary, cancellationSource }) => this.#mutateRun(
         RunIdSchema.parse(runId), z.number().int().positive().parse(expectedVersion), IsoInstantSchema.parse(now),
         undefined, (current) => {
           if (runClaim(current) === undefined) {
@@ -6776,7 +6764,7 @@ export class AuthorityDatabase implements Disposable {
             authenticateCancellationSource(this.authority, current, cancellationSource);
             for (const manifest of this.authority.delegationManifests.listByParentRun(runId)) authenticateDelegationGroup(this.authority, manifest);
           }
-          return RunRecordSchema.parse({ ...current, cancelRequested: true });
+          return RunRecordSchema.parse({ ...current, cancelRequested: true, ...(errorSummary !== undefined && { cancelSummary: errorSummary }) });
         },
       ),
       advanceRevision: ({ runId, expectedVersion, now }) => this.#mutateRun(
@@ -6790,7 +6778,10 @@ export class AuthorityDatabase implements Disposable {
           request.expectedVersion,
           request.now,
           undefined,
-          (current) => RunRecordSchema.parse({ ...current, displayName: request.displayName }),
+          (current) => {
+            const { displayName: _previous, ...rest } = current;
+            return RunRecordSchema.parse(request.displayName === null ? rest : { ...rest, displayName: request.displayName });
+          },
         );
       },
       setPause: (input: unknown, accountingAuthorization?: object) => {
@@ -7097,6 +7088,7 @@ export class AuthorityDatabase implements Disposable {
   reconcileWorkerControlMilestones(now: string): void {
     for (const record of this.authority.workerControls.list()) {
       if (record.auditedAt !== undefined) continue;
+      if (record.request.type === "refresh-browser" || record.request.type === "reopen-browser") { if (this.#browserLifetimeEnded(record)) this.#refuseEndedBrowserControl(record.commandId, now); continue; }
       if ((record.request.type === "stop-worker" || record.lifecycle !== undefined) && ["admitted", "ready", "executing"].includes(record.phase.state)
         && Date.parse(record.expiresAt) <= Date.parse(now)) this.authority.workerControls.transition(record.commandId, record.phase.state, {
           state: "uncertain", startedAt: "startedAt" in record.phase ? record.phase.startedAt : record.admittedAt,
@@ -7114,6 +7106,26 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
+  #browserLifetimeEnded(record: z.infer<typeof WorkerControlRecordSchema>): boolean {
+    const control = record.control;
+    if (control === undefined || record.auditedAt !== undefined || record.phase.state === "succeeded") return false;
+    const lease = this.#readWorkerLease(control.member.workerId), lifetime = control.lifetime;
+    return lease !== undefined && (lease.leaseGeneration > lifetime.leaseGeneration || lease.leaseGeneration === lifetime.leaseGeneration
+      && lease.lifecycle.state === "stopped" && lease.processId === lifetime.processId && lease.lifecycle.startedAt === lifetime.startedAt);
+  }
+
+  /** A browser control bound to a stopped worker lifetime can take no further effect; refuse and audit it so it stops holding the pool. */
+  #refuseEndedBrowserControl(commandId: string, now: string): void {
+    this.withAuthorityTransaction(repositories => {
+      const current = repositories.workerControls.get(commandId);
+      if (current === undefined || !this.#browserLifetimeEnded(current)) return;
+      const message = "worker-browser-lifetime-ended";
+      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+      repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+        result: { state: "rejected", commandId, code: "invalid-state", message } });
+    });
+  }
+
   /** Startup only: a Retry, or a stop-worker restart with no run work, whose reserved old lifetime is still exact never birthed; refuse it and release the reservation. */
   settleUnbornWorkerRetries(now: string): void {
     // A bound supervisor may own an unregistered child; before it, the held lifetime lock excludes every prior child.
@@ -7123,24 +7135,36 @@ export class AuthorityDatabase implements Disposable {
       const restart = record.request.type === "retry-worker" || record.request.type === "stop-worker" && record.reset?.work.kind === "absent";
       if (record.auditedAt !== undefined || !restart || record.phase.state !== "uncertain"
         || record.effect !== undefined || binding?.operation.kind !== "retry") continue;
-      try {
-        this.withAuthorityTransaction(repositories => {
-          const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
-          if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
-            || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
-            || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
-          this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
-          const message = "worker-retry-never-started";
-          this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
-          const { controlCommandId: _released, ...rest } = lease;
-          this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
-          repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
-            result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
-        });
-      } catch (error) {
+      try { this.#refuseUnbornRetry(record, "worker-retry-never-started", now); }
+      catch (error) {
         if (!(error instanceof Error) || !error.message.startsWith("worker-")) throw error;
       }
     }
+  }
+
+  /** The supervisor proved this executing Retry failed before spawning its replacement; refuse it and release the reservation. */
+  refuseUnbornWorkerRetry(commandId: string, message: string, now: string): void {
+    const record = this.authority.workerControls.get(commandId);
+    if (record?.request.type !== "retry-worker" || record.auditedAt !== undefined || record.phase.state !== "executing"
+      || record.effect !== undefined) throw new Error("worker-retry-birth-unproved");
+    this.#refuseUnbornRetry(record, message, now);
+  }
+
+  #refuseUnbornRetry(record: z.infer<typeof WorkerControlRecordSchema>, message: string, now: string): void {
+    const binding = record.lifecycle;
+    if (binding?.operation.kind !== "retry") throw new Error("worker-retry-birth-unproved");
+    this.withAuthorityTransaction(repositories => {
+      const current = repositories.workerControls.get(record.commandId), lease = this.#readWorkerLease(binding.member.workerId);
+      if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(record) || lease === undefined
+        || lease.controlRevision !== binding.reservedControlRevision || lease.controlCommandId !== record.commandId
+        || lease.startCommandId === record.commandId) throw new Error("worker-retry-birth-unproved");
+      this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
+      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, auditedAt: now, phase: { state: "refused", completedAt: now, message } }), current);
+      const { controlCommandId: _released, ...rest } = lease;
+      this.#writeWorkerLease(WorkerLeaseRecordSchema.parse({ ...rest, version: lease.version + 1, updatedAt: now }), "update");
+      repositories.commandAudits.insert({ auditId: randomUUID(), request: current.request, completedAt: now, versionChanges: [], affectedDependencyIds: [],
+        result: { state: "rejected", commandId: current.commandId, code: "invalid-state", message } });
+    });
   }
 
   #assertRetainedWorkerLifecycleEffect(record: z.infer<typeof WorkerControlRecordSchema>): void {
@@ -7931,7 +7955,8 @@ export class AuthorityDatabase implements Disposable {
       if (runs.some(member => member.runId === intent.runId)) return { reason: "invalid-state" };
       throw new Error("worker-reset-current-run-conflict");
     }
-    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.attempt !== intent.runAttempt) {
+    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.pause?.state === "requested"
+      || run.envelope.attempt !== intent.runAttempt) {
       return { reason: "invalid-state" };
     }
     try { this.#assertCurrentExecution(intent.runId, claim); }

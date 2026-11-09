@@ -17,7 +17,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance, deleteA
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" action={{ label: "Try again", onAction: editor.reload }} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />;
   const document = editor.editor.document;
   const sections = document.sections.filter(section => section.id === sectionId);
   if (sections.length === 0) return <Notice tone="danger" title="Section unavailable" />;
@@ -27,7 +27,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance, deleteA
     <PageHeading title={pageTitle} />
     <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
-      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={editor.readProblem} action={{ label: "Refresh", onAction: editor.reload }} />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       {settingsSectionGroups(sectionId, leaves).map(group => <section key={group.title} className="settings-editor-group">
         <div className="settings-group-heading"><h2 className={cn(dsText.title, "m-0 font-medium text-[color:var(--ds-fg)]")}>{group.title}</h2></div>

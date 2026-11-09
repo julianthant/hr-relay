@@ -1,6 +1,7 @@
 # Guards and tests
 
-This reference owns test selection, runner containment, coverage policy, and guard registration.
+This reference describes test selection, runner containment, coverage policy and guard registration.
+[Root instructions](../../AGENTS.md#checks) own agent check schedules and runner authorization.
 [The codebase map](codebase-structure.md) owns source and test locations. The assigned brief owns
 acceptance scope and the gate schedule. A declared test, scenario ID, or guard is not evidence that
 it ran.
@@ -45,11 +46,7 @@ packaged mode. That packaging mode is not implemented by this source build.
 
 ## 1. Test layers and ownership
 
-Tests mirror source once under `tests/`. A source path under `src/` drops that prefix. Tests for
-`scripts/`, `fast-duo/`, and root configurations retain the complete source path. For example,
-`src/backend/runs/start/enqueue.ts` maps to `tests/backend/runs/start/enqueue.test.ts`.
-Unit and integration files sit together, distinguished by suffix. Topic suffixes split large files
-without introducing a second module tree.
+The [root codebase instructions](../../AGENTS.md#codebase) own source mirroring and filenames.
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and existing tracked source
 owners. It permits the exact `architecture/`, `parity/`, `perf/`, `types/`, and `support/` subtrees
@@ -137,12 +134,8 @@ outside admission. `release.yml` triggers only for main pull requests or operato
 and alone admits `release-checks.yml`, which owns the native/parity and complete release pipeline.
 Staging never references or loads a release/native workflow call. Both callees use shared typed
 selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
-Run platform-native proofs and
-parity in CI only for full releases started by the operator:
-`staging` → `main` pull requests or manual full-release dispatches. Only the operator may start
-one; agents must never dispatch or rerun CI workflows. Between releases, run Windows-native tests
-locally on Windows and macOS-native tests locally on the Mac when load is low. Keep native-only
-files out of Ubuntu shards. `scripts/test/ci-files.ts` names the native
+The root check rules own platform placement and release authorization.
+`scripts/test/ci-files.ts` names the native
 files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
 integration) and `SERIAL_FILES` (native browser process proofs that require file isolation). `scripts/test/ci-run.sh` lists a project through
 Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
@@ -180,7 +173,8 @@ Both platforms select from this one list; platform refusals remain failures unti
 
 ### Pre-push tests on the PC
 
-Agents on the Mac run affected unit, integration and architecture files in the PC's WSL Ubuntu:
+The optional PC runner executes affected portable files in WSL Ubuntu.
+The [root check rules](../../AGENTS.md#checks) and assigned local operations note govern its use:
 
 ```sh
 export RELAY_TEST_HOST=user@your-wsl-tailnet-node
@@ -293,9 +287,8 @@ Select the union for mixed changes. Staging PRs execute only the portable entry 
 Other heads into main omit native/batch work and fail the required release source-head check.
 Markdown-only releases omit those expensive jobs but explicitly pass the required release summary
 after proof validation. Operator manual releases select all routine native/parity suites; the
-coverage/performance batch remains PR-only. Treat machine-readable docs as configuration. Only
-the operator may start a manual release; agents must never dispatch or rerun CI workflows. Protected
-branch pushes do not repeat CI.
+coverage/performance batch remains PR-only. Machine-readable docs count as configuration. Release
+authorization belongs to the root check rules. Protected branch pushes do not repeat CI.
 
 Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
 pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
@@ -410,45 +403,17 @@ and refusal arms, rather than sampling a few shapes.
 
 ## 4. Verification checklist
 
-The brief names exact paths and commands for focused work. A changed behavior gets its focused
-test, lint, and affected static or generated checks. A lint failure is a task failure. Assertions,
-collection membership, isolation, coverage floors, and timeouts remain unchanged unless the
-operator explicitly authorizes a change.
+The [root check rules](../../AGENTS.md#checks) own focused work, documentation-only validation,
+pre-review checks and release gates. The assigned brief supplies exact paths and commands.
 
-Before `staging` is promoted to `main`, the root working instructions require this order:
+Coverage selects unit, integration and architecture without perf. The perf project runs without
+coverage instrumentation. Focused success covers only selected files. Required broad checks
+remain assigned to the finalizer; a resource refusal leaves a check unrun.
 
-```sh
-npm run typecheck
-npm run lint
-npm run web:build
-npm run test:parity
-npm run test:coverage
-npm run test:perf
-```
-
-Coverage runs alone and selects unit, integration, and architecture without perf. The perf project
-runs afterward without coverage instrumentation. Separate full unit, integration, and architecture
-reruns add no acceptance evidence for unchanged inputs. The brief may additionally
-require affected freshness checks. Derived output is regenerated at its source before its freshness check.
-
-Before coverage, the operator gate still requires free memory, no swap pressure, and no listener
-on port 3938:
-
-```sh
-lsof -nP -iTCP:3938 -sTCP:LISTEN
-```
-
-Resource refusal leaves coverage unrun and recorded as such. It does not authorize raising a
-timeout, weakening isolation, or lowering a floor. Focused success is evidence only for its selected
-scope. Required broad checks remain assigned to their finalizer.
-
-Documentation-only work uses applicable link, generated-output, and whitespace checks. Reuse of a
-code check records its tested tree, command/result, current candidate, and verified unchanged
-inputs. A changed contract, generator input, fixture, config, or documentation parsed by a test
-invalidates its affected evidence. A recording-only commit does not by itself invalidate unchanged
-code results. Old live results remain dated observations, never current external readiness.
-
-Test count and timing targets never justify removing unique protection or disguising an unrun gate.
+Reused evidence identifies its tested tree, command/result, current candidate and verified unchanged
+inputs. A changed contract, generator input, fixture, config or test-parsed document invalidates
+affected evidence. A recording-only commit leaves unchanged code evidence applicable. Dated live
+results describe their observation time, rather than current external readiness.
 
 ## 5. Guard registration and removal
 
@@ -490,7 +455,7 @@ and its own violating scratch fixture. The scanners are not separate inventory g
 | `import-cycles` | `src` | Runtime import cycles. Erased type imports are excluded; value, mixed-value, side-effect imports and exports remain covered. |
 | `control-layering` | `src` | Lower-to-higher imports against its current layer classification, including type imports. |
 | `code-conventions` | `src` | Disallowed default exports, filenames, non-dashboard TSX, console calls, and raw control bytes. |
-| `frontend-tailwind-compliance` | `src/dashboard` | Palette literals, arbitrary z-index, motion without reduced-motion handling, and images without alt text. |
+| `frontend-tailwind-compliance` | `src/dashboard` | Palette literals, raw hex colors, arbitrary z-index, motion without reduced-motion handling, and images without alt text. `#245d9e` and `#ffffff` are allowed only in `src/dashboard/surfaces/shell/app-logo.ts`: they are the Baton app icon's fixed plate and white glyph. Any other hex there, or either color in another dashboard file, still fails. |
 
 The catch scanner's reviewed exceptions live in
 `tests/architecture/tooling/helpers/reviewed-catch-defaults.ts`. Each file keeps its reviewed reason
@@ -551,8 +516,7 @@ with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 `npm run test:parity` runs Playwright through `playwright.parity.config.ts`; the Playwright exit
 code is the result. `helpers/a11y-evidence-reporter.ts` fails the run when a passed test that declares
 `required-a11y-evidence` lacks the exact attached `.a11y.yml` body or its matching sha256 annotation. `npm run test:parity:update` sets `PARITY_UPDATE=1` for explicit update mode. A reference update
-requires the operator-approved UI change or signed-off served-workflow switch and a separate commit;
-wiring does not refresh references to pass.
+follows the [dashboard check rules](../../src/dashboard/AGENTS.md#checks).
 
 The lane uses headless Chromium, 1280×720, device scale factor 1, no mobile/touch emulation,
 `fullyParallel: true`, two workers, zero retries, and a **120,000 ms** test timeout. Default captures

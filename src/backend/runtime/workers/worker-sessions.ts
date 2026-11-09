@@ -252,81 +252,40 @@ export interface RunConfigFingerprintBinding {
   releaseRunConfigFingerprint(): void;
 }
 
-// After the durable fence, parent cancellation cannot interrupt the transaction lease.
+/** The lease signal follows the run's abort until the durable fence; afterwards only task deadlines bound the write. */
 export interface TransactionDriverLeaseOwnership {
+  readonly signal: AbortSignal;
   retainAfterFence(): void;
 }
 
-class TransactionDriverLeaseOwnershipState implements TransactionDriverLeaseOwnership {
-  #retained = false;
-  #cancellation: Error | undefined;
-
-  retainAfterFence(): void {
-    if (this.#retained) throw new Error("transaction driver lease was retained after its fence more than once");
-    if (this.#cancellation !== undefined) throw this.#cancellation;
-    this.#retained = true;
-  }
-
-  retainCancellation(error: Error): boolean {
-    this.#cancellation ??= error;
-    return this.#retained;
-  }
-
-  cancellation(): Error | undefined {
-    return this.#cancellation;
-  }
-
-  retained(): boolean {
-    return this.#retained;
-  }
+function transactionLeaseOwnership(parent: AbortSignal, system: BrowserSystemId): TransactionDriverLeaseOwnership & { release(): void } {
+  const lease = new AbortController();
+  const follow = (): void => { lease.abort(parent.reason instanceof Error ? parent.reason : new Error(`${system} transaction driver lease was aborted during use`)); };
+  if (parent.aborted) follow(); else parent.addEventListener("abort", follow, { once: true });
+  let retained = false;
+  const release = (): void => { parent.removeEventListener("abort", follow); };
+  return {
+    signal: lease.signal,
+    retainAfterFence: () => {
+      if (retained) throw new Error("transaction driver lease was retained after its fence more than once");
+      lease.signal.throwIfAborted();
+      retained = true;
+      release();
+    },
+    release,
+  };
 }
 
-function containsFailure(root: unknown, target: unknown, seen = new Set<unknown>()): boolean {
-  if (root === target) return true;
-  if (root === null || typeof root !== "object" || seen.has(root)) return false;
-  seen.add(root);
-  if (root instanceof AggregateError) {
-    return root.errors.some((error: unknown) => containsFailure(error, target, seen));
-  }
-  return root instanceof Error && containsFailure(root.cause, target, seen);
-}
-
-async function waitForTransactionOperation<Result>(
-  start: (ownership: TransactionDriverLeaseOwnership) => Promise<Result>,
-  signal: AbortSignal,
-  system: BrowserSystemId,
-): Promise<Result> {
-  if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : abortError(system);
-  const ownership = new TransactionDriverLeaseOwnershipState();
+async function waitForTransactionOperation<Result>(operation: Promise<Result>, signal: AbortSignal): Promise<Result> {
+  signal.throwIfAborted();
   let removeAbort = (): void => undefined;
   const aborted = new Promise<never>((_resolve, reject) => {
-    const listener = (): void => {
-      const reason = signal.reason instanceof Error
-        ? signal.reason
-        : new Error(`${system} transaction driver lease was aborted during use`);
-      if (!ownership.retainCancellation(reason)) reject(reason);
-    };
+    const listener = (): void => { reject(signal.reason instanceof Error ? signal.reason : new Error("transaction driver lease was aborted during use")); };
     signal.addEventListener("abort", listener, { once: true });
     removeAbort = (): void => signal.removeEventListener("abort", listener);
   });
-  const operation = Promise.resolve().then(() => start(ownership));
   try {
-    const result = await Promise.race([operation, aborted]);
-    const cancellation = ownership.cancellation();
-    if (cancellation !== undefined) throw cancellation;
-    return result;
-  } catch (operationError) {
-    const cancellation = ownership.cancellation();
-    if (ownership.retained()
-      && cancellation !== undefined
-      && !containsFailure(operationError, cancellation)) {
-      throw new AggregateError(
-        [operationError, cancellation],
-        `${system} transaction operation failed after its retained parent cancellation`,
-        { cause: operationError },
-      );
-    }
-    throw operationError;
+    return await Promise.race([operation, aborted]);
   } finally {
     removeAbort();
   }
@@ -571,12 +530,14 @@ export class WorkerSessionManager {
     if (need.access !== "transaction") {
       throw new Error(`${need.system} retained driver lease requires transaction access`);
     }
-    return this.#withDriverLease(need, instance, signal, (driver, captureScreenshot) =>
-      waitForTransactionOperation(
-        (ownership) => operation(driver, ownership, captureScreenshot),
-        signal,
-        need.system,
-      ), screenshotOwner);
+    const ownership = transactionLeaseOwnership(signal, need.system);
+    try {
+      return await this.#withDriverLease(need, instance, ownership.signal, (driver, captureScreenshot) =>
+        waitForTransactionOperation(Promise.resolve().then(() => operation(driver, ownership, captureScreenshot)), ownership.signal),
+      screenshotOwner);
+    } finally {
+      ownership.release();
+    }
   }
 
   async #withDriverLease<Result>(

@@ -475,6 +475,7 @@ export class RunRecordService {
         && current.run.envelope.parent === undefined
         && current.run.envelope.shape === "operation") {
         const members: RunRecord[] = [];
+        const summary = request.lifecycle.errorSummary === undefined ? {} : { errorSummary: request.lifecycle.errorSummary };
         const collect = (runId: string): void => {
           for (const child of repositories.runs.listChildren(runId)) {
             const edge = repositories.dependencies.lifecycleEdgeForChild(runId, child.envelope.runId);
@@ -493,6 +494,7 @@ export class RunRecordService {
                 runId: member.envelope.runId,
                 expectedVersion: member.version,
                 now: this.dependencies.clock.now().toISOString(),
+                ...summary,
               });
               if (requested.state !== "applied") {
                 throw new Error(`cancel tree lost member version fence for ${member.envelope.runId}`);
@@ -508,6 +510,7 @@ export class RunRecordService {
               state: "terminal",
               outcome: "cancelled",
               endedAt: request.lifecycle.endedAt,
+              ...summary,
             },
           });
           if (cancelled.state !== "applied") {
@@ -521,7 +524,7 @@ export class RunRecordService {
           let anchor = current.run;
           if (runClaim(anchor) !== undefined && anchor.cancelRequested !== true) {
             const requested = repositories.runs.requestCancellation({ runId: anchor.envelope.runId,
-              expectedVersion: anchor.version, now: this.dependencies.clock.now().toISOString() });
+              expectedVersion: anchor.version, now: this.dependencies.clock.now().toISOString(), ...summary });
             if (requested.state !== "applied") throw new Error("cancel tree lost anchor version fence");
             anchor = requested.run;
           }
@@ -531,7 +534,8 @@ export class RunRecordService {
       }
       if (!("lifecycle" in request)) {
         if (runClaim(current.run) !== undefined) return refused({ reason: "owned-by-worker" });
-        if (current.run.lifecycle.state === "terminal") {
+        // A rename is presentation only, so a settled run still takes one; a priority bump does not.
+        if (current.run.lifecycle.state === "terminal" && !("displayName" in request)) {
           return refused({
             reason: "illegal-transition",
             from: current.run.lifecycle.state,
@@ -558,7 +562,8 @@ export class RunRecordService {
         }
         if (current.run.cancelRequested === true) return { state: "applied-already" as const, run: current.run };
         const requested = repositories.runs.requestCancellation({ runId: request.runId,
-          expectedVersion: request.expectedVersion, now: this.dependencies.clock.now().toISOString() });
+          expectedVersion: request.expectedVersion, now: this.dependencies.clock.now().toISOString(),
+          ...(request.lifecycle.errorSummary !== undefined && { errorSummary: request.lifecycle.errorSummary }) });
         if (requested.state !== "applied") throw new Error("cancel request lost its transaction-local version fence");
         this.recordJournal(repositories, journal.command, journalRun(requested.run), current.run.lifecycle);
         return { state: "applied" as const, run: requested.run };
@@ -733,6 +738,10 @@ export class RunRecordService {
       const source = this.read(request.runId);
       if (source.state !== "present" || source.run.pause?.state !== "requested") return refused({ reason: "invalid-state" });
       this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
+      if (repositories.writeIntents.listByRun(request.runId).some(intent => intent.status === "attempting")) {
+        return refused({ reason: "illegal-transition", from: source.run.lifecycle.state, to: "queued",
+          message: "a pause cannot release a claim over an unfinished write" });
+      }
       const now = this.dependencies.clock.now().toISOString();
       const result = repositories.runs.setPause({ runId: request.runId, claim: request.claim, expectedVersion: source.run.version, now, acknowledge: true,
         pause: { ...source.run.pause, state: "paused", pausedAt: now } });
@@ -764,7 +773,9 @@ export class RunRecordService {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: violation === undefined ? "worker transition cannot replace ownership or settle" : violation });
       }
-      this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, request.lifecycle.state === "parked-write");
+      // An admitted reset still lets a fenced write settle: parked UNKNOWN, or committed with its evidence.
+      this.assertCurrentExecution({ runId: request.runId, claim: request.claim },
+        request.lifecycle.state === "parked-write" || request.evidenceFingerprint !== undefined);
       if (request.lifecycle.state === "validating" || request.lifecycle.state === "running") {
         authenticateWorkbookReferenceExecution(repositories, current.run);
       }
@@ -920,7 +931,8 @@ export class RunRecordService {
     const dependencyRefusal = terminalDependencyRefusal(repositories, request.runId, "cancel", this.dependencies.clock.now().toISOString());
     if (dependencyRefusal !== undefined) return refused(dependencyRefusal);
     const outcome = repositories.runs.transition({ runId: request.runId, expectedVersion: request.expectedVersion,
-      claim: request.claim, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: request.endedAt },
+      claim: request.claim, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: request.endedAt,
+        ...(current.run.cancelSummary !== undefined && { errorSummary: current.run.cancelSummary }) },
       now: this.dependencies.clock.now().toISOString() });
     if (outcome.state !== "applied") return refused({ reason: "lost" });
     return { state: "applied", run: outcome.run };
@@ -1605,7 +1617,9 @@ export class RunRecordService {
       result,
       completedAt: this.dependencies.clock.now().toISOString(),
     });
-    if (result.kind === "run") {
+    // A rename of a settled run is not its terminal evidence.
+    const presentation = typeof command.request === "object" && command.request !== null && "displayName" in command.request;
+    if (result.kind === "run" && !presentation) {
       this.dependencies.database.settleLifecycleTerminalEvidence(command.commandId);
       const run = repositories.runs.get(result.runId);
       if (run?.lifecycle.state === "terminal" && run.envelope.parent !== undefined) repositories.dependencies.reconcile(run.envelope.parent.runId, this.dependencies.clock.now().toISOString());

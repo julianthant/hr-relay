@@ -9,7 +9,7 @@ import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../src
 /** Writes (or with `check`, verifies) the hash-pinned assistant workflow facts for the served workflows. */
 export function generateAssistantKnowledge(repoRoot: string, check: boolean): void {
   const target = resolve(repoRoot, ASSISTANT_WORKFLOW_FACTS_PATH);
-  const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
+  const sources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources);
   const bytes = `${assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => sources[descriptor.id] === "served")).bytes}\n`;
   if (check) { if (readFileSync(target, "utf8") !== bytes) throw new Error("assistant-knowledge-stale"); }
   else writeFileSync(target, bytes, { encoding: "utf8", mode: 0o644 });

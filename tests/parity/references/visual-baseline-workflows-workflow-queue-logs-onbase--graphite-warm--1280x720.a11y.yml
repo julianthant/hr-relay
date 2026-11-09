@@ -16,57 +16,55 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup 5 · 14
+        - button "Person Lookup": Person Lookup 3
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup 0 · 1
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations 0 · 1
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check 1 · 1
+        - button "I-9 Check": I-9 Check 1
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
-        - button "Onboarding": Onboarding 0 · 1
+        - button "Onboarding"
       - listitem:
-        - button "Oath Signature": Oath Signature 1 · 1
+        - button "Oath Signature": Oath Signature 1
       - listitem:
-        - button "Oath Upload": Oath Upload 1 · 1
+        - button "Oath Upload": Oath Upload 1
       - listitem:
-        - button "Emergency Contact": Emergency Contact 1 · 1
+        - button "Emergency Contact": Emergency Contact 1
     - heading "Work Study" [level=3]
     - list:
       - listitem:
-        - button "Work-Study": Work-Study 0 · 1
+        - button "Work-Study"
     - heading "Payroll" [level=3]
     - list:
       - listitem:
-        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+        - button "Kronos Pay Rule"
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR": OCR 0 · 5
+        - button "CRM Doc Download"
       - listitem:
-        - button "CRM Doc Download": CRM Doc Download 0 · 1
-      - listitem:
-        - button "SharePoint Download": SharePoint Download 0 · 1
+        - button "SharePoint Download"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1 · 1
+        - button "OnBase": OnBase 1
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:
-        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+        - button "Old Kronos Reports"
 - main:
   - heading "OnBase queue" [level=1]
   - region "Queue":
     - text: Active 1
     - button "detect-test.pdf — running" [pressed]:
-      - text: detect-test.pdf Running Read emergency contact 0 / 3 steps 10:05 AM
+      - text: detect-test.pdf Running Review extracted records 2 / 5 steps 10:04 AM
       - button "Attempts for detect-test.pdf": "#1"
-      - text: ONB23385648 0s
+      - text: ONB23385648 44s
       - button "Retry"
       - button "Delete"
   - region "Action panel":
@@ -86,37 +84,94 @@
   - region "Selected run logs":
     - heading "detect-test.pdf" [level=2]
     - text: Running
-    - button "Open OCR"
+    - button "Review"
+    - button "Records 4"
     - button "Rerun"
-    - button "Linked runs (1)"
+    - button "Linked runs (2)"
     - navigation "Run timeline":
       - list:
         - listitem:
-          - button "Read emergency contact · Waiting · 09:10:00": Read emergency contact Waiting
+          - button "Read emergency contact · Completed · 09:10:00 · 36s": Read emergency contact 36s
         - listitem:
-          - button "Start approved people · Upcoming · 09:10:00": Start approved people
+          - button "Match extracted people · Completed · 09:10:36 · 8s": Match extracted people 8s
         - listitem:
-          - button "Collect person outcomes · Upcoming · 09:10:00": Collect person outcomes
+          - button "Review extracted records · Waiting · 09:10:44": Review extracted records Waiting
+        - listitem:
+          - button "Start approved people · Upcoming · 09:10:44": Start approved people
+        - listitem:
+          - button "Collect person outcomes · Upcoming · 09:10:44": Collect person outcomes
     - region "Run logs":
       - region "Read emergency contact":
         - time: 09:10:00
         - heading "Read emergency contact" [level=3]
         - text: OCR
+        - heading "PDF pages" [level=4]
         - time: 09:10:00
-        - paragraph: Read the predefined document fields into OCR Records; downstream work waits for approval.
+        - term: Source PDF
+        - definition: detect-test.pdf
+        - time: 09:10:00
+        - term: Form type
+        - definition: Emergency Contact
+        - time: 09:10:00
+        - term: Pages
+        - definition: "2"
+        - time: 09:10:00
+        - text: Split pages and recognize the form blocks
+        - heading "Extraction summary" [level=4]
+        - time: 09:10:00
+        - term: Records extracted
+        - definition: "4"
+        - time: 09:10:00
+        - term: Source pages
+        - definition: 1–2
+        - heading "OCR extraction" [level=4]
+        - time: 09:10:00
+        - term: People found
+        - definition: "1"
+      - region "Match extracted people":
+        - time: 09:10:36
+        - heading "Match extracted people" [level=3]
+        - text: UCPath
+        - heading "Identity matching" [level=4]
+        - time: 09:10:36
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:10:36
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:36
+        - term: Roster match
+        - definition: Matched
+        - time: 09:10:36
+        - term: UCPath match
+        - definition: Confirmed
+        - time: 09:10:36
+        - term: HR status
+        - definition: Active
+      - region "Review extracted records":
+        - time: 09:10:44
+        - heading "Review extracted records" [level=3]
+        - time: 09:10:44
+        - paragraph: Release the reviewed records; downstream work waits for the release.
+        - group "Review extracted rows":
+          - time: 09:10:44
+          - article "Review extracted rows":
+            - heading "Review extracted rows" [level=4]
+            - text: Review
+            - paragraph: Review records before processing.
       - region "Start approved people":
-        - time: 09:10:00
+        - time: 09:10:44
         - heading "Start approved people" [level=3]
-        - time: 09:10:00
+        - time: 09:10:44
         - paragraph: Waiting for extracted records to be approved.
       - region "Collect person outcomes":
-        - time: 09:10:00
+        - time: 09:10:44
         - heading "Collect person outcomes" [level=3]
-        - time: 09:10:00
+        - time: 09:10:44
         - paragraph: Waiting for extracted records to be approved.
     - group:
       - searchbox "Search logs"
-    - status: 3 actions
+    - status: 16 actions
     - status
     - button "Copy logs"
     - button "Go to latest action"
@@ -124,8 +179,7 @@
 - status
 - region "Session Panel":
   - group "Session actions":
-    - button "Sessions"
-    - text: 2 running 1 starting 1 idle
+    - button "Sessions 2 running·1 starting·1 idle"
     - button "Add workers"
     - button "Settings"
     - button "Log out"

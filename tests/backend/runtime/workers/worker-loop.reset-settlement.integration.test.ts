@@ -20,7 +20,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
+import { runWorkerLoop, WORK_CONTROL_POLL_MS } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { healthyUcpathDriver, healthyCrmDriver, sessionFactoryHarness, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
@@ -250,7 +250,7 @@ describe("reset owns active and late callbacks through browser closure", () => {
         requestedAt: h.authority.clock.now().toISOString(), target: { workerId, membershipRevision: slot.membershipRevision,
           controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
       }, randomUUID(), h.authority.clock.now().toISOString()));
-      for (const timer of h.scheduler.pending().filter(timer => timer.deadlineMonotonicMs === h.authority.clock.monotonicMs() + 1000)) timer.fire();
+      for (const timer of h.scheduler.pending().filter(timer => timer.deadlineMonotonicMs === h.authority.clock.monotonicMs() + WORK_CONTROL_POLL_MS)) timer.fire();
       await tick();
       if (stage !== "read") expect(signal?.aborted).toBe(true);
       expect(h.stop.signal.aborted).toBe(false);

@@ -237,6 +237,7 @@ export function StatusPill({
   className,
   presentation = "default",
   pause,
+  meaning,
 }: {
   status: DsStatus;
   pause?: "requested" | "paused";
@@ -250,10 +251,12 @@ export function StatusPill({
   className?: string;
   /** Queue rows use the operator-approved compact attention treatments. */
   presentation?: "default" | "queue";
+  /** The served reason for this exact status, when it differs from the status's general meaning. */
+  meaning?: string;
 }) {
   const displayStatus = pause === "paused" ? "queued" : pause === "requested" ? "running" : status;
   const spec = pause === "paused" ? { ...DS_STATUS.queued, label: "Paused", icon: Pause, meaning: "Pause recorded. Resume to continue." }
-    : pause === "requested" ? { ...DS_STATUS.running, label: "Pausing", meaning: "Finishing the current step. A submit is never interrupted." } : DS_STATUS[status];
+    : pause === "requested" ? { ...DS_STATUS.running, label: "Pausing", meaning: "Pause requested." } : DS_STATUS[status];
   const Icon = spec.icon;
   const compactAttention = presentation === "queue" && (displayStatus === "waiting" || displayStatus === "failed");
   const chip = compactAttention
@@ -266,7 +269,7 @@ export function StatusPill({
     : presentation === "queue" && displayStatus === "running" ? "text-ui-info" : spec.text;
   return (
     <ShadcnBadge
-      title={spec.meaning}
+      title={meaning ?? spec.meaning}
       className={cn(
         // Allow pills to shrink within parent width so truncation happens inside their border.
         "inline-flex w-fit shrink-0 items-center border",

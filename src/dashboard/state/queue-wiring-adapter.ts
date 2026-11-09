@@ -25,10 +25,11 @@ export function useQueueWiring(input: Readonly<{
   setBatchGrouping: NonNullable<QueueHandlers["onSetBatchGrouping"]>;
   exitQueueSelection: () => void;
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
+  renameTitle?: QueueHandlers["onRenameTitle"];
 }>) {
   const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
     selectRun, openRelatedRun, selectedMember, openMember, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
-    runQueueAction } = input;
+    runQueueAction, renameTitle } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
     const metadata = attemptHistory === undefined ? undefined : new Map(attemptHistory.map(entry => [entry.runId, entry]));
@@ -114,8 +115,9 @@ export function useQueueWiring(input: Readonly<{
       },
       onOpenParent: openRelatedRun,
       onOpenLinked: openRelatedRun,
+      ...(renameTitle === undefined ? {} : { onRenameTitle: renameTitle }),
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, openRelatedRun, exitQueueSelection, openMember, batches],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, openRelatedRun, exitQueueSelection, openMember, batches, renameTitle],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

@@ -56,9 +56,9 @@ it("preserves served ages, genuine future events and explicit mock event times",
     assert.equal((await render("2026-08-03T12:01:59.000Z", futureRows))[0].age, "");
     const updated = await render("2026-08-03T12:01:59.000Z", rows, eventTimes);
     assert.deepEqual(updated.map(item => item.id), first.map(item => item.id));
-    assert.equal(updated.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample:ocr")?.age, "Just now");
+    assert.equal(updated.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample")?.age, "Just now");
     const later = await render("2026-08-03T12:03:00.000Z", rows, eventTimes);
-    assert.equal(later.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample:ocr")?.age, "1 min ago");
+    assert.equal(later.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample")?.age, "1 min ago");
   } finally { await act(async () => root.unmount()); }
 });
 
@@ -77,7 +77,7 @@ it("keeps seeded OCR ages visible from an exact bootstrap instant through minute
     await act(async () => root.render(createElement(Probe, { nowIso, anchorIso })));
     assert.equal(value?.state, "ready");
     if (value?.state !== "ready") throw new Error("Expected ready notifications");
-    const item = value.items.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample:ocr");
+    const item = value.items.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample");
     assert.ok(item);
     return item.age;
   };

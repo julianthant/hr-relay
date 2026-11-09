@@ -143,7 +143,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}
         description={ocr.state === "completed" ? `Model: ${ocr.model}` : ERROR_CATALOG[ocr.code].text} />}
     {preflight.state === "refused" && <Notice tone="warning" title="Readiness unavailable" description={preflight.message} />}
-    {historical && <Notice sticky tone="warning" title="Previous result" description={previousMessage} action={{ label: "Run preflight", onAction: onRerun }} />}
+    {historical && <Notice sticky tone="warning" title="Readiness check is out of date" description={`${previousMessage} Run it again in Settings > Preflight.`} />}
     {preflight.state !== "refused" && (displayed === undefined ? show && <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
       <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label">
         <StatusDot status={busy ? "running" : historical ? "queued" : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
@@ -184,7 +184,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
     </div>
     {preflight.state === "idle" && <span className={dsText.meta}>No current preflight report. Loading readiness…</span>}
     {preflight.state === "refused" && <Notice tone="warning" title="Readiness unavailable" description={preflight.message} />}
-    {previousMessage !== undefined && <Notice sticky tone="warning" title="Previous result" description={previousMessage} action={{ label: "Run preflight", onAction: onRerun }} />}
+    {previousMessage !== undefined && <Notice sticky tone="warning" title="Readiness check is out of date" description={`${previousMessage} Run it again in Settings > Preflight.`} />}
     {displayed !== undefined && <>
       <span className={cn(dsText.meta, "break-words text-[color:var(--ds-fg-muted)]")}>
         Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {fmtClock(displayed.report.checkedAt)}</time>

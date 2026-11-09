@@ -1,4 +1,4 @@
-import type { AuthoredExplorerPart as Part, WorkflowExplorerPreview } from "../../models/workflow/explorer-preview.js";
+import type { InputParserSpec } from "../../models/workflow/ingress.js";
 import { CANONICAL_FIELDS } from "../../models/fields/registry.js";
 import { defineIntakeProjection } from "../../models/intake/projection.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
@@ -15,53 +15,11 @@ export { PersonLookupCanonicalInput, PersonLookupInput };
 
 export const personLookupIntake = defineIntakeProjection(PersonLookupInput, { emplId: CANONICAL_FIELDS.eid, name: CANONICAL_FIELDS.fullName });
 
-export const PERSON_LOOKUP_NODE_PURPOSES = [
-  { nodeId: "searching", purpose: "Read UCPath Person Org candidates for the submitted employee ID or name." },
-  { nodeId: "matching", purpose: "Match identifying data in UCPath and confirm displayed identities." },
-  { nodeId: "search-identity", purpose: "Resolve the initial UCPath identity without selecting an ambiguous person." },
-  { nodeId: "cross-verify", purpose: "Read exact displayed CRM identities from plausible onboarding records." },
-  { nodeId: "crm-identity", purpose: "Resolve one person from UCPath observations and CRM evidence." },
-  { nodeId: "crm-results", purpose: "Restore and revalidate unresolved CRM search results." },
-  { nodeId: "crm-selected-record", purpose: "Reopen the selected CRM record and verify its current identity and facts." },
-  { nodeId: "crm-only-recovery", purpose: "Read UCPath again for the uniquely identified CRM employee ID." },
-  { nodeId: "active-status", purpose: "Derive employment status and final details from current verified observations." },
-  { nodeId: "crm-dates", purpose: "Read optional employment and oath dates from an exact CRM identity." },
-] as const;
-
-
-const action = (text: string, icon: "click" | "compute" = "click"): Part => ({ kind: "action", text, icon });
-const note = (text: string): Part => ({ kind: "note", text });
-const form = (id: string, title: string, mode: string, values: readonly (readonly [string, string])[], fill = false): Part => ({ kind: "form", id, title, mode, parts: [{ kind: "rows", fields: values.map(([label, value], index) => ({ id: `${id}-${index}`, label, value, mode: fill ? "fill" : "read", ...(fill ? { source: "search-criteria" } : {}) })) }] });
-const searchPurpose = "Search UCPath's Person Org Summary for the typed EID or name and narrow to a single person.";
-const crmPurpose = "Match the UCPath person against the CRM onboarding record, so a name collision cannot resolve to the wrong person.";
-const search = { mode: ["search"] };
-const crm = { ...search, crm: ["on"], identifier: ["name"] };
-
-const personLookupExplorer: WorkflowExplorerPreview = {
-  choices: [
-    { key: "mode", label: "Lookup path", options: [["search", "Search"], ["match", "Match"]] },
-    { key: "crm", label: "CRM cross-check", options: [["on", "Enabled"], ["off", "Disabled"]] },
-    { key: "identifier", label: "Search identifier", options: [["name", "Name"], ["eid", "Employee ID"]] },
-    { key: "dates", label: "Caller CRM dates", options: [["none", "Not requested"], ["requested", "Requested by parent"]] },
-  ],
-  steps: [
-    { nodes: [], title: "Person Lookup", system: "You", parts: [note("Searches Person Org by EID/name or matches a legal identity in HR-Tasks, with an optional CRM cross-check on either mode. It writes nothing, anywhere — so every run of it is already a rehearsal."), ...["mode", "crm", "identifier", "dates"].map<Part>(key => ({ kind: "preview-choice", key }))] },
-    { nodes: ["searching", "search-identity"], title: "Searching", system: "UCPath", when: search, parts: [note(searchPurpose),
-      form("search-criteria", "Search criteria", "Fill", [["Employee ID", "10000001"], ["Name", "Jordan Lee"], ["Campus", "SDCMP"]], true), action("Search Person Organizational Summary"),
-      form("person", "UCPath person", "Read", [["Employee ID", "10000001"], ["Name", "Jordan Lee"], ["Department", "HDH"], ["Job title", "Student assistant"], ["Job record", "0"], ["HR status", "Active"]]),
-    ] },
-    { nodes: ["cross-verify", "crm-identity", "crm-results", "crm-selected-record"], title: "Cross-verification", system: "CRM", when: crm, parts: [note(crmPurpose), note("Condition: Search mode and CRM check is enabled."), form("cross-contract", "Cross-verification", "Read and process", [["CRM match", "Confirmed"]]), action("Find the onboarding record in CRM"), form("cross-result", "Identity cross-check", "Read", [["UCPath name", "Jordan Lee"], ["CRM name", "Jordan Lee"], ["Campus email", "jordan.lee@example.com"], ["Start date", "08/03/2026"], ["Match", "Confirmed"]])] },
-    { nodes: ["active-status", "crm-only-recovery"], title: "Active status", system: "UCPath", when: search, parts: [note("Read the HR status. A separated person is a successful lookup with a negative answer, never a failure."), form("status-contract", "Active status", "Read and process", [["Termination date", "None"]]), action("Open Workforce Job Summary"), form("status", "Employment status", "Read", [["HR status", "Active"], ["Start date", "08/03/2026"], ["End date", "—"], ["Termination reason", "—"], ["Found in UCPath", "Yes"]])] },
-    { nodes: ["crm-dates"], title: "CRM dates", system: "CRM", when: { mode: ["search"], crm: ["on"], dates: ["requested"] }, parts: [note("Read the hire and oath dates the caller asked for, and report them back."), note("Condition: Search mode, CRM check is enabled, and the caller asked for CRM dates."), form("crm-dates", "Caller-requested CRM dates", "Read", [["Employment date", "08/03/2026"], ["Oath date", "08/03/2026"]])] },
-    { nodes: ["matching", "search-identity"], title: "Search", system: "UCPath", when: { mode: ["match"] }, parts: [note("Search UCPath HR-Tasks with legal name plus SSN and/or DOB, and answer whether UCPath already knows this person."), form("match", "Search", "Read and process", [["Found", "Yes"], ["Matched EID", "10000001"], ["Matched name", "Jordan Lee"], ["Candidates", "1 confirmed person"]])] },
-    { nodes: ["cross-verify", "crm-identity", "crm-selected-record", "crm-results"], title: "Match CRM check", system: "CRM", when: { mode: ["match"], crm: ["on"] }, parts: [note("Optionally cross-check the HR-Tasks match against CRM and read its start date."), note("Condition: Match mode and CRM check is enabled."), form("match-crm", "Match CRM check", "Read and process", [["Start date", "08/03/2026"], ["CRM match", "Confirmed"]])] },
-  ],
-  sources: { "search-criteria": { origin: "UCPath · Search criteria", detail: searchPurpose } },
-};
+/** One entry grammar for the typed Search mode and the plain input box. */
+const SEARCH_ENTRIES = { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } satisfies InputParserSpec;
 
 export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
-  explorerPreview: personLookupExplorer,
   requiredWorkbookTypeIds: [],
   version: 3,
   code: "pl",
@@ -106,7 +64,7 @@ export const personLookupWorkflow = defineWorkflow({
           {
             value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
             defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
-            parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
+            parser: { kind: "entries", spec: SEARCH_ENTRIES },
             display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
           },
           {
@@ -122,7 +80,7 @@ export const personLookupWorkflow = defineWorkflow({
           { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
         ],
       }, placeholder: "Enter employee IDs or names separated by semicolons or new lines", parser: {
-        split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }],
+        ...SEARCH_ENTRIES,
         constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
       }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }]
     }
@@ -137,7 +95,6 @@ export const personLookupWorkflow = defineWorkflow({
   intake: personLookupIntake,
   role: defineWorkflowRole({ kind: "composition" }),
   scenarios: ["person-lookup/s1", ...Array.from({ length: 15 }, (_, index) => `person-lookup/s${index + 2}`), "person-lookup/m1b", ...Array.from({ length: 5 }, (_, index) => `person-lookup/m${index + 1}`), ...Array.from({ length: 5 }, (_, index) => `person-lookup/f${index + 1}`)],
-  nodePurposes: PERSON_LOOKUP_NODE_PURPOSES,
   steps: author => {
     const searching = personLookupSearchingDefinition.build(author);
     const crossverify = personLookupCrossVerifyDefinition.build(author, searching);

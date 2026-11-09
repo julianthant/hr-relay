@@ -14,15 +14,15 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup …
+        - button "Person Lookup"
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup …
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations …
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check …
+        - button "I-9 Check"
 - main:
   - region "Queue":
     - text: ACTIVE · 2
@@ -39,13 +39,13 @@
     - heading "Alex Morgan" [level=2]
     - text: Pausing
     - button "Pausing…" [disabled]
-    - status: Finishing the current step; a submit is never interrupted. Pause is not yet recorded.
+    - status: This step will restart
     - navigation "Run timeline":
       - list:
         - listitem:
           - button "Read request · Completed · 14s" [disabled]: Read request 14s
         - listitem:
-          - button "Verify employee · Pauses after this step": Verify employee Pauses after this step
+          - button "Verify employee · This step will restart": Verify employee This step will restart
         - listitem:
           - button "Read timecard · Upcoming" [disabled]: Read timecard
         - listitem:

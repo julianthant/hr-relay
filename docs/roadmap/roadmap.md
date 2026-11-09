@@ -12,7 +12,7 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 - [done] Person Lookup and Separations rerun readiness — use current inputs and readiness checks for reruns.
 - [done] Settings Test OCR — run the OCR test from Preflight.
 - [done] PR flow — run staging pull request CI on Ubuntu with the macOS-only files, reserve native platform proofs and parity for operator-started full releases, and auto-merge into staging.
-- [done] Review loop — one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push; a fresh reviewer replaces it for the final whole-diff read. A workflow PR also passes a live dry run with the operator before it merges.
+- [done] Review loop — one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push. Green required checks merge the cleared SHA; there is no final reviewer pass. A workflow PR also passes a live dry run with the operator before it merges.
 - [next] Functional spec — keep product behaviour in the charter and mechanisms in reference docs.
 
 ## Built and wired
@@ -35,16 +35,26 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 Complete these in order. A workflow is ready after its live dry run and operator sign-off.
 
 - [done] Emergency Contact member Retry — retry one failed member with an atomic failure hold and superseding accounting.
-- [now] Finish in-flight work — merge the macOS-native test baseline.
+- [done] Finish in-flight work — merge the macOS-native test baseline.
+- [now] Runs get a worker — resume, retry and recover bring back a stopped worker, a restarted dashboard retries an earlier worker, and a claim re-checks instead of stopping the worker.
 - [now] Worker custody by construction — the parent owns workers in memory, stops them over IPC, learns of exits from the OS and fences claims by generation; delete leases, stored heartbeats, stop journals and the polled browser control channel. Keep automatic backup and restore; after a restore show one dismiss-only toast with the backup time. Live sign-offs start after this merges.
 - [done] Docs and dev tooling — dissolve `docs/rebuild/`, add the AGENTS.md glossary, refresh the repo skills, link `.claude/skills` and add the `verify` skill for live dry runs.
-- [now] Assistant agent — replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.
-- [now] Warnings as toasts — show warnings and failures as short toasts, sticky with one action when they need acting on; only dialog content, field validation, empty states and the run-log failure card stay inline.
+- [now] Assistant agent phase 0 — replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, remove the grant check (Confirm is the authorization), then a model check and a live dry run.
+- [later] Assistant phase 1 — serve replies as conversation parts, recognise a typed yes in Relay, apply edits now and undo by asking, add the scenario test harness with token budgets, dock the panel with History and put the Orbit mark in the Sessions bar.
+- [later] Assistant phase 2 — serve Activity, view-only navigation, chained steps with stop and retry, and the duplicate guard with pre-flight checks.
+- [later] Assistant phase 3 — add the read-only Check in UCPath workflow, evidence on decisions and watcher toasts.
+- [later] Assistant phase 4 — add error-pattern insight, the spreadsheet versus UCPath cross-check and PDF batches into OCR.
+- [now] Logs panel decisions — serve each decision's options, answers and who answered, then answer every decision in place in Logs through one DecisionCard with Cancel run.
+- [next] Queue rename and PDF titles — title PDF runs by file name, save renames and rename a run from its queue row.
+- [done] Sidebar running pill and logo — show one running-now pill per workflow on a narrow rail and use the Baton mark in the sidebar header and the browser tab.
+- [next] Store repairs — clear crash orphans at startup and read suspect backups at any supported schema, read-only.
+- [now] Warnings as toasts — show warnings and failures as short toasts that only notify, with no buttons; only dialog content, field validation, empty states and the run-log failure card stay inline.
+- [now] Sessions panel — the whole bar opens the panel, and every worker card has one height and keeps its last values when it stops.
+- [next] Sessions card data — serve sign-in and Duo state, the unavailable reason, the last step and sessions of a stopped worker, and the last run outcome.
 - [now] Sign-up and accounts — require Touch ID and a Duo security key added at duo.ucsd.edu; use a Chromium virtual platform authenticator where the machine has no Touch ID. Keep credentials on logout, put Delete account in Settings > General, resume a signed-in profile after a restart, and let Log out finish while workflows run.
 - [next] Person Lookup sign-off — pass a read-only exact-ID live run, fix what it finds in one PR, sign off.
 - [next] Separations sign-off — pass a live dry run, fix what it finds in one PR, sign off.
 - [next] OCR and Emergency Contact sign-off — serve per-person rows, prove the first live Save with the operator present, sign off.
-- [next] Catalog cleanup — remove Work-Study, Kronos Pay Rule, Oath Signature, Oath Upload, Old Kronos Reports and SharePoint Download from the catalog, preflight and docs, and regenerate parity screenshots once with the parity refresh.
 - [next] OnBase activation — switch to served data, pass a live dry run, update its screenshots, sign off, then refresh the `verify` skill.
 - [next] Onboarding activation — switch to served data, pass a live dry run, update its screenshots, sign off.
 - [next] I-9 Lookup and Check activation — switch to served data, pass a live dry run, update their screenshots, sign off.
@@ -63,7 +73,8 @@ Each item deletes its own tests and guards. Worker custody (above) comes first.
 - [next] Credentials file — keep one encrypted credentials file per person, written atomically, with the keychain key.
 - [next] Write-time checks only — drop read-time re-proving and split the authority database, command kernel and claimed-run executor by move.
 - [next] Install control — replace installation, admission, registry and continuity proofs with one install-control module and a person-store handle.
-- [next] Workflow facts once — declare workflow facts once in a hand-kept registry that replaces the generators; guards stop listing workflows by name.
+- [done] Workflow facts once — declare workflow facts once in a hand-kept registry that replaces the generators; guards stop listing workflows by name.
+- [later] Explorer review spec — generate the approved v11 Explorer (run options, page cards, decision outcomes) from each workflow's definition.
 - [next] Dashboard mocks — delete each workflow's mock at its activation, split LoadedApp before the next activation and drop parity-only mock arms after the assistant agent.
 - [next] Tests and guards — keep one line per guard, move behaviour tests out of the architecture suite, scan instead of listing boundary schemas, un-alias merged test files and share one reusable CI workflow.
 - [later] UI cleanup — right-size parity to 150-200 states, then move to one UI library in a single UI-only PR.

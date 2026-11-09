@@ -78,7 +78,7 @@ function deadlineInvocationIssues(content: string): readonly string[] {
       const lease = calls(node.elseStatement, "deps.sessions.withDriver");
       if (lease.length !== 1 || lease[0].arguments[2]?.getText(source) !== "controller.signal") issues.push("browser lease acquisition must use the armed signal");
       for (const arm of [node.thenStatement, node.elseStatement]) {
-        if (!arm.getText(source).includes("confirmedInvocation?.withNotes") || !arm.getText(source).includes("withBrowserActionNotes")) issues.push("invocations must preserve the notes wrapper");
+        if (!arm.getText(source).includes("withBrowserActionNotes")) issues.push("invocations must preserve the notes wrapper");
       }
     }
     ts.forEachChild(node, inspect);
@@ -113,7 +113,7 @@ describe("bounded task deadline", () => {
       source.replace("() => raceAbortable(", "() => unbounded("),
       source.replace("deps.sessions.withDriver(need, instanceSelection, controller.signal", "deps.sessions.withDriver(need, instanceSelection, unrelated.signal"),
       source.replace("controller.signal, contract.id,", "unrelated.signal, contract.id,"),
-      source.replace("confirmedInvocation?.withNotes", "confirmedInvocation?.other"),
+      source.replace("withBrowserActionNotes(clock", "otherNotes(clock"),
       source.replace("controller.signal, contract.id, retain,", "controller.signal, contract.id,"),
       source.replace("controller.signal, contract.id, retain,", "controller.signal, contract.id, unrelated,"),
       source.replace("deps.retainCallback?.({ runId,", "deps.otherCallback?.({ runId,"),

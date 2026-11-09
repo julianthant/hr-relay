@@ -16,49 +16,47 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup 5 · 14
+        - button "Person Lookup": Person Lookup 3
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup 0 · 1
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations 0 · 1
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check 1 · 1
+        - button "I-9 Check": I-9 Check 1
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
-        - button "Onboarding": Onboarding 0 · 1
+        - button "Onboarding"
       - listitem:
-        - button "Oath Signature": Oath Signature 1 · 1
+        - button "Oath Signature": Oath Signature 1
       - listitem:
-        - button "Oath Upload": Oath Upload 1 · 1
+        - button "Oath Upload": Oath Upload 1
       - listitem:
-        - button "Emergency Contact": Emergency Contact 1 · 1
+        - button "Emergency Contact": Emergency Contact 1
     - heading "Work Study" [level=3]
     - list:
       - listitem:
-        - button "Work-Study": Work-Study 0 · 1
+        - button "Work-Study"
     - heading "Payroll" [level=3]
     - list:
       - listitem:
-        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+        - button "Kronos Pay Rule"
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR": OCR 0 · 5
+        - button "CRM Doc Download"
       - listitem:
-        - button "CRM Doc Download": CRM Doc Download 0 · 1
-      - listitem:
-        - button "SharePoint Download": SharePoint Download 0 · 1
+        - button "SharePoint Download"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1 · 1
+        - button "OnBase": OnBase 1
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:
-        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+        - button "Old Kronos Reports"
 - main:
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
@@ -523,8 +521,7 @@
 - status
 - region "Session Panel":
   - group "Session actions":
-    - button "Sessions"
-    - text: 2 running 1 starting 1 idle
+    - button "Sessions 2 running·1 starting·1 idle"
     - button "Add workers"
     - button "Settings"
     - button "Log out"

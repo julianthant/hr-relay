@@ -1,6 +1,6 @@
 # Relay architecture
 
-Relay is a local HR automation rebuild for one operator. Its core design question is how to make browser automation inspectable and recoverable when a mistake can change an employment record. The project keeps workflow declarations, browser effects, and durable write authority separate. [Product constraints](../AGENTS.md#backend), [write sequencer](../src/backend/runtime/writes/write-sequencer.ts).
+Relay is a local HR automation rebuild for one operator. Its core design question is how to make browser automation inspectable and recoverable when a mistake can change an employment record. The project keeps workflow declarations, browser effects, and durable write authority separate. [Product constraints](../src/backend/AGENTS.md#product-boundaries), [write sequencer](../src/backend/runtime/writes/write-sequencer.ts).
 
 This checkpoint retains the baseline explanation at `30031d66b269e651aacd4af997e5eedf30a40f63` and refreshes the bounded C1 facts from accepted source `6cd3f054c78819d5e1a5a4a39f42787a5fef17a6`, tree `313b48611951d354b0490f88ca9102de06adf882`. C1 source links refer to that accepted tree; retained baseline links refer to the earlier pin. This documentation branch does not import C1 implementation. **Implemented** means code exists. **Integrated** means the checked-in composition connects it. **Verified** requires evidence from checks or live operation on a named candidate. The imported C1 evidence establishes the scoped synthetic checks described below. Broader integration and operator acceptance remain pending. This is a checkpoint refresh, not final whole-app sign-off.
 
@@ -18,7 +18,7 @@ flowchart LR
   Browser --> HR[External HR systems]
 ```
 
-One operator and one machine make local persistence and process coordination a better fit than a hosted service. That choice still needs request admission: browser mutations pass Host and Origin guards before their bodies or effects are processed. Browser-safe schemas live in `src/models/`, pure decisions in `src/rules/`, and effectful work in `src/backend/`. [Constraints](../AGENTS.md#backend), [mutation ingress](../src/backend/transports/http/routes/operator-mutation-ingress.ts), [source boundaries](reference/codebase-structure.md#workflow-ownership-and-imports).
+One operator and one machine make local persistence and process coordination a better fit than a hosted service. That choice still needs request admission: browser mutations pass Host and Origin guards before their bodies or effects are processed. Browser-safe schemas live in `src/models/`, pure decisions in `src/rules/`, and effectful work in `src/backend/`. [Constraints](../src/backend/AGENTS.md#product-boundaries), [mutation ingress](../src/backend/transports/http/routes/operator-mutation-ingress.ts), [source boundaries](reference/codebase-structure.md#workflow-ownership-and-imports).
 
 ## A workflow declaration connects execution and explanation
 
@@ -104,7 +104,7 @@ The accepted C1 producer evidence records native Mac unit **3,386 tests / 440 fi
 
 Seven synthetic executor/SQLite OCR positives cover oath, emergency contact, both I-9 sections, boilerplate, unrelated, and blank pages. Two negative controls refuse undeclared and contradictory observations. These are imported execution receipts at the named C1 pin, not checks run for this document. They establish neither live HR success nor browser/parity, coverage/performance, account/model/public-context authority, or release acceptance. [OCR integration assertions](../tests/backend/processing/providers/chatgpt-ocr-adapter.integration.test.ts), [Explorer assertions](../tests/dashboard/state/explorer-wiring-adapter.presentation.test.ts).
 
-The pinned policy is `feature/<slug>` → `npm run test:local`, typecheck and lint → push → pull request into `staging` that auto-merges with a merge commit when cloud checks and Cursor Bugbot are green → operator preview → release pull request with a merge commit into `main` on the operator's go, followed by syncing `main` back to `staging`. The owner fixes a red check. Push and the release merge require explicit operator instruction. Branch-protection configuration is an owner action, not something the CI file proves is enabled. [Git policy](../AGENTS.md#git), [repository governance](repository-governance.md).
+The [Git instructions](../AGENTS.md#git) own branch, review and release procedures; [repository governance](repository-governance.md) describes required checks and merge-train behavior.
 
 ## What the rebuild changes
 
@@ -114,8 +114,8 @@ At whole-app freeze, recheck workflow ports and served activation, OCR and Recor
 
 ## Interview questions
 
-**Why SQLite?** One local operator needs durable transactions and inspection without a hosted database. The difficult boundary is the external website, where the intent and recovery protocol matter. [Constraints](../AGENTS.md#backend), [authority](../src/backend/storage/sqlite/authority-database.ts), [sequencer](../src/backend/runtime/writes/write-sequencer.ts).
+**Why SQLite?** One local operator needs durable transactions and inspection without a hosted database. The difficult boundary is the external website, where the intent and recovery protocol matter. [Constraints](../src/backend/AGENTS.md#product-boundaries), [authority](../src/backend/storage/sqlite/authority-database.ts), [sequencer](../src/backend/runtime/writes/write-sequencer.ts).
 
 **How do you prevent duplicate submissions?** Persist the intent before the click, bind authority to a generation, retain uncertain outcomes, and refuse generic retry until the exact write is resolved. [Sequencer](../src/backend/runtime/writes/write-sequencer.ts), [intent policy](../src/backend/runtime/policies/durable-intent.ts).
 
-**What is complete?** Separate implemented code, integrated composition, verified behavior, and operator acceptance. Person Lookup being served does not certify other workflows or the current availability of external systems. [Source policy](../config/dashboard-workflow-sources.json), [activation requirements](../AGENTS.md#what-to-build).
+**What is complete?** Separate implemented code, integrated composition, verified behavior, and operator acceptance. Person Lookup being served does not certify other workflows or the current availability of external systems. [Source policy](../config/dashboard-workflow-sources.json), [activation requirements](roadmap/roadmap.md#dashboard-ready-on-the-mac).

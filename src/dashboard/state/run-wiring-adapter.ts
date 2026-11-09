@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { StartPlanWire } from "../../models/dashboard/start-plan.js";
 import { createRunLaunchService } from "../surfaces/run-start/run-launch-model.js";
-import type { FailureDetailWire } from "../../models/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/errors.js";
-import type { ConfirmedActionEvent } from "../../models/events/confirmed-action.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandExecutionScope } from "../app/commands/command-executor.js";
 import { batchMemberRetryAction, batchMemberRetrySourceMatches, childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
-import { decisionAnswerValid, type LogDecisionAction, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
+import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
+import { answeredRow, decisionAnswerValid, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
-import { DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
-import type { ConfirmedActionBindingWire, NativeRunEventWire, IdentityGateDetailWire, ParkedWriteDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
+import type { NativeRunEventWire, IdentityGateDetailWire, ParkedWriteDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { appendLogPage, logRowsOf, type NotePage } from "../surfaces/run-detail/logs-model.js";
 import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
@@ -24,7 +22,7 @@ import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
-import { workbookReferenceChoiceId, workbookReferenceLogActions, workbookReferenceLogDecision, workbookReferenceMatchesReplay, workbookReferenceTimelineEvent, workbookRowChoiceId, workbookWriteLogActions, workbookWriteLogStep, workbookWriteMatchesReplay, type WorkbookReferenceChoice, type WorkbookWrite } from "../surfaces/run-detail/logs/workbook-write-model.js";
+import { workbookReferenceChoiceId, workbookReferenceLogDecision, workbookReferenceMatchesReplay, workbookReferenceTimelineEvent, workbookWriteLogStep, workbookWriteMatchesReplay, type WorkbookReferenceChoice, type WorkbookWrite } from "../surfaces/run-detail/logs/workbook-write-model.js";
 
 class RunLogIdentityError extends Error {
   readonly code = "LOGS_IDENTITY_REFUSED";
@@ -56,8 +54,6 @@ export interface RunLogSnapshot {
   readonly detail: RunDetailWire;
   readonly logs: NotePage;
   readonly sections: readonly RunDetailSectionResponse[];
-  readonly actionEvidence: Readonly<{ state: "available" | "unavailable"; events: readonly ConfirmedActionEvent[]; missingPages: readonly string[] }>;
-  readonly confirmedActionBindings?: readonly ConfirmedActionBindingWire[];
   readonly unavailableEvidence: readonly string[];
 }
 
@@ -73,9 +69,6 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   if (section.section !== "logs" || section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   let logs = section.payload;
   logRowsOf(logs, "initial");
-  const missingPages: string[] = logs.confirmedActions === undefined ? ["initial"] : [];
-  const actions: ConfirmedActionEvent[] = logs.confirmedActions === undefined ? [] : [...logs.confirmedActions];
-  const confirmedActionBindings = [...(logs.confirmedActionBindings ?? [])];
   const cursors = new Set<string>();
   while (logs.nextCursor.state === "present") {
     signal.throwIfAborted();
@@ -84,21 +77,12 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
     cursors.add(cursor);
     const next = await client.runSection(row.runId, "logs", cursor, signal);
     if (next.section !== "logs") throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
-    if (next.payload.confirmedActions === undefined) missingPages.push(cursor);
-    else actions.push(...next.payload.confirmedActions);
-    confirmedActionBindings.push(...(next.payload.confirmedActionBindings ?? []));
     logs = appendLogPage(logs, cursor, next.payload);
   }
-  if (actions.some(event => event.action.runId !== row.runId
-    || event.action.attempt > row.attempt || event.traceId !== row.traceId)) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
   if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
-  if (new Set(actions.map(event => event.eventId)).size !== actions.length) throw new RunLogIdentityError("RUN_LOG_ACTION_DUPLICATE");
   if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
-  if (logs.operationStructure?.state === "observed" && logs.operationStructure.observations.some(observation =>
-    observation.occurrence.runId !== row.runId || observation.occurrence.attempt > row.attempt)) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   const unavailableEvidence: string[] = [];
-  if (missingPages.length > 0) unavailableEvidence.push("Confirmed actions unavailable on one or more pages");
   if (detail.captures === undefined) unavailableEvidence.push("Capture availability not supplied");
   else if (detail.captures.state === "error") unavailableEvidence.push("Captures unavailable");
   const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"].includes(name)
@@ -122,7 +106,7 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   if (sections.some(section => section.section === "identity-gate" && section.payload.state === "available") && detail.gate.state === "open" && detail.gate.nodeId === undefined) {
     unavailableEvidence.push("Identity decision join not supplied");
   }
-  const snapshot: RunLogSnapshot = { detail, logs, sections, confirmedActionBindings, actionEvidence: { state: missingPages.length === 0 ? "available" : "unavailable", events: actions, missingPages }, unavailableEvidence };
+  const snapshot: RunLogSnapshot = { detail, logs, sections, unavailableEvidence };
   validateRunLogSnapshot(snapshot);
   return snapshot;
 }
@@ -170,31 +154,6 @@ function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
     eventIds.add(identity.eventId); orders.add(identity.order);
   }
   for (const row of rows) if (row.native?.nodeId !== undefined && !nodes.has(row.native.nodeId)) throw new RunLogIdentityError("RUN_LOG_NODE_CATEGORY_MISSING");
-  const bindings = snapshot.confirmedActionBindings ?? [];
-  const actions = snapshot.actionEvidence.events;
-  if (bindings.length !== actions.length || new Set(actions.map(event => event.eventId)).size !== actions.length
-    || new Set(bindings.map(binding => binding.native.eventId)).size !== bindings.length
-    || new Set(bindings.map(binding => binding.eventId)).size !== bindings.length) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISMATCH");
-  for (const event of actions) {
-    if (event.action.runId !== detail.runId || event.action.attempt > detail.header.attempt) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
-    const binding = bindings.find(binding => binding.eventId === event.eventId);
-    if (binding === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISSING");
-    const identity = native(binding.native);
-    const owner = rows.find(row => row.native?.eventId === identity.eventId);
-    const target = rows.find(row => row.logId === binding.logId);
-    const observation = logs.operationStructure?.state === "observed"
-      ? logs.operationStructure.observations.filter(observation => observation.logId === binding.logId) : [];
-    const { value: _value, ...action } = event.action;
-    const targetAction = observation[0]?.occurrence;
-    const { value: _targetValue, ...targetIdentity } = targetAction ?? {};
-    if (owner?.kind !== "note" || target === undefined || observation.length !== 1
-      || canonicalJsonStringify(DeclaredActionIdentitySchema.parse(targetIdentity)) !== canonicalJsonStringify(DeclaredActionIdentitySchema.parse(action))
-      || canonicalJsonStringify(identity) !== canonicalJsonStringify(owner.native)
-      || identity.attempt !== target.native?.attempt || identity.nodeId !== event.action.nodeId
-      || identity.attempt !== event.action.attempt || event.traceId !== identity.traceId
-      || target.native?.nodeId !== event.action.nodeId
-      || target.native?.order === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_TARGET_MISMATCH");
-  }
   for (const section of snapshot.sections) {
     if (section.section === "workbook-writes") {
       for (const operation of section.payload.operations) {
@@ -291,12 +250,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   const order = new Map<string, number>();
   const groupable = new Set<string>();
   const node = new Map<string, string | undefined>();
-  const bindings = snapshot.confirmedActionBindings ?? [];
-  const confirmationNotes = new Set(bindings.map(binding => binding.native.eventId));
-  const confirmedActions = snapshot.actionEvidence.events;
   const captures = sections.find(section => section.section === "captures");
   const screenshotsOf = (row: ReturnType<typeof logRowsOf>[number]): readonly LogScreenshot[] => {
-    const logId = row.logId;
     const association = row.kind === "note" ? row.note.screenshot : undefined;
     if (association !== undefined) {
       const native = requireNative(row.native);
@@ -319,51 +274,21 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       return [{ logId: row.logId, src: client.artifactUrl(artifact.artifactId), alt: label ?? "Browser capture", time: fmtActionClock(capturedAt),
         ...(label === undefined ? {} : { label }), ...(boundary === undefined ? {} : { boundary }), width: artifact.width, height: artifact.height, kind: boundary === "before-submit" ? "form" : "browser" }];
     }
-    const observation = logs.operationStructure?.state === "observed" ? logs.operationStructure.observations.find(row => row.logId === logId) : undefined;
-    if (captures?.section !== "captures" || observation === undefined) return [];
-    const { value: _value, ...occurrence } = observation.occurrence;
-    const identity = canonicalJsonStringify(DeclaredActionIdentitySchema.parse(occurrence));
-    return captures.payload.artifacts.flatMap(capture => {
-      const artifact = capture.artifact;
-      if (artifact.mediaKind !== "image") return [];
-      return capture.origins.flatMap(origin =>
-      origin.operation !== undefined && origin.capturedAt !== undefined && canonicalJsonStringify(origin.operation) === identity
-        ? [{ src: client.artifactUrl(artifact.artifactId), alt: `${origin.originKind} capture`, time: fmtActionClock(origin.capturedAt),
-          width: artifact.width, height: artifact.height }] : []);
-    });
+    return [];
   };
   const rows = logRowsOf(logs, "projection");
-  const screenshotRows = rows.flatMap(row => row.kind === "note" && row.note.screenshot !== undefined
-    ? [{ row, shots: screenshotsOf(row), sessionId: row.note.screenshot.sessionId }] : []);
-  const submitCaptures = new Map<string, readonly LogScreenshot[]>();
-  const attachedCaptures = new Set<string>();
-  for (const row of rows) {
-    if (row.kind !== "note" || row.note.operatorAction?.submit !== true || row.note.operatorAction.kind !== "click"
-      || row.note.operatorAction.sessionId === undefined || row.note.operatorAction.state === "started" || row.note.operatorAction.state === "failed" || row.note.operatorAction.state === "not-run") continue;
-    const { nodeId, attempt } = requireNative(row.native), sessionId = row.note.operatorAction.sessionId;
-    const submits = rows.filter(candidate => candidate.kind === "note" && candidate.note.operatorAction?.submit === true
-      && candidate.note.operatorAction.kind === "click" && !["started", "failed", "not-run"].includes(candidate.note.operatorAction.state ?? "")
-      && candidate.note.operatorAction.sessionId === sessionId && requireNative(candidate.native).nodeId === nodeId && requireNative(candidate.native).attempt === attempt);
-    const captures = screenshotRows.filter(candidate => candidate.sessionId === sessionId && requireNative(candidate.row.native).nodeId === nodeId && requireNative(candidate.row.native).attempt === attempt
-      && candidate.shots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit"));
-    const before = captures.filter(capture => capture.shots[0]?.boundary === "before-submit");
-    const after = captures.filter(capture => capture.shots[0]?.boundary === "after-submit");
-    if (submits.length !== 1 || before.length !== 1 || after.length !== 1 || captures.length !== 2
-      || requireNative(before[0].row.native).order >= requireNative(after[0].row.native).order) continue;
-    submitCaptures.set(row.logId, [...before[0].shots, ...after[0].shots]);
-    for (const capture of captures) attachedCaptures.add(capture.row.logId);
-  }
   const observedCauses = new Set<string>();
-  const steps = rows.filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).flatMap((row): LogStep[] => {
+  const steps = rows.flatMap((row): LogStep[] => {
     if (row.kind !== "transaction-fenced") groupable.add(row.logId);
     order.set(row.logId, requireNative(row.native).order);
     node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
     const time = fmtActionClock(at);
-    const screenshots = attachedCaptures.has(row.logId) ? [] : submitCaptures.get(row.logId) ?? screenshotsOf(row);
+    const screenshots = screenshotsOf(row);
     let entry: LogEntry | undefined;
     if (row.kind === "observed") {
       const fields = row.displayFields?.flatMap((field, index) => {
+        if ("unread" in field) return [{ id: `${row.logId}:${index}`, time, kind: "read" as const, label: field.label, value: "Couldn't read", unread: true as const }];
         if (field.causal !== undefined) {
           const key = canonicalJsonStringify([field.direction, field.causal]);
           if (observedCauses.has(key)) return [];
@@ -376,19 +301,9 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     }
     else if (row.kind === "transaction-fenced") entry = { kind: "note", id: row.logId, time, message: "Write fenced; submission is not confirmed." };
     else if (row.note.screenshot !== undefined) entry = undefined;
-    else if (row.note.operatorAction !== undefined) {
-      const action = row.note.operatorAction;
-      if (action.registryLabel === true) entry = undefined;
-      else if (action.state === "failed" || action.state === "not-run" || action.state === "started") {
-        const state = action.state === "failed" ? "Failed" : action.state === "not-run" ? "Skipped" : "Started";
-        entry = { kind: "note", id: row.logId, time, message: reasoned(`${state}: ${action.label}`, action.reason),
-          ...(action.state === "failed" ? { tone: "danger" } : {}) };
-      } else if (action.kind === "click") entry = { kind: "click", id: row.logId, time, label: action.label, ...(submitCaptures.has(row.logId) ? { screenshots } : {}) };
-      else if (action.kind === "fill" || action.kind === "read") entry = { kind: "fields", id: row.logId,
-        fields: [{ id: row.logId, time, kind: action.kind, label: action.label, value: action.value ?? "Not retained" }] };
-      else entry = { kind: "note", id: row.logId, time, message: action.kind === "screenshot"
-        ? "Screenshot unavailable: no verified capture association." : action.label };
-    } else if (row.note.level === "info" && row.note.fields !== undefined) entry = undefined;
+    else if (row.note.operatorAction !== undefined) entry = row.note.operatorAction.kind === "screenshot"
+      ? { kind: "note", id: row.logId, time, message: "Screenshot unavailable: no verified capture association." } : undefined;
+    else if (row.note.level === "info" && row.note.fields !== undefined) entry = undefined;
     else entry = { kind: "note", id: row.logId, time, message: row.note.message, ...(row.note.level === "error" ? { tone: "danger" } : {}) };
     if (entry?.kind === "note" && row.kind === "note" && row.note.fields?.some(field => field.key === "code" && field.kind === "text" && field.value === "BROWSER_SCREENSHOT_CAPTURE_FAILED")) {
       const boundary = row.note.fields.find(field => field.key === "boundary" && field.kind === "text")?.value;
@@ -400,16 +315,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };
     }
     const entries: LogEntry[] = entry === undefined ? [] : [entry];
-    for (const binding of bindings.filter(binding => binding.logId === row.logId).toSorted((left, right) => left.native.order - right.native.order)) {
-      const event = confirmedActions.find(event => event.eventId === binding.eventId);
-      if (event === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISSING");
-      const message = event.kind === "fact" ? `${event.meaning} confirmed`
-        : reasoned({ started: "Action started", completed: "Action completed", failed: "Action failed", "not-run": "Action skipped" }[event.state], event.reason);
-      entries.push({ kind: "note", id: event.eventId,
-        time: fmtActionClock(event.kind === "fact" ? event.confirmedAt : event.occurredAt), message,
-        ...(event.kind === "trace" && event.state === "failed" ? { tone: "danger" } : {}) });
-    }
-    if (row.kind !== "observed" && screenshots.length > 0 && !submitCaptures.has(row.logId)) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
+    if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
       decision: { title: "Screenshot", state: "recorded", screenshots } });
     if (entries.length === 0) return [];
     return [{ id: row.logId, time, title: row.kind === "note" ? row.note.screenshot === undefined ? "Run note" : "Screenshot" : row.producer.step,
@@ -432,8 +338,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         : formatErrorCatalogFailure(createErrorCatalogFailure(checked.code, {})).text;
       order.set(write.writeIntentId, requireNative(write.native).order); node.set(write.writeIntentId, requireNative(write.native).nodeId);
       steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: "Write parked", system: write.system,
-        entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: "Write parked", state: "parked",
-          message, actions: parkedWriteLogActions(write) } }] });
+        entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: write.decision?.title ?? "Write parked", state: "parked",
+          message, ...(write.decision === undefined ? {} : { served: write.decision }) } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const message = operatorFailureSentence(failure.code);
@@ -442,18 +348,19 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message,
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
-          ...(failure.recovery === undefined ? {} : { actions: failureLogActions(failure) }) } }] });
+          ...(failure.decision === undefined ? {} : { served: failure.decision }) } }] });
     } else if (section.section === "identity-gate" && section.payload.state === "available") {
       const gate = section.payload.value;
       const ceremony = identityCeremonyFor(gate);
       order.set(gate.gateId, requireNative(gate.native).order); node.set(gate.gateId, requireNative(gate.native).nodeId);
       steps.push({ id: gate.gateId, time: fmtActionClock(gate.parkedAt), title: gate.label,
-        entries: [{ kind: "decision", id: gate.gateId, time: fmtActionClock(gate.parkedAt), decision: { title: gate.label, state: "review",
+        entries: [{ kind: "decision", id: gate.gateId, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail, gate) && gate.decision !== undefined ? gate.decision.title : gate.label, state: "review",
           message: gate.packet.comparisons.map(comparison => comparison.note).join(" "),
           comparison: gate.packet.comparisons.map(comparison => ({ label: comparison.field, expected: comparison.documentValue, observed: comparison.ucpathValue })),
           ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.eid)}`,
             outcome: `${ceremony.option.chosenFrom} · ${ceremony.option.origin}` } } : {}),
-          actions: detail.gate.state === "open" && detail.gate.nodeId === gate.gateId && detail.captures !== undefined && detail.captures.state !== "error" ? gateLogActions(gate) : undefined } }] });
+          ...(gateOpen(detail, gate) && gate.decision !== undefined ? { served: gate.decision } : {}),
+          ...(detail.gate.state === "resolved" && detail.gate.nodeId === gate.gateId && detail.gate.answer !== undefined ? { answered: detail.gate.answer } : {}) } }] });
     }
   }
   const decisionEvents = new Set(sections.flatMap(section => section.section === "identity-gate" && section.payload.state === "available"
@@ -513,49 +420,25 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
-  return { steps: named, timeline,
+  return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time)], timeline,
     ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
       stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
       presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
     } }) };
 }
 
-export function parkedWriteLogActions(write: ParkedWriteDetailWire): readonly LogDecisionAction[] {
-  const recheck = write.actions.find(action => action.kind === "command" && action.command === "recheck-write");
-  const again = write.actions.find(action => action.kind === "command" && action.command === "check-parked-write") ?? recheck;
-  const absent = write.actions.find(action => action.kind === "command" && action.command === "resolve-write-absent");
-  return [
-    ...(again === undefined ? [] : [{ id: again.key, label: "Check again", primary: !write.acceptsTransactionId,
-      result: { title: "Check requested", message: "Checking the target system again", tone: "info" as const } }]),
-    ...(write.acceptsTransactionId ? recheck === undefined || absent === undefined ? [] : [{
-      id: "check-write-result", label: "Check result", primary: true, input: { kind: "verification" as const, question: "Was it submitted?" },
-      result: { title: "Check requested", message: "", tone: "info" as const },
-    }] : absent === undefined ? [] : [{ id: absent.key, label: "It didn't land",
-      result: { title: "Marked as not submitted", message: "Relay submits it again.", tone: "info" as const } }]),
-  ];
+/** The run-level decision (paused, stalled, cancelling) closes the log; a failed member's retry stays the header icon. */
+export const RUN_DECISION_STEP_ID = "run-decision";
+function runDecisionStep(decision: RunDetailWire["decision"], lastTime: string | undefined): readonly LogStep[] {
+  if (decision === undefined || decision.type === "member-failed") return [];
+  const time = lastTime ?? "—";
+  const entry: LogEntry = decision.type === "cancelling" ? { kind: "note", id: RUN_DECISION_STEP_ID, time, message: decision.title }
+    : { kind: "decision", id: RUN_DECISION_STEP_ID, time, decision: { title: decision.title, state: decision.type === "stalled" ? "failed" : "held", served: decision } };
+  return [{ id: RUN_DECISION_STEP_ID, time, title: decision.title, header: false, entries: [entry] }];
 }
 
-export function failureLogActions(failure: FailureDetailWire): readonly LogDecisionAction[] {
-  const recovery = failure.recovery;
-  if (recovery === undefined) return [];
-  return [
-    { id: "check-again", label: recovery.retry.label, result: { title: "Check again", message: "Retrying the failed run.", tone: "info" } },
-    { id: "enter-value", label: recovery.correction.actionLabel, primary: true,
-      input: { kind: "text", label: recovery.correction.label, ...(recovery.correction.pattern === undefined ? {} : { pattern: recovery.correction.pattern }) },
-      result: { title: recovery.correction.actionLabel, message: "Reading the entered value in the real system.", tone: "info" } },
-  ];
-}
-
-export function gateLogActions(gate: IdentityGateDetailWire): readonly LogDecisionAction[] {
-  return gate.actions.flatMap(action => {
-    if (action.kind !== "command" || action.command !== "resolve-gate" || action.resolution !== "approved") return [];
-    const ceremony = identityCeremonyFor(gate);
-    if (ceremony.kind !== "choose" && ceremony.kind !== "confirm") return [];
-    return [{ id: action.key, label: action.label, primary: action.intent === "primary", result: { title: action.label, message: "" },
-      ...(ceremony.kind === "choose" ? { input: { kind: "candidate" as const, question: gate.label, candidates: ceremony.options.map(option => ({
-        id: option.eid, name: option.displayName, description: `${option.chosenFrom} · ${option.origin}`,
-      })) } } : {}) }];
-  });
+function gateOpen(detail: RunDetailWire, gate: IdentityGateDetailWire): boolean {
+  return detail.gate.state === "open" && detail.gate.nodeId === gate.gateId && detail.captures !== undefined && detail.captures.state !== "error";
 }
 
 export type RunWiringState = Readonly<{ state: "loading" | "loaded" | "failed"; snapshot?: RunLogSnapshot; error?: string; diagnostic?: unknown }>;
@@ -675,6 +558,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
           workbookWrite: operation, workbookAnswer: envelope.payload }) : undefined;
       return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
     }
+    if (envelope.family === "failure-resolution") {
+      const served = failure?.section === "failure" && failure.payload.state === "available" ? failure.payload.value : undefined;
+      return served?.resolution?.capability.state === "available" && envelope.target.runId === row.runId && envelope.target.failureId === served.failureId
+        && envelope.target.expectedVersion === served.resolution.capture.resolution.version
+        && served.decision?.options.some(option => option.send.via === "command" && option.send.family === envelope.family && option.send.type === envelope.type) === true;
+    }
     if (failure?.section === "failure" && failure.payload.state === "available" && failure.payload.value.recovery !== undefined) {
       const served = failure.payload.value;
       if (envelope.family === "run" && envelope.type === "retry") return envelope.target.runId === row.runId
@@ -780,15 +669,19 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (composed.state === "ready") dispatchIfDecisionCurrent.current(CommandRequestSchema.parse(composed.request));
   }, [value.state, binding, batchRetry, row]);
   const preparingCorrection = useRef(false);
-  const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
+  /** The served option this answer names, or undefined when the decision no longer serves it. */
+  const servedOption = (decision: Readonly<{ options: readonly DecisionOptionWire[] }> | undefined, option: DecisionOptionWire) => decision?.options.find(candidate => candidate.id === option.id);
+  const onDecision = useCallback((id: string, picked: DecisionOptionWire, answer: LogDecisionAnswer) => {
     if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
     const workbooks = value.snapshot.sections.find(section => section.section === "workbook-writes");
     const reference = workbooks?.section === "workbook-writes" ? workbooks.payload.referenceChoices?.find(choice => workbookReferenceChoiceId(choice) === id) : undefined;
     if (reference !== undefined) {
       const choice = reference.resolution;
-      const candidate = choice.state === "available" ? choice.candidates.find(candidate => workbookRowChoiceId(candidate) === answer.candidate) : undefined;
-      if (choice.state !== "available" || choice.action.kind !== "command" || candidate === undefined
-        || !workbookReferenceLogActions(reference).some(candidate => candidate.id === action.id)) return;
+      const option = choice.state === "available" ? servedOption(choice.decision, picked) : undefined;
+      const named = option === undefined ? undefined : answeredRow(option, answer);
+      const candidate = choice.state === "available" ? choice.candidates.find(candidate => candidate.sheetId === named?.sheetId && candidate.rowId === named?.rowId) : undefined;
+      if (choice.state !== "available" || choice.action.kind !== "command" || option === undefined || option.send.via !== "action" || option.send.actionKey !== choice.action.key
+        || !decisionAnswerValid(option, answer) || candidate === undefined) return;
       const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
         actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookReferenceChoice: reference,
         workbookReferenceAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId } });
@@ -798,9 +691,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     const operation = workbooks?.section === "workbook-writes" ? workbooks.payload.operations.find(operation => operation.native.eventId === id) : undefined;
     if (operation !== undefined) {
       const choice = operation.resolution;
-      const candidate = choice.state === "available" ? choice.candidates.find(candidate => workbookRowChoiceId(candidate) === answer.candidate) : undefined;
-      if (choice.state !== "available" || choice.action.kind !== "command" || candidate === undefined || confirm === undefined
-        || !workbookWriteLogActions(operation).some(candidate => candidate.id === action.id)) return;
+      const option = choice.state === "available" ? servedOption(choice.decision, picked) : undefined;
+      const named = option === undefined ? undefined : answeredRow(option, answer);
+      const candidate = choice.state === "available" ? choice.candidates.find(candidate => candidate.sheetId === named?.sheetId && candidate.rowId === named?.rowId) : undefined;
+      if (choice.state !== "available" || choice.action.kind !== "command" || option === undefined || option.send.via !== "action" || option.send.actionKey !== choice.action.key
+        || !decisionAnswerValid(option, answer) || candidate === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
         actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookWrite: operation,
         workbookAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId } });
@@ -813,11 +708,22 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       return;
     }
     const failed = value.snapshot.sections.find(section => section.section === "failure");
-    if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id && failed.payload.value.recovery !== undefined) {
+    if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id) {
       const served = failed.payload.value;
       const recovery = served.recovery;
-      const choice = failureLogActions(served).find(candidate => candidate.id === action.id);
-      if (recovery === undefined || choice === undefined || !decisionAnswerValid(choice, answer)
+      const option = servedOption(served.decision, picked);
+      if (option?.send.via === "command") {
+        const resolution = served.resolution;
+        if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution?.capability.state !== "available"
+          || !decisionAnswerValid(option, answer)) return;
+        const note = option.input?.kind === "text" ? answer.text?.trim() : undefined;
+        dispatchIfDecisionCurrent.current(CommandRequestSchema.parse({ family: "failure-resolution", type: "annotate-failure", commandId: crypto.randomUUID(),
+          requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail",
+          target: { runId: row.runId, failureId: served.failureId, expectedVersion: resolution.capture.resolution.version },
+          payload: { action: "resolve", ...(note === undefined ? {} : { note }) } }));
+        return;
+      }
+      if (recovery === undefined || option === undefined || !decisionAnswerValid(option, answer)
         || recovery.expectedVersion !== row.rowRevision || confirm === undefined) return;
       const retry = recovery.retry;
       if (retry.kind !== "command") return;
@@ -829,11 +735,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
           triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null },
           () => dispatchIfDecisionCurrent.current(envelope));
       };
-      if (choice.id === "check-again") {
+      if (option.send.via === "action" && option.send.actionKey === retry.key) {
         const envelope = CommandRequestSchema.parse({ family: "run", type: "retry", commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
           requestedBy: binding.scope.actorId, source: "run-detail", target: { runId: row.runId, expectedVersion: row.rowRevision } });
         showConfirm(envelope, false);
-      } else if (launch !== undefined && !preparingCorrection.current) {
+      } else if (option.send.via === "start-plan" && launch !== undefined && !preparingCorrection.current) {
         preparingCorrection.current = true;
         void launch.preview({ ...recovery.request, submissions: [{ [recovery.correction.inputField]: answer.text?.trim() }] }).then(plan => {
           if (currentCommandOwner.current !== commandOwner) return;
@@ -850,15 +756,15 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }
     const write = value.snapshot.sections.find(section => section.section === "parked-write");
     if (write?.section === "parked-write" && write.payload.writeIntentId === id) {
-      const choice = parkedWriteLogActions(write.payload).find(candidate => candidate.id === action.id);
-      if (choice === undefined || !decisionAnswerValid(choice, answer)) return;
-      const verb = choice.input?.kind === "verification" ? answer.outcome === "present" ? "recheck-write" : "resolve-write-absent" : action.id;
-      const descriptor = write.payload.actions.find(candidate => candidate.kind === "command" && candidate.command === verb);
+      const option = servedOption(write.payload.decision, picked);
+      if (option === undefined || !decisionAnswerValid(option, answer)) return;
+      const key = option.send.via === "action" ? option.send.actionKey : undefined;
+      const descriptor = write.payload.actions.find(candidate => candidate.key === key);
       if (descriptor?.kind !== "command" || descriptor.confirm === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: row.rowRevision },
         { actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, parkedWrite: write.payload,
-          ...(verb === "recheck-write" && write.payload.acceptsTransactionId && answer.transaction !== undefined
-            ? { transactionId: answer.transaction } : {}) });
+          ...(descriptor.command === "recheck-write" && write.payload.acceptsTransactionId && option.input?.kind === "text"
+            ? { transactionId: answer.text?.trim() } : {}) });
       if (composed.state !== "ready") return;
       const envelope = CommandRequestSchema.parse(composed.request);
       confirm({ action: descriptor, target: { runId: row.runId, expectedVersion: row.rowRevision }, subject: row.title,
@@ -870,14 +776,16 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     const section = value.snapshot.sections.find(section => section.section === "identity-gate");
     if (section?.section !== "identity-gate" || section.payload.state !== "available" || section.payload.value.gateId !== id) return;
     const gate = section.payload.value;
-    if (value.snapshot.detail.gate.state !== "open" || value.snapshot.detail.gate.nodeId !== gate.gateId
-      || value.snapshot.detail.captures === undefined || value.snapshot.detail.captures.state === "error") return;
-    if (!gateLogActions(gate).some(candidate => candidate.id === action.id)) return;
-    const descriptor = gate.actions.find(candidate => candidate.key === action.id);
+    if (!gateOpen(value.snapshot.detail, gate)) return;
+    const option = servedOption(gate.decision, picked);
+    if (option === undefined || option.send.via !== "action" || !decisionAnswerValid(option, answer)) return;
+    const key = option.send.actionKey;
+    const descriptor = gate.actions.find(candidate => candidate.key === key);
     if (descriptor?.kind !== "command") return;
+    const eid = answeredRow(option, answer)?.eid;
     const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: gate.expectedVersion }, { actorId: binding.scope.actorId, source: "run-detail",
       requestedAt: binding.authority.nowIso, gate: section.payload,
-      ...(answer.candidate === undefined ? {} : { gateAnswer: { decision: "approved", eid: answer.candidate } }) });
+      ...(eid === undefined ? {} : { gateAnswer: { decision: "approved", eid } }) });
     if (composed.state !== "ready") return;
     const envelope = CommandRequestSchema.parse(composed.request);
     if (descriptor.confirm === undefined) { dispatch(envelope); return; }
@@ -889,10 +797,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const onUcpathDecision = useCallback((decision: UcpathFoundDecision) => {
     if (decision.kind !== "check-again" || parked?.section !== "parked-write" || parked.payload.ucpathFindings === undefined
       || decision.transactionNumber !== undefined && !parked.payload.acceptsTransactionId) return;
-    const held = parked.payload.actions.find(action => action.kind === "command" && action.command === "check-parked-write");
-    const choice = parkedWriteLogActions(parked.payload).find(action => action.id === (decision.transactionNumber === undefined ? held?.key : "check-write-result"));
-    if (choice !== undefined) onDecision(parked.payload.writeIntentId, choice,
-      decision.transactionNumber === undefined ? {} : { outcome: "present", transaction: decision.transactionNumber });
+    const wanted = decision.transactionNumber === undefined ? "check-again" : "saved";
+    const option = parked.payload.decision?.options.find(candidate => candidate.id === wanted);
+    if (option !== undefined) onDecision(parked.payload.writeIntentId, option,
+      decision.transactionNumber === undefined ? {} : { text: decision.transactionNumber });
   }, [parked, onDecision]);
   const newest = binding?.executor.retainedAttempts().findLast(attempt => {
     const request = attempt.request;

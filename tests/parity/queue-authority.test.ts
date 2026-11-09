@@ -291,7 +291,7 @@ test.describe("Queue authority, live commands, and desktop parity", () => {
           await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
           // This control sits beyond the effective viewport at 200%: scroll,
           // keyboard activation, and focus must still work on the desktop canvas.
-          const select = page.getByRole("button", { name: "Sessions", exact: true });
+          const select = page.getByRole("button", { name: /^Sessions\b/ });
           await select.scrollIntoViewIfNeeded();
           await select.focus();
           await expect(select).toBeFocused();

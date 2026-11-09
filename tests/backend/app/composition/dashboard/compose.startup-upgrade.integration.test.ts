@@ -67,7 +67,8 @@ import { createHistoricalRegisteredProfileFixture } from "../../../../support/fi
 import { FakeKeyringEntry } from "../../../../support/helpers/credential-keychain-fake.js";
 import { runCredentialSourceRetentionCase } from "../../../../support/helpers/credential-source-retention.js";
 
-import { initializeRegisteredPersonStores,RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { readLocalDebugLog } from "../../../../../src/backend/storage/events/local-debug-log.js";
+import { backupRegisteredPeopleAtCleanShutdown,initializeRegisteredPersonStores,RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { AuthorityBackupService } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { migrationTableNames } from "../../../../../src/backend/storage/sqlite/migrations.js";
 
@@ -90,7 +91,7 @@ function post(port: number) {
   }, body: JSON.stringify(login) });
 }
 function rows(path: string, version: number) {
-  // Schema 26 drops the empty assistant_grants table, so it is not part of the retained-row comparison.
+  // Schema 27 drops the empty assistant_grants table, so it is not part of the retained-row comparison.
   return withReadonlyAuthoritySnapshot(path, database => Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants")
     .map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
 }
@@ -154,10 +155,25 @@ it("keeps failed pre-upgrade backups before HTTP, notification producers, accoun
     await upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts);
     await assertStartupHeld(profile.workspace, profile.lifetime, cause => cause instanceof RegisteredPersonUpgradeRefusedError
       && cause.cause instanceof Error && cause.cause.message === "required-startup-backup-failed");
+    const boot = readLocalDebugLog(join(profile.workspace, ".tracker", "data"));
+    assert.equal(boot.state, "present");
+    assert.ok(boot.records.some(record => record.payload.kind === "debug" && record.payload.event.code === "STORAGE_PROFILE_UPGRADE_REFUSED"
+      && record.payload.event.reason === "required-startup-backup-failed"));
     assert.deepEqual(readFileSync(profile.path), before); assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, 8);
     assert.equal(start.mock.calls.length, 0); assert.equal(network.mock.calls.length, 0); assert.equal(notifications.mock.calls.length, 0);
     const owner = acquireSharedRuntimeAdmission(profile.workspace, profile.lifetime); owner.release();
   } finally { backup.mockRestore(); network.mockRestore(); start.mockRestore(); await profile.close(); }
+});
+
+it("finishes a clean shutdown without backing up a person whose startup upgrade was held", async () => {
+  const profile = await createHistoricalRegisteredProfileFixture({ sourceVersion: 8 }), before = readFileSync(profile.path);
+  const backup = vi.spyOn(AuthorityBackupService.prototype, "request").mockRejectedValueOnce(new Error("required-startup-backup-failed"));
+  try {
+    await upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts);
+    backup.mockRestore();
+    await backupRegisteredPeopleAtCleanShutdown(profile.workspace, profile.lifetime);
+    assert.deepEqual(readFileSync(profile.path), before); assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, 8);
+  } finally { backup.mockRestore(); await profile.close(); }
 });
 
 it("refuses an actual competing shared owner without backup or source effects", async () => {
@@ -201,9 +217,9 @@ it("drains startup producers before inventory when the real HTTP listener cannot
   });
   const inventory = vi.spyOn(credentialInventoryOwner, "composeProfileClosureInventory").mockImplementation(input => {
     const owned = createInventory(input);
-    return { ...owned, async prepare() {
+    return { ...owned, async prepareShutdown() {
       preparations++; assert.equal(producerStopped, true);
-      await owned.prepare();
+      await owned.prepareShutdown();
     } };
   });
   try {

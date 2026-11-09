@@ -6,6 +6,7 @@ import { redactObservedDataPoints } from "../../../src/backend/logs/observed-dat
 import { ExtractPdfPages } from "../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { classifyEvidenceLeaf, evidenceScopeKey, type EvidenceValueScope } from "../../../src/models/trust/evidence-classification.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
+import { EmergencyContactInputSchema } from "../../../src/models/workflows/emergency-contact/input.js";
 import { ReadOcrResult } from "../../../src/models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
 import { ReadOcrSourcePages } from "../../../src/models/workflows/ocr/read-source-pages.js";
@@ -60,6 +61,9 @@ const scopes: readonly Readonly<{ scope: EvidenceValueScope; schema: z.ZodType }
   ...["ocr", "ocr-source-pages"].map(id => ({
     scope: { kind: "workflow-input" as const, workflowId: WorkflowIdSchema.parse(id) }, schema: OcrInputSchema,
   })),
+  ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].map(id => ({
+    scope: { kind: "workflow-input" as const, workflowId: WorkflowIdSchema.parse(id) }, schema: EmergencyContactInputSchema,
+  })),
   ...["ocr-page", "ocr-page-reading"].map(id => ({
     scope: { kind: "workflow-input" as const, workflowId: WorkflowIdSchema.parse(id) }, schema: OcrPageWorkflowInputSchema,
   })),
@@ -81,6 +85,13 @@ describe("OCR producer evidence classifications", () => {
       }
     });
   }
+
+  it("drops the uploaded PDF file name on every OCR and Emergency Contact workflow input", () => {
+    for (const id of ["ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document", "emergency-contact-members"]) {
+      const declaration = classifyEvidenceLeaf({ kind: "workflow-input", workflowId: WorkflowIdSchema.parse(id) }, "fileName");
+      assert.equal(declaration.classification, "sensitive-hr", id); assert.equal(declaration.transform, "drop", id);
+    }
+  });
 
   for (const contract of contracts) {
     it(`admits ${contract.id} observations through the executor's redactor`, () => {

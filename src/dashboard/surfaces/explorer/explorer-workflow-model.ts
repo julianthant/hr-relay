@@ -47,6 +47,9 @@ export function workflowNodes(id: MockWorkflowId, values: WorkflowChoices): read
   if (key === "fixture-oath-signature" && values.input !== "pdf") nodes = nodes.filter(node => node.lane === "Per signer");
   if (key === "fixture-oath-upload" && values.mode === "upload-only") nodes = nodes.filter(node => node.id === "File ticket");
   if (key === "fixture-ocr") nodes = nodes.filter(node => node.id !== "Done");
+  // A host shows its hidden OCR child's read and match steps in place of the delegation node.
+  const hostedRead = workflowPreviewGraph("ocr").nodes.filter(node => node.id === "Read forms" || node.id === "Person lookup");
+  nodes = nodes.flatMap(node => node.delegatesTo === "fixture-ocr" ? hostedRead.map(item => ({ ...item, id: item.id === "Person lookup" ? "Match extracted people" : item.id, lane: node.lane })) : [node]);
   // A packet's terminal rollup follows its per-person lane, never precedes it.
   return [...nodes.filter(node => node.id !== "Rollup" && node.id !== "Report back"), ...nodes.filter(node => node.id === "Rollup" || node.id === "Report back")];
 }
@@ -68,7 +71,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
   let stopAfter: number | undefined;
   for (const [index, node] of nodes.entries()) {
     const number = index + 2;
-    const blocked = node.kind === "gate" && values.review !== "approved" || key === "fixture-oath-upload" && node.id === "Wait signatures" && values.signers !== "complete" || key === "fixture-onbase" && node.id === "Fill keywords" && values.keyset === "missing" || key === "fixture-kronos-pay-rule" && node.id === "CSV lookup" && values.action === "missing" || key === "fixture-crm-doc-download" && node.id === "Search record" && values.record === "missing" || key === "fixture-i9-check-start" && node.id === "OCR extraction" && values.pair === "missing" || key === "fixture-i9-lookup" && values.profile === "unavailable";
+    const blocked = node.kind === "gate" && values.review !== "approved" || key === "fixture-oath-upload" && node.id === "Wait signatures" && values.signers !== "complete" || key === "fixture-onbase" && node.id === "Fill keywords" && values.keyset === "missing" || key === "fixture-kronos-pay-rule" && node.id === "CSV lookup" && values.action === "missing" || key === "fixture-crm-doc-download" && node.id === "Search record" && values.record === "missing" || key === "fixture-i9-check-start" && node.id === "Read forms" && values.pair === "missing" || key === "fixture-i9-lookup" && values.profile === "unavailable";
     const skip = values.posture === "dry" && node.skippedInDryRun || key === "fixture-oath-signature" && node.id === "Sign oath" && values.existing === "present" || key === "fixture-kronos-pay-rule" && node.id === "Update pay rule" && values.action === "unchanged" || key === "fixture-crm-doc-download" && ["Download", "Archive"].includes(node.id) && values.record === "empty";
     const operation = operationStep(run, node);
     const blockedEvidence = key === "fixture-i9-lookup" && values.profile === "absent" || key === "fixture-old-kronos-reports" && values.pdf !== "valid";

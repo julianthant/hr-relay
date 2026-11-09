@@ -12,7 +12,6 @@ import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
 
-
 export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, inbox, onOpenNotification, searchData, onSearch }: {
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
@@ -56,6 +55,6 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
           onControl={notificationRail.onControl} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} notice={notice || inbox?.notice || ""} />
         : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
     </div>
-    {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} onClose={notificationRail.onClosePing} onOpen={notificationRail.onOpenPing} />}
+    {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} />}
   </aside>;
 });

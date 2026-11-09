@@ -1,3 +1,4 @@
+import type { WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { z } from "zod";
 import {
   KualiSaveSeparationFinalization,
@@ -73,6 +74,16 @@ export const KUALI_FINALIZATION_STEP = defineWorkflowStep({
   key: "kuali-finalization",
   label: "Kuali finalization",
 });
+
+/** Operator text and fields for this group in Explorer and Logs. */
+const KUALI_FINALIZATION_DISPLAY = {
+  description: "Confirm the termination is current in UCPath, then finalize the Kuali document.",
+  system: "kuali",
+  operatorFields: [
+    { label: "UCPath transaction", example: "T000000001", sources: [{ nodeId: "filing-presence", kind: "output", fieldPath: "transactionId" }] },
+    { label: "Approval status", example: "Submitted", sources: [{ nodeId: "filing-presence", kind: "output", fieldPath: "approvalStatus" }] },
+  ],
+} satisfies WorkflowGroupOptions;
 
 export const FILING_PRESENCE_NODE = "filing-presence";
 export const FINALIZE_NODE = "finalize-kuali";
@@ -231,7 +242,7 @@ export function buildFinalization({ task, transaction, group }: Author, extracti
       return { prepare: value, commit: value, samples: [] };
     },
   });
-  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, { omission: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]]] as const };
+  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, { ...KUALI_FINALIZATION_DISPLAY, omission: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]]] as const };
 }
 
 export const separationsKualiFinalizationDefinition = defineStep({

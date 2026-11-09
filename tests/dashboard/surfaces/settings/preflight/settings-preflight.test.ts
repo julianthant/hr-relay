@@ -89,9 +89,9 @@ it("Settings labels the last completed report as historical without current-read
   const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,showSettings(){},showSessions(){}};
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(PreflightReportContent,{presentation:"settings",preflight:projected,onRerun(){}})})}));});
-  assert.match(host.textContent??"",/Previous result/u);
+  assert.match(host.textContent??"",/Readiness check is out of date/u);
   assert.match(host.textContent??"",/Previous check/u);
-  assert.match(host.textContent??"",/Previous result.*Run preflight/u);
+  assert.match(host.textContent??"",/Readiness check is out of date.*Run it again in Settings > Preflight/u);
   assert.doesNotMatch(host.textContent??"",/Ready to run|Technical details|Scope details/u);
   assert.equal(host.querySelectorAll("time").length,1);
   assert.equal(host.querySelector("time")?.getAttribute("datetime"),served.checkedAt);

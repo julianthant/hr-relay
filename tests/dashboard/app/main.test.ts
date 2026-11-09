@@ -66,3 +66,15 @@ it("reports errors and rejections after persisted pagehide and pageshow, then di
   browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("disposed rejection") }));
   assert.equal(report.mock.calls.length, 2);
 });
+
+it("ignores the browser's deferred ResizeObserver notice but still reports other error events without an Error", async () => {
+  const browser = new EventTarget();
+  Object.assign(browser, { location: { origin: "http://localhost:5174", pathname: "/" } });
+  vi.stubGlobal("window", browser);
+  vi.stubGlobal("document", { getElementById: () => ({}) });
+  report.mockResolvedValue(undefined);
+  await import("../../../src/dashboard/app/main.js");
+  browser.dispatchEvent(Object.assign(new Event("error"), { error: null, message: "ResizeObserver loop completed with undelivered notifications." }));
+  browser.dispatchEvent(Object.assign(new Event("error"), { error: null, message: "Script error." }));
+  assert.deepEqual(report.mock.calls.map(([input]) => input.message), ["Script error."]);
+});

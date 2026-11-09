@@ -201,6 +201,20 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.match(w.projection.health().lastError ?? "", /skipped is a task-span outcome/);
   });
 
+  it("counts running and queued runs apart in the workflow's status counts", async () => {
+    const w = await world();
+    for (const [seed, workerId] of [[1, "person-lookup-worker-1"], [2, "person-lookup-worker-2"]] as const) {
+      queuedEventOf(w, { seed });
+      w.authority.put(runRecordOf({ seed, lifecycle: { state: "running", ...CLAIM, workerId }, claimGeneration: 1, version: 2 }));
+      claimEventOf(w, seed, workerId);
+    }
+    queuedEventOf(w, { seed: 3 });
+
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workflowCounts, [
+      { workflowId: "person-lookup", count: 3, statusCounts: [{ status: "queued", count: 1 }, { status: "running", count: 2 }] },
+    ]);
+  });
+
   it("orders the month calendar, the workflow badges and the inbox deterministically", async () => {
     const w = await world();
     atDayOffset(w, 0);

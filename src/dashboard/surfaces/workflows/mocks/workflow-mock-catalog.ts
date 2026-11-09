@@ -129,7 +129,7 @@ export const MOCK_WORKFLOW_CATALOG = Object.freeze({
   sourcePath: "tests/parity/helpers/fixture-identity.ts",
   personLookupContractFingerprint: "e8b456516a5fe0d4afe33f45190a36f9771a768147d75f28929b8b5c130bf024",
   descriptorSetHash: FingerprintSchema.parse("3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405"),
-  workflows: MOCK_WORKFLOWS,
+  workflows: MOCK_WORKFLOWS.filter(flow => flow.id !== "ocr"),
 });
 export const MOCK_FORM_TYPES = [{ value: "oath", label: "Oath" }, { value: "emergency-contact", label: "Emergency Contact" }, { value: "onbase-emergency-contact", label: "OnBase Emergency Contact" }, { value: "i9", label: "I-9" }] as const;
 export const MOCK_ONBASE_TYPES = [

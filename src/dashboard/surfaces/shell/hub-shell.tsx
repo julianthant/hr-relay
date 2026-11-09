@@ -51,7 +51,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   };
   const icon = (label: string, glyph: ReactNode, onClick: () => void) => <button tabIndex={0} className="hub-icon" type="button" aria-label={label} title={label} onClick={onClick}>{glyph}</button>;
   return <>
-    {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout size-8 p-0" aria-label="Log out" title="Log out" onClick={() => setLogout(true)} icon={<LogOut aria-hidden className="size-4" />} />, footer)}
+    {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout sessions-bar-icon" aria-label="Log out" title="Log out" onClick={() => setLogout(true)} icon={<LogOut aria-hidden className="size-4" />} />, footer)}
       <section ref={panelPosition.element} id="hub-shell-assistant" className="hub-slot" aria-label={list ? "Relay assistant" : "Assistant panel"} data-source={model.source} hidden={settingsOpen || !opened} inert={settingsOpen || !opened} aria-hidden={settingsOpen || !opened} onKeyDown={event => {
         if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { setOpened(false); panelPosition.reset(); launcher.current?.focus(); } }
       }}>

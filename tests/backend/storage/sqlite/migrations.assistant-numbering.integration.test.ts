@@ -1,0 +1,88 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { it } from "vitest";
+import { AuthorityDatabase, AuthorityFormatUnsupportedError, AuthoritySchemaVersionError, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { regressSchema25EffortScale, removeEmptySchema26Attachments, restoreSchema26AssistantGrants } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
+import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+
+const unsupported = (error: unknown) => error instanceof AuthorityFormatUnsupportedError
+  && error.code === "STORAGE_PROFILE_FORMAT_UNSUPPORTED" && error.cause instanceof Error
+  && error.cause.message === "assistant-unpublished-schema-numbering";
+
+it.each([23, 24, 25, 26])("refuses unpublished assistant schema %s before backup or upgrade changes its source", async version => {
+  const f = await storageRecoveryFixture(7);
+  try {
+    const database = new DatabaseSync(f.path);
+    try {
+      for (const migration of SQLITE_MIGRATIONS) {
+        if (migration.version <= 7 || migration.version === 23 || migration.version > version + 1) continue;
+        for (const statement of migration.statements) database.exec(statement);
+      }
+      database.prepare("UPDATE database_states SET schema_version=?").run(version);
+      database.exec(`PRAGMA user_version=${String(version)}`);
+      assert.throws(() => inspectNativeAuthority(database, version), unsupported);
+      database.exec("DROP TABLE run_search");
+      assert.throws(() => inspectNativeAuthority(database, version, false, true), unsupported);
+    } finally { database.close(); }
+    const bytes = readFileSync(f.path), before = storageTree(f.root);
+    for (const plan of [true, false]) await assert.rejects(f.run(plan), unsupported);
+    await assert.rejects(f.backup(), unsupported);
+    assert.deepEqual(readFileSync(f.path), bytes);
+    assert.deepEqual(storageTree(f.root), before);
+  } finally { await f.dispose(); }
+});
+
+it.each([23, 24, 25, 26])("upgrades canonical schema %s including the published claim index", async version => {
+  const f = await storageRecoveryFixture(7);
+  try {
+    const database = new DatabaseSync(f.path);
+    try {
+      for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7 && migration.version <= version) {
+        for (const statement of migration.statements) database.exec(statement);
+      }
+      database.prepare("UPDATE database_states SET schema_version=?").run(version);
+      database.exec(`PRAGMA user_version=${String(version)}`);
+      assert.equal(inspectNativeAuthority(database, version).schemaVersion, version);
+    } finally { database.close(); }
+    assert.equal((await f.run()).state, "upgraded");
+  } finally { await f.dispose(); }
+});
+
+it.each([23, 24, 25, 26])("ordinary open refuses unpublished assistant schema %s with its named code and unchanged bytes", async version => {
+  const f = await createBoundProfileFixture();
+  const credentials = boundProfileCredentials(f.admission);
+  const options = { path: f.path, busyTimeoutMs: 250, migrationOwner: "assistant-numbering-fixture" };
+  const open = () => AuthorityDatabase.open(f.admission, options, systemClock, undefined, undefined, undefined, credentials);
+  try {
+    open().close();
+    const native = new DatabaseSync(f.path);
+    try {
+      if (version === 23) regressSchema25EffortScale(native);
+      else if (version === 24) removeEmptySchema26Attachments(native);
+      else if (version === 25) restoreSchema26AssistantGrants(native);
+      native.exec(`DROP INDEX timeline_worker_claim_idx; UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
+    } finally { native.close(); }
+    const before = storageTree(f.stateRoot);
+    assert.throws(open, unsupported);
+    assert.deepEqual(storageTree(f.stateRoot), before);
+  } finally { await f.close(); }
+});
+
+it("ordinary open still requires the current schema for a canonical predecessor", async () => {
+  const f = await createBoundProfileFixture();
+  const credentials = boundProfileCredentials(f.admission);
+  const options = { path: f.path, busyTimeoutMs: 250, migrationOwner: "assistant-numbering-current-only" };
+  const open = () => AuthorityDatabase.open(f.admission, options, systemClock, undefined, undefined, undefined, credentials);
+  try {
+    open().close();
+    const native = new DatabaseSync(f.path);
+    try { restoreSchema26AssistantGrants(native); } finally { native.close(); }
+    const before = storageTree(f.stateRoot);
+    assert.throws(open, error => error instanceof AuthoritySchemaVersionError && error.schemaVersion === 26);
+    assert.deepEqual(storageTree(f.stateRoot), before);
+  } finally { await f.close(); }
+});

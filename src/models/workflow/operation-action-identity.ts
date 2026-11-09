@@ -1,7 +1,33 @@
 import { z } from "zod";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
-import { BrowserSessionIdSchema, DelegationEdgeIdSchema, FingerprintSchema, NodeIdSchema, PositiveIntSchema, IsoInstantSchema, RunIdSchema, TaskIdSchema } from "../../rules/identity/ids.js";
-import { OperationActionIdSchema, OperationIdSchema, OperationOccurrenceSegmentSchema, OperationSessionIdSchema } from "./operation-display.js";
+import { BrowserSessionIdSchema, DelegationEdgeIdSchema, FingerprintSchema, NodeIdSchema, PositiveIntSchema, IsoInstantSchema, RunIdSchema, TaskIdSchema, slugSchema } from "../../rules/identity/ids.js";
+
+/** Recorded operation identities: stored events, checkpoints and results still carry these fields as plain data. */
+export const OperationIdSchema = slugSchema("operation id must be kebab-case").brand<"OperationId">();
+export const OperationActionIdSchema = slugSchema("operation action id must be kebab-case").brand<"OperationActionId">();
+export const OperationOccurrenceSegmentSchema = slugSchema("operation occurrence path segments must be kebab-case").brand<"OperationOccurrenceSegment">();
+export const OperationSessionIdSchema = slugSchema("logical session id must be kebab-case").brand<"OperationSessionId">();
+export const OperationValueIdSchema = slugSchema("operation value id must be kebab-case").brand<"OperationValueId">();
+export const OperationTransformIdSchema = slugSchema("operation transform id must be kebab-case").brand<"OperationTransformId">();
+export const ConfigurationReferenceKeySchema = z.string().regex(
+  /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+$/,
+  "configuration reference key must be a dot-delimited path",
+).brand<"ConfigurationReferenceKey">();
+
+const FieldPathSchema = z.string().regex(
+  /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/,
+  "operation field path must be a dot-delimited object path",
+);
+const AvailabilitySchema = z.enum(["owned", "offered"]);
+
+export const SnapshotWorkflowValueReferenceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run-input"), path: FieldPathSchema, availability: AvailabilitySchema.optional() }),
+  z.strictObject({ kind: z.literal("configuration"), key: ConfigurationReferenceKeySchema, schemaHash: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("constant"), valueDigest: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("task-output"), entryId: NodeIdSchema, path: FieldPathSchema, availability: AvailabilitySchema.optional() }),
+  z.strictObject({ kind: z.literal("transformation"), transformId: OperationTransformIdSchema, path: FieldPathSchema, availability: AvailabilitySchema.optional() }),
+  z.strictObject({ kind: z.literal("child-output"), entryId: NodeIdSchema, path: FieldPathSchema, availability: AvailabilitySchema.optional() }),
+]);
 
 export const DeclaredActionIdentitySchema = z.strictObject({
   runId: RunIdSchema,
@@ -26,14 +52,11 @@ export const DeclaredActionIdentitySchema = z.strictObject({
 });
 export type DeclaredActionIdentity = z.infer<typeof DeclaredActionIdentitySchema>;
 
-
-
 export const OperationChildResultIdentitySchema = z.strictObject({
   runId: RunIdSchema, definitionFingerprint: FingerprintSchema, resultSchemaHash: FingerprintSchema,
   resultDigest: FingerprintSchema, dependencyDigest: FingerprintSchema,
 });
 export type OperationChildResultIdentity = z.infer<typeof OperationChildResultIdentitySchema>;
-
 
 export const OperationChildResultReferenceSchema = z.strictObject({
   source: z.strictObject({ kind: z.literal("child-output"), entryId: NodeIdSchema, path: ContractFieldPathSchema }),

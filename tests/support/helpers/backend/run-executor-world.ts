@@ -19,7 +19,6 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import { SearchPersonOrg, SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
-import { OPERATION_DISPLAY_FORMAT_VERSION, type WorkflowOperationDisplayDeclaration } from "../../../../src/models/workflow/operation-display.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
@@ -36,7 +35,7 @@ import { readTimelineRecords } from "../../../../src/backend/storage/events/time
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import { type RunParent } from "../../../../src/models/run/envelope.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { recordBrowserAction, runDeclaredAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
+import { recordBrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 
 interface ExecutorHarness<Profile extends BoundProfileStorageFixture> {
   readonly authority: AuthorityHarness<Profile>;
@@ -156,22 +155,6 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
     presentation: { title: (input) => `EID ${input.emplId}` },
     scenarios: ["fixture-operation-action-binding/happy"],
     role: defineWorkflowRole({ kind: "standalone" }),
-    operationDisplay: {
-      capability: "complete",
-      version: OPERATION_DISPLAY_FORMAT_VERSION,
-      invocations: [{
-        id: "search-operation",
-        entryId: "search",
-        contractRole: "task",
-        occurrencePath: ["search"],
-        bindings: [
-          { slot: "search-kind", value: { kind: "constant", value: "by-eid" } },
-          { slot: "empl-id", value: { kind: "run-input", path: "emplId" } },
-          { slot: "name", value: { kind: "constant", value: "unused" } },
-        ],
-      }],
-      presentation: [{ id: "search-operation-node", kind: "operation", invocationId: "search-operation" }],
-    } satisfies WorkflowOperationDisplayDeclaration,
     steps: ({ task, result }) => {
       const search = task({
         id: "search",
@@ -184,11 +167,7 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
           { label: "Employee ID", sources: [{ nodeId: "search", kind: "input", fieldPath: "emplId" }] },
           { label: "Selection", sources: [{ nodeId: "search", kind: "output", fieldPath: "selection.status" }] },
         ] }, [search]]],
-        result: result(SearchPersonOrgOutputSchema, [search], ({ outputs }) => outputs.search, [{ path: "selection.status", source: { kind: "task-output", entryId: "search", path: "selection.status" } },
-          { path: "results", source: { kind: "derived", inputs: [
-            { id: "selection", source: { kind: "task-output", entryId: "search", path: "selection.status" } },
-            { id: "query", source: { kind: "task-output", entryId: "search", path: "selection.candidateEids" } },
-          ] } }]),
+        result: result(SearchPersonOrgOutputSchema, [search], ({ outputs }) => outputs.search),
       };
     },
   });
@@ -258,12 +237,9 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
             }
             if (options.openedTarget !== undefined) recordBrowserAction("opened", options.openedTarget);
             if (options.lifecycle === true) {
-              await runDeclaredAction({ id: "fill-eid", kind: "typed", targetId: "ucpath.person-org.eid-input" }, async () => {
-                recordBrowserAction("typed", "ucpath.person-org.eid-input", input.emplId);
-              }, () => input.emplId);
-              await runDeclaredAction({ id: "run-search", kind: "clicked", targetId: "ucpath.person-org.search-button" }, async () => {});
-              return await runDeclaredAction({ id: "read-selection", kind: "read", targetId: "ucpath.person-org.results-grid" },
-                () => driver.searchPersonOrg(...args), (output) => output.selection.status);
+              recordBrowserAction("typed", "ucpath.person-org.eid-input", input.emplId);
+              recordBrowserAction("clicked", "ucpath.person-org.search-button");
+              return await driver.searchPersonOrg(...args);
             }
             recordBrowserAction("typed", options.typedTarget ?? "ucpath.person-org.eid-input", options.typedValue ?? input.emplId);
             for (let count = 0; count < (options.clicks ?? 1); count += 1) {

@@ -40,11 +40,6 @@ export const example = UcpathContactReadOutputSchema.parse({
 const effectExample = UcpathContactEffectSchema.parse({ name: "Example Contact", relationship: "Parent", primary: true, phone: null,
   address: { kind: "explicit", fields: { address1: "1 Example Street", address2: null, city: "Example", state: "CA", postalCode: "90000", country: null } } });
 export const completeExample = UcpathContactSetSchema.parse({ ...example.contacts, rows: [{ kind: "contact", rowIndex: 0, effect: effectExample }] });
-export function contactOperation(id: string, label: string) {
-  return { version: 1 as const, id, system: "ucpath" as const,
-    session: { kind: "browser" as const, id: "contact-editor", system: "ucpath" as const },
-    actions: [{ id: "verify-contact-observation", kind: "verify" as const, label }] };
-}
 export function emergencyContactIdempotencyKey(input: UcpathContactWriteTarget): string {
   const target = UcpathContactWriteTargetSchema.parse(input);
   const desired = contactEffect(target);

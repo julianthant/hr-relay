@@ -1,3 +1,5 @@
+import { parkedWriteDecision } from "../../../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { ActionDescriptorWireSchema } from "../../../../../../src/models/dashboard/actions.js";
 import { traceOf } from "../../../../fixtures/dashboard/fixture-identity.js";
 import { sectionResponse } from "../../../../fixtures/dashboard/run-detail/section-wire.js";
 import { SubjectProofSchema, WriteIntentRecordSchema, WriteAttemptRecordSchema, deriveWriteBindingProofDigest, deriveIdempotencyKeyDigest } from "../../../../../../src/rules/write-safety/write-safety.js";
@@ -83,7 +85,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
 
   const PARKED_WRITE_REVISION = 6;
 
-  const FIXTURE_PARKED_WRITE = {
+  const PARKED_WRITE_BASE = {
     acceptsTransactionId: true,
     runId: FIXTURE_IDS.parkedRun,
     native: { eventId: uuidOf(9960), order: 50, runId: FIXTURE_IDS.parkedRun, attempt: 1, traceId: traceOf(6), nodeId: "terminate" },
@@ -173,6 +175,10 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       },
     ],
   } as const;
+
+  const FIXTURE_PARKED_WRITE = { ...PARKED_WRITE_BASE,
+    decision: parkedWriteDecision({ taskId: PARKED_WRITE_BASE.taskId, parkedCode: PARKED_WRITE_BASE.parkedCode, readBack: false, acceptsTransactionId: PARKED_WRITE_BASE.acceptsTransactionId },
+      ActionDescriptorWireSchema.array().parse(PARKED_WRITE_BASE.actions)) };
 
   const FIXTURE_GATE_PARK_SECTIONS = Object.freeze({
     [FIXTURE_IDS.parkedRun]: Object.freeze({

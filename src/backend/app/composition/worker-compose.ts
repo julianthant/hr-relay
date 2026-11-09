@@ -11,7 +11,8 @@ import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { createDurableChildRunExecutor } from "../../runtime/execution/durable-child-executor.js";
 import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
-import { isLiveWorker } from "../../../models/run/worker.js";
+import { isDrainStopReason, isLiveWorker, type WorkerStopReason } from "../../../models/run/worker.js";
+import { ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
@@ -129,6 +130,7 @@ export async function initializeRetryWorker(input: Readonly<{
       for (const need of needs) {
         if (systems.has(need.system)) continue;
         systems.add(need.system);
+        await sessions.prepareProfile(need, "prod", signal);
         await sessions.withDriver({ ...need, access: "read", session: "reuse-worker" }, "prod", signal, async () => undefined);
       }
     });
@@ -786,11 +788,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         log,
         debugEvents,
         taskNotes,
-        confirmedActionAppend: event => {
-          const authority = database.authority.runs.get(event.action.runId);
-          if (authority === undefined) throw new Error("confirmed-action-run-authority-missing");
-          taskNotes.emitConfirmedAction(event, authority);
-        },
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
@@ -798,9 +795,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         resetControl: createWorkerResetControl({ database, workerId, leaseGeneration, clock, lifecycle: runRecordService }),
         pendingReset: resetObserver,
         activeWorkReset: (run, claim) => {
-          const observed = resetObserver();
           const record = database.authority.workerControls.resetForWorker(workerId, leaseGeneration);
-          if (observed === undefined || record === undefined) return false;
+          if (record === undefined || resetObserver() === undefined) return false;
           const reset = record.reset;
           const slot = database.authority.workerSlots.get(workerId);
           const lease = database.authority.workerLeases.get(workerId);
@@ -842,6 +838,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         claimNext: (request, sessions) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          onObservationChanged: attempt => { log.warn("preflight observation changed during claim; re-preparing", { workerId, attempt }); },
           prepareRun: async (run, signal) => {
             const target = executionDescriptor(run.envelope.workflow);
             if (target === undefined) throw new Error("worker-execution-descriptor-unavailable");
@@ -925,7 +922,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       clock,
       workerId,
       leaseGeneration,
-      report.closure === "unproved" ? "crashed" : report.stopped === "stop-directive" ? "operator" : "shutdown",
+      report.closure === "unproved" ? "crashed" : report.stopped === "stop-directive" ? "stop-directive" : "shutdown",
       report.closure === "unproved" ? new WorkerSessionClosureUnprovedError(workerId) : undefined,
       log,
     );
@@ -998,11 +995,12 @@ function settleLease(
   clock: Clock,
   workerId: WorkerId,
   leaseGeneration: number,
-  reason: "operator" | "shutdown" | "crashed",
+  reason: WorkerStopReason | "stop-directive",
   original: unknown,
   log: TaskLogger,
 ): void {
   const now = clock.now().toISOString();
+  const failureCode = reason === "crashed" && original instanceof Error && "code" in original ? ErrorCatalogCodeSchema.safeParse(original.code).data : undefined;
   try {
     const lease = database.authority.workerLeases.get(workerId);
     if (lease === undefined) throw new Error(`worker ${workerId} lease disappeared before it could settle`);
@@ -1023,7 +1021,8 @@ function settleLease(
         state: "stopped",
         startedAt: lease.lifecycle.startedAt,
         stoppedAt: now,
-        reason,
+        reason: reason !== "stop-directive" ? reason : isDrainStopReason(lease.control.reason) ? "shutdown" : "operator",
+        ...(failureCode === undefined ? {} : { failureCode }),
       },
       now,
     });

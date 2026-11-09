@@ -54,6 +54,7 @@ describe("error catalog", () => {
       AUTHENTICATED_LANDING_MISSING: "No authenticated landing appeared.",
       TRAINING_REMINDER_REPEATED: "The UCSD training reminder appeared again after Continue Log In.",
       DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run it again; if it repeats, check Fast Duo.",
+      UCPATH_MAINTENANCE: "UCPath is down for maintenance. Try again later.",
       UCPATH_SIGN_IN_FAILED: "UCPath sign-in failed.",
       CRM_SIGN_IN_FAILED: "CRM sign-in failed.",
       ONBASE_SIGN_IN_FAILED: "OnBase sign-in failed.",
@@ -110,8 +111,6 @@ describe("error catalog", () => {
       DASHBOARD_READ_FAILED: "The dashboard could not load this from the local service. Try again.",
       LOGS_READ_FAILED_TITLE: "Could not load logs",
       LOGS_UNAVAILABLE_TITLE: "Logs unavailable",
-      LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: "Confirmed actions unavailable",
-      LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: "The response did not supply complete confirmed-action evidence.",
     } as const;
     for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
       const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));

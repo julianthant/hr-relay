@@ -77,10 +77,10 @@ export interface InboxWiring {
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
-export function useInboxWiring({ client, enabled, binding, toast, openInbox }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding;
-  toast: (input: Omit<DsToast, "id">) => string; openInbox: () => void }): InboxWiring {
+export function useInboxWiring({ client, enabled, binding, toast }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding;
+  toast: (input: Omit<DsToast, "id">) => string }): InboxWiring {
   const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
-  const current = useRef({ request, binding, toast, openInbox, fresh: false }); current.current = { request, binding, toast, openInbox, fresh: false };
+  const current = useRef({ request, binding, toast, fresh: false }); current.current = { request, binding, toast, fresh: false };
   const [revision, refresh] = useState(0);
   const readEpoch = useRef(0);
   const [settled, setSettled] = useState<{ request: typeof request; read: object; rows: readonly NotificationWire[] | undefined; notice: string; failed?: boolean }>();
@@ -126,8 +126,7 @@ export function useInboxWiring({ client, enabled, binding, toast, openInbox }: {
         if (!notificationTargetMatches(row, target)) { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return; }
         const item = { ...notificationItem(row, current.current.binding.authority.nowIso), destination: target };
         current.current.toast({ tone: policy.tone === "positive" ? "success" : policy.tone, title: item.title,
-          description: policy.tone === "positive" ? `${item.subject} · ${item.workflow}` : item.detail,
-          action: { label: "Open notifications", onAction: () => { if (current.current.request === request) current.current.openInbox(); } } });
+          description: policy.tone === "positive" ? `${item.subject} · ${item.workflow}` : item.detail });
       }).catch(() => { if (current.current.request === request) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); });
     });
   }, [client, enabled, request, subscribePublications]);

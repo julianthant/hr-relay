@@ -1146,36 +1146,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/rules/identity/ids.ts:LiteralTaskId",
   "src/models/sessions/session.ts:SessionNeed",
   // Graph bind, choose and resolve functions are generic in-process values; crossing data uses strict schemas.
-  "src/models/workflow/operation-display.ts:OperationActionKind",
-  "src/models/workflow/operation-display.ts:WorkflowCompositionActionKind",
-  "src/models/workflow/operation-display.ts:LogicalSessionReference",
-  "src/models/workflow/operation-display.ts:LogicalPageReference",
-  "src/models/workflow/operation-display.ts:TaskOperationValueSlot",
-  "src/models/workflow/operation-display.ts:TemplateVariable",
-  "src/models/workflow/operation-display.ts:TemplateCondition",
-  "src/models/workflow/operation-display.ts:OperationTemplateSegment",
-  "src/models/workflow/operation-display.ts:OperationTemplate",
-  "src/models/workflow/operation-display.ts:OperationTransformDeclaration",
-  "src/models/workflow/operation-display.ts:OperationOutcomeCase",
-  "src/models/workflow/operation-display.ts:TaskOperationAction",
-  "src/models/workflow/operation-display.ts:TaskOperationDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowValueReference",
-  "src/models/workflow/operation-display.ts:WorkflowResultSourceBinding",
-  "src/models/workflow/operation-display.ts:WorkflowDisplayTransformDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowOutcomePredicate",
-  "src/models/workflow/operation-display.ts:WorkflowOutcomeCase",
-  "src/models/workflow/operation-display.ts:OperationInvocationDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowOperationPresentationNode",
-  "src/models/workflow/operation-display.ts:WorkflowOperationDisplayDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowOperationContractProjection",
-  "src/models/workflow/operation-display.ts:WorkflowOperationEntryProjection",
-  "src/models/workflow/operation-display.ts:WorkflowOperationDisplayCompileInput",
-  "src/models/workflow/operation-display.ts:LegacyWorkflowOperationDisplay",
-  "src/models/workflow/operation-display.ts:CompleteWorkflowOperationDisplay",
-  "src/models/workflow/operation-display.ts:WorkflowOperationDisplay",
-  // In-process identity argument; requireWorkflowOperationDisplaySnapshot parses
-  // both fields and compares them with the schema-validated durable snapshot.
-  "src/models/workflow/operation-display-snapshot.ts:OperationDisplaySnapshotIdentity",
   "src/models/workflow/canonical-input.ts:CanonicalInputSchema",
 
   "src/models/config/test-data.ts:TestDataLocalInputEntry",
@@ -1367,24 +1337,6 @@ describe("strict boundary schemas", () => {
     assert.equal(boundarySourceViolations("src/domain/new-boundary.ts", fixture).length >= 5, true);
   });
 
-  it("keeps exact operational classifications from exempting either display module", () => {
-    const fixtures = [
-      { source: "export interface UndeclaredWire { value: string }", refusal: "exported boundary interface has no schema" },
-      { source: "export type UndeclaredWire = { value: string }", refusal: "exported boundary type is not schema-derived" },
-      { source: "export const Schema = z.object({ value: z.string() });", refusal: "z.object is open" },
-      { source: "export interface OperationTransformDeclaration { value: any }", refusal: "any is forbidden" },
-      { source: "export const value = input as OperationTransformDeclaration;", refusal: "unchecked type assertion" },
-      { source: "export const parsed = Schema.parse(input ?? {});", refusal: "parse cannot default malformed boundary input" },
-    ];
-    for (const path of ["src/models/workflow/operation-display.ts", "src/models/workflow/operation-display-snapshot.ts"]) {
-      const current = readFileSync(join(REPO_ROOT, path), "utf8");
-      assert.deepEqual(boundarySourceViolations(path, current), []);
-      for (const { source, refusal } of fixtures) {
-        assert.equal(boundarySourceViolations(path, `${current}\n${source}`).some((violation) => violation.includes(refusal)), true,
-          `${path} did not refuse ${refusal}`);
-      }
-    }
-  });
 
   it("keeps relocated validation classifications exact to their reviewed files and types", () => {
     const path = "src/domain/validation/new-boundary.ts";

@@ -1,3 +1,5 @@
+import { identityGateDecision } from "../../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/actions.js";
 import { IdentityGateDetailWireSchema, type IdentityGateDetailWire } from "../../../../../src/models/dashboard/run-detail.js";
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../../../src/rules/separations/identity-approval.js";
@@ -101,6 +103,18 @@ hdh: false,
           tone: disagreements.length === 0 ? "neutral" : "destructive",
         },
       },
+      {
+        key: "resolve-gate-rejected",
+        label: "Reject match",
+        detail: "This is not the right person. The run stops.",
+        intent: "destructive",
+        icon: "cancel",
+        placement: ["footer"],
+        kind: "command",
+        command: "resolve-gate",
+        expectedVersion,
+        resolution: "rejected",
+      },
     ];
   }
 
@@ -116,6 +130,8 @@ hdh: false,
     documentName: string;
   }>): IdentityGateDetailWire {
     const packet = packetOf({ documentName: input.documentName, observedAt: input.observedAt });
+    const options = IdentityGateDetailWireSchema.shape.options.parse(optionsOf(packet));
+    const actions = ActionDescriptorWireSchema.array().parse(fixtureIdentityGateActions(packet, input.expectedVersion));
     return IdentityGateDetailWireSchema.parse({
       runId: input.runId,
       gateId: input.gateId,
@@ -126,9 +142,11 @@ hdh: false,
       resultSchemaHash: FIXTURE_GATE_RESULT_SCHEMA_HASH,
       evidenceDigest: deriveIdentityEvidenceDigest(packet),
       packet,
-      options: optionsOf(packet),
+      options,
       approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
-      actions: fixtureIdentityGateActions(packet, input.expectedVersion),
+      actions,
+      rejectReason: "Rejected in Logs",
+      decision: identityGateDecision(options, actions, [], undefined, { documentName: input.documentName }),
     });
   }
 

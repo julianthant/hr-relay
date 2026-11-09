@@ -18,6 +18,8 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/record.js";
+import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 
 vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
@@ -253,6 +255,30 @@ it("settles actual artifact initialization before releasing startup database and
   } finally {
     release(); await boot; await observation;
     filesystemProbe.mockRestore(); readerFactory.mockRestore(); constructor.mockRestore(); databaseClose.mockRestore();
+    await f.runtime.close(); await f.close();
+  }
+});
+
+it("keeps live runs for the next start when the profile's dashboard startup fails", async () => {
+  const f = await fixture(), context = f.runtime.selectedContext(f.active.token);
+  const primary = new Error("synthetic Explorer constructor failure");
+  const constructor = vi.spyOn(explorerComposition, "composeExplorer").mockImplementation(() => {
+    const runtime = context.database.authority.runtimeConfig.get(); assert.ok(runtime);
+    context.database.authority.runs.enqueue(RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+      configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint } }));
+    throw primary;
+  });
+  let atClose: RunRecord | undefined;
+  const close = context.database.close.bind(context.database);
+  const databaseClose = vi.spyOn(context.database, "close").mockImplementation(() => {
+    atClose ??= context.database.authority.runs.get(QUEUED_RUN.envelope.runId); close();
+  });
+  try {
+    await assert.rejects(composeDashboardRuntime(f.input), error => error === primary);
+    assert.equal(atClose?.lifecycle.state, "queued");
+    assert.ok(atClose.pause);
+  } finally {
+    constructor.mockRestore(); databaseClose.mockRestore();
     await f.runtime.close(); await f.close();
   }
 });

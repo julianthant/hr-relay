@@ -8,6 +8,7 @@ import { type SubscriptionState } from "../../client/subscriptions/subscription.
 import { dsClip,dsRadius,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { elapsedSecondsBetween } from "../shared/status/format.js";
+import { stepInterruptLabel } from "../shared/status/status-model.js";
 import type { QueueSurfaceWire } from "../shell/shell-model.js";
 
 
@@ -44,7 +45,11 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   slots: readonly WorkerBrowserSlot[];
   unavailableReason?: string;
 }> {
-  if (card.state === "failed") return { slots: [] };
+  if (card.state === "failed") {
+    // A settled worker keeps the sessions it had; without them, the systems its workflow needs read Closed.
+    const systems = card.lastBrowsers?.length ? card.lastBrowsers.map(browser => browser.system) : card.browserRequirements?.state === "present" ? card.browserRequirements.systems : [];
+    return { slots: [...new Set(systems)].map(system => ({ state: "closed" as const, system })) };
+  }
   const open = [...card.browsers];
   const requirements = card.browserRequirements;
   if (requirements === undefined) {
@@ -361,6 +366,10 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
   crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
 };
 
+/** The card control a served worker operation answers; while unaudited it locks that card behind Check outcome. */
+export const WORKER_OPERATION_CONTROL: Readonly<Record<string, "stop" | "remove" | "retry" | "pause" | "resume" | "refresh" | undefined>> = {
+  "stop-worker": "stop", "remove-worker": "remove", "retry-worker": "retry", "pause-worker": "pause", "resume-worker": "resume", "refresh-browser": "refresh" };
+
 const RETRY_REFUSAL_LABEL: Readonly<Record<string, string>> = {
   "worker-retirement-child-close-unproved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",
   "worker-retirement-closure-not-proved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",
@@ -372,18 +381,22 @@ const RETRY_REFUSAL_LABEL: Readonly<Record<string, string>> = {
 export function workerRetryProblem(card: WorkerCardWire): string | undefined {
   const operation = card.controls?.operation;
   if (operation === undefined || (operation.state !== "refused" && operation.state !== "uncertain")) return undefined;
-  const named = RETRY_REFUSAL_LABEL[operation.message ?? ""];
-  if (operation.type === "stop-worker") return named ?? (operation.message === "worker-retry-never-started" ? "The last restart never started. Use Retry." : undefined);
-  return operation.type === "retry-worker" ? named ?? "Couldn't restart this worker." : undefined;
+  return workerRestartProblem(operation.type, operation.message);
+}
+
+export function workerRestartProblem(type: string, message: string | undefined): string | undefined {
+  const named = RETRY_REFUSAL_LABEL[message ?? ""];
+  if (type === "stop-worker") return named ?? (message === "worker-retry-never-started" ? "The last restart never started. Use Retry." : undefined);
+  return type === "retry-worker" ? named ?? "Couldn't restart this worker." : undefined;
 }
 
 
-/** Directives describe intent, not state; pause waits for the current item to finish. */
+/** A served step interrupt names what happens to the current step. A directive alone does not. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;
-  if (card.directive === "pause" && card.state !== "paused") return "Pausing after this item";
+  const interrupt = stepInterruptLabel(card.interrupt);
+  if (interrupt !== undefined) return interrupt;
   if (card.directive === "run" && card.state === "paused") return "Resume requested";
-  if (card.directive === "stop") return "Stopping after this item";
   return undefined;
 }
 

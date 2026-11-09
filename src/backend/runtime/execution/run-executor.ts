@@ -6,9 +6,6 @@ import { readRunCheckpoint, RunContinuationRefusedError, readContinuationGate, v
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
-import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
-import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "../../logs/generated-artifact-projection.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { localDatePart } from "../../../rules/time/clock.js";
@@ -23,7 +20,7 @@ import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js"
 import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
 import { TaskError, taskErrorCause, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
 import type { ProviderClient } from "../../../workflow-kit/providers.js";
-import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
+import type { AnyTask, TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport, workflowPreviewDependencyIds, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -34,11 +31,8 @@ import type { AnyReadTaskContract } from "../../../models/task/task-contract.js"
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
-import type { ConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
-import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
-import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
 import { drainBrowserActionNotes } from "../../logs/browser-action-drain.js";
-import { withBrowserActionBinding, withBrowserActionNotes, type BrowserAction, type BrowserActionBinder } from "../../systems/browser-shared/action-notes.js";
+import { withBrowserActionNotes, type BrowserAction } from "../../systems/browser-shared/action-notes.js";
 import type { TaskId } from "../../../rules/identity/ids.js";
 import { GateIdSchema, IsoInstantSchema, ProviderCapabilityIdSchema, TaskIdSchema } from "../../../rules/identity/ids.js";
 import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../../../rules/identity/ids.js";
@@ -54,7 +48,6 @@ import { projectTransactionOutcome, type RuntimeFlowNode, type RuntimeScope } fr
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import { planStepOmissions } from "../../../models/workflow/step-omission.js";
-import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { jsonLeafPaths } from "../../runs/provenance/task-provenance.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
@@ -65,8 +58,7 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
-import { RunResultRecordSchema, RunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, singleDelegationResult, terminalGateDependencyRecord } from "../../../models/run/result.js";
-import { createDeclaredActionBinder } from "../writes/operation-action-binding.js";
+import { RunResultRecordSchema, RunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunMutationOutcome, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
 import { WorkerSessionClosureUnprovedError, type WorkerSessionManager } from "../workers/worker-sessions.js";
@@ -104,15 +96,6 @@ export interface WriteSequencerContext {
   readonly onDurableCommit?: (proof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }>) => void;
   readonly onSavedEffectVerified?: (proof: Readonly<{ proofDigest: string }>) => void;
   readonly onDiagnosticDeliveryFailure?: () => void;
-  readonly confirmedForRole?: (role: "probe" | "prepare" | "verify", taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
-  readonly operationReadBinder?: (role: "probe" | "verify", taskId: string, parsedInput: unknown) => BrowserActionBinder;
-  /** Pure completed-gesture binders; persistence remains outside the write fence. */
-  readonly operationActionBinders?: Readonly<{
-    probe?: BrowserActionBinder;
-    prepare?: BrowserActionBinder;
-    commit?: BrowserActionBinder;
-    verify?: BrowserActionBinder;
-  }>;
 }
 
 export interface WriteSequencer {
@@ -219,7 +202,6 @@ export interface RunExecutorDependencies {
   /** Optional production sink for task messages and browser actions. */
   readonly taskNotes?: Pick<NoteTimelineWriter, "emitRunLog" | "emitRunAction">;
   readonly retainCallback?: (identity: Readonly<{ runId: string; claimGeneration: number; attempt: number }>, operation: Promise<unknown>) => void;
-  readonly confirmedActionPublisher?: ConfirmedActionPublisher;
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
   /** Registered workflow/external source ports for non-operator gates. */
@@ -284,6 +266,11 @@ function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId
     throw new Error(`node "${nodeId}" checkpoint load reported found, but the repository returned no stored row`);
   }
   return stored;
+}
+
+// Bound inputs compare in their JSON form: an optional field bound to undefined is absent.
+function boundInputIdentity(value: unknown): string {
+  return canonicalJsonStringify(JSON.parse(JSON.stringify(value)));
 }
 
 function labelOf(node: TaskRuntimeNode): string {
@@ -361,18 +348,6 @@ export async function executeClaimedRun(
       + `v${String(descriptor.version)} / ${descriptor.contractFingerprint}; the worker is miswired`,
     );
   }
-  const operationDisplaySnapshot = envelope.operationDisplaySnapshot === undefined
-    ? undefined
-    : requireWorkflowOperationDisplaySnapshot(envelope.operationDisplaySnapshot, {
-      workflowId: envelope.workflow,
-      definitionFingerprint: envelope.contractFingerprint,
-    });
-  if (descriptor.operationDisplay?.capability === "complete" && operationDisplaySnapshot === undefined) {
-    throw new Error(`complete run ${envelope.workflow} is missing its frozen operation display snapshot`);
-  }
-  if (descriptor.operationDisplay?.capability !== "complete" && operationDisplaySnapshot !== undefined) {
-    throw new Error(`legacy run ${envelope.workflow} cannot carry a complete operation display snapshot`);
-  }
   if (initial.lifecycle.state !== "claimed") {
     throw new Error(`run ${runId} is ${initial.lifecycle.state}; the executor starts from a fresh claim`);
   }
@@ -381,25 +356,6 @@ export async function executeClaimedRun(
   z.number().int().positive().parse(deps.taskDeadlineMs);
 
   const nodes = descriptorRuntimeNodes(descriptor);
-  const configurationValues: Record<string, JsonValue> = {};
-  const configurationKeys = descriptor.operationDisplay?.capability === "complete"
-    ? descriptor.operationDisplay.transforms.flatMap((transform) => transform.inputs.flatMap((source) => source.value.kind === "configuration" ? [source.value.key] : [])) : [];
-  if (configurationKeys.length > 0) {
-    const stored = deps.authority.authority.configSnapshots?.get(envelope.configSnapshotId);
-    if (stored === undefined) throw new Error("declared-action-transform-config-snapshot-unavailable");
-    const snapshot = ConfigSnapshotRecordSchema.parse(stored);
-    if (snapshot.configSnapshotId !== envelope.configSnapshotId || snapshot.fingerprint !== envelope.configFingerprint
-      || sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint) throw new Error("declared-action-transform-config-snapshot-mismatch");
-    for (const key of configurationKeys) {
-      if (!SETTINGS_CATALOG.some((row) => row.key === key && row.sensitivity === "ordinary")) throw new Error("declared-action-transform-config-source-not-ordinary");
-      let value: unknown = snapshot.config;
-      for (const segment of key.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
-      if (value === undefined) throw new Error("declared-action-transform-configuration-unavailable");
-      configurationValues[key] = JsonValueSchema.parse(value);
-    }
-  }
-
-
   const omissionPlan = planStepOmissions(
     {
       nodes: nodes.map((node) => ({ id: String(node.id), kind: node.kind, dependsOn: node.dependsOn.map(String) })),
@@ -481,7 +437,6 @@ export async function executeClaimedRun(
           action,
         }, getRun()); },
       warn: () => deps.log.warn("browser action note could not be recorded"),
-      publisher: deps.confirmedActionPublisher,
       onFailure: (action, error) => { if (screenshotTaskId !== undefined && action.kind === "screenshot") screenshotFailures.push(error); },
     });
     if (screenshotTaskId !== undefined && screenshotFailures.length > 0) {
@@ -605,19 +560,6 @@ export async function executeClaimedRun(
     const checkpointRecords = new Map<string, RunCheckpointRecord>();
     const childResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>>();
     const gateResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "gate-resolved" }>>();
-    const childSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["childSources"]> = new Map();
-    const actionSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["sources"]> = new Map();
-    const hydrateActionSources = (record: RunCheckpointRecord): void => {
-      for (const source of record.operationSources ?? []) {
-        if (source.identity.runId !== record.runId || source.identity.nodeId !== record.nodeId
-          || source.identity.attempt !== record.attempt || source.identity.claimGeneration !== record.claimGeneration
-          || source.identity.definitionFingerprint !== record.contractFingerprint) throw new Error("checkpoint-operation-source-identity-mismatch");
-        let value: unknown = record.output.value;
-        for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
-        if (value === undefined) throw new Error("checkpoint-operation-source-field-unavailable");
-        actionSources.set(`${record.nodeId}/${source.path}`, { identity: source.identity, value: JsonValueSchema.parse(value) });
-      }
-    };
     const replayedForFreshness: ReplayedCheckpoint[] = [];
     const skippedReasons = new Map<string, "condition-false" | "branch-not-selected" | "step-omitted">();
 
@@ -735,7 +677,7 @@ export async function executeClaimedRun(
         if (value !== undefined) picked[String(dependency)] = value;
       }
       return { input: canonicalInput, outputs: Object.freeze(picked),
-        ...(envelope.dryRun ? { dryRun: { transactions: [...dryRunSteps.values()].filter(step => step.state === "transaction-preview") } } : {}), configuration: Object.freeze(configurationValues),
+        ...(envelope.dryRun ? { dryRun: { transactions: [...dryRunSteps.values()].filter(step => step.state === "transaction-preview") } } : {}),
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
 
@@ -771,7 +713,7 @@ export async function executeClaimedRun(
           throw new RunContinuationRefusedError("run-continuation-input-context-unavailable");
         }
       }
-      return { input: source.input.parsed.value, outputs: values, configuration: Object.freeze(configurationValues),
+      return { input: source.input.parsed.value, outputs: values,
         protectedInputBindings: retainedRunProtectedBindings(source) };
     };
     const startAt = envelope.startAt;
@@ -917,7 +859,7 @@ export async function executeClaimedRun(
           if (!deferred && envelope.continuation !== undefined) {
             const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn)));
             const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
-            if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)) {
+            if (boundInputIdentity(original) !== boundInputIdentity(continued)) {
               problems.push(`Completed node "${node.id}" has incompatible corrected input; continuation refused`);
               continue;
             }
@@ -952,7 +894,6 @@ export async function executeClaimedRun(
           if (deferred) continue;
           outputs[String(node.id)] = JsonValueSchema.parse(effective.output.value);
           checkpointRecords.set(String(node.id), effective);
-          hydrateActionSources(effective);
           replayedForFreshness.push({
             nodeId: node.id,
             taskId: node.uses.id,
@@ -1096,11 +1037,18 @@ export async function executeClaimedRun(
       ...(taskId === undefined ? {} : { taskId: TaskIdSchema.parse(taskId) }),
       error,
       occurredAt: instant(),
+      writes: deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, getRun().envelope)
+        .writeRunIds().flatMap(id => repositories.writeIntents.listByRun(id))) ?? [],
     }));
 
     const abortReason = (fallback: string): RunAbandonedError => new RunAbandonedError(
       input.signal.reason instanceof Error ? input.signal.reason.message : fallback,
     );
+
+    const interruptBeforeFence = (nodeId: string): void => {
+      if (input.signal.aborted) throw abortReason(`run ${runId} was aborted during ${nodeId}`);
+      pauseAtBoundary();
+    };
 
     const waitForBackoff = async (ms: number): Promise<void> => {
       if (ms <= 0) return;
@@ -1131,47 +1079,10 @@ export async function executeClaimedRun(
       need: SessionNeed | undefined,
       capabilityWiring: TaskCapabilityWiring,
       spanPath: string,
-      taskAttempt: number,
     ): Promise<RunCheckpointRecord> => {
       const contract: AnyReadTaskContract = node.uses;
       const bound: unknown = node.bind(scope);
       const parsedInput: unknown = contract.input.parse(bound);
-      for (const [key, source] of actionSources) {
-        const sourceNode = key.slice(0, key.indexOf("/"));
-        const path = key.slice(key.indexOf("/") + 1);
-        const checkpoint = checkpointRecords.get(sourceNode);
-        if (source.identity.runId !== runId && nodes.some((candidate) => candidate.id === sourceNode && candidate.kind === "child-run")) continue;
-        if (checkpoint === undefined || checkpoint.runId !== source.identity.runId || checkpoint.claimGeneration !== source.identity.claimGeneration
-          || checkpoint.provenance.some((fact) => (fact.path === path || path.startsWith(`${fact.path}.`)) && fact.source !== "live")) actionSources.delete(key);
-      }
-      const registeredSystem = need === undefined ? undefined : task.driver?.system;
-      if (need !== undefined && registeredSystem === undefined) throw new Error("confirmed-action-registered-driver-missing");
-      const confirmedInvocation = operationDisplaySnapshot === undefined
-        ? undefined
-        : createConfirmedInvocation({ binding: {
-          snapshot: operationDisplaySnapshot,
-          runId,
-          attempt: envelope.attempt,
-          claimGeneration: claim.claimGeneration,
-          taskAttempt,
-          nodeId: String(node.id),
-          taskId: contract.id,
-          contractRole: "task",
-          parsedInput: JsonValueSchema.parse(parsedInput),
-          protectedBindings: retainedRunProtectedBindings(initial),
-          sources: actionSources, childSources,
-          ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
-          runInput: canonicalInput, outputs, configurationValues,
-          ...(envelope.parent === undefined
-            ? {}
-            : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
-        }, clock, publisher: deps.confirmedActionPublisher, traceId: envelope.traceId,
-          ...(registeredSystem === undefined
-            ? { headlessSystem: contract.id.startsWith("workflow:") ? "workflow" as const : "service" as const }
-            : { registeredDriverSystem: registeredSystem }),
-          ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
-        });
-      const declaredActionBinder = confirmedInvocation?.binder;
       const conditionIds = new Set<string>();
       const gatherCondition = (id: string): void => {
         const skipped = nodes.find(candidate => String(candidate.id) === id);
@@ -1300,7 +1211,6 @@ export async function executeClaimedRun(
           throw new TaskError(contract.id, code, message, options);
         },
         recordData: collector.recordData,
-        ...(confirmedInvocation?.actions === undefined ? {} : { confirmed: confirmedInvocation.actions }),
       } as const;
 
       const declaredProviders = contract.providers ?? [];
@@ -1367,9 +1277,8 @@ export async function executeClaimedRun(
       let raw: unknown;
       try {
         if (need === undefined) {
-          raw = await (confirmedInvocation?.withNotes ?? ((operation, drain) => withBrowserActionNotes(clock, operation, drain)))(() => raceAbortable(
-            Promise.resolve().then(() => withBrowserActionBinding(declaredActionBinder,
-              () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } }))),
+          raw = await withBrowserActionNotes(clock, () => raceAbortable(
+            Promise.resolve().then(() => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } })),
             controller.signal, contract.id, retain,
           ), (actions) => drainBrowserActions(spanPath, actions));
         } else {
@@ -1379,12 +1288,10 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          raw = await (confirmedInvocation?.withNotes ?? ((operation, drain) => withBrowserActionNotes(clock, operation, drain)))(
+          raw = await withBrowserActionNotes(clock,
             () => raceAbortable(
               deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver, captureScreenshot) => raceAbortable(
-                Promise.resolve().then(() => withBrowserActionBinding(
-                  declaredActionBinder,
-                  async () => {
+                Promise.resolve().then(async () => {
                     let captured = false;
                     let captureFailure: Readonly<{ error: unknown }> | undefined;
                     const requiredCapture = async (): Promise<void> => {
@@ -1399,8 +1306,7 @@ export async function executeClaimedRun(
                     if (captureFailure !== undefined) throw captureFailure.error;
                     if (!captured) await requiredCapture();
                     return output;
-                  },
-                )),
+                  }),
                 controller.signal,
                 contract.id, retain,
               ), { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: taskLogger }),
@@ -1418,13 +1324,6 @@ export async function executeClaimedRun(
 
       const provenance = collector.finalizeRead(raw);
       const parsedOutput: unknown = contract.output.parse(raw);
-      for (const [key, source] of actionSources) {
-        if (!key.startsWith(`${node.id}/`)) continue;
-        const path = key.slice(String(node.id).length + 1);
-        let current: unknown = parsedOutput;
-        for (const segment of path.split(".")) current = current !== null && typeof current === "object" ? Reflect.get(current, segment) : undefined;
-        if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(source.value)) actionSources.delete(key);
-      }
       return RunCheckpointRecordSchema.parse({
         workflowId: descriptor.id,
         itemId: envelope.itemId,
@@ -1443,9 +1342,6 @@ export async function executeClaimedRun(
         implFingerprint: taskImplFingerprint(contract),
         provenance: provenance.provenance,
         observationOrigins: provenance.points.flatMap(point => (point.origins ?? []).map(entry => ({ path: [...point.field.split("."), ...entry.path], origin: entry.origin }))),
-        ...(operationDisplaySnapshot === undefined ? {} : { operationSources: [...actionSources].flatMap(([key, source]) =>
-          key.startsWith(`${node.id}/`) && source.ambiguous !== true
-            ? [{ path: key.slice(String(node.id).length + 1), identity: source.identity }] : []) }),
         writtenAt: instant(),
       });
     };
@@ -1552,7 +1448,7 @@ export async function executeClaimedRun(
           ...(need === undefined ? {} : { system: need.system }),
         });
         try {
-          const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath, taskAttempt);
+          const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath);
           if (refreshedRetained || refreshedMember || accounting?.plan.recompute.includes(String(node.id))) {
             pauseAtBoundary();
             if (deps.authority.withAuthorityTransaction === undefined) throw new Error("delegation-accounting-transaction-unavailable");
@@ -1668,7 +1564,7 @@ export async function executeClaimedRun(
       if (sourceEvidence !== undefined) {
         const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
         const continued = node.bind(scopeFor(node.dependsOn));
-        if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)
+        if (boundInputIdentity(original) !== boundInputIdentity(continued)
           || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
           || canonicalJsonStringify(sourceEvidence.manifest.policy) !== canonicalJsonStringify(node.policy)
           || sourceEvidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")) throw new RunContinuationRefusedError("run-continuation-child-input-mismatch");
@@ -1696,8 +1592,8 @@ export async function executeClaimedRun(
             throw new RunContinuationRefusedError("run-continuation-task-context-unavailable");
           }
           if (envelope.continuation !== undefined
-            && canonicalJsonStringify(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn))))
-              !== canonicalJsonStringify(node.uses.input.parse(node.bind(scope)))) {
+            && boundInputIdentity(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn))))
+              !== boundInputIdentity(node.uses.input.parse(node.bind(scope)))) {
             throw new RunContinuationRefusedError("run-continuation-task-input-mismatch");
           }
           const freshness = auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
@@ -1721,7 +1617,6 @@ export async function executeClaimedRun(
           }
           outputs[String(node.id)] = entry.record.output.value;
           checkpointRecords.set(String(node.id), entry.record);
-          hydrateActionSources(entry.record);
         }
         recordCheckpointReplay(String(node.id), entry.record);
         if (node.kind === "task") {
@@ -1794,7 +1689,6 @@ export async function executeClaimedRun(
           if (replayed.assertion === undefined) throw new Error(`node "${node.id}" planned an assertion replay over an unmarked row`);
           outputs[String(node.id)] = replayed.output.value;
           checkpointRecords.set(String(node.id), replayed);
-          hydrateActionSources(replayed);
           assertedRecords.set(String(node.id), Object.freeze({
             step: replayed.assertion.step,
             assertedAt: replayed.assertion.assertedAt,
@@ -1997,7 +1891,6 @@ export async function executeClaimedRun(
               + "refusing to skip a write node",
             ));
           }
-          const transactionCheckpointBefore = envelope.dryRun ? undefined : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
           const transactionScope = scopeFor(node.dependsOn);
           if (!envelope.dryRun && envelope.continuation !== undefined) {
             const checkpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
@@ -2022,75 +1915,7 @@ export async function executeClaimedRun(
               continue;
             }
           }
-          const usesPreviewBinding = previewBinding !== undefined;
-          const committedGestures: BrowserAction[] = [];
-          const savedVerifications: BrowserAction[] = [];
-          const roleInvocations = new Map<string, ReturnType<typeof createConfirmedInvocation>>();
-          const confirmedRole = (role: "probe" | "prepare" | "verify", taskId: string, parsedInput: unknown) => {
-            if (operationDisplaySnapshot === undefined || usesPreviewBinding) return undefined;
-            const key = `${role}/${taskId}`;
-            const previous = roleInvocations.get(key);
-            if (previous !== undefined) return previous;
-            const registeredDriverSystem = taskIndex.get(taskId)?.driver?.system;
-            if (registeredDriverSystem === undefined) throw new Error(`confirmed-${role}-registered-driver-missing`);
-            const invocation = createConfirmedInvocation({ binding: {
-              snapshot: operationDisplaySnapshot, runId, attempt: envelope.attempt,
-              claimGeneration: claim.claimGeneration, taskAttempt: 1,
-              nodeId: String(node.id), taskId, contractRole: role,
-              parsedInput: JsonValueSchema.parse(parsedInput),
-              protectedBindings: retainedRunProtectedBindings(initial), sources: actionSources, childSources,
-              ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
-              runInput: canonicalInput, outputs, configurationValues,
-              ...(envelope.parent === undefined ? {} : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
-            }, clock, publisher: deps.confirmedActionPublisher, traceId: envelope.traceId,
-              registeredDriverSystem,
-              ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
-            });
-            roleInvocations.set(key, invocation);
-            return invocation;
-          };
-          const operationReadBinder = operationDisplaySnapshot === undefined || usesPreviewBinding ? undefined
-            : (role: "probe" | "verify", taskId: string, parsedInput: unknown): BrowserActionBinder => {
-              const bind = confirmedRole(role, taskId, parsedInput)!.observingBinder;
-              return note => {
-                const bound = bind(note);
-                if (role === "verify" && bound.kind === "verified" && bound.operation?.state === "completed") savedVerifications.push(bound);
-                return bound;
-              };
-            };
           try {
-            const operationActionBinders = operationDisplaySnapshot === undefined || usesPreviewBinding
-              ? undefined
-              : {
-                prepare: confirmedRole("prepare", node.prepare.uses.id, node.prepare.bind(transactionScope))!.observingBinder,
-                commit: createDeclaredActionBinder({
-                  snapshot: operationDisplaySnapshot,
-                  runId,
-                  attempt: envelope.attempt,
-                  claimGeneration: claim.claimGeneration,
-                  taskAttempt: 1,
-                  nodeId: String(node.id),
-                  taskId: node.commit.uses.id,
-                  contractRole: "commit",
-                  parsedInput: JsonValueSchema.parse(node.commit.bind(transactionScope)),
-                  protectedBindings: retainedRunProtectedBindings(initial),
-                  sources: actionSources, childSources,
-                  ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
-                  runInput: canonicalInput, outputs, configurationValues,
-                  ...(envelope.parent === undefined
-                    ? {}
-                    : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
-                }),
-              };
-            const trackedBinders = operationActionBinders === undefined ? undefined : {
-              ...operationActionBinders,
-              commit: (note: BrowserAction): BrowserAction => {
-                const bound = operationActionBinders.commit(note);
-                if (bound.kind === "clicked" && bound.operation?.state === "completed") committedGestures.push(bound);
-                return bound;
-              },
-            };
-
             const captureLog: Pick<TaskLogger, "warn"> = {
               warn(message, fields) {
                 deps.log.warn(message, fields);
@@ -2115,13 +1940,11 @@ export async function executeClaimedRun(
                   dryRun: true, captureLog,
                   ...(previewBinding === undefined ? {} : { previewBinding }),
                   signal: input.signal,
-                  confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
-                  ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
-                  ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
                 }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
                   action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); }));
               } catch (error) {
                 if (error instanceof RunAbandonedError) throw error;
+                interruptBeforeFence(node.id);
                 return await failNode(node, node.commit.uses.id, error);
               }
               emit({
@@ -2138,20 +1961,11 @@ export async function executeClaimedRun(
               previewOnly.add(String(node.id));
               continue;
             }
-            let durableCommitProof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }> | undefined;
-            let savedEffectProof: Readonly<{ proofDigest: string; verifiers: readonly BrowserAction[] }> | undefined;
             const raw = await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeTransaction({
               descriptor, node, run: getRun(), claim,
               scope: transactionScope,
               dryRun: envelope.dryRun, captureLog,
               signal: input.signal,
-              confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
-              onDurableCommit: proof => { durableCommitProof = proof; },
-              onSavedEffectVerified: proof => { savedEffectProof = { proofDigest: proof.proofDigest,
-                verifiers: [...savedVerifications] }; },
-              onDiagnosticDeliveryFailure: () => { deps.confirmedActionPublisher?.reportAppendFailure(); },
-              ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
-                ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
             }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
                 action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); });
             const OutcomeSchema = z.strictObject({
@@ -2188,27 +2002,6 @@ export async function executeClaimedRun(
               );
             }
             checkpointRecords.set(String(node.id), record);
-            if (storedOutcome.disposition === "committed" && storedOutcome.proofSource === "normal-output"
-              && (durableCommitProof !== undefined || savedEffectProof !== undefined || committedGestures.length > 0 || savedVerifications.length > 0
-                || transactionCheckpointBefore === undefined && record.runId === runId && record.claimGeneration === claim.claimGeneration)
-              && deps.confirmedActionPublisher !== undefined && operationDisplaySnapshot !== undefined) {
-              const system = taskIndex.get(node.commit.uses.id)?.driver?.system;
-              if (system === undefined) throw new Error("confirmed-submit-registered-driver-missing");
-              const verifierTaskId = node.commit.uses.writeSafety.completion.kind === "receipt"
-                ? undefined : node.commit.uses.writeSafety.completion.verify.taskId;
-              try { publishConfirmedSubmit({
-                publisher: deps.confirmedActionPublisher,
-                snapshot: operationDisplaySnapshot,
-                system, commitTaskId: node.commit.uses.id, verifierTaskId,
-                commits: committedGestures, verifiers: savedEffectProof?.verifiers ?? [],
-                verifiedProofDigest: savedEffectProof?.proofDigest,
-                durable: durableCommitProof, checkpointNodeId: String(node.id),
-                checkpointProofDigest: sha256Hex(canonicalJsonStringify(storedOutcome.proof.value)),
-                traceId: envelope.traceId,
-                ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
-              }); }
-              catch { deps.confirmedActionPublisher.reportProgramError(); }
-            }
           } catch (error) {
             if (error instanceof RunAbandonedError) throw error;
             if (error instanceof WriteParkedError) {
@@ -2232,6 +2025,14 @@ export async function executeClaimedRun(
                 code: error.parkCode,
               });
             }
+            // An attempting intent means the failure came after the fence: keep the claim for recovery, never pause or fail.
+            // Once recovery has taken the claim, the claim check abandons the run instead.
+            if (deps.authority.withAuthorityTransaction?.(repositories =>
+              repositories.writeIntents.listByRun(runId).some(intent => intent.status === "attempting")) === true) {
+              requireOriginalClaim(getRun());
+              throw error;
+            }
+            interruptBeforeFence(node.id);
             return await failNode(node, node.commit.uses.id, error);
           }
           continue;
@@ -2265,7 +2066,7 @@ export async function executeClaimedRun(
           }
           try {
             await deps.sessions.closeAll("parked");
-            input.signal.throwIfAborted();
+            if (input.signal.aborted) throw abortReason(`run ${runId} was aborted before ${node.id}`);
             checkCancellation();
             requireOriginalClaim(getRun());
             const sourceEvidence = childSourceEvidence(node);
@@ -2288,7 +2089,7 @@ export async function executeClaimedRun(
                 raw = childBatchOutputs.get(node.id);
               }
             }
-            input.signal.throwIfAborted();
+            if (input.signal.aborted) throw abortReason(`run ${runId} was aborted during ${node.id}`);
             const pending = DelegationPendingSchema.safeParse(raw);
             if (pending.success) {
               if (entry.mode === "replay-child") throw new RunContinuationRefusedError("run-gate-resume-child-unsettled");
@@ -2331,19 +2132,6 @@ export async function executeClaimedRun(
               continue;
             }
             outputs[String(node.id)] = JsonValueSchema.parse(resolution.output);
-            const retainedResult = singleDelegationResult(evidence);
-            if (retainedResult !== undefined) {
-              for (const lineage of retainedResult.operationLineage ?? []) {
-                childSources.set(`${node.id}/${lineage.path}`, { result: { runId: retainedResult.runId, definitionFingerprint: retainedResult.contractFingerprint,
-                  resultSchemaHash: retainedResult.resultSchemaHash, resultDigest: retainedResult.resultDigest, dependencyDigest: retainedResult.dependencyDigest }, inputs: lineage.inputs });
-              }
-              for (const source of retainedResult.operationSources ?? []) {
-                let value: unknown = retainedResult.result.value;
-                for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
-                if (value === undefined) throw new Error("child-output-source-field-unavailable");
-                actionSources.set(`${node.id}/${source.path}`, { identity: source.identity, value: JsonValueSchema.parse(value) });
-              }
-            }
           } catch (error) {
             if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError
               || error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") throw error;
@@ -2356,7 +2144,8 @@ export async function executeClaimedRun(
       }
     }
 
-
+    // The last node's boundary: an abort pauses, cancels or abandons the run instead of settling it done.
+    if (input.signal.aborted) throw abortReason(`run ${runId} was aborted before its terminal settlement`);
     assertAccounting();
     if (envelope.dryRun) {
       const support = workflowDryRunSupport(descriptor);
@@ -2381,6 +2170,11 @@ export async function executeClaimedRun(
   const handleInterruption = (error: unknown):
     { state: "handled"; outcome: RunExecutionOutcome } | { state: "unhandled"; failure: unknown } => {
     let failure = error;
+    // An aborted run settles a requested pause or cancellation from durable state; any other abort abandons.
+    if (input.signal.aborted && failure instanceof RunAbandonedError && !(failure instanceof RunPauseRequestedError)) {
+      try { const current = getRun(); requireOriginalClaim(current); checkCancellation(); checkPause(current); }
+      catch (control) { failure = control; }
+    }
     if (failure instanceof RunTerminalAdmissionLostError) {
       const admissionVersion = failure.admissionVersion;
       try {

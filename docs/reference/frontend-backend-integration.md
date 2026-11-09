@@ -156,7 +156,7 @@ field membership and discriminated states. The client checks identity as well as
 | Cross-date search and exports | `queries/shell-queries.ts`, `commands/export-commands.ts` | `shell.ts`: `GET /api/v1/search`, `POST /api/v1/exports/search`, `POST /api/v1/exports/xlsx` |
 | Day snapshot | `queries/queue-queries.ts` | `queue.ts`: `GET /api/v1/dashboard?day=` |
 | Start and rerun planning | `commands/start-commands.ts` | `queue.ts`: `POST /api/v1/start-plans`, `POST /api/v1/rerun-warnings` |
-| Run detail, source, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/operation-source`, `/attempt-history` |
+| Run detail, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/attempt-history` |
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
 | ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel`, `/sign-out` under the account path |

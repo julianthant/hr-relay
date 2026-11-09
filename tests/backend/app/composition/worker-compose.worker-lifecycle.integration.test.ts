@@ -13,7 +13,7 @@ import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { happySessionHarness, healthyCrmDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, workerLifetime, composeInput, cleanup } = createWorkerCompositionTestWorld();
 
@@ -156,6 +156,39 @@ describe("composed worker runtime", () => {
     const lease = database.authority.workerLeases.get(admittedWorkerId(stateRoot, clock));
     assert.ok(lease && lease.lifecycle.state === "stopped");
     assert.equal(lease.lifecycle.reason, "shutdown");
+  });
+
+  it.each([
+    ["application-shutdown", "shutdown"],
+    ["profile-logout", "shutdown"],
+    ["shift over", "operator"],
+    [undefined, "operator"],
+  ] as const)("records a stop directive carrying reason %s as lifecycle reason %s", async (directiveReason, expected) => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const workerId = admittedWorkerId(stateRoot, clock);
+    const database = reopen(stateRoot, clock);
+    // The directive lands mid-run, as a drain would; the loop observes it before the next claim.
+    const sessions = sessionFactoryHarness({
+      ucpath: () => {
+        const driver = healthyUcpathDriver();
+        return { ...driver, searchPersonOrg: (...args: Parameters<typeof driver.searchPersonOrg>) => {
+          const lease = database.authority.workerLeases.get(workerId); assert.ok(lease);
+          assert.equal(database.authority.workerLeases.control({ workerId, expectedVersion: lease.version, now: NOW,
+            control: { directive: "stop", requestedAt: NOW, requestedBy: "local-operator", ...(directiveReason === undefined ? {} : { reason: directiveReason }) } }).state, "applied");
+          return driver.searchPersonOrg(...args);
+        } };
+      },
+      crm: () => healthyCrmDriver(),
+    });
+
+    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
+
+    assert.equal(report.stopped, "stop-directive");
+    const lease = reopen(stateRoot, clock).authority.workerLeases.get(workerId);
+    assert.ok(lease && lease.lifecycle.state === "stopped");
+    assert.equal(lease.lifecycle.reason, expected);
   });
 
   it("refuses unproved closure when worker-stop cannot prove closure, and records the lease as crashed", async () => {

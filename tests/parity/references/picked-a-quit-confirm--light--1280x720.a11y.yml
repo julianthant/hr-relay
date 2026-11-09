@@ -1,7 +1,7 @@
 # picked-a-quit-confirm--light--1280x720
 # adapter: fixture
 # fixture: picked-dashboard-a
-# descriptorHash: bb4e6205beffa33f37bd41e635894074c0bc49937b14d51119ae2e411e89e30f
+# descriptorHash: 5902cae11b4a5f7d95e142b7366b807886e3f75ab5b1de56ef7806d2109fd0c6
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: light  variant: default
 # capturedAt: 2026-08-03
@@ -10,7 +10,7 @@
 - dialog "Pause all and quit?":
   - banner:
     - heading "Pause all and quit?" [level=2]
-    - paragraph: Each run finishes its current step, then pauses. Resume them next time.
+    - paragraph: A save in progress finishes first. Other steps restart on Resume.
     - button "Close"
   - contentinfo:
     - button "Keep working"

@@ -31,12 +31,13 @@ import { createApplicationLifecycle } from "../../../runs/lifecycle/application-
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
+import { ocrHostRun } from "../../../runs/queries/ocr-record-members.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { createRunHistoryService } from "../../../runs/commands/run-history-service.js";
 import { createCommandBrowserManager } from "../../../runtime/browser/command-browser.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { activeSettingsConfig,activeSettingsRuntimeIdentity } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsConfig,activeSettingsRuntimeIdentity, readAdmittedProfileIdentity } from "../../../runtime/settings/settings-runtime.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
@@ -144,11 +145,12 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     admission,
   });
   await artifactReader.ready;
-  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, stateRoot, projection, ownsWorker, artifacts, artifactReader });
+  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, stateRoot, projection, ownsWorker, artifacts, artifactReader,
+    operatorName: () => { assertCurrent(); return readAdmittedProfileIdentity(machineAdmission, admission).displayName; } });
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
-  const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
+  const workflowSources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredWorkflowSources);
   const servedDescriptors = DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served");
   // The manifest identity hashes the facts from the running definitions; the on-disk pin is checked only when the assistant runs.
   const factsSha256 = assistantWorkflowFacts(servedDescriptors).sha256;
@@ -243,7 +245,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
+  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
+    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)) });
   const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
   const dataQueries = composeDataQueries(runDetailDeps);
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });

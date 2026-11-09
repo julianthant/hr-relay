@@ -10,6 +10,7 @@ import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptio
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
 import { sessionsFromDay } from './sessions-view-model.js';
 import { useIdleSessionRefresh } from './session-idle-model.js';
+import { WORKER_OPERATION_CONTROL, workerRestartProblem } from './session-panel-model.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToasts } from '../../ds/ui.js';
 import type { WorkflowCatalogEntry } from '../workflows/workflow-catalog-model.js';
@@ -208,7 +209,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
 
 const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Workers added' : request.action === 'refresh' ? 'Idle sessions refreshed' : ({ pause: 'Pause', resume: 'Resume', retry: 'Retry', stop: 'Stop', remove: 'Remove' }[request.action]);
 
-export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; records?: DashboardDayWire["workerOperations"] }>) {
+export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; records?: DashboardDayWire["workerOperations"]; onRefused?: (problem: string) => void }>) {
   const sourceKey = source?.snapshot ?? port;
   const [readback, setReadback] = useState<{ key: object; data: SessionsViewState }>(() => ({ key: sourceKey, data: initial }));
   const data = readback.key === sourceKey ? readback.data : initial;
@@ -218,6 +219,8 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const latestSource = useRef(sourceKey); latestSource.current = sourceKey;
   const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>({});
   const operationsRef = useRef<Record<string, SessionPreviewOperation>>({});
+  const onRefused = useRef(source?.onRefused); onRefused.current = source?.onRefused;
+  const records = useRef(source?.records); records.current = source?.records;
   const live = useRef(true);
   const ordinal = useRef(5);
   const idle = useRef<((request: SessionPreviewRequest, data?: SessionsViewState) => void) | undefined>(undefined);
@@ -227,10 +230,21 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     setOperations(operationsRef.current);
   }, []);
   useEffect(() => {
+    const audited = new Map<string, DashboardDayWire["workerOperations"][number]>((source?.records ?? []).filter(record => record.auditedAt !== undefined).map(record => [record.commandId, record]));
+    const settled = Object.entries(operationsRef.current).filter(([, operation]) => operation.state === "uncertain" && operation.request.action !== "add" && audited.has(operation.request.id));
+    if (settled.length > 0) {
+      const next = { ...operationsRef.current };
+      for (const [target, operation] of settled) {
+        delete next[target];
+        const record = audited.get(operation.request.id);
+        const refusal = record?.phase.state === "refused" ? workerRestartProblem(record.request.type, record.phase.message) : undefined;
+        if (refusal !== undefined) onRefused.current?.(refusal);
+      }
+      operationsRef.current = next; setOperations(next);
+    }
     for (const record of source?.records ?? []) {
       if (record.auditedAt !== undefined || record.request.requestedBy !== source?.actorId || !("workerId" in record.request.target)) continue;
-      const actions: Readonly<Record<string, SessionControl | "refresh" | undefined>> = { "stop-worker": "stop", "remove-worker": "remove", "retry-worker": "retry", "pause-worker": "pause", "resume-worker": "resume", "refresh-browser": "refresh" };
-      const action = actions[record.request.type];
+      const action = WORKER_OPERATION_CONTROL[record.request.type];
       const prior = operationsRef.current[record.request.target.workerId];
       if (action === undefined || prior?.request.id === record.commandId || prior !== undefined && ["pending", "checking", "uncertain"].includes(prior.state)) continue;
       let request: SessionPreviewRequest;
@@ -257,6 +271,15 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     if (result.id !== request.id) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_RESULT_IDENTITY_MISMATCH') }; }
     if (result.data !== undefined && snapshot === latestSource.current && attemptEpoch === epoch.current) setReadback({ key: snapshot, data: result.data });
     if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
+    // The served record settled while this check ran, which the settlement sweep skips; release the card as it would.
+    const settled = checking && result.state !== 'confirmed' ? records.current?.find(record => record.commandId === request.id && record.auditedAt !== undefined) : undefined;
+    if (settled !== undefined) {
+      const { [request.target]: _settled, ...rest } = operationsRef.current;
+      operationsRef.current = rest; setOperations(rest);
+      const refusal = settled.phase.state === 'refused' ? workerRestartProblem(settled.request.type, settled.phase.message) : undefined;
+      if (refusal !== undefined) onRefused.current?.(refusal);
+      return;
+    }
     retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
   }, [port, retain]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
@@ -282,5 +305,6 @@ export function useSessionAddFeedback(operation?: SessionPreviewOperation) {
       return () => dismiss(id);
     }
     if (operation?.state === 'confirmed') toast({ tone: 'success', title: operation.message });
+    if (operation?.state === 'refused') toast({ tone: 'danger', title: "Couldn't add workers", description: operation.message, duration: 6000 });
   }, [operation, toast, dismiss]);
 }

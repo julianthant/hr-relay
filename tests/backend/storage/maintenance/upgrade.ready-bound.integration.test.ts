@@ -1,4 +1,4 @@
-import { assertUpgradedRunSettlementRows, removeEmptySchema23AssistantHistory, restoreSchema20CompletionFixture, restoreSchema25AssistantGrants } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { assertUpgradedRunSettlementRows, removeEmptySchema24AssistantHistory, restoreSchema20CompletionFixture, restoreSchema26AssistantGrants } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -60,7 +60,7 @@ const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 });
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 22 | 25 = 8, extractionEvidence = false,
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 22 | 26 = 8, extractionEvidence = false,
   workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
@@ -132,8 +132,8 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    if (sourceVersion === 25) restoreSchema25AssistantGrants(raw);
-    else if (sourceVersion === 22) removeEmptySchema23AssistantHistory(raw);
+    if (sourceVersion === 26) restoreSchema26AssistantGrants(raw);
+    else if (sourceVersion === 22) removeEmptySchema24AssistantHistory(raw);
     else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
     else if (sourceVersion === 19) restoreSchema19RunSettlementFixture(raw);
     else restoreSchema18WorkbookReferenceFixture(raw);
@@ -182,7 +182,7 @@ function assertGrantTableRetired(path: string) {
 function rawEight(path: string, version = 8) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
-    // The empty grant table is dropped by schema 26; `assertGrantTableRetired` checks that separately.
+    // The empty grant table is dropped by schema 27; `assertGrantTableRetired` checks that separately.
     return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
@@ -328,10 +328,10 @@ it("automatically upgrades schema 22 with queued work intact", async () => {
   } finally { await f.close(); }
 });
 
-it("automatically upgrades schema 25 at startup, dropping only the empty grant table", async () => {
-  const f = await readyBoundEight("queued", 25);
+it("automatically upgrades schema 26 at startup, dropping only the empty grant table", async () => {
+  const f = await readyBoundEight("queued", 26);
   try {
-    const before = rawEight(f.path, 25);
+    const before = rawEight(f.path, 26);
     assert.ok(before.runs.length > 0);
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assertGrantTableRetired(f.path);

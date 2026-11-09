@@ -300,7 +300,7 @@ export function SettingsPage({
           && activeId !== "spreadsheets"
           && activeId !== SETTINGS_PREFLIGHT_SECTION_ID
           && activeId !== SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
-          <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />
+          <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />
         )}
         {/* Refuse unknown settings destinations; redirecting would label the wrong page as the requested one. */}
         {resolution.state === "unknown" && (

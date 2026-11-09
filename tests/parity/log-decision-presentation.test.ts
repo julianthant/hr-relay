@@ -28,7 +28,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const example of logDecisionExamples) {
         await chooseScenario( example.id);
         if (example.entry.kind === "decision") {
-          const block = surface.getByRole("article", { name: example.entry.decision.title, exact: true });
+          const block = surface.getByRole("group", { name: example.entry.decision.title, exact: true });
           await block.scrollIntoViewIfNeeded();
           await expect(block).toBeVisible();
           await expect(block.locator("time")).toHaveCount(0);
@@ -42,52 +42,50 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       }
       await chooseScenario( "parked");
-      await surface.locator(".log-decision").scrollIntoViewIfNeeded();
-      const parked = surface.getByRole("article", { name: "File termination", exact: true });
-      expect(await parked.locator(".log-caution").evaluate(node => { const r = node.getBoundingClientRect(), parent = node.parentElement!.getBoundingClientRect(); return r.x > parent.x + 25 && r.width < parent.width; })).toBe(true);
-      await parked.getByRole("button", { name: "Check result", exact: true }).click();
-      let form = page.getByRole("dialog", { name: "Check result", exact: true });
-      await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
-      await expect(form.getByRole("textbox")).toHaveCount(0);
-      await form.getByRole("radio", { name: "Yes, it was submitted", exact: true }).check();
-      await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
-      await form.getByRole("textbox", { name: /^Transaction number/u }).fill("SIM-042");
-      await form.getByRole("button", { name: "Continue run", exact: true }).click();
-      await expect(parked.getByRole("button", { name: "Check result", exact: true })).toHaveCount(0);
-      await expect(parked.locator("figure")).toHaveCount(1);
-      const result = surface.getByText("Checking transaction. Relay is reading SIM-042 in UCPath.", { exact: true });
-      await expect(result).toBeFocused();
-      expect(await result.evaluate(node => node.closest("article"))).toBeNull();
+      const parked = surface.getByRole("group", { name: "Did the termination save in UCPath?", exact: true });
+      await parked.scrollIntoViewIfNeeded();
+      await expect(parked).toContainText("Submit did not confirm. Check Smart HR Transactions for DEMO-1042.");
+      const confirm = parked.getByRole("button", { name: "Confirm", exact: true });
+      const transaction = parked.getByRole("textbox", { name: /^Transaction number/u });
+      await expect(confirm).toBeDisabled();
+      await transaction.fill("SIM-042");
+      await expect(confirm).toBeDisabled();
+      await transaction.fill("T00042871");
+      await confirm.click();
+      await expect(surface).toContainText("Answered: Saved in UCPath");
+      await expect(parked.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
 
       await chooseScenario( "review-candidates");
-      await surface.getByRole("button", { name: "Choose employee", exact: true }).click();
-      form = page.getByRole("dialog", { name: "Choose employee", exact: true });
-      await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
-      await form.getByRole("radio", { name: /DEMO-2196/u }).check();
-      await form.getByRole("button", { name: "Continue run", exact: true }).click();
-      await expect(surface).toContainText("Selected DEMO-2196.");
+      const pick = surface.getByRole("group", { name: "Which Alex Morgan is this run about?", exact: true });
+      await expect(pick.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
+      await pick.getByRole("radio", { name: "Morgan, Alex", exact: true }).click();
+      await expect(pick.getByRole("radio", { name: "Morgan, Alex", exact: true })).toHaveAttribute("aria-checked", "true");
+      await pick.getByRole("textbox", { name: "Enter employee ID", exact: true }).fill("10000077");
+      await expect(pick.getByRole("radio", { name: "Morgan, Alex", exact: true })).toHaveAttribute("aria-checked", "false");
+      await pick.getByRole("button", { name: "Confirm", exact: true }).click();
+      await expect(surface).toContainText("Answered: Morgan, Alexis");
 
       await chooseScenario( "review-fields");
-      await surface.getByRole("button", { name: "Enter date", exact: true }).click();
-      form = page.getByRole("dialog", { name: "Enter date", exact: true });
-      await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
-      await form.getByRole("button", { name: /^Choose last day worked date/u }).click();
+      const date = surface.getByRole("group", { name: "Confirm the last day worked", exact: true });
+      const enter = date.getByRole("button", { name: "Enter date", exact: true });
+      await expect(enter).toBeDisabled();
+      await date.getByRole("button", { name: /^Choose last day worked date/u }).click();
       const calendar = page.getByRole("dialog", { name: "Choose last day worked date", exact: true });
       await expect(calendar).toBeVisible();
       await expect(calendar.getByRole('button', { name: /year selector/u })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(calendar).toBeHidden();
-      await expect(form).toBeVisible();
+      await expect(enter).toBeVisible();
       for (const [segment, value] of [["month", "9"], ["day", "25"], ["year", "2026"]]) {
-        await form.getByRole("spinbutton", { name: `${segment}, Last day worked*`, exact: true }).focus();
+        await date.getByRole("spinbutton", { name: new RegExp(`^${segment}, Last day worked`, "u") }).focus();
         await page.keyboard.type(value);
       }
-      await form.getByRole("button", { name: "Continue run", exact: true }).click();
-      await expect(surface).toContainText("Last day worked: 2026-09-25.");
+      await enter.click();
+      await expect(surface).toContainText("Answered: Enter date");
 
       await chooseScenario( "failure-prepared");
-      await surface.locator(".log-decision").scrollIntoViewIfNeeded();
-      const failure = surface.getByRole("article", { name: "File termination", exact: true });
+      const failure = surface.getByRole("group", { name: "File termination", exact: true });
+      await failure.scrollIntoViewIfNeeded();
       await expect(failure).toContainText("While trying to enter last day worked");
       await expect(failure).toContainText("Last completed · Employee and employment record confirmed");
       await expect(failure.locator("figure")).toHaveCount(3);

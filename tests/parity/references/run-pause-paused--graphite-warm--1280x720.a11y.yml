@@ -14,15 +14,15 @@
     - heading "Search" [level=3]
     - list:
       - listitem:
-        - button "Person Lookup": Person Lookup …
+        - button "Person Lookup"
       - listitem:
-        - button "I-9 Lookup": I-9 Lookup …
+        - button "I-9 Lookup"
     - heading "Separations" [level=3]
     - list:
       - listitem:
-        - button "Separations": Separations …
+        - button "Separations"
       - listitem:
-        - button "I-9 Check": I-9 Check …
+        - button "I-9 Check"
 - main:
   - region "Queue":
     - text: ACTIVE · 2
@@ -45,7 +45,7 @@
         - listitem:
           - button "Read request · Completed · 14s" [disabled]: Read request 14s
         - listitem:
-          - button "Verify employee · Paused after this step": Verify employee Paused after this step
+          - button "Verify employee · Pause recorded. Resume to continue.": Verify employee Pause recorded. Resume to continue.
         - listitem:
           - button "Read timecard · Upcoming" [disabled]: Read timecard
         - listitem:

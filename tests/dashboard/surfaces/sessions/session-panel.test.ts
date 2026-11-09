@@ -17,7 +17,7 @@ describe("frontend timeline and sessions", () => {
     assert.match(markup, /aria-label="No run in progress"/);
     assert.match(markup, /aria-label="Remove worker"/);
     assert.doesNotMatch(markup, /Worker stopped|Worker paused|>Pause<|>Stop<|>Retry<|>Resume</);
-    assert.match(markup, /Read the timecard/);
+    assert.match(markup, /Kronos timecard/);
     assert.doesNotMatch(markup, /pool version|expectedVersion|lease|Live<|No worker is running|>Worker \d+</);
   });
 });

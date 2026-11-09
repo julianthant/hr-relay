@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { DsBodyScope, TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
+import { LogOut } from 'lucide-react';
+import { Button, DsBodyScope, TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { QueueSurfaceWireSchema } from '../../../../src/models/dashboard/projection.js';
 import { QueuePanel } from '../../../../src/dashboard/surfaces/queue/queue.js';
 import { mockRunLog, seedMockRuns } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
@@ -10,16 +12,34 @@ import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '..
 import { SpreadsheetEditor } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor.js';
 import { newEditableWorkbook, type SpreadsheetSaveResult } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { SessionsView } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
+import { SessionsR2, SessionsStates } from './sessions-states.js';
+import { sessionsSample } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
 import './style.css';
 const query = new URLSearchParams(location.search);
 const surface = query.get('surface') ?? 'save';
 const mode = query.get('mode') ?? 'confirmed';
-document.documentElement.setAttribute('data-demo-theme', 'dark');
-document.body.setAttribute('data-demo-theme', 'dark');
+if (surface === 'sessions-bar') { document.documentElement.dataset.hub = ''; await import('../../../../src/dashboard/surfaces/shell/permanent-shell.css'); await import('../../../../src/dashboard/ds/theme/hub-theme.css'); }
+const theme = query.get('theme') ?? 'dark';
+document.documentElement.setAttribute('data-demo-theme', theme);
+document.body.setAttribute('data-demo-theme', theme);
 let calls = 0;
 function countCall() { document.body.setAttribute('data-action-calls', String(++calls)); }
+function SessionsBarHarness() {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [footer, setFooter] = useState<HTMLElement | null>(null);
+  const [open, setOpen] = useState(query.get('open') === '1');
+  useLayoutEffect(() => { setFooter(anchor.current?.closest('.dashboard-shell')?.querySelector<HTMLElement>('[aria-label="Session actions"] > span:last-child') ?? null); }, []);
+  return <div className="dashboard-shell">
+    <SessionsView open={open} onOpenChange={setOpen} onControl={() => {}} onAdd={() => {}} onSettings={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample('active')} />
+    {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout sessions-bar-icon" aria-label="Log out" title="Log out" icon={<LogOut aria-hidden className="size-4" />} />, footer)}
+    <span ref={anchor} className="sr-only" />
+  </div>;
+}
 function Fixture() {
   const [book, setBook] = useState(newEditableWorkbook), [dirty, setDirty] = useState(true);
+  if (surface === 'sessions-states') return <SessionsStates />;
+  if (surface === 'sessions-r2') return <SessionsR2 />;
+  if (surface === 'sessions-bar') return <SessionsBarHarness />;
   if (surface === 'sessions') return <SessionsView open onOpenChange={() => {}} onControl={() => {}} onAdd={() => {}} workflows={[]} data={{ state: 'ready', workers:
     (['unopened', 'starting', 'active', 'ready', 'closed', 'unavailable'] as const).map((state, index) => ({
       id: `label-worker-${index}`, label: `Worker ${index + 1}`, workflowId: 'person-lookup', workflow: 'Person Lookup', state: 'idle', action: 'Ready for the next run',

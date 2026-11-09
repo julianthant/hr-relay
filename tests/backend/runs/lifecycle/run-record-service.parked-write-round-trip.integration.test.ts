@@ -1,6 +1,7 @@
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, it } from "vitest";
 import { WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
@@ -58,5 +59,39 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     const generation = harness.database.getMeta().authorityGeneration;
     assert.equal(harness.kernel.execute(command).state, "already-applied");
     assert.equal(harness.database.getMeta().authorityGeneration, generation);
+  });
+
+  it("Not saved only confirms absence: the intent turns retryable, and the next attempt probes before it prepares or clicks", async () => {
+    const harness = await roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+    const command = resolutionCommand("resolve-write-absent", { runId: WRITE_FIXTURE_RUN_ID, expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId, intentGeneration: intent.generation }, {});
+    assert.equal(harness.kernel.execute(command).state, "applied");
+    const resolved = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(resolved?.status === "retryable" && resolved.settlement.state === "operator-confirmed-absent");
+    assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1, "the answer itself starts no attempt");
+
+    harness.world.events.length = 0;
+    harness.world.probeResults.push({ state: "present", proof: { transactionId: "T998877" } });
+    await harness.resume();
+    assert.equal(harness.world.events[0], "probe");
+    assert.equal(harness.world.events.some(event => /prepare|commit-click/u.test(event)), false, "a present probe files nothing again");
+  });
+
+  it("refuses Mark as failed on a parked write: the run stays parked and the intent UNKNOWN", async () => {
+    const harness = await roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+    const result = harness.kernel.execute({ commandId: randomUUID(), requestedAt: harness.clock.now().toISOString(), requestedBy: "local-operator",
+      source: "run-detail", family: "failure-resolution", type: "annotate-failure",
+      target: { runId: WRITE_FIXTURE_RUN_ID, failureId: randomUUID(), expectedVersion: 1 }, payload: { action: "resolve" } });
+    assert.equal(result.state, "rejected");
+    assert.deepEqual(harness.database.authority.writeIntents.get(intent.writeIntentId), intent);
+    assert.deepEqual(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), parked);
   });
 });

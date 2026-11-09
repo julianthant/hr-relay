@@ -1,6 +1,7 @@
 import { ActorIdSchema, NotificationIdSchema } from "../../../rules/identity/ids.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import type { RunExistence } from "../../../models/config/authority.js";
+import type { RunRecord } from "../../../models/run/record.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
 import { NotificationTargetSchema, type NotificationRecord, type NotificationTarget } from "../../../models/notifications/notifications.js";
 
@@ -8,6 +9,7 @@ export function createNotificationTargetQuery(deps: {
   get(id: string): NotificationRecord | undefined;
   read(id: string): RunExistence;
   failure(id: string): FailureRecord | undefined;
+  host?(run: RunRecord): RunRecord | undefined;
 }) {
   return (id: string, actor: string): NotificationTarget => {
     const notificationId = NotificationIdSchema.parse(id), actorId = ActorIdSchema.parse(actor);
@@ -22,6 +24,8 @@ export function createNotificationTargetQuery(deps: {
       if (link.kind === "storage") return { kind: "storage" };
       const current = deps.read(link.runId);
       if (current.state !== "present") return refused("run-unavailable");
+      const host = deps.host?.(current.run);
+      if (host !== undefined) return NotificationTargetSchema.parse({ kind: "run", runId: host.envelope.runId, day: localDatePart(new Date(host.envelope.enqueuedAt)) });
       const day = localDatePart(new Date(current.run.envelope.enqueuedAt));
       if (link.kind === "failure") {
         const failure = deps.failure(link.failureId);

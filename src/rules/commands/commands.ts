@@ -301,7 +301,7 @@ export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recover-run"), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: z.string() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recheck-write"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, transactionId: z.string().regex(/^T\d+$/u).optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema }) }),
 ]);
@@ -712,6 +712,7 @@ export const BulkRunCommandOutcomeSchema = z.discriminatedUnion("outcome", [
     /** true when the child was already journaled and the kernel replayed it */
     replayed: z.boolean(),
     detail: z.string().min(1),
+    workerStartup: RunWorkerStartupFailureSchema.optional(),
   }),
   z.strictObject({
     outcome: z.literal("conflict"),
@@ -959,6 +960,12 @@ export function commandAssistantAvailability(isActive: (family: string, action: 
 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandRequest = z.infer<typeof CommandRequestSchema>;
+/** Start, or a run command that leaves work queued for a worker of its workflow; only these may carry workerStartup. */
+export type CapacityRequest = Extract<CommandRequest, { family: "start" } | { family: "run" }>;
+const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry", "recover-run"]);
+export function needsWorkerCapacity(request: CommandRequest): request is CapacityRequest {
+  return request.family === "start" || request.family === "run" && QUEUEING_RUN_TYPES.has(request.type);
+}
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 export type CommandAuditRecord = z.infer<typeof CommandAuditRecordSchema>;
 export type RunDisplayName = z.infer<typeof RunDisplayNameSchema>;

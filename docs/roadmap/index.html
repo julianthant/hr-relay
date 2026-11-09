@@ -88,7 +88,7 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Review loop</strong><p class="description">one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push; a fresh reviewer replaces it for the final whole-diff read. A workflow PR also passes a live dry run with the operator before it merges.</p></div>
+<div><strong class="name">Review loop</strong><p class="description">one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push. Green required checks merge the cleared SHA; there is no final reviewer pass. A workflow PR also passes a live dry run with the operator before it merges.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
@@ -154,17 +154,21 @@ li div, .intro { overflow-wrap: anywhere; }
 <section>
 <h2>Dashboard ready on the Mac</h2>
 <p class="intro">Complete these in order. A workflow is ready after its live dry run and operator sign-off.</p>
-<div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
-<span class="count now">now <strong>5</strong></span>
-<span class="count next">next <strong>9</strong></span>
-<span class="count later">later <strong>0</strong></span></div>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>4</strong></span>
+<span class="count now">now <strong>7</strong></span>
+<span class="count next">next <strong>11</strong></span>
+<span class="count later">later <strong>4</strong></span></div>
 <ul><li>
 <span class="pill done">done</span>
 <div><strong class="name">Emergency Contact member Retry</strong><p class="description">retry one failed member with an atomic failure hold and superseding accounting.</p></div>
 </li>
 <li>
-<span class="pill now">now</span>
+<span class="pill done">done</span>
 <div><strong class="name">Finish in-flight work</strong><p class="description">merge the macOS-native test baseline.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Runs get a worker</strong><p class="description">resume, retry and recover bring back a stopped worker, a restarted dashboard retries an earlier worker, and a claim re-checks instead of stopping the worker.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
@@ -176,11 +180,51 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">Assistant agent</strong><p class="description">replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.</p></div>
+<div><strong class="name">Assistant agent phase 0</strong><p class="description">replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, remove the grant check (Confirm is the authorization), then a model check and a live dry run.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Assistant phase 1</strong><p class="description">serve replies as conversation parts, recognise a typed yes in Relay, apply edits now and undo by asking, add the scenario test harness with token budgets, dock the panel with History and put the Orbit mark in the Sessions bar.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Assistant phase 2</strong><p class="description">serve Activity, view-only navigation, chained steps with stop and retry, and the duplicate guard with pre-flight checks.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Assistant phase 3</strong><p class="description">add the read-only Check in UCPath workflow, evidence on decisions and watcher toasts.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Assistant phase 4</strong><p class="description">add error-pattern insight, the spreadsheet versus UCPath cross-check and PDF batches into OCR.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">Warnings as toasts</strong><p class="description">show warnings and failures as short toasts, sticky with one action when they need acting on; only dialog content, field validation, empty states and the run-log failure card stay inline.</p></div>
+<div><strong class="name">Logs panel decisions</strong><p class="description">serve each decision&#39;s options, answers and who answered, then answer every decision in place in Logs through one DecisionCard with Cancel run.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Queue rename and PDF titles</strong><p class="description">title PDF runs by file name, save renames and rename a run from its queue row.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Sidebar running pill and logo</strong><p class="description">show one running-now pill per workflow on a narrow rail and use the Baton mark in the sidebar header and the browser tab.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Store repairs</strong><p class="description">clear crash orphans at startup and read suspect backups at any supported schema, read-only.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Warnings as toasts</strong><p class="description">show warnings and failures as short toasts that only notify, with no buttons; only dialog content, field validation, empty states and the run-log failure card stay inline.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Sessions panel</strong><p class="description">the whole bar opens the panel, and every worker card has one height and keeps its last values when it stops.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Sessions card data</strong><p class="description">serve sign-in and Duo state, the unavailable reason, the last step and sessions of a stopped worker, and the last run outcome.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
@@ -197,10 +241,6 @@ li div, .intro { overflow-wrap: anywhere; }
 <li>
 <span class="pill next">next</span>
 <div><strong class="name">OCR and Emergency Contact sign-off</strong><p class="description">serve per-person rows, prove the first live Save with the operator present, sign off.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Catalog cleanup</strong><p class="description">remove Work-Study, Kronos Pay Rule, Oath Signature, Oath Upload, Old Kronos Reports and SharePoint Download from the catalog, preflight and docs, and regenerate parity screenshots once with the parity refresh.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
@@ -226,10 +266,10 @@ li div, .intro { overflow-wrap: anywhere; }
 <section>
 <h2>Simplify the core</h2>
 <p class="intro">Each item deletes its own tests and guards. Worker custody (above) comes first.</p>
-<div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>3</strong></span>
 <span class="count now">now <strong>0</strong></span>
-<span class="count next">next <strong>9</strong></span>
-<span class="count later">later <strong>1</strong></span></div>
+<span class="count next">next <strong>8</strong></span>
+<span class="count later">later <strong>2</strong></span></div>
 <ul><li>
 <span class="pill done">done</span>
 <div><strong class="name">Contract fingerprints</strong><p class="description">fingerprint each workflow from its own folder, schemas and kit version, bind writes to one app build id and delete the generated manifest; merge before the assistant agent.</p></div>
@@ -263,8 +303,12 @@ li div, .intro { overflow-wrap: anywhere; }
 <div><strong class="name">Install control</strong><p class="description">replace installation, admission, registry and continuity proofs with one install-control module and a person-store handle.</p></div>
 </li>
 <li>
-<span class="pill next">next</span>
+<span class="pill done">done</span>
 <div><strong class="name">Workflow facts once</strong><p class="description">declare workflow facts once in a hand-kept registry that replaces the generators; guards stop listing workflows by name.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Explorer review spec</strong><p class="description">generate the approved v11 Explorer (run options, page cards, decision outcomes) from each workflow&#39;s definition.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>

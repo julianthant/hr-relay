@@ -5,7 +5,7 @@ import { WorkerPoolMemberSchema, WorkerRetirementProofSchema, workerPoolMember, 
 export { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import type { WorkerBrowserObservation } from "../../../models/run/worker-control.js";
 import type { WorkerSupervisorEffect } from "../../storage/sqlite/worker-control.js";
-import { NAMED_WORKER_REFUSALS, WorkerControlRefusal, type WorkerLifecycleBinding, type WorkerResetBinding } from "../../../models/run/worker-control.js";
+import { NAMED_WORKER_REFUSALS, WorkerControlRefusal, WorkerRetryUnbornRefusal, type WorkerLifecycleBinding, type WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { RunRecord } from "../../../models/run/record.js";
 
 import { z } from "zod";
@@ -38,8 +38,6 @@ import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artif
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
 import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
-import { createConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
-import type { ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import {
@@ -115,8 +113,6 @@ export interface WorkerLoopDependencies {
   readonly log: TaskLogger;
   /** Run messages and browser actions; transaction callbacks stay outside this sink. */
   readonly taskNotes?: Pick<NoteTimelineWriter, "emitRunLog" | "emitRunAction">;
-  // Worker-local publication handoff; persistent transport is supplied separately.
-  readonly confirmedActionAppend?: (event: ConfirmedActionEvent) => void;
   /** Stop claiming and shut the worker down; the active run finishes first. */
   readonly stopSignal: AbortSignal;
   // drainOnce returns at the first idle poll; otherwise the loop runs until stopSignal.
@@ -234,15 +230,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     : FingerprintSchema.parse(deps.configFingerprint);
   const { emitter, clock } = deps;
   const streamId = deps.ids.uuid();
-  const confirmedActionPublisher = createConfirmedActionPublisher({
-    workerId, streamId, clock, capacity: 256,
-    append: deps.confirmedActionAppend,
-    onHealth: health => {
-      if (health.state !== "healthy") deps.log.warn("confirmed action publication unhealthy", {
-        state: health.state, pending: health.pending, diagnosticFailure: health.diagnosticFailure,
-      });
-    },
-  });
   const workerPath = `${workerSpanPath(workflowId, workerId)}#${streamId}`;
   const instant = (): string => clock.now().toISOString();
   const emit = (event: Readonly<Record<string, unknown>>): void => {
@@ -369,7 +356,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         continue;
       }
       await deps.browserControl?.(sessions);
-      // Between items only: the active run always settles before the next poll.
       const directive = deps.controlPoll === undefined
         ? "run"
         : WorkerDirectiveSchema.parse(deps.controlPoll());
@@ -426,19 +412,24 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         runController.abort(new Error(`worker ${workerId} received its stop signal mid-run`));
       };
       deps.stopSignal.addEventListener("abort", onStop, { once: true });
-      let resetPoll = { cancel: (): void => undefined };
-      let resetPolling = true;
-      const observeReset = (): void => {
-        if (!resetPolling) return;
+      let workPoll = { cancel: (): void => undefined };
+      let workPolling = true;
+      const observeWork = (): void => {
+        if (!workPolling) return;
         try {
+          const current = deps.authority.authority.runs.get(run.envelope.runId);
+          if (current?.pause?.state === "requested" || current?.cancelRequested === true) {
+            runController.abort(new Error("worker-run-control-current-work"));
+            return;
+          }
           if (deps.activeWorkReset?.(run, claim) === true) {
             runController.abort(new Error("worker-reset-current-work"));
             return;
           }
         } catch (error) { runController.abort(error); return; }
-        resetPoll = deps.scheduler.schedule(clock.monotonicMs() + deps.idleRepollMs, observeReset);
+        workPoll = deps.scheduler.schedule(clock.monotonicMs() + WORK_CONTROL_POLL_MS, observeWork);
       };
-      if (deps.activeWorkReset !== undefined) observeReset();
+      observeWork();
       const heartbeat = startHeartbeat({
         lifecycle: deps.lifecycle,
         ids: deps.ids,
@@ -481,7 +472,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             taskDeadlineMs,
             log: deps.log,
             debugEvents: deps.debugEvents,
-            confirmedActionPublisher,
             retainCallback,
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
@@ -505,18 +495,13 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       } finally {
         const reset = deps.pendingReset?.();
         if (reset !== undefined) await finishReset(reset);
-        resetPolling = false;
-        resetPoll.cancel();
+        workPolling = false;
+        workPoll.cancel();
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }
     }
   } finally {
-    const publication = confirmedActionPublisher.close();
-    if (publication.pending > 0) {
-      try { deps.log.warn("confirmed action publication closed with pending events", { pending: publication.pending }); }
-      catch { /* Health remains queryable through the publisher; shutdown still owns session closure. */ }
-    }
     closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
       return "unproved" as const;
@@ -538,6 +523,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 
 
 
+export const WORK_CONTROL_POLL_MS = 250;
 export const WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000;
 export const WORKER_SIGTERM_TIMEOUT_MS = 30_000;
 
@@ -949,11 +935,16 @@ export function createWorkerPoolRuntimeExecutor(
             else lifecycle.database.settleWorkerRetry(command.commandId, proof, lifecycle.clock.now().toISOString(), randomUUID());
           }
         } catch (error) {
+          let failure = error;
+          if (command.type === "retry-worker" && error instanceof WorkerRetryUnbornRefusal) {
+            try { lifecycle.database.refuseUnbornWorkerRetry(command.commandId, error.message, lifecycle.clock.now().toISOString()); return; }
+            catch (settlement) { failure = new AggregateError([error, settlement], "worker-retry-refusal-unsettled", { cause: error }); }
+          }
           const current = lifecycle.database.authority.workerControls.get(command.commandId);
           if (current?.phase.state === "executing") lifecycle.database.authority.workerControls.transition(command.commandId, "executing", {
             state: "uncertain", startedAt: current.phase.startedAt, observedAt: lifecycle.clock.now().toISOString(),
             message: error instanceof WorkerControlRefusal && NAMED_WORKER_REFUSALS.has(error.message) ? error.message : "worker-lifecycle-effect-or-settlement-unproved" });
-          throw error;
+          throw failure;
         }
       });
     },

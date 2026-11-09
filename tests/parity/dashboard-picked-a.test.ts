@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { pickedRunWorld, pickedSignupState, PICKED_RUN_STATES, PICKED_SAFETY_STATES, PICKED_SIGNUP_STATES } from "../support/helpers/dashboard/picked-dashboard.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { installFrozenMonotonic } from "./helpers/app-driver.js";
+import { expectRunningPill, installFrozenMonotonic } from "./helpers/app-driver.js";
 import { captureParityPair } from "./helpers/capture.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -42,8 +42,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(page.getByRole("region", { name: "Run logs", exact: true })).toBeVisible();
         await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         expect(world.day.queueSurfaces.filter(row => row.workflowId === "onboarding")).toHaveLength(0);
-        await expect(page.getByRole("navigation", { name: "Workflows", exact: true })
-          .getByLabel("0 active of 0 in Onboarding", { exact: true })).toHaveText("0 · 0");
+        await expectRunningPill(page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Onboarding", exact: true }), 0);
         if (state === "quit-confirm" || state === "quitting") {
           await expect(page.getByRole("button", { name: "Pause all runs", exact: true })).toBeEnabled();
           await page.keyboard.press("Control+q");
@@ -60,12 +59,15 @@ for (const theme of ["light", "dark"] as const) {
           await expect(page.locator(".log-capture-group img")).toHaveJSProperty("naturalWidth", 850);
         }
         if (state === "before-after") {
-          const pair = page.locator(".log-capture-group--submit");
-          await expect(pair.locator("figure")).toHaveCount(2);
-          await expect(pair.locator("figcaption")).toContainText(["Before submit", "After submit"]);
-          await expect(pair.locator("img").first()).toHaveJSProperty("naturalWidth", 850);
-          const cards = await pair.locator("figure").evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return { top: box.top, width: box.width, height: box.height }; }));
-          expect(cards[0]).toEqual(cards[1]);
+          // Each submit capture is its own screenshot row: before above after, at the same size.
+          const rows = page.locator(".log-capture-group--submit");
+          await expect(rows).toHaveCount(2);
+          await expect(rows.locator("figure")).toHaveCount(2);
+          await expect(rows.locator("figcaption")).toContainText(["Before submit", "After submit"]);
+          await expect(rows.locator("img").first()).toHaveJSProperty("naturalWidth", 850);
+          const cards = await rows.locator("figure").evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return { top: box.top, width: box.width, height: box.height }; }));
+          expect(cards[1].top).toBeGreaterThan(cards[0].top);
+          expect({ width: cards[1].width, height: cards[1].height }).toEqual({ width: cards[0].width, height: cards[0].height });
         }
         if (state === "dry-run") await expect(page.getByRole("region", { name: "Full dry-run preview", exact: true })).toBeVisible();
         if (state === "pre-submit-failed") await expect(page.getByText("Submit not clicked", { exact: true })).toBeVisible();
