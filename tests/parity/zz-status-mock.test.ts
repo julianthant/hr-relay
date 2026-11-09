@@ -567,6 +567,33 @@ for (const theme of THEMES) test(`logs footer states @ ${theme} ${WIDTH}`, async
   expect(errors).toEqual([]);
 });
 
+// Sidebar collapse: the queue column keeps --ds-w-queue-column and the Logs column takes every freed pixel.
+for (const theme of THEMES) test(`sidebar collapse widens logs @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.getByRole("button", { name: "Emergency Contact" }).first().click();
+  await page.getByRole("button", { name: /emergency-contacts\.pdf/ }).first().click();
+  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+  const width = (selector: string) => page.locator(selector).evaluate(node => Math.round(node.getBoundingClientRect().width));
+  await expect(page.getByRole("button", { name: "Collapse sidebar", exact: true })).toBeVisible();
+  await settle(page);
+  const expanded = { queue: await width(".dashboard-queue-column"), logs: await width(".dashboard-log-column") };
+  await page.screenshot({ path: join(OUT, `sidebar-expanded-${theme}-${WIDTH}.png`) });
+  await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeVisible();
+  await settle(page);
+  const collapsed = { queue: await width(".dashboard-queue-column"), logs: await width(".dashboard-log-column") };
+  await page.screenshot({ path: join(OUT, `sidebar-collapsed-${theme}-${WIDTH}.png`) });
+  expect(collapsed.queue).toBe(expanded.queue);
+  expect(collapsed.logs - expanded.logs).toBe(312 - 56);
+  expect(errors).toEqual([]);
+});
+
 // Banner audit: command results that used to be inline strips above the columns are sticky toasts; the bulk result opens in a dialog.
 for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, async ({ page }) => {
   test.setTimeout(120_000);
