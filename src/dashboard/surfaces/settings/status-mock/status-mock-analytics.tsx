@@ -1,5 +1,5 @@
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useState, type CSSProperties } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, dsIcon } from "../../../ds/ui.js";
 import { KeyFigures, RunsPerDayChart, TimeLines } from "./status-mock-charts.js";
@@ -57,8 +57,8 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
         </div>
       </BodySection>
       <BodySection title="Workflows" description="Open a row to see what went wrong.">
-        <div className="ds-table-list-frame"><table aria-label="Workflows">
-          <thead><tr><th scope="col" className="w-10 !pr-0"><span className="sr-only">Details</span></th><th scope="col" className="!pl-0">Workflow</th><th scope="col" className={NUMBER}>Runs</th><th scope="col" className={NUMBER}>Done</th><th scope="col" className={NUMBER}>Failed</th><th scope="col" className={NUMBER}>Typical time</th></tr></thead>
+        <div className="ds-table-list-frame ds-usage-table"><table aria-label="Workflows">
+          <thead><tr><th scope="col" className="ds-usage-chevron"><span className="sr-only">Details</span></th><th scope="col" className="!pl-0">Workflow</th><th scope="col" className={NUMBER}>Runs</th><th scope="col" className={NUMBER}>Done</th><th scope="col" className={NUMBER}>Failed</th><th scope="col" className={NUMBER}>Typical time</th></tr></thead>
           <tbody>{rows.map(row => {
             const isOpen = open.has(row.id), total = finished(row), failedAt: readonly (readonly [string, number])[] = row.failedAt;
             const percent = (n: number) => `${Math.round(n / total * 100)}%`;
@@ -66,16 +66,17 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
               { label: "Outcome", values: [["Done", percent(row.done)], ["Failed", percent(row.failed)], ["Waiting", percent(row.attention)]] },
               ...(failedAt.length === 0 ? [] : [{ label: "Failed at", values: failedAt.map(([step, n]) => [step, String(n)] as const) }]),
             ];
+            const cols = Math.max(...details.map(detail => detail.values.length));
             return <Fragment key={row.id}>
-              <tr className={`cursor-pointer ${isOpen ? "!border-b-0 bg-[var(--ds-soft-bg)]" : ""}`} onClick={() => toggle(row.id)}>
-                <td className="!pr-0"><IconButton size="xs" label={`${isOpen ? "Hide" : "Show"} ${row.label} details`} aria-expanded={isOpen} icon={<ChevronRight aria-hidden className={`${dsIcon.md} transition-transform motion-reduce:transition-none ${isOpen ? "rotate-90" : ""}`} />} onClick={event => { event.stopPropagation(); toggle(row.id); }} /></td>
+              <tr className={`cursor-pointer ${isOpen ? "!border-b-0" : ""}`} data-open={isOpen || undefined} onClick={() => toggle(row.id)}>
+                <td className="ds-usage-chevron"><IconButton size="xs" label={`${isOpen ? "Hide" : "Show"} ${row.label} details`} aria-expanded={isOpen} icon={<ChevronRight aria-hidden className={`size-5 transition-transform motion-reduce:transition-none ${isOpen ? "rotate-90" : ""}`} />} onClick={event => { event.stopPropagation(); toggle(row.id); }} /></td>
                 <td className="!pl-0">{row.label}</td><td className={NUMBER}>{total}</td><td className={NUMBER}>{percent(row.done)}</td><td className={`${NUMBER} ${row.failed ? "text-ui-danger" : ""}`}>{row.failed}</td><td className={NUMBER}>{row.time}</td>
               </tr>
-              {isOpen && <tr className="bg-[var(--ds-soft-bg)]"><td /><td colSpan={5} className="!h-auto !pl-0 !pt-1 !pb-4">
-                <dl className="m-0 grid grid-cols-[88px_repeat(3,minmax(0,148px))] gap-y-3 text-[13px] leading-[18px]">
-                  {details.map(detail => <Fragment key={detail.label}><dt className="text-ui-muted">{detail.label}</dt>{detail.values.map(([name, figure]) => <dd key={name} className="m-0 min-w-0 truncate">{name} <span className="ml-1 text-ui-secondary tabular-nums">{figure}</span></dd>)}{Array.from({ length: 3 - detail.values.length }, (_, index) => <dd key={index} aria-hidden className="m-0" />)}</Fragment>)}
+              {isOpen && <tr data-open><td /><td colSpan={5} className="!h-auto !pl-0 !pt-1 !pb-4">
+                <dl style={{ "--usage-cols": cols + 1 } as CSSProperties}>
+                  {details.map(detail => <Fragment key={detail.label}><dt>{detail.label}</dt>{detail.values.map(([name, figure]) => <dd key={name}>{name} <span className="tabular-nums">{figure}</span></dd>)}{Array.from({ length: cols - detail.values.length }, (_, index) => <dd key={index} aria-hidden />)}</Fragment>)}
                 </dl>
-                {onOpenWorkflow && <button type="button" className="mt-4 inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] leading-[18px] text-ui-primary hover:underline" onClick={() => onOpenWorkflow(row.id)}>Open runs <ArrowUpRight aria-hidden className={dsIcon.md} /></button>}
+                {onOpenWorkflow && <button type="button" className="mt-4 inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-[13px] font-normal leading-[18px] text-ui-primary hover:underline" onClick={() => onOpenWorkflow(row.id)}>Open runs <ArrowUpRight aria-hidden className={dsIcon.md} /></button>}
               </td></tr>}
             </Fragment>;
           })}</tbody>

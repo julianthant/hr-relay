@@ -1161,6 +1161,17 @@ th.ds-text-caps {
 .ds-table-list-frame tbody tr { border-bottom: 1px solid var(--ui-stroke); }
 .ds-table-list-frame tbody tr:hover, .ds-table-list-frame tbody tr:focus-within { background: var(--ui-hover); }
 .ds-table-list-frame tbody tr:last-child { border-bottom: 0; }
+.ds-usage-table { --ds-row-head-h: 36px; --ds-row-h-1: 41px; border-color: var(--ds-soft-border); font-weight: 400; }
+.ds-usage-table thead { background: transparent; color: var(--ui-secondary); }
+.ds-usage-table th { border-bottom-color: var(--ds-soft-border); color: var(--ui-secondary); }
+.ds-usage-table td { font-weight: 400; }
+.ds-usage-table tbody tr { border-bottom-color: var(--ds-soft-border); }
+.ds-usage-table tbody tr[data-open] { background: var(--ds-picker-bg); }
+.ds-usage-table .ds-usage-chevron { width: 40px; padding: 0 0 0 12px; }
+.ds-usage-table dl { display: grid; grid-template-columns: repeat(var(--usage-cols), max-content); column-gap: 24px; row-gap: 8px; margin: 0; font-size: 13px; line-height: 18px; }
+.ds-usage-table dt { color: var(--ui-secondary); }
+.ds-usage-table dd { margin: 0; white-space: nowrap; }
+.ds-usage-table dd span { margin-left: 4px; color: var(--ui-secondary); }
 
 .ds-page-heading-description {
   max-width: 65ch;
