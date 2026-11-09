@@ -44,3 +44,5 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 @media (prefers-reduced-motion: reduce) {
   html[data-hub] *, html[data-hub] *::before, html[data-hub] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+/* The floating assistant sits above the Sessions bar and below every dialog and drawer. */
+html[data-hub] #hub-panel-assistant { z-index: var(--ds-layer-assistant); }
