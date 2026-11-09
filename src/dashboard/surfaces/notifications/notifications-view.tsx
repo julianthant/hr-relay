@@ -51,7 +51,7 @@ export function NotificationsView({ state, filter, onFilter, category, onCategor
   };
   const unread = state.state === "ready" ? state.items.filter(item => !item.read) : [];
   return <section ref={surface} role="region" aria-label="Notifications" className="notification-rail ui-theme-scope flex min-h-0 flex-1 flex-col overflow-hidden font-ui text-ui-primary">
-    <div className="flex min-h-10 items-center justify-between gap-2 px-4 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
+    <div className="flex min-h-11 items-center justify-between gap-2 px-4 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
       <button type="button" disabled={!unread.length} className={cn("min-h-6 text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => { const focused = document.activeElement; onReadAll(); restoreFocus(focused); }}>Read all</button>
     </div>
     <Tabs selectedKey={filter === "unread" ? "unread" : "all"} onSelectionChange={key => onFilter(key as NotificationFilter)} variant="secondary" className="notification-tabs">
