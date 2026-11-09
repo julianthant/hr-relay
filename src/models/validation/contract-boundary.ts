@@ -270,11 +270,11 @@ function mergeLeaf(left: ContractSchemaLeaf, right: ContractSchemaLeaf, vocabula
   });
 }
 
-function indexLeaves(leaves: readonly ContractSchemaLeaf[]): ReadonlyMap<string, ContractSchemaLeaf> {
+function indexLeaves(leaves: readonly ContractSchemaLeaf[], vocabulary: "declared" | "complete" = "declared"): ReadonlyMap<string, ContractSchemaLeaf> {
   const index = new Map<string, ContractSchemaLeaf>();
   for (const leaf of leaves) {
     const existing = index.get(leaf.path);
-    index.set(leaf.path, existing === undefined ? leaf : mergeLeaf(existing, leaf));
+    index.set(leaf.path, existing === undefined ? leaf : mergeLeaf(existing, leaf, vocabulary));
   }
   return index;
 }
@@ -285,6 +285,7 @@ function relativeLeaves(
   presence: "always" | "sometimes",
   ancestors: readonly object[],
   collections = false,
+  vocabulary: "declared" | "complete" = collections ? "complete" : "declared",
 ): readonly ContractSchemaLeaf[] {
   const currentObject = schema;
   if (ancestors.includes(currentObject)) {
@@ -298,7 +299,7 @@ function relativeLeaves(
     const nested = [...ancestors, currentObject];
     const shape = definition.shape as { readonly [key: string]: z.core.$ZodType };
     return Object.entries(shape).flatMap(([key, child]) =>
-      relativeLeaves(child, presence, nested, collections).map((leaf) => Object.freeze({
+      relativeLeaves(child, presence, nested, collections, vocabulary).map((leaf) => Object.freeze({
         ...leaf,
         path: leaf.path.length === 0 ? key : `${key}.${leaf.path}`,
       })));
@@ -306,7 +307,7 @@ function relativeLeaves(
   if (type === "union") {
     const nested = [...ancestors, currentObject];
     const allArms = (definition.options as z.core.$ZodType[])
-      .map((option) => indexLeaves(relativeLeaves(option, presence, nested, collections)));
+      .map((option) => indexLeaves(relativeLeaves(option, presence, nested, collections, vocabulary), vocabulary));
     // Null-only arms weaken child presence without naming the container as a field.
     const named = allArms.filter((arm) => [...arm.keys()].some((path) => path.length > 0));
     const arms = named.length === 0 ? allArms : named;
@@ -321,7 +322,7 @@ function relativeLeaves(
           presence: inEveryArm ? leaf.presence : SOMETIMES,
         });
         const existing = merged.get(path);
-        merged.set(path, existing === undefined ? scoped : mergeLeaf(existing, scoped, collections ? "complete" : "declared"));
+        merged.set(path, existing === undefined ? scoped : mergeLeaf(existing, scoped, vocabulary));
       }
     }
     return [...merged.values()];
@@ -329,25 +330,25 @@ function relativeLeaves(
   if (type === "intersection") {
     const nested = [...ancestors, currentObject];
     return [...indexLeaves([
-      ...relativeLeaves(definition.left as z.core.$ZodType, presence, nested, collections),
-      ...relativeLeaves(definition.right as z.core.$ZodType, presence, nested, collections),
-    ]).values()];
+      ...relativeLeaves(definition.left as z.core.$ZodType, presence, nested, collections, vocabulary),
+      ...relativeLeaves(definition.right as z.core.$ZodType, presence, nested, collections, vocabulary),
+    ], vocabulary).values()];
   }
   if (type === "lazy") {
     const nested = [...ancestors, currentObject];
-    return relativeLeaves((definition.getter as () => z.core.$ZodType)(), presence, nested, collections);
+    return relativeLeaves((definition.getter as () => z.core.$ZodType)(), presence, nested, collections, vocabulary);
   }
   if (type === "pipe") {
-    return relativeLeaves(definition.out as z.core.$ZodType, presence, ancestors, collections);
+    return relativeLeaves(definition.out as z.core.$ZodType, presence, ancestors, collections, vocabulary);
   }
   if (type === "nonoptional" || type === "readonly") {
-    return relativeLeaves(definition.innerType as z.core.$ZodType, presence, ancestors, collections);
+    return relativeLeaves(definition.innerType as z.core.$ZodType, presence, ancestors, collections, vocabulary);
   }
   if (["optional", "nullable", "default", "prefault", "catch"].includes(type)) {
-    return relativeLeaves(definition.innerType as z.core.$ZodType, SOMETIMES, ancestors, collections);
+    return relativeLeaves(definition.innerType as z.core.$ZodType, SOMETIMES, ancestors, collections, vocabulary);
   }
   if (type === "array" && collections) {
-    return relativeLeaves(definition.element as z.core.$ZodType, presence, [...ancestors, currentObject], collections);
+    return relativeLeaves(definition.element as z.core.$ZodType, presence, [...ancestors, currentObject], collections, vocabulary);
   }
   if (ONE_LEAF_CONTAINER_ZOD_TYPES.has(type)) {
     return [Object.freeze({ path: "", kind: "list" as const, presence })];
@@ -370,8 +371,8 @@ function relativeLeaves(
 }
 
 // Derive field descriptions and fingerprints from the same schema to prevent drift.
-export function contractSchemaLeaves(schema: z.core.$ZodType): readonly ContractSchemaLeaf[] {
-  const leaves = relativeLeaves(schema, ALWAYS, []);
+function boundaryLeaves(schema: z.core.$ZodType, vocabulary: "declared" | "complete"): readonly ContractSchemaLeaf[] {
+  const leaves = relativeLeaves(schema, ALWAYS, [], false, vocabulary);
   const unnamed = leaves.find((leaf) => leaf.path.length === 0);
   if (unnamed !== undefined) {
     throw new Error(
@@ -379,7 +380,7 @@ export function contractSchemaLeaves(schema: z.core.$ZodType): readonly Contract
       + "value at its root, so its fields have no names",
     );
   }
-  const merged = [...indexLeaves(leaves).values()];
+  const merged = [...indexLeaves(leaves, vocabulary).values()];
 // Nullable containers already weaken child presence; omit their duplicate null leaf.
   const containers = new Set(merged.flatMap(({ path }) => {
     const segments = path.split(".");
@@ -388,6 +389,34 @@ export function contractSchemaLeaves(schema: z.core.$ZodType): readonly Contract
   return merged
     .filter((leaf) => !(leaf.kind === "null" && containers.has(leaf.path)))
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+}
+
+export function contractSchemaLeaves(schema: z.core.$ZodType): readonly ContractSchemaLeaf[] {
+  return boundaryLeaves(schema, "declared");
+}
+
+/** Scope root input alternatives by their mode; nested unions retain their full domain. */
+export function contractSchemaLeavesForModes(schema: z.core.$ZodType, modeField: string, modes: readonly string[]): readonly ContractSchemaLeaf[] {
+  if (modes.length === 0) throw new Error("a control census requires at least one mode");
+  const offered = new Set<string>();
+  function select(current: z.core.$ZodType): readonly (readonly ContractSchemaLeaf[])[] {
+    const definition = schemaDefinition(current);
+    if (definition.type === "union") return (definition.options as z.core.$ZodType[]).flatMap(select);
+    const leaves = boundaryLeaves(current, "complete");
+    const modeOptions = leaves.find(leaf => leaf.path === modeField)?.options;
+    if (modeOptions === undefined) throw new Error(`a control census requires a closed mode field ${modeField}`);
+    modeOptions.forEach(value => offered.add(value));
+    return modes.some(value => modeOptions.includes(value)) ? [leaves] : [];
+  }
+  const arms = select(schema);
+  for (const mode of modes) if (!offered.has(mode)) throw new Error(`a control census names unknown ${modeField} mode ${mode}`);
+  const paths = new Set(arms.flatMap(arm => arm.map(leaf => leaf.path)));
+  const merged = [...paths].sort().map(path => {
+    const leaves = arms.flatMap(arm => arm.filter(leaf => leaf.path === path));
+    const merged = leaves.reduce((left, right) => mergeLeaf(left, right, "complete"));
+    return Object.freeze({ ...merged, presence: leaves.length === arms.length ? merged.presence : SOMETIMES });
+  });
+  return Object.freeze(merged);
 }
 
 /** The closed vocabulary an enum or literal admits, as strings, or nothing. */

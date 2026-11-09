@@ -1,7 +1,7 @@
 import type { ExplorerNodeWire } from "../../../models/dashboard/explorer.js";
 import { ExplorerReviewSpecSchema, type ExplorerReviewDecision, type ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { contractCollectionFieldLeaves, contractSchemaLeaves } from "../../../models/validation/contract-boundary.js";
+import { contractCollectionFieldLeaves, contractSchemaLeavesForModes } from "../../../models/validation/contract-boundary.js";
 import { WorkflowStepReviewSchema } from "../../../models/workflow/review-spec.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import type { ExplorerModuleView } from "./explorer.js";
@@ -11,10 +11,10 @@ function runOptions(module: ExplorerModuleView): ExplorerReviewSpec["runOptions"
   const inputRun = descriptor.surfaces.inputRun;
   const typed = inputRun?.typedInput;
   const upload = descriptor.surfaces.uploadRun;
-  const leaves = contractSchemaLeaves(descriptor.input);
   const controls: ExplorerReviewSpec["runOptions"]["controls"] = [];
-  for (const control of typed?.controls ?? []) {
+  if (typed !== undefined) for (const control of typed.controls) {
     if (control.placement === "hidden") continue;
+    const leaves = contractSchemaLeavesForModes(descriptor.input, typed.modeField, control.modes);
     const leaf = leaves.find(candidate => candidate.path === control.field);
     if (leaf === undefined) throw new Error(`workflow ${descriptor.id} review control names unknown input field ${control.field}`);
     controls.push({ ...control, placement: control.placement, kind: leaf.kind,

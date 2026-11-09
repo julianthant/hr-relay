@@ -193,7 +193,8 @@ needs a label when the group supplies review metadata. Compilation rejects unkno
 out-of-step references.
 
 The backend derives `reviewSpec` from these groups, existing run surfaces, omission forms, task
-session declarations, graph policies and declared failure codes. Register each normalized failure
+session declarations, graph policies and declared failure codes. Control kinds and options use only
+the input alternatives admitted by each control's declared modes. Register each normalized failure
 sentence in the error catalog. Session requirements describe preparation and use, never observed
 sign-ins or acquired locks. Explorer serves child-only definitions for inspection without adding
 them to the Run picker.

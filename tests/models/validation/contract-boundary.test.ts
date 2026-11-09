@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractCollectionFieldLeaves, contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
+import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractCollectionFieldLeaves, contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../src/models/validation/contract-boundary.js";
 
 const paths = (schema: z.core.$ZodType): readonly string[] =>
   contractSchemaLeaves(schema).map((leaf) => leaf.path);
@@ -27,6 +27,40 @@ it("does not turn a literal in an open union into an operator dropdown", () => {
   assert.deepEqual(contractSchemaLeaves(schema).find(leaf => leaf.path === "signer")?.options, [""]);
   assert.equal(contractCollectionFieldLeaves(schema).find(leaf => leaf.path === "signer")?.options, undefined);
   assert.deepEqual(contractCollectionFieldLeaves(schema).find(leaf => leaf.path === "status")?.options, ["signed", "unsigned"]);
+});
+
+it("derives control kinds and complete vocabularies from only their declared modes", () => {
+  const schema = z.union([
+    z.strictObject({ mode: z.literal("search").default("search"), enabled: z.boolean().default(false), choice: z.enum(["active", "paused"]),
+      nested: z.union([z.strictObject({ mode: z.literal("search"), value: z.literal("local") }), z.strictObject({ mode: z.literal("match"), value: z.literal("remote") })]) }),
+    z.strictObject({ mode: z.literal("match"), enabled: z.literal(false), choice: z.string() }),
+  ]);
+  const search = contractSchemaLeavesForModes(schema, "mode", ["search"]);
+  assert.deepEqual(search.find(leaf => leaf.path === "enabled"), { path: "enabled", kind: "boolean", presence: "sometimes" });
+  assert.deepEqual(search.find(leaf => leaf.path === "choice")?.options, ["active", "paused"]);
+  assert.deepEqual(search.find(leaf => leaf.path === "nested.value")?.options, ["local", "remote"]);
+  assert.deepEqual(contractSchemaLeavesForModes(schema, "mode", ["match"]).find(leaf => leaf.path === "enabled")?.options, ["false"]);
+  assert.equal(contractSchemaLeavesForModes(schema, "mode", ["search", "match"]).find(leaf => leaf.path === "enabled")?.options, undefined);
+  assert.equal(contractSchemaLeavesForModes(schema, "mode", ["search", "match"]).find(leaf => leaf.path === "choice")?.options, undefined);
+  assert.equal(Object.isFrozen(search), true);
+  assert.throws(() => contractSchemaLeavesForModes(schema, "mode", ["missing"]), /unknown.*mode.*missing/u);
+  assert.throws(() => contractSchemaLeavesForModes(schema, "mode", []), /at least one mode/u);
+  assert.throws(() => contractSchemaLeavesForModes(z.strictObject({ mode: z.string(), enabled: z.boolean() }), "mode", ["search"]), /closed.*mode/u);
+  assert.throws(() => contractSchemaLeavesForModes(z.strictObject({ mode: z.union([z.string(), z.literal("search")]) }), "mode", ["search"]), /closed.*mode/u);
+  assert.equal(contractSchemaLeavesForModes(z.strictObject({ mode: z.literal("search"), choice: z.union([z.string(), z.literal("")]) }), "mode", ["search"])
+    .find(leaf => leaf.path === "choice")?.options, undefined);
+});
+
+it("retains every root union arm in a requested mode and excludes other mode vocabularies", () => {
+  const schema = z.union([
+    z.union([
+      z.strictObject({ mode: z.literal("search"), choice: z.enum(["name", "email"]) }),
+      z.strictObject({ mode: z.literal("search"), choice: z.literal("employee-id") }),
+    ]),
+    z.strictObject({ mode: z.literal("match"), choice: z.literal("date-of-birth") }),
+  ]);
+  assert.deepEqual(contractSchemaLeavesForModes(schema, "mode", ["search"]).find(leaf => leaf.path === "choice")?.options, ["email", "employee-id", "name"]);
+  assert.deepEqual(contractSchemaLeavesForModes(schema, "mode", ["match"]).find(leaf => leaf.path === "choice")?.options, ["date-of-birth"]);
 });
 
 describe("contractSchemaLeaves", () => {

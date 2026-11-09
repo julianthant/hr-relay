@@ -55,6 +55,23 @@ it("derives visible controls, mode defaults, upload facts and omission forms", (
   assert.equal(page.reviewSpec.runOptions.mode, undefined);
 });
 
+it("describes CRM dates as a complete boolean control in Search mode", () => {
+  const lookup = workflows().find(workflow => workflow.id === "person-lookup"); assert.ok(lookup);
+  const options = lookup.reviewSpec.runOptions;
+  const dates = options.controls.find(control => control.field === "includeCrmDates"); assert.ok(dates);
+  assert.equal(dates.label, "Read CRM dates");
+  assert.deepEqual(dates.modes, ["search"]);
+  assert.equal(dates.kind, "boolean");
+  assert.equal(dates.options, undefined);
+  assert.deepEqual(dates.requires, ["crmCheck"]);
+  assert.deepEqual(options.mode?.options.find(mode => mode.value === "search")?.defaults.find(field => field.field === "includeCrmDates"),
+    { field: "includeCrmDates", value: { kind: "boolean", value: false } });
+  const crm = options.controls.find(control => control.field === "crmCheck"); assert.ok(crm);
+  assert.deepEqual(crm.modes, ["search", "match"]);
+  assert.equal(crm.kind, "boolean");
+  assert.equal(crm.options, undefined);
+});
+
 it("reports declared session scope and preparation without claiming observed sessions or locks", () => {
   const entries = workflows();
   const lookup = entries.find(entry => entry.id === "person-lookup"); assert.ok(lookup);
