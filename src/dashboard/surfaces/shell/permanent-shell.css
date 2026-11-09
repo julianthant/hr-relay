@@ -81,8 +81,7 @@
 .queue-filter-indicator { bottom: 0; width: 100%; height: 2px; border-radius: 2px; background: var(--ui-info); }
 .queue-filter-content { display: flex; flex: 1; min-height: 0; padding: 0; outline-offset: -3px; }
 .queue-filter-extra { grid-column: 1 / -1; height: 32px; justify-content: flex-start; color: var(--ui-info); }
-.dashboard-action-panel .queue-status-trigger, .dashboard-action-panel .queue-sort.ds-select-control { height: 32px; background: var(--ui-panel); border: 1px solid var(--ui-stroke); box-shadow: none; border-radius: 6px; color: var(--ui-secondary); font-weight: 400; }
-.dashboard-action-panel .queue-status-trigger:hover, .dashboard-action-panel .queue-sort.ds-select-control:hover { background: var(--ui-hover); color: var(--ui-primary); }
+.dashboard-action-panel .queue-status-trigger, .dashboard-action-panel .queue-sort.ds-select-control { box-shadow: none; color: var(--ui-primary); font-weight: 400; }
 .dashboard-action-panel .queue-status-trigger[data-filtered="true"], .dashboard-action-panel .queue-status-trigger[data-popup-open], .dashboard-action-panel .queue-sort.ds-select-control[data-popup-open] { background: color-mix(in srgb,var(--ui-info) 10%,transparent); color: var(--ui-info); }
 
 @container queue (max-width: 330px) {

@@ -276,6 +276,28 @@ test("customize steps every workflow", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+// The Input step of every workflow's Run dialog, light and dark.
+for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
+  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+    await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+    await rail.getByRole("button", { name, exact: true }).last().click();
+    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await expect(dialog.getByText("Workflow preview")).toBeVisible();
+    await settle(page);
+    await page.screenshot({ path: join(OUT, `run-input-${name.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}-${theme}-${WIDTH}.png`) });
+  }
+  expect(errors).toEqual([]);
+});
+
 // The shared search field on the kit page: a 34px pill, and the 28px size inside a dropdown menu.
 test(`kit search ${WIDTH}`, async ({ page }) => {
   const errors: string[] = [];
@@ -287,7 +309,7 @@ test(`kit search ${WIDTH}`, async ({ page }) => {
     const field = page.getByRole("searchbox", { name: "Search the specimen" });
     await field.scrollIntoViewIfNeeded();
     expect(await field.evaluate(node => Math.round(node.closest('[data-slot="search-field-group"]')?.getBoundingClientRect().height ?? 0))).toBe(32);
-    expect(await page.getByRole("button", { name: "Tags", exact: true }).evaluate(node => Math.round(node.getBoundingClientRect().height))).toBe(32);
+    expect(await page.getByRole("button", { name: "Tags", exact: true }).evaluate(node => Math.round(node.getBoundingClientRect().height))).toBe(28);
     await page.getByRole("button", { name: "Tags", exact: true }).click();
     const menuField = page.getByRole("searchbox", { name: "Find a tag" });
     await expect(menuField).toBeVisible();

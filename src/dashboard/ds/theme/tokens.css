@@ -238,7 +238,7 @@
   --ds-row-gap: 2px;
   --ds-row-radius: 16px;
   --ds-row-control-h: 28px;
-  --ds-toolbar-control-h: 32px; /* a search field and the pill triggers beside it */
+  --ds-toolbar-control-h: 32px; /* a search field; the filter dropdowns beside it stay 28px */
   --ds-radius-body-group: var(--ds-row-radius);
   --ds-radius-body-dialog: 14.4px;
   --ds-w-body-switch: 36px;
@@ -1012,13 +1012,15 @@ body[data-demo-theme="light"] {
 .ds-menu-label { padding: 6px 10px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
 .ds-menu-separator { height: 1px; margin: 6px 10px; background: var(--ui-stroke); }
 /* Fields and pickers inside a row: 28px, subtle fill, faint edge. */
-.ds-body-row .input, .ds-body-row .ds-secret-input, .hub-settings-row .input, .settings-compact-control .input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-soft-bg); font-size: 14px; }
+.ds-body-row .input, .ds-body-row .ds-secret-input, .hub-settings-row .input, .settings-compact-control .input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); font-size: 13px; }
+.ds-body-row .ds-secret-input input, .ds-body-row .input::placeholder, .ds-secret-input input::placeholder { font-size: 13px; }
 .ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger, .hub-settings-row .ds-select-control { padding-inline: 12px; }
 /* Controls inside a row are 28px. */
 .ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); }
 /* A menu's trigger: soft bordered, 32px, 10px radius, 14px label, grey 14px chevron. */
 .ds-menu-trigger, .ds-select-control { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border: 1px solid var(--ds-soft-border); border-radius: 999px; background: var(--ds-picker-bg); font-size: 13px; font-weight: 400; line-height: 18px; color: var(--ui-primary); }
-.ds-toolbar-row .ds-menu-trigger, .ds-toolbar-row .ds-select-control, :has(> .ds-search-field) > :is(.ds-menu-trigger, .ds-select-control) { height: var(--ds-toolbar-control-h); min-height: var(--ds-toolbar-control-h); }
+/* Toolbar filter dropdowns (beside a 32px search): 28px rounded rectangle, not a pill. */
+.ds-filter-trigger, .ds-toolbar-row .ds-menu-trigger, .ds-toolbar-row .ds-select-control, :has(> .ds-search-field) > :is(.ds-menu-trigger, .ds-select-control) { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border-radius: 10px; align-self: center; }
 .ds-menu-trigger:hover, .ds-select-control:hover { background: var(--ds-picker-bg-hover); }
 .ds-menu-trigger > svg, .ds-select-control [data-slot="select-trigger"] > svg, .ds-select-control > svg { width: 14px; height: 14px; color: var(--ui-muted); }
 
