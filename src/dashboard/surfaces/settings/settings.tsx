@@ -160,6 +160,7 @@ export function SettingsPage({
   appearance,
   deleteAccount,
   onOpenRun,
+  onOpenWorkflow,
   actorId,
   profileName,
   descriptorFingerprint,
@@ -182,6 +183,7 @@ export function SettingsPage({
   appearance?: ReactNode;
   deleteAccount?: ReactNode;
   onOpenRun?: (runId: string, partitionDay: string) => void;
+  onOpenWorkflow?: (workflowId: string) => void;
   actorId: string;
   profileName: string;
   descriptorFingerprint: string;
@@ -311,7 +313,7 @@ export function SettingsPage({
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
         )}
-        {isDataSection && (activeId === "activity" && mockStatus !== undefined ? <StatusMockAnalytics variant={mockStatus === "analytics-b" ? "b" : "a"} /> : dataContent)}
+        {isDataSection && (activeId === "activity" && mockStatus !== undefined ? <StatusMockAnalytics variant={mockStatus === "analytics-b" ? "b" : "a"} onOpenWorkflow={onOpenWorkflow} /> : dataContent)}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} locations={appDataLocations} />}

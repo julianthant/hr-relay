@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, GitBranch, ListChecks, RotateCcw, RotateCw } from "lucide-react";
-import { LogActionButton } from "../../run-detail/logs/log-action-button.js";
+import { LogFooterButton } from "../../run-detail/logs/log-action-button.js";
 import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
@@ -120,9 +120,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
   const openRecords = useCallback(() => setRecordsVisible(true), [setRecordsVisible]);
   const decide = useCallback((_id: string, option: { id: string }) => { if (option.id === "retry-step") onRetry(); }, [onRetry]);
   const toolbar = useMemo(() => <span className="flex items-center gap-2">
-        {hasRecords && <LogActionButton ref={recordsButton} label={`Records ${reviewRecords(reviewRun).length}`} variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)} />}
         {run.role === "person" && mockFailedStepKey(run) !== undefined && <IconButton size="md" variant="outline" label="Retry" icon={<RotateCcw aria-hidden className="size-4" />} onClick={onRetry} />}
-        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <LogActionButton label="Rerun" icon={<RotateCw aria-hidden className="size-4" />} onClick={onRerun} />}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
           <PopoverTrigger asChild><IconButton size="md" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
           <PopoverContent title="Linked runs" align="end" width="md">
@@ -134,13 +132,17 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
             </li>)}</ul>
           </PopoverContent>
         </Popover>}
-      </span>, [hasRecords, recordsVisible, recordsButton, run, reviewRun, linked, linksOpen, setLinksOpen, setRecordsVisible, onSelect, onRerun, onRetry]);
+      </span>, [run, linked, linksOpen, setLinksOpen, onSelect, onRetry]);
+  const footerActions = useMemo(() => <>
+        {hasRecords && <LogFooterButton ref={recordsButton} label={`Records ${reviewRecords(reviewRun).length}`} count={reviewRecords(reviewRun).length} pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)} />}
+        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <LogFooterButton label="Rerun" icon={<RotateCw aria-hidden className="size-4" />} onClick={onRerun} />}
+      </>, [hasRecords, recordsVisible, recordsButton, run, reviewRun, setRecordsVisible, onRerun]);
   const reviewContent = useMemo(() => recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
     <RecordReview key={reviewRun.id} {...mockReviewProps({ approvalError: mockApprovalError(reviewRun), run: reviewRun, sourcePages, onChange, onApprove: mockNeedsReview(reviewRun) ? onApprove : undefined, onDiscard: mockNeedsReview(reviewRun) || reviewRun.workflowId === "ocr" && !reviewRun.parentId && !reviewRun.discarded ? onDiscard : undefined, onRestore })} />
   </div> : undefined, [recordsVisible, run, reviewRun, sourcePages, onChange, onApprove, onDiscard, onRestore]);
   return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
       onReview={hasRecords ? openRecords : undefined} onDecision={decide}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
-      toolbar={toolbar}
+      toolbar={toolbar} footerActions={footerActions}
       content={reviewContent} />;
 }

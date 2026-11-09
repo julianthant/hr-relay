@@ -1,5 +1,6 @@
 import { useMemo, useRef, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, Pause, Play, RotateCcw, Square, X } from "lucide-react";
+import type { NotificationItem } from "../notifications/notifications-view-model.js";
+import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import {
@@ -10,7 +11,7 @@ import {
   DialogContent,
   DialogFooter,
   Disclosure,
-  IconButton,
+  Notice,
   Select,
   dsBorder,
   dsFocus,
@@ -305,67 +306,50 @@ export function QueueToolbar({
       )}
 
       {/* Keep every per-run batch outcome until dismissal; summaries cannot replace the vector. */}
-      <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={onDismissBulkOutcome} onSelectRun={onSelectRun} />
+      <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={false} onReviewed={onDismissBulkOutcome} onSelectRun={onSelectRun} />
     </ActionBar>
   );
 }
 
-export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelectRun }: {
-  bulkOutcome: BulkBatchOutcome | null; onDismissBulkOutcome: () => void; onSelectRun: (runId: string) => void;
+function bulkSummary(outcome: BulkBatchOutcome) {
+  const vector = outcome.response.state === "vector" ? outcome.response : undefined;
+  if (vector === undefined) return { title: `${outcome.plan.label}: nothing was sent`, tone: "danger" as const, counts: undefined,
+    detail: outcome.response.state === "refused" ? outcome.response.message : undefined };
+  const buckets = bulkResultCounts(vector);
+  const counts = [
+    ...BULK_RESULT_OUTCOMES.map(item => `${buckets[item]} ${OUTCOME_TONE[item].word}`),
+    ...(vector.results.length < vector.requestedCount ? [`${vector.requestedCount - vector.results.length} not attempted`] : []),
+  ].join(" · ");
+  return { title: `${outcome.plan.label}: partial result`, tone: "warning" as const, counts, detail: counts };
+}
+
+/** The Priority notification item that opens the per-run review. */
+export function bulkResultNotice(outcome: BulkBatchOutcome): NotificationItem {
+  const { title, tone, detail } = bulkSummary(outcome);
+  return { id: "bulk-result", kind: "command", priority: true, title, subject: "", workflow: "", detail: detail ?? "", tone, age: "Just now", read: false, action: "Review", destination: { kind: "bulk-result" } };
+}
+
+/** The toast only notifies; its Priority notification item opens the per-run review (`reviewing`), and closing the review clears the result. */
+export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, onSelectRun }: {
+  bulkOutcome: BulkBatchOutcome | null; reviewing: boolean; onReviewed: () => void; onSelectRun: (runId: string) => void;
 }) {
+  const reviewing = open ? bulkOutcome : null;
   const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
-  const buckets = useMemo(() => vector === undefined ? undefined : bulkResultCounts(vector), [vector]);
   const assurance = useMemo(
     () => vector === undefined ? undefined : bulkClosingAssurance(vector),
     [vector],
   );
+  const summary = bulkOutcome === null ? undefined : bulkSummary(bulkOutcome);
+  const counts = summary?.counts;
   return <>
-      {bulkOutcome !== null && (
-        <div
-          className={cn(
-            "border-t bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
-            dsBorder.subtle,
-          )}
-          aria-live="polite"
-          data-queue-bulk-result={bulkOutcome.response.state}
-        >
-          <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
-            <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>
-              {vector === undefined ? "Nothing was sent" : `${bulkOutcome.plan.label} — partial result`}
-            </span>
-            {vector !== undefined && buckets !== undefined && (
-              <span className={cn(dsText.meta, dsText.nums, "flex flex-wrap items-center gap-[var(--ds-space-base)]")}>
-                {BULK_RESULT_OUTCOMES.map((outcome, index) => (
-                    <span key={outcome} className="flex items-center gap-[var(--ds-space-base)]">
-                      {index > 0 && <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>}
-                      <span className={OUTCOME_TONE[outcome].text}>
-                        {buckets[outcome]} {OUTCOME_TONE[outcome].word}
-                      </span>
-                    </span>
-                  ))}
-                {vector.results.length < vector.requestedCount && (
-                  <>
-                    <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>
-                    <span className="text-[color:var(--ds-fg-muted)]">
-                      {vector.requestedCount - vector.results.length} not attempted
-                    </span>
-                  </>
-                )}
-              </span>
-            )}
-            <IconButton
-              size="sm"
-              label="Dismiss the bulk result"
-              onClick={onDismissBulkOutcome}
-              icon={<X aria-hidden className={dsIcon.sm} />}
-              className="ml-auto"
-            />
-          </div>
-
+    {summary !== undefined && <Notice sticky tone={summary.tone} title={summary.title} description={summary.detail} />}
+    <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
+      {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
+        <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-cozy)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
           {vector === undefined ? (
             /* Whole-request refusal reached no run; the served sentence is the complete answer. */
             <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-danger)]")}>
-              {bulkOutcome.response.state === "refused" ? bulkOutcome.response.message : ""}
+              {reviewing.response.state === "refused" ? reviewing.response.message : ""}
             </p>
           ) : (
             <div className="mt-[var(--ds-space-snug)] flex max-h-40 flex-col overflow-y-auto">
@@ -375,7 +359,7 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
                   <BareButton
                     key={entry.runId}
                     type="button"
-                    onClick={() => onSelectRun(entry.runId)}
+                    onClick={() => { onReviewed(); onSelectRun(entry.runId); }}
                     className={cn(
                       "flex min-w-0 cursor-pointer items-center text-left",
                       "h-[var(--ds-h-sm)] gap-[var(--ds-space-base)] px-[var(--ds-space-tight)]",
@@ -390,7 +374,7 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
                     <span className={cn(dsText.caps, "w-16 shrink-0", tone.text)}>{tone.word}</span>
                     {/* Keep sent subjects with results; unknown subjects display their real ID rather than an invented name. */}
                     <span className="w-40 shrink-0 truncate text-[color:var(--ds-fg-secondary)]">
-                      {bulkOutcome.subjects.get(entry.runId) ?? entry.runId}
+                      {reviewing.subjects.get(entry.runId) ?? entry.runId}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{entry.detail}</span>
                     {entry.outcome === "conflict" && (
@@ -412,14 +396,14 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
           )}
 
           {/* Name skipped rows after dispatch so missing outcomes can be reconciled with the original selection. */}
-          {bulkOutcome.plan.skipped.length > 0 && (
+          {reviewing.plan.skipped.length > 0 && (
             <Disclosure className="mt-[var(--ds-space-snug)]" summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary={<>
-                <span className={dsText.nums}>{bulkOutcome.plan.skipped.length}</span> selected{" "}
-                {bulkOutcome.plan.skipped.length === 1 ? "row" : "rows"} never offered {bulkOutcome.plan.label.toLowerCase()} —
-                nothing was attempted for {bulkOutcome.plan.skipped.length === 1 ? "it" : "them"}
+                <span className={dsText.nums}>{reviewing.plan.skipped.length}</span> selected{" "}
+                {reviewing.plan.skipped.length === 1 ? "row" : "rows"} never offered {reviewing.plan.label.toLowerCase()} —
+                nothing was attempted for {reviewing.plan.skipped.length === 1 ? "it" : "them"}
               </>}>
               <div className="mt-[var(--ds-space-tight)] flex max-h-28 flex-col gap-[var(--ds-space-hair)] overflow-y-auto pl-[var(--ds-space-cozy)]">
-                {bulkOutcome.plan.skipped.map((row) => (
+                {reviewing.plan.skipped.map((row) => (
                   <span key={row.runId} className={cn(dsText.meta, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
                     <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ds-fg-muted)]" />
                     <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]">{row.title}</span>
@@ -430,11 +414,11 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
           )}
 
           {/* Unavailable rows retain their IDs; no served titles exist to display. */}
-          {bulkOutcome.plan.unavailable.length > 0 && (
+          {reviewing.plan.unavailable.length > 0 && (
             <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
               {/* Outcome copy describes row availability when the batch was sent, never the present day. */}
-              {bulkUnavailableSentence(bulkOutcome.plan.unavailable.length, "past")}:{" "}
-              <span className={dsText.nums}>{bulkOutcome.plan.unavailable.join(", ")}</span>
+              {bulkUnavailableSentence(reviewing.plan.unavailable.length, "past")}:{" "}
+              <span className={dsText.nums}>{reviewing.plan.unavailable.join(", ")}</span>
             </p>
           )}
 
@@ -448,13 +432,15 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
               ) : (
                 <>
                   <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-success-fg)]")} />
-                  Every selected row that offered {bulkOutcome.plan.label.toLowerCase()} accepted it.
+                  Every selected row that offered {reviewing.plan.label.toLowerCase()} accepted it.
                 </>
               )}
             </p>
           )}
         </div>
-      )}
+        <DialogFooter><Button variant="secondary" onClick={onReviewed}>Close</Button></DialogFooter>
+      </DialogContent>}
+    </Dialog>
   </>;
 }
 

@@ -58,17 +58,17 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       if (id === "rail-min-bell") { await page.getByRole("button", { name: /^Notifications/ }).click(); await expect(page.getByRole("button", { name: "Collapse sidebar", exact: true })).toBeVisible(); }
     } else if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Start run", exact: true })).toBeVisible();
     } else if (id === "run-person-lookup" || id === "run-person-lookup-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).last().click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await expect(dialog.getByText("Workflow preview")).toBeVisible();
       await dialog.getByRole("textbox").first().fill(id === "run-person-lookup" ? "10000001" : "10000001; 10000002; Lee, Jordan");
       await expect(dialog.getByText("Parsed input")).toBeVisible();
     } else if (id === "run-options-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await dialog.getByRole("textbox").first().fill("48216, 48220");
       await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -79,7 +79,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         await page.getByRole("button", { name: "Rerun", exact: true }).click();
         await expect(page.getByRole("dialog").getByText(/\d+ of \d+ included/)).toBeVisible();
       } else {
-        await page.getByRole("button", { name: "Start a run", exact: true }).click();
+        await page.getByRole("button", { name: "Start run", exact: true }).click();
         const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
         await dialog.getByRole("textbox").first().fill("10555001");
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -104,7 +104,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     } else if (id.startsWith("run")) {
       // The way the operator opens it: Emergency Contact in the rail, then Start a run, then choose the scan.
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await dialog.locator('input[type="file"]').setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
       await expect(dialog.getByText("Scan_0412.pdf").first()).toBeVisible();
@@ -228,7 +228,7 @@ test("run dialog keys", async ({ page }) => {
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
   await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
-  await page.getByRole("button", { name: "Start a run", exact: true }).click();
+  await page.getByRole("button", { name: "Start run", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
   const box = dialog.getByRole("textbox").first();
   await expect(dialog.getByText("Enter to continue")).toHaveCount(0);
@@ -258,7 +258,7 @@ test("run dialog priority", async ({ page }) => {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: workflow, exact: true }).last().click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByRole("textbox").first().fill(text);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -286,7 +286,7 @@ test("customize steps every workflow", async ({ page }) => {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await rail.getByRole("button", { name, exact: true }).last().click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await expect(dialog.getByText("Workflow preview"), `${name}: redesigned dialog`).toBeVisible();
     const file = dialog.locator('input[type="file"]');
@@ -320,7 +320,7 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await rail.getByRole("button", { name, exact: true }).last().click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await expect(dialog.getByText("Workflow preview")).toBeVisible();
     await settle(page);
@@ -530,5 +530,120 @@ test("sidebar click-through shows the mock pages", async ({ page }) => {
     await expect(nav).toBeVisible();
     await expect(page.getByText("No such settings section")).toHaveCount(0);
   }
+  expect(errors).toEqual([]);
+});
+
+// Logs footer states: waiting for review (Records) and failed (Rerun), with the footer tooltips; the old assistant launcher is hidden so the footer's right group shows.
+for (const theme of THEMES) test(`logs footer states @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  const logs = page.locator(".dashboard-log-column");
+  const shot = async (name: string) => { await settle(page); await page.screenshot({ path: join(OUT, `${name}-${theme}-${WIDTH}.png`) }); };
+  await page.getByRole("button", { name: "Emergency Contact" }).first().click();
+  await page.getByRole("button", { name: /emergency-contacts\.pdf/ }).first().click();
+  await expect(logs.getByRole("button", { name: /^Records \d+$/ })).toBeVisible();
+  await shot("logs-waiting");
+  await logs.getByRole("button", { name: /^Records \d+$/ }).hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(OUT, `logs-waiting-tooltip-${theme}-${WIDTH}.png`) });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  await page.locator(".notification-panel").getByRole("button", { name: /Run failed/ }).click();
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+  await expect(logs.getByRole("button", { name: "Rerun", exact: true })).toBeVisible();
+  await shot("logs-failed");
+  await logs.getByRole("button", { name: "Rerun", exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(OUT, `logs-failed-tooltip-${theme}-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});
+
+// Sidebar collapse: the queue column keeps --ds-w-queue-column and the Logs column takes every freed pixel.
+for (const theme of THEMES) test(`sidebar collapse widens logs @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.getByRole("button", { name: "Emergency Contact" }).first().click();
+  await page.getByRole("button", { name: /emergency-contacts\.pdf/ }).first().click();
+  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+  const width = (selector: string) => page.locator(selector).evaluate(node => Math.round(node.getBoundingClientRect().width));
+  await expect(page.getByRole("button", { name: "Collapse sidebar", exact: true })).toBeVisible();
+  await settle(page);
+  const expanded = { queue: await width(".dashboard-queue-column"), logs: await width(".dashboard-log-column") };
+  await page.screenshot({ path: join(OUT, `sidebar-expanded-${theme}-${WIDTH}.png`) });
+  await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeVisible();
+  await settle(page);
+  const collapsed = { queue: await width(".dashboard-queue-column"), logs: await width(".dashboard-log-column") };
+  await page.screenshot({ path: join(OUT, `sidebar-collapsed-${theme}-${WIDTH}.png`) });
+  expect(collapsed.queue).toBe(expanded.queue);
+  expect(collapsed.logs - expanded.logs).toBe(312 - 56);
+  expect(errors).toEqual([]);
+});
+
+// Banner audit: command results that used to be inline strips above the columns are sticky toasts; the bulk result opens in a dialog.
+for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+  const queueTop = () => page.locator(".dashboard-log-column").evaluate(node => Math.round(node.getBoundingClientRect().top));
+  const top = await queueTop();
+  const toasts = page.locator("[data-slot=toast]");
+  await expect(toasts).toHaveCount(3);
+  expect(await queueTop()).toBe(top);
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-results-toasts-${theme}-${WIDTH}.png`) });
+  await expect(toasts.locator("button")).toHaveCount(0);
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  const panel = page.locator(".notification-panel");
+  await expect(panel.getByText("Retry: partial result")).toBeVisible();
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-results-notifications-${theme}-${WIDTH}.png`) });
+  await panel.getByRole("button", { name: /Retry: partial result/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-results-review-${theme}-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});
+
+// A lost command response is a sticky toast that only notifies; its Priority notification opens the recovery review.
+for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-unknown`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  const toast = page.locator("[data-slot=toast]");
+  await expect(toast).toHaveCount(1);
+  await expect(toast.locator("button")).toHaveCount(0);
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-unknown-toast-${theme}-${WIDTH}.png`) });
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  const panel = page.locator(".notification-panel");
+  await expect(panel.getByText("Pause all: outcome unknown")).toBeVisible();
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-unknown-notification-${theme}-${WIDTH}.png`) });
+  await panel.getByRole("button", { name: /Pause all: outcome unknown/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   expect(errors).toEqual([]);
 });

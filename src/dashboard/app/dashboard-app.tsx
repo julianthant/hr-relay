@@ -15,7 +15,7 @@ import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js"
 import { HubShell } from "../surfaces/shell/hub-shell.js";
 import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
-import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
+import { useInboxWiring, type InboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useApplicationLifecycle } from "../state/application-lifecycle-model.js";
@@ -45,8 +45,8 @@ SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
 import { StatusMockHost } from "../surfaces/settings/status-mock/status-mock.js";
-import { statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
-import { Banner,Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { STATUS_MOCK_BULK_OUTCOME, STATUS_MOCK_COMMAND_RESULTS, STATUS_MOCK_UNKNOWN_COMMAND, statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
+import { Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
@@ -59,10 +59,12 @@ type CommandResultFeedEntry,
 import {
 CommandResultFeed,
 ConfirmCommandDialog,
+commandResultDetail,
+commandResultTitle,
 type ActionTarget,
 type PendingCommand,
 } from "../surfaces/shared/actions/actions.js";
-import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
+import { CommandRecovery, recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
@@ -77,6 +79,7 @@ type QueueSortKey,
 import {
 ConfirmBulkCommandDialog,
 BulkCommandFeedback,
+bulkResultNotice,
 PauseAllQuitControls,
 type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
@@ -104,7 +107,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
 import type { NotificationReads } from "../surfaces/notifications/notification-rail-model.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
-import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
+import { withCommandNotices, type NotificationDestination, type NotificationItem } from "../surfaces/notifications/notifications-view-model.js";
 import {
 bulkSubjectsOf,
 composeBulkRunCommand,
@@ -413,7 +416,7 @@ function LoadedApp({
   }, [dayResource]);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
-  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
+  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => statusMock() === "command-results" ? STATUS_MOCK_COMMAND_RESULTS : []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
@@ -468,7 +471,8 @@ function LoadedApp({
   /** Keep partial batch results until dismissed so every outcome can be read. */
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
   const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
-  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(null);
+  const [bulkReview, setBulkReview] = useState(false);
+  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
   const commandLabels = useRef(new Map<string, string>());
@@ -999,6 +1003,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const runs = mockRuns.filter(run => run.workflowId === id);
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
+  const openWorkflowQueue = useCallback((id: string) => leaveSettings(() => {
+    setRoute(current => ({ ...routeWithoutTakeovers(current), start: false, run: undefined, section: undefined }));
+    onFilter(["all"]);
+    if (workflowCatalog.some(flow => flow.id === id)) onRailSelect(id); else onRailPreview(id);
+  }), [leaveSettings, setRoute, onFilter, workflowCatalog, onRailSelect, onRailPreview]);
   const previewSearchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
@@ -1010,12 +1019,33 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
+  const shownRecovery: readonly CommandRecoveryEntry[] = statusMock() === "command-unknown" ? [...recoveryEntries, STATUS_MOCK_UNKNOWN_COMMAND] : recoveryEntries;
+  const commandNotices: readonly NotificationItem[] = [
+    ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
+      detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "recovery", key: entry.inFlightKey } })),
+    ...commandResults.map((entry): NotificationItem => ({ id: `command-result:${entry.id}`, kind: "command", priority: true, title: commandResultTitle(entry), subject: "", workflow: "",
+      detail: commandResultDetail(entry), tone: entry.settlement.reason === "conflict" ? "warning" : "danger", age: entry.clock, read: false,
+      action: entry.settlement.reason === "conflict" ? "Refresh row" : "Open run", destination: { kind: "command-result", id: entry.id } })),
+    ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
+  ];
+  const railNotifications = withCommandNotices(notifications, commandNotices);
+  const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => item.kind === "command" ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
+  const railInbox = workflowComposition.inbox === "served" ? { ...inbox, state: withCommandNotices(inbox.state, commandNotices), open: openInbox } : undefined;
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
+    if (destination.kind === "recovery") { setPendingRecovery(destination.key); opened(); return; }
+    if (destination.kind === "bulk-result") { setBulkReview(true); opened(); return; }
+    if (destination.kind === "command-result") {
+      const entry = commandResults.find(result => result.id === destination.id);
+      setCommandResults(previous => previous.filter(result => result.id !== destination.id));
+      if (entry !== undefined) selectRun(entry.targetRunId);
+      opened();
+      return;
+    }
     if (destination.kind === "settings") {
       leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
       return;
@@ -1110,7 +1140,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         target?.focus({ preventScroll: true });
       });
     });
-  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
+  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun, commandResults, selectRun]);
 
   const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
     openNotification(destination, opened, refused, workflowComposition.inbox);
@@ -1152,7 +1182,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()} onLogout={() => setLogoutOpen(true)} notifications={notifications} reads={notificationReads} setReads={setNotificationReads} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()} onLogout={() => setLogoutOpen(true)} notifications={railNotifications} reads={notificationReads} setReads={setNotificationReads} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1167,7 +1197,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
         />
-        {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">{PAUSE_ALL_EFFECT}</Banner>}
+        {quitting && <Notice sticky tone="info" title="Relay quits after runs pause" description={PAUSE_ALL_EFFECT} />}
         {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held. Reload Relay to check the connection." />}
         {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
           .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
@@ -1178,7 +1208,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
-          <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+          <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} onOpenWorkflow={openWorkflowQueue} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             client={client} workflowCatalog={explorerCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
@@ -1186,7 +1216,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <>
           {}
           <CommandRecovery
-            entries={recoveryEntries}
+            entries={shownRecovery}
             pendingKey={pendingRecovery}
             onReview={setPendingRecovery}
             onReplay={(entry) => {
@@ -1198,17 +1228,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               void executeShell(request, retained.label, plan, true);
             }}
           />
-          <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={() => setBulkOutcome(null)} onSelectRun={selectRun} />
+          <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); setBulkOutcome(null); }} onSelectRun={selectRun} />
 
 
-          <CommandResultFeed
-            results={commandResults}
-            onDismiss={(id) => setCommandResults((previous) => previous.filter((entry) => entry.id !== id))}
-            onRefreshRow={(entry) => {
-              setCommandResults((previous) => previous.filter((result) => result.id !== entry.id));
-              selectRun(entry.targetRunId);
-            }}
-          />
+          <CommandResultFeed results={commandResults} />
 
           <div className="flex min-h-0 flex-1">
 

@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { BodySection, Button, DateInput, FormGroup, PageHeading, ResultRow, SegmentedChoice, Select, Switch } from "../../../ds/ui.js";
-import { AppDataPaths, middle } from "../general/settings-storage.js";
-import { STATUS_MOCK_SUBSCRIPTION } from "./status-mock-model.js";
+import { middle } from "../general/settings-storage.js";
 
 const DOWNLOADS = "/Users/jordan.lee/Documents/Relay downloads";
 
@@ -32,7 +31,6 @@ export function StatusMockGeneral() {
   const [needsYou, setNeedsYou] = useState(true);
   const [failures, setFailures] = useState(true);
   const [sound, setSound] = useState("Default");
-  const [send, setSend] = useState("Enter");
   return <section className="settings-compact-page">
     <PageHeading title="General" />
     <Section title="General">
@@ -53,9 +51,5 @@ export function StatusMockGeneral() {
       <Toggle label="Failures" description="Alert when a run fails." on={failures} onChange={setFailures} />
       <Pick label="Notification sound" description="Sound for finished runs, failures and runs that need you." value={sound} options={["Default", "None"]} onChange={setSound} />
     </Section>
-    <Section title="Assistant">
-      <Pick label="Send shortcut" description="Choose which keys send a message in the assistant." value={send} options={["Enter", "⌘Enter"]} onChange={setSend} />
-    </Section>
-    <AppDataPaths title="Advanced" locations={STATUS_MOCK_SUBSCRIPTION.appData} />
   </section>;
 }

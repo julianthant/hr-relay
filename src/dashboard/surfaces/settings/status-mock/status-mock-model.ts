@@ -1,5 +1,8 @@
+import type { CommandResultFeedEntry } from "../../shared/actions/actions-model.js";
+import type { BulkBatchOutcome } from "../../../app/commands/bulk-dispatch.js";
+import { BulkRunCommandResponseSchema } from "../../../../rules/commands/commands.js";
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-fix", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "command-unknown", "command-results", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-fix", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 /** Account and Subscription fixtures. Email is not served after sign-in, so the Account page has no email row; the ChatGPT email comes with the connected account. */
@@ -11,7 +14,6 @@ export const STATUS_MOCK_ACCOUNT = {
 /** Plan and limits are not served today (backend gap); the 5-hour limit frame is the one that has run out. */
 export const STATUS_MOCK_SUBSCRIPTION = {
   plan: "Plus plan",
-  appData: { stateRoot: "/Users/jordan.lee/Library/Application Support/Relay", artifactRoot: "/Users/jordan.lee/Library/Application Support/Relay/evidence" },
   limits: [{ label: "5-hour limit", resets: "2h 10m", left: 64 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
   limitReached: [{ label: "5-hour limit", resets: "1h 25m", left: 0 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
 } as const;
@@ -19,6 +21,25 @@ export const STATUS_MOCK_SUBSCRIPTION = {
 /** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. */
 const LOADED_MOCK: StatusMockId | undefined = typeof window === "undefined" ? undefined
   : STATUS_MOCK_IDS.find(id => id === new URLSearchParams(window.location.search).get("statusMock"));
+/** Mock-only: one Pause all whose response was lost, so the sticky toast and its Priority notification have something to show. */
+export const STATUS_MOCK_UNKNOWN_COMMAND = { inFlightKey: "mock-pause-all", label: "Pause all requested", targets: Array.from({ length: 13 }, (_, index) => ({ runId: `mock-run-${index}`, title: `Run ${index + 1}`, expectedVersion: 1 })) } as const;
+/** Mock-only: a rejected and a conflicted single command plus a partly applied bulk Retry, so their sticky toasts and the Review dialog have something to show. */
+const mockUuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+export const STATUS_MOCK_COMMAND_RESULTS: readonly CommandResultFeedEntry[] = [
+  { id: mockUuid(901), targetRunId: mockUuid(4), expectedVersion: 3, subject: "EID 10555001", workflowLabel: "Person Lookup", actionLabel: "Retry", clock: "9:41 AM", actorId: "mock-actor",
+    settlement: { kind: "refused", reason: "conflict", problem: "conflict", message: "This run changed while you were looking at it.", currentVersion: 4 } },
+  { id: mockUuid(902), targetRunId: mockUuid(5), expectedVersion: 2, subject: "Morrow, Bea", workflowLabel: "Person Lookup", actionLabel: "Cancel run", clock: "9:42 AM", actorId: "mock-actor",
+    settlement: { kind: "refused", reason: "rejected", problem: "invalid-state", message: "The run already finished.", code: "invalid-state" } },
+];
+export const STATUS_MOCK_BULK_OUTCOME: BulkBatchOutcome = {
+  plan: { verb: "retry", label: "Retry", eligible: [], skipped: [{ runId: mockUuid(7), title: "EID 10222009" }], unavailable: [] },
+  subjects: new Map([[mockUuid(4), "EID 10555001"], [mockUuid(8), "EID 10333015"], [mockUuid(9), "EID 10101010"]]),
+  response: BulkRunCommandResponseSchema.parse({ state: "vector", bulkCommandId: mockUuid(910), type: "retry", requestedCount: 4, results: [
+    { outcome: "applied", runId: mockUuid(4), commandId: mockUuid(911), replayed: false, detail: "Retry started." },
+    { outcome: "applied", runId: mockUuid(8), commandId: mockUuid(912), replayed: false, detail: "Retry started." },
+    { outcome: "conflict", runId: mockUuid(9), commandId: mockUuid(913), currentVersion: 5, detail: "The run changed before the retry reached it." },
+  ] }),
+};
 export function statusMock(): StatusMockId | undefined {
   return LOADED_MOCK;
 }
@@ -73,11 +94,11 @@ export const STATUS_MOCK_ANALYTICS = {
   typicalTime: "2m 14s",
   dayLabels: ["Sun 20", "Mon 21", "Tue 22", "Wed 23", "Thu 24", "Fri 25", "Sat 26"],
   workflows: [
-    { id: "separations", label: "Separations", time: "2m 41s", lines: ["Failed reading the scan · 1", "Saved, not checked afterward · 2", "Waiting for you · 1"], seconds: [190, 170, 160, 165, 150, 175, 155],
+    { id: "separations", label: "Separations", time: "2m 41s", failedAt: [["Reading the scan", 1]], seconds: [190, 170, 160, 165, 150, 175, 155],
       byDay: [[2, 0, 1], [3, 0, 0], [4, 0, 1], [2, 0, 0], [4, 0, 1], [2, 1, 0], [2, 0, 0]] },
-    { id: "emergency-contact", label: "Emergency Contact", time: "1m 38s", lines: ["Failed at UCPath save · 2", "Saved, not checked afterward · 1", "Waiting for you · 1"], seconds: [110, 95, 100, 92, 98, 90, 96],
+    { id: "emergency-contact", label: "Emergency Contact", time: "1m 38s", failedAt: [["UCPath save", 2]], seconds: [110, 95, 100, 92, 98, 90, 96],
       byDay: [[1, 0, 0], [2, 1, 0], [2, 0, 1], [2, 1, 1], [3, 0, 0], [1, 0, 0], [1, 0, 0]] },
-    { id: "person-lookup", label: "Person Lookup", time: "0m 52s", lines: ["Waiting for you · 1"], seconds: [60, 55, 52, 50, 54, 48, 51],
+    { id: "person-lookup", label: "Person Lookup", time: "0m 52s", failedAt: [], seconds: [60, 55, 52, 50, 54, 48, 51],
       byDay: [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [2, 0, 0], [0, 0, 1]] },
   ],
   reasons: [
