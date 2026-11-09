@@ -18,7 +18,6 @@ import { ReadOcrPageReading } from "../../../models/workflows/ocr-page/read-page
 import { ReadOcrResult } from "../../../models/workflows/ocr/read-result.js";
 import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../models/workflows/ocr/read-source-pages.js";
 import { ExtractPdfPages, ExtractPdfPagesOutputSchema } from "../../../models/processing/extraction/extract-pdf-pages.js";
-import { OcrResultSchema } from "../../../models/workflows/ocr/result.js";
 import { publishOcrReview, authenticateOcrOperator } from "./ocr-review-authority.js";
 import { taskId } from "../../../rules/identity/ids.js";
 import { TaskError } from "../../../workflow-kit/errors.js";
@@ -107,7 +106,7 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
         || Number(checkpoint.claimGeneration) !== Number(run.claimGeneration) || run.claimGeneration !== captured.claimGeneration
         || checkpoint.descriptorVersion !== run.envelope.descriptorVersion
         || checkpoint.contractFingerprint !== run.envelope.contractFingerprint || stored === undefined || !same(stored, checkpoint)
-        || checkpoint.output.schemaHash !== deriveSchemaHash(review ? OcrResultSchema : OcrPageReadingSchema, "output")
+        || checkpoint.output.schemaHash !== deriveSchemaHash(review ? ReadOcrResult.output : OcrPageReadingSchema, "output")
         || checkpoint.implFingerprint !== declaredImplFingerprint(resolve, run, checkpoint.nodeId, review ? ReadOcrResult : checkpoint.nodeId === "manual-reading" ? ReadManualOcrReading : ReadOcrPageReading)) throw new OcrPublicationRefusedError();
       if (review) { publishOcrReview(repositories, reader, run, checkpoint); return; }
       const input = OcrPageWorkflowInputSchema.parse(run.input.parsed.value);

@@ -488,17 +488,21 @@ function ocrPageReadingLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 function ocrRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrRosterReferenceLeaves(scope, prefix), ...ocrPrivateLeaves(scope, `${prefix}rows`)];
+}
+
+function ocrRosterReferenceLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
-    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}rows`, `${prefix}workbookId`, `${prefix}referenceDigest`),
+    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}workbookId`, `${prefix}referenceDigest`),
     ...ocrArtifactLeaves(scope, `${prefix}artifact.`),
     ...open(scope, `${prefix}readAt`, `${prefix}workbookType`, `${prefix}workbookVersion`),
   ];
 }
 
-function ocrReviewSeedLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+function ocrReviewCheckpointLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...ocrManifestLeaves(scope, `${prefix}accounting.manifest.`),
-    ...ocrRosterLeaves(scope, `${prefix}roster.`),
+    ...ocrRosterReferenceLeaves(scope, `${prefix}roster.`),
     ...open(scope, ...["formType", "accounting.formType", "pages", "grouping.formType",
       "grouping.unidentified", "grouping.otherForms", "grouping.dataless"].map(path => `${prefix}${path}`)),
     ...ocrPrivateLeaves(scope, ...["sourceRunId", "accounting.readingId", "accounting.outcomes",
@@ -507,7 +511,7 @@ function ocrReviewSeedLeaves(scope: EvidenceValueScope, prefix: string): unknown
 }
 
 function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
-  return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
+  return [...ocrReviewCheckpointLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
 }
 
 function approvedOcrReferenceLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
@@ -637,8 +641,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
   ...ocrManifestHeadLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
   ...[taskOutput("workflow:ocr-page/read-page-reading"), taskOutput("workflow:ocr-page/read-manual-reading")].flatMap(ocrPageReadingLeaves),
-  ...ocrReviewSeedLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
-  ...ocrResultLeaves(taskOutput("workflow:ocr/read-result")),
+  ...ocrReviewCheckpointLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
+  ...ocrPrivateLeaves(taskOutput("workflow:ocr/read-result"), "review.digest", "identities"),
   ...["ocr", "ocr-source-pages"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),

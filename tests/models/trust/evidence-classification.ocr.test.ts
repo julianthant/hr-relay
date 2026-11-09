@@ -112,13 +112,14 @@ describe("OCR producer evidence classifications", () => {
     const declarations = [
       [ExtractPdfPages.id, "pages"], [ReadOcrSourcePages.id, "manifest.fingerprint"],
       [ReadOcrReviewSeed.id, "records"], [ReadOcrReviewSeed.id, "accounting.outcomes"],
-      [ReadOcrResult.id, "identities"], [ReadOcrResult.id, "review.roster.rows"],
+      [ReadOcrResult.id, "identities"], [ReadOcrResult.id, "review.digest"],
       [ReadManualOcrReading.id, "extraction.record.answers"], [ReadManualOcrReading.id, "extraction.source.actorId"],
       [ReadOcrPageReading.id, "extraction.source.modelId"], [ReadOcrPageReading.id, "extraction.source.providerId"],
       [ReadOcrPageReading.id, "input.image.sha256"],
     ] as const;
-    for (const path of ["pages", "manifest.pages"]) {
-      assert.throws(() => classifyEvidenceLeaf({ kind: "task-output", taskId: ReadOcrSourcePages.id }, path), /no declared evidence classification/u);
+    for (const [taskId, path] of [[ReadOcrSourcePages.id, "pages"], [ReadOcrSourcePages.id, "manifest.pages"], [ReadOcrReviewSeed.id, "roster.rows"],
+      [ReadOcrResult.id, "review.records"], [ReadOcrResult.id, "review.accounting.outcomes"], [ReadOcrResult.id, "review.roster.rows"]] as const) {
+      assert.throws(() => classifyEvidenceLeaf({ kind: "task-output", taskId }, path), /no declared evidence classification/u);
     }
     for (const [taskId, path] of declarations) {
       const declaration = classifyEvidenceLeaf({ kind: "task-output", taskId }, path);
@@ -135,6 +136,8 @@ describe("OCR producer evidence classifications", () => {
   });
 
   it("drops workflow inputs, captured identities and approval references from diagnostic evidence", () => {
+    assert.throws(() => classifyEvidenceLeaf({ kind: "workflow-result", workflowId: WorkflowIdSchema.parse("ocr") },
+      "review.roster.rows"), /no declared evidence classification/u);
     const declarations: readonly Readonly<{ scope: EvidenceValueScope; paths: readonly string[] }>[] = [
       { scope: { kind: "workflow-input", workflowId: WorkflowIdSchema.parse("ocr") },
         paths: ["document.sha256", "sourceRunId", "readingId", "roster.rows", "reading.actorId", "reading.assertions"] },

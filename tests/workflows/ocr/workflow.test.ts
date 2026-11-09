@@ -8,7 +8,7 @@ import { DESCRIPTORS, workflowModuleOf, childWorkflowModuleOf } from "../../../s
 import { ocrWorkflow } from "../../../src/workflows/ocr/workflow.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
-import { OcrResultSchema, OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
+import { OcrResultSchema, OcrWorkflowResultSchema, compactOcrResult } from "../../../src/models/workflows/ocr/result.js";
 import { ReadOcrResult } from "../../../src/models/workflows/ocr/read-result.js";
 import { readOcrResultTask } from "../../../src/workflows/ocr/tasks/read-result.js";
 import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "../../../src/models/workflows/ocr/input.js";
@@ -18,7 +18,7 @@ import { readOcrSourcePagesTask } from "../../../src/workflows/ocr/tasks/read-so
 import { readOcrReviewSeedTask } from "../../../src/workflows/ocr/tasks/read-review-seed.js";
 import { ocrLookupRequests, ocrLookupItemId, ocrPersonLookupRequests, ocrSignerLookupRequests } from "../../../src/models/workflows/ocr/lookup.js";
 import { OcrPageOutcomeSchema, bindManualOcrPageReading, accountOcrPages } from "../../../src/models/workflows/ocr/page-accounting.js";
-import { buildOcrReviewSeed } from "../../../src/models/workflows/ocr/review-seed.js";
+import { buildOcrReviewSeed, compactOcrReviewSeed } from "../../../src/models/workflows/ocr/review-seed.js";
 import { OCR_FORMS } from "../../../src/models/ocr/form-registry.js";
 import { I9ReadSection2Signer } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { ItemIdSchema, TraceIdSchema } from "../../../src/rules/identity/ids.js";
@@ -34,6 +34,7 @@ import { createTimelineEmitter } from "../../../src/backend/storage/events/timel
 import { TimelineAppendSchema } from "../../../src/models/events/timeline.js";
 import { PDF_PAGE_LIMIT } from "../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 const descriptor = compileWorkflow(ocrWorkflow).descriptor;
@@ -65,9 +66,11 @@ async function reviewFixture(pageCount = 3) {
     const { reading } = await readOcrPageFixture(child);
     outcomes.push(OcrPageOutcomeSchema.parse({ ...donePage(inputs[index]), output: reading }));
   }
+  const recorded = ocrTaskContext();
   const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: ReadOcrReviewSeed.input.parse(reviewNode.bind({ input: request,
-    outputs: { "render-pages": rendered, "read-source-pages": source, "read-pages": outcomes } })), ctx: ocrTaskContext().ctx }));
-  return { ...fixture, source, review, outcomes };
+    outputs: { "render-pages": rendered, "read-source-pages": source, "read-pages": outcomes } })), ctx: recorded.ctx }));
+  const seed = buildOcrReviewSeed({ sourceRunId: SOURCE_RUN_ID, roster: null, accounting: accountOcrPages(fixture.manifest, READING_ID, outcomes) });
+  return { ...fixture, source, review, seed, outcomes, recorded: recorded.recorded };
 }
 
 /** Bytes of the data.observed timeline record for one recorded batch, with one origin per scalar leaf as task provenance assigns them. */
@@ -90,28 +93,31 @@ function observedEventBytes(nodeId: string, points: readonly unknown[]) {
   return bytes;
 }
 
-async function finishFixture(scope: Parameters<typeof completed.bind>[0]) {
-  return OcrResultSchema.parse(await readOcrResultTask.impl.run({
-    input: ReadOcrResult.input.parse(completed.bind(scope)), ctx: ocrTaskContext().ctx }));
+async function finishFixture(scope: Parameters<typeof completed.bind>[0], recorded = ocrTaskContext()) {
+  return ReadOcrResult.output.parse(await readOcrResultTask.impl.run({
+    input: ReadOcrResult.input.parse(completed.bind(scope)), ctx: recorded.ctx }));
 }
 
 describe("child-only OCR document graph", () => {
   it.each(["emergency-contact", "oath", "i9"] as const)("emits only the %s form's declared lookup and retains its typed outcome", formType => {
     const source = sourceFixture(2, formType);
-    const review = buildOcrReviewSeed({ roster: null, accounting: accountOcrPages(source.manifest, READING_ID,
-      source.inputs.map(input => donePage(input)), formType) });
+    const pages = source.inputs.map(input => donePage(input));
+    const review = buildOcrReviewSeed({ roster: null, accounting: accountOcrPages(source.manifest, READING_ID, pages, formType) });
+    const outputs = { "build-review": compactOcrReviewSeed(review), "read-pages": pages };
     const person = ocrPersonLookupRequests(review), signer = ocrSignerLookupRequests(review);
     assert.equal(OCR_FORMS[formType].lookup, formType === "i9" ? "i9-lookup" : "person-lookup");
     assert.equal(person.length, formType === "i9" ? 0 : 1);
     assert.equal(signer.length, formType === "i9" ? 1 : 0);
     const signerNode = nodes.find(node => node.id === "lookup-signers");
     assert.ok(signerNode?.kind === "child-run");
-    assert.deepEqual(signerNode.dependsOn, ["build-review"]);
+    assert.deepEqual(signerNode.dependsOn, ["build-review", "read-pages"]);
+    assert.deepEqual(lookup.dependsOn, ["build-review", "read-pages"]);
     const input = OcrInputSchema.parse({ ...requestFixture().request, formType });
-    assert.deepEqual(lookup.bind({ input, outputs: { "build-review": review } }), person.map(request => request.input));
-    assert.deepEqual(lookup.sourceRecordIds?.({ input, outputs: { "build-review": review } }), person.map(request => request.recordIds));
-    assert.deepEqual(signerNode.sourceRecordIds?.({ input, outputs: { "build-review": review, "lookup-identities": [] } }), signer.map(request => request.recordIds));
-    assert.deepEqual(signerNode.bind({ input, outputs: { "build-review": review, "lookup-identities": [] } }), signer.map(request => request.input));
+    assert.deepEqual(lookup.bind({ input, outputs }), person.map(request => request.input));
+    assert.deepEqual(lookup.sourceRecordIds?.({ input, outputs }), person.map(request => request.recordIds));
+    assert.deepEqual(signerNode.sourceRecordIds?.({ input, outputs }), signer.map(request => request.recordIds));
+    assert.deepEqual(signerNode.bind({ input, outputs }), signer.map(request => request.input));
+    assert.throws(() => signerNode.bind({ input, outputs: { ...outputs, "read-pages": pages.slice(1) } }), /page reading that is not retained/u);
     assert.equal(signerNode.policy.visibility, "inline");
     assert.equal(nodes.some(node => node.kind === "parallel"), false);
     if (formType !== "i9") return;
@@ -132,7 +138,8 @@ describe("child-only OCR document graph", () => {
     assert.equal(children.join, "all-settled");
     assert.equal(children.policy.cascadeCancel, "cascade");
     assert.equal(lookup.join, "all-settled");
-    assert.deepEqual(workflowTerminalResultExecution(descriptor).dependsOn, ["read-result", "approve-records"]);
+    assert.deepEqual(workflowTerminalResultExecution(descriptor).dependsOn, ["read-result", "approve-records", "build-review"]);
+    assert.deepEqual(completed.dependsOn, ["build-review", "read-pages", "lookup-identities", "lookup-signers"]);
     assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups", "signer-lookups", "approval"]);
     assert.equal(children.policy.visibility, "hidden-unless-failed");
     assert.equal(lookup.policy.visibility, "inline");
@@ -155,29 +162,35 @@ describe("child-only OCR document graph", () => {
   });
 
   it("retains three duplicate records while looking up their common identity once", async () => {
-    const { request, review } = await reviewFixture();
+    const { request, review, seed, outcomes } = await reviewFixture();
     assert.equal(review.records.length, 3);
     assert.equal(review.records.every(record => record.issues.includes("duplicate-subject")), true);
-    const requests = ocrLookupRequests(review);
-    const bound = lookup.bind({ input: request, outputs: { "build-review": review } });
+    const requests = ocrLookupRequests(seed);
+    const bound = lookup.bind({ input: request, outputs: { "build-review": review, "read-pages": outcomes } });
     assert.deepEqual(bound, requests.map(request => request.input));
     assert.equal(bound.length, 1);
     const input = requests[0].input;
     const itemId = ItemIdSchema.parse(ocrLookupItemId(input));
     assert.equal(lookup.deriveChildItemId(input, { canonicalItemId: itemId }), itemId);
     const outcome = { state: "failed", itemId, runId: "00000000-0000-4000-8000-000000000801", failureId: "00000000-0000-4000-8000-000000000777" };
-    const scope = { input: request, outputs: { "build-review": review, "lookup-identities": [outcome], "lookup-signers": [] } };
-    const result = await finishFixture(scope);
-    assert.deepEqual(OcrWorkflowResultSchema.parse(workflowTerminalResultExecution(descriptor).derive({ input: request,
-      outputs: { "read-result": result } })), { ...result, approvedSnapshot: null });
+    const scope = { input: request, outputs: { "build-review": review, "read-pages": outcomes, "lookup-identities": [outcome], "lookup-signers": [] } };
+    const recorded = ocrTaskContext();
+    const result = await finishFixture(scope, recorded);
+    assert.deepEqual(result, compactOcrResult(OcrResultSchema.parse({ review: seed, identities: result.identities })));
+    assert.deepEqual(result.review, { digest: sha256Hex(canonicalJsonStringify(review)) });
+    assert.deepEqual(recorded.recorded, Object.entries(result).map(([field, value]) => ({ direction: "read", field, value })));
+    const derive = (readResult: unknown) => workflowTerminalResultExecution(descriptor).derive({ input: request,
+      outputs: { "read-result": readResult, "build-review": review } });
+    assert.deepEqual(OcrWorkflowResultSchema.parse(derive(result)), { review, identities: result.identities, approvedSnapshot: null });
+    assert.throws(() => derive({ ...result, review: { digest: "f".repeat(64) } }), /does not match its review checkpoint/u);
     assert.deepEqual(result.identities[0].recordIds, review.records.map(record => record.recordId));
     assert.deepEqual(result.identities[0].outcome, outcome);
     const successful = await finishFixture({ ...scope,
       outputs: { ...scope.outputs, "lookup-identities": [{ state: "done", itemId, runId: outcome.runId,
         output: { activeStatus: ReadActiveStatus.example, crmDates: { state: "not-requested" } } }] } });
     assert.equal(successful.identities[0].outcome.state, "done");
-    assert.equal(successful.review.records.every(record => record.issues.includes("identity-unverified")), true);
-    assert.equal(result.review.records.every(record => record.issues.includes("identity-unverified")), true);
+    assert.deepEqual(successful.review, result.review);
+    assert.equal(seed.records.every(record => record.issues.includes("identity-unverified")), true);
     await assert.rejects(finishFixture({ ...scope, outputs: { ...scope.outputs, "lookup-identities": [] } }), /do not match/);
     await assert.rejects(finishFixture({ ...scope, outputs: { ...scope.outputs,
       "lookup-identities": [{ ...outcome, itemId: READING_ID }] } }), /do not match/);
@@ -197,6 +210,10 @@ describe("child-only OCR document graph", () => {
       "read-source-pages": { manifest: { ...head, fingerprint: "f".repeat(64) } } } }), /changed after they were bound/u);
     const reviewed = await reviewFixture(3);
     assert.deepEqual(reviewed.review.accounting.manifest, reviewed.manifest);
+    assert.deepEqual(reviewed.review, compactOcrReviewSeed(reviewed.seed));
+    assert.deepEqual(reviewed.recorded, Object.entries(reviewed.review).map(([field, value]) => ({ direction: "read", field, value })));
+    assert.equal(reviewed.review.records.some(record => "fields" in record), false);
+    assert.equal(reviewed.review.accounting.outcomes.some(outcome => "output" in outcome), false);
   });
 
   it("keeps the rendered pages and the source binding inside one timeline event up to the page limit", async () => {
@@ -239,8 +256,8 @@ describe("child-only OCR document graph", () => {
     const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: { sourceRunId: SOURCE_RUN_ID, roster: null,
       manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [failed] }, ctx: ocrTaskContext().ctx }));
     assert.deepEqual(review.pages, [{ sourcePage: 1, disposition: "failed" }]);
-    assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review } }), []);
-    const result = await finishFixture({ input: request, outputs: { "build-review": review, "lookup-identities": [], "lookup-signers": [] } });
+    assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review, "read-pages": [failed] } }), []);
+    const result = await finishFixture({ input: request, outputs: { "build-review": review, "read-pages": [failed], "lookup-identities": [], "lookup-signers": [] } });
     assert.deepEqual(result.identities, []);
   });
 });

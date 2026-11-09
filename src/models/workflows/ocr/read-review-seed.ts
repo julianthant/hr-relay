@@ -3,7 +3,7 @@ import { taskId, ItemIdSchema } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { OcrFormTypeSchema } from "../../ocr/form-registry.js";
 import { OcrPageOutcomeSchema, accountOcrPages, ocrExtractionItemId } from "./page-accounting.js";
-import { OcrReviewSeedInputSchema, OcrReviewSeedSchema, buildOcrReviewSeed } from "./review-seed.js";
+import { OcrReviewCheckpointSchema, OcrReviewSeedInputSchema, buildOcrReviewSeed, compactOcrReviewSeed } from "./review-seed.js";
 import { OcrSourceManifestSchema, ocrPageInputs } from "./source-manifest.js";
 import { OCR_SOURCE_MANIFEST_EXAMPLE } from "./read-source-pages.js";
 import { OCR_INPUT_EXAMPLE } from "./input.js";
@@ -13,11 +13,11 @@ export const ReadOcrReviewSeed = defineTaskContract({
   id: taskId("workflow:ocr/read-review-seed"), title: "Build source-bound review", effect: "read",
   input: OcrReviewSeedInputSchema.omit({ accounting: true }).extend({ manifest: OcrSourceManifestSchema,
     readingId: ItemIdSchema, formType: OcrFormTypeSchema, outcomes: z.array(OcrPageOutcomeSchema).min(1) }),
-  output: OcrReviewSeedSchema, errorCodes: ["INCONSISTENT_INPUTS"],
+  output: OcrReviewCheckpointSchema, errorCodes: ["INCONSISTENT_INPUTS"],
   subject: { kind: "none", reason: "retains source evidence and identity proposals without confirming a person" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
-  example: buildOcrReviewSeed({ roster: null,
+  example: compactOcrReviewSeed(buildOcrReviewSeed({ roster: null,
     accounting: accountOcrPages(manifest, OCR_INPUT_EXAMPLE.readingId, [OcrPageOutcomeSchema.parse({ state: "failed",
       runId: "00000000-0000-4000-8000-000000000301", itemId: ocrExtractionItemId(ocrPageInputs(manifest, OCR_INPUT_EXAMPLE.readingId)[0]),
-      failureId: "00000000-0000-4000-8000-000000000777" })]) }),
+      failureId: "00000000-0000-4000-8000-000000000777" })]) })),
 });
