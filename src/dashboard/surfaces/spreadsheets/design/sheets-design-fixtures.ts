@@ -53,8 +53,19 @@ export function libraryEntry(item: SheetFile, kind: 'reference' | 'other'): Work
     state: { libraryId: item.id, revision: 3, selectedVersionId: 'v3', origin: { kind: 'local' }, removed: false, versions } });
 }
 
+export interface PreviewSheet { readonly headers: readonly string[]; readonly rows: readonly (readonly string[])[] }
+const sample = (count: number, cell: (index: number) => string[]) => Array.from({ length: count }, (_, index) => cell(index));
+const eid = (index: number) => String(10482917 + index * 13);
+const person = (index: number) => `Example, Person ${String.fromCharCode(65 + index)}`;
+export const REFERENCE_SHEETS: Readonly<Record<string, PreviewSheet>> = {
+  'ocr-roster': { headers: ['Employee ID', 'Full name', 'Department', 'Work phone'], rows: sample(8, index => [eid(index), person(index), 'Example Dept', `555-01${String(index).padStart(2, '0')}`]) },
+  'onboarding-roster': { headers: ['EID', 'Hire name', 'Start date', 'Department'], rows: sample(8, index => [eid(index), person(index), `11/${String(10 + index).padStart(2, '0')}/2026`, 'Example Dept']) },
+  'i9-history': { headers: ['Employee ID', 'Employee', 'Action', 'Action date', 'Completed by'], rows: sample(8, index => [eid(index), person(index), index % 2 ? 'Section 2 done' : 'Reverify', `10/${String(20 + index).padStart(2, '0')}/2026`, 'Example, Reviewer']) },
+};
+export const sheetSamples = (sheet: PreviewSheet, header: string): string => { const column = sheet.headers.indexOf(header); return column < 0 ? '' : sheet.rows.slice(0, 3).map(row => row[column]).join(' · '); };
+
 export const IMPORT_FILE = { name: 'Example contacts export.xlsx', rows: 398, sheet: 'Contacts' };
 export const IMPORT_COLUMNS = [
-  { header: 'Employee ID', sample: '10482917', role: 'eid' }, { header: 'Full name', sample: 'Example, Person', role: 'person' },
+  { header: 'Employee ID', sample: '10482917 · 10482930 · 10482943', role: 'eid' }, { header: 'Full name', sample: 'Example, Person A · Example, Person B · Example, Person C', role: 'person' },
   { header: 'Department', sample: 'Example Dept', role: null }, { header: 'Work phone', sample: '555-0100', role: null }, { header: 'Emergency phone', sample: '555-0142', role: null },
 ] as const;

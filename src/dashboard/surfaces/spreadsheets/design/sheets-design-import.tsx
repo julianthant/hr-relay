@@ -8,10 +8,10 @@ const STEPS: readonly SheetsStep[] = ['pick', 'purpose', 'columns'];
 const OTHER = 'other';
 
 function Matched({ label, value }: { label: string; value: string }) {
-  return <Field label={label} description="Matched from the column headers."><div className="flex items-center gap-2"><Select aria-label={label} className="h-9 min-w-0 flex-1" defaultValue={value}>{IMPORT_COLUMNS.map(column => <option key={column.header}>{column.header}</option>)}</Select><Badge tone="info"><Check size={12} aria-hidden /> Matched</Badge></div></Field>;
+  return <Field label={label} description={`Matched from the column headers. Samples: ${IMPORT_COLUMNS.find(column => column.header === value)?.sample ?? ''}`}><div className="flex items-center gap-2"><Select aria-label={label} className="h-9 min-w-0 flex-1" defaultValue={value}>{IMPORT_COLUMNS.map(column => <option key={column.header}>{column.header}</option>)}</Select><Badge tone="info"><Check size={12} aria-hidden /> Matched</Badge></div></Field>;
 }
 
-export function SheetsImportDialog({ open, onOpenChange, references, startStep, preset }: { open: boolean; onOpenChange: (open: boolean) => void; references: readonly Reference[]; startStep: SheetsStep; preset?: string }) {
+export function SheetsImportDialog({ open, onOpenChange, references, startStep, preset, onDone }: { open: boolean; onOpenChange: (open: boolean) => void; references: readonly Reference[]; startStep: SheetsStep; preset?: string; onDone?: (purpose: string) => void }) {
   const [step, setStep] = useState<SheetsStep>(startStep);
   const [purpose, setPurpose] = useState(preset ?? references.find(item => !item.file)?.id ?? OTHER);
   const reference = references.find(item => item.id === purpose);
@@ -19,7 +19,7 @@ export function SheetsImportDialog({ open, onOpenChange, references, startStep, 
   const index = STEPS.indexOf(step);
   const title = step === 'pick' ? 'Import a spreadsheet' : step === 'purpose' ? 'What is this for?' : 'Check the columns';
   const next = () => setStep(STEPS[index + 1]);
-  const finish = () => { onOpenChange(false); setStep('pick'); };
+  const finish = () => { onDone?.(purpose); onOpenChange(false); setStep('pick'); };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="lg" title={title} description={`Step ${index + 1} of ${STEPS.length}`}>
     <DialogBody>
       {step !== 'pick' && <div className="mb-4 flex items-center gap-2 rounded-[7px] border border-ui-stroke bg-ui-table px-3 py-2 text-body"><FileSpreadsheet size={16} aria-hidden /><span className="min-w-0 flex-1 truncate">{IMPORT_FILE.name}</span><span className="text-caption text-ui-muted">{IMPORT_FILE.rows} rows · {IMPORT_FILE.sheet}</span></div>}

@@ -1,20 +1,20 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, Check, ChevronRight, Download, MoreHorizontal } from 'lucide-react';
+import { AlertTriangle, Check, Download, MoreHorizontal } from 'lucide-react';
 import { Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field, IconButton, Input, Select, Tab, TabList, TabPanel, Tabs } from '../../../ds/ui.js';
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
-import { libraryEntry, sheetsOther, sheetsReferences, sheetsResults, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
+import { libraryEntry, sheetsOther, sheetsReferences, sheetsResults, type Reference, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
 import { SheetsImportDialog } from './sheets-design-import.js';
 import { sheetsScenario, sheetsStep, type SheetsDesign } from './sheets-design-mode.js';
 
-type DialogKind = 'rename' | 'remove' | 'merge' | 'link';
-interface Actions { versions: (file: SheetFile, kind: 'reference' | 'other') => void; dialog: (kind: DialogKind, files: readonly SheetFile[]) => void; open: (file: SheetFile) => void; importFor: (referenceId?: string) => void }
+export type DialogKind = 'rename' | 'remove' | 'merge' | 'link';
+export interface Actions { versions: (file: SheetFile, kind: 'reference' | 'other') => void; dialog: (kind: DialogKind, files: readonly SheetFile[]) => void; open: (file: SheetFile) => void; importFor: (referenceId?: string) => void }
 
 const noop = async () => ({ state: 'confirmed' as const });
 const when = (iso: string) => formatInstantDate(iso);
 const plural = (count: number, one: string) => `${count.toLocaleString()} ${one}${count === 1 ? '' : 's'}`;
 
-function FileMenu({ file, kind, actions, label, onReplace }: { file: SheetFile; kind: 'reference' | 'other'; actions: Actions; label: string; onReplace?: () => void }) {
+export function FileMenu({ file, kind, actions, label, onReplace }: { file: SheetFile; kind: 'reference' | 'other'; actions: Actions; label: string; onReplace?: () => void }) {
   return <DropdownMenu><DropdownMenuTrigger render={<IconButton label={`Actions for ${label}`} icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end">
     {onReplace && <DropdownMenuItem onSelect={onReplace}>Replace</DropdownMenuItem>}
     <DropdownMenuItem onSelect={() => actions.open(file)}>Open</DropdownMenuItem>
@@ -88,68 +88,11 @@ function OtherTable({ files, actions }: { files: readonly SheetFile[]; actions: 
     </tbody></table></div>;
 }
 
-const ROWS = 'grid items-center gap-x-4 px-3 py-2.5 text-body';
-const COLS = 'grid-cols-[minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_96px]';
-const COLS_CHECK = 'grid-cols-[22px_minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_96px]';
-
-function ListHead({ cells, check }: { cells: readonly string[]; check?: ReactNode }) {
-  return <div className={`${ROWS} ${check ? COLS_CHECK : COLS} border-b border-ui-stroke bg-ui-table text-caption text-ui-muted`}>{check}{cells.map((cell, index) => <span key={index}>{cell}</span>)}<span /></div>;
-}
-function ListRow({ lead, sub, second, rows, updated, end, check, problem }: { lead: ReactNode; sub?: ReactNode; second?: ReactNode; rows?: ReactNode; updated?: ReactNode; end?: ReactNode; check?: ReactNode; problem?: ReactNode }) {
-  return <div className={`${ROWS} ${check ? COLS_CHECK : COLS} border-t border-ui-stroke first:border-t-0`}>{check}
-    <div className="min-w-0"><div className="truncate font-medium">{lead}</div>{sub && <div className="text-caption text-ui-muted">{sub}</div>}</div>
-    <div className="min-w-0 truncate">{second}</div><span className="tabular-nums">{rows}</span><span>{updated}</span><div className="flex items-center justify-end gap-1">{end}</div>
-    {problem && <div className="col-span-full mt-1.5 flex items-center gap-2 text-caption text-ui-danger">{problem}</div>}
-  </div>;
-}
-const frame = 'overflow-hidden rounded-[10px] border border-ui-stroke';
-const link = 'text-left underline-offset-2 hover:underline';
-
-function UsedList({ items, actions }: { items: readonly Reference[]; actions: Actions }) {
-  return <div className={frame} role="table" aria-label="Used by workflows"><ListHead cells={['Reference', 'Current file', 'Rows', 'Updated']} />{items.map(item => {
-    const file = item.file;
-    const broken = file ? [file.eid, file.person].filter((match): match is NonNullable<typeof match> => !!match && !match.header) : [];
-    return <ListRow key={item.id} lead={item.title} sub={item.note}
-      second={file ? <button type="button" className={`${link} font-normal`} onClick={() => actions.open(file)}>{file.name}</button> : <span className="text-ui-muted">No roster yet</span>}
-      rows={file?.rows.toLocaleString()} updated={file && when(file.updatedAt)}
-      end={file ? <FileMenu file={file} kind="reference" actions={actions} label={file.name} onReplace={() => actions.importFor(item.id)} /> : <Button variant="primary" onClick={() => actions.importFor(item.id)}>Import a roster</Button>}
-      problem={broken.length ? <><AlertTriangle size={12} aria-hidden /><span>{broken.map(match => `${match.label} not found`).join(' · ')}</span><Button size="sm" onClick={() => actions.importFor(item.id)}>Fix columns</Button></> : undefined} />;
-  })}</div>;
-}
-
-function ResultsList({ groups, actions }: { groups: readonly ResultGroup[]; actions: Actions }) {
-  const [open, setOpen] = useState<string[]>([]);
-  if (!groups.length) return <p className="hub-sheets-empty rounded-[10px] border border-dashed border-ui-stroke">Workbooks made by workflows will appear here, one for each run.</p>;
-  const asOpen = (file: ResultFile) => actions.open({ id: file.id, name: file.name, rows: 0, updatedAt: file.createdAt });
-  const buttons = (file: ResultFile) => <><Button onClick={() => asOpen(file)}>Open</Button><IconButton label={`Download ${file.name}`} icon={<Download size={16} />} /></>;
-  return <div className={frame} role="table" aria-label="Results"><ListHead cells={['Workflow', 'Newest workbook', '', 'Created']} />{groups.map(group => {
-    const [newest, ...older] = group.files, expanded = open.includes(group.workflow);
-    return <div key={group.workflow} className="border-t border-ui-stroke first:border-t-0">
-      <ListRow lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} end={buttons(newest)} />
-      {older.length > 0 && <div className="px-3 pb-2"><button type="button" className="flex items-center gap-1 text-caption text-ui-muted hover:text-ui-primary" aria-expanded={expanded} onClick={() => setOpen(current => expanded ? current.filter(name => name !== group.workflow) : [...current, group.workflow])}><ChevronRight size={12} aria-hidden className={expanded ? 'rotate-90' : ''} />{expanded ? 'Hide older runs' : `${older.length} more`}</button></div>}
-      {expanded && older.map(file => <ListRow key={file.id} lead={<span className="font-normal text-ui-muted">{file.run}</span>} second={file.name} updated={when(file.createdAt)} end={buttons(file)} />)}
-    </div>;
-  })}</div>;
-}
-
-function OtherList({ files, actions }: { files: readonly SheetFile[]; actions: Actions }) {
-  const [selection, setSelection] = useState<string[]>([]);
-  const selected = files.filter(file => selection.includes(file.id));
-  if (!files.length) return <p className="hub-sheets-empty rounded-[10px] border border-dashed border-ui-stroke">Imports that no workflow uses will appear here.</p>;
-  return <div className={frame}>
-    {selected.length > 0 && <div className="flex items-center gap-2 border-b border-ui-stroke bg-ui-table px-3 py-2 text-body"><span className="flex-1">{selected.length} selected</span><Button disabled={selected.length < 2} onClick={() => actions.dialog('merge', selected)}>Merge</Button><Button onClick={() => actions.dialog('remove', selected)}>Remove</Button><Button onClick={() => setSelection([])}>Clear</Button></div>}
-    <div role="table" aria-label="Other spreadsheets"><ListHead cells={['Spreadsheet', 'Source', 'Rows', 'Updated']} check={<Checkbox label={<span className="sr-only">Select all spreadsheets</span>} checked={selection.length === files.length ? true : selection.length ? 'indeterminate' : false} onCheckedChange={checked => setSelection(checked ? files.map(file => file.id) : [])} />} />
-      {files.map(file => <ListRow key={file.id} check={<Checkbox label={<span className="sr-only">Select {file.name}</span>} checked={selection.includes(file.id)} onCheckedChange={checked => setSelection(current => checked ? [...current, file.id] : current.filter(id => id !== file.id))} />}
-        lead={<button type="button" className={link} onClick={() => actions.open(file)}>{file.name}</button>} second={file.sharePoint ? 'SharePoint' : 'This Mac'} rows={file.rows.toLocaleString()} updated={when(file.updatedAt)}
-        end={<><Button onClick={() => actions.versions(file, 'other')}>Versions</Button><FileMenu file={file} kind="other" actions={actions} label={file.name} /></>} />)}
-    </div></div>;
-}
-
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+export function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return <section className="hub-sheets-section"><h2>{title}</h2>{description && <p className="hub-sheets-caption -mt-2 mb-3">{description}</p>}{children}</section>;
 }
 
-function ActionDialog({ state, onClose }: { state: { kind: DialogKind; files: readonly SheetFile[] } | undefined; onClose: () => void }) {
+export function ActionDialog({ state, onClose }: { state: { kind: DialogKind; files: readonly SheetFile[] } | undefined; onClose: () => void }) {
   const [value, setValue] = useState('');
   const kind = state?.kind;
   return <Dialog open={!!state} onOpenChange={open => { if (!open) onClose(); }}><DialogContent title={kind === 'merge' ? 'Merge spreadsheets' : kind === 'remove' ? 'Remove spreadsheets?' : kind === 'rename' ? 'Rename spreadsheet' : 'Link to SharePoint'}><DialogBody>
@@ -169,11 +112,7 @@ export function SheetsDesignPage({ design }: { design: SheetsDesign }) {
   const actions: Actions = { versions: (file, kind) => setVersions(libraryEntry(file, kind)), dialog: (kind, files) => setDialog({ kind, files }), open: () => undefined, importFor: id => { setPreset(id); setImportOpen(true); } };
   const head = <div className="mb-6 flex items-start justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
     <div className="flex items-center gap-2"><Button variant="primary" onClick={() => actions.importFor()}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
-  const body = design === 'd' ? <>
-    <Section title="Used by workflows" description="A reference for looking up people."><UsedList items={references} actions={actions} /></Section>
-    <Section title="Results"><ResultsList groups={results} actions={actions} /></Section>
-    <Section title="Other spreadsheets"><OtherList files={others} actions={actions} /></Section></>
-    : design === 'a' ? <>
+  const body = design === 'a' ? <>
     <Section title="Used by workflows" description="A reference for looking up people."><ReferenceCards items={references} actions={actions} /></Section>
     <Section title="Results"><Results groups={results} layout="disclosure" actions={actions} /></Section>
     <Section title="Other spreadsheets"><OtherTable files={others} actions={actions} /></Section></>
