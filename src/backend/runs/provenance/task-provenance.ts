@@ -10,7 +10,7 @@ import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { DataObservationOrigin, DataObservationOrigins } from "../../../models/events/data-observation-origin.js";
-import { readObservationPath, observationLeafPaths } from "../../../models/events/data-observation-origin.js";
+import { readObservationPath, observationLeafPaths, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import {
   ContractFieldPathSchema,
@@ -330,39 +330,46 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   let finalized = false;
 
   const originsFor = (point: ParsedDataPoint): DataObservationOrigins | undefined => {
+    const spanPath = input.observationSpanPath;
     const aliases = (point.aliases ?? []).map(alias => {
       const target = readObservationPath(point.value, alias.path);
       let source: JsonValue;
-      let origins: DataObservationOrigins | undefined;
+      let originAt: (path: readonly (string | number)[]) => DataObservationOrigin;
       if (alias.source.kind === "local") {
         const local = points.get(alias.source.field);
         if (local === undefined) throw new Error("observation alias source is not a prior local point");
         source = readObservationPath(local.value, alias.source.path);
-        origins = local.origins;
+        originAt = path => {
+          if (spanPath === undefined) throw new Error("observation alias source local span unavailable");
+          return resolveObservationOrigin({ ...execution, spanPath }, local, path);
+        };
       } else {
         const nodeId = alias.source.nodeId;
         const checkpoint = evidence.checkpoints.find(row => row.nodeId === nodeId);
         if (checkpoint === undefined) throw new Error("observation alias source is not an admitted dependency");
         source = readObservationPath(checkpoint.output.value, alias.source.path);
-        origins = checkpoint.observationOrigins;
+        originAt = path => {
+          const origin = checkpoint.observationOrigins?.find(entry => canonicalJsonStringify(entry.path) === canonicalJsonStringify(path))?.origin;
+          if (origin === undefined) throw new Error(`observation alias source checkpoint ${checkpoint.nodeId} origin unavailable`);
+          return origin;
+        };
       }
       if (canonicalJsonStringify(source) !== canonicalJsonStringify(target)) throw new Error("observation alias contradicts its exact source value");
-      return { ...alias, origins };
+      return { ...alias, originAt };
     });
     for (let index = 0; index < aliases.length; index++) for (let other = index + 1; other < aliases.length; other++) {
       const a = aliases[index].path, b = aliases[other].path;
       if (a.every((part, i) => part === b[i]) || b.every((part, i) => part === a[i])) throw new Error("observation alias targets overlap");
     }
-    const spanPath = input.observationSpanPath;
-    if (spanPath === undefined) return undefined;
-    return observationLeafPaths(point.value).map(path => {
+    if (spanPath === undefined || aliases.length === 0) return undefined;
+    const origins = observationLeafPaths(point.value).flatMap(path => {
       const alias = aliases.find(alias => alias.path.every((part, index) => path[index] === part));
-      const originalPath = alias === undefined ? undefined : [...alias.source.path, ...path.slice(alias.path.length)];
-      const forwarded = originalPath === undefined ? undefined : alias?.origins?.find(entry => canonicalJsonStringify(entry.path) === canonicalJsonStringify(originalPath))?.origin;
-      const origin: DataObservationOrigin = forwarded ?? { runId: execution.runId, attempt: execution.attempt,
-        spanPath, nodeId: execution.nodeId, taskId: execution.taskId, field: point.field, path: [...path] };
-      return { path: [...path], origin };
+      if (alias === undefined) return [];
+      const origin = alias.originAt([...alias.source.path, ...path.slice(alias.path.length)]);
+      return canonicalJsonStringify(origin) === canonicalJsonStringify(resolveObservationOrigin({ ...execution, spanPath }, point, path))
+        ? [] : [{ path: [...path], origin }];
     });
+    return origins.length === 0 ? undefined : origins;
   };
 
   const recordData = (pointInput: DataPoint | readonly DataPoint[]): void => {

@@ -24,6 +24,7 @@ import {
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView, RunDetailDataOriginView } from "./run-detail-types.js";
 
@@ -319,9 +320,9 @@ function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>)
         if (value.state === "allowed" && field.display !== undefined && mapped === undefined) throw new LogDisplayRefusedError();
         const text = mapped?.text ?? String(observed);
         const pointAddress = [...(value.key === point.field ? [] : value.key.slice(point.field.length + 1).split(".")), ...address];
-        const origin = point.origins?.find(entry => canonicalJsonStringify(entry.path) === canonicalJsonStringify(pointAddress))?.origin;
+        const origin = resolveObservationOrigin(entry.event, point, pointAddress);
         return text.trim().length === 0 ? [] : [{ order, field: { direction: point.direction, label: field.label, value: text,
-          ...(origin === undefined || field.declaration === undefined ? {} : { causal: { declaration: field.declaration, origin } }),
+          ...(field.declaration === undefined ? {} : { causal: { declaration: field.declaration, origin } }),
           point: { direction: point.direction, field: field.fieldPath, values: [value.state === "allowed"
             ? { ...value, key: field.fieldPath, value: observed, rawValue: undefined }
             : { ...value, key: field.fieldPath, rawValue: undefined }] } } }];
