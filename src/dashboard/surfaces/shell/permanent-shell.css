@@ -13,6 +13,8 @@
 .settings-nav-group a { display: flex; min-width: 0; height: 36px; align-items: center; gap: 10px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
 .settings-nav-group a svg { width: 16px; height: 16px; }
 .dashboard-shell .settings-content { padding: 32px; }
+/* The floating dock stays over Settings: the last row scrolls clear of it (48px dock + gap). */
+.dashboard-shell .settings-content { padding-bottom: 76px; }
 .dashboard-shell .settings-content { opacity: 1; transition: opacity var(--ds-dur-enter) var(--ds-ease-out); }
 .dashboard-shell .settings-takeover[data-demo-enter="from"] > .settings-content { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .dashboard-shell .settings-content { transition: none; } }
