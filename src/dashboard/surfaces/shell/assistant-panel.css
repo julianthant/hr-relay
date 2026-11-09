@@ -5,7 +5,7 @@
 #hub-panel-assistant .hub-btn.danger{background:var(--ui-danger);color:var(--ui-panel)}
 #hub-panel-assistant .hub-plain{border:0;background:transparent;border-radius:8px;text-align:left}
 #hub-panel-assistant .hub-icon:active,#hub-panel-assistant .hub-btn:active{transform:translateY(1px)}
-#hub-panel-assistant{display:flex;flex-direction:column;overflow:visible;z-index:50}
+#hub-panel-assistant{display:flex;flex-direction:column;overflow:visible}
 #hub-panel-assistant>.hub-panel-header>span:first-child{display:none}
 #hub-panel-assistant .hub-panel-title{min-width:0;font-size:14px;line-height:20px;display:flex;overflow:hidden}
 #hub-panel-assistant>.hub-panel-content{padding:0;gap:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
