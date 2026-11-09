@@ -14,6 +14,7 @@ import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
+import { assistantOpen, useAssistantSqueezesRail } from "./assistant-launcher-model.js";
 import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 
 export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, onSettings, onLogout, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
@@ -40,15 +41,17 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   const start = useShortcutPreferences().bindings.start[0];
   const choose = (id: string) => workflows.find(flow => flow.id === id)?.source === "preview" ? onPreview(id) : onSelect(id);
   const bell = useRef<HTMLButtonElement>(null);
-  const [collapsed, setCollapsed] = useRailCollapsed();
-  const toggleBell = () => { if (collapsed && !open) setCollapsed(false); notificationRail.changeOpen(!open); };
+  const [stored, setCollapsed] = useRailCollapsed();
+  const squeezed = useAssistantSqueezesRail();
+  const collapsed = stored || squeezed;
+  const toggleBell = () => { if (squeezed && !open) assistantOpen.set(false); else if (stored && !open) setCollapsed(false); notificationRail.changeOpen(!open); };
   const back = () => { notificationRail.changeOpen(false); bell.current?.focus(); };
   return <aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-settings-open={settingsOpen} data-notifications-open={open} data-collapsed={collapsed || undefined}>
     <header className="workspace-rail-header">
       <h2>Relay</h2>
       <div className="workspace-rail-actions">
         <Tooltip side={collapsed ? "right" : "bottom"} content={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
-          <IconButton variant="ghost" size="sm" label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title="" aria-expanded={!collapsed} onClick={() => { if (!collapsed && open) notificationRail.changeOpen(false); setCollapsed(!collapsed); }} icon={<PanelLeft aria-hidden className="size-4" />} />
+          <IconButton variant="ghost" size="sm" label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title="" aria-expanded={!collapsed} disabled={squeezed} onClick={() => { if (!collapsed && open) notificationRail.changeOpen(false); setCollapsed(!collapsed); }} icon={<PanelLeft aria-hidden className="size-4" />} />
         </Tooltip>
         <NotificationBell ref={bell} open={open} unread={(notificationRail.unread ?? 0) > 0} onToggle={toggleBell}
           label={notificationRail.state.state === "loading" ? "Notifications loading" : notificationRail.state.state === "unavailable" ? "Notifications unavailable" : `Notifications, ${notificationRail.unread} unread`} />
