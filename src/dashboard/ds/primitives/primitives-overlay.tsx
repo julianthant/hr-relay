@@ -503,10 +503,10 @@ export function Tooltip({
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
           side={side}
-          sideOffset={6}
+          sideOffset={8}
           collisionBoundary={collisionBoundary}
           collisionPadding={8}
-          className={cn("ds-tooltip", dsLayer.menu)}
+          className={cn("ds-tooltip", dsLayer.tooltip)}
         >
           {content}{shortcut && <kbd className="ds-tooltip-key">{shortcut}</kbd>}
         </TooltipPrimitive.Content>

@@ -413,7 +413,6 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&statusMock=analytics-a`);
   await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
   const shot = async (name: string) => { await page.waitForTimeout(300); await page.screenshot({ path: join(OUT, `analytics-${name}-${theme}-${WIDTH}.png`) }); };
   const scroller = page.locator("#dashboard-settings-content");
   await page.getByRole("button", { name: "Custom…" }).click();
@@ -450,7 +449,6 @@ test("account, subscription and general interactions", async ({ page }) => {
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=account&statusMock=account`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
   const nav = page.locator("nav.settings-panel-nav");
   for (const name of ["General", "Account", "Subscription"]) await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
   for (const name of ["Routes", "Paths"]) await expect(nav.getByRole("link", { name })).toHaveCount(0);
@@ -493,7 +491,6 @@ test("account, subscription and general interactions", async ({ page }) => {
   await expect(page.getByText("Not connected")).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveCount(0);
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=general&statusMock=general-a`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
   await expect(page.getByRole("group", { name: "General", exact: true })).toBeVisible();
   for (const name of ["Downloads", "Job end date", "Theme", "Animations", "Browser window"]) await expect(page.getByRole("group", { name: "General", exact: true }).getByText(name, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Run without a browser window")).toHaveCount(0);
@@ -540,8 +537,7 @@ for (const theme of THEMES) test(`logs footer states @ ${theme} ${WIDTH}`, async
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   const logs = page.locator(".dashboard-log-column");
   const shot = async (name: string) => { await settle(page); await page.screenshot({ path: join(OUT, `${name}-${theme}-${WIDTH}.png`) }); };
   await page.getByRole("button", { name: "Emergency Contact" }).first().click();
@@ -552,8 +548,7 @@ for (const theme of THEMES) test(`logs footer states @ ${theme} ${WIDTH}`, async
   await expect(page.getByRole("tooltip")).toBeVisible();
   await page.waitForTimeout(300);
   await page.screenshot({ path: join(OUT, `logs-waiting-tooltip-${theme}-${WIDTH}.png`) });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   await page.getByRole("button", { name: /^Notifications/ }).click();
   await page.locator(".notification-panel").getByRole("button", { name: /Run failed/ }).click();
   await page.getByRole("button", { name: /^Notifications/ }).click();
@@ -575,7 +570,6 @@ for (const theme of THEMES) test(`sidebar collapse widens logs @ ${theme} ${WIDT
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
   await page.getByRole("button", { name: "Emergency Contact" }).first().click();
   await page.getByRole("button", { name: /emergency-contacts\.pdf/ }).first().click();
   await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
@@ -602,7 +596,6 @@ for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, as
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
   await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   const queueTop = () => page.locator(".dashboard-log-column").evaluate(node => Math.round(node.getBoundingClientRect().top));
   const top = await queueTop();
@@ -634,7 +627,6 @@ for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, as
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-unknown`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
   const toast = page.locator("[data-slot=toast]");
   await expect(toast).toHaveCount(1);
   await expect(toast.locator("button")).toHaveCount(0);

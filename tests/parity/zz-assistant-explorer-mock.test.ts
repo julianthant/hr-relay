@@ -12,12 +12,16 @@ const WIDTH = Number(process.env.AX_MOCK_WIDTH ?? 1280);
 const ONLY = process.env.AX_MOCK_ONLY?.split(",");
 test.use({ deviceScaleFactor: Number(process.env.AX_MOCK_SCALE ?? 1) });
 
-type Frame = { id: string; query?: string; view?: Record<string, unknown>; settings?: string; act?: (page: Page) => Promise<void> };
+type Frame = { id: string; query?: string; view?: Record<string, unknown>; settings?: string; act?: (page: Page) => Promise<void>; keepHover?: boolean };
 const RUN = { preview: "separations", mockRun: "mock:separations:sample" };
 const launcherFrames: Frame[] = [
   { id: "launcher-closed", query: "assistantOpen=0", view: RUN },
   { id: "launcher-needs", query: "assistantOpen=0&assistantNeeds=2", view: RUN },
   ...(["thinking", "working", "done", "error"] as const).map(state => ({ id: `launcher-${state}`, query: `assistantOpen=0&assistantMark=${state}`, view: RUN })),
+  ...(["launcher-tooltip:Assistant", "bar-add-tooltip:Add workers", "bar-settings-tooltip:Settings", "bar-logout-tooltip:Log out"] as const).map(item => {
+    const [id, name] = item.split(":");
+    return { id, query: "assistantOpen=0", view: RUN, keepHover: true, act: async (page: Page) => { await page.getByRole("button", { name, exact: true }).first().hover(); await expect(page.getByRole("tooltip")).toBeVisible(); } };
+  }),
   { id: "launcher-open", query: "assistantOpen=1&assistantNeeds=2&assistantMock=01-chat-basics", view: RUN },
 ];
 const FRAMES: Frame[] = [
@@ -68,7 +72,7 @@ for (const theme of THEMES) test(`assistant explorer mock @ ${theme} ${WIDTH}`, 
     if (frame.settings || frame.query?.includes("explore=")) await expect(page.getByRole("heading", { name: "Explorer", exact: true })).toBeVisible();
     else await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
     await frame.act?.(page);
-    await page.mouse.move(1, 1);
+    if (!frame.keepHover) await page.mouse.move(1, 1);
     await page.waitForTimeout(600);
     await page.screenshot({ path: join(OUT, `${frame.id}-${theme}.png`) });
     await page.evaluate(() => { window.localStorage.removeItem("relay.workflow-rail.collapsed"); });
