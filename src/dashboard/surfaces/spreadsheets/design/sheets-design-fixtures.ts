@@ -37,9 +37,6 @@ export function sheetsResults(scenario: SheetsScenario): readonly ResultGroup[] 
   return ALL_RESULTS.slice(0, 2).map(group => ({ ...group, files: group.files.slice(0, 2) }));
 }
 
-export const sheetsMains = (scenario: SheetsScenario): Readonly<Record<string, string>> => scenario === 'empty' ? {} : scenario === 'many' ? { 'Emergency Contact': 'Emergency contacts (main)', Separations: 'Separations (main)' } : { 'Emergency Contact': 'Emergency contacts (main)' };
-export const MERGE_PREVIEW = { added: 12, updated: 4, unchanged: 31 } as const;
-
 const OTHER: readonly SheetFile[] = [
   file('o1', 'Example student applicants.xlsx', 86, '2026-11-01T17:00:00Z'), file('o2', 'Example parking permits.csv', 214, '2026-10-22T17:00:00Z', { sharePoint: true }),
   file('o3', 'Example department codes.xlsx', 57, '2026-10-18T17:00:00Z'), file('o4', 'Example badge requests.xlsx', 31, '2026-10-12T17:00:00Z'),

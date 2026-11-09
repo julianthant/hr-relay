@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -60,12 +60,6 @@ test("sheets design D scenes @ light 1280x720", async ({ page }) => {
       await page.getByRole("checkbox", { name: "Select Example student applicants.xlsx" }).check(); await page.getByRole("checkbox", { name: "Select Example parking permits.csv" }).check();
       await page.getByRole("button", { name: "Merge", exact: true }).click(); await shot("other-merge"); await dialog().getByRole("button", { name: "Cancel", exact: true }).click();
       await page.getByRole("button", { name: "Remove", exact: true }).click(); await shot("other-remove");
-    },
-    "results-merge": async () => {
-      // DRAFT: one frame only until the operator defines "main spreadsheet".
-      await open({ relaySheetsScenario: "many" }); await scrollTo("Results");
-      await page.getByRole("button", { name: "Actions for Emergency contacts 0412.xlsx", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Merge into main spreadsheet", exact: true }).click(); await expect(dialog()).toBeVisible(); await shot("DRAFT-results-merge-dialog");
     },
     "sync-ok": async () => { await open({ relaySheetsScenario: "many", relaySheetsSync: "ok" }); await shot("sync-ok"); },
     "sync-failed": async () => { await open({ relaySheetsScenario: "many", relaySheetsSync: "failed" }); await page.waitForTimeout(600); await shot("sync-failed"); await scrollTo("Other spreadsheets"); await shot("sync-failed-other"); },

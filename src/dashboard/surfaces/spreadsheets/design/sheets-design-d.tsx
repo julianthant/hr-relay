@@ -4,7 +4,7 @@ import { Badge, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFoote
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
 import { ActionDialog, FileMenu, Section, type Actions, type DialogKind } from './sheets-design-page.js';
-import { IMPORT_FILE, MERGE_PREVIEW, REFERENCE_SHEETS, libraryEntry, sheetSamples, sheetsMains, sheetsOther, sheetsReferences, sheetsResults, type ColumnMatch, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
+import { IMPORT_FILE, REFERENCE_SHEETS, libraryEntry, sheetSamples, sheetsOther, sheetsReferences, sheetsResults, type ColumnMatch, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
 import { SheetsImportDialog } from './sheets-design-import.js';
 import { sheetsParam, sheetsScenario } from './sheets-design-mode.js';
 import '../../run-start/launch-presentation.css';
@@ -48,44 +48,19 @@ function UsedList({ items, sync, actions, onOpen, onReplace }: { items: readonly
   })}</div>;
 }
 
-function MergeDialog({ pending, main, onClose, onConfirm }: { pending: { group: ResultGroup; file: ResultFile } | undefined; main: string | undefined; onClose: () => void; onConfirm: () => void }) {
-  const file = pending?.file;
-  return <Dialog open={!!pending} onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="launch-design" size="md" title={main ? 'Merge into main spreadsheet' : 'Use as the main spreadsheet'} description={file?.name}>
-    <DialogBody>{main ? <div className="grid gap-4">
-      <p className="text-body text-ui-muted">Rows from this result are added to {main}. Rows with the same EID are updated.</p>
-      <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 rounded-[7px] border border-ui-stroke px-3 py-2.5 text-body"><dt>New rows</dt><dd className="tabular-nums">{MERGE_PREVIEW.added}</dd><dt>Updated by EID</dt><dd className="tabular-nums">{MERGE_PREVIEW.updated}</dd><dt>Unchanged</dt><dd className="tabular-nums">{MERGE_PREVIEW.unchanged}</dd></dl>
-      <p className="text-caption text-ui-muted">This saves a new version of {main}. To undo it, use the earlier version.</p></div>
-      : <p className="text-body text-ui-muted">{pending?.group.workflow} has no main spreadsheet yet. This result becomes it, with {MERGE_PREVIEW.added + MERGE_PREVIEW.updated + MERGE_PREVIEW.unchanged} rows. Later results can be merged into it.</p>}</DialogBody>
-    <DialogFooter><Button variant="muted" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onConfirm}>{main ? 'Merge' : 'Use as main spreadsheet'}</Button></DialogFooter>
-  </DialogContent></Dialog>;
-}
-
-function ResultsList({ groups, mains: initial, actions, forceOpen }: { groups: readonly ResultGroup[]; mains: Readonly<Record<string, string>>; actions: Actions; forceOpen: boolean }) {
+function ResultsList({ groups, actions, forceOpen }: { groups: readonly ResultGroup[]; actions: Actions; forceOpen: boolean }) {
   const [open, setOpen] = useState<string[]>(forceOpen && groups[0] ? [groups[0].workflow] : []);
-  const [mains, setMains] = useState(initial), [pending, setPending] = useState<{ group: ResultGroup; file: ResultFile }>();
-  const { toast } = useToasts();
   if (!groups.length) return <p className="hub-sheets-empty rounded-[10px] border border-dashed border-ui-stroke">Workbooks made by workflows will appear here, one for each run.</p>;
   const asOpen = (file: ResultFile) => actions.open({ id: file.id, name: file.name, rows: 0, updatedAt: file.createdAt });
-  const confirm = () => {
-    if (!pending) return;
-    const name = mains[pending.group.workflow];
-    if (name) toast({ tone: 'success', title: `Merged into ${name}`, description: 'Saved as a new version.' });
-    else { const created = `${pending.group.workflow} (main)`; setMains(current => ({ ...current, [pending.group.workflow]: created })); toast({ tone: 'success', title: `${created} created` }); }
-    setPending(undefined);
-  };
-  const buttons = (group: ResultGroup, file: ResultFile) => <><Button onClick={() => asOpen(file)}>Open</Button><IconButton label={`Download ${file.name}`} icon={<Download size={16} />} />
-    <DropdownMenu><DropdownMenuTrigger render={<IconButton label={`Actions for ${file.name}`} icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setPending({ group, file })}>{mains[group.workflow] ? 'Merge into main spreadsheet' : 'Use as main spreadsheet'}</DropdownMenuItem></DropdownMenuContent></DropdownMenu></>;
+  const buttons = (file: ResultFile) => <><Button onClick={() => asOpen(file)}>Open</Button><IconButton label={`Download ${file.name}`} icon={<Download size={16} />} /></>;
   return <div className={frame} role="table" aria-label="Results"><ListHead cells={['Workflow', 'Newest workbook', '', 'Created']} />{groups.map(group => {
-    const [newest, ...older] = group.files, expanded = open.includes(group.workflow), main = mains[group.workflow];
+    const [newest, ...older] = group.files, expanded = open.includes(group.workflow);
     return <div key={group.workflow} className="border-t border-ui-stroke first:border-t-0">
-      <ListRow lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} end={buttons(group, newest)} />
-      <div className="flex items-center justify-between gap-3 px-3 pb-2 text-caption text-ui-muted">
-        {older.length > 0 ? <button type="button" className="flex items-center gap-1 hover:text-ui-primary" aria-expanded={expanded} onClick={() => setOpen(current => expanded ? current.filter(name => name !== group.workflow) : [...current, group.workflow])}><ChevronRight size={12} aria-hidden className={expanded ? 'rotate-90' : ''} />{expanded ? 'Hide earlier results' : `${older.length} earlier ${older.length === 1 ? 'result' : 'results'}`}</button> : <span />}
-        <span>{main ? `Main spreadsheet: ${main}` : 'No main spreadsheet'}</span>
-      </div>
-      {expanded && <div className="bg-ui-table/40">{older.map(file => <ListRow key={file.id} lead={<span className="font-normal">{file.run}</span>} second={file.name} updated={when(file.createdAt)} end={buttons(group, file)} />)}</div>}
+      <ListRow lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} end={buttons(newest)} />
+      {older.length > 0 && <div className="px-3 pb-2"><button type="button" className="flex items-center gap-1 text-caption text-ui-muted hover:text-ui-primary" aria-expanded={expanded} onClick={() => setOpen(current => expanded ? current.filter(name => name !== group.workflow) : [...current, group.workflow])}><ChevronRight size={12} aria-hidden className={expanded ? 'rotate-90' : ''} />{expanded ? 'Hide earlier results' : `${older.length} earlier ${older.length === 1 ? 'result' : 'results'}`}</button></div>}
+      {expanded && <div className="bg-ui-table/40">{older.map(file => <ListRow key={file.id} lead={<span className="font-normal">{file.run}</span>} second={file.name} updated={when(file.createdAt)} end={buttons(file)} />)}</div>}
     </div>;
-  })}<MergeDialog pending={pending} main={pending ? mains[pending.group.workflow] : undefined} onClose={() => setPending(undefined)} onConfirm={confirm} /></div>;
+  })}</div>;
 }
 
 function OtherList({ files, sync, actions }: { files: readonly SheetFile[]; sync: string | null; actions: Actions }) {
@@ -162,7 +137,7 @@ export function SheetsDesignD() {
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page hub-sheets-library min-w-0 text-body">
     {head}
     <Section title="Used by workflows"><UsedList items={refs} sync={sync} actions={actions} onOpen={(id, columns) => setDrawer({ id, columns })} onReplace={setReplacing} /></Section>
-    <Section title="Results"><ResultsList groups={results} mains={sheetsMains(scenario)} actions={actions} forceOpen={sheetsParam('relaySheetsExpanded') === '1'} /></Section>
+    <Section title="Results"><ResultsList groups={results} actions={actions} forceOpen={sheetsParam('relaySheetsExpanded') === '1'} /></Section>
     <Section title="Other spreadsheets"><OtherList files={others} sync={sync} actions={actions} /></Section>
     <ReferenceDrawer key={drawer?.id ?? 'closed'} item={refs.find(item => item.id === drawer?.id)} focusColumns={drawer?.columns ?? false} onClose={() => setDrawer(undefined)} onSave={saveColumns} onReplace={id => { setDrawer(undefined); setReplacing(id); }} />
     <ReplaceDialog key={replacing ?? 'none'} item={refs.find(item => item.id === replacing)} onClose={() => setReplacing(undefined)} onConfirm={replaced} />
