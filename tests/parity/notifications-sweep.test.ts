@@ -77,9 +77,26 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
   await inventory(page, "logs-failed", theme, ".dashboard-log-column");
   await buttons(page, "logs-failed", theme, ".dashboard-log-column");
 
+  const card = page.locator("form[aria-label=\"Search CRM employee record\"]").first();
+  await card.scrollIntoViewIfNeeded();
+  await page.mouse.move(1, 1);
+  await shot(page, "failure-card", theme);
+  await inventory(page, "failure-card", theme, "form[aria-label=\"Search CRM employee record\"]");
+  await buttons(page, "failure-card", theme, "form[aria-label=\"Search CRM employee record\"]");
+
+  await open(page, "");
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  await page.locator(".notification-panel").getByRole("button", { name: /Records ready for approval.*Emergency Contact/ }).click();
+  await expect(page.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
+  await page.mouse.move(1, 1);
+  await shot(page, "review", theme);
+  await inventory(page, "review", theme, "[aria-label='OCR records']");
+  await buttons(page, "review", theme, "[aria-label='OCR records']");
+
   await open(page, "&explore=fixture-ui-explorer");
   await page.mouse.move(1, 1);
   await shot(page, "explorer", theme);
   await inventory(page, "explorer", theme, "main");
+  await buttons(page, "explorer", theme, "main");
   expect(errors).toEqual([]);
 });

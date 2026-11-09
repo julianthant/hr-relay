@@ -60,12 +60,12 @@
 .log-decision-body { padding: 16px 18px; font-size: 12px; line-height: 20px; background: var(--ui-table); }
 .log-decision-body > p { margin: 0; }
 .log-decision-body strong { font-weight: 500; }
-.log-attempted { margin-top: 6px !important; color: var(--ui-secondary); }
+.log-attempted { margin: 0 !important; color: var(--ui-secondary); }
 .log-attempted strong { color: var(--ui-primary); }
-.log-last-completed { display: flex; align-items: center; gap: 6px; margin-top: 10px !important; color: var(--ui-muted); font-size: 12px; }
+.log-last-completed { display: flex; align-items: center; gap: 6px; margin: 0 !important; color: var(--ui-muted); font-size: 12px; }
 .log-last-completed svg { color: var(--ui-positive); }
 .log-caution { display: block; width: fit-content; max-width: calc(100% - 18px); margin: 12px 0 0 18px !important; padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--ui-warning) 30%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--ui-warning) 8%, var(--ui-panel)); color: var(--ui-warning); }
-.log-failed-field { display: flex; align-items: center; gap: 12px; padding: 9px 11px; margin-top: 12px; border: 1px solid var(--ui-stroke); border-radius: 5px; background: var(--ui-canvas); font-size: 12px; }
+.log-failed-field { display: flex; align-items: center; gap: 12px; padding: 9px 11px; margin: 0; border: 1px solid var(--ui-stroke); border-radius: 6px; background: var(--ui-canvas); font-size: 12px; }
 .log-failed-field > span:first-child { color: var(--ui-secondary); }
 .log-failed-field > span:last-child { margin-left: auto; color: var(--ui-danger); }
 .log-capture-unavailable { display: flex; align-items: center; gap: 9px; padding: 12px; margin-top: 14px; border: 1px dashed var(--ui-stroke); border-radius: 6px; font-size: 12px; color: var(--ui-muted); }

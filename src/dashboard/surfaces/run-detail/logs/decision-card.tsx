@@ -22,8 +22,8 @@ export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", c
     <span>Answered: <span className="font-medium text-ui-primary">{answered.choice}</span> · <span className="tabular-nums">{answered.time}</span> · by {answered.by}</span>
   </p>;
   const actions = !preview && <div className="flex flex-wrap gap-2">
-    <Button type="submit" variant="primary" disabled={confirmDisabled}>{confirmLabel}</Button>
-    {onCancel && <Button type="button" onClick={onCancel}>Cancel run</Button>}
+    <Button type="submit" variant="primary" className="rounded-[8px]" disabled={confirmDisabled}>{confirmLabel}</Button>
+    {onCancel && <Button type="button" className="rounded-[8px]" onClick={onCancel}>Cancel run</Button>}
   </div>;
   const submit = (event: FormEvent) => { event.preventDefault(); if (!preview && !confirmDisabled) onConfirm?.(); };
   if (inline) return <form aria-label={title} onSubmit={submit} className="flex flex-col gap-3">
