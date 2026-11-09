@@ -513,6 +513,12 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "assistant_messages", prepare: db => { db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Chat" }, NOW); }, mutate: db => {
       assert.equal(db.authority.assistantHistory.apply({ operation: "local", conversationId: ASSISTANT_CHAT_ID, expectedRevision: 1, messageId: randomUUID(), text: "Assistant verification completed." }, NOW).state, "saved");
     } },
+    { table: "assistant_attachments", prepare: db => {
+      assert.equal(db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Attachment accounting" }, NOW).state, "saved");
+    }, mutate: db => {
+      db.authority.assistantHistory.stage({ id: randomUUID(), conversationId: ASSISTANT_CHAT_ID, mediaType: "text/plain", name: "accounting.txt",
+        bytes: new TextEncoder().encode("Synthetic attachment accounting"), now: NOW });
+    } },
     { table: "runs", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
     {
       table: "run_failures",

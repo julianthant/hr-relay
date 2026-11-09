@@ -242,8 +242,41 @@ it('refuses an old selected-run revision before reading out the newer run', asyn
     });
     assert.deepEqual(await send(clientDoor(client), { message: 'Explain this run', subjectRef }),
       { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
+    assert.deepEqual(outputs, [], 'an already-stale selection never discloses the newer row to a tool or provider');
+    assert.equal(turns, 0);
+  });
+});
+
+it('refuses a selected-run revision changed after the provider POST before reading the newer run', async () => {
+  await withServedAssistant(async fixture => {
+    const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
+    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
+    const outputs: unknown[] = [];
+    let turns = 0;
+    transport.setResponse(init => {
+      if (typeof init.body !== 'string') throw Error('synthetic request body required');
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), outbound = JSON.stringify(request);
+      const last = request.input.at(-1);
+      if (last !== undefined && 'type' in last && last.type === 'function_call_output') outputs.push(JSON.parse(last.output));
+      const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token);
+      turns++;
+      const output = turns === 1 ? [{ type: 'function_call', namespace: 'relay', name: 'read_run', call_id: 'read_run', arguments: JSON.stringify({ run: token }), status: 'completed' }]
+        : [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'The run is cancelled.' }] }];
+      const sse = completedResponseStream(output, request.model, `resp_${String(turns)}`);
+      if (turns !== 1) return new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } });
+      return new Response(new ReadableStream<Uint8Array>({ async start(controller) {
+        assert.equal(turns, 1, 'the selected label was issued and the first provider POST began before the revision changed');
+        const cancelled = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'queue-row',
+          family: 'run', type: 'cancel', target: { runId: run.envelope.runId, expectedVersion: run.version } });
+        assert.equal(cancelled.state, 'applied');
+        const current = context.database.authority.runs.get(run.envelope.runId); assert.ok(current && current.version !== run.version);
+        controller.enqueue(new TextEncoder().encode(sse)); controller.close();
+      } }), { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    assert.deepEqual(await send(clientDoor(client), { message: 'Explain this run', subjectRef }),
+      { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
     assert.deepEqual(outputs, [{ error: 'ASSISTANT_READ_STALE', text: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }]);
-    assert.equal(turns, 2);
+    assert.equal(turns, 2, 'the tool refuses the stale pin and the loop preserves that refusal');
   });
 });
 
@@ -283,11 +316,11 @@ it('serves preference CAS and replay', async () => {
 
 function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySnapshot>[0], before: ReturnType<typeof faultAuthoritySnapshot>,
   reason: "canonical-completion-required" | "action-decision") {
-  assertHttpFaultOnly(owner, before, 2);
+  assertHttpFaultOnly(owner, before, 3);
   const added = owner.database.authority.timelineEvents.page({ limit: 500 }).slice(before.timeline.length);
-  const [proposal, http] = added; assert.ok(proposal && http);
-  assert.ok(proposal.cursor < http.cursor);
-  assert.notEqual(proposal.eventId, http.eventId);
+  const [proposal, cause, http] = added; assert.ok(proposal && cause && http);
+  assert.ok(proposal.cursor < cause.cursor && cause.cursor < http.cursor);
+  assert.equal(new Set(added.map(record => record.eventId)).size, 3);
   const events = added.map(record => {
     assert.deepEqual(record.scope, { kind: "transport", connectionId: "local" });
     assert.equal(record.payload.kind, "debug");
@@ -297,9 +330,18 @@ function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySn
     z.uuid().parse(event.correlationId);
     return event;
   });
-  assert.notEqual(events[0].correlationId, events[1].correlationId);
-  assert.deepEqual(events.map(event => ({ ...event, correlationId: "generated" })), [
+  assert.equal(events[0].correlationId, events[1].correlationId);
+  assert.notEqual(events[0].correlationId, events[2].correlationId);
+  const stack = events[1].stack; assert.ok(typeof stack === "string");
+  const [name, ...frames] = stack.split("\n"); assert.equal(name, "Error"); assert.ok(frames.length <= 40);
+  for (const frame of frames) {
+    assert.match(frame, /^ {4}at (?:src|scripts|node_modules|assets)\/[A-Za-z0-9_./-]+\.(?:[cm]?[jt]sx?):\d+:\d+$/u);
+    assert.equal(frame.includes(".."), false);
+  }
+  assert.equal(JSON.stringify(events).includes("assistant-action-not-current"), false);
+  assert.deepEqual(events.map(event => ({ ...event, correlationId: "generated", ...(event.stack === undefined ? {} : { stack: "safe-frames" }) })), [
     { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason, code: "ASSISTANT_PROPOSAL_REFUSED" },
+    { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason: "cause-unavailable", code: "INTERNAL_FAILURE", message: "Error", stack: "safe-frames" },
     { category: "http", phase: "failed", correlationId: "generated", area: "request", reason: "operation-refused", code: "ASSISTANT_PROPOSAL_REFUSED",
       method: "POST", route: reason === "canonical-completion-required" ? "/api/v1/assistant/respond" : "/api/v1/assistant/action", status: 200 },
   ]);
