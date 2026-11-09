@@ -11,6 +11,7 @@ import { choiceOptions, decisionAnswerValid, LOG_DECISION_STATUS, recommendedOpt
 import { LogScreenshots } from "./log-screenshots.js";
 import { PickTable } from "./pick-table.js";
 import "./log-presentation.css";
+import "../../shared/codex-text.css";
 
 export type DecisionAnswerHandler = (option: DecisionOptionWire, answer: LogDecisionAnswer) => void;
 

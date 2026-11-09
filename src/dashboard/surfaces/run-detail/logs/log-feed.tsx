@@ -143,14 +143,14 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
       {trailingContent}
       <div ref={end} />
     </div>
-    <footer className={cn("flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2", embedded && "sticky bottom-0 mt-auto")}>
-      <SearchInput className="w-44" aria-label="Search logs" placeholder="Search logs…" value={query} onChange={event => { setQuery(event.target.value); setCopyState("idle"); }} onClear={() => setQuery("")} />
-      <span className="text-caption tabular-nums text-ui-muted" role="status">{count} {query.trim() ? "matching " : ""}{count === 1 ? "action" : "actions"}</span>
+    <footer className={cn("flex shrink-0 items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2", embedded && "sticky bottom-0 mt-auto")}>
+      <SearchInput className="w-44 min-w-0 shrink" aria-label="Search logs" placeholder="Search logs…" value={query} onChange={event => { setQuery(event.target.value); setCopyState("idle"); }} onClear={() => setQuery("")} />
+      <span className="shrink-0 whitespace-nowrap text-caption tabular-nums text-ui-muted" role="status">{count} {query.trim() ? "matching " : ""}{count === 1 ? "action" : "actions"}</span>
       {footerContent}
-      <span className="ml-auto inline-flex items-center gap-1">
+      <span className="ml-auto inline-flex shrink-0 items-center gap-1">
         <span className="mr-2 text-caption text-ui-muted" role="status">{copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy unavailable" : ""}</span>
-        <IconButton label="Copy logs" icon={copyState === "copied" ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />} onClick={() => void copy()} disabled={!count} />
-        <IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-3.5" />} onClick={() => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); jumpFrame.current = undefined; if (end.current) end.current.style.height = "0px"; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); }} disabled={!count} />
+        <IconButton label="Copy logs" icon={copyState === "copied" ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />} onClick={() => void copy()} disabled={!count} />
+        <IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-4" />} onClick={() => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); jumpFrame.current = undefined; if (end.current) end.current.style.height = "0px"; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); }} disabled={!count} />
       </span>
     </footer>
   </div>;

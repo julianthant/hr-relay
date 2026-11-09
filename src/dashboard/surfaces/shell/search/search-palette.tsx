@@ -13,7 +13,7 @@ const TONE_ICON: Record<keyof typeof TONE_CLASS, LucideIcon> = { danger: CircleA
 const ACTION_ICON: Record<PaletteAction, LucideIcon> = { start: Play, spreadsheets: Table2, settings: Settings };
 
 function RowIcon({ row }: { row: PaletteRow }) {
-  if (row.kind === "run") { const Icon = TONE_ICON[row.tone]; return <Icon aria-hidden className={TONE_CLASS[row.tone]} />; }
+  if (row.kind === "run") { const Icon = TONE_ICON[row.tone]; return <Icon aria-hidden className={cn(TONE_CLASS[row.tone], row.tone === "info" && "animate-spin motion-reduce:animate-none")} />; }
   if (row.kind === "action") { const Icon = ACTION_ICON[row.id]; return <Icon aria-hidden />; }
   return row.kind === "workflow" ? <Workflow aria-hidden /> : <FileSpreadsheet aria-hidden />;
 }

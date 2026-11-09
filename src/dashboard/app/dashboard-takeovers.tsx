@@ -1,4 +1,5 @@
 import type { SurfaceSource, WorkflowSourcePolicy } from "./workflow-sources.js";
+import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
 import {
@@ -40,7 +41,7 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
  const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} source={activitySource ?? "served"} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
- : dataSection === "explorer" ? <WorkflowExplorer catalog={workflowCatalog} client={client} /> : undefined;
+ : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <SettingsPage
               onOpenRun={onOpenRun}
