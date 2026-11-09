@@ -5,7 +5,7 @@ import { BodySection, Button, ButtonLink, FormGroup, ResultRow, Skeleton, dsIcon
 import { LoadingRegion, SkeletonText } from "../../shared/loading/loading.js";
 import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatGptAccountPort } from "./chatgpt-account-model.js";
 
-export function ChatGptAccountSettings({ port: override, title = "ChatGPT account" }: { port?: ChatGptAccountPort; title?: string }) {
+export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccountPort }) {
   const contextPort = useContext(ChatGptAccountContext);
   const port = override ?? contextPort;
   const account = useChatGptAccount(port);
@@ -67,10 +67,10 @@ export function ChatGptAccountSettings({ port: override, title = "ChatGPT accoun
     : signingIn ? "Waiting for you to finish signing in in your browser"
       : signInExpired ? "Your sign-in attempt expired. Sign in to try again."
         : displayed.state === "expired" ? "Your ChatGPT session expired. Reconnect to continue." : "Not connected. Connect your ChatGPT account to Relay.";
-  return <BodySection title={title}>
+  return <BodySection title="ChatGPT account">
       {account.state === "unavailable" && <Notice sticky tone="warning" title="ChatGPT account unavailable" description={account.message} />}
       {error !== undefined && <Notice tone="danger" title="ChatGPT connection failed" description={error} />}
-    <FormGroup label={title}><div ref={region} data-settings-path="chatgpt.account" onFocusCapture={event => { if (event.target instanceof HTMLElement) actionFocus.current = event.target; }}>
+    <FormGroup label="ChatGPT account"><div ref={region} data-settings-path="chatgpt.account" onFocusCapture={event => { if (event.target instanceof HTMLElement) actionFocus.current = event.target; }}>
       {account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
         : <ResultRow controlWidth="wide" label={label} description={description}
           value={<div className="flex flex-wrap items-center justify-end gap-2">

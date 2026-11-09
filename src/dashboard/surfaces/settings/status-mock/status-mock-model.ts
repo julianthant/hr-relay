@@ -1,7 +1,5 @@
-import { createPreviewChatGptAccountPort } from "../general/chatgpt-account-model.js";
-
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-a", "run-b", "toasts", "general-a", "general-a-problem", "general-a-chatgpt-limit", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-a", "run-b", "toasts", "toasts-storage", "toasts-restored", "general-a", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 export function statusMock(): StatusMockId | undefined {
@@ -10,12 +8,22 @@ export function statusMock(): StatusMockId | undefined {
   return STATUS_MOCK_IDS.find(id => id === value);
 }
 
-export const STATUS_MOCK_TOASTS = [
-  { tone: "warning", title: "UCPath is down for maintenance", description: "Runs that use UCPath wait until it is back." },
-  { tone: "warning", title: "ChatGPT is disconnected", description: "Reconnect it in Settings > General." },
-  { tone: "danger", title: "Run 0412 could not be saved", description: "See Settings > General." },
-  { tone: "info", title: "Restored a damaged file", description: "Relay used the backup from 12 min ago." },
-] as const;
+/** Three toasts per frame (the viewport stacks three). Each sticky one is for what automation cannot fix; the restore notice only says what was fixed and dismisses itself. */
+export const STATUS_MOCK_TOASTS = {
+  toasts: [
+    { tone: "warning", title: "UCPath is down for maintenance", description: "Runs that use UCPath wait until it is back." },
+    { tone: "warning", title: "ChatGPT is disconnected", description: "Reconnect it in Settings > General." },
+    { tone: "danger", title: "Relay is missing files it needs", description: "Download Relay again." },
+  ],
+  "toasts-storage": [
+    { tone: "danger", title: "Your disk is full", description: "Free up space on this computer; Relay cannot save." },
+    { tone: "warning", title: "Relay is open somewhere else", description: "Close the other Relay on this profile." },
+    { tone: "warning", title: "Your saved data is newer than this Relay", description: "Update Relay." },
+  ],
+  "toasts-restored": [
+    { tone: "info", title: "Restored a damaged file from the 6:30 PM backup", description: "Check UCPath for anything done after that." },
+  ],
+} as const;
 
 export const STATUS_MOCK_BLOCKERS = [
   { id: "roster", title: "Emergency Contact needs an OCR roster", note: "Relay matches each scan against it.", action: "Import roster" },
@@ -51,9 +59,3 @@ export const STATUS_MOCK_ANALYTICS = {
     receipts: "26 saved in UCPath · 9 saved in Kuali",
   },
 } as const;
-
-/** A connected account, so the ChatGPT section and the Status row agree. */
-export const STATUS_MOCK_ACCOUNT_PORT = (() => { const port = createPreviewChatGptAccountPort(); void port.signIn({ usePlan: true }); return port; })();
-
-/** The same account with its plan's usage limit reached. */
-export const STATUS_MOCK_LIMIT_PORT = { ...STATUS_MOCK_ACCOUNT_PORT, getSnapshot: () => ({ state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: "limit-reached" }) } as typeof STATUS_MOCK_ACCOUNT_PORT;

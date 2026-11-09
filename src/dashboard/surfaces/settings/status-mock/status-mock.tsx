@@ -1,6 +1,7 @@
-import { Check, LoaderCircle } from "lucide-react";
-import { useEffect } from "react";
-import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, DsBodyScope, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, useToasts } from "../../../ds/ui.js";
+import { Check, ExternalLink, LoaderCircle } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
+import { Banner, BodySection, Button, ButtonLink, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, FormGroup, MetaLine, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
 import { ACTIVITY_DATE_PRESETS } from "../../activity/activity-model.js";
@@ -11,30 +12,37 @@ import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_FIRST_RUN, STA
 const noop = () => undefined;
 
 
+/** One field row: title and description on the left, its value or button on the right, vertically centred. */
+function MockRow({ label, description, value }: { label: ReactNode; description?: ReactNode; value: ReactNode }) {
+  return <div className="flex items-center justify-between gap-4 border-b border-ui-stroke px-4 py-3 last:border-b-0">
+    <div className="min-w-0"><div className="text-body font-medium">{label}</div>{description && <div className="text-caption text-ui-muted">{description}</div>}</div>
+    <div className="shrink-0 text-body">{value}</div>
+  </div>;
+}
+const MockCard = ({ children }: { children: ReactNode }) => <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">{children}</div>;
+
 /** Run dialog frames: the reason a workflow cannot start, with its fix next to it. */
 function RunDialogMock({ variant }: { variant: "a" | "b" }) {
   const confirm = variant === "b";
   return <Dialog open onOpenChange={noop}>
     <DialogContent size="md" title="Start Emergency Contact" description={confirm ? "Confirm the run." : "Choose the scans to read."}>
       <DialogBody>
-        {confirm ? <DsBodyScope className="flex flex-col gap-[var(--ds-space-cozy)]">
-          <FormGroup label="Run summary">
-            <ResultRow label="Workflow" value="Emergency Contact" />
-            <ResultRow label="Scan" value="Scan_0412.pdf" />
-            <ResultRow label="People in scan" value="12" />
-            <ResultRow label="Dry run" value="On" />
-          </FormGroup>
-          <BodySection title="Before you start"><FormGroup label="Before you start">
-            {STATUS_MOCK_BLOCKERS.map(blocker => <ResultRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}
-          </FormGroup></BodySection>
-        </DsBodyScope> : <DsBodyScope className="flex flex-col gap-[var(--ds-space-cozy)]">
+        {confirm ? <div className="flex flex-col gap-4">
+          <MockCard>
+            <MockRow label="Workflow" value="Emergency Contact" />
+            <MockRow label="Scan" value="Scan_0412.pdf" />
+            <MockRow label="People in scan" value="12" />
+            <MockRow label="Dry run" value="On" />
+          </MockCard>
+          <div className="flex flex-col gap-2"><h3 className="m-0 text-section">Before you start</h3><MockCard>
+            {STATUS_MOCK_BLOCKERS.map(blocker => <MockRow key={blocker.id} label={blocker.title} description={blocker.note} value={<Button variant="secondary">{blocker.action}</Button>} />)}
+          </MockCard></div>
+        </div> : <div className="flex flex-col gap-4">
           <Banner tone="warning" title={STATUS_MOCK_BLOCKERS[0].title} action={<Button variant="secondary">{STATUS_MOCK_BLOCKERS[0].action}</Button>}>
             Import the roster, then choose the scans.
           </Banner>
-          <FormGroup label="Scan">
-            <ResultRow label="Scan PDFs" description="Scan_0412.pdf" value={<Button variant="secondary">Choose files</Button>} />
-          </FormGroup>
-        </DsBodyScope>}
+          <MockCard><MockRow label="Scan PDFs" description="Scan_0412.pdf" value={<Button variant="secondary">Choose files</Button>} /></MockCard>
+        </div>}
       </DialogBody>
       <DialogFooter meta={<MetaLine tone="faint" items={confirm ? ["1 run", "Emergency Contact", "2 to fix"] : ["1 run", "Emergency Contact", "Import the roster first"]} />}>
         {confirm && <Button variant="ghost">Back</Button>}
@@ -46,22 +54,26 @@ function RunDialogMock({ variant }: { variant: "a" | "b" }) {
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */
-function ToastsMock() {
+function ToastsMock({ set }: { set: keyof typeof STATUS_MOCK_TOASTS }) {
   const { toast, dismiss } = useToasts();
   useEffect(() => {
     // After first paint, so the app's own mount-time notices cannot clear these.
     const ids: string[] = [];
-    const timer = window.setTimeout(() => { ids.push(...STATUS_MOCK_TOASTS.map(item => toast({ ...item, sticky: true }))); }, 600);
+    const timer = window.setTimeout(() => { ids.push(...STATUS_MOCK_TOASTS[set].map(item => toast({ ...item, sticky: true }))); }, 600);
     return () => { window.clearTimeout(timer); ids.forEach(dismiss); };
-  }, [toast, dismiss]);
+  }, [toast, dismiss, set]);
   return null;
 }
 
-/** General's Status section: two rows that only show status, checked automatically. No buttons; a storage problem is the sticky toast. */
-export function StatusMockStatusBlock({ problem, limit }: { problem: boolean; limit: boolean }) {
-  return <BodySection title="Status"><FormGroup label="Status">
-    <ResultRow label="Storage" description={problem ? "Needs attention · run 0412 could not be saved · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago"} value={<StatusDot status={problem ? "failed" : "verifiedDone"} />} />
-    <ResultRow label="ChatGPT" description={limit ? "Usage limit reached · resets 9:40 PM" : "Connected as Jordan Lee · checked 2 min ago"} value={<StatusDot status={limit ? "parked" : "verifiedDone"} />} />
+/** General's ChatGPT section carries its own state, checked automatically. */
+export function StatusMockChatGpt({ state }: { state: "working" | "limit" | "disconnected" }) {
+  const dot = state === "working" ? "verifiedDone" : state === "limit" ? "parked" : "failed";
+  const head = (label: string) => <span className="inline-flex items-center gap-2"><StatusDot status={dot} />{label}</span>;
+  return <BodySection title="ChatGPT"><FormGroup label="ChatGPT">
+    {state === "disconnected"
+      ? <ResultRow label={head("Disconnected")} description="Connect your ChatGPT account to Relay." value={<Button variant="primary">Connect ChatGPT</Button>} />
+      : <ResultRow label={head("Jordan Lee · jordan.lee@example.com")} description={state === "limit" ? "Usage limit reached · resets 9:40 PM" : "Working · checked 2 min ago"}
+        value={<span className="inline-flex items-center gap-2"><ButtonLink variant={state === "limit" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink><Button variant="ghost">Disconnect</Button></span>} />}
   </FormGroup></BodySection>;
 }
 
@@ -116,7 +128,7 @@ function SignupCheckMock({ variant }: { variant: "a" | "b" }) {
 export function StatusMockHost() {
   const id: StatusMockId | undefined = statusMock();
   if (id === "run-a" || id === "run-b") return <RunDialogMock variant={id === "run-a" ? "a" : "b"} />;
-  if (id === "toasts") return <ToastsMock />;
+  if (id === "toasts" || id === "toasts-storage" || id === "toasts-restored") return <ToastsMock set={id} />;
   if (id === "signup-a" || id === "signup-b") return <div className="fixed inset-0 z-50 bg-[color:var(--ds-surface-page)]"><SignupCheckMock variant={id === "signup-a" ? "a" : "b"} /></div>;
   return null;
 }

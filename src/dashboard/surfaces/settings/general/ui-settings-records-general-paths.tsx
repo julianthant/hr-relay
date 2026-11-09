@@ -12,8 +12,8 @@ import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { settingNote,settingPlaceholderCopy,settingTitle } from "../settings-presentation.js";
-import { StatusMockStatusBlock } from "../status-mock/status-mock.js";
-import { STATUS_MOCK_ACCOUNT_PORT, STATUS_MOCK_LIMIT_PORT, statusMock } from "../status-mock/status-mock-model.js";
+import { StatusMockChatGpt } from "../status-mock/status-mock.js";
+import { statusMock } from "../status-mock/status-mock-model.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { HubBrowserWindowSettings } from "./hub-preferences.js";
@@ -110,8 +110,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance, deleteAc
   const mock = statusMock();
   return <section className="settings-compact-page">
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
-    {sectionId === "general" && <ChatGptAccountSettings port={mock?.startsWith("general") ? mock.endsWith("limit") ? STATUS_MOCK_LIMIT_PORT : STATUS_MOCK_ACCOUNT_PORT : undefined} title={mock?.startsWith("general") ? "ChatGPT" : undefined} />}
-    {sectionId === "general" && mock !== undefined && mock.startsWith("general") && <StatusMockStatusBlock problem={mock.endsWith("problem")} limit={mock.endsWith("limit")} />}
+    {sectionId === "general" && (mock?.startsWith("general") ? <StatusMockChatGpt state={mock.endsWith("limit") ? "limit" : mock.endsWith("disconnected") ? "disconnected" : "working"} /> : <ChatGptAccountSettings />)}
     {sectionId === "general" && appearance}
     {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />

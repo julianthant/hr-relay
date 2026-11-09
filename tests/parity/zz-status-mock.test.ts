@@ -14,7 +14,7 @@ const HEIGHT = 720;
 const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
-  "general-a": "general", "general-a-problem": "general", "general-a-chatgpt-limit": "general",
+  "general-a": "general", "general-a-chatgpt-limit": "general", "general-a-chatgpt-disconnected": "general",
   "analytics-a": "activity", "analytics-b": "activity",
 };
 
@@ -41,13 +41,14 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     // A modal dialog blocks pointer clicks, so close the assistant panel through the DOM.
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
-    if (id === "toasts") await expect(page.getByText("UCPath is down for maintenance")).toBeVisible();
+    const firstToast = { toasts: "UCPath is down for maintenance", "toasts-storage": "Your disk is full", "toasts-restored": "Restored a damaged file from the 6:30 PM backup" }[id as string];
+    if (firstToast) await expect(page.getByText(firstToast)).toBeVisible();
     if (id.startsWith("run")) await expect(page.getByRole("dialog")).toBeVisible();
-    if (settings === "general") await expect(page.getByText(id.endsWith("problem") ? "Needs attention · run 0412" : id.endsWith("limit") ? "Usage limit reached" : "Saved on this computer").first()).toBeVisible();
+    if (settings === "general") await expect(page.getByText(id.endsWith("limit") ? "Usage limit reached" : id.endsWith("disconnected") ? "Disconnected" : "Working · checked 2 min ago").first()).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
     // Toasts stack collapsed; hover expands them so all three show.
-    if (id === "toasts") { await page.getByRole("region", { name: "Notifications" }).getByText("Run 0412 could not be saved").hover(); await page.waitForTimeout(600); }
+    if (firstToast) { await page.getByRole("region", { name: "Notifications" }).getByText(firstToast).hover(); await page.waitForTimeout(600); }
     await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}.png`) });
     // Settings pages scroll inside the window; a second full-window frame shows what sits below the fold.
     const scroller = page.locator("#dashboard-settings-content");
