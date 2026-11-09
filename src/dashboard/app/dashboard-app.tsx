@@ -931,8 +931,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   /** Settings navigation creates history so Back returns to the previous view. */
   const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
   const openSettings = useCallback((section = ""): void => {
-    setRoute({
-      ...route,
+    setRoute(current => ({
+      ...current,
       intake: undefined,
       archive: undefined,
       archiveView: undefined,
@@ -943,8 +943,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       catalog: undefined,
       catalogView: undefined,
       settings: section,
-    });
-  }, [route, setRoute]);
+    }));
+  }, [setRoute]);
 
   const renderQueueBody = useCallback((body: ReactNode) => (
     <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
@@ -1115,6 +1115,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     openNotification(destination, opened, refused, workflowComposition.inbox);
   }, [openNotification, workflowComposition.inbox]);
 
+  const onSearchAction = useCallback((action: "start" | "spreadsheets" | "settings") => {
+    if (action === "start") openStart(); else openSettings(action === "spreadsheets" ? "spreadsheets" : "");
+  }, [openStart, openSettings]);
   const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
     if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
     openNotification(result.destination, opened, refused, workflowComposition.search);
@@ -1148,7 +1151,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} reads={notificationReads} setReads={setNotificationReads} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} reads={notificationReads} setReads={setNotificationReads} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}

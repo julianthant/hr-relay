@@ -27,10 +27,10 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, workfl
 }) {
   const [filter, setFilter] = useState<PaletteFilter>("all");
   const sections = useMemo(() => paletteSections({ query, filter, runs, workflows, sheets }), [query, filter, runs, workflows, sheets]);
-  const first = sections[0]?.rows[0];
-  const [value, setValue] = useState("");
-  useEffect(() => { setValue(first ? paletteRowValue(first) : ""); }, [first, open]);
-  useEffect(() => { if (!open) setFilter("all"); }, [open]);
+  const [picked, setPicked] = useState("");
+  const values = sections.flatMap(section => section.rows.map(paletteRowValue));
+  const value = values.includes(picked) ? picked : values[0] ?? "";
+  useEffect(() => { if (!open) { setFilter("all"); setPicked(""); } }, [open]);
   const choose = (row: PaletteRow) => {
     if (row.kind === "run") onRun(row.result);
     else { onOpenChange(false); if (row.kind === "action") onAction(row.id); else if (row.kind === "workflow") onWorkflow(row.id); else onAction("spreadsheets"); }
@@ -40,7 +40,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, workfl
       <DialogPrimitive.Overlay className={cn("search-palette-scrim", dsLayer.modal)} />
       <DialogPrimitive.Content aria-describedby={undefined} className={cn("search-palette ds-menu-surface font-ui", dsLayer.modal)} onCloseAutoFocus={onCloseAutoFocus}>
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
-        <Command shouldFilter={false} loop value={value} onValueChange={setValue} label="Search Relay" className="flex min-h-0 flex-1 flex-col">
+        <Command shouldFilter={false} loop value={value} onValueChange={setPicked} label="Search Relay" className="flex min-h-0 flex-1 flex-col">
           <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
           <Command.List label="Results" className="search-palette-list">
             {sections.length === 0 && <p role="status" className="search-palette-empty">No matches</p>}
