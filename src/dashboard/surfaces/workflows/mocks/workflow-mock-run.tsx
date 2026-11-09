@@ -106,10 +106,10 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {typedEntries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{typedEntries.map((entry, number) => <li key={number} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{number + 1}</span><span className="truncate">{entry}</span></li>)}</ul>}
           </>)}
           {pdf && <>
-            <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
             {workflowId === "onbase" && <RunList label="Documents setup">
               <RunListRow title="Document type" description="How OnBase files the imported pages."><div className="w-[250px]"><ChoicePicker hideLabel label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /></div></RunListRow>
             </RunList>}
+            <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
             {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
           {workflowId === "emergency-contact" && mock === "run-a" && <StatusMockReadiness frame="run-a" />}
