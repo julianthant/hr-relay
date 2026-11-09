@@ -13,7 +13,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("serves the read-only storage doctor on demand (2i-D)", async () => {
     const h = await harness();
     const before = FrontendBootstrapWireSchema.parse(await (await h.app.request("/api/v1/bootstrap")).json());
-    assert.equal(before.storage.backupCheckedAt, null);
+    assert.deepEqual(before.storage, { authority: "healthy" });
     const response = await h.app.request("/api/v1/storage/doctor");
     assert.equal(response.status, 200);
     const report = StorageDoctorWireSchema.parse(await response.json());
@@ -41,10 +41,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const boot = FrontendBootstrapWireSchema.parse(await (await h.app.request("/api/v1/bootstrap")).json());
     const storage = boot.storage;
-    assert.equal(storage.lastBackupAt, null);
-    assert.equal(storage.backupCheckedAt, report.checkedAt);
     assert.equal(storage.authority, "healthy");
-    assert.equal(storage.backup, "missing");
     const sections = boot.settingsSections as { id: string; label: string }[];
 
     assert.deepEqual(sections, [

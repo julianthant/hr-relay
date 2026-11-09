@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { afterEach, describe, it } from "vitest";
-import { buildStorageDoctor, createStorageBackupObservation, projectStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
+import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 
 
 
@@ -73,30 +73,14 @@ afterEach(_afterEachFixture0);
 describe("read-only upgrade phase reporting", () => {
 afterEach(_afterEachFixture0);
 
-  it("publishes the initial health runner's existing report and invalidates aborted checks", async () => {
+  it("refuses an aborted health check before inspection", async () => {
     const f = await fixture();
-    const observation = createStorageBackupObservation();
-    let reports = 0;
-    const runner = new AuthorityHealthPreflightRunner(f.admission, f.options, systemClock, f.credentialStore, {
-      observed: report => {
-        reports++;
-        observation.observe(projectStorageDoctor(report, { state: "never-run", reason: "test has no backup service" }));
-      },
-      failed: () => observation.invalidate(),
-    });
+    const runner = new AuthorityHealthPreflightRunner(f.admission, f.options, systemClock, f.credentialStore);
     const controller = new AbortController();
-    const context = { signal: controller.signal, timeoutMs: 10_000, deadlineMonotonicMs: 10_000, redaction: "presence-only" as const };
-    await runner.run(context);
-    const summary = observation.read(f.database.getMeta().authorityGeneration);
-    assert.equal(reports, 1);
-    assert.equal(summary.backup, "missing");
-    assert.equal(summary.lastBackupAt, null);
-    assert.notEqual(summary.backupCheckedAt, null);
     controller.abort();
-    await assert.rejects(runner.run(context), /aborted before inspection/u);
-    assert.equal(reports, 1);
-    assert.equal(observation.read(f.database.getMeta().authorityGeneration).backup, "unavailable");
-    assert.equal(observation.read(f.database.getMeta().authorityGeneration).backupCheckedAt, summary.backupCheckedAt);
+    await assert.rejects(runner.run({
+      signal: controller.signal, timeoutMs: 10_000, deadlineMonotonicMs: 10_000, redaction: "presence-only",
+    }), /aborted before inspection/u);
   });
 
   it("projects baseline and each upgrade phase through doctor, browser wire and preflight without private journal payload", async () => {

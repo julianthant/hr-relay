@@ -24,15 +24,9 @@ export function registerStorageRoutes(app: DashboardApp, deps: StorageRouteDeps,
   });
   app.get("/api/v1/storage/doctor/latest", (c) => c.json(latest));
   app.get("/api/v1/storage/doctor", async (c) => {
-    try {
-      const report = StorageDoctorWireSchema.parse(await run());
-      deps.backupObservation?.observe(report);
-      latest = { state: "completed", report };
-      return c.json(report);
-    } catch (error) {
-      deps.backupObservation?.invalidate();
-      throw error;
-    }
+    const report = StorageDoctorWireSchema.parse(await run());
+    latest = { state: "completed", report };
+    return c.json(report);
   });
 
 }

@@ -206,7 +206,7 @@ export function createDashboardModelFixtures() {
     projectionGeneration: 1,
     actor: { id: "local-operator", label: "Local operator" },
     serverClock: { now: NOW, zone: "America/Los_Angeles" },
-    storage: { authority: "healthy", backup: "current", checkedAt: NOW, lastBackupAt: null, backupCheckedAt: null },
+    storage: { authority: "healthy" },
     workflows: [WORKFLOW_PRIMITIVE],
     systemInstances: [{ system: "ucpath", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "test URL not configured" } }],
     settingsSections: [{ id: "general", label: "General", revision: 1 }],

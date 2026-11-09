@@ -280,7 +280,7 @@ const BOOTSTRAP = {
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
   workbookReferences: [],
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
-  storage: { authority: "healthy", backup: "current", checkedAt: NOW, lastBackupAt: null, backupCheckedAt: null }, workflows: [],
+  storage: { authority: "healthy" }, workflows: [],
   systemInstances: [], settingsSections: [], featureAvailability: [],
 };
 const DAY = {

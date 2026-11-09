@@ -74,7 +74,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
   actor: { id: "local-operator", label: "Local operator" },
   workbookReferences: [],
   serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },
-  storage: { authority: "healthy", backup: "current", checkedAt: "2026-08-27T18:00:00.000Z", lastBackupAt: null, backupCheckedAt: null },
+  storage: { authority: "healthy" },
   workflows: [{
     id: "fixture-workflow",
     code: "fw",

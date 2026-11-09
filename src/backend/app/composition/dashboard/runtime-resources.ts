@@ -1,4 +1,3 @@
-import { createStorageBackupObservation, projectStorageDoctor } from "../../../runs/queries/storage.js";
 import { readFileSync } from "node:fs";
 import { join,resolve } from "node:path";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
@@ -179,8 +178,6 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     reason: "verified backups run after clean shutdown; the last three shutdown backups are retained",
   });
 
-  const backupObservation = createStorageBackupObservation();
-
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
   chatGptAccount.setDebugEvents(debugEvents);
@@ -231,10 +228,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
       authorityPath: join(stateRoot, "state.db"),
       backupDirectory,
       busyTimeoutMs: 5000,
-    }, clock, context.credentials, {
-      observed: report => backupObservation.observe(projectStorageDoctor(report, backupServiceState)),
-      failed: () => backupObservation.invalidate(),
-    }),
+    }, clock, context.credentials),
   });
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
   const preflightAuthority = createPreflightAuthority({
@@ -247,5 +241,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   });
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, backupObservation, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

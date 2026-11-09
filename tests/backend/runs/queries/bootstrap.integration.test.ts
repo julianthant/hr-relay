@@ -82,7 +82,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
     workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
-    backupSummary: () => ({ backup: "current", lastBackupAt: null, backupCheckedAt: null }),
+
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
 }
@@ -236,10 +236,8 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
 
 {
 
-type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>["backup"];
-
 /** The wire's own vocabulary, read off the schema — never retyped. */
-function armsOf(key: "authority" | "backup"): readonly string[] {
+function armsOf(key: "authority"): readonly string[] {
   const field = StorageHealthSummaryWireSchema.shape[key];
   assert.ok(field instanceof z.ZodEnum, `${key} is expected to be a closed enum`);
   return Object.values(field.enum).map(String);
@@ -247,7 +245,7 @@ function armsOf(key: "authority" | "backup"): readonly string[] {
 
 function depsOf(
   world: DashboardWorld,
-  storage: Readonly<{ authorityReachable: boolean; backup: BackupSummary }>,
+  storage: Readonly<{ authorityReachable: boolean }>,
 ): BootstrapQueryDeps {
   return {
     appVersion: "0.1.0",
@@ -263,7 +261,7 @@ function depsOf(
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
     workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
-    backupSummary: () => ({ backup: storage.backup, lastBackupAt: null, backupCheckedAt: null }),
+
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),
@@ -290,7 +288,7 @@ describe("bootstrap storage summary", () => {
   it("serves both ordinary and protected command schema identities", async () => {
     const world = await makeWorld();
     try {
-      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const deps = depsOf(world, { authorityReachable: true });
       const wire = buildBootstrap(deps);
       assert.equal(wire.settingsSchemaHash, deps.settingsSchemaHash);
       assert.equal(wire.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
@@ -306,7 +304,7 @@ describe("bootstrap storage summary", () => {
   it("projects the retained strict preflight report in registry order", async () => {
     const world = await makeWorld();
     try {
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup: "current" }));
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: true }));
       assert.deepEqual(wire.preflight, [
         {
           id: "runtime.compatibility",
@@ -366,7 +364,7 @@ describe("bootstrap storage summary", () => {
   it("projects retained preflight failures with their exact blocks and remediation", async () => {
     const world = await makeWorld();
     try {
-      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const deps = depsOf(world, { authorityReachable: true });
       const retained = deps.preflightReport();
       const failing = PreflightReportSchema.parse({
         ...retained,
@@ -403,7 +401,7 @@ describe("bootstrap storage summary", () => {
     try {
       const reached = new Set<string>();
       for (const authorityReachable of [true, false]) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable, backup: "current" }));
+        const wire = buildBootstrap(depsOf(world, { authorityReachable }));
         // Parsed again on purpose: the producer's own `.parse` is what makes
         // this a statement about the WIRE and not about a literal.
         reached.add(FrontendBootstrapWireSchema.parse(wire).storage.authority);
@@ -414,28 +412,14 @@ describe("bootstrap storage summary", () => {
     }
   });
 
-  it("emits every backup arm the wire declares", async () => {
-    const world = await makeWorld();
-    try {
-      const reached = new Set<string>();
-      for (const backup of ["current", "stale", "missing", "unavailable"] as const) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup }));
-        reached.add(FrontendBootstrapWireSchema.parse(wire).storage.backup);
-      }
-      expect([...reached].sort()).toEqual([...armsOf("backup")].sort());
-    } finally {
-      await world.dispose();
-    }
-  });
-
-  it("an unreachable authority still serves the backup indicator", async () => {
+  it("an unreachable authority stays explicitly unavailable", async () => {
     const world = await makeWorld();
     try {
 
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: false }));
       assert.deepEqual(
         wire.storage,
-        { authority: "unavailable", backup: "stale", checkedAt: AT.toISOString(), lastBackupAt: null, backupCheckedAt: null },
+        { authority: "unavailable" },
       );
     } finally {
       await world.dispose();

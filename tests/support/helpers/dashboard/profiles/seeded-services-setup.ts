@@ -159,7 +159,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => database.getMeta(),
         // The seeded adapter runs no backup lane; "missing" is its true state.
-        workbookReferences: workflows => projectWorkbookReferences(database.authority.workbooks, workflows), backupSummary: () => ({ backup: "missing", lastBackupAt: null, backupCheckedAt: null }),
+        workbookReferences: workflows => projectWorkbookReferences(database.authority.workbooks, workflows),
         preflightReport: () => healthyDashboardPreflightReport(clock),
       },
       projection,

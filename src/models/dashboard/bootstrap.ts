@@ -32,10 +32,6 @@ export const ServerClockWireSchema = z.strictObject({
 /** Store failure throws; no reduced handle can report an intermediate availability. */
 export const StorageHealthSummaryWireSchema = z.strictObject({
   authority: z.enum(["healthy", "unavailable"]),
-  backup: z.enum(["current", "stale", "missing", "unavailable"]),
-  checkedAt: IsoInstantSchema,
-  lastBackupAt: IsoInstantSchema.nullable(),
-  backupCheckedAt: IsoInstantSchema.nullable(),
 });
 
 /** Serve descriptor codes and raw category/role facts; the frontend owns presentation. */

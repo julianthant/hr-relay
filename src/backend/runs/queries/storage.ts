@@ -1,4 +1,3 @@
-import { StorageHealthSummaryWireSchema } from "../../../models/dashboard/bootstrap.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 
 import type { Clock } from "../../../rules/time/clock.js";
@@ -54,48 +53,4 @@ export function projectStorageDoctor(report: StorageDoctorReport, service: Backu
     ...(report.previousLocationBackups === undefined ? {} : { previousLocationBackups: report.previousLocationBackups }),
     service,
   });
-}
-
-type StorageHealthSummary = ReturnType<typeof StorageHealthSummaryWireSchema.parse>;
-type StorageBackupSummary = Pick<StorageHealthSummary, "backup" | "lastBackupAt" | "backupCheckedAt">;
-type VerifiedCandidate = Extract<StorageDoctorWire["restoreCandidates"][number], { state: "verified-compatible" }>;
-
-export function createStorageBackupObservation() {
-  let observation: (StorageBackupSummary & { authorityGeneration: number | undefined }) | undefined;
-  let invalidated: "failed" | "generation-changed" | "authority-unavailable" | undefined;
-  return {
-    observe(value: StorageDoctorWire): void {
-      const report = StorageDoctorWireSchema.parse(value);
-      const candidates = report.restoreCandidates.filter((candidate): candidate is VerifiedCandidate => candidate.state === "verified-compatible")
-        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)
-          || right.authorityGeneration - left.authorityGeneration
-          || left.manifestFileName.localeCompare(right.manifestFileName)
-          || left.backupFileName.localeCompare(right.backupFileName));
-      const backup = report.backup.state === "invalid" ? "unavailable" : report.backup.state;
-      observation = {
-        backup, lastBackupAt: candidates[0]?.createdAt ?? null, backupCheckedAt: report.checkedAt,
-        authorityGeneration: report.authority.state === "healthy" ? report.authority.authorityGeneration : undefined,
-      };
-      invalidated = undefined;
-    },
-    invalidate(): void { invalidated = "failed"; },
-    read(this: void, liveGeneration: number | undefined): StorageBackupSummary {
-      if (observation === undefined) return {
-        backup: "unavailable", lastBackupAt: null, backupCheckedAt: null,
-      };
-      const { authorityGeneration, ...summary } = observation;
-      if (invalidated === "failed") return {
-        ...summary, backup: "unavailable",
-      };
-      if (liveGeneration === undefined || authorityGeneration === undefined) invalidated = "authority-unavailable";
-      else if (liveGeneration !== authorityGeneration && invalidated !== "authority-unavailable") invalidated = "generation-changed";
-      if (invalidated === "authority-unavailable") return {
-        ...summary, backup: "unavailable",
-      };
-      if (invalidated === "generation-changed") return {
-        ...summary, backup: summary.backup === "current" ? "stale" : summary.backup,
-      };
-      return summary;
-    },
-  };
 }

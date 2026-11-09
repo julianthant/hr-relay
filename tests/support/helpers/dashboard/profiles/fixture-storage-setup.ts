@@ -13,9 +13,7 @@ export function createFixtureStorageSetup({ FIXTURE_BOOTSTRAP, at, uuidOf }: {
     FrontendBootstrapWireSchema.parse({
       ...FIXTURE_BOOTSTRAP,
       storage: {
-        authority: "unavailable",
-        backup: "current",
-        checkedAt: at(0), lastBackupAt: null, backupCheckedAt: null },
+        authority: "unavailable" },
     });
 
   const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({

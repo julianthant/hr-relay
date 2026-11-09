@@ -14,11 +14,6 @@ import {
 
 import type { StorageDoctorReport } from "./recovery-contracts.js";
 
-interface AuthorityHealthObserver {
-  observed(report: StorageDoctorReport): void;
-  failed(): void;
-}
-
 export class AuthorityHealthPreflightRunner implements PreflightRunner {
   readonly check = PreflightCheckIdSchema.parse("authority.health");
   readonly kind = "io" as const;
@@ -26,12 +21,10 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
   #clock: Clock;
   #admission: RuntimeAdmission;
   #credentials: CredentialStore | undefined;
-  #observer: AuthorityHealthObserver | undefined;
 
-  constructor(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore, observer?: AuthorityHealthObserver) {
+  constructor(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore) {
     this.#admission = admission;
     this.#credentials = credentials;
-    this.#observer = observer;
     this.#options = StorageDoctorOptionsSchema.parse(input);
     this.#clock = clock;
   }
@@ -42,9 +35,7 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
       if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
       report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials);
       if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
-      this.#observer?.observed(report);
     } catch (error) {
-      this.#observer?.failed();
       if (error instanceof StorageDoctorObservationChangedError) throw new PreflightObservationChangedError({ cause: error });
       throw error;
     }

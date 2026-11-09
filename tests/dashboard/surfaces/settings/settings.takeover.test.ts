@@ -23,9 +23,7 @@ function section(id: string, label: string): SettingsSection {
 
 const STORAGE = section("storage", "Storage checks");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
-  authority: "healthy",
-  backup: "current",
-  checkedAt: "2026-08-26T16:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
+  authority: "healthy" });
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient;
 
 describe("curly quotes around a section name (unit F4b finding 3)", () => {
