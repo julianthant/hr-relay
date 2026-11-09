@@ -19,7 +19,7 @@ export function useNarrow<T extends HTMLElement>() {
   return [ref, narrow] as const;
 }
 
-const cols = (narrow: boolean) => `grid items-center gap-x-4 px-5 ${narrow ? 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_28px]' : 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_64px]'}`;
+const cols = (narrow: boolean) => `grid items-center gap-x-4 ${narrow ? 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_28px]' : 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_64px]'}`;
 const LINK = 'inline-flex max-w-full items-center gap-1 hover:text-ui-primary hover:underline';
 function SourceCell({ sheet, sheets, onOpen }: { sheet: Sheet; sheets: readonly Sheet[]; onOpen: (id: string) => void }) {
   const parent = sheet.from && sheets.find(item => item.id === sheet.from!.id);
@@ -31,11 +31,11 @@ function SourceCell({ sheet, sheets, onOpen }: { sheet: Sheet; sheets: readonly 
 export function SheetRow({ sheet, sheets, narrow, actions }: { sheet: Sheet; sheets: readonly Sheet[]; narrow: boolean; actions: RowActions }) {
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
   return <li tabIndex={0} aria-label={sheet.name} onClick={() => actions.open(sheet.id)} onKeyDown={event => { if (event.key === 'Enter' && event.target === event.currentTarget) actions.open(sheet.id); }}
-    className={`${cols(narrow)} cursor-pointer border-t border-ui-stroke py-4 text-[13px] hover:bg-ui-hover`}>
+    className={`${cols(narrow)} sv2-row cursor-pointer border-t border-ui-stroke text-[13px] hover:bg-ui-hover`}>
     <div className="min-w-0">
-      <div className="truncate text-[length:var(--ds-text-body-row)] leading-[var(--ds-lh-body-row)]" title={sheet.name}>{sheet.run && sheet.name === sheet.run
+      <div className="sv2-row-title truncate" title={sheet.name}>{sheet.run && sheet.name === sheet.run
         ? <button type="button" className="max-w-full truncate bg-transparent p-0 text-left hover:underline" aria-label={`${sheet.name}, open run logs`} onClick={event => { stop(event); actions.logs(sheet); }}>{sheet.name}</button> : sheet.name}</div>
-      <div className="mt-0.5 truncate text-[length:var(--ds-text-body-description)] leading-[var(--ds-lh-body-description)] tabular-nums text-ui-muted"><Tooltip content={`Created ${stamp(sheet.createdAt)}`}><span>Updated {stamp(sheet.updatedAt)}</span></Tooltip></div>
+      <div className="sv2-row-desc truncate tabular-nums text-ui-muted"><Tooltip content={`Created ${stamp(sheet.createdAt)}`}><span>Updated {stamp(sheet.updatedAt)}</span></Tooltip></div>
     </div>
     <TagsFit sheet={sheet} />
     <div className="truncate text-ui-muted"><SourceCell sheet={sheet} sheets={sheets} onOpen={actions.open} /></div>
@@ -50,7 +50,7 @@ export function SheetTable({ title, sheets, all, narrow, actions, limit }: { tit
   return <section aria-label={title} className="mb-6">
     <h2 className="sv2-section-title">{title}</h2>
     <div className="overflow-hidden sv2-card border border-ui-stroke bg-ui-panel">
-      <div className={`${cols(narrow)} h-8 bg-ui-table text-[11px] text-ui-muted`}>{['Spreadsheet', 'Tags', 'Source', 'Version'].map(head => <div key={head}>{head}</div>)}<div /></div>
+      <div className={`${cols(narrow)} sv2-head bg-ui-table text-ui-muted`}>{['Spreadsheet', 'Tags', 'Source', 'Version'].map(head => <div key={head}>{head}</div>)}<div /></div>
       <ul aria-label={title}>{shown.map(sheet => <SheetRow key={sheet.id} sheet={sheet} sheets={all} narrow={narrow} actions={actions} />)}</ul>
     </div>
     {limit && sheets.length > limit && <V2Button look="plain" className="mt-1" onClick={() => setExpanded(current => !current)}>{expanded ? 'Show fewer' : `Show ${sheets.length - limit} more`}</V2Button>}
