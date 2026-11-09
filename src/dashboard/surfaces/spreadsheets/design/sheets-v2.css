@@ -14,3 +14,9 @@ html[data-motion=off] .sv2-height { transition: none; }
 
 /* Dialogs keep their compact size and take the dashboard's blue primary. */
 .sv2-dialog { --ds-accent: var(--ui-info); --ds-accent-hover: var(--ui-info); --ds-accent-fg: var(--ui-canvas); }
+
+/* Page hierarchy from the shared body tokens. */
+.hub-sheets-library .sv2-title { margin:0; font-size:var(--ds-text-body-page); line-height:var(--ds-lh-body-page); font-weight:400; letter-spacing:-.02em; }
+.hub-sheets-library .sv2-desc { margin:var(--ds-space-heading-description) 0 0; font-size:var(--ds-text-body-description); line-height:var(--ds-lh-body-description); color:var(--ui-muted); }
+.hub-sheets-library .sv2-section-title { margin:0 0 var(--ds-space-heading-content); font-size:var(--ds-text-body-section); line-height:var(--ds-lh-body-section); font-weight:400; color:var(--ui-primary); }
+.sv2-card { border-radius:var(--ds-radius-body-group); }

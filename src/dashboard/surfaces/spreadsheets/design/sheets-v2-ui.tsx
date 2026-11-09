@@ -16,6 +16,8 @@ export const Picker = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof B
   return <Button ref={ref} variant="outline" className={`min-w-0 justify-between ${className}`} iconAfter={<ChevronDown size={14} aria-hidden className="shrink-0 text-ui-muted" />} {...props}><span className="min-w-0 truncate">{children}</span></Button>;
 });
 
+/** The height of the shared search pill; pills and pickers beside a search match it. */
+export const CONTROL = '!h-[34px]';
 export const Grey = ({ children, className = '' }: { children: ReactNode; className?: string }) => <span className={`text-[12px] text-ui-muted ${className}`}>{children}</span>;
 // The workflow chip carries the workflow's sidebar icon (category icons where the rail has one, the workflow's own icon otherwise).
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
@@ -83,14 +85,5 @@ export function SheetMenu({ sheet, original, onAction, withDownload, label }: { 
 }
 export const DownloadIcon = ({ name }: { name: string }) => <V2Icon label={`Download ${name}`}><Download size={16} aria-hidden /></V2Icon>;
 
-/** Excel-style worksheet tabs. The sheet runs read carries a small Runs tag; a tab's menu offers Use for runs. */
-export function SheetTabs({ names, current, runs, onSelect, onUseForRuns }: { names: readonly string[]; current: string; runs: string; onSelect: (name: string) => void; onUseForRuns?: (name: string) => void }) {
-  return <div role="tablist" aria-label="Worksheets" className="mt-2 flex flex-wrap items-center gap-1.5">
-    {names.map(name => <span key={name} className="inline-flex items-center">
-      <V2Button role="tab" aria-selected={name === current} onClick={() => onSelect(name)} className={name === current ? '!bg-[var(--ds-surface-selected)] font-medium' : ''}>
-        {name}{name === runs && <span className="rounded-[4px] bg-[color-mix(in_srgb,var(--ui-info)_16%,transparent)] px-1 text-[11px] text-ui-info">Runs</span>}</V2Button>
-      {onUseForRuns && <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Menu for ${name}`} className="-ml-1 size-6 min-w-6"><ChevronDown size={12} aria-hidden /></V2Icon>} /><DropdownMenuContent align="start" className={`min-w-[160px] ${MENU}`}>
-        <DropdownMenuItem className={ROW} disabled={name === runs} onSelect={() => onUseForRuns(name)}>Use for runs</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
-    </span>)}
-  </div>;
-}
+/** The small tag on the worksheet runs read. */
+export const RunsTag = () => <span className="rounded-[4px] bg-[color-mix(in_srgb,var(--ui-info)_16%,transparent)] px-1 text-[11px] text-ui-info">Runs</span>;

@@ -34,7 +34,7 @@ export function SheetDialog({ kind, sheet, sheets, actions, onClose }: { kind: D
     <Field label="Workbook link"><Input className={field} placeholder="https://…sharepoint.com/…" value={text} onChange={event => setText(event.target.value)} /></Field></Shell>;
   if (kind === 'merge' || kind === 'mergeDelete') {
     const into = mergeOriginal(sheet, sheets)!, { added, updated } = mergePreview(), andDelete = kind === 'mergeDelete';
-    return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Merge ${sheet.name} into ${into.name}?`} detail={sheet.name} confirmLabel={andDelete ? 'Merge and delete' : 'Merge'} destructive={andDelete} onConfirm={done(() => actions.merge(into, andDelete))}
+    return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Merge ${sheet.name} into ${into.name}?`} confirmLabel={andDelete ? 'Merge and delete' : 'Merge'} destructive={andDelete} onConfirm={done(() => actions.merge(into, andDelete))}
       description={<><span className="block">Rows match on Employee ID. Nothing is removed.</span><span className="block">{added} added · {updated} updated.</span>{andDelete && <span className="block">{sheet.name} is deleted after the merge.</span>}</>} />;
   }
   if (kind === 'rollback' && confirming) return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Roll back to v${version}?`} detail={sheet.name} confirmLabel="Roll back" onConfirm={done(() => actions.rollback(version!))}
@@ -46,6 +46,6 @@ export function SheetDialog({ kind, sheet, sheets, actions, onClose }: { kind: D
         <span aria-hidden className={`size-3.5 shrink-0 rounded-full border ${version === entry.n ? 'border-ui-info bg-ui-info' : 'border-ui-stroke-control'}`} />
         <span className="w-8 tabular-nums">v{entry.n}</span><span className="w-28 shrink-0 tabular-nums text-ui-muted">{stamp(entry.at)}</span><span className="min-w-0 flex-1 truncate">{entry.note}</span>{index === 0 && <Grey>Current</Grey>}
       </button></li>)}</ul></Shell>;
-  return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Delete ${sheet.name}?`} detail={sheet.name} confirmLabel="Delete" destructive onConfirm={done(actions.remove)}
+  return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Delete ${sheet.name}?`} confirmLabel="Delete spreadsheet" destructive onConfirm={done(actions.remove)}
     description="Runs that read it keep their results. SharePoint files are unchanged." />;
 }

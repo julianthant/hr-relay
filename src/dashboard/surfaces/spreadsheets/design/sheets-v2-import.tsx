@@ -4,7 +4,7 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, Input, SegmentedChoice
 import { FIELDS, IMPORT_FILE, IMPORT_SHEETS, type FieldKey, bestSheet, guessColumn } from './sheets-v2-model.js';
 import { MappingGrid } from './sheets-v2-grid.js';
 import { Slide } from './sheets-v2-slide.js';
-import { SheetTabs, TagEditor, V2Icon, V2Button } from './sheets-v2-ui.js';
+import { TagEditor, V2Icon, V2Button } from './sheets-v2-ui.js';
 import './sheets-v2.css';
 
 const field = '!bg-[var(--ui-field)] !border-[color:var(--ui-stroke-control)]';
@@ -44,7 +44,7 @@ export function ImportDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (
       <Labeled label="Name"><Input aria-label="Name" className={field} value={name} onChange={event => setName(event.target.value)} /></Labeled>
       <Labeled label="Tags"><TagEditor tags={tags} onChange={setTags} /></Labeled>
     </div> : <MappingGrid key={sheetName} dataset={sheet.dataset} mapping={mapping} onMap={patch => setMapping(current => ({ ...current, ...patch }))} maxHeight="max-h-[260px]"
-      tabs={<SheetTabs names={IMPORT_SHEETS.map(item => item.name)} current={sheetName} runs={sheetName} onSelect={next => { setSheetName(next); setMapping(guess(next)); }} />} />}</DialogBody>
+      columnsOpen worksheets={{ names: IMPORT_SHEETS.map(item => item.name), current: sheetName, runs: sheetName, onSelect: next => { setSheetName(next); setMapping(guess(next)); } }} />}</DialogBody>
     <DialogFooter>{step === 1 ? <><V2Button onClick={onClose}>Cancel</V2Button><V2Button look="primary" disabled={!ready} onClick={() => setStep(2)}>Next</V2Button></>
       : <><V2Button look="plain" className="mr-auto" onClick={() => setStep(1)}>Back</V2Button><V2Button onClick={onClose}>Cancel</V2Button><V2Button look="primary" onClick={() => { onAdd({ name: name.trim() || IMPORT_FILE.suggested, tags, sharePoint: mode === 'local' ? null : link.trim(), sheetName, mapping }); onClose(); }}>Add to library</V2Button></>}</DialogFooter>
   </DialogContent></Dialog>;
