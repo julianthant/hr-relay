@@ -41,11 +41,17 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     // A modal dialog blocks pointer clicks, so close the assistant panel through the DOM.
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
-    const firstToast = { toasts: "UCPath is down for maintenance", "toasts-storage": "Your disk is full", "toasts-restored": "Restored a damaged file from the 6:30 PM backup" }[id as string];
+    const firstToast = { toasts: "Relay is missing files", "toasts-open": "Relay is missing files", "toasts-storage": "Your disk is full", "toasts-restored": "Restored a file from the 6:30 PM backup" }[id as string];
     if (firstToast) await expect(page.getByText(firstToast)).toBeVisible();
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+    } else if (id === "run-rerun-confirm") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
+      await page.getByRole("button", { name: "Rerun", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      for (const name of ["Continue", "Continue", "Preview plan"]) await dialog.getByRole("button", { name, exact: true }).click();
+      await expect(dialog.getByText("Review the plan")).toBeVisible();
     } else if (id === "run-rerun") {
       // Reruns happen only in the Rerun dialog: Emergency Contact in the rail, the run's Rerun button, then Continue to the Values stage.
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
@@ -70,8 +76,8 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (settings === "general") await expect(page.getByText(id.endsWith("limit") ? "Usage limit reached" : id.endsWith("disconnected") ? "Disconnected" : "Working · checked 2 min ago").first()).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
-    // Toasts stack collapsed; hover expands them so all three show.
-    if (firstToast) { await page.mouse.move(WIDTH - 130, HEIGHT - 70); await page.waitForTimeout(800); }
+    // Toasts stack collapsed at the top centre; only the "-open" frame hovers the stack.
+    if (id === "toasts-open") { await page.mouse.move(WIDTH / 2, 40); await page.waitForTimeout(800); }
     await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}.png`) });
     // The Run dialog body scrolls too; a second frame shows its lower half (picker note, blockers, facts).
     const body = page.locator(".launch-content");
@@ -101,5 +107,20 @@ test(`kit buttons ${WIDTH}`, async ({ page }) => {
   await expect(actions).toBeVisible();
   await page.mouse.move(1, 1);
   await actions.screenshot({ path: join(OUT, `kit-buttons-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});
+
+// A compact confirm dialog on the kit page: title, one grey line, the buttons.
+test(`kit compact dialog ${WIDTH}`, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Open destructive dialog", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete this run?" });
+  await expect(dialog).toBeVisible();
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(OUT, `kit-dialog-compact-${WIDTH}.png`) });
   expect(errors).toEqual([]);
 });

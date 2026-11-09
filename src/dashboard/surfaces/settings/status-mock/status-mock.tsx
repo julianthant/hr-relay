@@ -1,5 +1,6 @@
 import { Check, ExternalLink, LoaderCircle } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { cn } from "../../../lib/utils.js";
 import { BodySection, Button, ButtonLink, Checkbox, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
 import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
@@ -30,16 +31,29 @@ export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" | "run
   </section>;
 }
 
-/** The dialog's roster picker: one or more spreadsheets, looked up together. Only spreadsheets with the required columns can be chosen; the last selection is preselected. */
-export function StatusMockRosterPicker() {
-  const [chosen, setChosen] = useState<readonly string[]>(STATUS_MOCK_SPREADSHEETS.filter(sheet => sheet.used).map(sheet => sheet.value));
+/** Picked spreadsheet value -> version number. */
+export type StatusMockPicks = Readonly<Record<string, number>>;
+
+/** The dialog's spreadsheet picker: pick one or more; each picked one has a version picker on the right. A spreadsheet lacking a needed column is greyed out with the reason. */
+export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPicks; onPicks: (next: StatusMockPicks) => void }) {
   return <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0"><legend className="mb-1 p-0 text-meta font-medium text-ui-secondary">Reference spreadsheets</legend>
-    <MockCard>{STATUS_MOCK_SPREADSHEETS.map(sheet => <div key={sheet.value} className="border-b border-ui-stroke px-4 py-3 last:border-b-0">
-      <Checkbox label={sheet.label} description={sheet.description} disabled={"disabled" in sheet} checked={chosen.includes(sheet.value)}
-        onCheckedChange={value => setChosen(current => value === true ? [...current, sheet.value] : current.filter(item => item !== sheet.value))} />
-    </div>)}</MockCard>
+    <MockCard>{STATUS_MOCK_SPREADSHEETS.map(sheet => {
+      const version = picks[sheet.value];
+      return <div key={sheet.value} className={cn("flex items-center justify-between gap-4 border-b border-ui-stroke px-4 py-3 last:border-b-0", "disabled" in sheet && "opacity-50")}>
+        <Checkbox className="min-w-0" label={sheet.label} description={sheet.description} disabled={"disabled" in sheet} checked={version !== undefined}
+          onCheckedChange={value => onPicks(value === true ? { ...picks, [sheet.value]: sheet.current } : Object.fromEntries(Object.entries(picks).filter(([key]) => key !== sheet.value)))} />
+        {version !== undefined && <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[72px] !border-[color:var(--ds-border)] !bg-transparent" value={String(version)} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
+          {Array.from({ length: sheet.current }, (_, index) => sheet.current - index).map(number => <option key={number} value={number}>v{number}</option>)}
+        </Select>}
+      </div>;
+    })}</MockCard>
     <p className="m-0 text-caption text-ui-muted">Uses: {STATUS_MOCK_REQUIRED_FIELDS}</p>
   </fieldset>;
+}
+
+/** The picked spreadsheets as Confirm lists them: name left, version right. */
+export function statusMockPickedRows(picks: StatusMockPicks): readonly { label: string; value: string }[] {
+  return STATUS_MOCK_SPREADSHEETS.filter(sheet => picks[sheet.value] !== undefined).map(sheet => ({ label: sheet.label, value: `v${picks[sheet.value]}` }));
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */
@@ -51,6 +65,13 @@ function ToastsMock({ set }: { set: keyof typeof STATUS_MOCK_TOASTS }) {
     const timer = window.setTimeout(() => { ids.push(...STATUS_MOCK_TOASTS[set].map(item => toast({ ...item, sticky: true }))); }, 600);
     return () => { window.clearTimeout(timer); ids.forEach(dismiss); };
   }, [toast, dismiss, set]);
+  return null;
+}
+
+/** Hands the live toast function to the page so a browser session can fire real toasts one after another. */
+function ToastsLiveMock() {
+  const { toast } = useToasts();
+  useEffect(() => { Reflect.set(window, "relayFireToast", toast); return () => { Reflect.deleteProperty(window, "relayFireToast"); }; }, [toast]);
   return null;
 }
 
@@ -122,7 +143,8 @@ function SignupCheckMock({ variant }: { variant: "a" | "b" }) {
 /** Mounted once under the toast provider; draws the dialog, toast and sign-up frames. */
 export function StatusMockHost() {
   const id: StatusMockId | undefined = statusMock();
-  if (id === "toasts" || id === "toasts-storage" || id === "toasts-restored") return <ToastsMock set={id} />;
+  if (id === "toasts" || id === "toasts-open" || id === "toasts-storage" || id === "toasts-restored") return <ToastsMock set={id} />;
+  if (id === "toasts-live") return <ToastsLiveMock />;
   if (id === "signup-a" || id === "signup-b") return <div className="fixed inset-0 z-50 bg-[color:var(--ds-surface-page)]"><SignupCheckMock variant={id === "signup-a" ? "a" : "b"} /></div>;
   return null;
 }

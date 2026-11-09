@@ -133,7 +133,7 @@ export function KitPage() {
   return (
     <TooltipProvider delayDuration={250}>
       <ToastProvider>
-        <div className={cn("flex min-h-screen flex-col bg-[var(--ds-surface-page)]", dsFg.base)}>
+        <div className={cn("flex min-h-screen flex-col bg-[var(--ds-surface-page)] [--ds-accent:var(--ui-info)] [--ds-accent-fg:var(--ui-canvas)] [--ds-accent-hover:var(--ui-info)] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]", dsFg.base)}>
           <KitHeader />
           <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[var(--ds-space-page)] px-[var(--ds-space-section)] py-[var(--ds-space-section)]">
             <StatusSection />
@@ -1196,7 +1196,7 @@ function OverlaysSection() {
         <DialogContent
           size="sm"
           title="Delete this run?"
-          description="The tracker row and its evidence are removed. This cannot be undone."
+          description="Its tracker row and evidence are removed."
         >
           <DialogFooter>
             <Button variant="secondary" onClick={() => setDanger(false)}>
