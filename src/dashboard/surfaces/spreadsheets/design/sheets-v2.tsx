@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SearchInput, useToasts } from '../../../ds/ui.js';
+import { PageHeading, SearchInput, useToasts } from '../../../ds/ui.js';
 import { TagFilter } from './sheets-v2-tagfilter.js';
 import { DATASETS, FIELDS, IMPORT_SHEETS, NOW, guessColumn, initialSheets, newestFirst, tableOf, tagGroups, tagsOf, type FieldKey, type Sheet } from './sheets-v2-model.js';
 import { sheetsParam, sheetsScenario } from './sheets-v2-mode.js';
@@ -45,11 +45,11 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const target = dialog && sheets.find(item => item.id === dialog.id);
   const groups = tagGroups(sheets);
 
-  return <section aria-label="Spreadsheets" className="hub-sheets-library min-w-0 text-[13px]">
+  return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {openId && sheets.some(item => item.id === openId) ? <SheetDetail key={openId} sheet={get(openId)} sheets={sheets} onBack={() => setOpenId(undefined)} onOpen={setOpenId} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })}
       onRuns={name => change(openId, item => ({ ...item, runsSheet: name, mapping: Object.fromEntries(FIELDS.map(f => [f.key, guessColumn(f.key, DATASETS[item.worksheets.find(w => w.name === name)!.data].headers)])) as Record<FieldKey, string | null> }))}
       onMap={patch => change(openId, item => ({ ...item, mapping: { ...item.mapping, ...patch } }))} /> : <>
-      <div className="mb-6 flex items-center justify-between gap-4"><div className="min-w-0"><h1 className="sv2-title">Spreadsheets</h1><p className="sv2-desc truncate">Reference lists your runs look people up in.</p></div><V2Button onClick={() => setImporting(true)}>Import</V2Button></div>
+      <PageHeading title="Spreadsheets" description="Reference lists your runs look people up in." actions={<V2Button onClick={() => setImporting(true)}>Import</V2Button>} />
       <div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="w-[260px]" /><TagFilter groups={groups} value={filter} onChange={setFilter} /></div>
       <div ref={listRef}>{tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} all={sheets} narrow={narrow} actions={rows} limit={table.title === 'Created' ? CREATED_ROWS : undefined} />)
         : <Grey className="text-[13px]">{sheets.length ? 'No spreadsheets match.' : 'No spreadsheets yet. Choose Import to add one.'}</Grey>}</div>

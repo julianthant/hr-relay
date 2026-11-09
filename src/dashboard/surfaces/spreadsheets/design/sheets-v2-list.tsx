@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { Tooltip } from '../../../ds/ui.js';
+import { BodySection, Tooltip } from '../../../ds/ui.js';
 import { type Sheet, mergeOriginal, stamp } from './sheets-v2-model.js';
 import { DownloadIcon, SheetMenu, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
@@ -47,12 +47,11 @@ export function SheetRow({ sheet, sheets, narrow, actions }: { sheet: Sheet; she
 export function SheetTable({ title, sheets, all, narrow, actions, limit }: { title: string; sheets: readonly Sheet[]; all: readonly Sheet[]; narrow: boolean; actions: RowActions; limit?: number }) {
   const [expanded, setExpanded] = useState(false);
   const shown = limit && !expanded ? sheets.slice(0, limit) : sheets;
-  return <section aria-label={title} className="mb-6">
-    <h2 className="sv2-section-title">{title}</h2>
+  return <BodySection title={title}>
     <div className="overflow-hidden sv2-card border border-ui-stroke bg-[var(--ds-card-bg)]">
       <div className={`${cols(narrow)} sv2-head bg-ui-table text-ui-muted`}>{['Spreadsheet', 'Tags', 'Source', 'Version'].map(head => <div key={head}>{head}</div>)}<div /></div>
       <ul aria-label={title}>{shown.map(sheet => <SheetRow key={sheet.id} sheet={sheet} sheets={all} narrow={narrow} actions={actions} />)}</ul>
     </div>
     {limit && sheets.length > limit && <V2Button look="plain" className="mt-1" onClick={() => setExpanded(current => !current)}>{expanded ? 'Show fewer' : `Show ${sheets.length - limit} more`}</V2Button>}
-  </section>;
+  </BodySection>;
 }

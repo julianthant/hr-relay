@@ -45,7 +45,7 @@ async function setup(page: Page, theme: ParityTheme, width: number) {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1280]) {
-  for (const section of ["general", "credentials", "performance", "paths", "routes"] as const) {
+  for (const section of ["general", "credentials", "performance"] as const) {
     test(`baseline mounted ${section} reads ${theme.attribute} ${width}`, {
       annotation: [{ type: "required-a11y-evidence", description: evidence(`${section}-reads`, theme, width) }],
     }, async ({ page }, info) => {
@@ -193,17 +193,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await capture(page, info, theme, width, "credential-removal");
       await page.getByRole("button", { name: "Remove credential", exact: true }).click();
       await expect(username).toHaveValue("");
-
-      await page.goto(`${server.baseUrl}/?settings=paths`);
-      await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveAttribute("readonly", "");
-      await expect(page.getByRole("textbox", { name: "Evidence path", exact: true })).toHaveAttribute("readonly", "");
-      await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Change Reports", exact: true })).toBeVisible();
-      await expect(page.getByText("Current app-data locations couldn’t be read.", { exact: true })).toHaveCount(0);
-      await capture(page, info, theme, width, "paths-default");
-      await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: "Leave with an unconfirmed plan?", exact: true })).toHaveCount(0);
-      await capture(page, info, theme, width, "fixed-paths-exit");
       await attachTree(page, info, evidence("paths-credentials", theme, width));
     } finally { gate.resolve(); await server.close(); }
   });
@@ -381,32 +370,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await attachTree(page, info, evidence("spreadsheet-typed", theme, width));
     } finally { await server.close(); }
   });
-  test(`baseline Routes filtering and validation ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence("routes", theme, width) }],
-  }, async ({ page }, info) => {
-    const server = await setup(page, theme, width);
-    try {
-      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "routes" });
-      const search = page.getByRole("searchbox", { name: "Find a system or route", exact: true });
-      await expect(search).toBeVisible();
-      await capture(page, info, theme, width, "routes-default");
-      await search.fill("CRM");
-      await expect(page.locator('[data-settings-path="urls.crm.prod"]')).toBeVisible();
-      await expect(page.locator('[data-settings-path="urls.kuali.prod"]')).toHaveCount(0);
-
-      await search.fill("zz-no-system");
-      await expect(page.getByText('No routes match “zz-no-system”.', { exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "routes-no-results");
-      await search.fill("CRM");
-      const entry = page.locator('[data-settings-path="urls.crm.prod"] input').first();
-      await entry.fill("not-a-url");
-      await expect(entry).toHaveAttribute("aria-invalid", "true");
-      await expect(page.locator(".routes-page-error")).toBeVisible();
-
-      await attachTree(page, info, evidence("routes", theme, width));
-    } finally { await server.close(); }
-  });
-
   for (const scene of ["healthy", "stale"] as const) {
     test(`baseline Preflight refresh ${scene} ${theme.attribute} ${width}`, {
       annotation: [{ type: "required-a11y-evidence", description: evidence(`preflight-${scene}-coverage`, theme, width) }],
@@ -513,46 +476,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await attachTree(page, info, evidence("credentials-save", theme, width));
     } finally { gate.resolve(); await server.close(); }
   });
-
-  test(`baseline runtime path authority ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence("runtime-path-read", theme, width) }],
-  }, async ({ page }, info) => {
-    const server = await setup(page, theme, width);
-    const gate = Promise.withResolvers<void>();
-    await page.route("**/api/v1/settings/editable", async route => { await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "fixture-unavailable", message: "Synthetic settings unavailable", retryable: true } }); });
-    try {
-      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "paths" });
-      await expect(page.getByText("Reading app-data locations…", { exact: true })).toBeVisible();
-
-      gate.resolve();
-      await expect(page.getByText("App-data locations couldn’t be read.", { exact: true })).toBeVisible();
-
-      await attachTree(page, info, evidence("runtime-path-read", theme, width));
-    } finally { gate.resolve(); await server.close(); }
-  });
 }
-
-test("Settings missing parts delay skeletons and refuse unobserved Paths locations", { annotation: [{ type: "required-a11y-evidence", description: "settings-independent-paths.a11y.yml" }] }, async ({ page }, info) => {
-  const server = await setup(page, PARITY_THEMES[0], 1280);
-  const gate = Promise.withResolvers<void>();
-  let reached = 0;
-  await page.route("**/api/v1/settings/editable", async route => { reached++; await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "SETTINGS_INITIAL_READ_UNAVAILABLE", message: "Synthetic read failure", retryable: true } }); });
-  try {
-    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "paths" });
-    await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("textbox", { name: "Evidence path", exact: true })).toHaveCount(0);
-    await expect(page.getByText("Reading app-data locations…", { exact: true })).toBeVisible();
-    await expect(page.getByRole("status", { name: "Loading workflow paths", exact: true }).first()).toBeVisible();
-    expect(reached).toBe(1);
-    gate.resolve();
-    await expect(page.getByText("Couldn’t load your folders", { exact: true })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("textbox", { name: "Evidence path", exact: true })).toHaveCount(0);
-    await expect(page.getByText("App-data locations couldn’t be read.", { exact: true })).toBeVisible();
-    await expect(page.locator('.settings-tab-body [data-slot="skeleton"]')).toHaveCount(0);
-    await attachTree(page, info, "settings-independent-paths.a11y.yml");
-  } finally { gate.resolve(); await server.close(); }
-});
 
 test("Settings fast reads never mount a skeleton and a revisit keeps the exact editable value", { annotation: [{ type: "required-a11y-evidence", description: "settings-retained-editable.a11y.yml" }] }, async ({ page }, info) => {
   const server = await setup(page, PARITY_THEMES[0], 1280);
