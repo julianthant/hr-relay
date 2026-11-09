@@ -42,6 +42,8 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/models/run/display-name.ts` owns the browser-safe run display-name schema; command and run records share that leaf.
 
+`src/backend/runs/queries/activity-timing.ts` owns successful-root timing shared by the Analytics summary and population producers.
+
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
 `src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots and action receipts alongside editable revisions.

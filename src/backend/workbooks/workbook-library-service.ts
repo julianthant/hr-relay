@@ -1,6 +1,6 @@
 import { WorkbookImportRequestSchema, WorkbookImportResultSchema, decodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { RunIdSchema } from "../../rules/identity/ids.js";
+import { IsoInstantSchema, RunIdSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
@@ -283,7 +283,7 @@ function projectWorkbookResults(entries: readonly WorkbookLibraryEntry[],
     if (run === undefined) {
       const authority = resultRun?.(origin.runId);
       if (authority !== undefined && authority.workflowId !== origin.workflowId) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      run = { runId: origin.runId, partitionDay: origin.partitionDay, enqueuedAt: authority?.enqueuedAt ?? null, entries: [] };
+      run = { runId: origin.runId, partitionDay: origin.partitionDay, enqueuedAt: authority === undefined ? null : IsoInstantSchema.parse(authority.enqueuedAt), entries: [] };
       workflow.runs.push(run);
     }
     run.entries.push(entry);
