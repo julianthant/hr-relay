@@ -27,6 +27,7 @@ const childPolicy = Object.freeze({
   afterChildRetry: "resume-parent", visibility: "inline"
 } as const);
 export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-pages", label: "Prepare source pages" }), system: "local" as const,
+  description: "Render every original PDF page and bind each page's form type and reading method to the source manifest.",
   review: {
     pages: [
       {
@@ -97,9 +98,11 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     steps: [
       ...sourcePages.steps,
       [{ key: "page-readings", label: "Read document pages", system: "local",
+        description: "Read each original page through the delegated OCR Page workflow and retain every completed or failed reading for review.",
         review: { pages: [], branchLabels: [] } as const,
       }, [pages]],
       [{ key: "review-records", label: "Group records for review", system: "local",
+        description: "Account for every source page and group its readings into proposed records for operator review.",
         review: {
           pages: [
             {
@@ -115,12 +118,15 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
         } as const,
       }, [review]],
       [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath",
+        description: "Check each proposed person through Person Lookup in UCPath and CRM, retaining the delegated outcomes for review.",
         review: { pages: [], branchLabels: [] } as const,
       }, [identities]],
       [{ key: "signer-lookups", label: "Look up official signers", system: "i9",
+        description: "Look up proposed official signers in I-9 Complete and retain all person and signer lookup outcomes with the source-bound review.",
         review: { pages: [], branchLabels: [] } as const,
       }, [signers, completed]],
       [{ key: "approval", label: "Approve selected records", system: "local",
+        description: "Require the operator's selection when approval is requested, preserving the bound source evidence before releasing records.",
         review: { pages: [], branchLabels: [] } as const,
       }, [approval]],
     ] as const, result: result(OcrWorkflowResultSchema, [completed, approval], ({ outputs }) => ({

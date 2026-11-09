@@ -7,6 +7,7 @@ import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-ki
 import { defineStep, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 export const OCR_PAGE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "read-page", label: "Read source page" }), system: "local" as const,
+  description: "Read the exact original page through the declared subscription or manual reading and retain page-bound observations or assertions without approving a person's identity.",
   review: {
     pages: [
       {
