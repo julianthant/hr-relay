@@ -26,7 +26,9 @@ html[data-motion=off] .sv2-height { transition: none; }
 .sv2-row-desc { margin-top:var(--ds-row-gap); font-size:var(--ds-row-desc); line-height:var(--ds-row-desc-lh); }
 
 /* Sheet grid: neutral throughout. Every other row takes a faint stripe (gutter included); hover and selection sit above it. */
-.sv2-grid tbody tr:nth-child(even) > * { background: color-mix(in srgb, var(--ds-fg) 2.5%, transparent); }
-.sv2-grid tbody tr:hover > td { background: color-mix(in srgb, var(--ds-fg) 5%, transparent); }
-.sv2-grid tbody td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); }
-.sv2-grid tbody tr:hover > td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 12%, transparent); }
+.sv2-grid { --sv2-stripe: 3%; }
+[data-demo-theme="dark"] .sv2-grid, :root[data-demo-theme="dark"] .sv2-grid { --sv2-stripe: 4%; }
+.sv2-grid tbody tr:nth-child(even) > * { background: color-mix(in srgb, var(--ds-fg) var(--sv2-stripe), transparent); }
+.sv2-grid tbody tr:hover > td { background: color-mix(in srgb, var(--ds-fg) 7%, transparent); }
+.sv2-grid tbody td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 10%, transparent); }
+.sv2-grid tbody tr:hover > td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 14%, transparent); }

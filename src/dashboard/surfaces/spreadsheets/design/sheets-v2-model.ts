@@ -66,7 +66,7 @@ const CREATED_MORE: readonly Sheet[] = [
   base('badges', 'Badge requests', { createdAt: '2026-10-30T12:00', updatedAt: '2026-10-30T12:00' }), run('EC51690418', ROSTER, '2026-11-02T19:05', ['HR']),
   base('keys', 'Office keys', { tags: ['Facilities'], createdAt: '2026-09-30T17:00', updatedAt: '2026-10-02T15:10', versions: [v(2, '2026-10-02T15:10', 'Edited'), v(1, '2026-09-30T17:00', 'Imported')] }),
   run('SP20391254', ROSTER, '2026-10-27T15:48', ['HR']), run('SP20437760', ROSTER, '2026-10-30T20:15', ['HR']),
-  base('codes', 'Department codes', { createdAt: '2026-10-18T17:00', updatedAt: '2026-10-18T17:00' }), run('PL33071904', I9, '2026-10-25T16:00', ['I-9']), run('EC51655230', ROSTER, '2026-10-24T14:20', ['HR']),
+  base('codes', 'Department codes', { data: 'notes', createdAt: '2026-10-18T17:00', updatedAt: '2026-10-18T17:00' }), run('PL33071904', I9, '2026-10-25T16:00', ['I-9']), run('EC51655230', ROSTER, '2026-10-24T14:20', ['HR']),
 ];
 
 export type Scenario = 'all' | 'many' | 'empty';

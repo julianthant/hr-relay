@@ -1,7 +1,7 @@
-import { Check, ChevronDown, LoaderCircle } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, SearchInput, useToasts } from "../../../ds/ui.js";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, dsIcon, useToasts } from "../../../ds/ui.js";
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../ds/primitives/dropdown-menu.js";
 import { DATASETS, initialSheets, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "../../spreadsheets/design/sheets-v2-model.js";
 import { AccountSettings, type AccountValues } from "../account/account-settings.js";
@@ -19,64 +19,87 @@ export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
   return <RunList label="Before you start">{STATUS_MOCK_BLOCKERS[frame].map(blocker => <RunListRow key={blocker.id} title={blocker.title} description={blocker.note}><Button variant="secondary">{blocker.action}</Button></RunListRow>)}</RunList>;
 }
 
-/** The ticked worksheets (`<spreadsheet id>/<worksheet>`) and the library as the run dialog sees it, so a column chosen in a fix row reaches the workbook's other worksheets. */
-export interface StatusMockPicks { readonly keys: readonly string[]; readonly sheets: readonly Sheet[] }
+/** The ticked worksheets (`<spreadsheet id>/<worksheet>`), the version picked per spreadsheet and the library as the run dialog sees it, so a column chosen in a fix row reaches the workbook's other worksheets. */
+export interface StatusMockPicks { readonly keys: readonly string[]; readonly versions: Readonly<Record<string, number>>; readonly sheets: readonly Sheet[] }
 
 const sheetKey = (sheet: Sheet, worksheet: Worksheet) => `${sheet.id}/${worksheet.name}`;
-const librarySheets = () => initialSheets("all").filter(sheet => !sheet.run).toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name));
+const librarySheets = () => initialSheets("many").filter(sheet => !sheet.run).toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name));
 const FRAME_PICKS: Readonly<Record<string, readonly string[]>> = {
-  "run-sheets": ["hires/Aug 3 hires", "hires/Aug 10 hires"], "run-sheets-open": ["hires/Aug 3 hires", "hires/Aug 10 hires"],
-  "run-sheets-fix": ["hires/Aug 3 hires", "hires/Aug 10 hires", "hires/Aug 17 hires"],
+  "run-sheets": ["hires/Aug 3 hires", "hires/Aug 10 hires", "roster/Roster"], "run-sheets-open": ["hires/Aug 3 hires", "hires/Aug 10 hires", "roster/Roster"], "run-sheets-add": ["hires/Aug 3 hires", "hires/Aug 10 hires", "roster/Roster"],
+  "run-sheets-fix": ["hires/Aug 3 hires", "hires/Aug 10 hires", "hires/Aug 17 hires", "roster/Roster"],
 };
-/** The worksheets a run starts with: the last ones used, or the frame's own. */
+/** The spreadsheets a run starts with: the last ones used, or the frame's own. */
 export function statusMockDefaultPicks(frame?: string): StatusMockPicks {
-  return { keys: (frame && FRAME_PICKS[frame]) || ["roster/Roster", "i9/Sheet1"], sheets: librarySheets() };
+  return { keys: (frame && FRAME_PICKS[frame]) || ["roster/Roster", "i9/Sheet1"], versions: {}, sheets: librarySheets() };
 }
-const pickedRows = (picks: StatusMockPicks) => picks.sheets.flatMap(sheet => sheet.worksheets.filter(worksheet => picks.keys.includes(sheetKey(sheet, worksheet))).map(worksheet => ({ sheet, worksheet })));
+const currentVersion = (sheet: Sheet) => sheet.versions[0].n;
+const ticked = (picks: StatusMockPicks, sheet: Sheet) => sheet.worksheets.filter(worksheet => picks.keys.includes(sheetKey(sheet, worksheet)));
+const pickedRows = (picks: StatusMockPicks) => picks.sheets.flatMap(sheet => ticked(picks, sheet).map(worksheet => ({ sheet, worksheet })));
 /** Start waits until something is ticked and every ticked worksheet has Employee ID and Name. */
 export const statusMockPicksBlocked = (picks: StatusMockPicks): boolean => picks.keys.length === 0 || pickedRows(picks).some(({ sheet, worksheet }) => missingRequired(sheet, worksheet).length > 0);
-function pickedLabel(picks: StatusMockPicks): string {
-  const rows = pickedRows(picks);
-  if (rows.length === 0) return "Choose worksheets";
-  if (rows.length === 1) return rows[0].worksheet.name;
-  return new Set(rows.map(row => row.sheet.id)).size === 1 ? `${rows[0].sheet.name} · ${rows.length} worksheets` : `${rows.length} worksheets`;
-}
+const worksheetsLabel = (worksheets: readonly Worksheet[]) => worksheets.length === 1 ? worksheets[0].name : `${worksheets.length} worksheets`;
+/** A spreadsheet whose worksheets all lack Employee ID or Name cannot be added. */
+const uncoverable = (sheet: Sheet) => sheet.worksheets.every(worksheet => missingRequired(sheet, worksheet).length > 0);
 
-/** The dialog's worksheet picker: one menu grouped by spreadsheet, a check per worksheet and its row count in grey. A ticked worksheet missing Employee ID or Name gets a row with a column picker; the choice saves to its mapping. Rows from every ticked worksheet are read, nothing is merged. */
+/** The dialog's spreadsheet picker: each picked spreadsheet is a row with its worksheet picker, version picker and a remove ×; an Add dropdown with search lists the rest (Pinned first, then A-Z), greyed with the reason when one cannot cover Employee ID and Name. A ticked worksheet missing Employee ID or Name gets a row under its spreadsheet with a column picker; the choice saves to its mapping. Rows from every ticked worksheet are read, nothing is merged. */
 export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPicks; onPicks: (next: StatusMockPicks) => void }) {
   const [query, setQuery] = useState("");
+  const picked = picks.sheets.filter(sheet => ticked(picks, sheet).length > 0);
   const needle = query.trim().toLowerCase();
-  const groups = picks.sheets.map(sheet => ({ sheet, worksheets: sheet.worksheets.filter(worksheet => `${sheet.name} ${worksheet.name}`.toLowerCase().includes(needle)) })).filter(group => group.worksheets.length > 0);
-  const toggle = (key: string, on: boolean) => onPicks({ ...picks, keys: on ? [...picks.keys, key] : picks.keys.filter(item => item !== key) });
-  const fixes = pickedRows(picks).flatMap(({ sheet, worksheet }) => missingRequired(sheet, worksheet).map(field => ({ sheet, worksheet, field })));
-  return <RunList title="Reference spreadsheets" description={`Worksheets this run looks people up in. Needs ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
-    <RunListRow title="Worksheets" description="Rows from every ticked worksheet are read.">
-      <DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
-        <DropdownMenuTrigger asChild><Button variant="outline" aria-label={`Worksheets, ${pickedLabel(picks)}`} className="ds-menu-trigger w-[250px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">{pickedLabel(picks)}</span></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[320px] max-h-[320px] overflow-y-auto">
-          <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a worksheet" placeholder="Find a worksheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} /></div>
-          {groups.length === 0 && <p className="m-0 px-2 py-2 text-[13px] text-ui-muted">No worksheets match.</p>}
-          {groups.map(({ sheet, worksheets }) => <DropdownMenuGroup key={sheet.id}>
-            <DropdownMenuLabel>{sheet.name}</DropdownMenuLabel>
-            {worksheets.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.name} checked={picks.keys.includes(sheetKey(sheet, worksheet))} onCheckedChange={on => toggle(sheetKey(sheet, worksheet), on)}>
-              <span className="flex min-w-0 flex-1 items-baseline justify-between gap-4"><span className="truncate">{worksheet.name}</span><span className="text-[12px] text-ui-muted tabular-nums">{DATASETS[worksheet.data].rows.length} rows</span></span>
-            </DropdownMenuCheckboxItem>)}
-          </DropdownMenuGroup>)}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </RunListRow>
-    {fixes.map(({ sheet, worksheet, field }) => {
-      const dataset = DATASETS[worksheet.data];
-      return <RunListRow key={`${sheetKey(sheet, worksheet)}/${field.key}`} title={`${worksheet.name} · ${field.label}`}>
-        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" aria-label={`${worksheet.name} ${field.label} column`} className="ds-menu-trigger w-[170px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">Choose column</span></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[320px]"><DropdownMenuGroup><DropdownMenuLabel>{field.label} column</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value="" onValueChange={header => onPicks({ ...picks, sheets: picks.sheets.map(item => item.id === sheet.id ? withMapping(item, worksheet.name, { [field.key]: header }) : item) })}>
-              {dataset.headers.map(header => <DropdownMenuRadioItem key={header} value={header}><span className="flex min-w-0 flex-1 items-baseline justify-between gap-4"><span className="whitespace-nowrap">{header}</span><span className="truncate text-[12px] text-ui-muted">{samplesOf(dataset, header)}</span></span></DropdownMenuRadioItem>)}
-            </DropdownMenuRadioGroup></DropdownMenuGroup>
-          </DropdownMenuContent></DropdownMenu>
-      </RunListRow>;
-    })}
-  </RunList>;
+  const available = picks.sheets.filter(sheet => ticked(picks, sheet).length === 0 && sheet.name.toLowerCase().includes(needle));
+  const setKeys = (keys: readonly string[]) => onPicks({ ...picks, keys });
+  const add = (sheet: Sheet) => setKeys([...picks.keys, sheetKey(sheet, sheet.worksheets.find(worksheet => missingRequired(sheet, worksheet).length === 0) ?? sheet.worksheets[0])]);
+  const remove = (sheet: Sheet) => setKeys(picks.keys.filter(key => !key.startsWith(`${sheet.id}/`)));
+  const toggle = (sheet: Sheet, worksheet: Worksheet, on: boolean) => {
+    const key = sheetKey(sheet, worksheet);
+    if (on) setKeys([...picks.keys, key]);
+    else if (ticked(picks, sheet).length > 1) setKeys(picks.keys.filter(item => item !== key));
+  };
+  return <div className="flex min-w-0 flex-col gap-3">
+    <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
+      {picked.flatMap(sheet => {
+        const worksheets = ticked(picks, sheet);
+        return [
+          <RunListRow key={sheet.id} title={sheet.name} description={worksheets.map(worksheet => worksheet.name).join(", ")}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button variant="outline" aria-label={`${sheet.name} worksheets, ${worksheetsLabel(worksheets)}`} className="ds-menu-trigger w-[150px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">{worksheetsLabel(worksheets)}</span></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[280px] max-h-[320px] overflow-y-auto"><DropdownMenuGroup>
+                <DropdownMenuLabel>{sheet.name}</DropdownMenuLabel>
+                {sheet.worksheets.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.name} checked={picks.keys.includes(sheetKey(sheet, worksheet))} onCheckedChange={on => toggle(sheet, worksheet, on)}>
+                  <span className="flex min-w-0 flex-1 items-baseline justify-between gap-4"><span className="truncate">{worksheet.name}</span><span className="text-[12px] text-ui-muted tabular-nums">{DATASETS[worksheet.data].rows.length} rows</span></span>
+                </DropdownMenuCheckboxItem>)}
+              </DropdownMenuGroup></DropdownMenuContent>
+            </DropdownMenu>
+            <Select aria-label={`${sheet.name} version`} variant="toolbar" className="w-[76px]" value={String(picks.versions[sheet.id] ?? currentVersion(sheet))} onChange={event => onPicks({ ...picks, versions: { ...picks.versions, [sheet.id]: Number(event.target.value) } })}>
+              {sheet.versions.map(version => <option key={version.n} value={version.n}>v{version.n}</option>)}
+            </Select>
+            <IconButton size="xs" label={`Remove ${sheet.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={() => remove(sheet)} />
+          </RunListRow>,
+          ...worksheets.flatMap(worksheet => missingRequired(sheet, worksheet).map(field => {
+            const dataset = DATASETS[worksheet.data];
+            return <RunListRow key={`${sheetKey(sheet, worksheet)}/${field.key}`} title={`${worksheet.name} · ${field.label}`}>
+              <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" aria-label={`${worksheet.name} ${field.label} column`} className="ds-menu-trigger w-[170px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">Choose column</span></Button></DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[320px]"><DropdownMenuGroup><DropdownMenuLabel>{field.label} column</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value="" onValueChange={header => onPicks({ ...picks, sheets: picks.sheets.map(item => item.id === sheet.id ? withMapping(item, worksheet.name, { [field.key]: header }) : item) })}>
+                    {dataset.headers.map(header => <DropdownMenuRadioItem key={header} value={header}><span className="flex min-w-0 flex-1 items-baseline justify-between gap-4"><span className="whitespace-nowrap">{header}</span><span className="truncate text-[12px] text-ui-muted">{samplesOf(dataset, header)}</span></span></DropdownMenuRadioItem>)}
+                  </DropdownMenuRadioGroup></DropdownMenuGroup>
+                </DropdownMenuContent></DropdownMenu>
+            </RunListRow>;
+          })),
+        ];
+      })}
+    </RunList>
+    <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
+      <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>Add spreadsheet</Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[320px] max-h-[320px] overflow-y-auto">
+        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} /></div>
+        {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] text-ui-muted">{picked.length === picks.sheets.length ? "Every spreadsheet is added." : "No spreadsheets match."}</p>}
+        {available.map(sheet => <DropdownMenuItem key={sheet.id} disabled={uncoverable(sheet)} onClick={() => add(sheet)}>
+          <DropdownMenuItemCopy title={sheet.name} description={uncoverable(sheet) ? `No worksheet has ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}` : sheet.worksheets.map(worksheet => worksheet.name).join(", ")} />
+        </DropdownMenuItem>)}
+      </DropdownMenuContent>
+    </DropdownMenu></div>
+  </div>;
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */
