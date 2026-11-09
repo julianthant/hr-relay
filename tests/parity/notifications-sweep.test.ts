@@ -92,6 +92,20 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
   await shot(page, "review", theme);
   await inventory(page, "review", theme, "[aria-label='OCR records']");
   await buttons(page, "review", theme, "[aria-label='OCR records']");
+  await page.getByRole("button", { name: /^Records \d+$/ }).click();
+  // A truncated timeline label shows its full step name in the shared tooltip on hover and on focus.
+  const labels = page.getByRole("navigation", { name: "Run timeline" }).locator("button");
+  const cut = await labels.evaluateAll(buttons => buttons.map(button => { const text = button.querySelector("span.truncate"); return text !== null && text.scrollWidth > text.clientWidth ? button.getAttribute("aria-label")?.split(" · ")[0] ?? "" : ""; }));
+  console.log(`TRUNCATED ${theme} ${JSON.stringify(cut)}`);
+  const index = cut.findIndex(Boolean);
+  expect(index).toBeGreaterThanOrEqual(0);
+  await labels.nth(index).hover();
+  await expect(page.getByRole("tooltip").getByText(cut[index], { exact: true }).first()).toBeVisible();
+  await shot(page, "timeline-tooltip", theme);
+  await page.mouse.move(1, 1);
+  await labels.nth(index).focus();
+  await expect(page.getByRole("tooltip").getByText(cut[index], { exact: true }).first()).toBeVisible();
+  await page.mouse.move(1, 1);
 
   await open(page, "&explore=fixture-ui-explorer");
   await page.mouse.move(1, 1);
