@@ -531,14 +531,14 @@ export function Switch({
   );
 }
 
-/** The one search field: a pill with its icon, an optional shortcut hint and a clear × while it has text. `menu` is the 28px size for a field inside a dropdown menu. */
+/** The one search field: a pill with its icon, an optional shortcut hint and a clear × while it has text. `menu` is the 28px size for a field inside a dropdown menu; `sidebar` is the borderless 36px field above a sidebar's rows. */
 export const SearchInput = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' | 'menu' }
+  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' | 'menu' | 'sidebar' }
 >(function SearchInput({ className, onClear, shortcut, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
-    <HeroSearchField className={cn("ds-search-field", variant === 'menu' && 'ds-search-field--menu', className)} aria-label={props["aria-label"]}
+    <HeroSearchField className={cn("ds-search-field", variant === 'menu' && 'ds-search-field--menu', variant === 'sidebar' && 'ds-search-field--sidebar', className)} aria-label={props["aria-label"]}
       value={value === undefined ? undefined : String(value)} defaultValue={defaultValue === undefined ? undefined : String(defaultValue)}
       isDisabled={disabled ?? field.disabled} isReadOnly={readOnly} isInvalid={field["aria-invalid"] || props["aria-invalid"] === true} onClear={onClear}>
       <HeroSearchField.Group>

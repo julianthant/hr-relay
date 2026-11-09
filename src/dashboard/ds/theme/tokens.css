@@ -1402,6 +1402,11 @@ th.ds-text-caps {
 .ds-search-field--menu [data-slot="search-field-group"] { height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box; padding-inline: 10px 4px; }
 .ds-search-field--menu [data-slot="search-field-search-icon"] { width: 14px; height: 14px; }
 .ds-search-field--menu [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
+/* Sidebar search (Codex): 36px, no border, a 15px corner, a fill one step above the sidebar; icon and text sit on the row icon and text x. */
+.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 7%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: transparent; --field-border-hover: transparent; --field-border-focus: transparent; --border-width-field: 0px; }
+[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: transparent; }
+.ds-search-field--sidebar [data-slot="search-field-group"] { height: 36px; min-height: 36px; max-height: 36px; padding-inline: 8px 4px; border-radius: 15px; border: 0; }
+.ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
 .navbar-search-command [cmdk-list] { max-height: 360px; padding-inline: var(--ds-space-base); }
