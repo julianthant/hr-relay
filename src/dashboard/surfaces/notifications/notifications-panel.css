@@ -18,7 +18,7 @@
 .notification-item-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 25px; }
 .notification-item-tag { max-width: 45%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--ds-sidebar-grey); }
 /* The dot sits in the 16px between the sidebar edge and the row text, centred on the title line. */
-.notification-unread-dot { position: absolute; left: -3px; top: 13.5px; width: 6px; height: 6px; border-radius: 9999px; background: var(--ui-info); pointer-events: none; }
+.notification-unread-dot { width: 6px; height: 6px; flex: none; border-radius: 9999px; background: var(--ui-info); }
 .notification-item-actions { position: absolute; top: 50%; right: 2px; display: none; align-items: center; gap: 4px; transform: translateY(-50%); }
 .notification-row:hover .notification-item-actions, .notification-row:focus-within .notification-item-actions { display: flex; }
 .notification-row:hover .notification-item-tag, .notification-row:focus-within .notification-item-tag { visibility: hidden; }
