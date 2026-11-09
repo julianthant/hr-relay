@@ -49,7 +49,7 @@ export function SheetTable({ title, sheets, all, narrow, actions, limit }: { tit
   const shown = limit && !expanded ? sheets.slice(0, limit) : sheets;
   return <section aria-label={title} className="mb-6">
     <h2 className="sv2-section-title">{title}</h2>
-    <div className="overflow-hidden sv2-card border border-ui-stroke bg-ui-panel">
+    <div className="overflow-hidden sv2-card border border-ui-stroke bg-[var(--ds-card-bg)]">
       <div className={`${cols(narrow)} sv2-head bg-ui-table text-ui-muted`}>{['Spreadsheet', 'Tags', 'Source', 'Version'].map(head => <div key={head}>{head}</div>)}<div /></div>
       <ul aria-label={title}>{shown.map(sheet => <SheetRow key={sheet.id} sheet={sheet} sheets={all} narrow={narrow} actions={actions} />)}</ul>
     </div>

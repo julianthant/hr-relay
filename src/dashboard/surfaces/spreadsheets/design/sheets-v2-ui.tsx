@@ -21,7 +21,6 @@ export const Grey = ({ children, className = '' }: { children: ReactNode; classN
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
 /** Every dropdown in the mock: 13px, 28px rows, capped at 280px tall and scrolling after that. */
 export const MENU = 'max-h-[280px] overflow-y-auto';
-export const ROW = '!min-h-7 !py-1';
 export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon size={14} aria-hidden className="shrink-0" /> : null; };
 export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;
@@ -67,7 +66,7 @@ export function TagEditor({ tags, onChange, workflow }: { tags: readonly string[
 export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'merge' | 'mergeDelete' | 'rename' | 'tags' | 'delete' | 'download';
 /** Same menu on every row and on the detail page. */
 export function SheetMenu({ sheet, original, onAction, withDownload, label }: { sheet: Sheet; original?: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
-  const item = (action: MenuAction, text: string) => <DropdownMenuItem className={ROW} onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
+  const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
   return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
     {withDownload && item('download', 'Download')}
     {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
@@ -78,7 +77,7 @@ export function SheetMenu({ sheet, original, onAction, withDownload, label }: { 
     {item('rename', 'Rename')}
     {item('tags', 'Edit tags')}
     <DropdownMenuSeparator />
-    <DropdownMenuItem className={ROW} variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
+    <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
   </DropdownMenuContent></DropdownMenu>;
 }
 export const DownloadIcon = ({ name }: { name: string }) => <V2Icon label={`Download ${name}`}><Download size={16} aria-hidden /></V2Icon>;
