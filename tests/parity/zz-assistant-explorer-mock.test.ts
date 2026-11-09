@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -34,6 +35,7 @@ const FRAMES: Frame[] = [
   { id: "assistant-effort-menu", query: "assistantOpen=1&assistantMock=01b-model-effort", view: RUN, act: async page => { await page.getByRole("button", { name: /^Thinking effort:/u }).click(); } },
   { id: "assistant-model-menu", query: "assistantOpen=1&assistantMock=01-chat-basics", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model:/u }).click(); } },
   { id: "dock-rail-collapsed", query: "assistantOpen=0", view: RUN, act: async page => { await page.locator(".workspace-rail-actions button").first().click(); } },
+  { id: "dock-open-end", query: "assistantOpen=0", view: { ...RUN, sessions: true }, act: async page => { await page.locator("[data-session-strip]").evaluate(strip => { strip.scrollLeft = strip.scrollWidth; }); } },
   { id: "dock-open-rail-collapsed", query: "assistantOpen=0", view: { ...RUN, sessions: true }, act: async page => { await page.locator(".workspace-rail-actions button").first().click(); } },
   { id: "rail-footer", query: "assistantOpen=0", view: RUN },
   ...launcherFrames,
@@ -78,6 +80,10 @@ for (const theme of THEMES) test(`assistant explorer mock @ ${theme} ${WIDTH}`, 
     if (!frame.keepHover) await page.mouse.move(1, 1);
     await page.waitForTimeout(600);
     await page.screenshot({ path: join(OUT, `${frame.id}-${theme}.png`) });
+    if (frame.id === "dock-open") {
+      const sizes = await page.evaluate(() => ({ dock: document.querySelector<HTMLElement>(".session-dock")?.offsetHeight, cards: [...document.querySelectorAll<HTMLElement>("[data-session-strip] article")].map(card => ({ label: card.getAttribute("aria-label"), width: card.offsetWidth, height: card.offsetHeight })) }));
+      writeFileSync(join(OUT, `${frame.id}-${theme}-${WIDTH}.json`), JSON.stringify(sizes, null, 1));
+    }
     await page.evaluate(() => { window.localStorage.removeItem("relay.workflow-rail.collapsed"); });
   }
   expect(errors).toEqual([]);
