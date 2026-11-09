@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { createWorkerChildChannel } from "../../../../src/backend/runtime/workers/worker-child-channel.js";
+import type { WorkerChildMessage } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWorkerDirectiveTestWorld } from "../../../support/helpers/backend/worker-directive-world.js";
 import assert from "node:assert/strict";
@@ -28,7 +31,7 @@ describe("worker run loop", () => {
     const h = await loopHarness();
     h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     let claims = 0;
-    const report = await runWorkerLoop({ ...h.deps, exitWhenIdle: false,
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false,
       claimNext: (request, sessions) => {
         claims++;
         if (claims === 1) return { state: "preflight-refused", code, runId: RunIdSchema.parse(RUN_ID) };
@@ -36,11 +39,49 @@ describe("worker run loop", () => {
         return h.deps.claimNext(request, sessions);
       },
     });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const idle = h.scheduler.pending()[0];
+    assert.ok(idle);
+    idle.fire();
+    const report = await looping;
     assert.equal(claims, 3);
     assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
     assert.equal(report.stopped, "stop-signal");
     assert.equal(report.preflightRefusal, undefined);
     assert.equal(report.closure, "proved");
+  });
+  for (const fails of [false, true]) it(`admits idle refresh between claims and releases its turn after ${fails ? "failure" : "success"}`, async () => {
+    const h = await loopHarness({ exitWhenIdle: false });
+    let release: () => void = () => undefined;
+    const refreshing = new Promise<void>(resolve => { release = resolve; });
+    let refreshStarted = false, claims = 0;
+    const sent: WorkerChildMessage[] = [];
+    const forbidden = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: message => { sent.push(message); }, onStop: () => h.stop.abort(),
+      handlers: { refreshBrowser: async () => { refreshStarted = true; await refreshing; if (fails) throw new Error("fixture reset failed"); return null; },
+        reopenBrowser: forbidden, checkParkedWrite: forbidden, closeForRemoval: forbidden, pause: forbidden, resume: forbidden } });
+    const looping = runWorkerLoop({ ...h.deps, claimTurn: { begin: () => child.beginRun(), end: () => child.endRun() },
+      claimNext: (request, sessions) => { claims++; if (claims === 2) h.stop.abort(); return h.deps.claimNext(request, sessions); } });
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const requestId = randomUUID();
+      child.receive({ kind: "worker-request", requestId, sentAt: h.authority.clock.now().toISOString(), deadlineMs: 10_000,
+        request: { type: "refresh-browser", browserSessionId: randomUUID() } });
+      assert.equal(refreshStarted, true);
+      assert.equal(child.beginRun(), false);
+      const idle = h.scheduler.pending()[0]; assert.ok(idle); idle.fire();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(claims, 1);
+      release();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const reply = sent.find(message => message.kind === "worker-reply" && message.requestId === requestId);
+      assert.ok(reply?.kind === "worker-reply");
+      assert.equal(reply.outcome.state, fails ? "refused" : "done");
+      const waiting = h.scheduler.pending()[0]; assert.ok(waiting); waiting.fire();
+      const report = await looping;
+      assert.equal(claims, 2);
+      assert.equal(report.closure, "proved");
+    } finally { release(); h.stop.abort(); await looping; }
   });
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {
     const harness = await loopHarness();

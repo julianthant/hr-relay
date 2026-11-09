@@ -297,6 +297,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
+      let idleDelayMs: number | undefined;
       try {
       if (descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run")) await sessions.closeAll("parked");
       const claimRequest = {
@@ -313,7 +314,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused" }, { kind: "worker", workerId });
         if (deps.exitWhenIdle) { stopped = "preflight-refused"; break; }
         preflightRefusal = undefined;
-        await boundedWait(deps.scheduler, clock, deps.idleCadence?.() ?? deps.idleRepollMs, deps.stopSignal);
+        idleDelayMs = deps.idleCadence?.() ?? deps.idleRepollMs;
         continue;
       }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
@@ -327,7 +328,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           stopped = "idle";
           break;
         }
-        await boundedWait(deps.scheduler, clock, decision.delayMs, deps.stopSignal);
+        idleDelayMs = decision.delayMs;
         continue;
       }
 
@@ -424,7 +425,10 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }
-      } finally { deps.claimTurn?.end(); }
+      } finally {
+        deps.claimTurn?.end();
+        if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
+      }
     }
   } finally {
     closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
