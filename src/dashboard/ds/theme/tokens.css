@@ -230,6 +230,7 @@
   --ds-row-h-1: 44px;
   --ds-row-h-2: 60px;
   --ds-menu-fg: color-mix(in srgb, var(--ui-primary) 90%, #fff); /* menu item text: a touch dimmer than primary */
+  --ds-fg-list: color-mix(in srgb, var(--ui-primary) 85%, var(--ui-canvas)); /* sidebar and list text, a step under primary (Codex rows 196 on 19) */
   --ds-card-bg: var(--ui-panel); /* light: the page fill, the card is drawn by its border */
   --ds-menu-item-h: 28px; /* one-line menu item; a two-line item grows to fit */
   --ds-row-head-h: 32px;
@@ -526,9 +527,9 @@ body[data-demo-theme="dark"] {
   --primary: #fafafa;
   --primary-foreground: #09090b;
   --secondary: #1f1f23;
-  --secondary-foreground: #c9cacf;
+  --secondary-foreground: #9d9ea2;
   --muted: #131316;
-  --muted-foreground: #9d9ea4;
+  --muted-foreground: #808085;
   --accent: #222226;
   --accent-foreground: #e3e4e6;
   /* #f04438 is the swatch; as TEXT it drops to 3.96:1 on the raised surface,
@@ -742,9 +743,9 @@ body[data-demo-theme="light"] {
   --primary: #4338ca;
   --primary-foreground: #ffffff;
   --secondary: #ffffff;
-  --secondary-foreground: #4d4d4d;
+  --secondary-foreground: #555555;
   --muted: #f3f3f3;
-  --muted-foreground: #666666;
+  --muted-foreground: #737373;
   --accent: #efefef;
   --accent-foreground: #1b1b1b;
   --destructive: #b42318;
@@ -2098,4 +2099,4 @@ body[data-demo-theme],
 .ds-layer-toast-card { z-index: calc(var(--ds-layer-toast-card) - var(--toast-index)); }
 
 [data-demo-theme="light"] { --ds-card-bg: var(--ui-canvas); }
-[data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; }
+[data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; --ds-fg-list: #c4c4c6; }

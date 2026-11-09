@@ -14,7 +14,7 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
   if (block && timeInStep) return block;
   if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-3"><time className="pt-4 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time>{block}</div>;
   if (entry.kind === "fields") return <div className={cn("overflow-hidden rounded-lg border border-ui-stroke bg-ui-table", entry.title === undefined && entry.result === undefined && "px-3")}>
-    {entry.title && <div className="flex items-center gap-2.5 border-b border-ui-stroke px-3 py-3"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-semibold">{entry.title}</h4></div>}
+    {entry.title && <div className="flex items-center gap-2.5 border-b border-ui-stroke px-3 py-3"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-medium">{entry.title}</h4></div>}
     <dl className={cn("m-0", (entry.title !== undefined || entry.result !== undefined) && "px-3")}>
       {entry.fields.map(field => {
         const Icon = field.kind === "fill" ? PencilLine : field.kind === "compute" ? Cpu : Eye;

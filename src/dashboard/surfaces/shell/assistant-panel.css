@@ -12,7 +12,7 @@
 #hub-panel-assistant>.hub-panel-header>span:first-child{display:none}
 #hub-panel-assistant .hub-panel-title{min-width:0;font-size:14px;line-height:20px;display:flex;overflow:hidden}
 #hub-panel-assistant>.hub-panel-content{padding:0;gap:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;border-radius:0 0 12px 12px}
-#hub-panel-assistant .hub-chat-title{display:inline-flex;width:fit-content;max-width:100%;font-weight:600;padding:0 3px;min-height:22px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hub-panel-assistant .hub-chat-title{display:inline-flex;width:fit-content;max-width:100%;font-weight:500;padding:0 3px;min-height:22px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hub-panel-assistant .hub-header-actions{display:flex;gap:2px;flex:none}
 #hub-panel-assistant .hub-transcript{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 16px;scrollbar-width:thin;display:flex;flex-direction:column;gap:20px;font-size:13px;line-height:1.65}
 #hub-panel-assistant .hub-message{max-width:94%;padding:10px 12px;border-radius:12px;background:var(--ui-table);align-self:flex-start;overflow-wrap:anywhere}
@@ -22,7 +22,7 @@
 #hub-panel-assistant .hub-avatar svg{width:14px;height:14px}
 #hub-panel-assistant .hub-card{width:100%;border:1px solid var(--ui-stroke);border-radius:10px;background:var(--ui-panel);overflow:hidden}
 #hub-panel-assistant .hub-card-body{padding:12px}
-#hub-panel-assistant .hub-card h3{font-size:13px;line-height:20px;font-weight:600;margin:0 0 10px}
+#hub-panel-assistant .hub-card h3{font-size:13px;line-height:20px;font-weight:500;margin:0 0 10px}
 #hub-panel-assistant .hub-facts{margin:0;display:grid;grid-template-columns:66px minmax(0,1fr);gap:5px 10px;font-size:12px;line-height:18px}
 #hub-panel-assistant .hub-facts dt{color:var(--ui-muted)}
 #hub-panel-assistant .hub-facts dd{margin:0;overflow-wrap:anywhere}
@@ -66,7 +66,7 @@
 .hub-assistant-panel{position:relative;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);border:1px solid var(--ui-stroke);font:12px/1.5 var(--font-sans)}
 #hub-panel-assistant.hub-assistant-panel{left:auto;right:auto;bottom:auto;height:100%;max-height:none;max-width:100%}
 #hub-panel-assistant>.hub-panel-header{display:flex}
-#hub-panel-assistant .hub-panel-title{flex:1;font-weight:600}
+#hub-panel-assistant .hub-panel-title{flex:1;font-weight:500}
 #hub-panel-assistant :is(button,a):focus-visible{background:var(--hub-focus-fill)!important;color:var(--hub-focus-ink)!important;outline:none;box-shadow:none}
 #hub-panel-assistant button:disabled{cursor:default;opacity:.45}
 #hub-panel-assistant .hub-chat-title:disabled,#hub-panel-assistant .hub-header-actions button:disabled{opacity:1}
