@@ -1,3 +1,4 @@
+import { AssistantCommandAttributionSchema } from "../../rules/commands/commands.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
 import { RowRevisionSchema, RunDetailSectionSchema } from "./primitives.js";
@@ -7,7 +8,7 @@ import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { OcrFormTypeSchema } from "../ocr/form-registry.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { z } from "zod";
-import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema } from "../../rules/identity/ids.js";
+import { FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema } from "../../rules/identity/ids.js";
 import { StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
@@ -443,14 +444,6 @@ export const AssistantInlineSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("link"), label: ReplyLabelSchema, target: AssistantDataTargetSchema }),
 ]);
 export type AssistantInline = z.infer<typeof AssistantInlineSchema>;
-export const AssistantActionBindingSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("proposal"), proposalId: z.uuid(), rowId: z.uuid() }),
-  z.strictObject({ kind: z.enum(["session", "local-edit"]), actionId: z.uuid() }),
-]);
-export const AssistantCommandAttributionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("unrecorded") }),
-  z.strictObject({ kind: z.literal("assistant"), requestedBy: ActorIdSchema, profileId: z.uuid(), conversationId: z.uuid(), acceptedMessageId: z.uuid(), binding: AssistantActionBindingSchema }),
-]);
 export const AssistantAcceptedTurnSchema = z.strictObject({
   conversationId: z.uuid(), messageId: z.uuid(), ordinal: PositiveIntSchema, acceptedRevision: PositiveIntSchema, acceptedAt: IsoInstantSchema,
   profileId: z.uuid(), epoch: PositiveIntSchema,

@@ -301,6 +301,8 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 
 ### Assistant model preference
 
+`src/rules/commands/commands.ts` owns assistant action bindings and command attribution alongside canonical command identity. The unregistered M1 codecs/converter in `src/backend/storage/sqlite/command-record-row.ts` validate required attribution outside request identity; `run-search-index.ts` owns authenticated search-copy rebinding. Active native codecs and writers are unchanged.
+
 `src/models/config/assistant-model-preference.ts` owns model slug and preference validation shared by command and assistant schemas. `src/models/dashboard/assistant.ts` owns the profile preference record and served assistant action contract. `src/backend/storage/sqlite/assistant-model-preference.ts` owns its authenticated singleton and command/audit history checks. The existing command kernel and command service own the operator-only asynchronous preparation boundary and compare-and-swap mutation; account/composition preparation is required before that command becomes available.
 
 `src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Its sibling `workbook-size.ts` shares populated-cell and grid limits with saved-workbook validation. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.

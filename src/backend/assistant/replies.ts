@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AssistantAcceptedTurnSchema, AssistantActionBindingSchema, AssistantDataTargetSchema, AssistantInlineSchema, AssistantReplyPartsSchema,
+import { AssistantAcceptedTurnSchema, AssistantDataTargetSchema, AssistantInlineSchema, AssistantReplyPartsSchema,
   AssistantReplyPartSchema, AssistantSessionPartSchema, AssistantSessionViewSchema, AssistantValueSourceSchema,
   type AssistantAcceptedTurn, type AssistantInline, type AssistantReplyPart } from "../../models/dashboard/assistant.js";
 import { QueueSurfaceWireSchema, TERMINAL_QUEUE_STATUSES, type QueueSurfaceWire } from "../../models/dashboard/projection.js";
@@ -10,7 +10,7 @@ import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/erro
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
-import { CommandEnvelopeSchema } from "../../rules/commands/commands.js";
+import { AssistantActionBindingSchema, CommandEnvelopeSchema } from "../../rules/commands/commands.js";
 import { deriveRunStatus } from "../../rules/runs/run-status.js";
 import { searchPartitionDay } from "../../models/dashboard/search-calendar.js";
 import { hasProtectedSubject, protectedSubjectDisplay } from "../runs/start/protected-input.js";

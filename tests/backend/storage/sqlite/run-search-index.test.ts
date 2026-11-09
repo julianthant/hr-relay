@@ -1,9 +1,16 @@
+import { AssistantM1NativeCommandAuditSchema,commandIdentity,convertAssistantCommandPairToM1 } from "../../../../src/backend/storage/sqlite/command-record-row.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { COMMAND_FIXTURES,LATER,UUID_1,UUID_3,UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it,vi } from "vitest";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runRecordColumns,runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import { createRunSearchIndex,runSearchIndexFromRow } from "../../../../src/backend/storage/sqlite/run-search-index.js";
-import { RunSearchPublicationSchema } from "../../../../src/models/dashboard/search-index.js";
+import { createRunSearchIndex,rebindAssistantM1RunSearchRow,runSearchIndexFromRow } from "../../../../src/backend/storage/sqlite/run-search-index.js";
+import { RunSearchIndexRecordSchema,RunSearchPublicationSchema } from "../../../../src/models/dashboard/search-index.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
@@ -116,5 +123,67 @@ describe("native one-row search", () => {
     expect(() => f.index.search(query, 0)).toThrow(/rebuild-required/u);
     expect(f.index.rebuild({ limit: 1 }, 0, QUEUED_RUN.createdAt).state).toBe("published");
     expect(f.index.search(query, 0).totalMatches).toBe(2);
+  });
+});
+
+function rebindFixture() {
+  const run = RunRecordSchema.parse(QUEUED_RUN), id = run.envelope.runId;
+  const f = fixture();
+  const columns = runRecordColumns(run);
+  f.db.prepare(`INSERT INTO runs (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
+  f.publish();
+  const event = TimelineEventRecordSchema.parse({ schemaVersion: 1, eventId: UUID_4, cursor: 1,
+    workflow: run.envelope.workflow, scope: { kind: "run", runId: id }, occurredAt: run.createdAt, recordedAt: run.createdAt,
+    retentionDate: run.createdAt.slice(0, 10), source: { kind: "native" },
+    payload: { kind: "span", event: { ...runQueuedSpanEvent({ run, actorId: ActorIdSchema.parse("local-operator"), title: "Lookup" }), pid: 1 } } });
+  const request = { ...commandIdentity(COMMAND_FIXTURES[0]).request, target: { workflowId: run.envelope.workflow, startPlanId: UUID_3, expectedVersion: 1 } };
+  const audit = { auditId: UUID_3, request, result: { state: "applied", commandId: UUID_1,
+    affectedTargets: [{ family: "run", runId: id }] }, completedAt: LATER, versionChanges: [], affectedDependencyIds: [] };
+  const identity = commandIdentity(request);
+  const pair = { command: { id: UUID_1, family: identity.family, actor_id: identity.actor, parent_id: null,
+    target_id: identity.targetId, request_digest: sha256Hex(identity.json), request_json: identity.json, state: "succeeded",
+    outcome_json: canonicalJsonStringify(audit), created_at: identity.createdAt, updated_at: LATER },
+    audit: { id: UUID_3, command_id: UUID_1, code: null, payload_json: canonicalJsonStringify(audit), created_at: LATER } };
+  const old = f.db.prepare("SELECT * FROM run_search WHERE run_id=?").get(id);
+  const metadata = RunSearchIndexRecordSchema.parse(JSON.parse(String(old?.metadata_json)));
+  metadata.metadata.actor = { state: "available", value: "local-operator" };
+  const row = { ...old, actor_id: "local-operator", metadata_json: canonicalJsonStringify(metadata),
+    actor_source_json: canonicalJsonStringify([{ kind: "start-audit", audit }, { kind: "queued", event }]) };
+  return { run, row, event, pair, audit };
+}
+describe("unregistered M1 search audit-copy rebind", () => {
+  it("authenticates full retained sources, preserving queued order and frozen row fields", () => {
+    const f = rebindFixture(), before = structuredClone(f.row);
+    const next = rebindAssistantM1RunSearchRow(f.row, f.run, [f.event], [f.pair]);
+    const converted = convertAssistantCommandPairToM1(f.pair.command, f.pair.audit);
+    expect(next).toEqual({ ...before, actor_source_json: canonicalJsonStringify([
+      { kind: "start-audit", audit: AssistantM1NativeCommandAuditSchema.parse(JSON.parse(converted.audit?.payload_json ?? "null")) }, { kind: "queued", event: f.event }]) });
+    expect(f.row).toEqual(before);
+    expect(() => runSearchIndexFromRow(next, f.run)).toThrow();
+  });
+  it("retains an honestly empty source set without inventing actor evidence", () => {
+    const f = fixture(), id = f.add(1, "2026-10-01T12:00:00.000Z"); f.publish();
+    const row = f.db.prepare("SELECT * FROM run_search WHERE run_id=?").get(id);
+    const run = runRecordFromRow(f.db.prepare("SELECT * FROM runs WHERE id=?").get(id));
+    expect(rebindAssistantM1RunSearchRow(row, run, [], [])).toEqual(row);
+  });
+  it("refuses missing, duplicated, changed, foreign or wrong-run source evidence", () => {
+    const f = rebindFixture();
+    expect(() => rebindAssistantM1RunSearchRow(f.row, f.run, [], [f.pair])).toThrow();
+    expect(() => rebindAssistantM1RunSearchRow(f.row, f.run, [f.event], [])).toThrow();
+    expect(() => rebindAssistantM1RunSearchRow(f.row, f.run, [f.event, f.event], [f.pair])).toThrow();
+    expect(() => rebindAssistantM1RunSearchRow(f.row, f.run, [f.event], [f.pair, f.pair])).toThrow();
+    const sources = [{ kind: "start-audit", audit: f.audit }, { kind: "queued", event: f.event }];
+    for (const changed of [[], [...sources, sources[0]], [{ kind: "start-audit", audit: { ...f.audit, completedAt: f.run.createdAt } }, sources[1]],
+      [{ kind: "start-audit", audit: { ...f.audit, result: { ...f.audit.result, affectedTargets: [{ family: "run", runId: UUID_4 }] } } }, sources[1]],
+      [sources[0], { kind: "queued", event: { ...f.event, eventId: UUID_3 } }]]) {
+      expect(() => rebindAssistantM1RunSearchRow({ ...f.row, actor_source_json: canonicalJsonStringify(changed) }, f.run, [f.event], [f.pair])).toThrow();
+    }
+    expect(() => rebindAssistantM1RunSearchRow({ ...f.row, declaration_json: '{}' }, f.run, [f.event], [f.pair])).toThrow();
+    const metadata = RunSearchIndexRecordSchema.parse(JSON.parse(f.row.metadata_json));
+    expect(() => rebindAssistantM1RunSearchRow({ ...f.row, source_version: f.run.version + 1,
+      metadata_json: canonicalJsonStringify({ ...metadata, sourceVersion: f.run.version + 1 }) }, f.run, [f.event], [f.pair])).toThrow();
+    expect(() => rebindAssistantM1RunSearchRow({ ...f.row, state: "running" }, f.run, [f.event], [f.pair])).toThrow();
+    expect(() => rebindAssistantM1RunSearchRow(f.row, f.run, [f.event], [{ ...f.pair, command: { ...f.pair.command, request_digest: "a".repeat(64) } }])).toThrow();
   });
 });
