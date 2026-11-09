@@ -11,6 +11,9 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { compileWorkflow, composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
 import { separationsWorkflow } from "../../../../src/workflows/separations/workflow.js";
+import { KRONOS_TIMECARD_OMISSION } from "../../../../src/workflows/separations/steps/kronos-timecard/step.js";
+import { UCPATH_TRANSACTION_OMISSION } from "../../../../src/workflows/separations/steps/ucpath-transaction/step.js";
+import { KUALI_FINALIZATION_OMISSION } from "../../../../src/workflows/separations/steps/kuali-finalization/step.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 
 const clock = manualClock(new Date("2026-08-09T12:00:00.000Z"));
@@ -95,7 +98,14 @@ it("derives visible controls, mode defaults, upload facts and omission forms", (
   assert.deepEqual(onboarding.reviewSpec.runOptions.controls, []);
   const separations = entries.find(entry => entry.id === "separations"); assert.ok(separations);
   assert.deepEqual(separations.reviewSpec.runOptions.omittableSteps.map(step => step.stepKey), ["kronos-timecard", "ucpath-transaction", "kuali-finalization"]);
-  assert.ok(separations.reviewSpec.runOptions.omittableSteps.every(step => step.form.fields.length > 0));
+  const forms = separations.reviewSpec.runOptions.omittableSteps.map(step => step.form);
+  assert.deepEqual(forms, [KRONOS_TIMECARD_OMISSION.form, UCPATH_TRANSACTION_OMISSION.form, KUALI_FINALIZATION_OMISSION.form]);
+  assert.deepEqual(forms.map(form => form.fields.map(field => [field.key, field.kind])), [
+    [["lastDayWorked", "us-date"], ["separationDate", "us-date"]],
+    [["transactionNumber", "text"], ["approvalStatus", "enum"]],
+    [],
+  ]);
+  assert.deepEqual(forms[2], { fields: [] });
   const pdfs = entries.find(entry => entry.id === "i9-check-start"); assert.ok(pdfs);
   assert.ok(pdfs.reviewSpec.runOptions.upload?.accepts.some(accept => accept.mediaType === "application/pdf"));
   const page = entries.find(entry => entry.id === "ocr-page"); assert.ok(page);
