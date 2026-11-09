@@ -14,7 +14,8 @@ import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../../models/sy
 import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-accounting.js";
 import { ReadOcrResult } from "../../../../models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../../models/workflows/ocr/read-review-seed.js";
-import { ReadOcrSourcePages } from "../../../../models/workflows/ocr/read-source-pages.js";
+import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../../models/workflows/ocr/read-source-pages.js";
+import { buildOcrSourceManifest } from "../../../../models/workflows/ocr/source-manifest.js";
 import { OcrApprovalReferenceSchema, OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
 import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
@@ -39,20 +40,24 @@ export function buildSourcePages({ task, result }: WorkflowAuthor<typeof OcrInpu
 export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   const { task, delegate, gate, result } = author;
   const sourcePages = buildSourcePages(author);
-  const { source } = sourcePages;
+  const { rendered, source } = sourcePages;
   const pages = delegate({
     id: "read-pages", label: "Read every original page",
     target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
     edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled",
     policy: { ...childPolicy, visibility: "hidden-unless-failed" }
-  }, [source], {
-    bind: ({ outputs }) => outputs["read-source-pages"].pages,
+  }, [rendered, source], {
+    bind: ({ input, outputs }) => {
+      const work = ocrPageWorkInputs(input, outputs["render-pages"]);
+      if (work.manifest.fingerprint !== outputs["read-source-pages"].manifest.fingerprint) throw new Error("OCR source pages changed after they were bound.");
+      return work.pages;
+    },
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [source, pages],
+  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [rendered, source, pages],
     ({ input, outputs }) => ({
       ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster, formType: input.formType,
-      manifest: outputs["read-source-pages"].manifest, readingId: input.readingId, outcomes: [...outputs["read-pages"]]
+      manifest: buildOcrSourceManifest(input.document, outputs["render-pages"]), readingId: input.readingId, outcomes: [...outputs["read-pages"]]
     }));
   const identities = delegate({
     id: "lookup-identities", label: "Verify proposed identities",

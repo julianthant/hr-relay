@@ -5,10 +5,10 @@ import { OcrFormTypeSchema } from "../../ocr/form-registry.js";
 import { OcrPageOutcomeSchema, accountOcrPages, ocrExtractionItemId } from "./page-accounting.js";
 import { OcrReviewSeedInputSchema, OcrReviewSeedSchema, buildOcrReviewSeed } from "./review-seed.js";
 import { OcrSourceManifestSchema, ocrPageInputs } from "./source-manifest.js";
-import { ReadOcrSourcePages } from "./read-source-pages.js";
+import { OCR_SOURCE_MANIFEST_EXAMPLE } from "./read-source-pages.js";
 import { OCR_INPUT_EXAMPLE } from "./input.js";
 
-const manifest = OcrSourceManifestSchema.parse(ReadOcrSourcePages.example.manifest);
+const manifest = OCR_SOURCE_MANIFEST_EXAMPLE;
 export const ReadOcrReviewSeed = defineTaskContract({
   id: taskId("workflow:ocr/read-review-seed"), title: "Build source-bound review", effect: "read",
   input: OcrReviewSeedInputSchema.omit({ accounting: true }).extend({ manifest: OcrSourceManifestSchema,
