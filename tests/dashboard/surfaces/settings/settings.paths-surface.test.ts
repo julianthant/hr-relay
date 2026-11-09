@@ -26,7 +26,7 @@ describe("ordinary output Paths controls", () => {
       executeCommand: () => Promise.reject(new Error("synthetic lost response")),
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-    const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } });
+    const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
     await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
@@ -56,7 +56,7 @@ describe("ordinary output Paths controls", () => {
       executeCommand: (request: unknown) => { commands.push(request); return Promise.reject(new Error("synthetic response uncertainty")); },
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-    const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } });
+    const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
     await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,

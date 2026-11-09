@@ -24,7 +24,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
     projectionGeneration: 1,
     actor: { id: "local-operator", label: "Jordan Lee" },
     serverClock: { now: FIXTURE_NOW, zone: "America/Los_Angeles" },
-    storage: { authority: "healthy", backup: "current", checkedAt: at(0), lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } },
+    storage: { authority: "healthy", backup: "current", checkedAt: at(0), lastBackupAt: null, backupCheckedAt: null },
     workflows: [{
       id: WORKFLOW_ID,
       code: personLookupDescriptor.code,

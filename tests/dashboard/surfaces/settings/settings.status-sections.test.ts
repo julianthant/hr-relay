@@ -23,7 +23,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
   authority: "healthy",
   backup: "current",
-  checkedAt: "2026-08-26T17:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } });
+  checkedAt: "2026-08-26T17:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
 
 /** Every fixture is what the STRICT wire schema produced, never a hand-built object. */
 const FACTS: SettingsFactsWire = SettingsFactsWireSchema.parse({

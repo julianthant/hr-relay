@@ -33,7 +33,7 @@ Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 const STORAGE = StorageHealthSummaryWireSchema_m0.parse({
   authority: "healthy",
   backup: "current",
-  checkedAt: "2026-08-26T17:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } });
+  checkedAt: "2026-08-26T17:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
 const servedStatusSections = SettingsSectionPrimitiveSchema_m0.array().parse([
   { id: "storage", label: "Storage checks", revision: 1 },
   { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
@@ -193,7 +193,7 @@ const STORAGE = section("storage", "Storage checks");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema_m2.parse({
   authority: "healthy",
   backup: "current",
-  checkedAt: "2026-08-26T16:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } });
+  checkedAt: "2026-08-26T16:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient_m2;
 
 describe_m2("the settings page's nav", () => {

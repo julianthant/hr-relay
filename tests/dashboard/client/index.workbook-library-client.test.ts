@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
-import { WorkbookImportPurposeSchema, WorkbookImportRequestSchema, EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, encodeSavedWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { WorkbookImportRequestSchema, EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, encodeSavedWorkbook, encodeEditableWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_INTAKE_MAPPING } from "../../support/fixtures/dashboard/fixture-intake.js";
 import { WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
@@ -163,19 +163,16 @@ it("bridges the exact workbook revision and workflow, retaining typed refusals",
 });
 
 
-it('imports with exact purpose and binding acknowledgment while preserving the separate create contract', async () => {
-  const purpose = WorkbookImportPurposeSchema.parse({ kind: 'workflow-reference', workflowId: 'onboarding', typeId: 'onboarding-roster' });
-  assert.ok(purpose.kind === 'workflow-reference');
-  const body = { workbook: encodeSavedWorkbook(saved(2)), purpose, reference: { workflowId: purpose.workflowId, typeId: purpose.typeId, libraryId: saved().libraryId } };
+it('imports a plain workbook at version one and rejects retired purpose or reference fields', async () => {
+  const body = { workbook: encodeSavedWorkbook(saved()) };
   const h = harness(body, 201);
-  assert.deepEqual(await h.client.workbookImport(draft, purpose), body);
+  assert.deepEqual(await h.client.workbookImport(draft), body);
   assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/import');
-  assert.deepEqual(WorkbookImportRequestSchema.parse(JSON.parse(requestBody(h.calls[0]))).purpose, purpose);
-  await assert.rejects(harness({ ...body, purpose: { ...purpose, workflowId: 'foreign' }, reference: { ...body.reference, workflowId: 'foreign' } }, 201).client.workbookImport(draft, purpose), schemaFailure);
-  await assert.rejects(harness({ ...body, reference: { ...body.reference, libraryId: 'foreign' } }, 201).client.workbookImport(draft, purpose), schemaFailure);
-  await assert.rejects(harness({ ...body, workbook: encodeSavedWorkbook(saved(1)) }, 201).client.workbookImport(draft, purpose), schemaFailure);
-  const other = { workbook: encodeSavedWorkbook(saved()), purpose: { kind: 'other' as const }, reference: null };
-  assert.deepEqual(await harness(other, 201).client.workbookImport(draft, other.purpose), other);
+  assert.deepEqual(WorkbookImportRequestSchema.parse(JSON.parse(requestBody(h.calls[0]))), { workbook: encodeEditableWorkbook(draft) });
+  for (const extra of [{ purpose: { kind: 'other' } }, { reference: null }]) {
+    await assert.rejects(harness({ ...body, ...extra }, 201).client.workbookImport(draft), schemaFailure);
+  }
+  await assert.rejects(harness({ workbook: encodeSavedWorkbook(saved(2)) }, 201).client.workbookImport(draft), schemaFailure);
 });
 
 it('reads grouped results through the typed facade and rejects malformed group data', async () => {

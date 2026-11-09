@@ -1,5 +1,4 @@
-import { StorageRestoreTargetWireSchema } from "./storage.js";
-import { WorkbookImportPurposeSchema } from "./workbooks.js";
+import { WorkbookIdSchema } from "./workbooks.js";
 import { WorkbookReferenceSlotsSchema } from "./workbook-library.js";
 import { z } from "zod";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
@@ -37,7 +36,6 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
   checkedAt: IsoInstantSchema,
   lastBackupAt: IsoInstantSchema.nullable(),
   backupCheckedAt: IsoInstantSchema.nullable(),
-  restoreTarget: StorageRestoreTargetWireSchema,
 });
 
 /** Serve descriptor codes and raw category/role facts; the frontend owns presentation. */
@@ -49,12 +47,12 @@ export const WorkflowStartReadinessSchema = z.discriminatedUnion("state", [
   z.strictObject({ scope: z.literal("default-workbook-references"), state: z.literal("ready") }),
   z.strictObject({
     scope: z.literal("default-workbook-references"), state: z.literal("blocked"), reason: z.string().min(1),
-    fixAction: z.strictObject({ kind: z.literal("import-workbook"), purpose: WorkbookImportPurposeSchema.options[0] }),
+    fixAction: z.strictObject({ kind: z.literal("import-workbook"), workflowId: WorkflowIdSchema, typeId: WorkbookIdSchema }),
   }),
   z.strictObject({
     scope: z.literal("default-workbook-references"), state: z.literal("unavailable"), reason: z.string().min(1),
     fixAction: z.strictObject({ kind: z.literal("review-workbook-reference"), workflowId: WorkflowIdSchema,
-      typeId: WorkbookImportPurposeSchema.options[0].shape.typeId }),
+      typeId: WorkbookIdSchema }),
   }),
 ]);
 export type WorkflowStartReadiness = z.infer<typeof WorkflowStartReadinessSchema>;
@@ -99,7 +97,7 @@ export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
 }).superRefine((workflow, context) => {
   const readiness = workflow.start.readiness;
   if (readiness.state === "ready") return;
-  const reference = readiness.fixAction.kind === "import-workbook" ? readiness.fixAction.purpose : readiness.fixAction;
+  const reference = readiness.fixAction;
   if (reference.workflowId !== workflow.id || !workflow.start.requiredWorkbookTypeIds.includes(reference.typeId)) {
     context.addIssue({ code: "custom", path: ["start", "readiness", "fixAction"], message: "readiness action must name this workflow's required reference" });
   }

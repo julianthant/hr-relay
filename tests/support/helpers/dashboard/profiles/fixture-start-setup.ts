@@ -43,8 +43,8 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
         readiness: module.descriptor.requiredWorkbookTypeIds.length === 0
           ? { scope: "default-workbook-references", state: "ready" }
           : { scope: "default-workbook-references", state: "blocked", reason: "Import a reference workbook.",
-            fixAction: { kind: "import-workbook", purpose: { kind: "workflow-reference", workflowId: module.descriptor.id,
-              typeId: module.descriptor.requiredWorkbookTypeIds[0] } } },
+            fixAction: { kind: "import-workbook", workflowId: module.descriptor.id,
+              typeId: module.descriptor.requiredWorkbookTypeIds[0] } },
         ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
         enqueue: module.descriptor.enqueue,
         version: module.descriptor.id === "person-lookup" ? 1 : module.descriptor.version,

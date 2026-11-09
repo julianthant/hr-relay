@@ -81,18 +81,8 @@ export function decodeSavedWorkbook(value: unknown): SavedWorkbook {
 export const WorkbookListWireSchema = z.array(SavedWorkbookWireSchema);
 export const WorkbookHistoryWireSchema = z.array(SavedWorkbookWireSchema);
 export const WorkbookCreateRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
-export const WorkbookImportPurposeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("workflow-reference"), workflowId: WorkflowIdSchema, typeId: WorkbookIdSchema }),
-  z.strictObject({ kind: z.literal("other") }),
-]);
-export const WorkbookImportRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema, purpose: WorkbookImportPurposeSchema });
-export const WorkbookImportResultSchema = z.strictObject({ workbook: SavedWorkbookWireSchema, purpose: WorkbookImportPurposeSchema,
-  reference: z.strictObject({ workflowId: WorkflowIdSchema, typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema }).nullable(),
-}).superRefine((result, ctx) => {
-  if (result.purpose.kind === "other" ? result.reference !== null
-    : result.reference === null || result.reference.workflowId !== result.purpose.workflowId || result.reference.typeId !== result.purpose.typeId || result.reference.libraryId !== result.workbook.libraryId)
-    ctx.addIssue({ code: "custom", message: "import purpose and reference binding differ" });
-});
+export const WorkbookImportRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
+export const WorkbookImportResultSchema = z.strictObject({ workbook: SavedWorkbookWireSchema });
 export const WorkbookSaveRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workbook: EditableWorkbookWireSchema });
 export const WorkbookIntakeRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workflowId: WorkflowIdSchema });
 export const WorkbookIntakeResultSchema = z.discriminatedUnion("state", [

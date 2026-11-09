@@ -1,37 +1,23 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
-import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 const attemptId = "00000000-0000-4000-8000-000000000001";
-it("sends one explicit connection request with its identity and signal through the existing transport", async () => {
-  const calls: { url: string; init: RequestInit | undefined }[] = [], signal = new AbortController().signal;
-  const result = { state: "completed", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z" };
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => { calls.push({ url, init }); return Response.json(result); } });
-  assert.equal(calls.length, 0);
-  await assert.rejects(client.checkChatGptConnection({ checkId: "invalid" }));
-  assert.equal(calls.length, 0);
-  assert.deepEqual(await client.checkChatGptConnection({ checkId: attemptId }, signal), result);
+const status = { account: { state: "signed-out" }, connection: { state: "refused", checkedAt: "2026-10-12T12:00:00.000Z", failureCode: "CHATGPT_ACCOUNT_EXPIRED" }, usage: { state: "unavailable", reason: "signed-out" } };
+it("reads one strict account status envelope with GET and no manual connection command", async () => {
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => { calls.push({ url, init }); return Response.json(status); } });
+  assert.deepEqual(await client.chatGptAccount(), status);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/settings/chatgpt-account/check-connection");
-  assert.equal(calls[0].init?.method, "POST");
-  assert.equal(calls[0].init?.body, JSON.stringify({ checkId: attemptId }));
-  assert.equal(calls[0].init?.signal, signal);
-  assert.equal(new Headers(calls[0].init?.headers).get("origin"), "http://127.0.0.1:3938");
+  assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/settings/chatgpt-account");
+  assert.equal(calls[0].init?.method ?? "GET", "GET");
+  assert.equal("checkChatGptConnection" in client, false);
 });
-it("rejects wrong check identities, extra capability results and noncatalog failure text without retry", async () => {
-  for (const body of [
-    { state: "completed", checkId: "00000000-0000-4000-8000-000000000002", checkedAt: "2026-10-12T12:00:00.000Z" },
-    { state: "completed", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z", checks: [] },
-    { state: "refused", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z", code: "CHATGPT_CONNECTION_FAILED", message: "private" },
-  ]) {
+it("rejects old account reads and malformed nested statuses without retry", async () => {
+  for (const body of [{ state: "signed-out" }, { ...status, connection: { ...status.connection, checkId: attemptId } }, { ...status, usage: { state: "available", resetAt: "2026-10-13T00:00:00Z" } }]) {
     let calls = 0;
     const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async () => { calls++; return Response.json(body); } });
-    await assert.rejects(client.checkChatGptConnection({ checkId: attemptId }), { kind: "schema" });
-    assert.equal(calls, 1);
+    await assert.rejects(client.chatGptAccount(), { kind: "schema" }); assert.equal(calls, 1);
   }
-  const result = { state: "refused", checkId: attemptId, checkedAt: "2026-10-12T12:00:00.000Z", code: "CHATGPT_CONNECTION_FAILED", message: ERROR_CATALOG.CHATGPT_CONNECTION_FAILED.text };
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async () => Response.json(result) });
-  assert.deepEqual(await client.checkChatGptConnection({ checkId: attemptId }), result);
 });
 it("uses the one typed client for strict account lifecycle requests without persistence", async () => {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
@@ -41,9 +27,9 @@ it("uses the one typed client for strict account lifecycle requests without pers
     if (url.endsWith("/sign-out")) return Response.json({ state: "signed-out", remoteRevocation: "unconfirmed" });
     if (url.endsWith(`/sign-in/${attemptId}`)) return Response.json({ state: "completed", attemptId, account: { state: "signed-out" } });
     if (url.endsWith("/sign-in")) return Response.json({ state: "started", attemptId, authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2026-10-12T12:05:00.000Z" });
-    return Response.json({ state: "signed-out" });
+    return Response.json(status);
   } });
-  assert.deepEqual(await client.chatGptAccount(), { state: "signed-out" });
+  assert.deepEqual(await client.chatGptAccount(), status);
   assert.equal((await client.startChatGptSignIn({ usePlan: true })).state, "started");
   assert.equal((await client.completeChatGptSignIn(attemptId)).state, "completed");
   assert.equal((await client.cancelChatGptSignIn(attemptId)).state, "cancelled");

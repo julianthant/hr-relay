@@ -1,6 +1,6 @@
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../../src/models/dashboard/assistant.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
-import { ChatGptConnectionResultSchema, ChatGptAccountViewSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptSignOutResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptSignOutResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
 import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookWireSchema,
   WorkbookListWireSchema, WorkbookHistoryWireSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema,
   WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, IntakeCommandResultWireSchema,
@@ -786,10 +786,9 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
   { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRequestSchema },
   { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantResultSchema },
-  { id: "wire/chatgpt-connection", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptConnectionResultSchema },
   { id: "wire/profile-first-run-check", egress: "operator-loopback", module: "src/models/profiles/public-profile.ts", schema: ProfileFirstRunCheckSchema },
   { id: "wire/chatgpt-ocr-test", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptOcrTestResultSchema },
-  { id: "wire/chatgpt-account", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptAccountViewSchema },
+  { id: "wire/chatgpt-account", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptAccountStatusSchema },
   { id: "wire/chatgpt-start", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInStartResultSchema },
   { id: "wire/chatgpt-completion", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInCompletionSchema },
   { id: "wire/chatgpt-cancel", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptCancelResultSchema },
@@ -950,7 +949,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.label", origin: "repository-authored" },
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookTypeIds[]', origin: 'repository-authored' },
-    ...['fixAction.purpose.workflowId', 'fixAction.purpose.typeId', 'fixAction.workflowId', 'fixAction.typeId']
+    ...['fixAction.workflowId', 'fixAction.typeId']
       .map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.readiness.${path}`, origin: 'repository-authored' as const })),
     { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'captured-hr-value' },
     ...PLANNED_OUTPUT_ORIGINS.flatMap(path => ['wire/planned-run-output', 'wire/start-plan'].map(surface => ({ surface,
@@ -1235,15 +1234,14 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/assistant", path: "action.startPlan.planned[].subtitle", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "candidates[].displayName", origin: "captured-hr-value" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
-  { surface: "wire/chatgpt-connection", path: "message", origin: "repository-authored" },
   { surface: "wire/profile-first-run-check", path: "report.results[].summary", origin: "local-filesystem-name" },
   { surface: "wire/profile-first-run-check", path: "report.results[].impact", origin: "repository-authored" },
   { surface: "wire/profile-first-run-check", path: "report.results[].remediation", origin: "repository-authored" },
   { surface: "wire/chatgpt-ocr-test", path: "message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-account", path: "account.account.message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-account", path: "account.account.name", origin: "external-text" },
   { surface: "wire/chatgpt-account", path: "account.message", origin: "repository-authored" },
   { surface: "wire/chatgpt-account", path: "account.name", origin: "external-text" },
-  { surface: "wire/chatgpt-account", path: "message", origin: "repository-authored" },
-  { surface: "wire/chatgpt-account", path: "name", origin: "external-text" },
   { surface: "wire/chatgpt-start", path: "message", origin: "repository-authored" },
   { surface: "wire/chatgpt-completion", path: "account.message", origin: "repository-authored" },
   { surface: "wire/chatgpt-completion", path: "account.name", origin: "external-text" },
@@ -1608,7 +1606,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.replacement.memberPreview.value", origin: "captured-hr-value" },
 
   { surface: "wire/bootstrap", path: "actor.label", origin: "operator-authored" },
-  { surface: "wire/bootstrap", path: "storage.restoreTarget.reason", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "featureAvailability[].availability.reason", origin: "repository-authored" },
 
   { surface: "wire/bootstrap", path: "preflight[].blocks[]", origin: "repository-authored" },

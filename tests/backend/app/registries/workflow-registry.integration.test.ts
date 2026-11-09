@@ -95,7 +95,7 @@ describe("workflow definition registry conformance", () => {
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
         workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
-        backupSummary: () => ({ backup: "current", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } }),
+        backupSummary: () => ({ backup: "current", lastBackupAt: null, backupCheckedAt: null }),
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);

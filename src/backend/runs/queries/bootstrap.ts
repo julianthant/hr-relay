@@ -36,7 +36,7 @@ export interface BootstrapQueryDeps {
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
   readonly workbookReferences: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["references"]>;
-  readonly backupSummary: (liveGeneration: number | undefined) => Pick<z.infer<typeof StorageHealthSummaryWireSchema>, "backup" | "lastBackupAt" | "backupCheckedAt" | "restoreTarget">;
+  readonly backupSummary: (liveGeneration: number | undefined) => Pick<z.infer<typeof StorageHealthSummaryWireSchema>, "backup" | "lastBackupAt" | "backupCheckedAt">;
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }
@@ -74,7 +74,7 @@ export function projectWorkflowStartReadiness(workflow: WorkbookReferenceWorkflo
     if (slot.current.state === "bound") continue;
     return {
       scope: "default-workbook-references", state: "blocked", reason: `${workflow.label} needs ${slot.type.name}.`,
-      fixAction: { kind: "import-workbook", purpose: { kind: "workflow-reference", workflowId: slot.workflowId, typeId: slot.typeId } },
+      fixAction: { kind: "import-workbook", workflowId: slot.workflowId, typeId: slot.typeId },
     };
   }
   return { scope: "default-workbook-references", state: "ready" };

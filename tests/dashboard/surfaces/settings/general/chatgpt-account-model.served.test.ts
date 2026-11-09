@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chatGptStatusFixture } from "../../../../support/helpers/chatgpt-status-fixture.js";
 import assert from "node:assert/strict";
 import { it, vi } from "vitest";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
@@ -14,8 +15,7 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => Chat
   const initialWall = Date.now();
   let persisted: ChatGptAccountView = { state: "signed-out" };
   const complete: ChatGptAccountQueries["completeChatGptSignIn"] = overrides.completeChatGptSignIn ?? (async () => { calls.push("complete"); return { state: "completed", attemptId, account }; });
-  const queries: ChatGptAccountQueries = { checkChatGptConnection: async () => { throw new Error("unexpected connection check"); },
-    chatGptAccount: async () => { calls.push("read"); return persisted; },
+  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { calls.push("read"); return chatGptStatusFixture(persisted); },
     startChatGptSignIn: async () => { calls.push("start"); return started; },
     cancelChatGptSignIn: async () => { calls.push("cancel"); return { state: "cancelled", attemptId }; },
     testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
@@ -75,10 +75,10 @@ it("refuses a blocked popup before dispatch and cancels once when navigation fai
 });
 it("suppresses stale reads and completion settlements and resumes the original signing-in attempt", async () => {
   const old = Promise.withResolvers<ChatGptAccountView>(); let reads = 0;
-  const stale = setup({ chatGptAccount: () => ++reads === 1 ? old.promise : Promise.resolve(account) });
+  const stale = setup({ chatGptAccount: async () => chatGptStatusFixture(await (++reads === 1 ? old.promise : Promise.resolve(account))) });
   try { const first = stale.port.refresh(); const second = stale.port.refresh(); assert.equal(first, second); old.resolve(account); await first; assert.deepEqual(stale.port.getSnapshot(), account); assert.equal(reads, 1); } finally { stale.port.dispose(); }
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
-  const resumed = setup({ chatGptAccount: async () => ({ state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } }), completeChatGptSignIn: id => { assert.equal(id, attemptId); return completion.promise; } });
+  const resumed = setup({ chatGptAccount: async () => chatGptStatusFixture({ state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } }), completeChatGptSignIn: id => { assert.equal(id, attemptId); return completion.promise; } });
   const refreshing = resumed.port.refresh(); for (let tick = 0; tick < 4; tick++) await Promise.resolve(); assert.deepEqual(resumed.port.getResource(), { state: "loading", attemptId });
   const pendingSnapshot = resumed.port.getSnapshot();
   assert.deepEqual(pendingSnapshot, { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl });
@@ -87,7 +87,7 @@ it("suppresses stale reads and completion settlements and resumes the original s
 });
 it("reads current state once at connected expiry without starting sign-in", async () => {
   vi.useFakeTimers(); let reads = 0, now = Date.parse("2026-10-12T12:59:59.000Z");
-  const queries: ChatGptAccountQueries = { checkChatGptConnection: async () => { throw new Error("unexpected connection check"); }, testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
+  const queries: ChatGptAccountQueries = { testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return chatGptStatusFixture(reads === 1 ? account : { state: "expired" }); }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
   const port = createServedChatGptAccountPort(queries, { nowMs: () => now });
   try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getSnapshot(), { state: "expired" }); } finally { port.dispose(); vi.useRealTimers(); }
 });
@@ -111,7 +111,7 @@ it("closes its owned popup immediately on disposal while completion is pending",
 it("bounds account snapshots and retains the exact verified account on refresh failure", async () => {
   vi.useFakeTimers();
   let reads = 0;
-  const f = setup({ chatGptAccount: () => ++reads === 1 ? Promise.resolve(account) : new Promise(() => {}) });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(await (++reads === 1 ? Promise.resolve(account) : new Promise(() => {}))) });
   try {
     await f.port.refresh();
     const first = f.port.refresh(), second = f.port.refresh(); assert.equal(first, second);
@@ -148,7 +148,7 @@ it.each(["focus", "visibilitychange"] as const)("rechecks the original sign-in o
       return Response.json({ state: "completed", attemptId, account });
     }
     if (url.endsWith("/sign-in")) { starts++; return Response.json(started); }
-    reads++; return Response.json(reads === 1 ? { state: "signed-out" } : account);
+    reads++; return Response.json(chatGptStatusFixture(reads === 1 ? { state: "signed-out" } : account));
   } });
   const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
   try {
@@ -173,7 +173,7 @@ it("rechecks a lost completion on return and preserves the original attempt's cl
   let completions = 0, reads = 0;
   const uncertain = Promise.withResolvers<void>();
   const f = setup({
-    chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } },
+    chatGptAccount: async () => chatGptStatusFixture(++reads === 1 ? { state: "signed-out" } : { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } }),
     completeChatGptSignIn: async id => {
       assert.equal(id, attemptId);
       if (++completions === 1) throw new Error("Synthetic lost completion");
@@ -198,7 +198,7 @@ it.each(["completed", "closure-refused"] as const)("recovers the original %s set
   const uncertain = Promise.withResolvers<void>();
   let completions = 0, reads = 0;
   const f = setup({
-    chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : account,
+    chatGptAccount: async () => chatGptStatusFixture(++reads === 1 ? { state: "signed-out" } : account),
     completeChatGptSignIn: async id => {
       assert.equal(id, attemptId);
       if (++completions === 1) throw new Error("Synthetic lost successful delivery");
@@ -223,7 +223,7 @@ it.each(["completed", "closure-refused"] as const)("recovers the original %s set
 it("keeps the original deadline after a lost completion reconciles to connected and return never arrives", async () => {
   vi.useFakeTimers();
   let reads = 0, completions = 0;
-  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : account,
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(++reads === 1 ? { state: "signed-out" } : account),
     completeChatGptSignIn: async () => { completions++; throw new Error("Synthetic lost delivery"); } });
   try {
     await f.port.refresh();
@@ -251,7 +251,7 @@ it.each(["before", "during"] as const)("does not publish a cached connected repl
     }
     if (url.endsWith("/sign-in")) { starts++; return Response.json(started); }
     if (url.endsWith("/sign-out")) { signOuts++; persisted = { state: "signed-out" }; return Response.json({ state: "signed-out", remoteRevocation: "confirmed" }); }
-    reads++; return Response.json(persisted);
+    reads++; return Response.json(chatGptStatusFixture(persisted));
   } });
   const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
   const published: string[] = [];
@@ -352,7 +352,7 @@ it("dispatches cancellation once and preserves an uncertain cancellation instead
 it("reconciles a Cancel refusal racing a successful sign-in without losing the verified account", async () => {
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let reads = 0;
-  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : account,
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(++reads === 1 ? { state: "signed-out" } : account),
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "refused", code: "CHATGPT_AUTH_INVALID", message: ERROR_CATALOG.CHATGPT_AUTH_INVALID.text }) });
   try {
@@ -372,7 +372,7 @@ it("bounds a hung Cancel, keeps its outcome uncertain, and expires the original 
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let reads = 0;
   const pending = { state: "signing-in" as const, attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" as const } };
-  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : pending,
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(++reads === 1 ? { state: "signed-out" } : pending),
     completeChatGptSignIn: () => completion.promise, cancelChatGptSignIn: () => new Promise(() => {}) });
   try {
     await f.port.refresh();
@@ -400,7 +400,7 @@ it("honors ten-minute expiry through the real query and transport, aborting the 
       return new Promise<Response>((_resolve, reject) => { init?.signal?.addEventListener("abort", () => reject(new DOMException("Synthetic completion aborted", "AbortError")), { once: true }); });
     }
     if (url.endsWith("/sign-in")) return Response.json({ ...started, expiresAt: "2026-10-12T12:10:00.000Z" });
-    reads++; return Response.json({ state: "signed-out" });
+    reads++; return Response.json(chatGptStatusFixture({ state: "signed-out" }));
   } });
   const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
   try {
@@ -421,7 +421,7 @@ it("expires a new pending attempt observed after confirmed cancellation", async 
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let reads = 0;
   const next = { state: "signing-in" as const, attemptId: "00000000-0000-4000-8000-000000000002", expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" as const } };
-  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : next, completeChatGptSignIn: () => completion.promise });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(++reads === 1 ? { state: "signed-out" } : next), completeChatGptSignIn: () => completion.promise });
   try {
     await f.port.refresh();
     const signing = f.port.signIn({ usePlan: true });
@@ -438,7 +438,7 @@ it("expires a new pending attempt observed after confirmed cancellation", async 
 
 it("lets expired sign-out retain closure refusal and calls the existing sign-out once", async () => {
   let calls = 0;
-  const f = setup({ chatGptAccount: async () => ({ state: "expired" }), signOutChatGpt: async () => { calls++; return { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text }; } });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture({ state: "expired" }), signOutChatGpt: async () => { calls++; return { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text }; } });
   try {
     await f.port.refresh(); await f.port.signOut();
     assert.equal(calls, 1); assert.equal(f.port.getResource().state, "uncertain");
@@ -449,7 +449,7 @@ it("lets expired sign-out retain closure refusal and calls the existing sign-out
 
 it("publishes the actual unverified resource whenever its unavailable snapshot is observed", async () => {
   const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text });
-  const f = setup({ chatGptAccount: async () => unavailable });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(unavailable) });
   const observed: ReturnType<typeof f.port.getResource>[] = [];
   const unsubscribe = f.port.subscribe(() => {
     if (f.port.getSnapshot().state === "unavailable") observed.push(f.port.getResource());

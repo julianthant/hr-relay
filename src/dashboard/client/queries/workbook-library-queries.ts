@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import {
-  WorkbookImportRequestSchema, WorkbookImportResultSchema, type WorkbookImportPurposeSchema, SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
+  WorkbookImportRequestSchema, WorkbookImportResultSchema, SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
   WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema,
   WorkbookIntakeResultSchema, encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook,
   WorkbookTypeSchema,
@@ -14,7 +14,7 @@ import { WorkbookResultsSchema, WorkbookLibraryCatalogSchema, WorkbookLibraryAct
 
 export interface WorkbookLibraryQueries {
   workbookResults(): Promise<z.infer<typeof WorkbookResultsSchema>>;
-  workbookImport(workbook: unknown, purpose: z.infer<typeof WorkbookImportPurposeSchema>): Promise<z.infer<typeof WorkbookImportResultSchema>>;
+  workbookImport(workbook: unknown): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookCatalog(): Promise<readonly WorkbookLibraryEntry[]>;
   workbookTypes(): Promise<readonly z.infer<typeof WorkbookTypeSchema>[]>;
   workbookPutType(type: z.infer<typeof WorkbookTypeSchema>): Promise<z.infer<typeof WorkbookTypeSchema>>;
@@ -46,16 +46,15 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       const path = '/api/v1/workbooks/results';
       return parseOrThrow(WorkbookResultsSchema, path, await transport.requestJson(path));
     },
-    async workbookImport(workbook: unknown, purpose: z.infer<typeof WorkbookImportPurposeSchema>) {
+    async workbookImport(workbook: unknown) {
       const path = '/api/v1/workbooks/import';
-      const request = parseOrThrow(WorkbookImportRequestSchema, path, { workbook: encodeWorkbook(workbook), purpose });
+      const request = parseOrThrow(WorkbookImportRequestSchema, path, { workbook: encodeWorkbook(workbook) });
       if (request.workbook.libraryId !== undefined) throw schemaError(path, 'new workbook already has a library identity');
       const result = parseOrThrow(WorkbookImportResultSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(request) }));
-      if (canonicalContent(result.purpose) !== canonicalContent(request.purpose)
-        || result.workbook.createdAt !== result.workbook.savedAt
-        || result.workbook.version !== (purpose.kind === 'other' ? 1 : 2)
+      if (result.workbook.createdAt !== result.workbook.savedAt
+        || result.workbook.version !== 1
         || canonicalContent(result.workbook.workbook) !== canonicalContent({ ...request.workbook, libraryId: result.workbook.libraryId }))
-        throw schemaError(path, 'imported workbook or purpose differs from request');
+        throw schemaError(path, 'imported workbook differs from request');
       return result;
     },
     async workbookCatalog() {

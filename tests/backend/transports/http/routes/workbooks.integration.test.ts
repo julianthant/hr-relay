@@ -85,19 +85,18 @@ it('serves persisted types and manual named versions, refusing forged sources an
 });
 
 
-it('requires an explicit import purpose and serves the canonical result with admitted mutation and grouped reads', async () => {
+it('rejects retired import purpose input and serves a plain import with admitted mutation and grouped reads', async () => {
   const h = await harness(), wire = encodeEditableWorkbook(workbook);
   const post = (body: unknown) => h.app.request('http://localhost/api/v1/workbooks/import', { method: 'POST', headers, body: JSON.stringify(body) });
-  for (const purpose of [undefined, { kind: 'other', workflowId: 'forged' }, { kind: 'workflow-reference', workflowId: 'unknown', typeId: 'general' }]) {
+  for (const purpose of [{ kind: 'other' }, { kind: 'workflow-reference', workflowId: 'unknown', typeId: 'general' }]) {
     const response = await post({ workbook: wire, purpose });
     assert.equal(response.status, 400);
     assert.equal(h.database.authority.workbooks.list().length, 0);
   }
-  const imported = await post({ workbook: wire, purpose: { kind: 'other' } });
+  const imported = await post({ workbook: wire });
   assert.equal(imported.status, 201);
   const result = WorkbookImportResultSchema.parse(await imported.json());
-  assert.deepEqual(result.purpose, { kind: 'other' });
-  assert.equal(result.reference, null);
+  assert.deepEqual(Object.keys(result), ['workbook']);
   assert.equal(result.workbook.version, 1);
   assert.deepEqual(await (await h.app.request('http://localhost/api/v1/workbooks/results')).json(), { workflows: [], unavailable: [] });
 });

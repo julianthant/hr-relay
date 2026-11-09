@@ -85,6 +85,8 @@ export type WorkbookLibraryActionRecord = z.infer<typeof WorkbookLibraryActionRe
 export const WorkbookReferenceSlotSchema = z.strictObject({
   workflowId: WorkflowIdSchema, workflowLabel: NameSchema, typeId: WorkbookIdSchema,
   type: WorkbookTypeSchema.nullable(),
+  status: z.enum(["bound", "missing", "unavailable"]),
+  reasonCode: z.enum(["WORKBOOK_REFERENCE_MISSING", "WORKBOOK_TYPE_UNAVAILABLE", "WORKBOOK_BINDING_UNAVAILABLE"]).nullable(),
   current: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("missing") }),
     z.strictObject({ state: z.literal("unavailable"), code: z.enum(["WORKBOOK_TYPE_UNAVAILABLE", "WORKBOOK_BINDING_UNAVAILABLE"]) }),
@@ -96,8 +98,11 @@ export const WorkbookReferenceSlotSchema = z.strictObject({
     }),
   ]),
 }).superRefine((slot, ctx) => {
-  if (slot.type !== null && slot.type.id !== slot.typeId
-    || slot.current.state === "missing" && slot.type === null
+  if (slot.status !== slot.current.state
+    || slot.reasonCode !== (slot.current.state === "bound" ? null : slot.current.state === "missing" ? "WORKBOOK_REFERENCE_MISSING" : slot.current.code)
+    || slot.current.state === "missing" && slot.type?.defaultWorkbookId !== null
+    || slot.current.state === "unavailable" && (slot.current.code === "WORKBOOK_TYPE_UNAVAILABLE" ? slot.type !== null : slot.type === null || slot.type.defaultWorkbookId === null)
+    || slot.type !== null && slot.type.id !== slot.typeId
     || slot.current.state === "bound" && (slot.type === null || slot.type.defaultWorkbookId !== slot.current.entry.libraryId || slot.current.entry.metadata.typeId !== slot.typeId))
     ctx.addIssue({ code: "custom", message: "reference slot binding identity mismatch" });
 });

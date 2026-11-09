@@ -15,7 +15,7 @@ export function createFixtureStorageSetup({ FIXTURE_BOOTSTRAP, at, uuidOf }: {
       storage: {
         authority: "unavailable",
         backup: "current",
-        checkedAt: at(0), lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } },
+        checkedAt: at(0), lastBackupAt: null, backupCheckedAt: null },
     });
 
   const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({

@@ -14,7 +14,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = await harness();
     const before = FrontendBootstrapWireSchema.parse(await (await h.app.request("/api/v1/bootstrap")).json());
     assert.equal(before.storage.backupCheckedAt, null);
-    assert.equal(before.storage.restoreTarget.state, "unavailable");
     const response = await h.app.request("/api/v1/storage/doctor");
     assert.equal(response.status, 200);
     const report = StorageDoctorWireSchema.parse(await response.json());
@@ -44,7 +43,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const storage = boot.storage;
     assert.equal(storage.lastBackupAt, null);
     assert.equal(storage.backupCheckedAt, report.checkedAt);
-    assert.equal(storage.restoreTarget.state, "unavailable");
     assert.equal(storage.authority, "healthy");
     assert.equal(storage.backup, "missing");
     const sections = boot.settingsSections as { id: string; label: string }[];

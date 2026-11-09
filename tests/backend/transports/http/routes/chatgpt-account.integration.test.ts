@@ -7,7 +7,7 @@ import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixt
 import { registerChatGptAccountRoutes, type ChatGptAccountRouteDeps } from "../../../../../src/backend/transports/http/routes/chatgpt-account.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { operatorMutationIngressGuard } from "../../../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
-import { ChatGptSignInCompletionSchema, ChatGptSignInStartSchema, ChatGptAccountStateSchema, type ChatGptAccountState } from "../../../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptAccountStatusSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartSchema, ChatGptAccountStateSchema, type ChatGptAccountState } from "../../../../../src/models/dashboard/chatgpt-account.js";
 import { ChatGptResourceClosureUnprovedError } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { WireErrorSchema } from "../../../../../src/models/dashboard/primitives.js";
@@ -19,7 +19,7 @@ it("preserves the original typed closure refusal even when the current account i
   const app: DashboardApp = new Hono();
   let reads = 0;
   registerChatGptAccountRoutes(app, { clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), chatGptAccount: {
-    checkConnection: async () => { throw new Error("unexpected connection check"); },
+    readStatus: async () => { throw new Error("unexpected status read"); },
     refreshAccount: async () => { reads++; return ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" }); },
     signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise, cancel: async () => {} }),
     signOut: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }),
@@ -58,15 +58,16 @@ it("retains asynchronous diagnostic failure for named readback without rejecting
         message: ERROR_CATALOG.LOGGING_UNAVAILABLE.text, retryable: false });
     }
     assert.equal(diagnosticAttempts, 1);
-    assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
+    assert.deepEqual(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account, { state: "signed-out" });
   } finally { await f.cleanup(); }
 });
 it("serves token-free account lifecycle with original PKCE, state and nonce binding", async () => {
   const f = await setup(); try {
-    assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
+    assert.deepEqual(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account, { state: "signed-out" });
     const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
     assert.notEqual(started.attemptId, new URL(started.authorizationUrl).searchParams.get("state"));
-    const pending = await (await f.request()).json() as { state: string; authorizationUrl: string; expiresAt: string };
+    const pending = ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account;
+    if (pending.state !== "signing-in") throw new Error("expected pending sign-in");
     assert.equal(pending.state, "signing-in"); assert.equal(pending.authorizationUrl, started.authorizationUrl);
     assert.equal(pending.expiresAt, started.expiresAt);
     assert.equal((await f.callback(f.authorization(), { state: "wrong" })).status, 400);
@@ -76,7 +77,7 @@ it("serves token-free account lifecycle with original PKCE, state and nonce bind
     assert.doesNotMatch(JSON.stringify(completion), /synthetic-access|synthetic-refresh|idToken|code_verifier/u);
     assert.equal((await f.request()).headers.get("cache-control"), "no-store");
     assert.deepEqual(await (await f.request("/sign-out", {})).json(), { state: "signed-out", remoteRevocation: "confirmed" });
-    assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
+    assert.deepEqual(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account, { state: "signed-out" });
     assert.deepEqual(ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json()),
       { state: "completed", attemptId: started.attemptId, account: { state: "signed-out" } });
   } finally { await f.cleanup(); }
@@ -87,7 +88,7 @@ it("renews expired Settings reads instead of publishing sign-in-again state", as
   try {
     await f.connected(); f.clock.advanceWall(3_600_000);
     assert.deepEqual(f.service.readAccount(), { state: "expired" });
-    const result = ChatGptAccountStateSchema.parse(await (await f.request()).json());
+    const result = ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account;
     assert.equal(result.state, "connected");
     if (result.state !== "connected") throw new Error("renewed Settings account required");
     assert.equal(Date.parse(result.expiresAt), f.clock.nowMs() + 3_600_000);
@@ -100,7 +101,7 @@ it("keeps a temporary renewal failure unavailable instead of asserting that reco
   const f = await setup();
   try {
     await f.connected(); f.clock.advanceWall(3_600_000); f.setTokenStatus(503);
-    const before = f.repository.read(), result = ChatGptAccountStateSchema.parse(await (await f.request()).json());
+    const before = f.repository.read(), result = ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account;
     assert.deepEqual(result, { state: "unavailable", code: "CHATGPT_AUTH_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text });
     assert.deepEqual(f.repository.read(), before);
   } finally { await f.cleanup(); }
@@ -149,14 +150,14 @@ for (const failure of ["nonce", "expiry", "denial"] as const) it(`keeps ${failur
     await f.callback(f.authorization(), failure === "denial" ? { error: "access_denied" } : {});
     const result = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
     assert.equal(result.state, "refused");
-    assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
+    assert.deepEqual(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account, { state: "signed-out" });
   } finally { await f.cleanup(); }
 });
 it("keeps local sign-out authoritative when remote revocation is unconfirmed", async () => {
   const f = await setup(); try {
     await f.connected(); f.setRevocation(503);
     assert.deepEqual(await (await f.request("/sign-out", {})).json(), { state: "signed-out", remoteRevocation: "unconfirmed" });
-    assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
+    assert.deepEqual(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account, { state: "signed-out" });
   } finally { await f.cleanup(); }
 });
 

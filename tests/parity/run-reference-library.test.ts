@@ -49,7 +49,7 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
     const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash: hash, workflows: [...FIXTURE_BOOTSTRAP.workflows,
       { id: descriptor.id, code: descriptor.code, label: descriptor.label, categoryId: descriptor.category, descriptorFingerprint: descriptor.contractFingerprint,
         availability: { state: 'available' }, role: { kind: 'standalone' }, start: { readiness: { scope: 'default-workbook-references', state: 'blocked', reason: 'Import Applicant roster.',
-          fixAction: { kind: 'import-workbook', purpose: { kind: 'workflow-reference', workflowId: descriptor.id, typeId } } }, enqueue: descriptor.enqueue, version: descriptor.version,
+          fixAction: { kind: 'import-workbook', workflowId: descriptor.id, typeId } }, enqueue: descriptor.enqueue, version: descriptor.version,
           steps: projectWorkflowStartSteps(descriptor), inputRun: descriptor.surfaces.inputRun, spreadsheetIntake: false, requiredWorkbookTypeIds: [typeId] } }] });
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' },
       profile: { bootstrap, descriptorHash: hash, day: { ...FIXTURE_DAY_WIRE, descriptorHash: hash } } });

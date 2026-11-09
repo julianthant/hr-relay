@@ -69,7 +69,6 @@ it("publishes validated injected doctor results and invalidates failures without
   assert.equal(observation.read(1).backupCheckedAt, null);
   assert.equal((await server.request("/api/v1/storage/doctor")).status, 200);
   assert.equal(observation.read(1).backup, "current");
-  assert.equal(observation.read(1).restoreTarget.state, "available");
   assert.equal(observation.read(1).backupCheckedAt, completed.checkedAt);
   fail = true;
   assert.equal((await server.request("/api/v1/storage/doctor")).status, 500);

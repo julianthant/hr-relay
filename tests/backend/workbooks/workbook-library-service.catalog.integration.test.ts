@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
-import { WorkbookLibraryOriginSchema, WorkbookLibraryChangeSchema } from '../../../src/models/dashboard/workbook-library.js';
+import { WorkbookLibraryOriginSchema, WorkbookLibraryChangeSchema, WorkbookReferenceSlotSchema } from '../../../src/models/dashboard/workbook-library.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
 import { unexpectedWorkbookSync } from '../../support/helpers/backend/workbook-sync.js';
 import type { WorkbookSyncDownload } from '../../../src/backend/workbooks/workbook-library-service.js';
@@ -14,7 +14,7 @@ import { spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadshe
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
-function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: Pick<Parameters<typeof createWorkbookLibraryService>[0], 'workflows' | 'resultRun'> = {}) {
+function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: Pick<Parameters<typeof createWorkbookLibraryService>[0], 'resultRun'> = {}) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(sql);
   database.exec("CREATE TABLE runs (id TEXT PRIMARY KEY,state TEXT NOT NULL,lifecycle_json TEXT NOT NULL); CREATE TABLE run_requests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL)");
@@ -204,12 +204,13 @@ it('captures exact named all-row bytes separately from live CAS and refuses miss
 });
 
 
-it('imports a declared reference atomically, shares its type default across workflows and exposes only mapped column facts', () => {
+it('imports independently, explicitly binds a shared type default across workflows and exposes only mapped column facts', () => {
   const workflows = [{ id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster'] }, { id: 'second', label: 'Second', requiredWorkbookTypeIds: ['roster'] }];
-  const f = fixture(unexpectedWorkbookSync, { workflows });
+  const f = fixture();
   expect(f.service.references(workflows).map(slot => slot.current)).toEqual([
     { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' }, { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' },
   ]);
+  expect(f.service.references(workflows).every(slot => slot.status === 'unavailable' && slot.reasonCode === 'WORKBOOK_TYPE_UNAVAILABLE')).toBe(true);
   expect(projectWorkflowStartReadiness(workflows[0], f.service.references(workflows))).toEqual({
     scope: 'default-workbook-references', state: 'unavailable', reason: ERROR_CATALOG.WORKBOOK_TYPE_UNAVAILABLE.text,
     fixAction: { kind: 'review-workbook-reference', workflowId: 'first', typeId: 'roster' },
@@ -217,23 +218,32 @@ it('imports a declared reference atomically, shares its type default across work
   f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid', 'fullName'], keyFieldId: 'eid', defaultWorkbookId: null });
   expect(projectWorkflowStartReadiness(workflows[1], f.service.references(workflows))).toEqual({
     scope: 'default-workbook-references', state: 'blocked', reason: 'Second needs Roster.',
-    fixAction: { kind: 'import-workbook', purpose: { kind: 'workflow-reference', workflowId: 'second', typeId: 'roster' } },
+    fixAction: { kind: 'import-workbook', workflowId: 'second', typeId: 'roster' },
   });
-  expect(f.service.references(workflows).every(slot => slot.current.state === 'missing')).toBe(true);
+  expect(f.service.references(workflows).every(slot => slot.current.state === 'missing' && slot.status === 'missing' && slot.reasonCode === 'WORKBOOK_REFERENCE_MISSING')).toBe(true);
   const multiple = { id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster', 'another-roster'] };
   expect(projectWorkflowStartReadiness(multiple, f.service.references([multiple]))).toMatchObject({
-    state: 'blocked', fixAction: { purpose: { workflowId: 'first', typeId: 'roster' } },
+    state: 'blocked', fixAction: { workflowId: 'first', typeId: 'roster' },
   });
   const workbook = { ...f.record.workbook, libraryId: undefined };
   workbook.sheets = [...workbook.sheets, { ...workbook.sheets[0], id: 'unmapped', name: 'No bindings', columnBindings: undefined }];
-  const request = { workbook: encodeEditableWorkbook(workbook), purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } };
+  const request = { workbook: encodeEditableWorkbook(workbook) };
   const result = f.service.importWorkbook(request);
-  expect(result.purpose).toEqual(request.purpose);
-  expect(result.reference).toEqual({ workflowId: 'first', typeId: 'roster', libraryId: result.workbook.libraryId });
+  expect(Object.keys(result)).toEqual(['workbook']);
+  expect(result.workbook.version).toBe(1);
+  expect(f.service.metadata(result.workbook.libraryId).typeId).toBe('general');
+  expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBeNull();
+  expect(f.service.references(workflows).every(slot => slot.status === 'missing')).toBe(true);
+  f.service.operatorOperation(result.workbook.libraryId, 'assign-roster', { kind: 'metadata', expectedVersion: 1,
+    metadata: { typeId: 'roster', sharePoint: null } });
+  f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid', 'fullName'], keyFieldId: 'eid', defaultWorkbookId: result.workbook.libraryId });
   expect(f.service.metadata(result.workbook.libraryId).typeId).toBe('roster');
   expect(f.service.revision(result.workbook.libraryId, 1).version).toBe(1);
   expect(f.service.revision(result.workbook.libraryId, 2).version).toBe(2);
   const slots = f.service.references(workflows);
+  expect(slots.every(slot => slot.status === 'bound' && slot.reasonCode === null)).toBe(true);
+  expect(WorkbookReferenceSlotSchema.safeParse({ ...slots[0], status: 'missing', reasonCode: 'WORKBOOK_REFERENCE_MISSING' }).success).toBe(false);
+  expect(WorkbookReferenceSlotSchema.safeParse({ ...slots[0], subtitle: 'invented' }).success).toBe(false);
   expect(projectWorkflowStartReadiness(workflows[0], slots)).toEqual({ scope: 'default-workbook-references', state: 'ready' });
   expect(projectWorkflowStartReadiness(workflows[1], slots)).toEqual({ scope: 'default-workbook-references', state: 'ready' });
   const broken = slots.map(slot => ({ ...slot, current: { state: 'unavailable' as const, code: 'WORKBOOK_BINDING_UNAVAILABLE' as const } }));
@@ -252,33 +262,32 @@ it('imports a declared reference atomically, shares its type default across work
     ]);
     expect(JSON.stringify(slot.current.columns)).not.toContain('10000001');
   }
-  const other = f.service.importWorkbook({ workbook: request.workbook, purpose: { kind: 'other' } });
-  expect(other.reference).toBeNull();
+  const other = f.service.importWorkbook({ workbook: request.workbook });
+  expect(other.workbook.version).toBe(1);
   expect(f.service.metadata(other.workbook.libraryId).typeId).toBe('general');
   expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBe(result.workbook.libraryId);
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });
 
-it('rejects invalid import purposes before effects and rolls back creation, metadata and binding together', () => {
-  const f = fixture(unexpectedWorkbookSync, { workflows: [{ id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster', 'absent'] }] });
+it('rejects retired import fields before effects and keeps explicit default binding separate', () => {
+  const f = fixture();
   f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null });
   const workbook = encodeEditableWorkbook({ ...f.record.workbook, libraryId: undefined });
   const before = f.service.catalog();
-  for (const purpose of [undefined, { kind: 'other', typeId: 'roster' },
-    { kind: 'workflow-reference', workflowId: 'unknown', typeId: 'roster' },
-    { kind: 'workflow-reference', workflowId: 'first', typeId: 'general' },
-    { kind: 'workflow-reference', workflowId: 'first', typeId: 'absent' }]) {
-    expect(() => f.service.importWorkbook({ workbook, purpose })).toThrow(expect.objectContaining({ code: 'WORKBOOK_INVALID' }));
+  for (const extra of [{ purpose: { kind: 'other' } }, { purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } }, { reference: null }]) {
+    expect(() => f.service.importWorkbook({ workbook, ...extra })).toThrow(expect.objectContaining({ code: 'WORKBOOK_INVALID' }));
     expect(f.service.catalog()).toEqual(before);
   }
-  const counts = () => ['workbook_library', 'workbook_creations', 'workbook_operations', 'workbook_library_state', 'workbook_library_snapshots']
-    .map(table => f.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()?.count);
-  const initial = counts();
   f.database.exec("CREATE TRIGGER refuse_binding BEFORE UPDATE ON workbook_types BEGIN SELECT RAISE(ABORT,'synthetic refusal'); END");
-  expect(() => f.service.importWorkbook({ workbook, purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } })).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_FAILED' }));
-  expect(counts()).toEqual(initial);
-  expect(f.service.catalog()).toEqual(before);
+  const imported = f.service.importWorkbook({ workbook });
+  expect(imported.workbook.version).toBe(1);
+  expect(f.service.metadata(imported.workbook.libraryId).typeId).toBe('general');
+  f.service.operatorOperation(imported.workbook.libraryId, 'assign-roster', { kind: 'metadata', expectedVersion: 1,
+    metadata: { typeId: 'roster', sharePoint: null } });
+  expect(() => f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: imported.workbook.libraryId }))
+    .toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_FAILED' }));
   expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBeNull();
+  expect(f.service.read(imported.workbook.libraryId).version).toBe(2);
 });
 
 it('serves selected content time across saves, metadata, retained versions and version selection', async () => {

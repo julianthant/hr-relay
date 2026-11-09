@@ -25,7 +25,7 @@ const STORAGE = section("storage", "Storage checks");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
   authority: "healthy",
   backup: "current",
-  checkedAt: "2026-08-26T16:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } });
+  checkedAt: "2026-08-26T16:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient;
 
 describe("curly quotes around a section name (unit F4b finding 3)", () => {

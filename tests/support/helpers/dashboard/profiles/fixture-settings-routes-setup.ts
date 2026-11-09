@@ -1,3 +1,4 @@
+import { chatGptStatusFixture } from "../../chatgpt-status-fixture.js";
 import { Hono } from "hono";
 import { ChatGptAccountStateSchema,ChatGptSignInStartSchema,type ChatGptAccountState } from "../../../../../src/models/dashboard/chatgpt-account.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema } from "../../../../../src/models/dashboard/assistant.js";
@@ -15,7 +16,7 @@ export function createFixtureSettingsRoutesSetup({ FIXTURE_EDITABLE_SETTINGS, FI
     })));
     let account: ChatGptAccountState = { state: "signed-out" };
     const attemptId = "00000000-0000-4000-8000-000000000088";
-    app.get("/api/v1/settings/chatgpt-account", c => c.json(account));
+    app.get("/api/v1/settings/chatgpt-account", c => c.json(chatGptStatusFixture(account)));
     app.post("/api/v1/settings/chatgpt-account/sign-in", c => {
       account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", expiresAt: "2099-10-12T12:00:00.000Z", planUsage: "enabled" });
       return c.json(ChatGptSignInStartSchema.parse({ state: "started", attemptId,

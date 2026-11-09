@@ -24,7 +24,7 @@ export class WorkbookLibraryError extends Error {
 }
 
 export interface WorkbookLibraryRepository {
-  create(record: SavedWorkbook, origin?: z.infer<typeof WorkbookLibraryOriginSchema>, referenceTypeId?: string): SavedWorkbook;
+  create(record: SavedWorkbook, origin?: z.infer<typeof WorkbookLibraryOriginSchema>): SavedWorkbook;
   read(libraryId: string): SavedWorkbook | undefined;
   revision(libraryId: string, version: number): SavedWorkbook;
   list(): readonly SavedWorkbook[];
@@ -126,7 +126,6 @@ export interface WorkbookReferenceWorkflow {
   readonly requiredWorkbookTypeIds: readonly string[];
 }
 export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
-  workflows?: readonly WorkbookReferenceWorkflow[];
   resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
 }>) {
   const read = (libraryId: string): SavedWorkbook => {
@@ -163,14 +162,10 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     importWorkbook(value: unknown) {
       const request = input(WorkbookImportRequestSchema, value), workbook = decodeEditableWorkbook(request.workbook);
       if (workbook.libraryId !== undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-      const purpose = request.purpose;
-      if (purpose.kind === 'workflow-reference' && (!deps.workflows?.some(workflow => workflow.id === purpose.workflowId
-        && workflow.requiredWorkbookTypeIds.includes(purpose.typeId)) || !deps.repository.types().some(type => type.id === purpose.typeId)))
-        throw new WorkbookLibraryError('WORKBOOK_INVALID');
       const libraryId = randomUUID(), now = deps.clock.now().toISOString();
       const record = deps.repository.create(input(SavedWorkbookSchema, { libraryId, version: 1, createdAt: now, savedAt: now, workbook: { ...workbook, libraryId } }),
-        { kind: 'local' }, purpose.kind === 'workflow-reference' ? purpose.typeId : undefined);
-      return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(record), purpose, reference: purpose.kind === "other" ? null : { workflowId: purpose.workflowId, typeId: purpose.typeId, libraryId: record.libraryId } });
+        { kind: 'local' });
+      return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(record) });
     },
     catalog: () => deps.repository.catalog(),
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
@@ -245,12 +240,12 @@ export function projectWorkbookReferences(repository: WorkbookLibraryRepository,
   return WorkbookReferenceSlotsSchema.parse(workflows.flatMap(workflow => workflow.requiredWorkbookTypeIds.map(typeId => {
     const type = types.find(type => type.id === typeId) ?? null;
     const slot = { workflowId: workflow.id, workflowLabel: workflow.label, typeId, type };
-    if (type === null) return { ...slot, current: { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' } };
-    if (type.defaultWorkbookId === null) return { ...slot, current: { state: 'missing' } };
+    if (type === null) return { ...slot, status: 'unavailable', reasonCode: 'WORKBOOK_TYPE_UNAVAILABLE', current: { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' } };
+    if (type.defaultWorkbookId === null) return { ...slot, status: 'missing', reasonCode: 'WORKBOOK_REFERENCE_MISSING', current: { state: 'missing' } };
     const entry = catalog.find(entry => entry.libraryId === type.defaultWorkbookId);
-    if (entry === undefined || entry.metadata.typeId !== typeId) return { ...slot, current: { state: 'unavailable', code: 'WORKBOOK_BINDING_UNAVAILABLE' } };
+    if (entry === undefined || entry.metadata.typeId !== typeId) return { ...slot, status: 'unavailable', reasonCode: 'WORKBOOK_BINDING_UNAVAILABLE', current: { state: 'unavailable', code: 'WORKBOOK_BINDING_UNAVAILABLE' } };
     const selected = repository.libraryVersion(entry.libraryId, entry.state.selectedVersionId);
-    return { ...slot, current: { state: 'bound', entry, columns: selected.workbook.sheets.map(sheet => ({
+    return { ...slot, status: 'bound', reasonCode: null, current: { state: 'bound', entry, columns: selected.workbook.sheets.map(sheet => ({
       sheetId: sheet.id, sheetName: sheet.name,
       eid: (sheet.columnBindings ?? []).flatMap((binding, column) => binding.fieldId === 'eid' && binding.basis !== 'unmapped'
         ? [{ column, fieldId: binding.fieldId, basis: binding.basis }] : []),

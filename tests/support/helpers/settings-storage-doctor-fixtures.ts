@@ -12,7 +12,7 @@ export function createSettingsStorageDoctorFixtures() {
   const STORAGE = StorageHealthSummaryWireSchema.parse({
     authority: "healthy",
     backup: "current",
-    checkedAt: "2026-08-31T16:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } });
+    checkedAt: "2026-08-31T16:00:00.000Z", lastBackupAt: null, backupCheckedAt: null });
 
   const REPORT_BASE = {
     recovery: { state: "clear" },

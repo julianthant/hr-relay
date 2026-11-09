@@ -12,8 +12,7 @@ function storage(authority: "healthy" | "unavailable") {
     authority,
     backup: "current",
     checkedAt: CHECKED_AT,
-    lastBackupAt: null, backupCheckedAt: null,
-    restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" },
+    lastBackupAt: null, backupCheckedAt: null
   });
 }
 

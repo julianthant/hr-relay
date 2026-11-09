@@ -286,7 +286,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       } };
     } });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync,
-    workflows: READABLE_WORKFLOW_MODULES.map(module => module.descriptor),
     resultRun: runId => {
       const run = database.authority.runs.get(runId);
       return run === undefined ? undefined : { workflowId: run.envelope.workflow, enqueuedAt: run.envelope.enqueuedAt };
@@ -330,7 +329,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     assistant,
     chatGptOcrTest,
     chatGptAccount: {
-      checkConnection: async signal => { assertCurrent(); const result = await chatGptAccount.checkConnection(signal); assertCurrent(); return result; },
+      readStatus: async signal => { assertCurrent(); const result = await chatGptAccount.readStatus(signal); assertCurrent(); return result; },
       refreshAccount: async () => { assertCurrent(); const result = await chatGptAccount.refreshAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },

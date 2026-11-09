@@ -16,19 +16,19 @@ describe("dashboard wire primitives", () => {
 
   it("requires one exact reference fix action and keeps ready scoped to default workbook bindings", () => {
     const blocked = { scope: "default-workbook-references", state: "blocked", reason: "Import the roster.",
-      fixAction: { kind: "import-workbook", purpose: { kind: "workflow-reference", workflowId: WORKFLOW_PRIMITIVE.id, typeId: "roster" } } };
+      fixAction: { kind: "import-workbook", workflowId: WORKFLOW_PRIMITIVE.id, typeId: "roster" } };
     const workflow = { ...WORKFLOW_PRIMITIVE, start: { ...WORKFLOW_PRIMITIVE.start, requiredWorkbookTypeIds: ["roster"], readiness: blocked } };
     assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse(workflow).success, true);
     assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse({ ...workflow,
       start: { ...workflow.start, readiness: { ...blocked, fixAction: { ...blocked.fixAction,
-        purpose: { ...blocked.fixAction.purpose, workflowId: "another-workflow" } } } } }).success, false);
+        workflowId: "another-workflow" } } } }).success, false);
     assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse({ ...workflow,
       start: { ...workflow.start, requiredWorkbookTypeIds: [] } }).success, false);
     assert.equal(WorkbookReferenceSlotSchema.safeParse({ workflowId: WORKFLOW_PRIMITIVE.id, workflowLabel: WORKFLOW_PRIMITIVE.label,
       typeId: "roster", type: null, current: { state: "missing" } }).success, false);
     assert.equal(WorkflowStartReadinessSchema.safeParse({ ...blocked, fixAction: undefined }).success, false);
     assert.equal(WorkflowStartReadinessSchema.safeParse({ ...blocked, fixActions: [blocked.fixAction] }).success, false);
-    assert.equal(WorkflowStartReadinessSchema.safeParse({ ...blocked, fixAction: { kind: "import-workbook", purpose: { kind: "other" } } }).success, false);
+    assert.equal(WorkflowStartReadinessSchema.safeParse({ ...blocked, fixAction: { kind: "import-workbook", purpose: { kind: "workflow-reference", workflowId: WORKFLOW_PRIMITIVE.id, typeId: "roster" } } }).success, false);
     assert.equal(WorkflowStartReadinessSchema.safeParse({ scope: "all-dependencies", state: "ready" }).success, false);
     assert.equal(WorkflowStartReadinessSchema.safeParse({ scope: "default-workbook-references", state: "ready", fixAction: blocked.fixAction }).success, false);
   });

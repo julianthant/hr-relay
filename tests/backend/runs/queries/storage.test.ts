@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import { createStorageBackupObservation } from "../../../../src/backend/runs/queries/storage.js";
 import { buildBootstrap } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import { RestoreCandidateWireSchema, StorageDoctorWireSchema, StorageRestoreTargetWireSchema, type StorageDoctorWire } from "../../../../src/models/dashboard/storage.js";
+import { RestoreCandidateWireSchema, StorageDoctorWireSchema, type StorageDoctorWire } from "../../../../src/models/dashboard/storage.js";
 import { FingerprintSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
@@ -34,15 +34,14 @@ function report(input: Partial<StorageDoctorWire> = {}): StorageDoctorWire {
 }
 
 describe("retained storage backup observation", () => {
-  it("withholds times and Restore until a verification completes, independently per composition", () => {
+  it("withholds times until a verification completes, independently per composition", () => {
     const first = createStorageBackupObservation(), second = createStorageBackupObservation();
     assert.deepEqual(first.read(41), {
-      backup: "unavailable", lastBackupAt: null, backupCheckedAt: null,
-      restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" },
+      backup: "unavailable", lastBackupAt: null, backupCheckedAt: null
     });
     first.observe(report());
-    assert.equal(first.read(41).restoreTarget.state, "available");
-    assert.equal(second.read(41).restoreTarget.state, "unavailable");
+    assert.equal(first.read(41).lastBackupAt, CAPTURED_AT);
+    assert.equal(second.read(41).lastBackupAt, null);
   });
 
   it("separates capture from verification time and selects by capture time rather than report order", () => {
@@ -52,45 +51,17 @@ describe("retained storage backup observation", () => {
     const summary = observation.read(41);
     assert.equal(summary.lastBackupAt, newest.createdAt);
     assert.equal(summary.backupCheckedAt, CHECKED_AT);
-    assert.deepEqual(summary.restoreTarget, { state: "available", mode: "stopped-maintenance", candidate: {
-      manifestFileName: newest.manifestFileName, backupFileName: newest.backupFileName, createdAt: newest.createdAt,
-      schemaVersion: newest.schemaVersion, authorityGeneration: newest.authorityGeneration,
-    } });
   });
 
-  it("chooses the newest eligible candidate while the last backup time includes verified ineligible candidates", () => {
-    const observation = createStorageBackupObservation();
-    const newest = candidate({ createdAt: IsoInstantSchema.parse("2026-11-06T11:30:00.000Z"), restoreEligibility: { state: "unsupported", reason: "unsupported schema" } });
-    observation.observe(report({ backup: { state: "current", latest: newest }, restoreCandidates: [newest, candidate()] }));
-    const summary = observation.read(41);
-    assert.equal(summary.lastBackupAt, newest.createdAt);
-    assert.equal(summary.restoreTarget.state, "available");
-    if (summary.restoreTarget.state !== "available") throw new Error("eligible candidate missing");
-    assert.equal(summary.restoreTarget.candidate.createdAt, CAPTURED_AT);
-    observation.observe(report({ restoreCandidates: [newest] }));
-    assert.equal(observation.read(41).restoreTarget.state, "unavailable");
-  });
 
-  it("excludes invalid candidates and unavailable authority from Restore", () => {
+  it("excludes invalid candidates from backup times and withholds unavailable authority", () => {
     const observation = createStorageBackupObservation();
     const invalid = { state: "invalid" as const, manifestFileName: "invalid.manifest.json", cause: { code: "invalid", summary: "invalid backup" } };
     observation.observe(report({ backup: { state: "invalid", cause: invalid.cause }, restoreCandidates: [invalid] }));
     assert.equal(observation.read(41).lastBackupAt, null);
-    assert.equal(observation.read(41).restoreTarget.state, "unavailable");
     observation.observe(report({ authority: { state: "degraded", cause: { code: "unavailable", summary: "unavailable authority" } } }));
-    assert.equal(observation.read(41).restoreTarget.state, "unavailable");
     assert.equal(observation.read(41).backupCheckedAt, CHECKED_AT);
-  });
-
-  it("uses generation and filename ties deterministically after capture time", () => {
-    const observation = createStorageBackupObservation();
-    observation.observe(report({ restoreCandidates: [candidate({ authorityGeneration: 40 }),
-      candidate({ manifestFileName: "z.manifest.json" }), candidate({ manifestFileName: "a.manifest.json" })] }));
-    const target = observation.read(41).restoreTarget;
-    assert.equal(target.state, "available");
-    if (target.state !== "available") throw new Error("eligible candidate missing");
-    assert.equal(target.candidate.authorityGeneration, 41);
-    assert.equal(target.candidate.manifestFileName, "a.manifest.json");
+    assert.equal(observation.read(41).backup, "unavailable");
   });
 
   it.each(["current", "stale", "missing", "invalid"] as const)("preserves %s doctor truth without admitting invalid backups", state => {
@@ -102,17 +73,15 @@ describe("retained storage backup observation", () => {
     const summary = observation.read(41);
     assert.equal(summary.backup, state === "invalid" ? "unavailable" : state);
     assert.equal(summary.lastBackupAt, CAPTURED_AT);
-    assert.equal(summary.restoreTarget.state, state === "current" || state === "stale" ? "available" : "unavailable");
   });
 
-  it.each([42, 40, undefined])("permanently invalidates Restore after observed generation %s until a fresh successful check", generation => {
+  it.each([42, 40, undefined])("permanently invalidates backup currency after observed generation %s until a fresh successful check", generation => {
     const observation = createStorageBackupObservation();
     observation.observe(report());
     assert.equal(observation.read(generation).backup, generation === undefined ? "unavailable" : "stale");
-    assert.equal(observation.read(41).restoreTarget.state, "unavailable");
+    assert.equal(observation.read(41).backup, generation === undefined ? "unavailable" : "stale");
     assert.equal(observation.read(41).backupCheckedAt, CHECKED_AT);
     observation.observe(report({ checkedAt: IsoInstantSchema.parse("2026-11-06T12:30:00.000Z") }));
-    assert.equal(observation.read(41).restoreTarget.state, "available");
     assert.equal(observation.read(41).backupCheckedAt, "2026-11-06T12:30:00.000Z");
   });
 
@@ -122,11 +91,10 @@ describe("retained storage backup observation", () => {
     observation.invalidate();
     const summary = observation.read(41);
     assert.equal(summary.backup, "unavailable");
-    assert.equal(summary.restoreTarget.state, "unavailable");
     assert.equal(summary.lastBackupAt, CAPTURED_AT);
     assert.equal(summary.backupCheckedAt, CHECKED_AT);
     observation.observe(report());
-    assert.equal(observation.read(41).restoreTarget.state, "available");
+    assert.equal(observation.read(41).backup, "current");
   });
 
   it("serves repeated bootstrap reads from the same observation and live generation without refreshing verification time", () => {
@@ -146,16 +114,10 @@ describe("retained storage backup observation", () => {
     assert.equal(reads, 3);
   });
 
-  it.each(["/private/backup.sqlite", "../backup.sqlite", "C:\\backup.sqlite", "backup/file.sqlite", ".", ".."])('rejects unsafe restore filename %s', backupFileName => {
-    assert.equal(StorageRestoreTargetWireSchema.safeParse({ state: "available", mode: "stopped-maintenance", candidate: {
-      manifestFileName: "backup.manifest.json", backupFileName, createdAt: CAPTURED_AT, schemaVersion: 27, authorityGeneration: 41,
-    } }).success, false);
-  });
-
-  it("requires explicit new summary fields and strict nested Restore targets", () => {
+  it("requires explicit timestamps and rejects dashboard restore affordances", () => {
     assert.equal(StorageHealthSummaryWireSchema.safeParse({ authority: "healthy", backup: "current", checkedAt: CHECKED_AT }).success, false);
     const observation = createStorageBackupObservation();
     assert.equal(StorageHealthSummaryWireSchema.safeParse({ authority: "healthy", checkedAt: CHECKED_AT, ...observation.read(41) }).success, true);
-    assert.equal(StorageRestoreTargetWireSchema.safeParse({ state: "unavailable", reason: "Check again.", fixAction: "check-again", path: "/private" }).success, false);
+    assert.equal(StorageHealthSummaryWireSchema.safeParse({ authority: "healthy", checkedAt: CHECKED_AT, ...observation.read(41), restoreTarget: { state: "available" } }).success, false);
   });
 });

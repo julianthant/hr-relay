@@ -57,15 +57,12 @@ export function projectStorageDoctor(report: StorageDoctorReport, service: Backu
 }
 
 type StorageHealthSummary = ReturnType<typeof StorageHealthSummaryWireSchema.parse>;
-type StorageBackupSummary = Pick<StorageHealthSummary, "backup" | "lastBackupAt" | "backupCheckedAt" | "restoreTarget">;
+type StorageBackupSummary = Pick<StorageHealthSummary, "backup" | "lastBackupAt" | "backupCheckedAt">;
 type VerifiedCandidate = Extract<StorageDoctorWire["restoreCandidates"][number], { state: "verified-compatible" }>;
 
 export function createStorageBackupObservation() {
   let observation: (StorageBackupSummary & { authorityGeneration: number | undefined }) | undefined;
   let invalidated: "failed" | "generation-changed" | "authority-unavailable" | undefined;
-  const unavailable = (reason: string): StorageHealthSummary["restoreTarget"] => ({
-    state: "unavailable", reason, fixAction: "check-again",
-  });
   return {
     observe(value: StorageDoctorWire): void {
       const report = StorageDoctorWireSchema.parse(value);
@@ -75,15 +72,8 @@ export function createStorageBackupObservation() {
           || left.manifestFileName.localeCompare(right.manifestFileName)
           || left.backupFileName.localeCompare(right.backupFileName));
       const backup = report.backup.state === "invalid" ? "unavailable" : report.backup.state;
-      const candidate = candidates.find(candidate => candidate.restoreEligibility.state === "eligible");
-      let restoreTarget = unavailable("No verified backup is eligible for restore. Check again.");
-      if (backup !== "unavailable" && backup !== "missing" && report.authority.state === "healthy" && candidate !== undefined) {
-        const { manifestFileName, backupFileName, createdAt, schemaVersion, authorityGeneration } = candidate;
-        restoreTarget = StorageHealthSummaryWireSchema.shape.restoreTarget.parse({ state: "available", mode: "stopped-maintenance",
-          candidate: { manifestFileName, backupFileName, createdAt, schemaVersion, authorityGeneration } });
-      }
       observation = {
-        backup, lastBackupAt: candidates[0]?.createdAt ?? null, backupCheckedAt: report.checkedAt, restoreTarget,
+        backup, lastBackupAt: candidates[0]?.createdAt ?? null, backupCheckedAt: report.checkedAt,
         authorityGeneration: report.authority.state === "healthy" ? report.authority.authorityGeneration : undefined,
       };
       invalidated = undefined;
@@ -92,20 +82,18 @@ export function createStorageBackupObservation() {
     read(this: void, liveGeneration: number | undefined): StorageBackupSummary {
       if (observation === undefined) return {
         backup: "unavailable", lastBackupAt: null, backupCheckedAt: null,
-        restoreTarget: unavailable("Backup verification has not completed. Check again."),
       };
       const { authorityGeneration, ...summary } = observation;
       if (invalidated === "failed") return {
-        ...summary, backup: "unavailable", restoreTarget: unavailable("The storage check failed. Check again."),
+        ...summary, backup: "unavailable",
       };
       if (liveGeneration === undefined || authorityGeneration === undefined) invalidated = "authority-unavailable";
       else if (liveGeneration !== authorityGeneration && invalidated !== "authority-unavailable") invalidated = "generation-changed";
       if (invalidated === "authority-unavailable") return {
-        ...summary, backup: "unavailable", restoreTarget: unavailable("Storage authority is unavailable. Check again."),
+        ...summary, backup: "unavailable",
       };
       if (invalidated === "generation-changed") return {
         ...summary, backup: summary.backup === "current" ? "stale" : summary.backup,
-        restoreTarget: unavailable("Storage authority changed. Check again."),
       };
       return summary;
     },

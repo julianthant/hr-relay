@@ -1,3 +1,4 @@
+import { chatGptStatusFixture } from "../../support/helpers/chatgpt-status-fixture.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
@@ -73,7 +74,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
   actor: { id: "local-operator", label: "Local operator" },
   workbookReferences: [],
   serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },
-  storage: { authority: "healthy", backup: "current", checkedAt: "2026-08-27T18:00:00.000Z", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } },
+  storage: { authority: "healthy", backup: "current", checkedAt: "2026-08-27T18:00:00.000Z", lastBackupAt: null, backupCheckedAt: null },
   workflows: [{
     id: "fixture-workflow",
     code: "fw",
@@ -175,7 +176,7 @@ function appClient(): DashboardClient_m1 {
     subscribeProfileSessionStale: () => () => undefined,
     bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
     applicationLifecycle: () => Promise.resolve(ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", targets: [], update: "installer-unavailable" })),
-    chatGptAccount: () => Promise.resolve({ state: "signed-out" }),
+    chatGptAccount: async () => chatGptStatusFixture(await (Promise.resolve({ state: "signed-out" }))),
     subscribeDay: (input: Parameters<DashboardClient_m1["subscribeDay"]>[0]) => {
       input.onDay(APP_DAY);
       input.onState({ state: "live" });

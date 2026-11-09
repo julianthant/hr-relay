@@ -1,3 +1,4 @@
+import { chatGptStatusFixture } from "../../../../support/helpers/chatgpt-status-fixture.js";
 import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -72,8 +73,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
   const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId: "00000000-0000-4000-8000-000000000001", authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2099-01-01T00:05:00.000Z" });
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let starts = 0, reads = 0;
-  const queries: ChatGptAccountQueries = { checkChatGptConnection: async () => { throw new Error("unexpected connection check"); },
-    chatGptAccount: async () => { reads++; if (scenario === "initial read failure" && reads === 1) throw new Error("synthetic failed read"); return account; },
+  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (scenario === "initial read failure" && reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(account); },
     startChatGptSignIn: async () => { starts++; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),

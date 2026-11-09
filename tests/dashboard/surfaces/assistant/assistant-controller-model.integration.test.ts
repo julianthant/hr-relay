@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
@@ -75,7 +76,7 @@ it('renders served proposal facts and citations in HUB and keeps confirmation an
     effects: { workflowExecuted: false, transactionCommitted: false }, confirmation: 'required-in-run',
   } }; } };
   const producer = createAssistantMockProducer();
-  const accountClient = { chatGptAccount: async () => ({ state: 'signed-out' as const }) };
+  const accountClient = { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) };
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
     return createElement(AssistantPanel, { producer, accountClient, served: current, title: 'New chat' });
@@ -171,7 +172,7 @@ it.each(['notification', 'workflow'] as const)('renders the existing served %s c
   const producer = createAssistantMockProducer();
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer, accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+    return createElement(AssistantPanel, { producer, accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
@@ -237,7 +238,7 @@ it('refuses setup attachments before send callbacks, file readers and registrati
     function Harness() {
       current = useAssistantController(client, 'profile', undefined, false);
       return createElement(ShellAssistantPanel, { producer, served: current, draft,
-        accountClient: { async chatGptAccount() { return ChatGptAccountStateSchema.parse({ state: "signed-out" }); } },
+        accountClient: { async chatGptAccount() { return chatGptStatusFixture(ChatGptAccountStateSchema.parse({ state: "signed-out" })); } },
         async onSendMessage() { sends++; }, async onRegisterSpreadsheet() { registrations++; },
         async onAttachFile() { attachments++; return null; } });
     }
@@ -323,7 +324,7 @@ it.each(['shell', 'standalone'] as const)('shows run and notification reconcilia
   const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
   function Harness() {
     current = useAssistantController(client, 'current', undefined, false);
-    return surface === 'shell' ? createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return { state: 'signed-out' as const }; } } })
+    return surface === 'shell' ? createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return chatGptStatusFixture({ state: 'signed-out' as const }); } } })
       : createElement(StandaloneAssistantPanel, { ...current, defaultOpen: true });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -347,7 +348,7 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
     async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_VERIFICATION_FAILED' as const }; } };
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: { ...preview, mode: 'live' as const }, children: createElement(Harness) })));

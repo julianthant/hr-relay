@@ -82,7 +82,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
     workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
-    backupSummary: () => ({ backup: "current", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } }),
+    backupSummary: () => ({ backup: "current", lastBackupAt: null, backupCheckedAt: null }),
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
 }
@@ -126,8 +126,8 @@ describe("bootstrap start-surface block", () => {
                 fixAction: { kind: "review-workbook-reference", workflowId: descriptor.id, typeId: descriptor.requiredWorkbookTypeIds[0] } }
               : { scope: "default-workbook-references", state: "blocked",
               reason: `${descriptor.label} needs ${wire.workbookReferences.find(slot => slot.workflowId === descriptor.id)?.type?.name}.`,
-              fixAction: { kind: "import-workbook", purpose: { kind: "workflow-reference", workflowId: descriptor.id,
-                typeId: descriptor.requiredWorkbookTypeIds[0] } } },
+              fixAction: { kind: "import-workbook", workflowId: descriptor.id,
+                typeId: descriptor.requiredWorkbookTypeIds[0] } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
@@ -263,7 +263,7 @@ function depsOf(
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
     workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
-    backupSummary: () => ({ backup: storage.backup, lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } }),
+    backupSummary: () => ({ backup: storage.backup, lastBackupAt: null, backupCheckedAt: null }),
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),
@@ -435,7 +435,7 @@ describe("bootstrap storage summary", () => {
       const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
       assert.deepEqual(
         wire.storage,
-        { authority: "unavailable", backup: "stale", checkedAt: AT.toISOString(), lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } },
+        { authority: "unavailable", backup: "stale", checkedAt: AT.toISOString(), lastBackupAt: null, backupCheckedAt: null },
       );
     } finally {
       await world.dispose();

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chatGptStatusFixture } from "../../../../support/helpers/chatgpt-status-fixture.js";
 import assert from "node:assert/strict";
 import { it, vi } from "vitest";
 import type { ChatGptAccountQueries } from "../../../../../src/dashboard/client/queries/chatgpt-account-queries.js";
@@ -12,8 +13,7 @@ const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId, au
 function setup(overrides: Partial<ChatGptAccountQueries> = {}) {
   const calls: string[] = [];
   let connected = false;
-  const client: ChatGptAccountQueries = { checkChatGptConnection: async () => { throw new Error("unexpected connection check"); },
-    chatGptAccount: async () => connected ? account : { state: "signed-out" },
+  const client: ChatGptAccountQueries = { chatGptAccount: async () => chatGptStatusFixture(connected ? account : { state: "signed-out" }),
     startChatGptSignIn: async () => started,
     completeChatGptSignIn: async () => { connected = true; return { state: "completed", attemptId, account }; },
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }),
@@ -41,7 +41,7 @@ it("never auto-tests during sign-in and dispatches one OCR call despite duplicat
 
 for (const state of ["refused", "uncertain"] as const) it(`retains exact OCR ${state} without redispatch or fabricated success`, async () => {
   let calls = 0;
-  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: async () => { calls++; return { state, code: "CHATGPT_OCR_INVALID", message: ERROR_CATALOG.CHATGPT_OCR_INVALID.text }; } });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: async () => { calls++; return { state, code: "CHATGPT_OCR_INVALID", message: ERROR_CATALOG.CHATGPT_OCR_INVALID.text }; } });
   try {
     await f.account.refresh(); await f.port.testOcr();
     assert.equal(f.port.getSnapshot().state, state); assert.equal(calls, 1);
@@ -51,7 +51,7 @@ for (const state of ["refused", "uncertain"] as const) it(`retains exact OCR ${s
 
 it("keeps a lost OCR response uncertain with fixed catalog text and no retry", async () => {
   let calls = 0;
-  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: async () => { calls++; throw new Error("synthetic-private-transport-detail"); } });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: async () => { calls++; throw new Error("synthetic-private-transport-detail"); } });
   try {
     await f.account.refresh(); await f.port.testOcr(); await f.port.testOcr();
     assert.equal(calls, 1); assert.deepEqual(f.port.getSnapshot(), { state: "uncertain", code: "CHATGPT_OCR_FAILED", message: ERROR_CATALOG.CHATGPT_OCR_FAILED.text });
@@ -63,7 +63,7 @@ for (const change of ["refresh", "dispose"] as const) it(`aborts and ignores an 
   const result = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["testChatGptOcr"]>>>();
   let signal: AbortSignal | undefined;
   let calls = 0;
-  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: value => { signal = value; calls++; return result.promise; } });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: value => { signal = value; calls++; return result.promise; } });
   try {
     await f.account.refresh(); const testing = f.port.testOcr();
     assert.equal(calls, 1);
@@ -79,7 +79,7 @@ it("bounds a hung OCR call as uncertain and aborts its signal without redispatch
   vi.useFakeTimers();
   let signal: AbortSignal | undefined;
   let calls = 0;
-  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: value => { signal = value; calls++; return new Promise<never>(() => {}); } });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: value => { signal = value; calls++; return new Promise<never>(() => {}); } });
   try {
     await f.account.refresh(); const testing = f.port.testOcr();
     await vi.advanceTimersByTimeAsync(120_000); await testing;
@@ -95,7 +95,7 @@ it("does not test absent, expired, disabled, limited or unavailable account auth
     { state: "unavailable", code: "CHATGPT_AUTH_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text },
   ];
   for (const view of views) {
-    const f = setup({ chatGptAccount: async () => ChatGptAccountStateSchema.parse(view) });
+    const f = setup({ chatGptAccount: async () => chatGptStatusFixture(ChatGptAccountStateSchema.parse(view)) });
     try { await f.account.refresh(); await f.port.testOcr(); assert.equal(f.calls.includes("ocr"), false); }
     finally { f.dispose(); }
   }
@@ -104,7 +104,7 @@ it("does not test absent, expired, disabled, limited or unavailable account auth
 
 it("retains uncertain lockout after account refresh instead of permitting another inference", async () => {
   let calls = 0;
-  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: async () => { calls++; throw new Error("lost response"); } });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: async () => { calls++; throw new Error("lost response"); } });
   try {
     await f.account.refresh(); await f.port.testOcr();
     const uncertain = f.port.getSnapshot();
@@ -116,7 +116,7 @@ it("retains uncertain lockout after account refresh instead of permitting anothe
 it("does not dispatch OCR while an account refresh is pending", async () => {
   const read = Promise.withResolvers<typeof account>();
   let reads = 0, calls = 0;
-  const f = setup({ chatGptAccount: () => ++reads === 1 ? Promise.resolve(account) : read.promise,
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(await (++reads === 1 ? Promise.resolve(account) : read.promise)),
     testChatGptOcr: async () => { calls++; return { state: "completed", model: "Synthetic OCR" }; } });
   try {
     await f.account.refresh();
@@ -132,7 +132,7 @@ it("aborts pending OCR when an account sign-out starts", async () => {
   const result = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["testChatGptOcr"]>>>();
   const signOut = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["signOutChatGpt"]>>>();
   let signal: AbortSignal | undefined;
-  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: value => { signal = value; return result.promise; }, signOutChatGpt: () => signOut.promise });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: value => { signal = value; return result.promise; }, signOutChatGpt: () => signOut.promise });
   try {
     await f.account.refresh(); const testing = f.port.testOcr();
     const signingOut = f.account.signOut(); assert.equal(signal?.aborted, true);
@@ -146,7 +146,7 @@ it("aborts pending OCR when an account sign-out starts", async () => {
 
 it("does not use retained connected identity when the current account read is unavailable", async () => {
   let reads = 0, calls = 0;
-  const f = setup({ chatGptAccount: async () => { if (++reads === 1) return account; throw new Error("unavailable"); },
+  const f = setup({ chatGptAccount: async () => { if (++reads === 1) return chatGptStatusFixture(account); throw new Error("unavailable"); },
     testChatGptOcr: async () => { calls++; return { state: "completed", model: "Synthetic OCR" }; } });
   try {
     await f.account.refresh(); await f.account.refresh();

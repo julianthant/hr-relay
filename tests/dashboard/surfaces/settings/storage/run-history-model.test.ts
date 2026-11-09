@@ -72,7 +72,7 @@ async function mount(options: { target?: RunHistoryTarget | null; activeRuns?: n
   const render = async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding, children: createElement(StorageSection, {
-      storage: { authority: "healthy", checkedAt: IsoInstantSchema.parse("2026-11-04T12:00:00.000Z"), backup: "current", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } }, onHistoryCleared() { cleared++; },
+      storage: { authority: "healthy", checkedAt: IsoInstantSchema.parse("2026-11-04T12:00:00.000Z"), backup: "current", lastBackupAt: null, backupCheckedAt: null }, onHistoryCleared() { cleared++; },
     }) }) })));
   };
   await render();

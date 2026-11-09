@@ -68,7 +68,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
   app.use("/api/v1/settings/path-picker", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
-  app.use("/api/v1/settings/chatgpt-account/check-connection", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
