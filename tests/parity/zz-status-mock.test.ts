@@ -286,7 +286,8 @@ test(`kit search ${WIDTH}`, async ({ page }) => {
     await page.evaluate(value => { for (const el of [document.documentElement, document.body]) { el.setAttribute("data-demo-theme", value); el.classList.toggle("dark", value === "dark"); } }, theme);
     const field = page.getByRole("searchbox", { name: "Search the specimen" });
     await field.scrollIntoViewIfNeeded();
-    expect(await field.evaluate(node => Math.round(node.closest('[data-slot="search-field-group"]')?.getBoundingClientRect().height ?? 0))).toBe(34);
+    expect(await field.evaluate(node => Math.round(node.closest('[data-slot="search-field-group"]')?.getBoundingClientRect().height ?? 0))).toBe(32);
+    expect(await page.getByRole("button", { name: "Tags", exact: true }).evaluate(node => Math.round(node.getBoundingClientRect().height))).toBe(32);
     await page.getByRole("button", { name: "Tags", exact: true }).click();
     const menuField = page.getByRole("searchbox", { name: "Find a tag" });
     await expect(menuField).toBeVisible();

@@ -8,7 +8,6 @@
 .settings-heading-select { width: var(--ds-w-body-control-standard); }
 .settings-tab-body .settings-group-heading h2,
 .settings-tab-body .settings-group h3,
-.settings-tab-body .ds-body-section-heading,
 .settings-tab-body h2.text-section,
 .settings-tab-body h3.text-section { font-size: var(--ds-text-title); line-height: var(--ds-lh-title); font-weight: 400; }
 .settings-tab-body .ds-field-label,

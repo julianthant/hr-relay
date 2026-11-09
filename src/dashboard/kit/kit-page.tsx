@@ -344,7 +344,7 @@ function ActionsSection() {
         <Button variant="muted">Sync now</Button>
       </Row>
       <Row label="Soft bordered">
-        <Button variant="outline" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>This week</Button>
+        <Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>This week</Button>
         <Button variant="outline">Export</Button>
       </Row>
       <Row label="Plain">
@@ -1152,9 +1152,10 @@ function OverlaysSection() {
       </Row>
       {/* Essential detail uses click disclosure so pointer, touch and keyboard can reach it. */}
       <Row label="Search">
+        <div className="ds-toolbar-row flex items-center gap-2">
         <span className="w-[280px]"><SearchInput aria-label="Search the specimen" placeholder="Search" shortcut={<Kbd>/</Kbd>} /></span>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="outline" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>Tags</Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>Tags</Button></DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[240px]">
             <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a tag" placeholder="Find a tag" /></div>
             <DropdownMenuItem>Contact roster</DropdownMenuItem>
@@ -1162,6 +1163,7 @@ function OverlaysSection() {
             <DropdownMenuItem>SharePoint</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </Row>
       <Row label="Menus"><KitMenus /></Row>
       <Row label="Rows"><KitRows /></Row>

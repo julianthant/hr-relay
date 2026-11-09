@@ -10,7 +10,7 @@ export function AppearanceSettings({ theme, onToggleTheme }: { theme: DemoTheme;
     : preferences.state === "loading" ? "Loading appearance preferences."
     : preferences.state === "signed-out" ? "Sign in to save appearance preferences." : "Appearance changes are unavailable.";
   return <BodySection title="Appearance"><FormGroup label="Appearance"><div data-settings-path="appearance.theme" className="settings-compact-row">
-    <ResultRow label="Theme" value={<Button variant="secondary" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} disabled={preferences.state !== "ready"} onClick={onToggleTheme}
+    <ResultRow label="Theme" value={<Button variant="outline" className="ds-menu-trigger" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} disabled={preferences.state !== "ready"} onClick={onToggleTheme}
       icon={theme === "dark" ? <Moon aria-hidden className={dsIcon.md} /> : <Sun aria-hidden className={dsIcon.md} />}>
       {theme === "dark" ? "Dark" : "Light"}
     </Button>} />
