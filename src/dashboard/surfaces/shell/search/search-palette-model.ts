@@ -25,8 +25,8 @@ export const PALETTE_SPREADSHEETS: readonly PaletteSheet[] = [
 const ACTIONS: readonly Extract<PaletteRow, { kind: "action" }>[] = [
   { kind: "action", id: "start", label: "Start a run" }, { kind: "action", id: "spreadsheets", label: "Spreadsheets" }, { kind: "action", id: "settings", label: "Settings" },
 ];
-/** Rows shown per section before the person types or picks a filter chip. */
-const IDLE_LIMIT = 5;
+/** Rows shown per section under the All chip; each other chip shows its full list. */
+const ALL_LIMIT = { actions: 3, runs: 5, workflows: 3, spreadsheets: 3 } as const;
 
 export function runTone(state: string): RunTone {
   const text = state.toLocaleLowerCase("en-US");
@@ -42,12 +42,12 @@ const matches = (query: string, text: string) => query.split(/\s+/u).filter(Bool
 /** The sections that survive the query and the chip, each trimmed to a few rows while idle. */
 export function paletteSections(input: { query: string; filter: PaletteFilter; runs: readonly NavbarSearchResult[]; workflows: readonly { id: string; label: string }[]; sheets: readonly PaletteSheet[] }): readonly PaletteSection[] {
   const query = input.query.toLocaleLowerCase("en-US").trim();
-  const trim = <T,>(rows: readonly T[]) => query || input.filter !== "all" ? rows : rows.slice(0, IDLE_LIMIT);
+  const trim = <T,>(id: keyof typeof ALL_LIMIT, rows: readonly T[]) => input.filter === "all" ? rows.slice(0, ALL_LIMIT[id]) : rows;
   const sections: PaletteSection[] = [
-    { id: "actions", label: "Quick actions", rows: ACTIONS.filter(row => matches(query, row.label)) },
-    { id: "runs", label: "Runs", rows: trim(input.runs.filter(run => matches(query, `${run.subject} ${run.workflow} ${run.state} ${run.publicId ?? ""} ${run.id}`)).map((result): PaletteRow => ({ kind: "run", id: result.id, label: result.subject, tag: `${result.workflow} · ${result.state}`, tone: runTone(result.state), result }))) },
-    { id: "workflows", label: "Workflows", rows: trim(input.workflows.filter(flow => matches(query, flow.label)).map((flow): PaletteRow => ({ kind: "workflow", id: flow.id, label: flow.label }))) },
-    { id: "spreadsheets", label: "Spreadsheets", rows: trim(input.sheets.filter(sheet => matches(query, sheet.name)).map((sheet): PaletteRow => ({ kind: "sheet", id: sheet.id, label: sheet.name, tag: sheet.detail }))) },
+    { id: "actions", label: "Quick actions", rows: trim("actions", ACTIONS.filter(row => matches(query, row.label))) },
+    { id: "runs", label: "Runs", rows: trim("runs", input.runs.filter(run => matches(query, `${run.subject} ${run.workflow} ${run.state} ${run.publicId ?? ""} ${run.id}`)).map((result): PaletteRow => ({ kind: "run", id: result.id, label: result.subject, tag: `${result.workflow} · ${result.state}`, tone: runTone(result.state), result }))) },
+    { id: "workflows", label: "Workflows", rows: trim("workflows", input.workflows.filter(flow => matches(query, flow.label)).map((flow): PaletteRow => ({ kind: "workflow", id: flow.id, label: flow.label }))) },
+    { id: "spreadsheets", label: "Spreadsheets", rows: trim("spreadsheets", input.sheets.filter(sheet => matches(query, sheet.name)).map((sheet): PaletteRow => ({ kind: "sheet", id: sheet.id, label: sheet.name, tag: sheet.detail }))) },
   ];
   return sections.filter(section => (input.filter === "all" || section.id === input.filter) && section.rows.length > 0);
 }

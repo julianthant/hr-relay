@@ -193,7 +193,7 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   const selected = palette.locator("[cmdk-item][data-selected=true]");
   const metrics = () => palette.evaluate(el => {
     const q = (s: string) => el.querySelector(s)!.getBoundingClientRect();
-    return { width: el.getBoundingClientRect().width, input: q(".search-palette-input").height, row: q(".search-palette-row").height, inputSize: parseFloat(getComputedStyle(el.querySelector(".search-palette-input")!).fontSize) };
+    return { width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height, input: q(".search-palette-input").height, row: q(".search-palette-row").height, inputSize: parseFloat(getComputedStyle(el.querySelector(".search-palette-input")!).fontSize) };
   });
 
   // Open with no query: input first, first row selected, no footer count.
@@ -207,7 +207,8 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   const m = await metrics();
   console.log(`PALETTE ${theme} ${JSON.stringify(m)}`);
   expect(m.width).toBeGreaterThan(740); expect(m.width).toBeLessThanOrEqual(760);
-  expect(m.input).toBe(51); expect(m.row).toBe(35); expect(m.inputSize).toBe(17);
+  expect(m.input).toBe(51); expect(m.row).toBe(35); expect(m.inputSize).toBe(16);
+  expect(m.height).toBeLessThanOrEqual(500);
   await page.mouse.move(1, 1);
   await shot(page, "palette-open", theme);
 
