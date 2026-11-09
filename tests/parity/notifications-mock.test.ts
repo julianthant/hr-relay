@@ -66,6 +66,8 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   });
   console.log(`MEASURE ${theme} ${JSON.stringify(m)}`);
   expect(m.width).toBe(312);
+  await expect(page.locator(".workspace-rail-header h2")).toHaveCSS("font-size", "18px");
+  await expect(page.locator(".workspace-rail-header h2")).toHaveCSS("font-weight", "600");
   expect(m.icons).toBe(0);
   await page.mouse.move(1, 1);
   await shot(page, "panel-mixed", theme);
