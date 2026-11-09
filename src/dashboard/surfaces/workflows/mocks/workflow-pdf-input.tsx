@@ -10,7 +10,7 @@ export function WorkflowPdfInput({ files, busy, onChoose, onRemove }: {
   const input = useRef<HTMLInputElement>(null);
   return <RunList title="PDF documents">
     <input ref={input} hidden name="documents" type="file" multiple accept="application/pdf,.pdf" disabled={busy} onChange={event => { const selected = Array.from(event.currentTarget.files ?? []); if (selected.length) onChoose(selected); event.currentTarget.value = ""; }} />
-    <RunListRow title={<span role="status">{busy ? "Reading PDFs…" : files.length ? `${files.length} ${files.length === 1 ? "PDF" : "PDFs"} selected` : "No PDFs selected"}</span>}>
+    <RunListRow title={<span role="status">{busy ? "Reading PDFs…" : files.length ? `${files.length} ${files.length === 1 ? "PDF" : "PDFs"} selected` : "No PDFs selected"}</span>} description={files.length === 0 && !busy ? "Choose the scans to read." : undefined}>
       <Button variant="secondary" disabled={busy} icon={<Upload className="size-3.5" />} onClick={() => input.current?.click()}>Choose PDFs</Button>
     </RunListRow>
     {files.map((file, index) => <RunListRow key={`${index}:${file.name}`} title={file.name} description={`${Math.ceil(file.size / 1024)} KB`} lead={<FileText aria-hidden className="size-4 shrink-0 text-ui-muted" />}>

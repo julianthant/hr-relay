@@ -14,6 +14,8 @@
   --ds-h-desktop-min: 720px;
   /* SURFACE — the elevation ladder, darkest (page) to lightest (raised).
    Depth in this product comes from surface + hairline border, never from */
+  --ds-soft-bg: var(--ds-surface-3); /* soft buttons */
+  --ds-soft-border: transparent;
   --ds-surface-page: var(--background); /* app background, behind everything */
   --ds-surface-1: var(--card); /* panels, cards, bars — the default plane */
   --ds-surface-2: var(--muted); /* inset wells, table headers, code blocks */
@@ -201,23 +203,23 @@
   --ds-lh-section: 22px;
   --ds-text-display: 20px; /* the one big number on a summary surface */
   --ds-lh-display: 26px;
-  --ds-text-body-page: 27px;
-  --ds-lh-body-page: 33px;
-  --ds-text-body-section: 16.2px;
-  --ds-lh-body-section: 21px;
-  --ds-text-body-row: 13.5px;
-  --ds-lh-body-row: 18px;
-  --ds-text-body-description: 11.7px;
-  --ds-lh-body-description: 16.2px;
-  --ds-text-body-value: 13.5px;
-  --ds-lh-body-value: 18px;
+  --ds-text-body-page: 28px;
+  --ds-lh-body-page: 34px;
+  --ds-text-body-section: 16px;
+  --ds-lh-body-section: 22px;
+  --ds-text-body-row: 14px;
+  --ds-lh-body-row: 20px;
+  --ds-text-body-description: 13px;
+  --ds-lh-body-description: 18px;
+  --ds-text-body-value: 14px;
+  --ds-lh-body-value: 20px;
   --ds-h-body-control: 28px;
   --ds-h-body-row: 62.5px;
   --ds-h-body-ranked-row: 48.6px;
   --ds-size-body-choice: 14.4px;
-  --ds-space-body-copy-gap: 2.7px;
+  --ds-space-body-copy-gap: 2px;
   --ds-radius-body-control: 8.1px;
-  --ds-radius-body-group: 12.6px;
+  --ds-radius-body-group: 16px;
   --ds-radius-body-dialog: 14.4px;
   --ds-w-body-switch: 35.1px;
   --ds-h-body-switch: 21.6px;
@@ -278,13 +280,13 @@
   --ds-space-body-catalog-title-bottom: 6.3px;
   --ds-space-body-catalog-section-gap: 25.2px;
   --ds-text-body-catalog-small: 10.8px;
-  --ds-space-body-group-inline: 18px;
+  --ds-space-body-group-inline: 20px;
   --ds-space-body-section-gap: 32.4px;
   --ds-space-body-section-heading-gap: 9.9px;
   --ds-space-body-caption-gap: 10px;
   --ds-space-body-toolbar-inline: 9.9px;
-  --ds-text-body-caption: 12px;
-  --ds-lh-body-caption: 19px;
+  --ds-text-body-caption: 13px;
+  --ds-lh-body-caption: 18px;
   --ds-text-body-section: 16.2px;
   --ds-lh-body-section: 21px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
@@ -487,24 +489,24 @@ body[data-demo-theme="dark"] {
   color-scheme: dark;
 
   /* --- the product's own semantic tokens ------------------------------- */
-  --background: #09090b;
-  --foreground: #fafafa;
+  --background: #0f0f11;
+  --foreground: #e3e4e6;
   --card: #18181b;
-  --card-foreground: #fafafa;
+  --card-foreground: #e3e4e6;
   /* a hair above the card so an overlay reads as floating even before its
      shadow lands — the scrim alone cannot separate a drawer from a panel */
-  --popover: #1c1c1f;
-  --popover-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #e3e4e6;
   /* THE ACCENT IS NOT THE ACTION. Graphite Warm's accent is amber (#f5a623),
    which is the SAME hue family as `warning` — so filling every primary button */
   --primary: #fafafa;
   --primary-foreground: #09090b;
-  --secondary: #202024;
-  --secondary-foreground: #d4d4d8;
-  --muted: #121215;
-  --muted-foreground: #a1a1aa;
-  --accent: #27272a;
-  --accent-foreground: #fafafa;
+  --secondary: #1f1f23;
+  --secondary-foreground: #c9cacf;
+  --muted: #131316;
+  --muted-foreground: #9d9ea4;
+  --accent: #222226;
+  --accent-foreground: #e3e4e6;
   /* #f04438 is the swatch; as TEXT it drops to 3.96:1 on the raised surface,
    so the token every `text-destructive` reads is the lifted red and the */
   --destructive: #f97066;
@@ -519,29 +521,29 @@ body[data-demo-theme="dark"] {
   --input: rgba(255, 255, 255, 0.16);
   --ring: #a1a1aa;
 
-  --ds-settings-canvas: #1c1e20;
-  --ds-settings-sidebar: #222426;
-  --ds-settings-card: #282a2c;
-  --ds-settings-control: #2e3032;
-  --ds-settings-hover: #35383a;
-  --ds-settings-border: #3c4145;
-  --ds-settings-control-border: #747b80;
-  --ds-settings-fg: #eceeef;
-  --ds-settings-fg-secondary: #c7cbce;
-  --ds-settings-fg-muted: #b1b8bd;
+  --ds-settings-canvas: #0f0f11;
+  --ds-settings-sidebar: #0f0f11;
+  --ds-settings-card: #18181b;
+  --ds-settings-control: #1f1f23;
+  --ds-settings-hover: #222226;
+  --ds-settings-border: #26262a;
+  --ds-settings-control-border: #52525a;
+  --ds-settings-fg: #e3e4e6;
+  --ds-settings-fg-secondary: #b5b6bb;
+  --ds-settings-fg-muted: #9d9ea4;
 
   /* Shared content-body surfaces. The app shell keeps its own palette. */
-  --ds-body-surface-page: #181818;
-  --ds-body-surface-group: #222222;
-  --ds-body-surface-control: #2b2b2b;
-  --ds-body-surface-hover: #303030;
-  --ds-body-surface-selected: #323232;
-  --ds-body-border: #363636;
-  --ds-body-border-subtle: #303030;
-  --ds-body-control-border: #515151;
-  --ds-body-fg: #efefef;
-  --ds-body-fg-secondary: #b2b2b2;
-  --ds-body-fg-muted: #a0a0a0;
+  --ds-body-surface-page: #0f0f11;
+  --ds-body-surface-group: #18181b;
+  --ds-body-surface-control: #1f1f23;
+  --ds-body-surface-hover: #222226;
+  --ds-body-surface-selected: #25252a;
+  --ds-body-border: #26262a;
+  --ds-body-border-subtle: #202024;
+  --ds-body-control-border: #4a4a52;
+  --ds-body-fg: #e3e4e6;
+  --ds-body-fg-secondary: #b0b1b6;
+  --ds-body-fg-muted: #9a9ba1;
 
   /* The categorical log accents sit at a neutral ramp: hue-per-category painted
    on top of four status hues made the noisiest surface in the product. Reads */
@@ -705,22 +707,22 @@ body[data-demo-theme="light"] {
   color-scheme: light;
 
   /* --- the product's own semantic tokens ------------------------------- */
-  --background: #f6f8fa;
-  --foreground: #0b0f19;
-  --card: #ffffff;
-  --card-foreground: #0b0f19;
+  --background: #f9f9f9;
+  --foreground: #1b1b1b;
+  --card: #f9f9f9;
+  --card-foreground: #1b1b1b;
   --popover: #ffffff;
-  --popover-foreground: #0b0f19;
+  --popover-foreground: #1b1b1b;
   /* the swatch is #4f46e5; text uses the step down so it clears 4.5:1 on the
      accent tint as well as on paper (`--ds-accent-mark` keeps the swatch) */
   --primary: #4338ca;
   --primary-foreground: #ffffff;
-  --secondary: #eff2f6;
-  --secondary-foreground: #334155;
-  --muted: #f1f4f8;
-  --muted-foreground: #475569;
-  --accent: #e8ecf2;
-  --accent-foreground: #0b0f19;
+  --secondary: #ffffff;
+  --secondary-foreground: #4d4d4d;
+  --muted: #f3f3f3;
+  --muted-foreground: #666666;
+  --accent: #efefef;
+  --accent-foreground: #1b1b1b;
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
   --info: #0369a1; /* swatch #0ba5ec — 2.8:1 as text, so text steps down */
@@ -729,32 +731,32 @@ body[data-demo-theme="light"] {
   --success-foreground: #ffffff;
   --warning: #b54708;
   --warning-foreground: #ffffff;
-  --border: #e4e7ec;
-  --input: #d0d5dd;
+  --border: #e6e6e6;
+  --input: #d4d4d4;
   --ring: #667085;
 
-  --ds-settings-canvas: #f5f6f7;
-  --ds-settings-sidebar: #edf0f2;
-  --ds-settings-card: #ffffff;
-  --ds-settings-control: #f8f9fa;
-  --ds-settings-hover: #e9edf0;
-  --ds-settings-border: #dce1e5;
-  --ds-settings-control-border: #78838c;
-  --ds-settings-fg: #252b30;
-  --ds-settings-fg-secondary: #4f5a64;
-  --ds-settings-fg-muted: #606c76;
+  --ds-settings-canvas: #f9f9f9;
+  --ds-settings-sidebar: #f9f9f9;
+  --ds-settings-card: #f9f9f9;
+  --ds-settings-control: #ffffff;
+  --ds-settings-hover: #efefef;
+  --ds-settings-border: #e6e6e6;
+  --ds-settings-control-border: #8a8a8a;
+  --ds-settings-fg: #1b1b1b;
+  --ds-settings-fg-secondary: #4d4d4d;
+  --ds-settings-fg-muted: #666666;
 
-  --ds-body-surface-page: #fafafa;
-  --ds-body-surface-group: #ffffff;
-  --ds-body-surface-control: #f7f7f7;
-  --ds-body-surface-hover: #ededed;
-  --ds-body-surface-selected: #e4e4e4;
-  --ds-body-border: #dedede;
-  --ds-body-border-subtle: #e8e8e8;
-  --ds-body-control-border: #a0a0a0;
-  --ds-body-fg: #202020;
-  --ds-body-fg-secondary: #626262;
-  --ds-body-fg-muted: #6b6b6b;
+  --ds-body-surface-page: #f9f9f9;
+  --ds-body-surface-group: #f9f9f9;
+  --ds-body-surface-control: #ffffff;
+  --ds-body-surface-hover: #efefef;
+  --ds-body-surface-selected: #e9e9e9;
+  --ds-body-border: #e6e6e6;
+  --ds-body-border-subtle: #eeeeee;
+  --ds-body-control-border: #8a8a8a;
+  --ds-body-fg: #1b1b1b;
+  --ds-body-fg-secondary: #4d4d4d;
+  --ds-body-fg-muted: #666666;
 
   --log-teal: #0b0f19; /* a WRITE */
   --log-cyan: #334155; /* a READ */
@@ -778,11 +780,11 @@ body[data-demo-theme="light"] {
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 70%, transparent);
 
   /* --- border ----------------------------------------------------------- */
-  --ds-border-subtle: #edeff2;
-  --ds-border: #e4e7ec;
-  --ds-border-strong: #d0d5dd;
-  --ds-border-loud: #b4bcc8;
-  --ds-control-border: #7e8899; /* 3.6:1 on white, 3.4:1 on the page */
+  --ds-border-subtle: #eeeeee;
+  --ds-border: #e6e6e6;
+  --ds-border-strong: #d4d4d4;
+  --ds-border-loud: #b8b8b8;
+  --ds-control-border: #8a8a8a; /* 3.6:1 on white, 3.4:1 on the page */
 
   /* --- foreground ------------------------------------------------------- */
   --ds-fg: var(--foreground);
@@ -797,6 +799,8 @@ body[data-demo-theme="light"] {
   --ds-control-bg-hover: var(--accent);
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, #d5dbe4);
   --ds-control-fg: var(--foreground);
+  --ds-soft-bg: #ffffff; /* soft buttons: white with a faint border in light */
+  --ds-soft-border: #e2e2e2;
 
   --ds-accent: #4338ca;
   --ds-accent-mark: #4f46e5;
@@ -951,6 +955,7 @@ body[data-demo-theme="light"] {
   font-size: var(--ds-text-body-page);
   line-height: var(--ds-lh-body-page);
   letter-spacing: var(--ds-tracking-tight);
+  font-weight: 400;
 }
 /* Uppercase micro label — group headers, table column heads, tile captions. */
 .ds-text-caps {
@@ -1050,7 +1055,7 @@ th.ds-text-caps {
 
 .ds-page-heading-title {
   margin: 0;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .ds-page-heading--title-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; row-gap: var(--ds-space-heading-description); }
@@ -1107,7 +1112,8 @@ th.ds-text-caps {
   margin: 0 0 var(--ds-space-heading-content);
   font-size: var(--ds-text-body-section);
   line-height: var(--ds-lh-body-section);
-  font-weight: 550;
+  font-weight: 400;
+  color: var(--ds-fg);
 }
 
 .ds-body-section-heading:has(+ .ds-body-section-description) { margin-bottom: var(--ds-space-heading-description); }
@@ -1139,8 +1145,8 @@ th.ds-text-caps {
   align-items: center;
   gap: var(--ds-space-loose);
   min-width: 0;
-  min-height: var(--ds-h-body-row);
-  padding-block: var(--ds-space-base);
+  min-height: 0;
+  padding-block: 16px;
 }
 
 .ds-body-scope .ds-body-row[data-control-width="wide"] {
@@ -1169,14 +1175,14 @@ th.ds-text-caps {
   color: var(--ds-fg);
   font-size: var(--ds-text-body-row);
   line-height: var(--ds-lh-body-row);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .ds-body-scope .ds-field-description {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin: var(--ds-space-tight) 0 0;
+  margin: var(--ds-space-body-copy-gap) 0 0;
   color: var(--ds-fg-secondary);
   font-size: var(--ds-text-body-description);
   line-height: var(--ds-lh-body-description);
@@ -1332,9 +1338,9 @@ th.ds-text-caps {
 .ds-body-scope .ds-date-picker--inline {
   display: flex;
   width: 100%;
-  min-height: var(--ds-h-body-row);
+  min-height: 0;
   justify-content: space-between;
-  padding-block: var(--ds-space-base);
+  padding-block: 16px;
 }
 
 .ds-body-scope .ds-date-picker--inline .date-picker__trigger-indicator {
@@ -1364,7 +1370,8 @@ th.ds-text-caps {
 }
 
 .ds-body-scope .ds-disclosure-body .ds-disclosure-trigger {
-  min-height: var(--ds-h-body-row);
+  min-height: 0;
+  padding-block: 16px;
   padding-inline: 0;
 }
 .ds-disclosure-body .ds-disclosure-trigger > svg:first-child { order: 3; }
@@ -1508,8 +1515,8 @@ th.ds-text-caps {
   flex-direction: row-reverse;
   align-items: center;
   justify-content: space-between;
-  min-height: var(--ds-h-body-row);
-  padding-block: var(--ds-space-base);
+  min-height: 0;
+  padding-block: 16px;
 }
 
 .ds-body-scope .ds-switch-content {

@@ -14,12 +14,12 @@
 .settings-takeover .settings-compact-form { gap:0; }
 .settings-compact-page > .ds-page-heading { margin-bottom:30px; }
 .settings-takeover .ds-page-heading-copy { gap:4px; }
-.settings-compact-page .ds-page-heading-title { font-size:27px;line-height:33px;font-weight:650;letter-spacing:-.02em; }
+.settings-compact-page .ds-page-heading-title { font-size:28px;line-height:34px;font-weight:400;letter-spacing:-.02em; }
 .settings-compact-page .ds-page-heading-description { font-size:12.6px;line-height:19px;max-width:none; }
 .settings-compact-page > .ds-body-section { margin-bottom:28px; }
 .settings-compact-page > .settings-compact-form + .ds-body-section { margin-top:28px; }
 .settings-compact-page > .ds-form-group { margin-bottom:28px; }
-.settings-tab-body .ds-body-section-heading { font-size:16px;line-height:22px;font-weight:600;margin:0 0 10px; }
+.settings-tab-body .ds-body-section-heading { font-size:16px;line-height:22px;font-weight:400;margin:0 0 10px; }
 .settings-tab-body .ds-form-group { padding:0;border-radius:13px;background:var(--ui-panel); }
 .settings-compact-page > .ds-body-section:first-of-type .ds-body-section-heading { font-size:14px;font-weight:400;line-height:20px;margin-bottom:12px; }
 .settings-tab-body .ds-form-group > .settings-compact-row,.settings-tab-body .ds-form-group > [data-settings-path="chatgpt.account"] { padding:0 18px; }
