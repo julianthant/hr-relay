@@ -3,8 +3,9 @@ import { useViewState } from "../../app/navigation/view-route-model.js";
 import { assistantLauncher } from "../shell/assistant-launcher-model.js";
 import { AssistantDockField, AssistantIconLauncher } from "../shell/assistant-launcher.js";
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Minus, Plus, UsersRound } from "lucide-react";
-import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, Input, Select, Skeleton } from "../../ds/ui.js";
+import { ChevronDown, ChevronUp, LogOut, Minus, Plus, Settings, UsersRound } from "lucide-react";
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, IconButton, Input, Select, Skeleton, Tooltip } from "../../ds/ui.js";
+import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 import { cn } from "../../lib/utils.js";
 import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
@@ -29,12 +30,13 @@ function SessionsSkeleton() {
   </div>)}</LoadingRegion>;
 }
 
-export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows, operations = {}, onCheck, idleCountdowns = {} }: {
+export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows, operations = {}, onCheck, idleCountdowns = {}, account }: {
   data: SessionsViewState; open: boolean; onOpenChange: (open: boolean) => void;
   onControl: (id: string, control: SessionControl) => void; onAdd: (workflowId: string, count: number) => void;
   idleCountdowns?: Readonly<Record<string, IdleSessionCountdown>>;
   operations?: Readonly<Record<string, SessionPreviewOperation>>; onCheck?: (id: string) => void;
   workflows: readonly { id: string; label: string }[];
+  account?: { settingsOpen: boolean; onSettings: () => void; onLogout: () => void };
 }) {
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -70,7 +72,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     trigger.focus({ preventScroll: true });
   }, [addOpen, addLocked, data.state, validWorkflow]);
   const addControl = <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild><Button ref={addTriggerRef} size="md" variant="secondary" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />}>Add workers</Button></DialogTrigger>
+          <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
@@ -90,7 +92,10 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   </button>;
   return <section ref={dockRef} aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     <div className="session-bar" aria-label="Session actions" role="group" onClick={event => { const target = event.target as Element; if (event.currentTarget.contains(target) && !target.closest(".session-bar-end")) onOpenChange(!open); }}>
-      {toggle}<span className="session-bar-end">{open && addControl}{launcher === "a" && <AssistantIconLauncher />}{launcher === "b" && <AssistantDockField />}</span>
+      {toggle}<span className="session-bar-end">{addControl}{account && <>
+        <Tooltip side="top" content="Settings"><IconButton id={SETTINGS_GEAR_ID} variant="ghost" size="sm" label="Settings" title="" aria-pressed={account.settingsOpen} onClick={account.onSettings} icon={<Settings aria-hidden className="size-4" />} /></Tooltip>
+        <Tooltip side="top" content="Log out"><IconButton className="hub-logout" variant="ghost" size="sm" label="Log out" title="" onClick={account.onLogout} icon={<LogOut aria-hidden className="size-4" />} /></Tooltip>
+      </>}</span>
     </div>
     {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
       {operations.add && ['uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 px-3 pb-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}

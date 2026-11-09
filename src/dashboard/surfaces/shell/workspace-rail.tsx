@@ -14,14 +14,11 @@ import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
-import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, onSettings, onLogout, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
   settingsOpen: boolean;
-  onSettings: () => void;
-  onLogout: () => void;
   notifications: NotificationsState;
   reads: NotificationReads;
   setReads: Dispatch<SetStateAction<NotificationReads>>;
@@ -60,10 +57,6 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
       {open && !collapsed ? <NotificationsPanel activeId={activeId} showPriority={showPriority} onShowPriority={setShowPriority} dismissed={dismissed} onDismiss={id => setDismissed(current => [...current, id])} onControl={notificationRail.onControl} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
         : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} collapsed={collapsed} />}
     </div>
-    <footer className="workspace-rail-footer">
-      <Tooltip side={collapsed ? "right" : "top"} content="Settings"><IconButton id={SETTINGS_GEAR_ID} variant="ghost" size="sm" label="Settings" title="" aria-pressed={settingsOpen} onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} /></Tooltip>
-      <Tooltip side={collapsed ? "right" : "top"} content="Log out"><IconButton className="hub-logout" variant="ghost" size="sm" label="Log out" title="" onClick={onLogout} icon={<LogOut aria-hidden className="size-4" />} /></Tooltip>
-    </footer>
     {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} />}
   </aside>;
 });
