@@ -122,7 +122,18 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
     const rows = await page.getByRole("region", { name: "Selected run logs" }).evaluate(root => ({ header: Math.round(root.querySelector("header")!.getBoundingClientRect().height), footer: Math.round(root.querySelector("footer")!.getBoundingClientRect().height) }));
     console.log(`ROWS ${theme} ${width} ${JSON.stringify(rows)}`);
     expect(rows).toEqual({ header: 53, footer: 49 });
+    // Row values keep their width: at 1024 they truncate and the tooltip shows the whole value.
+    const value = page.locator("[data-log-field] dd", { hasText: "emergency-contacts.pdf" }).first();
+    const metrics = await value.evaluate(node => ({ width: Math.round(node.getBoundingClientRect().width), cut: node.scrollWidth > node.clientWidth, card: Math.round(node.closest("[data-log-field]")!.getBoundingClientRect().width) }));
+    console.log(`VALUE ${theme} ${width} ${JSON.stringify(metrics)}`);
+    expect(metrics.width).toBeGreaterThan(60);
+    if (width === 1024) {
+      expect(metrics.cut).toBe(true);
+      await value.hover();
+      await expect(page.getByRole("tooltip").getByText("emergency-contacts.pdf", { exact: true })).toBeVisible();
+    }
     await page.screenshot({ path: `${OUT}/timeline-strip-${theme}-${width}.png` });
+    await page.mouse.move(1, 1);
   }
   await page.setViewportSize({ width: 1280, height: 720 });
 
