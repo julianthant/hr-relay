@@ -1541,9 +1541,9 @@ function nonProjectionFingerprint(database: DatabaseSync): string {
     if (table === "run_search") continue;
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null()])).parse(row);
+      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)])).parse(row);
       if (table === "database_states") { delete record.search_generation; delete record.search_state; }
-      hash.update(canonicalJsonStringify(record));
+      hash.update(canonicalJsonStringify(byteAwareRow(record)));
     }
   }
   return hash.digest("hex");

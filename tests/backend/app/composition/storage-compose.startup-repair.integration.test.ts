@@ -7,10 +7,10 @@ import { it, vi } from "vitest";
 import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, OPENABLE_AUTHORITY_SCHEMA_VERSIONS, SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, OPENABLE_AUTHORITY_SCHEMA_VERSIONS, SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createBoundProfileFixture, boundProfileCredentials, withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
@@ -36,7 +36,17 @@ function searchState(path: string): unknown {
   try { return database.prepare("SELECT search_state FROM database_states WHERE id=1").get()?.search_state; } finally { database.close(); }
 }
 
+function nonProjectionRows(database: DatabaseSync) {
+  return migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION).filter(table => table !== "run_search").map(table => [table,
+    database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row => {
+      if (table === "database_states") { delete row.search_generation; delete row.search_state; }
+      return row;
+    }),
+  ]);
+}
+
 const held = {
+  "attachment-bytes-changed": "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
   "critical-fence-missing": "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
   "unknown-record-field": "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
   foreign: "STORAGE_AUTOMATIC_REPAIR_REFUSED",
@@ -47,22 +57,37 @@ const held = {
   "recovery-refusal": "STARTUP_CRASH_RECOVERY_REFUSED",
 } as const;
 
-for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (keyof typeof held)[]] as const) it(`restores only SQLite-damaged startup authority and holds everything else: ${state}`, async () => {
+for (const state of ["damaged", "projection-missing", "projection-missing-attachment", ...Object.keys(held) as (keyof typeof held)[]] as const) it(`restores only SQLite-damaged startup authority and holds everything else: ${state}`, async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   const profileId = f.admission.profileBinding.profileId, registryPath = join(f.machine.stateRoot, "machine", "profiles.json");
   const registry = f.machine.readProfileRegistry(), protectedPath = join(f.stateRoot, "credentials", "protected.json"), protectedBytes = readFileSync(protectedPath);
   const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "startup-repair-fixture" }, clock,
     undefined, undefined, undefined, boundProfileCredentials(f.admission));
   const directory = join(f.stateRoot, "backups", "authority");
+  const projectionMissing = state === "projection-missing" || state === "projection-missing-attachment";
+  const attachmentId = randomUUID();
+  let retainedRows: ReturnType<typeof nonProjectionRows> | undefined;
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("transport forbidden during startup repair"); });
   const restore = vi.spyOn(OfflineAuthorityRestoreService.prototype, "restoreNewest");
   try {
     if (state === "unknown-record-field") database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    if (state === "projection-missing-attachment" || state === "attachment-bytes-changed") {
+      const history = database.authority.assistantHistory, conversationId = randomUUID(), messageId = randomUUID(), now = clock.now().toISOString();
+      assert.equal(history.apply({ operation: "create", conversationId, title: "Retained attachment" }, now).state, "saved");
+      history.stage({ id: attachmentId, conversationId, mediaType: "text/plain", name: "retained.txt", bytes: new TextEncoder().encode("retained bytes"), now });
+      const conversation = history.conversation(conversationId, now); assert.ok(conversation);
+      assert.equal(history.accept({ conversationId, expectedRevision: conversation.revision, messageId, text: "Read", modelText: "Read", subjectRef: null, attachments: [attachmentId], now }).state, "accepted");
+      assert.equal(typeof history.settle(conversationId, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Accepted.", modelText: "Accepted." } }, now), "number");
+      const attachment = history.attachment(conversationId, attachmentId, now); assert.ok(attachment);
+      assert.equal(attachment.messageId, messageId); assert.equal(attachment.ordinal, 1); assert.ok(attachment.expiresAt > now);
+      assert.deepEqual(attachment.bytes, new TextEncoder().encode("retained bytes"));
+    }
     const backup = await new AuthorityBackupService(f.admission, database, { directory }, clock).request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
     const manifest = backup.manifests[0]; assert.ok(manifest);
     database.close();
     const native = new DatabaseSync(f.path);
     try {
+      native.exec("PRAGMA foreign_keys=ON");
       if (state === "foreign") {
         const foreign = randomUUID(), trigger = native.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='database_states_binding_immutable'").get();
         assert.ok(trigger && typeof trigger.sql === "string");
@@ -77,15 +102,37 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
         if (state === "unpublished-assistant26-projection-missing") native.exec("DROP TABLE run_search");
       } else if (state === "unknown-record-field") {
         assert.equal(native.prepare("UPDATE settings SET payload_json=json_set(payload_json,'$.fieldFromANewerBuild',true) WHERE id='current'").run().changes, 1);
-      } else if (state !== "recovery-refusal") native.exec(state === "critical-fence-missing" ? "DROP TABLE write_attempts" : "DROP TABLE run_search");
+      } else if (state !== "recovery-refusal") {
+        native.exec(state === "critical-fence-missing" ? "DROP TABLE write_attempts" : "DROP TABLE run_search");
+        if (state === "attachment-bytes-changed") {
+          const trigger = native.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='assistant_attachments_accept_only'").get();
+          assert.ok(trigger && typeof trigger.sql === "string");
+          native.exec("DROP TRIGGER assistant_attachments_accept_only");
+          try { assert.equal(native.prepare("UPDATE assistant_attachments SET bytes=? WHERE id=?").run(new TextEncoder().encode("Retained bytes"), attachmentId).changes, 1); }
+          finally { native.exec(trigger.sql); }
+          assert.throws(() => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION, false, true), /assistant-attachment-bytes-invalid/);
+        }
+        if (state === "projection-missing-attachment") {
+          assert.ok(inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION, false, true));
+          retainedRows = nonProjectionRows(native);
+        }
+      }
     } finally { native.close(); }
     const startBytes = readFileSync(f.path);
     writeFileSync(join(directory, "invalid-newer.manifest.json"), "invalid manifest", { mode: 0o600 });
     f.admission.release(); f.machine.release(); clock.advanceWall(1000);
-    const classify = state === "damaged" ? vi.spyOn(AuthorityDatabase, "classifyStartupFailure").mockReturnValueOnce({ kind: "damaged" }) : undefined;
+    const classify = state === "damaged" ? vi.spyOn(AuthorityDatabase, "classifyStartupFailure").mockReturnValueOnce({ kind: "damaged" })
+      : state === "projection-missing-attachment" || state === "attachment-bytes-changed" ? vi.spyOn(AuthorityDatabase, "classifyStartupFailure") : undefined;
     const recovery = state === "recovery-refusal"
       ? vi.spyOn(AuthorityDatabase, "openStoppedStartupRecovery").mockImplementationOnce(() => { throw new Error("injected-recovery-admission-refusal"); }) : undefined;
-    try { await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock); }
+    try {
+      await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock);
+      if (state === "projection-missing-attachment" || state === "attachment-bytes-changed") {
+        const classification: unknown = classify?.mock.results[0]?.value;
+        assert.ok(classification && typeof classification === "object" && "kind" in classification);
+        assert.equal(classification.kind, state === "projection-missing-attachment" ? "missing-run-search-projection" : "version-skew");
+      }
+    }
     finally { classify?.mockRestore(); recovery?.mockRestore(); }
     const after = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
     if (state === "damaged") {
@@ -101,11 +148,14 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
       assert.equal(existsSync(join(f.stateRoot, "backups", "suspects")), false);
     }
     assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    if (state === "damaged" || state === "projection-missing") {
+    if (state === "damaged" || projectionMissing) {
       const readback = new DatabaseSync(f.path, { readOnly: true });
-      try { assert.equal(readback.prepare("PRAGMA quick_check").get()?.quick_check, "ok"); assert.ok(readback.prepare("SELECT name FROM sqlite_master WHERE name='run_search'").get()); }
+      try {
+        assert.equal(readback.prepare("PRAGMA quick_check").get()?.quick_check, "ok"); assert.ok(readback.prepare("SELECT name FROM sqlite_master WHERE name='run_search'").get());
+        if (retainedRows) assert.deepEqual(nonProjectionRows(readback), retainedRows, "repair retains bytes, metadata, authority generation and every nonprojection column");
+      }
       finally { readback.close(); }
-      if (state === "projection-missing") assert.equal(searchState(f.path), "ready");
+      if (projectionMissing) assert.equal(searchState(f.path), "ready");
       await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock);
       assert.deepEqual(JSON.parse(readFileSync(registryPath, "utf8")), after);
       assert.equal(restore.mock.calls.length, state === "damaged" ? 1 : 0);
