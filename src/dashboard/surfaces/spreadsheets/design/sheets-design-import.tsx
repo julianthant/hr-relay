@@ -1,9 +1,18 @@
-import { useState } from 'react';
-import { Check, FileSpreadsheet } from 'lucide-react';
-import { Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, Dropzone, Select } from '../../../ds/ui.js';
+import { useRef, useState } from 'react';
+import { Check, FileSpreadsheet, Upload } from 'lucide-react';
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, Select } from '../../../ds/ui.js';
 import { IMPORT_COLUMNS, IMPORT_FILE, type Reference } from './sheets-design-fixtures.js';
 import type { SheetsStep } from './sheets-design-mode.js';
 import '../../run-start/launch-presentation.css';
+
+export function FilePickRow({ title, hint, onFile }: { title: string; hint: string; onFile: (file: File) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return <div className="flex items-center justify-between gap-3 rounded-md border border-ui-stroke bg-ui-table p-3">
+    <input ref={input} hidden type="file" accept=".xlsx,.csv" onChange={event => { const picked = event.currentTarget.files?.[0]; if (picked) onFile(picked); event.currentTarget.value = ''; }} />
+    <div className="min-w-0"><div className="text-body font-medium">{title}</div><div className="text-caption text-ui-muted">{hint}</div></div>
+    <Button variant="secondary" icon={<Upload className="size-3.5" />} onClick={() => input.current?.click()}>Choose file</Button>
+  </div>;
+}
 
 const STEPS: readonly SheetsStep[] = ['pick', 'purpose', 'columns'];
 const OTHER = 'other';
@@ -28,7 +37,7 @@ export function SheetsImportDialog({ open, onOpenChange, references, startStep, 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="launch-design" size="lg" title={title} description={`Step ${index + 1} of ${STEPS.length}`}>
     <DialogBody>
       {step !== 'pick' && <div className="mb-4 flex items-center gap-2 rounded-[7px] border border-ui-stroke bg-ui-table px-3 py-2 text-body"><FileSpreadsheet size={16} aria-hidden /><span className="min-w-0 flex-1 truncate">{IMPORT_FILE.name}</span><span className="text-caption text-ui-muted">{IMPORT_FILE.rows} rows · {IMPORT_FILE.sheet}</span></div>}
-      {step === 'pick' && <Dropzone label="Choose a spreadsheet" accept=".xlsx,.csv" hint="Excel or CSV file" onFile={next} />}
+      {step === 'pick' && <FilePickRow title="Spreadsheet" hint="Excel or CSV file" onFile={next} />}
       {step === 'purpose' && <fieldset className="grid gap-2"><legend className="sr-only">What is this spreadsheet for?</legend>{[
         ...references.map(item => ({ id: item.id, title: item.title, note: `${item.note}${item.file ? ' It replaces the current file.' : ' None imported yet.'}` })),
         { id: OTHER, title: 'Other', note: 'Keep it in your library. No workflow uses it.' },

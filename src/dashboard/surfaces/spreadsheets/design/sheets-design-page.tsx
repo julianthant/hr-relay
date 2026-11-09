@@ -35,13 +35,13 @@ const needsCheck = (file: SheetFile) => !file.eid?.header || !file.person?.heade
 
 function ReferenceCard({ item, actions }: { item: Reference; actions: Actions }) {
   const file = item.file;
-  return <Card className="h-full"><CardHeader className="items-start justify-between"><div className="min-w-0"><h3 className="text-title font-semibold">{item.title}</h3><p className="text-caption text-ui-muted">{item.note}</p></div>
+  return <Card className="h-full"><CardHeader className="items-center justify-between"><div className="min-w-0"><h3 className="text-title font-semibold">{item.title}</h3><p className="text-caption text-ui-muted">{item.note}</p></div>
     {!file ? <Badge tone="warning">Missing</Badge> : needsCheck(file) ? <Badge tone="warning">Check columns</Badge> : <Badge tone="info">Ready</Badge>}</CardHeader>
     <CardBody grow className="grid content-start gap-2 pt-3">
       {file ? <><button type="button" className="truncate text-left text-body font-medium underline-offset-2 hover:underline" onClick={() => actions.open(file)}>{file.name}</button>
         <p className="text-caption text-ui-muted">{plural(file.rows, 'row')} · Updated {when(file.updatedAt)}</p>
         <ul className="grid gap-1">{file.eid && <ColumnLine match={file.eid} />}{file.person && <ColumnLine match={file.person} />}</ul></>
-        : <div className="grid gap-2 rounded-[7px] border border-dashed border-ui-stroke p-4 text-center"><p className="text-body text-ui-muted">No roster yet. {item.workflow} cannot look people up.</p><Button variant="primary" className="justify-self-center" onClick={() => actions.importFor(item.id)}>Import a roster</Button></div>}
+        : <div className="flex items-center justify-between gap-3 rounded-[7px] border border-dashed border-ui-stroke p-3"><p className="text-body text-ui-muted">No roster yet. {item.workflow} cannot look people up.</p><Button variant="primary" className="shrink-0" onClick={() => actions.importFor(item.id)}>Import a roster</Button></div>}
     </CardBody>
     {file && <CardFooter className="justify-end"><Button onClick={() => actions.importFor(item.id)}>Replace</Button><Button onClick={() => actions.open(file)}>Open</Button><FileMenu file={file} kind="reference" actions={actions} label={file.name} /></CardFooter>}
   </Card>;
@@ -110,7 +110,7 @@ export function SheetsDesignPage({ design }: { design: SheetsDesign }) {
   const [dialog, setDialog] = useState<{ kind: DialogKind; files: readonly SheetFile[] }>();
   const [importOpen, setImportOpen] = useState(startStep !== undefined), [preset, setPreset] = useState<string>();
   const actions: Actions = { versions: (file, kind) => setVersions(libraryEntry(file, kind)), dialog: (kind, files) => setDialog({ kind, files }), open: () => undefined, importFor: id => { setPreset(id); setImportOpen(true); } };
-  const head = <div className="mb-6 flex items-start justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
+  const head = <div className="mb-6 flex items-center justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
     <div className="flex items-center gap-2"><Button variant="primary" onClick={() => actions.importFor()}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
   const body = design === 'a' ? <>
     <Section title="Used by workflows" description="A reference for looking up people."><ReferenceCards items={references} actions={actions} /></Section>

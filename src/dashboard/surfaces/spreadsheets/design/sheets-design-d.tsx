@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, ChevronRight, Download, MoreHorizontal } from 'lucide-react';
-import { Badge, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Drawer, DrawerContent, Dropzone, IconButton, useToasts } from '../../../ds/ui.js';
+import { Badge, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Drawer, DrawerContent, IconButton, useToasts } from '../../../ds/ui.js';
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
 import { ActionDialog, FileMenu, Section, type Actions, type DialogKind } from './sheets-design-page.js';
 import { IMPORT_FILE, REFERENCE_SHEETS, libraryEntry, sheetSamples, sheetsOther, sheetsReferences, sheetsResults, type ColumnMatch, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
-import { SheetsImportDialog } from './sheets-design-import.js';
+import { FilePickRow, SheetsImportDialog } from './sheets-design-import.js';
 import { sheetsParam, sheetsScenario } from './sheets-design-mode.js';
 import '../../run-start/launch-presentation.css';
 
@@ -95,7 +95,7 @@ function ReferenceDrawer({ item, focusColumns, onClose, onSave, onReplace }: { i
       <section aria-label="Preview"><h3 className="mb-2 text-title font-semibold">Preview</h3><div className="overflow-hidden rounded-[7px] border border-ui-stroke"><table className="w-full text-caption"><thead><tr className="bg-ui-table text-left text-ui-muted">{sheet.headers.map(name => <th key={name} className="px-2.5 py-1.5 font-medium">{name}</th>)}</tr></thead><tbody>{sheet.rows.map((row, index) => <tr key={index} className="border-t border-ui-stroke">{row.map((cell, column) => <td key={column} className="whitespace-nowrap px-2.5 py-1">{cell}</td>)}</tr>)}</tbody></table></div><p className="mt-1.5 text-caption text-ui-muted">First 8 of {file.rows.toLocaleString()} rows.</p></section>
       <section id="sheets-drawer-columns" aria-label="Columns"><h3 className="mb-1 text-title font-semibold">Columns</h3><p className="mb-3 text-caption text-ui-muted">What {item.workflow} needs, and the column that holds it.</p>
         <ul className="grid gap-2">{NEEDS.map(entry => { const header = headerOf(entry.key), matched = !!file[entry.key]?.header; return <li key={entry.key} className="flex items-center gap-3"><span className="w-12 font-medium">{entry.need}</span><span className="flex-1">{header ?? <span className="text-ui-muted">Choose a column</span>}</span>{matched ? <Badge tone="info"><Check size={12} aria-hidden /> Matched</Badge> : header ? <Badge tone="info">Chosen</Badge> : <Badge tone="warning">Not matched</Badge>}</li>; })}</ul>
-        {pending && <><p className="mt-4 text-caption text-ui-muted">Pick the column that holds the {pending.need === 'EID' ? 'employee IDs' : 'names'}. Sample values are shown.</p><ColumnPicker sheet={sheet} header={picks[pending.key] ?? null} used={used.filter(name => name !== picks[pending.key])} onPick={name => setPicks(current => ({ ...current, [pending.key]: name }))} /><Button variant="primary" className="mt-3" disabled={!picks[pending.key]} onClick={() => { onSave(item.id, picks); setPicks({}); }}>Save columns</Button></>}
+        {pending && <><div className="mt-4 flex items-center justify-between gap-3"><p className="text-caption text-ui-muted">Pick the column that holds the {pending.need === 'EID' ? 'employee IDs' : 'names'}. Sample values are shown.</p><Button variant="primary" className="shrink-0" disabled={!picks[pending.key]} onClick={() => { onSave(item.id, picks); setPicks({}); }}>Save columns</Button></div><ColumnPicker sheet={sheet} header={picks[pending.key] ?? null} used={used.filter(name => name !== picks[pending.key])} onPick={name => setPicks(current => ({ ...current, [pending.key]: name }))} /></>}
       </section>
       <section aria-label="Versions"><h3 className="mb-2 text-title font-semibold">Versions</h3><ul className="divide-y divide-ui-stroke rounded-[7px] border border-ui-stroke">{entry.state.versions.toReversed().map(version => <li key={version.id} className="flex items-center justify-between gap-3 px-3 py-2"><span>{version.name}<span className="block text-caption text-ui-muted">{when(version.savedAt)}</span></span>{version.id === entry.state.selectedVersionId && <Badge>In use</Badge>}</li>)}</ul></section>
       <div className="flex gap-2"><Button onClick={() => onReplace(item.id)}>Replace</Button><Button>Open</Button><Button>Download</Button></div>
@@ -107,7 +107,7 @@ function ReplaceDialog({ item, onClose, onConfirm }: { item: Reference | undefin
   const [checked, setChecked] = useState(false);
   const close = () => { setChecked(false); onClose(); };
   return <Dialog open={!!item} onOpenChange={open => { if (!open) close(); }}><DialogContent className="launch-design" size="lg" title={`Replace ${item?.title ?? ''}`} description={checked ? 'Step 2 of 2' : 'Step 1 of 2'}>
-    <DialogBody>{!checked ? <Dropzone label="Choose the new file" accept=".xlsx,.csv" hint="Excel or CSV file" onFile={() => setChecked(true)} /> : <div className="grid gap-4">
+    <DialogBody>{!checked ? <FilePickRow title="New file" hint="Excel or CSV file" onFile={() => setChecked(true)} /> : <div className="grid gap-4">
       <div className="flex items-center gap-2 rounded-[7px] border border-ui-stroke bg-ui-table px-3 py-2"><span className="min-w-0 flex-1 truncate">{IMPORT_FILE.name}</span><span className="text-caption text-ui-muted">{IMPORT_FILE.rows} rows</span></div>
       <ul className="grid gap-1.5">{['EID column: Employee ID', 'Name column: Full name'].map(line => <li key={line} className="flex items-center gap-2"><Check size={14} aria-hidden />{line}</li>)}</ul>
       <p className="text-body text-ui-muted">The current file {item?.file?.name} is kept as a version. {item?.workflow} uses the new file for lookups from now on.</p></div>}</DialogBody>
@@ -132,7 +132,7 @@ export function SheetsDesignD() {
   const saveColumns = (id: string, picks: Partial<Record<Key, string>>) => { update(id, file => ({ ...file, eid: picks.eid ? match('EID column', picks.eid) : file.eid, person: picks.person ? match('Name column', picks.person) : file.person })); setDrawer(undefined); toast({ tone: 'success', title: 'Columns saved' }); };
   const replaced = (id: string) => update(id, file => ({ ...file, name: IMPORT_FILE.name, rows: IMPORT_FILE.rows, updatedAt: '2026-11-08T17:30:00Z' }));
   const imported = (purpose: string) => setRefs(current => current.map(item => item.id === purpose ? { ...item, file: { id: item.id, name: IMPORT_FILE.name, rows: IMPORT_FILE.rows, updatedAt: '2026-11-08T17:30:00Z', eid: match('EID column', 'Employee ID'), person: match('Name column', 'Full name') } } : item));
-  const head = <div className="mb-6 flex items-start justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
+  const head = <div className="mb-6 flex items-center justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
     <div className="flex items-center gap-2"><Button variant="primary" onClick={() => { setPreset(undefined); setImportOpen(true); }}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page hub-sheets-library min-w-0 text-body">
     {head}
