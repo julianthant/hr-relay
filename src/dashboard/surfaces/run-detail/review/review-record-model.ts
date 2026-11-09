@@ -26,7 +26,6 @@ export interface RecordReviewProps {
   readonly onEditField?: (recordId: string, key: string, value: string) => void;
   readonly onCommit?: () => void;
   readonly onChange?: (record: ReviewRecordView) => void;
-  readonly onAdd?: () => string;
   readonly onApprove?: () => void;
   readonly onDiscard?: () => void;
   readonly onRestore?: () => void;
