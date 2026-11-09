@@ -199,7 +199,7 @@ function Section({
     >
       <div className="flex flex-col gap-[var(--ds-space-hair)] border-b border-[color:var(--ds-border-subtle)] pb-[var(--ds-space-base)]">
         <h2 className={cn(dsText.section, "font-semibold")}>{title}</h2>
-        <p className={cn(dsText.body, "max-w-[80ch] text-[color:var(--ds-fg-muted)]")}>{note}</p>
+        <p className={cn(dsText.body, "max-w-[110ch] text-[color:var(--ds-fg-muted)]")}>{note}</p>
       </div>
       {children}
     </section>
@@ -319,11 +319,12 @@ function StatusSection() {
 function ActionsSection() {
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [browserMode, setBrowserMode] = useState<"headed" | "headless">("headed");
   return (
     <Section
       id="actions"
       title="Actions"
-      note="One primary per surface, one danger per surface. Variant is semantic, not decorative — outline for peers in a toolbar, ghost for anything that must not compete."
+      note="Soft for most actions, soft bordered for pickers, plain for icons and minor ones, blue to confirm a dialog."
     >
       <Row label="Soft">
         <Button>Change</Button>
@@ -339,7 +340,8 @@ function ActionsSection() {
         <IconButton label="More" icon={<MoreHorizontal aria-hidden className="size-3.5" />} />
       </Row>
       <Row label="Two-way switch">
-        <SegmentedChoice label="Theme" value={theme} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={setTheme} />
+        <SegmentedChoice hideLabel label="Theme" value={theme} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={setTheme} />
+        <SegmentedChoice hideLabel label="Browser mode" value={browserMode} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} onChange={setBrowserMode} />
       </Row>
       <Row label="Blue primary">
         <Button variant="brand" size="toolbar" icon={<Play aria-hidden className="size-3.5" />}>
