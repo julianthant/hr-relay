@@ -257,3 +257,22 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   await expect(page.locator(".ds-page-heading-title").first()).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// Served fixture (no notificationsPreview): items that still need the operator sit in Priority, finished runs in Today.
+for (const theme of THEMES) test(`served notifications priority @ ${theme}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+  await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await bell(page).click();
+  const group = (label: string) => panel(page).locator("section.notification-group").filter({ has: page.getByRole("heading", { name: label, exact: true }) });
+  const priority = group("Priority");
+  for (const title of ["Run failed", "Approval waiting", "Write parked", "Records ready for approval"]) await expect(priority.getByText(title, { exact: true }).first()).toBeVisible();
+  await expect(priority.getByText("Nothing needs attention")).toHaveCount(0);
+  for (const title of ["Run completed", "Run completed with issues", "Records approved"]) await expect(priority.getByText(title, { exact: true })).toHaveCount(0);
+  await expect(group("Today")).toBeVisible();
+  await page.mouse.move(1, 1);
+  await shot(page, "served-priority", theme);
+});

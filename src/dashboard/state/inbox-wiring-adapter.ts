@@ -44,13 +44,15 @@ function notificationItem(row: Extract<NotificationWire, { kind: "notification" 
   const policy = notificationPolicy(row);
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
   const context = row.context;
-  return { id: row.notificationId, title: row.title,
+  const tone = policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info");
+  return { id: row.notificationId, title: row.title, tone,
+      // The wire has no priority or resolved flag; error and warning notices count as still needing the operator.
+      priority: tone === "danger" || tone === "warning",
       subject: context.state === "available" ? context.subject : inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE"),
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
       detail: row.sourceEvent?.state === "available" && row.sourceEvent.kind === "run-failed" && row.summary !== undefined
         ? row.summary
         : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
-      tone: policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info"),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
       read: row.readState === "read", action: row.link?.kind === "storage" ? "Open Storage" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
