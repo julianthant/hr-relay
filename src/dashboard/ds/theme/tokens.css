@@ -231,6 +231,8 @@
   --ds-row-h-2: 60px;
   --ds-menu-fg: color-mix(in srgb, var(--ui-primary) 90%, #fff); /* menu item text: a touch dimmer than primary */
   --ds-fg-list: color-mix(in srgb, var(--ui-primary) 85%, var(--ui-canvas)); /* sidebar and list text, a step under primary (Codex rows 196 on 19) */
+  --ds-sidebar-fg: color-mix(in srgb, var(--ui-primary) 85%, var(--ui-canvas)); /* sidebar text: workflow rail rows, notification titles (Codex 197) */
+  --ds-sidebar-grey: #6e6e6e; /* sidebar grey: group headings, previews, tags, row icons; AA on the light rail */
   --ds-card-bg: var(--ui-panel); /* light: the page fill, the card is drawn by its border */
   --ds-menu-item-h: 28px; /* one-line menu item; a two-line item grows to fit */
   --ds-row-head-h: 32px;
@@ -2097,4 +2099,4 @@ body[data-demo-theme],
 .ds-layer-toast-card { z-index: calc(var(--ds-layer-toast-card) - var(--toast-index)); }
 
 [data-demo-theme="light"] { --ds-card-bg: var(--ui-canvas); }
-[data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; --ds-fg-list: #c4c4c6; }
+[data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; --ds-fg-list: #c4c4c6; --ds-sidebar-fg: #c5c5c7; --ds-sidebar-grey: #7c7c80; }

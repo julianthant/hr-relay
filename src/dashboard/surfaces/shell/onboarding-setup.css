@@ -3,7 +3,7 @@
 .hub-duo-dialog:focus,.hub-duo-dialog:focus-visible{background:var(--ui-panel)!important;color:var(--ui-primary)!important;outline:none!important;box-shadow:var(--hub-shadow)!important}
 
 .hub-duo-setup{position:absolute;inset:0;overflow:auto;background:var(--ui-canvas);color:var(--ui-primary)}
-.hub-duo-dialog>header{padding:0;border:0}.hub-duo-dialog>header>div{gap:0}.hub-duo-dialog h2{font-size:19px;line-height:1.35;font-weight:600}.hub-duo-dialog p{line-height:1.5;color:var(--ui-secondary)}.hub-duo-dialog>footer{padding:0;border:0;margin-top:28px}.hub-duo-dialog .btn{min-height:42px;padding:9px 16px;border:1px solid var(--ui-stroke-control);border-radius:8px;background:var(--ui-panel);font-size:14px;font-weight:500}.hub-duo-dialog .primary{background:var(--hub-primary);color:var(--hub-primary-ink)}
+.hub-duo-dialog>header{padding:0;border:0}.hub-duo-dialog>header>div{gap:0}.hub-duo-dialog h2{font-size:19px;line-height:1.35;font-weight:500}.hub-duo-dialog p{line-height:1.5;color:var(--ui-secondary)}.hub-duo-dialog>footer{padding:0;border:0;margin-top:28px}.hub-duo-dialog .btn{min-height:42px;padding:9px 16px;border:1px solid var(--ui-stroke-control);border-radius:8px;background:var(--ui-panel);font-size:14px;font-weight:500}.hub-duo-dialog .primary{background:var(--hub-primary);color:var(--hub-primary-ink)}
 
 .hub-duo-dialog>footer { background:transparent;border-radius:0; }
 .hub-duo-dialog>footer>span { gap:8px; }
@@ -22,7 +22,7 @@
 .duo-signup-methods { display:flex;flex-direction:column;gap:var(--ds-space-section); }
 .duo-signup-cards { display:grid;grid-template-columns:1fr 1fr;gap:var(--ds-space-loose); }
 .duo-signup-card { display:flex;flex-direction:column;align-items:stretch;gap:var(--ds-space-cozy);padding:var(--ds-space-loose);border:1px solid var(--ui-stroke);border-radius:var(--ds-radius-lg);background:var(--ui-panel); }
-.duo-signup-card h2 { font-size:var(--ds-text-section);font-weight:600; }
+.duo-signup-card h2 { font-size:var(--ds-text-section);font-weight:500; }
 .duo-signup-card p { font-size:var(--ds-text-body);color:var(--ui-muted);min-height:2lh; }
 .duo-signup-card button { align-self:flex-start; }
 .duo-signup-icon { display:flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--ui-stroke);border-radius:var(--ds-radius-md); }
