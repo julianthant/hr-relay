@@ -4,11 +4,11 @@ import { it } from "vitest";
 import { z } from "zod";
 import { createAssistantM1Service, type AssistantM1ServiceOptions } from "../../../src/backend/assistant/service.js";
 import { ChatGptResourceClosureUnprovedError } from "../../../src/backend/accounts/chatgpt-account-service.js";
-import { assistantPersonBinding } from "../../../src/backend/assistant/replies.js";
+import { assistantPersonBinding, resolveAssistantReply } from "../../../src/backend/assistant/replies.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
-import { AssistantInferenceRequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1RespondEnvelope } from "../../../src/models/dashboard/assistant.js";
+import { AssistantInferenceRequestSchema, AssistantM1MessagePayloadSchema, AssistantM1RespondEnvelopeSchema, AssistantReplyPartsSchema, AssistantReplySchema, type AssistantM1RespondEnvelope } from "../../../src/models/dashboard/assistant.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { PersonLookupCanonicalInput } from "../../../src/models/workflows/person-lookup/input.js";
 import { parseCanonicalInputSnapshot } from "../../../src/models/workflow/canonical-input.js";
@@ -18,6 +18,7 @@ import { completedResponseStream, partialTextStream } from "../../support/helper
 import { assistantM1HistoryFixture } from "../../support/helpers/assistant-m1-history-fixture.js";
 import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
+import { createAssistantReferenceTable } from "../../../src/backend/assistant/references.js";
 
 const usage = { input_tokens: 4, output_tokens: 2, total_tokens: 6 };
 const message = (text: string, tokens: unknown = usage) => completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }], "gpt-6.1-sol", randomUUID(), tokens === null ? undefined : tokens);
@@ -30,7 +31,7 @@ async function world() {
   const timeline = debugTimelineFixture(), writer = createDebugEventWriter({ repository: timeline.repository, clock: account.clock, build: "test", development: true, writeStderr() {} });
   account.service.setDebugEvents(writer);
   const script: Step[] = [], bodies: z.infer<typeof Wire>[] = [], tokens = new Set<string>();
-  let current = true, profileId = storage.profileId(), onPost: (() => void) | undefined, onBindings: (() => void) | undefined;
+  let current = true, profileId = storage.profileId(), personLabel = `Person ${EXECUTOR_EID}`, onPost: (() => void) | undefined, onBindings: (() => void) | undefined;
   let failLog: Error | undefined, usageAttempts = 0, tools = 0, facts = 0, catalogs = 0, refuseTool = false, historyFault: "read" | "write" | undefined;
   const history = { ...storage.history,
     repeat(...args: Parameters<typeof storage.history.repeat>) { if (historyFault === "read") throw new Error("PRIVATE_HISTORY_CANARY"); return storage.history.repeat(...args); },
@@ -47,7 +48,7 @@ async function world() {
     output: z.strictObject({ person: referenceSchema("P") }), privacy: [{ path: "person", origin: "repository-authored" }],
     async invoke(_input, context) {
       tools++; if (refuseTool) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
-      const token = context.references.issue("P", row.envelope.runId, `Person ${EXECUTOR_EID}`, EXECUTOR_EID, row.version); tokens.add(token); return { person: token };
+      const token = context.references.issue("P", row.envelope.runId, personLabel, EXECUTOR_EID, row.version); tokens.add(token); return { person: token };
     } };
   const options: AssistantM1ServiceOptions = { account: account.service, history: () => history, clock: account.clock, actorId: "local-operator",
     owner: () => ({ profileId, epoch: storage.epoch() }), assertComposition() { if (profileId !== storage.profileId()) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE"); },
@@ -60,11 +61,12 @@ async function world() {
   const request = (id = create(), text = "Explain") => { const view = service.conversation(id); assert.ok(view); return { conversationId: id, expectedRevision: view.revision, messageId: randomUUID(), message: text }; };
   const send = (input = request(), signal = new AbortController().signal) => service.respond(input, signal);
   const usageEvents = () => timeline.records.flatMap(record => record.payload.kind === "debug" && record.payload.event.assistantUsage !== undefined ? [record.payload.event] : []);
-  return { account, storage, script, bodies, tool, create, request, send, usageEvents, service: () => service,
+  return { account, storage, script, bodies, tool, create, request, send, usageEvents, run: () => row, service: () => service,
     counts: () => ({ catalogs, posts: bodies.length, tools, facts, usageAttempts }), restart() { service = createAssistantM1Service(options); },
     onPost(hook: () => void) { onPost = hook; }, onBindings(hook: () => void) { onBindings = hook; },
     failHistory(operation: "read" | "write") { historyFault = operation; },
     changeModel() { current = false; }, changeOwner() { profileId = randomUUID(); }, refuseTool() { refuseTool = true; },
+    personLabel(value: string) { personLabel = value; },
     logFailure(error: Error) { failLog = error; }, changeRevision() { row = RunRecordSchema.parse({ ...row, version: row.version + 1 }); },
     foreignInput() { const value = parseCanonicalInputSnapshot(PersonLookupCanonicalInput, row.input.parsed);
       row = RunRecordSchema.parse({ ...row, input: { ...row.input, parsed: { ...row.input.parsed, value: { ...value, emplId: "10000001" } } } }); },
@@ -154,6 +156,62 @@ it("records returned usage before a later source-currentness refusal", async () 
     w.onBindings(() => w.changeModel()); w.script.push(message("Answer"));
     const refusal = result(await w.send()); assert.equal(refusal.state, "no-reply"); if (refusal.state !== "no-reply") assert.fail();
     assert.equal(refusal.canRetry, false); assert.equal(w.usageEvents()[0]?.assistantUsage?.state, "measured"); assert.equal(w.usageEvents()[0]?.assistantUsage?.callCount, 1);
+  } finally { await w.close(); }
+});
+for (const invalidation of ["model", "account", "signal"] as const) it(`refuses ${invalidation} invalidated after the final inner check and before outer answer settlement`, async () => {
+  const w = await world(), controller = new AbortController();
+  let retirement: Promise<void> | undefined, invalidated = false;
+  try {
+    const input = w.request();
+    w.onBindings(() => queueMicrotask(() => queueMicrotask(() => {
+      invalidated = true;
+      if (invalidation === "model") w.changeModel();
+      if (invalidation === "account") retirement = w.account.service.close();
+      if (invalidation === "signal") controller.abort();
+    })));
+    w.script.push(message("Retired answer"));
+    const envelope = AssistantM1RespondEnvelopeSchema.parse(await w.send(input, controller.signal));
+    await retirement;
+    assert.equal(invalidated, true);
+    const refusal = result(envelope); assert.equal(refusal.state, "no-reply"); if (refusal.state !== "no-reply") assert.fail();
+    assert.equal(refusal.reason, invalidation === "signal" ? "ASSISTANT_CANCELLED" : "ASSISTANT_MODEL_CHANGED");
+    assert.deepEqual(refusal.turn?.usage, { state: "measured", callCount: 1, inputTokens: 4, outputTokens: 2, totalTokens: 6 });
+    const stored = w.service().conversation(input.conversationId); assert.ok(stored);
+    assert.equal(stored.messages.length, 1); assert.equal(stored.messages[0]?.delivery, "refused");
+    assert.equal(w.counts().posts, 1); assert.equal(w.counts().usageAttempts, 1); assert.equal(w.usageEvents().length, 1);
+    const before = w.counts(), repeat = await w.send(input);
+    assert.equal(repeat.kind, "delivery"); if (repeat.kind !== "delivery") assert.fail(); assert.equal(repeat.receipt.delivery, "refused");
+    assert.deepEqual(w.counts(), before);
+  } finally { await retirement; await w.close(); }
+});
+it("refuses a complete reply above 80k before committing parts that fit the storage budget", async () => {
+  const w = await world(); try {
+    const input = w.request(); w.personLabel("x");
+    w.script.push(call(), body => {
+      const output = body.input.at(-1); assert.ok(output && "type" in output && output.type === "function_call_output");
+      const { person } = z.strictObject({ person: z.string() }).parse(JSON.parse(output.output));
+      return message(person.repeat(276));
+    });
+    w.onBindings(() => {
+      const view = w.service().conversation(input.conversationId), recording = view?.messages[0]?.payload.recording;
+      assert.equal(recording?.kind, "accepted-turn"); if (recording?.kind !== "accepted-turn") assert.fail();
+      const table = createAssistantReferenceTable(recording.acceptedTurn.ordinal);
+      const reference = table.issue("P", w.run().envelope.runId, "x", EXECUTOR_EID, w.run().version);
+      const parts = resolveAssistantReply(reference.repeat(276), table, [assistantPersonBinding(table, reference, w.run())]);
+      const stored = { parts, recording: { kind: "reply", acceptedMessageId: input.messageId } };
+      const complete = { parts, acceptedTurn: recording.acceptedTurn, usage: { state: "measured", callCount: 2, inputTokens: 8, outputTokens: 4, totalTokens: 12 } };
+      assert.ok(Buffer.byteLength(JSON.stringify(parts)) < 80_000); assert.ok(Buffer.byteLength(JSON.stringify(stored)) < 80_000);
+      assert.ok(Buffer.byteLength(JSON.stringify(complete)) > 80_000);
+      assert.equal(AssistantReplyPartsSchema.safeParse(parts).success, true); assert.equal(AssistantM1MessagePayloadSchema.safeParse(stored).success, true);
+      assert.equal(AssistantReplySchema.safeParse(complete).success, false);
+    });
+    const refusal = result(AssistantM1RespondEnvelopeSchema.parse(await w.send(input)));
+    assert.equal(refusal.state, "no-reply"); if (refusal.state !== "no-reply") assert.fail();
+    assert.equal(refusal.reason, "ASSISTANT_LIMIT"); assert.equal(refusal.canRetry, false);
+    assert.deepEqual(refusal.turn?.usage, { state: "measured", callCount: 2, inputTokens: 8, outputTokens: 4, totalTokens: 12 });
+    const stored = w.service().conversation(input.conversationId); assert.ok(stored);
+    assert.equal(stored.messages.length, 1); assert.equal(stored.messages[0]?.delivery, "refused");
+    assert.equal(w.counts().posts, 2); assert.equal(w.counts().usageAttempts, 1); assert.equal(w.usageEvents().length, 1);
   } finally { await w.close(); }
 });
 for (const closure of [false, true]) it("preserves a known stored answer while explicitly reporting logger failure", async () => {

@@ -366,7 +366,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
   const now = () => options.clock.now().toISOString();
   type Accepted = Extract<AssistantM1Acceptance, { state: "accepted" }>;
   type Turn = Readonly<{ reason: AssistantFailureCode }> | Readonly<{ uncertain: true }>
-    | Readonly<{ modelText: string; parts: z.infer<typeof AssistantReplySchema>["parts"] }>;
+    | Readonly<{ modelText: string; parts: z.infer<typeof AssistantReplySchema>["parts"]; assertCurrent(): void }>;
   const noReply = (reason: AssistantFailureCode): AssistantM1RespondEnvelope => ({ kind: "result", result: { state: "no-reply", reason, canRetry: false, turn: null } });
   const failure = (error: unknown, signal: AbortSignal): AssistantFailureCode => {
     if (closure(error)) return "CHATGPT_RESOURCE_CLOSURE_UNPROVED";
@@ -430,8 +430,15 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       if (acceptance.state === "repeat") return AssistantM1RespondEnvelopeSchema.parse(repeated(acceptance));
       accepted = acceptance;
       live.set(conversationId, controller);
-      const turn = await runTurn();
+      let turn = await runTurn();
       const usage = aggregateAssistantUsage(calls), attempt = accepted;
+      if ("parts" in turn) {
+        try {
+          turn.assertCurrent();
+          const reply = AssistantReplySchema.safeParse({ parts: turn.parts, acceptedTurn: attempt.acceptedTurn, usage });
+          if (!reply.success) turn = { reason: reply.error.issues.some(issue => issue.message === "assistant-reply-budget-exceeded") ? "ASSISTANT_LIMIT" : "ASSISTANT_INVALID" };
+        } catch (error) { turn = { reason: failure(error, signal) }; }
+      }
       let observedRevision = attempt.revision;
       let settled = false;
       const readback = () => {
@@ -529,7 +536,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
               const modelText = messages[0].content.map(part => part.text).join("");
               const bindings = await reads.bindings(table, acceptance.acceptedTurn);
               assertAuthority();
-              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings)] };
+              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings)], assertCurrent: assertAuthority };
             }
             if (toolCalls.length !== 1 || messages.length !== 0) return { reason: "ASSISTANT_INVALID" };
             const call = toolCalls[0], tool = call.namespace === ASSISTANT_TOOL_NAMESPACE ? registry.tools.find(entry => entry.name === call.name) : undefined;
