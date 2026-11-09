@@ -70,6 +70,7 @@ for (const theme of THEMES) test(`assistant explorer mock @ ${theme} ${WIDTH}`, 
     await page.mouse.move(1, 1);
     await page.waitForTimeout(600);
     await page.screenshot({ path: join(OUT, `${frame.id}-${theme}.png`) });
+    await page.evaluate(() => { window.localStorage.removeItem("relay.workflow-rail.collapsed"); });
   }
   expect(errors).toEqual([]);
 });
