@@ -85,7 +85,7 @@ Bootstrap projects the admitted person registry name as the actor label. Appeara
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
 Every declared value is `mock` or `served`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations and OCR use `served`; the other configured workflows use `mock`.
+`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations and Onboarding use `served`; OCR is `hidden`; the other configured workflows use `mock`.
 Product mock queues start empty. `WorkflowComposition.initialMockRuns` supplies initial rows; the product supplies none, while parity supplies `seedMockRuns`. Parity starts from an explicit mock policy and opts fixture workflows into served capability tests. There is no runtime served-to-mock fallback.
 
 `WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,
