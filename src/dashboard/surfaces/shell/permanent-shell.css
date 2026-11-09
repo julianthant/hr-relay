@@ -20,6 +20,8 @@
 
 .workspace-rail-header { display: flex; height: 64px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 calc(16px - (28px - 16px) / 2) 0 16px; background: var(--ds-surface-1); pointer-events: auto; }
 .workspace-rail-header button, .workspace-rail-header .rail-notification-toggle { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
+.workspace-rail { --rail-hover-fill: color-mix(in srgb, var(--ds-fg) 8.5%, var(--ds-surface-1)); }
+.workspace-rail-header button:not([aria-pressed="true"]):hover, .workspace-rail-header button:not([aria-pressed="true"]):focus-visible { background: var(--rail-hover-fill); color: var(--ui-primary); }
 .workspace-rail-header h2 { margin: 0; font-size: 18px; line-height: 1.4; font-weight: 600; }
 .workspace-rail-body { display: flex; flex: 1; min-height: 0; flex-direction: column; pointer-events: auto; }
 
