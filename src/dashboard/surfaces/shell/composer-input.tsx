@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ArrowUp, ChevronDown, Hand, Paperclip, Mic, Plus, ShieldAlert, X } from 'lucide-react';
 import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
-  DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';
-import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODELS, FULL_ACCESS, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
+  DropdownMenuRadioItem } from '../../ds/ui.js';
+import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODEL, FULL_ACCESS, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
 import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import { useFullAccessAllowed } from './assistant-approval-model.js';
 import './composer-input.css';
@@ -15,7 +15,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
   const id = useId();
-  const displayedModel = preview ? composer.model : modelPreference === undefined ? 'Model unavailable' : assistantModelLabel(modelPreference.slug);
+  const displayedModel = preview ? ASSISTANT_MODEL : modelPreference === undefined ? 'Model unavailable' : assistantModelLabel(modelPreference.slug);
   const displayedEffort = preview ? composer.effort : modelPreference === undefined ? undefined : ASSISTANT_EFFORT_LABELS[modelPreference.effort];
   // Without a served model there is no effort to show; only "Model unavailable" fits the panel toolbar.
   const focusMessageOnClose = useRef(false);
@@ -54,11 +54,9 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
         {menu('approval', approval, full ? <><ShieldAlert aria-hidden /><span>{FULL_ACCESS}</span></> : <Hand aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={approval} onValueChange={setApproval}>
           {approvals.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>, full ? 'sm' : 'icon-sm', full ? 'hub-full-access' : undefined)}
-        {menu('model', `Model: ${displayedModel}${displayedEffort === undefined ? '' : `, ${displayedEffort} effort`}`, <><span>{displayedModel}</span>{displayedEffort !== undefined && <span className="hub-effort">{displayedEffort}</span>}<ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.model} onValueChange={composer.setModel}>
-          {ASSISTANT_MODELS.map((value, index) => <DropdownMenuGroup key={value}>{index === 1 ? <DropdownMenuSeparator className="hub-menu-separator" /> : null}<DropdownMenuRadioItem closeOnClick className="hub-menu-option" value={value}><span className="hub-option-copy"><span>{value}</span>{index === 0 ? <small>Recommended set of models</small> : null}</span></DropdownMenuRadioItem></DropdownMenuGroup>)}
-        </DropdownMenuRadioGroup>{displayedEffort !== undefined && <><DropdownMenuSeparator className="hub-menu-separator" /><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
+        {menu('model', `Model: ${displayedModel}${displayedEffort === undefined ? '' : `, ${displayedEffort} effort`}`, <><span>{displayedModel}</span>{displayedEffort !== undefined && <span className="hub-effort">{displayedEffort}</span>}<ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
           {ASSISTANT_EFFORTS.map(value => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={value} value={value}><span className="hub-option-copy">{value}</span></DropdownMenuRadioItem>)}
-        </DropdownMenuRadioGroup></>}</>, 'sm')}
+        </DropdownMenuRadioGroup></>, 'sm')}
         {menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}
         <InputGroupButton type="submit" id="hub-send" aria-label="Send message" disabled={disabled || attaching} aria-disabled={!composer.text.trim() || undefined}><ArrowUp aria-hidden /></InputGroupButton>
       </InputGroupAddon>

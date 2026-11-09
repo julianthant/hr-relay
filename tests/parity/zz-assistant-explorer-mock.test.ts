@@ -29,13 +29,14 @@ const launcherFrames: Frame[] = [
 const assistantFrames: Frame[] = ASSISTANT_FRAMES.map(frame => ({ id: frame.id, query: `assistantOpen=1&assistantMock=${frame.id}`, view: RUN, ...frame.menu === "effort" ? { act: async (page: Page) => { await page.getByRole("button", { name: /^Model:/u }).click(); } } : {} }));
 const FRAMES: Frame[] = [
   ...assistantFrames,
-  { id: "r1-open", query: "assistantOpen=1", view: RUN },
-  { id: "r1-open-sessions", query: "assistantOpen=1", view: { ...RUN, sessions: true } },
-  { id: "r1-history-chats", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); } },
-  { id: "r1-history-activity", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.getByRole("radio", { name: "Activity" }).check({ force: true }); } },
-  { id: "r1-new-chat", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "New chat", exact: true }).click(); } },
-  { id: "r1-approval-menu", query: "assistantOpen=1&assistantFullAccess=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); } },
-  { id: "r1-full-access", query: "assistantOpen=1&assistantFullAccess=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); await page.getByRole("menuitemradio", { name: /Full access/u }).click(); } },
+  { id: "r2-open", query: "assistantOpen=1", view: RUN },
+  { id: "r2-open-sessions", query: "assistantOpen=1", view: { ...RUN, sessions: true } },
+  { id: "r2-history-chats", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); } },
+  { id: "r2-history-hover", query: "assistantOpen=1", view: RUN, keepHover: true, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.locator(".hub-chat-row").nth(1).hover(); } },
+  { id: "r2-history-activity", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.getByRole("radio", { name: "Activity" }).check({ force: true }); } },
+  { id: "r2-new-chat", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "New chat", exact: true }).click(); } },
+  { id: "r2-approval-menu", query: "assistantOpen=1&assistantFullAccess=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); } },
+  { id: "r2-full-access", query: "assistantOpen=1&assistantFullAccess=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); await page.getByRole("menuitemradio", { name: /Full access/u }).click(); } },
   { id: "dock-closed", query: "assistantOpen=0", view: RUN },
   { id: "dock-open", query: "assistantOpen=0", view: { ...RUN, sessions: true } },
   { id: "dock-open-assistant", query: "assistantOpen=1&assistantMock=01-chat-basics", view: { ...RUN, sessions: true } },
@@ -133,6 +134,10 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   expect(shape.composerBorder).toBe("0px");
   expect(shape.send).toEqual([28, 28]);
   expect(Math.abs(shape.composerHeight - 98)).toBeLessThanOrEqual(2);
+  // Send is the filled circle even when empty: aria-disabled, never dimmed.
+  const send = page.locator("#hub-send");
+  await expect(send).toHaveAttribute("aria-disabled", "true");
+  expect(await send.evaluate(element => getComputedStyle(element).opacity)).toBe("1");
   writeFileSync(join(OUT, `panel-measure-${theme}-${WIDTH}.json`), JSON.stringify(shape, null, 1));
   await page.screenshot({ path: join(OUT, `panel-chat-${theme}.png`) });
 
@@ -148,6 +153,13 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   await expect(page.getByRole("searchbox", { name: "Search chats" })).toBeVisible();
   expect(await headerFill()).toEqual(chat);
   await page.screenshot({ path: join(OUT, `panel-history-chats-${theme}.png`) });
+  // Row actions appear on row hover or focus only, 24px with 6px corners.
+  const rowIcon = page.locator(".hub-chat-row").nth(1).getByRole("button", { name: /Rename|Delete/u }).first();
+  await expect(rowIcon).toHaveCSS("opacity", "0");
+  await page.locator(".hub-chat-row").nth(1).hover();
+  await expect(rowIcon).toHaveCSS("opacity", "1");
+  expect(await rowIcon.evaluate(element => { const box = element.getBoundingClientRect(); return [box.width, box.height, getComputedStyle(element).borderTopLeftRadius]; })).toEqual([24, 24, "6px"]);
+  await page.mouse.move(0, 0);
   await page.getByRole("searchbox", { name: "Search chats" }).fill("Check employment");
   await expect(page.locator(".hub-chat-open")).toHaveCount(1);
   await page.getByRole("searchbox", { name: "Search chats" }).fill("");

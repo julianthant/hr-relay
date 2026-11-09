@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { AssistantFile } from './assistant-panel-model.js';
 
-export const ASSISTANT_MODELS = ['Default', 'GPT-6.1 Sol', 'GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-5.6 Sol', 'GPT-5.6 Terra', 'GPT-5.6 Luna'] as const;
+export const ASSISTANT_MODEL = 'GPT-6.1 Sol';
 export const ASSISTANT_EFFORTS = ['Light', 'Medium', 'High', 'xHigh', 'Max'] as const;
 export const ASSISTANT_APPROVALS = [
   { label: 'Ask before every action', description: 'Confirm each proposed change.' },
@@ -16,7 +16,6 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
   const [text, setText] = useState(() => draft?.read().text ?? initialText);
   const [files, setFiles] = useState<readonly AssistantFile[]>(() => draft?.read().files ?? []);
   useLayoutEffect(() => { draft?.retain({ text, files }); }, [draft, text, files]);
-  const [model, setModel] = useState<string>(ASSISTANT_MODELS[1]);
   const [effort, setEffort] = useState<string>('Medium');
   const [approval, setApproval] = useState<string>(ASSISTANT_APPROVALS[0].label);
   const [menu, setMenu] = useState<ComposerMenu | null>(null);
@@ -60,8 +59,8 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
     sending.current = true;
     submitted.current = { version: draftVersion.current, text, files };
     try {
-      if (await onSend({ text, files, model, effort, approval })) { setText(''); setFiles([]); setMenu(null); }
+      if (await onSend({ text, files, model: ASSISTANT_MODEL, effort, approval })) { setText(''); setFiles([]); setMenu(null); }
     } finally { sending.current = false; }
   }
-  return { text, setText, files, setFiles, model, setModel, effort, setEffort, approval, setApproval, menu, setMenu, textarea, fileInput, popup, send };
+  return { text, setText, files, setFiles, effort, setEffort, approval, setApproval, menu, setMenu, textarea, fileInput, popup, send };
 }
