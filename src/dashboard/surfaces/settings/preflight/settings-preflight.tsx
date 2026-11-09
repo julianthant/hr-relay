@@ -198,7 +198,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
         {displayed.checks.map(check => <div key={check.id} className="settings-preflight-item">
           <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
             <Badge tone={check.verdict === "fail" ? "danger" : check.verdict === "warning" ? "warning" : "success"}>{check.verdict}</Badge>
-            <span className={cn(dsText.ui, "break-words font-medium")}>{checkCopy(check.id).name}</span>
+            <span className={cn(dsText.ui, "break-words")}>{checkCopy(check.id).name}</span>
           </div>
           <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{checkCopy(check.id).description}</span>
           {check.verdict !== "pass" && <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{check.detail}</span>}
