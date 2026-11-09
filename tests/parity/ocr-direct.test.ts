@@ -36,8 +36,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
           await info.attach(`${inputName}.a11y.yml`, { body: inputTree, contentType: "text/yaml" });
           info.annotations.push({ type: "required-a11y-evidence", description: `${inputName}.a11y.yml` }, { type: `a11y-attachment-sha256:${inputName}.a11y.yml`, description: createHash("sha256").update(inputTree).digest("hex") });
-          await dialog.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true }).click();
-          await page.getByRole("menuitemradio", { name: "Download Onboarding Roster", exact: true }).click();
         }
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "direct-contact.pdf" : "manual-direct-contact.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();

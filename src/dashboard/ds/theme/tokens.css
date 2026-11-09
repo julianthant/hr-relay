@@ -401,6 +401,7 @@
   /* The queue and the run's CONTEXT RAIL are equal resting side panels. 376px
    leaves the centre log panel as the largest column at every three-panel */
   --ds-w-side-panel: 376px;
+  --ds-w-queue-column: 336px; /* the queue column at 1280px leaves the log toolbar its labels beside the 312px sidebar */
   --ds-w-context-rail: var(--ds-w-side-panel);
   /* The rail while the Data surface is being EDITED in it. 376px reads a
    ledger fine but is tight to type a date into once the row carries a label, */

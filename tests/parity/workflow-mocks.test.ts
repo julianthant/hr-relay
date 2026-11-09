@@ -290,7 +290,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByRole("radio", { name: "PDFs", exact: true }).press("Space");
     await dialog.locator('input[type="file"]').setInputFiles(pdf);
-    await expect(dialog.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Add spreadsheet", exact: true })).toBeVisible();
     await advance(dialog);
     await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
     await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);

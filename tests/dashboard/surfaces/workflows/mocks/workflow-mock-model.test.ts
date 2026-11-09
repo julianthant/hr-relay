@@ -416,7 +416,6 @@ describe_m3("legacy workflow previews", () => {
     const runs = seedMockRuns_m3(); expect_m3(runs.filter(run => !run.parentId)).toHaveLength(19);
     expect_m3(runs).toHaveLength(26);
     for (const id of ["i9-lookup", "sharepoint-download"]) expect_m3(runs.find(run => run.workflowId === id)!.parentId).toBe("mock:onbase:sample");
-    expect_m3(runs.find(run => run.id === "mock:onbase:sample:ocr")!.draft.roster).toBe("download");
     expect_m3(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
     expect_m3(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {

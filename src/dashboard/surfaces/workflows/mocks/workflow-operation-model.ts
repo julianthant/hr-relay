@@ -25,7 +25,7 @@ export function mockOperationValue(run: MockRun, value: string): string {
     profileId: run.draft.dryRun ? "1000001 · unsaved placeholder" : "DEMO-I9-001", workStudyComments: `Updated pool id to F per work study award ${displayExtractedDate(run.draft.effectiveDate)}`,
     pdf: run.draft.files.map(file => file.name).join(", "), formType: run.parentWorkflowId === "onbase" ? run.draft.documentType : MOCK_FORM_TYPES.find(item => item.value === run.draft.formType)?.label ?? run.draft.formType, sourcePage: String(record.page),
     documentType: run.draft.documentType, documentName: run.draft.documentType === "Emergency Contact" ? "EMERGENCY CONTACT INFORMATION" : run.draft.documentType.toUpperCase(),
-    roster: run.draft.formType === "i9" ? "Action History" : "Onboarding Roster", rosterMode: run.draft.roster === "download" ? "Fresh SharePoint download" : "Registered local workbook",
+    roster: run.draft.formType === "i9" ? "Action History" : "Onboarding Roster",
     recordCount: String((run.records ?? reviewRecords(run)).length), approvedCount: String(run.approvedCount ?? 0), approval: run.approved ? "Approved" : "Waiting for review",
     signedDate: displayExtractedDate(field("dateSigned")),
     contactName: field("contactName"), relationship: field("relationship"), phone: field("cellPhone"), sameAddress: field("sameAddress") === "true" ? "Yes" : "No",
@@ -47,8 +47,8 @@ export function mockOperations(run: MockRun, step: MockStep): readonly MockOpera
     }) : [];
     return [manual, ...automatic];
   }
-  const key = step.key.replace(/^roster:/u, "");
-  const exact = MOCK_OPERATION_CATALOG[step.key.startsWith("roster:") ? "sharepoint-download" : run.workflowId][key];
+  const key = step.key;
+  const exact = MOCK_OPERATION_CATALOG[run.workflowId][key];
   if (exact) {
     if (run.workflowId === "ocr" && key === "prep:person-lookup" && reviewRecords(run).length === 0) return [read("Identity matching", [["People resolved", "0"]])];
     if (run.workflowId === "ocr" && ["prep:ocr", "prep:person-lookup"].includes(key) && reviewRecords(run).length > 0) {

@@ -49,7 +49,7 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
     "update-pay-rule": [click("Open People → timekeeper workspace"), fill("Employee search", [["Employee ID", "$employeeId"]]), click("Search and open the employee"), read("Displayed identity", [["Employee ID", "$employeeId"], ["Employee", "$name"]]), click("Job Assignment"), fill("Pay rule assignment", [["Pay rule", "DEMO-OT-BASE"], ["Effective date", "07/01/2026"]]), click("Save pay rule", true), read("Saved assignment", [["Pay rule", "DEMO-OT-BASE"], ["Effective date", "07/01/2026"]], "Employee ID, rule and effective date re-read.")],
   },
   ocr: {
-    "prep:loading-roster": [read("Roster source", [["Spreadsheet", "$roster"], ["Source", "$rosterMode"], ["Rows matched", "$recordCount"]])],
+    "prep:loading-roster": [read("Roster source", [["Spreadsheet", "$roster"], ["Rows matched", "$recordCount"]])],
     "prep:ocr": [read("PDF pages", [["Source PDF", "$pdf"], ["Form type", "$formType"], ["Pages", "2"]]), click("Split pages and recognize the form blocks"), read("Extraction summary", [["Records extracted", "$recordCount"], ["Source pages", "1–2"]])],
     "prep:person-lookup": [read("Identity matching", [["Employee", "$sourceName"], ["Employee ID", "$sourceEmployeeId"], ["Roster match", "Matched"], ["UCPath match", "Confirmed"], ["HR status", "Active"]])],
     "prep:awaiting-approval": [read("Review selection", [["Records", "$recordCount"], ["Approved people", "$approvedCount"]])],
