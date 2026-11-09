@@ -38,6 +38,11 @@ const FRAMES: Frame[] = [
     await page.getByText("Enter employee ID", { exact: false }).first().scrollIntoViewIfNeeded();
     await page.locator("main").evaluate(main => { main.scrollBy(0, 140); });
   } },
+  { id: "explorer-bottom", settings: "explorer", query: "assistantOpen=0", act: async page => {
+    await page.getByRole("combobox", { name: "Explorer workflow", exact: true }).click();
+    await page.getByRole("option", { name: "Person Lookup", exact: true }).click();
+    await page.evaluate(() => { for (const el of document.querySelectorAll<HTMLElement>("*")) if (/auto|scroll/u.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 200) el.scrollTop = el.scrollHeight; });
+  } },
   { id: "explorer-takeover", query: "assistantOpen=0&explore=fixture-person-lookup", act: async page => {
     await page.getByRole("combobox", { name: "Explorer workflow", exact: true }).click();
     await page.getByRole("option", { name: "Person Lookup", exact: true }).click();
