@@ -1,3 +1,4 @@
+import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import readXlsxFile from "read-excel-file/node";
@@ -96,6 +97,7 @@ const ACTIVITY_REPORT = ActivityReportWireSchema.parse({
     registration: { state: "unregistered", reason: "workflow registration is unavailable" },
     runs: 3,
     completion: { readBack: 1, warnings: 0, warningsUnknown: 0 },
+    needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 1, unmeasuredRuns: 0, meanMs: { state: "present", value: 12000 } },
     failed: 1,
     cancelled: 0,
     partial: 0,
@@ -111,7 +113,7 @@ const ACTIVITY_REPORT = ActivityReportWireSchema.parse({
     { status: "running", runs: 1, sample: [SECOND_RUN_ID] },
   ],
   outcomes: [{ outcome: "done", runs: 1 }, { outcome: "failed", runs: 1 }],
-  failures: [{ code: "SESSION_LOST", runs: 1, transient: 1, sample: [SEARCH_RUN_ID] }],
+  failures: [{ code: "SESSION_LOST", sentence: operatorFailureSentence("SESSION_LOST"), workflowId: "retired-workflow", registration: { state: "unregistered", reason: "workflow registration is unavailable" }, runs: 1, transient: 1, sample: [SEARCH_RUN_ID] }],
   durations: {
     measuredRuns: 2,
     unmeasuredRuns: 0,
@@ -277,11 +279,11 @@ describe("operator XLSX workbook", () => {
     const exactHeaders = new Map<string, readonly string[]>([
       ["Summary", ["Metric", "Value", "Unit", "Note"]],
       ["By Day", ["Day", "Runs"]],
-      ["By Workflow", ["Workflow", "Code", "Category", "Runs", "Read back", "Warnings", "Warnings unread", "Failed", "Cancelled", "Partial", "Open", "Registration note"]],
+      ["By Workflow", ["Workflow", "Code", "Category", "Runs", "Read back", "Warnings", "Warnings unread", "Failed", "Cancelled", "Partial", "Open", "Registration note", "Needs attention", "Typical time: successful root mean (ms)", "Successful roots measured", "Successful roots unmeasured"]],
       ["By Category", ["Category", "Runs", "Registration note"]],
       ["By Status", ["Status", "Runs", "Sampled run identifiers"]],
       ["By Outcome", ["Outcome", "Runs"]],
-      ["Failures", ["Failure code", "Runs", "Transient", "Sampled run identifiers"]],
+      ["Failures", ["Failure code", "Runs", "Transient", "Sampled run identifiers", "Workflow id", "Workflow label", "Reason"]],
       ["Ledger", ["System", "Entries", "Production", "Test"]],
     ]);
     for (const sheet of workbook) {
@@ -302,6 +304,8 @@ describe("operator XLSX workbook", () => {
     }
     assert.equal(workbook.find(sheet => sheet.sheet === "By Status")?.data[3]?.[2], SECOND_RUN_ID);
     assert.equal(workbook.find(sheet => sheet.sheet === "Failures")?.data[1]?.[3], SEARCH_RUN_ID);
+    assert.deepEqual(workbook.find(sheet => sheet.sheet === "Failures")?.data[1]?.slice(4), ["retired-workflow", "workflow registration is unavailable", "This failure code is not in the current catalog. Review the recorded local evidence."]);
+    assert.deepEqual(workbook.find(sheet => sheet.sheet === "By Workflow")?.data[1]?.slice(12), [1, 12000, 1, 0]);
     assert.equal(workbook.find(sheet => sheet.sheet === "Summary")?.data.find(row => row[0] === "Longest duration")?.[3], SEARCH_RUN_ID);
   });
 });

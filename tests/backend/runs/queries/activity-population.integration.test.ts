@@ -19,6 +19,8 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+
 const range = { from: "2026-10-01", to: "2026-10-01" };
 const at = "2026-10-01T12:00:00.000Z";
 const cleanup: (() => void | Promise<void>)[] = [];
@@ -37,7 +39,7 @@ async function fixture() {
     let state = search.rebuild({ restart: true, limit: 500 }, database.getMeta().authorityGeneration, at);
     while (state.state === "building") state = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, at);
   };
-  const add = (seed: number, options: Omit<Parameters<typeof runRecordOf>[0], "seed" | "enqueuedAt"> = {}) => {
+  const add = (seed: number, options: Omit<Parameters<typeof runRecordOf>[0], "seed" | "enqueuedAt"> = {}, failureCode = "FIXTURE_FAILURE") => {
     const lifecycle = options.lifecycle;
     const missingTiming = lifecycle !== undefined && typeof lifecycle === "object" && lifecycle !== null && "endedAt" in lifecycle && typeof lifecycle.endedAt === "string" && lifecycle.endedAt < at;
     const isCancelled = lifecycle !== undefined && typeof lifecycle === "object" && lifecycle !== null && "outcome" in lifecycle && lifecycle.outcome === "cancelled";
@@ -57,7 +59,7 @@ async function fixture() {
     if (record.lifecycle.state === "terminal" && record.lifecycle.outcome === "failed") {
       const terminalLifecycle = record.lifecycle;
       const completion = RunCompletionSchema.parse(record.completion);
-      failure = failureRecordOf({ seed, code: "FIXTURE_FAILURE" });
+      failure = failureRecordOf({ seed, code: failureCode, workflow: record.envelope.workflow });
       record = RunRecordSchema.parse({ ...record, lifecycle: { ...record.lifecycle, errorSummary: failure.summary, diagnosticSafetyVersion: failure.diagnosticSafetyVersion } });
       result = createRunTerminalEvidenceResult(record, { kind: "failed-evidence", failureDigest: deriveTerminalFailureDigest(failure),
         authorization: { kind: "failed", runId: record.envelope.runId, workflowId: record.envelope.workflow,
@@ -112,6 +114,13 @@ describe("selected Analytics population", () => {
       { workflowId: "person-lookup", totalMs: 1200, measured: 2, unmeasured: 1 },
       { workflowId: "separations", totalMs: null, measured: 0, unmeasured: 0 },
     ]);
+    expect(selected.report.workflows.map(row => ({ workflowId: row.workflowId, typicalTime: row.typicalTime, needsAttention: row.needsAttention }))).toEqual([
+      { workflowId: "missing-timing", needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 1, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } } },
+      { workflowId: "no-success", needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } } },
+      { workflowId: "person-lookup", needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 2, unmeasuredRuns: 1, meanMs: { state: "present", value: 600 } } },
+      { workflowId: "separations", needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } } },
+    ]);
+    expect(selected.report.failures[0].sentence).toBe("This failure code is not in the current catalog. Review the recorded local evidence.");
     expect(selected.report.durations.totalMs).toBe(106200);
     expect(selected.report.durations.measuredRuns).toBe(5);
     expect(selected.report.durations.unmeasuredRuns).toBe(2);
@@ -121,6 +130,22 @@ describe("selected Analytics population", () => {
     expect(f.service.readSelected(range, selected.snapshot.token, { metric: "failed", page: 0 }).browse?.rows.map(row => row.runId)).toEqual([uuidOf(10)]);
     const browse = f.service.readSelected(range, selected.snapshot.token, { metric: "timed", page: 0 }).browse;
     expect(browse?.rows.map(row => row.runId)).toEqual([uuidOf(1), uuidOf(2)]);
+  });
+
+  it("keeps failure codes distinct per workflow with catalog prose and registered or absent labels", async () => {
+    const f = await fixture();
+    for (const [seed, workflow] of [[20, "person-lookup"], [21, "retired-workflow"]] as const) {
+      const failure = failureRecordOf({ seed, code: "FIXTURE_FAILURE" });
+      f.add(seed, { workflow, lifecycle: { state: "terminal", outcome: "failed", endedAt: at, failureId: failure.failureId } }, "INTERNAL_FAILURE");
+    }
+    f.publish();
+    const report = createActivityPopulationService({ ...f.input, descriptors: { resolve: workflow => workflow === "person-lookup" ? personLookupDescriptor : undefined } }).read(range).report;
+    expect(report.failures).toEqual(["person-lookup", "retired-workflow"].map((workflowId, index) => ({ workflowId,
+      code: "INTERNAL_FAILURE", sentence: "Relay could not complete this request. Review the recorded local evidence before trying again.", runs: 1, transient: 0,
+      sample: [uuidOf(index + 20)], registration: workflowId === "person-lookup"
+        ? { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" }
+        : { state: "unregistered", reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable` } })));
+    expect(report.workflows.map(row => row.needsAttention)).toEqual([1, 1]);
   });
 
   it("pages the full range and browses exact metrics, search, sorting and selected run membership", async () => {
