@@ -127,7 +127,7 @@ function SelectItem({
           <span className="pointer-events-none absolute right-2.5 flex size-4 items-center justify-center" />
         }
       >
-        <CheckIcon aria-hidden className="ds-menu-check !static" />
+        <CheckIcon aria-hidden className="ds-menu-check !static !transform-none" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )

@@ -350,25 +350,25 @@ function ConfirmSurface({
         onCloseAutoFocus={onCloseAutoFocus}
         onOpenAutoFocus={event => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-confirm-cancel]")?.focus(); }}
         className={cn(
-          "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] max-w-[440px] -translate-x-1/2 -translate-y-1/2",
+          "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] max-w-[420px] -translate-x-1/2 -translate-y-1/2",
           dsLayer.modal,
-          "flex flex-col gap-[var(--ds-space-loose)] border p-6 outline-none",
+          "flex flex-col gap-[var(--ds-space-loose)] border p-5 outline-none",
           "rounded-[20px] border-[color:var(--ds-border)] bg-[var(--ds-surface-overlay)]",
           dsElev.high,
           dsMotion.enter,
           entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
         )}
       >
-        <div className="flex min-w-0 flex-col gap-2">
-          <DialogPrimitive.Title className="m-0 text-[18px] font-semibold leading-6 text-[color:var(--ds-fg)]">{title}</DialogPrimitive.Title>
-          {description && <DialogPrimitive.Description className="m-0 text-[14px] leading-5 text-[color:var(--ds-fg-muted)]">{description}</DialogPrimitive.Description>}
+        <div className="flex min-w-0 flex-col gap-1">
+          <DialogPrimitive.Title className="m-0 text-[20px] font-semibold leading-7 text-[color:var(--ds-fg)]">{title}</DialogPrimitive.Title>
+          {description && <DialogPrimitive.Description className="m-0 text-[13px] leading-5 text-[color:var(--ds-fg-muted)]">{description}</DialogPrimitive.Description>}
           {detail && <p className="m-0 break-all font-mono text-[13px] leading-5 text-[color:var(--ds-fg-muted)]">{detail}</p>}
         </div>
-        <div className="flex justify-end gap-[var(--ds-space-base)]">
+        <div className="flex justify-end gap-3">
           <DialogPrimitive.Close asChild>
-            <Button data-confirm-cancel variant="muted" disabled={busy} className="focus:[outline-style:solid] focus:outline-[length:var(--ds-focus-ring-w)] focus:outline-offset-[var(--ds-focus-ring-offset)] focus:outline-[color:var(--ds-focus-ring)]">{cancelLabel}</Button>
+            <Button data-confirm-cancel variant="muted" disabled={busy} className="h-8 focus:[outline-style:solid] focus:outline-[length:var(--ds-focus-ring-w)] focus:outline-offset-[var(--ds-focus-ring-offset)] focus:outline-[color:var(--ds-focus-ring)]">{cancelLabel}</Button>
           </DialogPrimitive.Close>
-          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm}>{confirmLabel}</Button>
+          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm} className="h-8 rounded-[10px]">{confirmLabel}</Button>
         </div>
       </DialogPrimitive.Content>
     </>

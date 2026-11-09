@@ -20,7 +20,7 @@
 .settings-compact-page > .settings-compact-form + .ds-body-section { margin-top:28px; }
 .settings-compact-page > .ds-form-group { margin-bottom:28px; }
 .settings-tab-body .ds-body-section-heading { font-size:var(--ds-row-heading);line-height:var(--ds-row-heading-lh);font-weight:400;margin:0 0 16px; }
-.settings-tab-body .ds-form-group { background:var(--ui-panel); }
+.settings-tab-body .ds-form-group { background:var(--ds-card-bg); }
 .settings-tab-body .ds-form-group .ds-body-row,.settings-tab-body .ds-form-group .ds-switch-row { min-height:var(--ds-row-h-1);padding-block:var(--ds-row-pad-y-1);gap:24px; }
 .settings-tab-body .ds-form-group .ds-body-row:has(.ds-field-description),.settings-tab-body .ds-form-group .ds-switch-row:has(.ds-text-meta) { min-height:var(--ds-row-h-2);padding-block:var(--ds-row-pad-y); }
 .settings-tab-body .ds-form-group .ds-body-row { grid-template-columns:minmax(0,1fr) minmax(150px,300px); }
