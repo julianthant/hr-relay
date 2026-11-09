@@ -46,6 +46,13 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+    } else if (id === "run-options-many") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
+      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await dialog.getByRole("textbox").first().fill("48216, 48220");
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(dialog.getByRole("checkbox", { name: "Priority", exact: true })).not.toBeChecked();
     } else if (id === "run-steps" || id === "run-rerun-steps") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
       if (id === "run-rerun-steps") {
@@ -189,5 +196,66 @@ test("run dialog keys", async ({ page }) => {
   await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$/ })).toBeEnabled();
   await page.keyboard.press("Enter");
   await expect(dialog).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+// Priority follows the run's size (ticked for one person, unticked for several) until the operator changes it; the footer names it only when ticked.
+test("run dialog priority", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  for (const [text, ticked] of [["48216", true], ["48216, 48220", false]] as const) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+    await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
+    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await dialog.getByRole("textbox").first().fill(text);
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    const box = dialog.getByRole("checkbox", { name: "Priority", exact: true });
+    const footer = dialog.locator("footer");
+    await expect(box).toBeChecked({ checked: ticked });
+    await expect(footer).not.toContainText(/Interactive|Bulk/);
+    if (ticked) await expect(footer).toContainText("Priority"); else await expect(footer).not.toContainText("Priority");
+    await box.click();
+    await expect(box).toBeChecked({ checked: !ticked });
+    if (ticked) await expect(footer).not.toContainText("Priority"); else await expect(footer).toContainText("Priority");
+  }
+  expect(errors).toEqual([]);
+});
+
+// Ticking Customize steps adds the Steps step after Options, enables its tab, and moves the start button there, for every workflow that opens the redesigned dialog.
+test("customize steps every workflow", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
+  const reached: string[] = [];
+  const skipped: string[] = [];
+  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
+    await rail.getByRole("button", { name, exact: true }).last().click();
+    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    // Only the workflow-preview dialog is the redesigned one; the others still open the shipped dialog.
+    if (!await dialog.getByText("Workflow preview").count()) { skipped.push(name); continue; }
+    const file = dialog.locator('input[type="file"]');
+    if (await file.count()) await file.setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
+    else await dialog.getByRole("textbox").first().fill(name === "Onboarding" ? "jordan.lee@example.com" : name === "Separations" ? "48216" : "10000001");
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    const customize = dialog.getByRole("checkbox", { name: "Customize steps", exact: true });
+    await expect(customize, `${name}: Customize steps`).toBeVisible();
+    await customize.click();
+    await expect(dialog.getByRole("button", { name: "3 Steps", exact: true }), `${name}: Steps tab`).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$/ }), `${name}: start moved`).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(dialog.getByText(/\d+ of \d+ included/), `${name}: Steps step`).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$|^Start run$/ }), `${name}: start on Steps`).toBeVisible();
+    reached.push(name);
+  }
+  console.log("CUSTOMIZE reached", reached.join(", "), "| shipped dialog", skipped.join(", "));
+  expect(reached).toEqual(expect.arrayContaining(["Separations", "Emergency Contact"]));
   expect(errors).toEqual([]);
 });
