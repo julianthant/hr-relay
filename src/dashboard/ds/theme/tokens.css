@@ -228,6 +228,8 @@
   --ds-row-pad-y-1: 8px; /* a one-line row */
   --ds-row-h-1: 44px;
   --ds-row-h-2: 60px;
+  --ds-card-bg: var(--ui-panel); /* light: the page fill, the card is drawn by its border */
+  --ds-menu-item-h: 28px; /* one-line menu item; a two-line item grows to fit */
   --ds-row-head-h: 32px;
   --ds-row-heading: 15px;
   --ds-row-heading-lh: 22px;
@@ -991,26 +993,27 @@ body[data-demo-theme="light"] {
 /* MENUS AND POPOVERS — one Codex-style container and item for DropdownMenu, Select and Popover. */
 .ds-menu-surface {
   min-width: var(--anchor-width, var(--radix-popover-trigger-width, 0px));
-  padding: 6px; border: 1px solid var(--ui-stroke); border-radius: 16px; outline: none;
+  padding: 4px; border: 1px solid var(--ui-stroke); border-radius: 16px; outline: none;
   background: var(--ui-field); color: var(--ui-primary);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08);
 }
 [data-demo-theme="dark"] .ds-menu-surface { box-shadow: 0 10px 32px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4); }
 .ds-menu-item {
-  position: relative; display: flex; min-height: 32px; align-items: center; gap: 8px; box-sizing: border-box;
-  padding: 6px 10px; border-radius: 8px; outline: none; cursor: default; user-select: none;
+  position: relative; display: flex; min-height: var(--ds-menu-item-h); align-items: center; gap: 8px; box-sizing: border-box;
+  padding: 4px 10px; border-radius: 8px; outline: none; cursor: default; user-select: none;
   font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ui-primary);
 }
 .ds-menu-item[data-highlighted], .ds-menu-item[data-popup-open], .ds-menu-item[data-open] { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); color: var(--ui-primary); }
 .ds-menu-item[data-disabled], .ds-menu-item[aria-disabled="true"] { pointer-events: none; opacity: 0.5; }
 .ds-menu-item > svg:not(.ds-menu-check) { width: 16px; height: 16px; flex: none; color: var(--ui-muted); }
 .ds-menu-item[data-selected] , .ds-menu-item[data-checked] { padding-right: 34px; }
-.ds-menu-check { position: absolute; right: 10px; width: 16px; height: 16px; color: var(--ui-primary); }
-.ds-menu-copy { display: flex; min-width: 0; flex-direction: column; }
+.ds-menu-check { position: absolute; top: 50%; right: 10px; width: 16px; height: 16px; transform: translateY(-50%); color: var(--ui-primary); }
+.ds-menu-item:has(.ds-menu-copy) { padding-block: 5px; }
+.ds-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
 .ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ui-primary); }
-.ds-menu-copy > span + span { font-size: 13px; line-height: 16px; color: var(--ui-secondary); }
+.ds-menu-copy > span + span { font-size: 13px; line-height: 20px; color: var(--ui-secondary); }
 .ds-menu-label { padding: 6px 10px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
-.ds-menu-separator { height: 1px; margin: 6px 10px; background: var(--ui-stroke); }
+.ds-menu-separator { height: 1px; margin: 4px 10px; background: var(--ui-stroke); }
 /* Fields and pickers inside a row: 28px, subtle fill, faint edge. */
 .ds-body-row .input, .ds-body-row .ds-secret-input, .hub-settings-row .input, .settings-compact-control .input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); font-size: 13px; }
 .ds-body-row .ds-secret-input input, .ds-body-row .input::placeholder, .ds-secret-input input::placeholder { font-size: 13px; }
@@ -1136,7 +1139,7 @@ th.ds-text-caps {
 .ds-tab-indicator { position: absolute; left: 0; bottom: -1px; width: 1px; height: 2px; background: var(--ds-accent); transform-origin: left; pointer-events: none; }
 .ds-tab-list[data-indicator-ready="true"] > .ds-tab-indicator { transition: transform var(--ds-dur-move) var(--ds-ease-standard); }
 .ds-tab-list[data-indicator-motion="instant"] > .ds-tab-indicator { transition-duration: 0ms; }
-.ds-table-list-frame { border-radius: var(--ds-row-radius); border: 1px solid var(--ui-stroke); background: var(--ui-panel); min-width: 0; max-width: 100%; overflow: auto; }
+.ds-table-list-frame { border-radius: var(--ds-row-radius); border: 1px solid var(--ui-stroke); background: var(--ds-card-bg); min-width: 0; max-width: 100%; overflow: auto; }
 .ds-table-list-frame table { font-size: var(--text-body); line-height: var(--text-body--line-height); width: 100%; border-collapse: collapse; }
 .ds-table-list-frame thead { background: var(--ui-table); font-size: var(--text-caption); line-height: var(--text-caption--line-height); color: var(--ui-muted); }
 .ds-table-list-frame th { height: var(--ds-row-head-h); border-bottom: 1px solid var(--ui-stroke); padding: 0 var(--ds-row-pad-x); font-size: 12px; line-height: 16px; text-align: left; font-weight: 400; }
@@ -2033,7 +2036,6 @@ body[data-demo-theme],
   --ds-settings-fg-secondary: var(--ui-secondary);
   --ds-settings-fg-muted: var(--ui-muted);
 }
-
 .ds-search-field [data-slot="search-field-group"]:focus-within,
 .ds-search-field [data-slot="search-field-group"][data-focus-within="true"] {
   box-shadow: none;
@@ -2049,3 +2051,5 @@ body[data-demo-theme],
 .ds-layer-skip-focus:focus { z-index: var(--ds-layer-skip-focus); }
 .ds-layer-toast-viewport { z-index: var(--ds-layer-toast-viewport); }
 .ds-layer-toast-card { z-index: calc(var(--ds-layer-toast-card) - var(--toast-index)); }
+
+[data-demo-theme="light"] { --ds-card-bg: var(--ui-canvas); }

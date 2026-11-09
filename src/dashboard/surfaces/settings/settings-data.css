@@ -27,7 +27,7 @@
 .settings-takeover .ds-result-row-side { align-self: center; }
 .shortcut-reference-copy p { margin: 0; font-size: var(--ds-row-title); line-height: var(--ds-row-title-lh); font-weight: 400; }
 .shortcut-reference-copy span { display: block; margin-top: var(--ds-row-gap); color: var(--ds-fg-secondary); font-size: var(--ds-row-desc); line-height: var(--ds-row-desc-lh); }
-.shortcut-reference-card { border: 1px solid var(--ui-stroke); border-radius: var(--ds-row-radius); background: var(--ui-panel); padding: 0 var(--ds-row-pad-x); }
+.shortcut-reference-card { border: 1px solid var(--ui-stroke); border-radius: var(--ds-row-radius); background: var(--ds-card-bg); padding: 0 var(--ds-row-pad-x); }
 .shortcut-reference-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: var(--ds-row-h-2); padding: var(--ds-row-pad-y) 0; }
 .shortcut-reference-copy { flex: 1; min-width: 0; }
 .shortcut-reference-row + .shortcut-reference-row { border-top: 1px solid var(--ui-stroke); }
