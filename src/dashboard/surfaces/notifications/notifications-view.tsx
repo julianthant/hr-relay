@@ -19,13 +19,13 @@ function NotificationRow({ item, active, onOpen, actions }: { item: Notification
   return <li className="notification-row">
     <button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
       <span className="notification-item-head">
+        {!item.read && <span aria-hidden className="notification-unread-dot" />}
         <span className="notification-item-title">{item.title}</span>
         <span className="notification-item-tag">{itemSource(item)}</span>
         {!item.read && <span className="sr-only">Unread</span>}
       </span>
       <span className="notification-item-line">{itemPreview(item)}</span>
     </button>
-    {!item.read && <span aria-hidden className="notification-unread-dot" />}
     <span className="notification-item-actions">
       <RowActionButton label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />} onClick={() => actions.onControl(item.id, item.read ? "unread" : "read")} />
       {!item.priority && <RowActionButton label="Dismiss" icon={<X aria-hidden className={dsIcon.md} />} onClick={() => actions.onDismiss(item.id)} />}
