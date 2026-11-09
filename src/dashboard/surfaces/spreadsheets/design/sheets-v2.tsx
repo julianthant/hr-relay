@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Tag as TagIcon } from 'lucide-react';
 import { SearchInput, useToasts } from '../../../ds/ui.js';
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
-import { NOW, allTags, initialSheets, newestFirst, tableOf, tagsOf, type Sheet } from './sheets-v2-model.js';
+import { TagFilter } from './sheets-v2-tagfilter.js';
+import { DATASETS, FIELDS, IMPORT_SHEETS, NOW, guessColumn, initialSheets, newestFirst, tableOf, tagGroups, tagsOf, type FieldKey, type Sheet } from './sheets-v2-model.js';
 import { sheetsParam, sheetsScenario } from './sheets-v2-mode.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
 import { SheetDetail } from './sheets-v2-detail.js';
 import { ImportDialog } from './sheets-v2-import.js';
 import { SheetTable, useNarrow, type RowActions } from './sheets-v2-list.js';
-import { Grey, Picker, V2Button, type MenuAction } from './sheets-v2-ui.js';
+import { Grey, V2Button, type MenuAction } from './sheets-v2-ui.js';
 import '../spreadsheet-library.css';
 
 const CREATED_ROWS = 8;
@@ -44,16 +43,14 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const visible = useMemo(() => newestFirst(sheets).filter(sheet => (!filter.length || filter.some(tag => tagsOf(sheet).includes(tag))) && sheet.name.toLowerCase().includes(query.trim().toLowerCase())), [sheets, filter, query]);
   const tables = (['Pinned', 'SharePoint', 'Created'] as const).map(title => ({ title, items: visible.filter(sheet => tableOf(sheet) === title) })).filter(table => table.items.length);
   const target = dialog && sheets.find(item => item.id === dialog.id);
-  const tags = allTags(sheets);
+  const groups = tagGroups(sheets);
 
   return <section aria-label="Spreadsheets" className="hub-sheets-library min-w-0 text-[13px]">
-    {openId && sheets.some(item => item.id === openId) ? <SheetDetail sheet={get(openId)} sheets={sheets} onBack={() => setOpenId(undefined)} onOpen={setOpenId} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })}
+    {openId && sheets.some(item => item.id === openId) ? <SheetDetail key={openId} sheet={get(openId)} sheets={sheets} onBack={() => setOpenId(undefined)} onOpen={setOpenId} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })}
+      onRuns={name => change(openId, item => ({ ...item, runsSheet: name, mapping: Object.fromEntries(FIELDS.map(f => [f.key, guessColumn(f.key, DATASETS[item.worksheets.find(w => w.name === name)!.data].headers)])) as Record<FieldKey, string | null> }))}
       onMap={patch => change(openId, item => ({ ...item, mapping: { ...item.mapping, ...patch } }))} /> : <>
       <div className="mb-4 flex items-center justify-between gap-4"><div className="min-w-0"><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0 truncate">Reference lists your runs look people up in.</p></div><V2Button onClick={() => setImporting(true)}>Import</V2Button></div>
-      <div className="mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} variant="toolbar" className="w-[260px] [&_[data-slot=search-field-group]]:!h-7 [&_[data-slot=search-field-group]]:!min-h-7" /><DropdownMenu><DropdownMenuTrigger render={<Picker aria-label="Filter by tag" icon={<TagIcon size={14} aria-hidden className="text-ui-muted" />}>{filter.length ? filter.join(', ') : 'All tags'}</Picker>} /><DropdownMenuContent align="start" className="min-w-[180px]">
-        <DropdownMenuCheckboxItem checked={!filter.length} onCheckedChange={() => setFilter([])} onSelect={event => event.preventDefault()}>All tags</DropdownMenuCheckboxItem><DropdownMenuSeparator />
-        {tags.map(tag => <DropdownMenuCheckboxItem key={tag} checked={filter.includes(tag)} onCheckedChange={checked => setFilter(current => checked ? [...current, tag] : current.filter(item => item !== tag))} onSelect={event => event.preventDefault()}>{tag}</DropdownMenuCheckboxItem>)}
-      </DropdownMenuContent></DropdownMenu></div>
+      <div className="mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} variant="toolbar" className="w-[260px] [&_[data-slot=search-field-group]]:!h-7 [&_[data-slot=search-field-group]]:!min-h-7" /><TagFilter groups={groups} value={filter} onChange={setFilter} /></div>
       <div ref={listRef}>{tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} all={sheets} narrow={narrow} actions={rows} limit={table.title === 'Created' ? CREATED_ROWS : undefined} />)
         : <Grey className="text-[13px]">{sheets.length ? 'No spreadsheets match.' : 'No spreadsheets yet. Choose Import to add one.'}</Grey>}</div>
     </>}
@@ -64,6 +61,6 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       rollback: version => change(target.id, item => note(item, `Rolled back to v${version}`)),
       remove: () => { setSheets(current => current.filter(item => item.id !== target.id)); if (openId === target.id) setOpenId(undefined); },
     }} />}
-    {importing && <ImportDialog onClose={() => setImporting(false)} onAdd={input => setSheets(current => [...current, { id: `imported-${current.length}`, name: input.name, tags: input.tags, pinned: false, sharePoint: input.sharePoint, from: null, createdAt: NOW, updatedAt: NOW, versions: [{ n: 1, at: NOW, note: input.sharePoint ? 'Synced from SharePoint' : 'Imported' }], mapping: input.mapping, dataset: 'roster' }])} />}
+    {importing && <ImportDialog onClose={() => setImporting(false)} onAdd={input => setSheets(current => [...current, { id: `imported-${current.length}`, name: input.name, tags: input.tags, pinned: false, sharePoint: input.sharePoint, from: null, createdAt: NOW, updatedAt: NOW, versions: [{ n: 1, at: NOW, note: input.sharePoint ? 'Synced from SharePoint' : 'Imported' }], mapping: input.mapping, worksheets: IMPORT_SHEETS.map(item => ({ name: item.name, data: item.data })), runsSheet: input.sheetName }])} />}
   </section>;
 }

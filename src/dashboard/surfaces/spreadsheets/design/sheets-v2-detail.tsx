@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { PageBreadcrumbs } from '../../../ds/ui.js';
 import { MappingGrid } from './sheets-v2-grid.js';
 import { DATASETS, mergeOriginal, type FieldKey, type Sheet, stamp } from './sheets-v2-model.js';
-import { DownloadIcon, SheetChips, SheetMenu, V2Button, type MenuAction } from './sheets-v2-ui.js';
+import { DownloadIcon, SheetChips, SheetMenu, SheetTabs, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
-export function SheetDetail({ sheet, sheets, onBack, onOpen, onMap, onVersion, onMenu }: { sheet: Sheet; sheets: readonly Sheet[]; onBack: () => void; onOpen: (id: string) => void; onMap: (patch: Partial<Record<FieldKey, string | null>>) => void; onVersion: () => void; onMenu: (action: MenuAction) => void }) {
+export function SheetDetail({ sheet, sheets, onBack, onOpen, onMap, onRuns, onVersion, onMenu }: { sheet: Sheet; sheets: readonly Sheet[]; onBack: () => void; onOpen: (id: string) => void; onMap: (patch: Partial<Record<FieldKey, string | null>>) => void; onRuns: (name: string) => void; onVersion: () => void; onMenu: (action: MenuAction) => void }) {
+  const [tab, setTab] = useState(sheet.runsSheet);
+  const worksheet = sheet.worksheets.find(item => item.name === tab) ?? sheet.worksheets[0];
   const parent = sheet.from && sheets.find(item => item.id === sheet.from!.id);
   return <div className="min-w-0">
     <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: onBack }, { label: sheet.name }]} />
@@ -17,6 +20,7 @@ export function SheetDetail({ sheet, sheets, onBack, onOpen, onMap, onVersion, o
           <span aria-hidden>·</span><span className="truncate">Updated {stamp(sheet.updatedAt)}</span></div></div>
       <div className="flex shrink-0 items-center gap-1"><V2Button look="plain" className="tabular-nums" aria-label={`Versions, now v${sheet.versions[0].n}`} onClick={onVersion}>v{sheet.versions[0].n}</V2Button><DownloadIcon name={sheet.name} /><SheetMenu sheet={sheet} original={mergeOriginal(sheet, sheets)} label={sheet.name} withDownload={false} onAction={onMenu} /></div>
     </div>
-    <MappingGrid title="Preview" dataset={DATASETS[sheet.dataset]} mapping={sheet.mapping} onMap={onMap} />
+    <MappingGrid key={worksheet.name} title="Preview" dataset={DATASETS[worksheet.data]} mapping={sheet.mapping} onMap={onMap} viewOnly={worksheet.name === sheet.runsSheet ? undefined : `View only. Runs read ${sheet.runsSheet}.`}
+      tabs={sheet.worksheets.length > 1 ? <SheetTabs names={sheet.worksheets.map(item => item.name)} current={worksheet.name} runs={sheet.runsSheet} onSelect={setTab} onUseForRuns={onRuns} /> : undefined} />
   </div>;
 }

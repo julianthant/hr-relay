@@ -1,7 +1,7 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ChevronDown, Download, LogOut, MoreHorizontal, Search, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
-import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
-import { type Dataset, type Sheet, samplesOf, tagsOf } from './sheets-v2-model.js';
+import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
+import { type Sheet, tagsOf } from './sheets-v2-model.js';
 
 // soft = secondary (grey fill), line = outline (faint border), plain = ghost; primary is only a dialog's confirming action.
 const VARIANT = { soft: 'secondary', line: 'outline', plain: 'ghost', primary: 'primary', danger: 'danger' } as const;
@@ -19,6 +19,10 @@ export const Picker = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof B
 export const Grey = ({ children, className = '' }: { children: ReactNode; className?: string }) => <span className={`text-[12px] text-ui-muted ${className}`}>{children}</span>;
 // The workflow chip carries the workflow's sidebar icon (category icons where the rail has one, the workflow's own icon otherwise).
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
+/** Every dropdown in the mock: 13px, 28px rows, capped at 280px tall and scrolling after that. */
+export const MENU = 'max-h-[280px] overflow-y-auto';
+export const ROW = 'h-7 py-0 text-[13px]';
+export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon size={14} aria-hidden className="shrink-0" /> : null; };
 export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;
   return <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{Icon && <Icon size={11} aria-hidden />}{children}{onRemove && <button type="button" aria-label={`Remove ${children}`} className={`rounded-sm ${dsFocus}`} onClick={onRemove}><X size={11} aria-hidden /></button>}</span>;
@@ -63,8 +67,8 @@ export function TagEditor({ tags, onChange, workflow }: { tags: readonly string[
 export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'merge' | 'mergeDelete' | 'rename' | 'tags' | 'delete' | 'download';
 /** Same menu on every row and on the detail page. */
 export function SheetMenu({ sheet, original, onAction, withDownload, label }: { sheet: Sheet; original?: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
-  const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
-  return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className="min-w-[210px]">
+  const item = (action: MenuAction, text: string) => <DropdownMenuItem className={ROW} onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
+  return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
     {withDownload && item('download', 'Download')}
     {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
     {sheet.sharePoint && item('sync', 'Sync now')}
@@ -74,17 +78,19 @@ export function SheetMenu({ sheet, original, onAction, withDownload, label }: { 
     {item('rename', 'Rename')}
     {item('tags', 'Edit tags')}
     <DropdownMenuSeparator />
-    <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
+    <DropdownMenuItem className={ROW} variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
   </DropdownMenuContent></DropdownMenu>;
 }
 export const DownloadIcon = ({ name }: { name: string }) => <V2Icon label={`Download ${name}`}><Download size={16} aria-hidden /></V2Icon>;
 
-/** Column picker for one field: soft-bordered, shows each header with sample values. */
-export function ColumnPicker({ label, dataset, value, onChange }: { label: string; dataset: Dataset; value: string | null; onChange: (header: string | null) => void }) {
-  return <DropdownMenu><DropdownMenuTrigger render={<Picker aria-label={`${label} column`} className="w-full max-w-[280px]">{value ?? <span className="text-ui-muted">Not mapped</span>}</Picker>} /><DropdownMenuContent align="start" className="min-w-[400px]">
-    <DropdownMenuRadioGroup value={value ?? ''} onValueChange={next => onChange(next === '' ? null : next)}>
-      <DropdownMenuRadioItem closeOnClick value=""><span className="text-ui-muted">Not mapped</span></DropdownMenuRadioItem>
-      {dataset.headers.map(header => <DropdownMenuRadioItem closeOnClick key={header} value={header}><span className="flex min-w-0 flex-1 items-baseline justify-between gap-4"><span className="whitespace-nowrap">{header}</span><Grey className="truncate">{samplesOf(dataset, header)}</Grey></span></DropdownMenuRadioItem>)}
-    </DropdownMenuRadioGroup>
-  </DropdownMenuContent></DropdownMenu>;
+/** Excel-style worksheet tabs. The sheet runs read carries a small Runs tag; a tab's menu offers Use for runs. */
+export function SheetTabs({ names, current, runs, onSelect, onUseForRuns }: { names: readonly string[]; current: string; runs: string; onSelect: (name: string) => void; onUseForRuns?: (name: string) => void }) {
+  return <div role="tablist" aria-label="Worksheets" className="mt-2 flex flex-wrap items-center gap-1.5">
+    {names.map(name => <span key={name} className="inline-flex items-center">
+      <V2Button role="tab" aria-selected={name === current} onClick={() => onSelect(name)} className={name === current ? '!bg-[var(--ds-surface-selected)] font-medium' : ''}>
+        {name}{name === runs && <span className="rounded-[4px] bg-[color-mix(in_srgb,var(--ui-info)_16%,transparent)] px-1 text-[11px] text-ui-info">Runs</span>}</V2Button>
+      {onUseForRuns && <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Menu for ${name}`} className="-ml-1 size-6 min-w-6"><ChevronDown size={12} aria-hidden /></V2Icon>} /><DropdownMenuContent align="start" className={`min-w-[160px] ${MENU}`}>
+        <DropdownMenuItem className={ROW} disabled={name === runs} onSelect={() => onUseForRuns(name)}>Use for runs</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+    </span>)}
+  </div>;
 }

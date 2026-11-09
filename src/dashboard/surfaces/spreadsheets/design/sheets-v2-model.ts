@@ -2,12 +2,16 @@
 export type FieldKey = 'eid' | 'name' | 'email';
 export interface Field { readonly key: FieldKey; readonly label: string; readonly usedBy: readonly string[] }
 export interface VersionEntry { readonly n: number; readonly at: string; readonly note: string }
+export type DatasetKey = 'roster' | 'i9' | 'terminated' | 'notes';
+export interface Worksheet { readonly name: string; readonly data: DatasetKey }
 export interface Sheet {
   readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly pinned: boolean;
   readonly sharePoint: string | null; readonly from: { readonly id: string; readonly version: number } | null;
   readonly workflow?: string; readonly run?: string;
   readonly createdAt: string; readonly updatedAt: string; readonly versions: readonly VersionEntry[];
-  readonly mapping: Readonly<Record<FieldKey, string | null>>; readonly dataset: 'roster' | 'i9';
+  readonly mapping: Readonly<Record<FieldKey, string | null>>;
+  /** The worksheets in the workbook; runs read `runsSheet`, the mapping maps that sheet, the others are view-only. */
+  readonly worksheets: readonly Worksheet[]; readonly runsSheet: string;
 }
 
 // Fields come from the workflows' own declarations: the Emergency Contact and Person Lookup roster fields (eid, fullName) and Onboarding's email input.
@@ -26,15 +30,16 @@ const v = (n: number, at: string, note: string): VersionEntry => ({ n, at, note 
 const sync = (n: number, at: string) => v(n, at, 'Synced from SharePoint');
 const ROSTER_MAP = { eid: 'Employee ID', name: 'Full name', email: 'Work email' } as const;
 
-const base = (id: string, name: string, extra: Partial<Sheet>): Sheet => ({
-  id, name, tags: [], pinned: false, sharePoint: null, from: null, createdAt: '2026-10-20T09:00', updatedAt: '2026-10-20T09:00',
-  versions: [v(1, '2026-10-20T09:00', 'Imported')], mapping: ROSTER_MAP, dataset: 'roster', ...extra,
-});
+const base = (id: string, name: string, extra: Partial<Sheet> & { data?: DatasetKey } = {}): Sheet => {
+  const { data = 'roster', ...rest } = extra;
+  return { id, name, tags: [], pinned: false, sharePoint: null, from: null, createdAt: '2026-10-20T09:00', updatedAt: '2026-10-20T09:00',
+    versions: [v(1, '2026-10-20T09:00', 'Imported')], mapping: ROSTER_MAP, worksheets: [{ name: 'Sheet1', data }], runsSheet: 'Sheet1', ...rest };
+};
 
 const PINNED: readonly Sheet[] = [
-  base('roster', 'Contact roster', { tags: ['HR', 'Fall'], pinned: true, sharePoint: 'https://example.sharepoint.com/sites/hr/contact-roster.xlsx', createdAt: '2026-10-01T09:12', updatedAt: '2026-11-08T14:32',
+  base('roster', 'Contact roster', { tags: ['HR', 'Fall'], pinned: true, sharePoint: 'https://example.sharepoint.com/sites/hr/contact-roster.xlsx', createdAt: '2026-10-01T09:12', updatedAt: '2026-11-08T14:32', worksheets: [{ name: 'Roster', data: 'roster' }, { name: 'Terminated', data: 'terminated' }, { name: 'Notes', data: 'notes' }], runsSheet: 'Roster',
     versions: [sync(6, '2026-11-08T14:32'), v(5, '2026-11-06T08:05', 'Rolled back to v3'), sync(4, '2026-11-03T09:12'), sync(3, '2026-10-20T09:12'), sync(2, '2026-10-12T09:12'), sync(1, '2026-10-01T09:12')] }),
-  base('i9', 'I-9 tracker', { tags: ['I-9'], pinned: true, createdAt: '2026-10-05T11:00', updatedAt: '2026-11-07T09:10', dataset: 'i9', mapping: { eid: 'EID', name: 'Employee', email: null },
+  base('i9', 'I-9 tracker', { tags: ['I-9'], pinned: true, createdAt: '2026-10-05T11:00', updatedAt: '2026-11-07T09:10', data: 'i9', mapping: { eid: 'EID', name: 'Employee', email: null },
     versions: [v(3, '2026-11-07T09:10', 'Edited'), v(2, '2026-10-21T13:40', 'Merged from I-9 intake'), v(1, '2026-10-05T11:00', 'Imported')] }),
 ];
 const SHAREPOINT: readonly Sheet[] = [
@@ -83,7 +88,9 @@ const eid = (i: number) => String(10482917 + i * 13);
 const person = (i: number) => `Example, Person ${String.fromCharCode(65 + (i % 26))}${i > 25 ? i : ''}`;
 const dept = ['Example Dept', 'Sample Office', 'Test Unit'];
 const date = (i: number) => `11/${String(1 + (i % 28)).padStart(2, '0')}/2026`;
-export const DATASETS: Readonly<Record<Sheet['dataset'], Dataset>> = {
+export const DATASETS: Readonly<Record<DatasetKey, Dataset>> = {
+  terminated: { headers: ['Employee ID', 'Full name', 'Separation date', 'Reason'], rows: Array.from({ length: 9 }, (_, i): Cell[] => [{ text: eid(40 + i) }, { text: person(10 + i) }, { text: date(i + 3) }, { text: i % 3 ? 'Resigned' : 'End of term' }]) },
+  notes: { headers: ['Note', 'Added'], rows: ['Roster comes from HR each Monday.', 'Fall hires are added after orientation.', 'Do not edit the Terminated sheet.', 'Ask Facilities for badge status.', 'Phone numbers are work lines only.'].map((text, i): Cell[] => [{ text }, { text: date(i + 1) }]) },
   roster: { headers: ['Employee ID', 'Full name', 'Work email', 'Department', 'Work phone', 'Emergency phone', 'Start date', 'Hourly rate'],
     rows: Array.from({ length: 28 }, (_, i): Cell[] => [{ text: eid(i), bold: i === 3 }, { text: person(i), bold: i === 3, fill: i === 3 ? '#fff2cc' : undefined }, { text: `person${i}@example.org` }, { text: dept[i % 3] }, { text: `555-01${String(i).padStart(2, '0')}` }, { text: i % 4 ? `555-02${String(i).padStart(2, '0')}` : '', fill: i % 4 ? undefined : '#f4cccc' }, { text: date(i) }, { text: `$${(22 + i * 0.5).toFixed(2)}`, align: 'right' }]) },
   i9: { headers: ['EID', 'Employee', 'Notify address', 'Action', 'Action date', 'Completed by'],
@@ -100,3 +107,16 @@ export const guessColumn = (key: FieldKey, headers: readonly string[]): string |
 export const IMPORT_FILE = { name: 'Contacts export.xlsx', suggested: 'Contacts export', rows: 398, size: '42 KB' };
 export const IMPORT_DATASET: Dataset = { headers: ['Employee ID', 'Full name', 'Contact address', 'Department', 'Work phone'],
   rows: Array.from({ length: 8 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: `contact${i}@example.org` }, { text: dept[i % 3] }, { text: `555-01${String(i).padStart(2, '0')}` }]) };
+
+const NOTES_IMPORT: Dataset = { headers: ['Read me'], rows: ['Contacts export from the HR system.', 'Sheet Archive holds old records.'].map((text): Cell[] => [{ text }]) };
+const ARCHIVE_IMPORT: Dataset = { headers: ['ID number', 'Name', 'Left on'], rows: Array.from({ length: 6 }, (_, i): Cell[] => [{ text: eid(60 + i) }, { text: person(i + 5) }, { text: date(i + 8) }]) };
+export const IMPORT_SHEETS: readonly { readonly name: string; readonly dataset: Dataset; readonly data: DatasetKey }[] = [
+  { name: 'Cover', dataset: NOTES_IMPORT, data: 'notes' }, { name: 'Contacts', dataset: IMPORT_DATASET, data: 'roster' }, { name: 'Archive', dataset: ARCHIVE_IMPORT, data: 'terminated' },
+];
+/** The sheet whose headers match the most fields. */
+export const bestSheet = (): string => IMPORT_SHEETS.map(sheet => ({ name: sheet.name, score: FIELDS.filter(field => guessColumn(field.key, sheet.dataset.headers)).length })).sort((a, b) => b.score - a.score)[0].name;
+/** Workflow tags first (A-Z), then the user's own tags (A-Z). */
+export const tagGroups = (sheets: readonly Sheet[]): { workflows: readonly string[]; tags: readonly string[] } => ({
+  workflows: [...new Set(sheets.flatMap(sheet => sheet.workflow ? [sheet.workflow] : []))].toSorted(),
+  tags: [...new Set(sheets.flatMap(sheet => sheet.tags))].toSorted(),
+});
