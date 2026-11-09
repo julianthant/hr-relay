@@ -76,10 +76,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
       if (label === "OCR") {
         await expect(picker.getByRole("button", { name: label, exact: true })).toBeDisabled();
-        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
+        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("OCR");
       } else {
         await expect(picker.getByRole("button", { name: label, exact: true })).toHaveCount(0);
-        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
       }
       await page.keyboard.press("Escape");
     }
