@@ -109,3 +109,18 @@ test(`kit buttons ${WIDTH}`, async ({ page }) => {
   await actions.screenshot({ path: join(OUT, `kit-buttons-${WIDTH}.png`) });
   expect(errors).toEqual([]);
 });
+
+// A compact confirm dialog on the kit page: title, one grey line, the buttons.
+test(`kit compact dialog ${WIDTH}`, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Open destructive dialog", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete this run?" });
+  await expect(dialog).toBeVisible();
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(OUT, `kit-dialog-compact-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});

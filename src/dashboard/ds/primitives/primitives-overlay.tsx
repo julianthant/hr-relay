@@ -108,7 +108,7 @@ export const DialogClose = DialogPrimitive.Close;
 export type DsDialogSize = "sm" | "md" | "lg" | "xl";
 
 const DIALOG_SIZE: Record<DsDialogSize, string> = {
-  sm: "max-w-[420px]",
+  sm: "max-w-[400px]",
   md: "max-w-[560px]",
   lg: "max-w-[760px]",
   xl: "max-w-[min(94vw,1100px)]",
@@ -136,6 +136,7 @@ export function DialogContent({
   description,
   size = "md",
   hideClose,
+  band,
   className,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -146,6 +147,8 @@ export function DialogContent({
   description?: ReactNode;
   size?: DsDialogSize;
   hideClose?: boolean;
+  /** The Run and Rerun dialog only: a divided header and a grey footer band. Every other dialog is compact. */
+  band?: boolean;
   className?: string;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -159,6 +162,7 @@ export function DialogContent({
         description={description}
         size={size}
         hideClose={hideClose}
+        band={band}
         className={className}
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
@@ -182,6 +186,7 @@ function DialogSurface({
   description,
   size,
   hideClose,
+  band,
   className,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -192,6 +197,7 @@ function DialogSurface({
   description?: ReactNode;
   size: DsDialogSize;
   hideClose?: boolean;
+  band?: boolean;
   className?: string;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -204,6 +210,7 @@ function DialogSurface({
     <>
       <Scrim layer={dsLayer.modal} entered={entered} />
       <DialogPrimitive.Content
+        data-band={band || undefined}
         {...(!description ? { "aria-describedby": undefined } : {})}
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
@@ -212,7 +219,7 @@ function DialogSurface({
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],
           dsLayer.modal,
-          "flex max-h-[86vh] flex-col overflow-hidden border outline-none",
+          "group/dialog flex max-h-[86vh] flex-col overflow-hidden border outline-none",
           "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)]",
           dsRadius.xl,
           dsElev.high,
@@ -221,7 +228,7 @@ function DialogSurface({
           className,
         )}
       >
-        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]">
+        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)]">
           <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
             <DialogPrimitive.Title className={cn(dsText.section, "font-semibold text-[color:var(--ds-fg)]")}>
               {title}
@@ -266,10 +273,9 @@ export function DialogFooter({
   return (
     <footer
       className={cn(
-        "flex shrink-0 items-center gap-[var(--ds-space-base)] border-t px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]",
-        // The recessed plane, the same solid band the queue row's own footer
-        // draws, read off the shared tokens rather than re-answered here.
-        "border-[color:var(--ds-border-subtle)] bg-[var(--ds-recess-bg)] [border-end-start-radius:inherit] [border-end-end-radius:inherit]",
+        // Compact: the buttons sit in the dialog's own padding. Only the Run and Rerun dialog (`band`) has the recessed plane.
+        "flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]",
+        "group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
       )}

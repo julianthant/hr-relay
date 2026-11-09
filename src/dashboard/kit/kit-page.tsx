@@ -1196,7 +1196,7 @@ function OverlaysSection() {
         <DialogContent
           size="sm"
           title="Delete this run?"
-          description="The tracker row and its evidence are removed. This cannot be undone."
+          description="Its tracker row and evidence are removed."
         >
           <DialogFooter>
             <Button variant="secondary" onClick={() => setDanger(false)}>
