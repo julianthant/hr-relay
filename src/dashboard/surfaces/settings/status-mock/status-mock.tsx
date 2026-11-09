@@ -8,7 +8,7 @@ import { ACTIVITY_DATE_PRESETS } from "../../activity/activity-model.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
 import { OutcomeBar, OutcomeLegend, RunsPerDayChart, ShareBar } from "./status-mock-charts.js";
-import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_SPREADSHEETS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockCounts, type StatusMockId } from "./status-mock-model.js";
+import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_BLOCKERS, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_SPREADSHEETS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockCounts, type StatusMockId } from "./status-mock-model.js";
 
 const noop = () => undefined;
 
