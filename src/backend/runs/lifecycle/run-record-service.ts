@@ -311,7 +311,7 @@ export class RunRecordService {
     return this.dependencies.database.withAuthorityTransaction(() => {
       this.assertCurrentExecution({ runId: context.run.envelope.runId, claim: context.claim });
       return admitDelegation(this.dependencies, context, plans, {
-      create: (request, publication) => requireLifecycleApplied(this.createCanonical(request, publication)),
+      create: (request, publication) => requireLifecycleApplied(this.createCanonical(request, publication, "parent")),
       inspectJournal: (repositories, operation, request, fence) => this.inspectJournal(repositories, operation, request, fence),
       recordJournal: (repositories, command, result) => this.recordJournal(repositories, command, result),
       release: request => this.requeue(request),
@@ -319,7 +319,8 @@ export class RunRecordService {
     });
   }
 
-  private createCanonical(input: CreateRunRequest, publication?: RunQueuedPublication): RunMutationOutcome {
+  /** "parent" is only for admitted native delegation: the child keeps its parent's snapshot, proven current by admission. */
+  private createCanonical(input: CreateRunRequest, publication?: RunQueuedPublication, identity: "active" | "parent" = "active"): RunMutationOutcome {
     const request = CreateRunRequestSchema.parse(input);
     const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome => {
       const journal = this.inspectJournal(repositories, "create", request, { kind: "none" });
@@ -349,8 +350,7 @@ export class RunRecordService {
       void commandId; void matchKey; void runtimeConfig;
       const run = RunRecordSchema.parse({
         envelope: {
-          // A delegated child keeps its parent's snapshot; delegation admission proves it matches the active config.
-          ...(envelope.parent === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
+          ...(identity === "parent" ? envelope : selectNewRunIdentity(repositories, envelope)), runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
           buildId: approvalBuildId(repositories, envelope.parent),
           attempt: repositories.runs.nextItemAttempt({ workflow: request.workflow, itemId }),
           enqueuedAt: now,
