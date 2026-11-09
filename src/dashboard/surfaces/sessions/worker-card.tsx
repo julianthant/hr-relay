@@ -22,18 +22,18 @@ function cardNote(worker: SessionWorker): string | undefined {
 function BrowserRow({ browser }: { browser: WorkerBrowser }) {
   const detail = [browser.name, browser.reason].filter(Boolean).join(" · ");
   const row = <>
-    <span className="flex min-w-0 items-center gap-1.5"><Monitor aria-hidden className="size-3.5 shrink-0 text-ui-muted" /><span aria-hidden={browser.name !== undefined} className="truncate">{browser.label}</span>{browser.name !== undefined && <span className="sr-only">{browser.name}</span>}</span>
+    <span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span aria-hidden={browser.name !== undefined} className="break-words">{browser.label}</span>{browser.name !== undefined && <span className="sr-only">{browser.name}</span>}</span>
     <span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}{browser.reason !== undefined && <span className="sr-only">. {browser.reason}</span>}</span>
   </>;
-  return <li className="flex h-6 min-w-0 items-center rounded-md bg-ui-table text-[12px] leading-4">{detail === ""
-    ? <div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-2">{row}</div>
-    : <Tooltip content={detail}><div tabIndex={0} className="flex h-full min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info">{row}</div></Tooltip>}</li>;
+  return <li className="flex min-h-8 min-w-0 items-center rounded-md bg-ui-table text-caption">{detail === ""
+    ? <div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-2 py-1">{row}</div>
+    : <Tooltip content={detail}><div tabIndex={0} className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info">{row}</div></Tooltip>}</li>;
 }
 
 /** Browser sessions are always the chip grid, two per row; a workflow past four systems gets a wider card and three per row. */
 function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
-  if (worker.browsers.length === 0) return <p className="m-0 my-2 flex h-6 items-center text-[12px] leading-4 text-ui-muted">{worker.browsersNote ?? "No browser sessions open"}</p>;
-  return <TooltipProvider delayDuration={200}><ul aria-label={`${worker.label} systems`} className={cn("m-0 my-2 grid list-none content-start gap-1.5 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul></TooltipProvider>;
+  if (worker.browsers.length === 0) return <p className="m-0 min-h-[4.5rem] flex-1 py-3 text-caption text-ui-muted">{worker.browsersNote ?? "No browser sessions open"}</p>;
+  return <TooltipProvider delayDuration={200}><ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul></TooltipProvider>;
 }
 
 export function WorkerCard({ worker, countdown, operation, onControl, onCheck }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void; onCheck?: (id: string) => void }) {
@@ -42,12 +42,12 @@ export function WorkerCard({ worker, countdown, operation, onControl, onCheck }:
   const note = cardNote(worker);
   const wide = worker.browsers.length > MAX_SYSTEMS;
   const icon = (label: string, control: SessionControl, Glyph: typeof Pause) => <IconActionButton tone="muted" label={label} disabled={locked} icon={<Glyph aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, control)} />;
-  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-lg border border-ui-stroke bg-ui-panel p-3", wide ? "w-[32rem]" : "w-[22rem]")}>
+  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-lg border border-ui-stroke bg-ui-panel px-4 py-3", wide ? "w-[32rem]" : "w-[22rem]")}>
     <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={worker.workflow}>{worker.workflow}</h3><span title={note} className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{SESSION_STATE_LABELS[worker.state]}{note !== undefined && <span className="sr-only">. {note}</span>}</span></header>
-    <p className="mb-0 mt-0.5 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
+    <p className="mb-0 mt-1 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
     <Browsers worker={worker} wide={wide} />
     <WorkerOperationNote operation={operation} worker={worker} onCheck={onCheck} />
-    <footer className="mt-auto flex items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="flex h-8 items-center text-caption tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span><span className="flex h-8 items-center gap-1">
+    <footer className="flex items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="flex h-7 items-center text-[12px] tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span><span className="flex h-7 items-center gap-1">
       {settled ? <Button size="sm" variant="secondary" className="h-6 gap-1 px-2" disabled={locked} aria-label="Retry" title="Retry" icon={<RotateCw aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "retry")}>Retry</Button>
         : <>{worker.state === "running" && icon("Pause", "pause", Pause)}{worker.state === "paused" && icon("Resume", "resume", Play)}
           {worker.state === "unavailable" ? null : worker.state !== "idle" ? icon("Stop", "stop", Square) : icon("Remove worker", "remove", Trash2)}</>}
