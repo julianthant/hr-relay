@@ -18,10 +18,9 @@ html[data-motion=off] .sv2-height { transition: none; }
 /* Page hierarchy from the shared body tokens. */
 .hub-sheets-library .sv2-title { margin:0; font-size:var(--ds-text-body-page); line-height:var(--ds-lh-body-page); font-weight:400; letter-spacing:-.02em; }
 .hub-sheets-library .sv2-desc { margin:var(--ds-space-heading-description) 0 0; font-size:var(--ds-text-body-description); line-height:var(--ds-lh-body-description); color:var(--ui-muted); }
-.hub-sheets-library .sv2-section-title { margin:0 0 var(--ds-space-heading-content); font-size:var(--ds-text-body-section); line-height:var(--ds-lh-body-section); font-weight:400; color:var(--ui-primary); }
+.hub-sheets-library .sv2-section-title { margin:0 0 var(--ds-space-loose); font-size:var(--ds-row-heading); line-height:var(--ds-row-heading-lh); font-weight:400; color:var(--ui-primary); }
 .sv2-card { border-radius:var(--ds-row-radius); }
 .sv2-head { height:var(--ds-row-head-h); padding-inline:var(--ds-row-pad-x); font-size:12px; line-height:16px; }
 .sv2-row { min-height:var(--ds-row-h-2); padding:var(--ds-row-pad-y) var(--ds-row-pad-x); }
 .sv2-row-title { font-size:var(--ds-row-title); line-height:var(--ds-row-title-lh); }
 .sv2-row-desc { margin-top:var(--ds-row-gap); font-size:var(--ds-row-desc); line-height:var(--ds-row-desc-lh); }
-.sv2-field { padding-inline:10px; border-radius:8px; }

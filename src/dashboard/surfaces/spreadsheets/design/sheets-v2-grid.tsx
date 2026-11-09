@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Checkbox, dsLayer, SearchInput, Popover, PopoverContent, PopoverTrigger, Tooltip, useToasts } from '../../../ds/ui.js';
+import { Checkbox, SearchInput, Popover, PopoverContent, PopoverTrigger, Tooltip, useToasts } from '../../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
 import { FIELDS, samplesOf, type Cell, type Dataset, type Field, type FieldKey } from './sheets-v2-model.js';
 import { Grey, MENU, Picker, ROW, RunsTag, V2Button } from './sheets-v2-ui.js';
@@ -14,11 +14,11 @@ const tint = (percent: number) => `linear-gradient(color-mix(in srgb, var(--ui-i
 function FieldRow({ field, dataset, value, onChange, onActive, onPicking }: { field: Field; dataset: Dataset; value: string | null; onChange: (header: string | null) => void; onActive: (active: boolean) => void; onPicking: (picking: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const unmapped = 'dashed';
-  return <div className="ds-menu-item sv2-field justify-between gap-4" onMouseEnter={() => onActive(true)} onMouseLeave={() => !open && onActive(false)} onFocus={() => onActive(true)} onBlur={() => !open && onActive(false)}>
+  return <div className="ds-menu-item justify-between gap-4" onMouseEnter={() => onActive(true)} onMouseLeave={() => !open && onActive(false)} onFocus={() => onActive(true)} onBlur={() => !open && onActive(false)}>
     <span className="min-w-0 truncate">{field.label}</span>
     <DropdownMenu open={open} onOpenChange={next => { setOpen(next); onActive(next); onPicking(next); }}><DropdownMenuTrigger render={value
-      ? <Picker aria-label={`${field.label} column, ${value}`} className="w-[170px] !h-[var(--ds-row-control-h)] !min-h-[var(--ds-row-control-h)]">{value}</Picker>
-      : <Picker aria-label={`${field.label} column, not mapped`} data-unmapped={unmapped} className="w-[170px] !h-[var(--ds-row-control-h)] !min-h-[var(--ds-row-control-h)] !border-dashed !border-[color:var(--ui-stroke-control)] !text-[color:var(--ds-fg-muted)] hover:!border-[color:var(--ui-muted)] focus-visible:!border-[color:var(--ui-muted)] data-[popup-open]:!border-[color:var(--ui-muted)]">Choose column</Picker>} />
+      ? <Picker aria-label={`${field.label} column, ${value}`} className="w-[170px]">{value}</Picker>
+      : <Picker aria-label={`${field.label} column, not mapped`} data-unmapped={unmapped} className="w-[170px] !border-dashed !border-[color:var(--ui-stroke-control)] !text-[color:var(--ds-fg-muted)] hover:!border-[color:var(--ui-muted)] focus-visible:!border-[color:var(--ui-muted)] data-[popup-open]:!border-[color:var(--ui-muted)]">Choose column</Picker>} />
       <DropdownMenuContent align="end" className={`min-w-[360px] ${MENU}`}><DropdownMenuGroup><DropdownMenuLabel>{field.label} column</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={value ?? ''} onValueChange={next => onChange(next === '' ? null : next)}>
           {dataset.headers.map(header => <DropdownMenuRadioItem closeOnClick className={ROW} key={header} value={header}><span className="flex min-w-0 flex-1 items-baseline justify-between gap-4"><span className="whitespace-nowrap">{header}</span><Grey className="truncate">{samplesOf(dataset, header)}</Grey></span></DropdownMenuRadioItem>)}
@@ -83,7 +83,7 @@ export function MappingGrid({ dataset, mapping: given, onMap, worksheets, column
     catch { toast({ tone: 'danger', title: "Couldn't copy the cells" }); }
   };
   return <section aria-label="Preview" onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'c' && box) { event.preventDefault(); void copy(); } }}>
-    <div className="mb-2 flex items-center gap-2">
+    <div className="ds-toolbar-row mb-2 flex items-center gap-2">
       <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="min-w-0 flex-1" />
       {box && <V2Button onClick={() => void copy()}>Copy</V2Button>}
       {worksheets && worksheets.names.length > 1 && <WorksheetPicker control={worksheets} />}
@@ -91,8 +91,7 @@ export function MappingGrid({ dataset, mapping: given, onMap, worksheets, column
         <Tooltip open={columns || !unmapped.length ? false : undefined} content={`${unmapped.map(field => field.label).join(' and ')} ${unmapped.length > 1 ? "aren't" : "isn't"} mapped`}>
           <PopoverTrigger asChild><Picker aria-label="Columns">{unmapped.length > 0 && <span aria-hidden className="mr-1.5 inline-block size-1.5 rounded-full align-middle bg-[var(--warning)]" />}Columns{unseen ? ` · ${unseen} more` : ''}</Picker></PopoverTrigger>
         </Tooltip>
-        <PopoverContent title="Columns" hideTitle hideClose align="end" width="md" className={`!w-[360px] !p-1.5 ${dsLayer.modal}`}>
-          <div className="-mx-[var(--ds-space-cozy)] -my-[var(--ds-space-base)]">
+        <PopoverContent title="Columns" hideTitle hideClose align="end" width="md" className="!w-[360px]">
           {!viewOnly && <section aria-label="Fields">
             <h3 className="ds-menu-label m-0">Fields</h3>
             {FIELDS.map(field => <FieldRow key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onActive={on => setActive(current => on ? field.key : current === field.key ? null : current)} onPicking={setPicking}
@@ -101,9 +100,8 @@ export function MappingGrid({ dataset, mapping: given, onMap, worksheets, column
           {!viewOnly && <div className="ds-menu-separator" />}
           <section aria-label="Show columns">
             <h3 className="ds-menu-label m-0">Show columns (view only)</h3>
-            <div className={MENU}>{others.map(header => <div key={header} className="ds-menu-item sv2-field"><Checkbox label={header} checked={extra.includes(header)} onCheckedChange={checked => { setSelection(undefined); setExtra(current => checked === true ? [...current, header] : current.filter(item => item !== header)); }} /></div>)}</div>
+            <div className={MENU}>{others.map(header => <div key={header} className="ds-menu-item"><Checkbox label={header} checked={extra.includes(header)} onCheckedChange={checked => { setSelection(undefined); setExtra(current => checked === true ? [...current, header] : current.filter(item => item !== header)); }} /></div>)}</div>
           </section>
-          </div>
         </PopoverContent>
       </Popover>
     </div>
