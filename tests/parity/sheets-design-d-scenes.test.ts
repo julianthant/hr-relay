@@ -58,11 +58,10 @@ test("sheets design D scenes @ light 1280x720", async ({ page }) => {
       await page.getByRole("dialog", { name: "Versions", exact: true }).getByRole("button", { name: "Use", exact: true }).first().click();
       await expect(page.getByRole("dialog", { name: "Use this version?", exact: true })).toBeVisible(); await shot("versions-use");
     },
-    "other-merge": async () => {
+    "library-remove": async () => {
       await open({ relaySheetsScenario: "all" });
       await page.getByRole("checkbox", { name: "Select Example student applicants.xlsx" }).check(); await page.getByRole("checkbox", { name: "Select Example parking permits.csv" }).check();
-      await page.getByRole("button", { name: "Merge", exact: true }).click(); await shot("other-merge"); await dialog().getByRole("button", { name: "Cancel", exact: true }).click();
-      await page.getByRole("button", { name: "Remove", exact: true }).click(); await shot("other-remove");
+      await page.getByRole("button", { name: "Remove", exact: true }).click(); await shot("library-remove");
     },
     "sync-ok": async () => { await open({ relaySheetsScenario: "all", relaySheetsSync: "ok" }); await shot("sync-ok"); },
     "sync-failed": async () => { await open({ relaySheetsScenario: "all", relaySheetsSync: "failed" }); await page.waitForTimeout(600); await shot("sync-failed"); },

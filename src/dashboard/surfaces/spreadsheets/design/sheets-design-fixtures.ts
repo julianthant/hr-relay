@@ -1,28 +1,26 @@
 import { WorkbookLibraryEntrySchema, type WorkbookLibraryEntry } from '../../../../models/dashboard/workbook-library.js';
 import type { SheetsScenario } from './sheets-design-mode.js';
 
-export interface ColumnMatch { readonly label: string; readonly header: string | null }
-export interface SheetFile { readonly id: string; readonly name: string; readonly rows: number; readonly updatedAt: string; readonly sharePoint?: boolean; readonly eid?: ColumnMatch; readonly person?: ColumnMatch }
-export interface Reference { readonly id: string; readonly title: string; readonly workflow: string; readonly note: string; readonly file: SheetFile | null }
+export type FieldKey = 'eid' | 'person' | 'start' | 'action';
+export interface SheetFile { readonly id: string; readonly name: string; readonly rows: number; readonly updatedAt: string; readonly sharePoint?: boolean; readonly mapping?: Readonly<Partial<Record<FieldKey, string | null>>> }
 export interface ResultFile { readonly id: string; readonly name: string; readonly run: string; readonly createdAt: string }
 export interface ResultGroup { readonly workflow: string; readonly files: readonly ResultFile[] }
 
-const match = (label: string, header: string | null): ColumnMatch => ({ label, header });
+// Every workflow declares the library fields it needs; the picker shows the union.
+export const FIELD_LABELS: Readonly<Record<FieldKey, string>> = { eid: 'EID', person: 'Name', start: 'Start date', action: 'Action' };
+export const WORKFLOW_NEEDS: readonly { readonly workflow: string; readonly needs: readonly FieldKey[] }[] = [
+  { workflow: 'Emergency Contact', needs: ['eid', 'person'] }, { workflow: 'Person Lookup', needs: ['eid', 'person'] },
+  { workflow: 'Onboarding', needs: ['eid', 'person', 'start'] }, { workflow: 'I-9 Check', needs: ['eid', 'person', 'action'] },
+];
+export const DECLARED_FIELDS: readonly FieldKey[] = [...new Set(WORKFLOW_NEEDS.flatMap(item => item.needs))];
+export const REQUIRED_FIELDS: readonly FieldKey[] = ['eid', 'person'];
+
 const file = (id: string, name: string, rows: number, updatedAt: string, extra: Partial<SheetFile> = {}): SheetFile => ({ id, name, rows, updatedAt, ...extra });
-const reference = (id: string, title: string, workflow: string, note: string, current: SheetFile | null): Reference => ({ id, title, workflow, note, file: current });
-
-const OCR_ROSTER = file('ocr-roster', 'Example contact roster.xlsx', 412, '2026-11-03T16:20:00Z', { sharePoint: true, eid: match('EID column', 'Employee ID'), person: match('Name column', 'Full name') });
-const ONBOARDING_ROSTER = file('onboarding-roster', 'Example onboarding hires.xlsx', 38, '2026-11-06T18:05:00Z', { eid: match('EID column', 'EID'), person: match('Name column', 'Hire name') });
-const I9_HISTORY = file('i9-history', 'Example I-9 actions.csv', 1204, '2026-10-29T15:00:00Z', { eid: match('EID column', 'Employee ID'), person: match('Name column', null) });
-
-export function sheetsReferences(scenario: SheetsScenario): readonly Reference[] {
-  const empty = scenario === 'empty';
-  return [
-    reference('ocr-roster', 'OCR roster', 'Emergency Contact', 'Emergency Contact looks people up here.', empty ? null : OCR_ROSTER),
-    reference('onboarding-roster', 'Onboarding roster', 'Onboarding', 'Onboarding looks new hires up here.', empty || scenario === 'missing' ? null : ONBOARDING_ROSTER),
-    reference('i9-history', 'I-9 action history', 'I-9 Check', 'I-9 Check looks up earlier actions here.', empty ? null : I9_HISTORY),
-  ];
-}
+const ROSTERS: readonly SheetFile[] = [
+  file('ocr-roster', 'Example contact roster.xlsx', 412, '2026-11-03T16:20:00Z', { sharePoint: true, mapping: { eid: 'Employee ID', person: 'Full name' } }),
+  file('onboarding-roster', 'Example onboarding hires.xlsx', 38, '2026-11-06T18:05:00Z', { mapping: { eid: 'EID', person: 'Hire name', start: 'Start date' } }),
+  file('i9-history', 'Example I-9 actions.csv', 1204, '2026-10-29T15:00:00Z', { mapping: { eid: 'Employee ID', person: null, action: 'Action' } }),
+];
 
 const result = (run: string, name: string, createdAt: string): ResultFile => ({ id: `result-${run}`, name, run: `Run ${run}`, createdAt });
 const ALL_RESULTS: readonly ResultGroup[] = [
@@ -42,14 +40,21 @@ const OTHER: readonly SheetFile[] = [
   file('o3', 'Example department codes.xlsx', 57, '2026-10-18T17:00:00Z'), file('o4', 'Example badge requests.xlsx', 31, '2026-10-12T17:00:00Z'),
   file('o5', 'Example training sign-ins.csv', 640, '2026-10-05T17:00:00Z'), file('o6', 'Example office keys.xlsx', 19, '2026-09-30T17:00:00Z'),
 ];
-export const sheetsOther = (scenario: SheetsScenario): readonly SheetFile[] => scenario === 'empty' ? [] : scenario === 'many' ? OTHER : OTHER.slice(0, 2);
+export function sheetsLibrary(scenario: SheetsScenario): readonly SheetFile[] {
+  if (scenario === 'empty') return [];
+  return [...ROSTERS.filter(item => scenario !== 'missing' || item.id !== 'onboarding-roster'), ...(scenario === 'many' ? OTHER : OTHER.slice(0, 2))];
+}
+
+/** Workflows whose declared fields are all mapped; null when the file's columns were never checked. */
+export const readyWorkflows = (item: SheetFile): readonly string[] => WORKFLOW_NEEDS.filter(entry => entry.needs.every(key => item.mapping?.[key])).map(entry => entry.workflow);
+export const missingRequired = (item: SheetFile): readonly FieldKey[] => item.mapping ? REQUIRED_FIELDS.filter(key => !item.mapping?.[key]) : [];
 
 const version = (id: string, name: string, savedAt: string, source: 'import' | 'operator' | 'sharepoint', n: number) => ({ id, name, version: n, snapshotId: `${id}-snap`, savedAt, source });
-export function libraryEntry(item: SheetFile, kind: 'reference' | 'other'): WorkbookLibraryEntry {
+export function libraryEntry(item: SheetFile): WorkbookLibraryEntry {
   const versions = [version('v1', 'Original', '2026-09-15T17:00:00Z', 'import', 1), version('v2', 'Fall hires added', '2026-10-10T17:00:00Z', 'operator', 2), version('v3', item.sharePoint ? 'Synced from SharePoint' : 'Reviewed', item.updatedAt, item.sharePoint ? 'sharepoint' : 'operator', 3)];
   return WorkbookLibraryEntrySchema.parse({ libraryId: item.id, version: 3, name: item.name, worksheets: [{ id: 's1', name: 'Sheet1' }], rowCount: item.rows,
-    metadata: { typeId: kind, sharePoint: item.sharePoint ? { url: 'https://example.sharepoint.com/sites/hr/example.xlsx', verifiedAt: item.updatedAt } : null },
-    type: { id: kind, name: kind === 'reference' ? 'Workflow reference' : 'Other spreadsheet', fields: [], keyFieldId: null, defaultWorkbookId: null },
+    metadata: { typeId: 'library', sharePoint: item.sharePoint ? { url: 'https://example.sharepoint.com/sites/hr/example.xlsx', verifiedAt: item.updatedAt } : null },
+    type: { id: 'library', name: 'Library spreadsheet', fields: [], keyFieldId: null, defaultWorkbookId: null },
     state: { libraryId: item.id, revision: 3, selectedVersionId: 'v3', origin: { kind: 'local' }, removed: false, versions } });
 }
 
@@ -66,6 +71,6 @@ export const sheetSamples = (sheet: PreviewSheet, header: string): string => { c
 
 export const IMPORT_FILE = { name: 'Example contacts export.xlsx', rows: 398, sheet: 'Contacts' };
 export const IMPORT_COLUMNS = [
-  { header: 'Employee ID', sample: '10482917, 10482930, 10482943', role: 'eid' }, { header: 'Full name', sample: 'Example, Person A; Example, Person B; Example, Person C', role: 'person' },
-  { header: 'Department', sample: 'Example Dept', role: null }, { header: 'Work phone', sample: '555-0100', role: null }, { header: 'Emergency phone', sample: '555-0142', role: null },
+  { header: 'Employee ID', sample: '10482917, 10482930, 10482943' }, { header: 'Full name', sample: 'Example, Person A; Example, Person B; Example, Person C' },
+  { header: 'Department', sample: 'Example Dept' }, { header: 'Work phone', sample: '555-0100' }, { header: 'Emergency phone', sample: '555-0142' },
 ] as const;
