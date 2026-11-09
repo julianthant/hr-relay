@@ -227,7 +227,7 @@ it('imports a declared reference atomically, shares its type default across work
   const workbook = { ...f.record.workbook, libraryId: undefined };
   workbook.sheets = [...workbook.sheets, { ...workbook.sheets[0], id: 'unmapped', name: 'No bindings', columnBindings: undefined }];
   const request = { workbook: encodeEditableWorkbook(workbook), purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } };
-  const result = f.service.import(request);
+  const result = f.service.importWorkbook(request);
   expect(result.purpose).toEqual(request.purpose);
   expect(result.reference).toEqual({ workflowId: 'first', typeId: 'roster', libraryId: result.workbook.libraryId });
   expect(f.service.metadata(result.workbook.libraryId).typeId).toBe('roster');
@@ -252,7 +252,7 @@ it('imports a declared reference atomically, shares its type default across work
     ]);
     expect(JSON.stringify(slot.current.columns)).not.toContain('10000001');
   }
-  const other = f.service.import({ workbook: request.workbook, purpose: { kind: 'other' } });
+  const other = f.service.importWorkbook({ workbook: request.workbook, purpose: { kind: 'other' } });
   expect(other.reference).toBeNull();
   expect(f.service.metadata(other.workbook.libraryId).typeId).toBe('general');
   expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBe(result.workbook.libraryId);
@@ -268,14 +268,14 @@ it('rejects invalid import purposes before effects and rolls back creation, meta
     { kind: 'workflow-reference', workflowId: 'unknown', typeId: 'roster' },
     { kind: 'workflow-reference', workflowId: 'first', typeId: 'general' },
     { kind: 'workflow-reference', workflowId: 'first', typeId: 'absent' }]) {
-    expect(() => f.service.import({ workbook, purpose })).toThrow(expect.objectContaining({ code: 'WORKBOOK_INVALID' }));
+    expect(() => f.service.importWorkbook({ workbook, purpose })).toThrow(expect.objectContaining({ code: 'WORKBOOK_INVALID' }));
     expect(f.service.catalog()).toEqual(before);
   }
   const counts = () => ['workbook_library', 'workbook_creations', 'workbook_operations', 'workbook_library_state', 'workbook_library_snapshots']
     .map(table => f.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()?.count);
   const initial = counts();
   f.database.exec("CREATE TRIGGER refuse_binding BEFORE UPDATE ON workbook_types BEGIN SELECT RAISE(ABORT,'synthetic refusal'); END");
-  expect(() => f.service.import({ workbook, purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } })).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_FAILED' }));
+  expect(() => f.service.importWorkbook({ workbook, purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } })).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_FAILED' }));
   expect(counts()).toEqual(initial);
   expect(f.service.catalog()).toEqual(before);
   expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBeNull();

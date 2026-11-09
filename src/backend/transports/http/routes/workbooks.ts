@@ -21,7 +21,7 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   app.get("/api/v1/workbooks/list", c => c.json(service().library.list().map(encodeSavedWorkbook)));
   app.get("/api/v1/workbooks/catalog", c => c.json(service().library.catalog()));
   app.get("/api/v1/workbooks/results", c => c.json(service().library.results()));
-  app.post("/api/v1/workbooks/import", async c => c.json(service().library.import(workbookRequest(WorkbookImportRequestSchema, await c.req.json())), 201));
+  app.post("/api/v1/workbooks/import", async c => c.json(service().library.importWorkbook(workbookRequest(WorkbookImportRequestSchema, await c.req.json())), 201));
   app.post("/api/v1/workbooks/:libraryId/library-actions", async c => {
     const request = workbookRequest(WorkbookLibraryActionSchema, await c.req.json());
     return c.json(await service().library.libraryAction(c.req.param('libraryId'), request, c.req.raw.signal));

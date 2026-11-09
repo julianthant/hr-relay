@@ -160,7 +160,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     results() {
       return projectWorkbookResults(deps.repository.catalog(), deps.resultRun);
     },
-    import(value: unknown) {
+    importWorkbook(value: unknown) {
       const request = input(WorkbookImportRequestSchema, value), workbook = decodeEditableWorkbook(request.workbook);
       if (workbook.libraryId !== undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
       const purpose = request.purpose;
