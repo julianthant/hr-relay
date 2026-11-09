@@ -14,7 +14,7 @@ export function mockWorkbookLibrary(files: readonly RegisteredSpreadsheet[], typ
   return files.map(file => {
     if (!file.addedAt) throw new Error('SPREADSHEET_FIXTURE_DATE_REQUIRED');
     const version = file.version ?? 1;
-    return WorkbookLibraryEntrySchema.parse({ libraryId: file.id, version, name: file.name,
+    return WorkbookLibraryEntrySchema.parse({ libraryId: file.id, version, name: file.name, updatedAt: file.addedAt,
       worksheets: file.sheets.map((sheet, index) => ({ id: `sheet-${index + 1}`, name: sheet.name })),
       rowCount: file.rowCount ?? registeredSpreadsheetWorkbook(file).sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
       metadata: { typeId: file.typeId, sharePoint: null }, type: types.find(type => type.id === file.typeId),

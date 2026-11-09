@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
 import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { projectWorkbookReferences } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
@@ -79,6 +80,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     projection: world.projection,
     actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
+    workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
     backupSummary: () => "current",
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
@@ -91,6 +93,8 @@ describe("bootstrap start-surface block", () => {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
+      expect(wire.workbookReferences.map(slot => ({ workflowId: slot.workflowId, typeId: slot.typeId })))
+        .toEqual(DESCRIPTORS.flatMap(descriptor => descriptor.requiredWorkbookTypeIds.map(typeId => ({ workflowId: descriptor.id, typeId }))));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
@@ -247,6 +251,7 @@ function depsOf(
       if (!storage.authorityReachable) throw new Error("authority database is unreadable");
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
+    workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
     backupSummary: () => storage.backup,
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),

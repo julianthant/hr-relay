@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
-import { WorkbookLibraryChangeSchema } from '../../../src/models/dashboard/workbook-library.js';
+import { WorkbookLibraryOriginSchema, WorkbookLibraryChangeSchema } from '../../../src/models/dashboard/workbook-library.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
 import { unexpectedWorkbookSync } from '../../support/helpers/backend/workbook-sync.js';
 import type { WorkbookSyncDownload } from '../../../src/backend/workbooks/workbook-library-service.js';
@@ -12,7 +12,7 @@ import { spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadshe
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
-function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync) {
+function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: Pick<Parameters<typeof createWorkbookLibraryService>[0], 'workflows' | 'resultRun'> = {}) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(sql);
   database.exec("CREATE TABLE runs (id TEXT PRIMARY KEY,state TEXT NOT NULL,lifecycle_json TEXT NOT NULL); CREATE TABLE run_requests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL)");
@@ -22,7 +22,8 @@ function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync) {
     catch (error) { database.exec('ROLLBACK'); throw error; }
   };
   const repository = createWorkbookLibraryRepository({ database, read: transaction, mutate: work => transaction(() => work().result) });
-  const service = createWorkbookLibraryService({ repository, sync, clock: manualClock(new Date('2026-11-02T00:00:00Z')) });
+  const clock = manualClock(new Date('2026-11-02T00:00:00Z'));
+  const service = createWorkbookLibraryService({ repository, sync, clock, ...options });
   const record = service.create({ name: 'Roster.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'people', name: 'Sheet 1', hidden: [], width: 2,
     columnBindings: ['eid', 'fullName'].map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: ['EID', 'Name'][index], fieldId, basis: 'manual' })),
     rows: [{ id: 'header', cells: [{ value: 'EID' }, { value: 'Name' }] }, { id: 'person', cells: [{ value: '10000001' }, { value: 'Example, Person' }] }] }] });
@@ -30,7 +31,7 @@ function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync) {
   const action = (change: z.infer<typeof WorkbookLibraryChangeSchema>) => ({ operationId: `action-${++sequence}`, expectedRevision: repository.libraryState(record.libraryId).revision,
     expectedVersion: service.read(record.libraryId).version, change });
   const apply = (change: z.infer<typeof WorkbookLibraryChangeSchema>) => service.libraryAction(record.libraryId, action(change), new AbortController().signal);
-  return { database, repository, service, record, action, apply };
+  return { database, repository, service, record, action, apply, clock };
 }
 
 it('creates from any saved version, renames and uses it, with exact action replay and retained revisions', async () => {
@@ -198,4 +199,96 @@ it('captures exact named all-row bytes separately from live CAS and refuses miss
   expect(captured).toMatchObject({ version: 3, versionId: 'original', versionName: 'Original version', rows: [{ matches: [{ values: { fullName: 'Example, Person' } }] }] });
   expect(() => f.service.snapshot({ ...request, versionId: 'missing' })).toThrow(expect.objectContaining({ code: 'WORKBOOK_REVISION_UNAVAILABLE' }));
   expect(() => f.service.snapshot({ ...request, expectedVersion: 2 })).toThrow(expect.objectContaining({ code: 'WORKBOOK_VERSION_CONFLICT' }));
+});
+
+
+it('imports a declared reference atomically, shares its type default across workflows and exposes only mapped column facts', () => {
+  const workflows = [{ id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster'] }, { id: 'second', label: 'Second', requiredWorkbookTypeIds: ['roster'] }];
+  const f = fixture(unexpectedWorkbookSync, { workflows });
+  expect(f.service.references(workflows).map(slot => slot.current)).toEqual([
+    { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' }, { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' },
+  ]);
+  f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid', 'fullName'], keyFieldId: 'eid', defaultWorkbookId: null });
+  expect(f.service.references(workflows).every(slot => slot.current.state === 'missing')).toBe(true);
+  const workbook = { ...f.record.workbook, libraryId: undefined };
+  workbook.sheets = [...workbook.sheets, { ...workbook.sheets[0], id: 'unmapped', name: 'No bindings', columnBindings: undefined }];
+  const request = { workbook: encodeEditableWorkbook(workbook), purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } };
+  const result = f.service.import(request);
+  expect(result.purpose).toEqual(request.purpose);
+  expect(result.reference).toEqual({ workflowId: 'first', typeId: 'roster', libraryId: result.workbook.libraryId });
+  expect(f.service.metadata(result.workbook.libraryId).typeId).toBe('roster');
+  expect(f.service.revision(result.workbook.libraryId, 1).version).toBe(1);
+  expect(f.service.revision(result.workbook.libraryId, 2).version).toBe(2);
+  const slots = f.service.references(workflows);
+  for (const slot of slots) {
+    expect(slot.type?.defaultWorkbookId).toBe(result.workbook.libraryId);
+    expect(slot.current.state).toBe('bound');
+    if (slot.current.state !== 'bound') throw new Error('reference not bound');
+    expect(slot.current.columns).toEqual([
+      { sheetId: 'people', sheetName: 'Sheet 1', eid: [{ column: 0, fieldId: 'eid', basis: 'manual' }], name: [{ column: 1, fieldId: 'fullName', basis: 'manual' }] },
+      { sheetId: 'unmapped', sheetName: 'No bindings', eid: [], name: [] },
+    ]);
+    expect(JSON.stringify(slot.current.columns)).not.toContain('10000001');
+  }
+  const other = f.service.import({ workbook: request.workbook, purpose: { kind: 'other' } });
+  expect(other.reference).toBeNull();
+  expect(f.service.metadata(other.workbook.libraryId).typeId).toBe('general');
+  expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBe(result.workbook.libraryId);
+  expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+});
+
+it('rejects invalid import purposes before effects and rolls back creation, metadata and binding together', () => {
+  const f = fixture(unexpectedWorkbookSync, { workflows: [{ id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster', 'absent'] }] });
+  f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null });
+  const workbook = encodeEditableWorkbook({ ...f.record.workbook, libraryId: undefined });
+  const before = f.service.catalog();
+  for (const purpose of [undefined, { kind: 'other', typeId: 'roster' },
+    { kind: 'workflow-reference', workflowId: 'unknown', typeId: 'roster' },
+    { kind: 'workflow-reference', workflowId: 'first', typeId: 'general' },
+    { kind: 'workflow-reference', workflowId: 'first', typeId: 'absent' }]) {
+    expect(() => f.service.import({ workbook, purpose })).toThrow(expect.objectContaining({ code: 'WORKBOOK_INVALID' }));
+    expect(f.service.catalog()).toEqual(before);
+  }
+  const counts = () => ['workbook_library', 'workbook_creations', 'workbook_operations', 'workbook_library_state', 'workbook_library_snapshots']
+    .map(table => f.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()?.count);
+  const initial = counts();
+  f.database.exec("CREATE TRIGGER refuse_binding BEFORE UPDATE ON workbook_types BEGIN SELECT RAISE(ABORT,'synthetic refusal'); END");
+  expect(() => f.service.import({ workbook, purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } })).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_FAILED' }));
+  expect(counts()).toEqual(initial);
+  expect(f.service.catalog()).toEqual(before);
+  expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBeNull();
+});
+
+it('serves selected content time across saves, metadata, retained versions and version selection', async () => {
+  const f = fixture();
+  const first = f.service.catalog()[0].updatedAt;
+  f.clock.advanceWall(60_000);
+  f.service.save(f.record.libraryId, 1, { ...f.record.workbook, name: 'Later.xlsx' });
+  const latest = f.service.catalog()[0].updatedAt;
+  expect(latest).not.toBe(first);
+  f.clock.advanceWall(60_000);
+  await f.apply({ kind: 'link', url: 'https://example.sharepoint.com/roster.xlsx' });
+  expect(f.service.catalog()[0].updatedAt).toBe(latest);
+  await f.apply({ kind: 'create-version', name: 'Original copy', from: { kind: 'version', versionId: 'original' }, useNow: false });
+  expect(f.service.catalog()[0].updatedAt).toBe(latest);
+  await f.apply({ kind: 'use-version', versionId: 'original' });
+  expect(f.service.catalog()[0].updatedAt).toBe(first);
+});
+
+it('groups results using run enqueue authority, stable ties and explicit unavailable authority', () => {
+  const runIds = ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000004'];
+  const f = fixture(unexpectedWorkbookSync, { resultRun: id => id === runIds[3] ? undefined : { workflowId: id === runIds[2] ? 'second' : 'first',
+    enqueuedAt: id === runIds[0] ? '2026-10-01T00:00:00Z' : '2026-11-01T00:00:00Z' } });
+  const create = (id: string, runId: string, workflowId = 'first') => f.repository.create({ ...f.record, libraryId: id, workbook: { ...f.record.workbook, libraryId: id } },
+    WorkbookLibraryOriginSchema.parse({ kind: 'workflow', runId, workflowId, workflowLabel: workflowId, partitionDay: '2026-11-02', rowCount: 1, rowSubject: 'person' }));
+  create('a', runIds[0]); create('b', runIds[1]); create('c', runIds[1]); create('d', runIds[2], 'second'); create('e', runIds[3]);
+  f.repository.create({ ...f.record, libraryId: 'legacy-output', workbook: { ...f.record.workbook, libraryId: 'legacy-output' } }, { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' });
+  const result = f.service.results();
+  expect(result.unavailable.map(entry => entry.libraryId)).toEqual(['legacy-output']);
+  expect(result.workflows.map(workflow => workflow.workflowId)).toEqual(['first', 'second']);
+  expect(result.workflows[0].runs.map(run => run.runId)).toEqual([runIds[1], runIds[0], runIds[3]]);
+  expect(result.workflows[0].runs[0].entries.map(entry => entry.libraryId)).toEqual(['b', 'c']);
+  expect(result.workflows[0].runs[2].enqueuedAt).toBeNull();
+  create('conflict', runIds[1], 'second');
+  expect(() => f.service.results()).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_CORRUPT' }));
 });

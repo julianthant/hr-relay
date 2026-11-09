@@ -278,6 +278,7 @@ const UNCERTAINTY_EVIDENCE = {
 const BOOTSTRAP = {
   wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B, protectedSchemaHash: HASH_A,
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
+  workbookReferences: [],
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
   storage: { authority: "healthy", backup: "current", checkedAt: NOW }, workflows: [],
   systemInstances: [], settingsSections: [], featureAvailability: [],

@@ -198,6 +198,7 @@ export function createDashboardModelFixtures() {
 
   const BOOTSTRAP = {
     wireVersion: 1,
+    workbookReferences: [],
     appVersion: "1.0.0",
     descriptorHash: HASH_A,
     settingsSchemaHash: HASH_B,

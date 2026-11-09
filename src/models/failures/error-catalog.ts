@@ -741,6 +741,8 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_SYNC_LINK_REQUIRED: catalogEntry("Link a SharePoint workbook before syncing.", EmptyParametersSchema),
   WORKBOOK_SYNC_CONTEXT_CHANGED: catalogEntry("The profile, settings or credentials changed during Sync. Start a new Sync command.", EmptyParametersSchema),
   WORKBOOK_SYNC_IMPORT_FAILED: catalogEntry("The downloaded file cannot be imported as a supported workbook.", EmptyParametersSchema),
+  WORKBOOK_TYPE_UNAVAILABLE: catalogEntry("This workflow's spreadsheet type is unavailable. Restore its reference definition before importing a file for it.", EmptyParametersSchema),
+  WORKBOOK_BINDING_UNAVAILABLE: catalogEntry("This workflow's selected spreadsheet is unavailable or has a different type. Import a replacement for this reference.", EmptyParametersSchema),
   WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE: catalogEntry("The workbook's workflow source was not retained. Its saved data remains available, but its run cannot be confirmed.", EmptyParametersSchema),
   WORKBOOK_SYNC_LAYOUT_CHANGED: catalogEntry("The SharePoint worksheets or columns no longer match this spreadsheet type. Review the source before creating a version.", EmptyParametersSchema),
   SHAREPOINT_LINK_UNSUPPORTED: catalogEntry("Use a direct workbook file URL from the configured SharePoint tenant.", EmptyParametersSchema),

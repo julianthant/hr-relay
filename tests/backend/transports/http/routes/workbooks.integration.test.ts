@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, it, vi } from "vitest";
-import { encodeEditableWorkbook, decodeSavedWorkbook } from "../../../../../src/models/dashboard/workbooks.js";
+import { WorkbookImportResultSchema, encodeEditableWorkbook, decodeSavedWorkbook } from "../../../../../src/models/dashboard/workbooks.js";
 import { assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, foreignOriginCases, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 
 afterEach(disposeHttpRouteHarness);
@@ -45,7 +45,7 @@ it.each(["/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id
 });
 it.each(foreignOriginCases())("rejects foreign workbook mutation %s before reading the body", async (_label, originHeaders) => {
   const h = await harness();
-  for (const path of ["/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"]) {
+  for (const path of ["/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"]) {
     const request = new Request(`http://localhost${path}`, { method: "POST", headers: { ...originHeaders, "content-type": "application/json" }, body: "{}" });
     const read = vi.spyOn(request, "json");
     assert.equal((await h.app.request(request)).status, 403); assert.equal(request.bodyUsed, false); assert.equal(read.mock.calls.length, 0);
@@ -82,4 +82,22 @@ it('serves persisted types and manual named versions, refusing forged sources an
   assert.equal(sync.status, 409);
   assert.equal((await sync.json() as { code: string }).code, 'WORKBOOK_SYNC_LINK_REQUIRED');
   assert.equal(h.database.authority.workbooks.read(first.libraryId)?.version, 1);
+});
+
+
+it('requires an explicit import purpose and serves the canonical result with admitted mutation and grouped reads', async () => {
+  const h = await harness(), wire = encodeEditableWorkbook(workbook);
+  const post = (body: unknown) => h.app.request('http://localhost/api/v1/workbooks/import', { method: 'POST', headers, body: JSON.stringify(body) });
+  for (const purpose of [undefined, { kind: 'other', workflowId: 'forged' }, { kind: 'workflow-reference', workflowId: 'unknown', typeId: 'general' }]) {
+    const response = await post({ workbook: wire, purpose });
+    assert.equal(response.status, 400);
+    assert.equal(h.database.authority.workbooks.list().length, 0);
+  }
+  const imported = await post({ workbook: wire, purpose: { kind: 'other' } });
+  assert.equal(imported.status, 201);
+  const result = WorkbookImportResultSchema.parse(await imported.json());
+  assert.deepEqual(result.purpose, { kind: 'other' });
+  assert.equal(result.reference, null);
+  assert.equal(result.workbook.version, 1);
+  assert.deepEqual(await (await h.app.request('http://localhost/api/v1/workbooks/results')).json(), { workflows: [], unavailable: [] });
 });

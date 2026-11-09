@@ -38,7 +38,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
   const unused = (): never => { throw new Error("Unrequested fixture effect"); };
   const shell = composeShell({ database: f.database, projection, clock: f.clock, appVersion: "0.1.0", ids: { uuid: randomUUID },
     artifacts: f.artifacts, descriptors: { resolve: f.resolve }, descriptorSetHash: projection.descriptorSetHash(), actorLabel: () => "Fixture operator",
-    preflightReport: () => healthyDashboardPreflightReport(f.clock), backupSummary: () => "current",
+    preflightReport: () => healthyDashboardPreflightReport(f.clock), workbookReferences: () => [], backupSummary: () => "current",
     activity: { read: unused, readSelected: unused }, backfillGaps: { detected: unused } });
   try {
     const bootstrap = buildBootstrap(shell.bootstrap), workflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);

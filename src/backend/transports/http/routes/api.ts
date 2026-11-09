@@ -79,6 +79,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/ocr/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/workbooks", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/types", operatorMutationIngressGuard);
+  app.use("/api/v1/workbooks/import", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/operations", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/library-actions", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/sync", operatorMutationIngressGuard);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
-import { EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, encodeSavedWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { WorkbookImportPurposeSchema, WorkbookImportRequestSchema, EditableWorkbookSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, encodeSavedWorkbook, type SavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_INTAKE_MAPPING } from "../../support/fixtures/dashboard/fixture-intake.js";
 import { WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
@@ -33,7 +33,7 @@ function schemaFailure(error: unknown): boolean {
 
 it('binds catalogue changes and result lookups to the exact library and action', async () => {
   const record = saved(), version = { id: 'original', snapshotId: JSON.stringify([record.libraryId, 'original']), name: 'Original version', version: 1, savedAt: NOW, source: 'import' };
-  const entry = WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: 1, name: record.workbook.name,
+  const entry = WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: 1, name: record.workbook.name, updatedAt: NOW,
     rowCount: 0, worksheets: [{ id: 'sheet', name: 'Dates' }], metadata: { typeId: 'general', sharePoint: null },
     type: { id: 'general', name: 'General workbook', keyFieldId: null, fields: [], defaultWorkbookId: null },
     state: { libraryId: record.libraryId, revision: 1, selectedVersionId: 'original', removed: false, origin: { kind: 'local' }, versions: [version] } });
@@ -160,4 +160,27 @@ it("bridges the exact workbook revision and workflow, retaining typed refusals",
   await assert.rejects(harness({ state: "created", session }, 200).client.workbookIntake("library /one", 2, session.workflow), schemaFailure);
   await assert.rejects(harness(refusal, 200).client.workbookIntake("library /one", 2, session.workflow), schemaFailure);
   await assert.rejects(harness({ state: "created", session }, 422).client.workbookIntake("library /one", 2, session.workflow), schemaFailure);
+});
+
+
+it('imports with exact purpose and binding acknowledgment while preserving the separate create contract', async () => {
+  const purpose = WorkbookImportPurposeSchema.parse({ kind: 'workflow-reference', workflowId: 'onboarding', typeId: 'onboarding-roster' });
+  assert.ok(purpose.kind === 'workflow-reference');
+  const body = { workbook: encodeSavedWorkbook(saved(2)), purpose, reference: { workflowId: purpose.workflowId, typeId: purpose.typeId, libraryId: saved().libraryId } };
+  const h = harness(body, 201);
+  assert.deepEqual(await h.client.workbookImport(draft, purpose), body);
+  assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/import');
+  assert.deepEqual(WorkbookImportRequestSchema.parse(JSON.parse(requestBody(h.calls[0]))).purpose, purpose);
+  await assert.rejects(harness({ ...body, purpose: { ...purpose, workflowId: 'foreign' }, reference: { ...body.reference, workflowId: 'foreign' } }, 201).client.workbookImport(draft, purpose), schemaFailure);
+  await assert.rejects(harness({ ...body, reference: { ...body.reference, libraryId: 'foreign' } }, 201).client.workbookImport(draft, purpose), schemaFailure);
+  await assert.rejects(harness({ ...body, workbook: encodeSavedWorkbook(saved(1)) }, 201).client.workbookImport(draft, purpose), schemaFailure);
+  const other = { workbook: encodeSavedWorkbook(saved()), purpose: { kind: 'other' as const }, reference: null };
+  assert.deepEqual(await harness(other, 201).client.workbookImport(draft, other.purpose), other);
+});
+
+it('reads grouped results through the typed facade and rejects malformed group data', async () => {
+  const h = harness({ workflows: [], unavailable: [] });
+  assert.deepEqual(await h.client.workbookResults(), { workflows: [], unavailable: [] });
+  assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/results');
+  await assert.rejects(harness({ workflows: [], unavailable: [], extra: true }).client.workbookResults(), schemaFailure);
 });

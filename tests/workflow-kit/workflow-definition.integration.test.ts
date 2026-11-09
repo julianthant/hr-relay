@@ -1,3 +1,4 @@
+import { projectWorkbookReferences } from "../../src/backend/workbooks/workbook-library-service.js";
 import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
 import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
@@ -53,6 +54,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
         projection: world.projection,
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
+        workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
         backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });

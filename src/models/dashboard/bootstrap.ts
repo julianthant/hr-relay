@@ -1,3 +1,4 @@
+import { WorkbookReferenceSlotsSchema } from "./workbook-library.js";
 import { z } from "zod";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
 import { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
@@ -118,6 +119,7 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     serverClock: ServerClockWireSchema,
     storage: StorageHealthSummaryWireSchema,
     workflows: z.array(parts.workflow),
+    workbookReferences: WorkbookReferenceSlotsSchema,
     systemInstances: z.array(parts.systemInstance),
     settingsSections: z.array(parts.settingsSection),
     featureAvailability: z.array(FeatureAvailabilityWireSchema),

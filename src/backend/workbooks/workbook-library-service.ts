@@ -1,4 +1,4 @@
-import { EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
+import { WorkbookImportRequestSchema, WorkbookImportResultSchema, decodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
@@ -13,7 +13,7 @@ import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encode
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { workbookMatches } from "./master-changes.js";
-import { WorkbookLibraryActionSchema, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
+import { WorkbookReferenceSlotsSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 
 export class WorkbookLibraryError extends Error {
@@ -24,7 +24,7 @@ export class WorkbookLibraryError extends Error {
 }
 
 export interface WorkbookLibraryRepository {
-  create(record: SavedWorkbook, origin?: z.infer<typeof WorkbookLibraryOriginSchema>): SavedWorkbook;
+  create(record: SavedWorkbook, origin?: z.infer<typeof WorkbookLibraryOriginSchema>, referenceTypeId?: string): SavedWorkbook;
   read(libraryId: string): SavedWorkbook | undefined;
   revision(libraryId: string, version: number): SavedWorkbook;
   list(): readonly SavedWorkbook[];
@@ -120,7 +120,15 @@ export interface WorkbookSyncDownload {
     scope: Readonly<{ signal: AbortSignal; assertCurrent(): void }>,
   ) => Promise<Result>): Promise<Result>;
 }
-export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload }>) {
+export interface WorkbookReferenceWorkflow {
+  readonly id: string;
+  readonly label: string;
+  readonly requiredWorkbookTypeIds: readonly string[];
+}
+export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
+  workflows?: readonly WorkbookReferenceWorkflow[];
+  resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
+}>) {
   const read = (libraryId: string): SavedWorkbook => {
     const record = deps.repository.read(input(WorkbookIdSchema, libraryId));
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
@@ -146,6 +154,24 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     });
   };
   return Object.freeze({
+    references(workflows: readonly WorkbookReferenceWorkflow[]) {
+      return projectWorkbookReferences(deps.repository, workflows);
+    },
+    results() {
+      return projectWorkbookResults(deps.repository.catalog(), deps.resultRun);
+    },
+    import(value: unknown) {
+      const request = input(WorkbookImportRequestSchema, value), workbook = decodeEditableWorkbook(request.workbook);
+      if (workbook.libraryId !== undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      const purpose = request.purpose;
+      if (purpose.kind === 'workflow-reference' && (!deps.workflows?.some(workflow => workflow.id === purpose.workflowId
+        && workflow.requiredWorkbookTypeIds.includes(purpose.typeId)) || !deps.repository.types().some(type => type.id === purpose.typeId)))
+        throw new WorkbookLibraryError('WORKBOOK_INVALID');
+      const libraryId = randomUUID(), now = deps.clock.now().toISOString();
+      const record = deps.repository.create(input(SavedWorkbookSchema, { libraryId, version: 1, createdAt: now, savedAt: now, workbook: { ...workbook, libraryId } }),
+        { kind: 'local' }, purpose.kind === 'workflow-reference' ? purpose.typeId : undefined);
+      return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(record), purpose, reference: purpose.kind === "other" ? null : { workflowId: purpose.workflowId, typeId: purpose.typeId, libraryId: record.libraryId } });
+    },
     catalog: () => deps.repository.catalog(),
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
     libraryActionRecord: (libraryId: string, operationId: string) => deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId)),
@@ -213,3 +239,68 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
   });
 }
 export type WorkbookLibraryService = ReturnType<typeof createWorkbookLibraryService>;
+
+export function projectWorkbookReferences(repository: WorkbookLibraryRepository, workflows: readonly WorkbookReferenceWorkflow[]) {
+  const types = repository.types(), catalog = repository.catalog();
+  return WorkbookReferenceSlotsSchema.parse(workflows.flatMap(workflow => workflow.requiredWorkbookTypeIds.map(typeId => {
+    const type = types.find(type => type.id === typeId) ?? null;
+    const slot = { workflowId: workflow.id, workflowLabel: workflow.label, typeId, type };
+    if (type === null) return { ...slot, current: { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' } };
+    if (type.defaultWorkbookId === null) return { ...slot, current: { state: 'missing' } };
+    const entry = catalog.find(entry => entry.libraryId === type.defaultWorkbookId);
+    if (entry === undefined || entry.metadata.typeId !== typeId) return { ...slot, current: { state: 'unavailable', code: 'WORKBOOK_BINDING_UNAVAILABLE' } };
+    const selected = repository.libraryVersion(entry.libraryId, entry.state.selectedVersionId);
+    return { ...slot, current: { state: 'bound', entry, columns: selected.workbook.sheets.map(sheet => ({
+      sheetId: sheet.id, sheetName: sheet.name,
+      eid: (sheet.columnBindings ?? []).flatMap((binding, column) => binding.fieldId === 'eid' && binding.basis !== 'unmapped'
+        ? [{ column, fieldId: binding.fieldId, basis: binding.basis }] : []),
+      name: (sheet.columnBindings ?? []).flatMap((binding, column) => binding.fieldId !== null
+        && ['fullName', 'firstName', 'lastName', 'middleName', 'livedName'].includes(binding.fieldId) && binding.basis !== 'unmapped'
+        ? [{ column, fieldId: binding.fieldId, basis: binding.basis }] : []),
+    })) } };
+  })));
+}
+
+function projectWorkbookResults(entries: readonly WorkbookLibraryEntry[],
+  resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined) {
+  const workflows: z.infer<typeof WorkbookResultsSchema>['workflows'] = [];
+  const unavailable: WorkbookLibraryEntry[] = [];
+  const identities = new Map<string, { workflowId: string; workflowLabel: string; partitionDay: string }>();
+  for (const entry of entries) {
+    const origin = entry.state.origin;
+    if (origin.kind === 'local') continue;
+    if (origin.kind === 'unavailable') { unavailable.push(entry); continue; }
+    const previous = identities.get(origin.runId);
+    if (previous !== undefined && (previous.workflowId !== origin.workflowId || previous.workflowLabel !== origin.workflowLabel || previous.partitionDay !== origin.partitionDay))
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    identities.set(origin.runId, origin);
+    let workflow = workflows.find(workflow => workflow.workflowId === origin.workflowId);
+    if (workflow === undefined) {
+      workflow = { workflowId: origin.workflowId, workflowLabel: origin.workflowLabel, runs: [] };
+      workflows.push(workflow);
+    }
+    let run = workflow.runs.find(run => run.runId === origin.runId);
+    if (run === undefined) {
+      const authority = resultRun?.(origin.runId);
+      if (authority !== undefined && authority.workflowId !== origin.workflowId) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      run = { runId: origin.runId, partitionDay: origin.partitionDay, enqueuedAt: authority?.enqueuedAt ?? null, entries: [] };
+      workflow.runs.push(run);
+    }
+    run.entries.push(entry);
+  }
+  const byId = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+  const newestFirst = (a: string | null, b: string | null) => {
+    if (a === null) return b === null ? 0 : 1;
+    return b === null ? -1 : Date.parse(b) - Date.parse(a);
+  };
+  for (const workflow of workflows) {
+    workflow.runs.sort((a, b) => newestFirst(a.enqueuedAt, b.enqueuedAt) || byId(a.runId, b.runId));
+    for (const run of workflow.runs) run.entries.sort((a, b) => newestFirst(a.updatedAt, b.updatedAt) || byId(a.libraryId, b.libraryId));
+    const newestOrigin = workflow.runs[0].entries[0].state.origin;
+    if (newestOrigin.kind !== 'workflow') throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    workflow.workflowLabel = newestOrigin.workflowLabel;
+  }
+  workflows.sort((a, b) => newestFirst(a.runs[0].enqueuedAt, b.runs[0].enqueuedAt) || byId(a.workflowId, b.workflowId));
+  unavailable.sort((a, b) => byId(a.libraryId, b.libraryId));
+  return WorkbookResultsSchema.parse({ workflows, unavailable });
+}

@@ -16,6 +16,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
 }) {
   const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     wireVersion: 1,
+    workbookReferences: [],
     appVersion: FIXTURE_APP_VERSION,
     descriptorHash: bootstrapDescriptorHash(CONTRACT_FINGERPRINT),
     settingsSchemaHash: descriptorSetHash(["settings-schema"]),

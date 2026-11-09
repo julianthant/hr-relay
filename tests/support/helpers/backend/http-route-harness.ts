@@ -362,7 +362,7 @@ export async function harness(options: {
     },
   });
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
-  const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
+  const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock, workflows: [fixtureDescriptor] });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
@@ -383,7 +383,7 @@ export async function harness(options: {
       actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
-      backupSummary: () => "missing",
+      workbookReferences: workflows => workbookLibrary.references(workflows), backupSummary: () => "missing",
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,

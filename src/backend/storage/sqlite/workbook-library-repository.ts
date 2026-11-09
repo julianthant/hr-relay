@@ -328,7 +328,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       if (selected === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       const record = librarySnapshot(current.libraryId, selected.snapshotId), meta = metadata(current.libraryId), workbookType = type(meta.typeId);
       if (workbookType === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      return [WorkbookLibraryEntrySchema.parse({ libraryId: current.libraryId, version: current.version, name: current.workbook.name,
+      return [WorkbookLibraryEntrySchema.parse({ libraryId: current.libraryId, version: current.version, name: current.workbook.name, updatedAt: selected.savedAt,
         worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
         rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
         state, metadata: meta, type: workbookType })];
@@ -466,9 +466,11 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         .run(JSON.stringify([id, action.operationId]), id, action.operationId, sha256Hex(canonicalJsonStringify(action)), canonicalJsonStringify(result));
       return { result, changes: changes + 2 };
     })),
-    create: (recordValue, origin = { kind: 'local' }) => storage(() => deps.mutate(() => {
+    create: (recordValue, origin = { kind: 'local' }, referenceTypeId) => storage(() => deps.mutate(() => {
       const record = SavedWorkbookSchema.parse(recordValue);
       if (record.version !== 1 || current(record.libraryId)) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
+      const referenceType = referenceTypeId === undefined ? undefined : type(referenceTypeId);
+      if (referenceTypeId !== undefined && referenceType === undefined) throw new WorkbookLibraryError('WORKBOOK_INVALID');
       const json = serializeSavedWorkbook(record);
       database.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, record.createdAt, record.savedAt, json);
       database.prepare('INSERT INTO workbook_creations(id,payload_json) VALUES(?,?)').run(record.libraryId, json);
@@ -476,7 +478,17 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         versions: [{ id: 'original', snapshotId: JSON.stringify([record.libraryId, 'original']), name: 'Original version', version: 1, savedAt: record.savedAt, source: 'import' }] });
       database.prepare('INSERT INTO workbook_library_state(id,payload_json) VALUES(?,?)').run(record.libraryId, canonicalJsonStringify(state));
       putLibrarySnapshot(record.libraryId, 'original', encodeSavedWorkbook(record).workbook);
-      return { result: record, changes: 4 };
+      let changes = 4;
+      if (referenceType !== undefined) {
+        const queued = enqueueWork(record.libraryId, { operationId: randomUUID(), source: { kind: 'operator' }, at: record.savedAt,
+          change: { kind: 'metadata', expectedVersion: 1, metadata: { typeId: referenceType.id, sharePoint: null } } });
+        changes += queued.changes + drainWork(record.libraryId).changes;
+        const settled = receipt(database.prepare('SELECT receipt_json FROM workbook_operations WHERE sequence=?').get(queued.result)?.receipt_json);
+        if (settled.state !== 'applied') throw new WorkbookLibraryError('WORKBOOK_INVALID');
+        database.prepare('UPDATE workbook_types SET payload_json=? WHERE id=?').run(canonicalJsonStringify({ ...referenceType, defaultWorkbookId: record.libraryId }), referenceType.id);
+        changes++;
+      }
+      return { result: required(record.libraryId), changes };
     })),
     read: id => storage(() => deps.read(() => {
       const record = current(id);

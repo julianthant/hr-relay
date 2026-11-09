@@ -10,7 +10,7 @@ import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module
 import { projectStartSteps, startStepWireControl } from "../start/step-selection.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
-
+import type { WorkbookLibraryService, WorkbookReferenceWorkflow } from "../../workbooks/workbook-library-service.js";
 
 interface BootstrapModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -32,6 +32,7 @@ export interface BootstrapQueryDeps {
   readonly projection: Pick<RunQueueProjection, "generation">;
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
+  readonly workbookReferences: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["references"]>;
   readonly backupSummary: () => "current" | "stale" | "missing" | "unavailable";
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
@@ -96,6 +97,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       checkedAt: preflight.checkedAt,
     })),
 
+    workbookReferences: deps.workbookReferences(deps.modules.map(module => module.descriptor)),
     workflows: deps.modules.map(({ descriptor, role, intake }) => ({
       id: descriptor.id,
       code: descriptor.code,

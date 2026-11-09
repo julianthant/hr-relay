@@ -285,9 +285,14 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
         context.assertCurrent();
       } };
     } });
-  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
+  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync,
+    workflows: READABLE_WORKFLOW_MODULES.map(module => module.descriptor),
+    resultRun: runId => {
+      const run = database.authority.runs.get(runId);
+      return run === undefined ? undefined : { workflowId: run.envelope.workflow, enqueuedAt: run.envelope.enqueuedAt };
+    } });
 
-  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
+  const shell = composeShell({ workbookReferences: workflows => workbookLibrary.references(workflows), database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
