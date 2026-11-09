@@ -45,6 +45,19 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   expect((await panel(page).locator("xpath=ancestor::*[contains(@class,'ds-menu-surface')]").boundingBox())?.width).toBe(380);
   await expect(panel(page).getByText("Today", { exact: true })).toBeVisible();
   await expect(panel(page).getByText("Earlier", { exact: true })).toBeVisible();
+  // Insets from the panel edge follow the shared menu rule (1px border + 4px padding + 8px), the label box starts at the 5px menu edge with its text at 13, the dot and Mark all read end 12px from the right edge.
+  const m = await panel(page).evaluate(el => {
+    const surface = el.closest(".ds-menu-surface")!.getBoundingClientRect();
+    const rect = (q: string, n = 0) => el.querySelectorAll(q)[n].getBoundingClientRect();
+    const rows = [...el.querySelectorAll(".notification-item")].map(row => row.getBoundingClientRect());
+    return { head: rect("h2").left - surface.left, label: rect(".ds-menu-label").left - surface.left, sep: rect(".ds-menu-separator").left - surface.left,
+      icon: rect(".notification-item > svg").left - surface.left, text: rect(".ds-menu-copy").left - rect(".notification-item > svg").left,
+      titleToLine: rect(".ds-menu-copy > span", 1).top - rect(".ds-menu-copy > span", 0).top, pitch: rows[1].top - rows[0].top,
+      dotRight: surface.right - rect(".notification-unread-dot").right, markRight: surface.right - rect(".notification-mark-read").right,
+      timeGap: rect(".notification-unread-dot").left - rect(".notification-item-meta > span").right };
+  });
+  console.log(`MEASURE ${theme} ${JSON.stringify(m)}`);
+  expect(m).toMatchObject({ head: 13, label: 5, sep: 13, icon: 13, dotRight: 12, markRight: 12 });
   await page.mouse.move(1, 1);
   await shot(page, "panel-mixed", theme);
   await panel(page).getByRole("button", { name: /Run waiting for you/ }).hover();

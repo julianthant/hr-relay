@@ -5,7 +5,7 @@ export type NotificationFilter = "all" | "unread" | "attention" | "failed";
 export type NotificationKind = "storage" | "chatgpt" | "run";
 export type NotificationDestination = NotificationTarget
   | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
-  | Readonly<{ kind: "settings"; section: "general" | "subscription" }>;
+  | Readonly<{ kind: "settings"; section: "general" | "subscription"; anchor?: string }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
   tone: "danger" | "warning" | "positive" | "info"; age: string;

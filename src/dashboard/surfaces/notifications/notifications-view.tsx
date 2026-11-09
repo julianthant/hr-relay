@@ -1,12 +1,12 @@
 import { CircleAlert, CircleCheck, Clock, HardDrive, Info, Unplug, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
+import { DropdownMenuItemCopy, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
 import { shortAge, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 import "./notifications-panel.css";
 
-const TONE_COLOR = { danger: "text-ui-danger", warning: "text-ui-warning", positive: "text-ui-positive", info: "text-ui-info" } as const;
+const TONE_COLOR = { danger: "text-ui-danger", warning: "text-ui-warning", positive: "text-ui-positive", info: "text-ui-muted" } as const;
 
 function itemIcon(item: NotificationItem): LucideIcon {
   if (item.kind === "storage") return HardDrive;
@@ -21,7 +21,7 @@ function NotificationRow({ item, onOpen }: { item: NotificationItem; onOpen: (it
   const Icon = itemIcon(item);
   return <li><button type="button" className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
     <Icon aria-hidden className={TONE_COLOR[item.tone]} />
-    <span className="notification-item-copy"><span className="notification-item-title">{item.title}</span><span className="notification-item-line">{itemLine(item)}</span></span>
+    <DropdownMenuItemCopy title={item.title} description={itemLine(item)} />
     <span className="notification-item-meta"><span>{shortAge(item.age)}</span><span aria-hidden className="notification-unread-dot" data-read={item.read} />{!item.read && <span className="sr-only">Unread</span>}</span>
   </button></li>;
 }

@@ -1016,7 +1016,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
     if (destination.kind === "settings") {
-      leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
+      leaveSettings(() => {
+        setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section });
+        opened();
+        if (destination.anchor) window.setTimeout(() => document.getElementById(destination.anchor!)?.scrollIntoView({ block: "start" }), 250);
+      });
       return;
     }
     if (source === "mock" && destination.kind === "run") {
