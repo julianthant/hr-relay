@@ -7,8 +7,6 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../.
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
 import { Badge, Button, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
-import { StatusBadge } from "../../shared/status/status.js";
-import { dsStatusOf } from "../../shared/status/status-model.js";
 import { LogPanel } from "../log-panel.js";
 import type { LogDecisionHandler } from "./log-feed.js";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
@@ -21,7 +19,6 @@ import { pauseTimeline, type LogTimelineStage } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogSkeleton } from "../../shared/loading/loading.js";
-import { queueRunHeader } from "../run-header-model.js";
 import { queueRowTitle } from "../../queue/queue-model.js";
 import { RunReview } from "../review/review.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
@@ -37,12 +34,12 @@ function rerunFooterButton(selection: LogSelection | undefined, onAction?: Dashb
   return <LogFooterButton label={action.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={() => onAction(action, target)} />;
 }
 
-export function LogSample({ selection, nowIso, source = "served", initialStepId, confirm, ...navigation }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
-  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} confirm={confirm} {...navigation} />;
-  return <PreviewLogSample selection={selection} nowIso={nowIso} onAction={navigation.onAction} />;
+export function LogSample({ selection, source = "served", initialStepId, confirm, ...navigation }: { selection?: LogSelection; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} initialStepId={initialStepId} confirm={confirm} {...navigation} />;
+  return <PreviewLogSample selection={selection} onAction={navigation.onAction} />;
 }
 
-function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction }: { selection: LogSelection; nowIso?: string; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding, confirm);
@@ -102,14 +99,12 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     onReview={reviewAvailable ? onReview : undefined}
-    context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
-    status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} interrupt={selection.row.interrupt} presentation="queue" />}
     toolbar={toolbar} footerActions={footerActions}
     content={reviewOpen ? <RunReview selection={selection} focus={reviewFocus} /> : content}
     afterStep={afterStep} />;
 }
 
-function PreviewLogSample({ selection, nowIso, onAction }: { selection?: LogSelection; nowIso?: string; onAction?: DashboardActionHandler }) {
+function PreviewLogSample({ selection, onAction }: { selection?: LogSelection; onAction?: DashboardActionHandler }) {
   const scenarioId = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview") ?? (selection ? "preview" : "separation");
   const [edited, setEdited] = useState<{ basis: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }>();
   const scenarios = [...previewScenarios, ...decisionScenarios];
@@ -134,7 +129,7 @@ function PreviewLogSample({ selection, nowIso, onAction }: { selection?: LogSele
       return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, option.id) : scenario.timeline, steps: nextSteps };
     });
   };
-  return <LogPanel key={basis} context={selection && (scenarioId === 'preview' || scenarioId === 'selected') ? queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt) : undefined} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : previewCancel} footerActions={scenarioId === "preview" || scenarioId === "selected" ? rerunFooterButton(selection, onAction) : undefined} />;
+  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : previewCancel} footerActions={scenarioId === "preview" || scenarioId === "selected" ? rerunFooterButton(selection, onAction) : undefined} />;
 }
 
 /** A fixture has no clock; the preview answer carries a fixed instant. */

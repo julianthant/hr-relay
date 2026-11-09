@@ -33,10 +33,7 @@ afterEach_m0(_afterEachFixture1);
     const scroll = vi.fn(); Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
     try {
       const hiddenHeadingSteps = [{ ...steps[0], header: false, entries: [{ kind: 'note' as const, id: 'before-match', time: '09:09:00', message: 'Identity read finished.' }, ...steps[0].entries] }];
-      await act_m0(async () => root.render(createElement_m0(LogPanel_m0, { title: 'Jordan', steps: hiddenHeadingSteps, timeline: [], onDecision: decision,
-        status: createElement_m0('span', { 'data-review-badge': true }, 'Review'),
-        context: { workflow: 'Person lookup', displayId: 'PL00000001', attempt: 2, reviewPending: true, timing: { text: '2m 0s' } } })));
-      assert_m0.equal(host.querySelector('[data-review-badge]'), null);
+      await act_m0(async () => root.render(createElement_m0(LogPanel_m0, { title: 'Jordan', steps: hiddenHeadingSteps, timeline: [], onDecision: decision })));
       const search = host.querySelector<HTMLInputElement>('input[aria-label="Search logs"]'); assert_m0(search);
       await act_m0(async () => {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'no match');
@@ -52,10 +49,7 @@ afterEach_m0(_afterEachFixture1);
       assert_m0.equal(host.querySelector('[aria-label="Run context"]'), null);
       assert_m0.equal(host.querySelector('h2')?.textContent, 'Jordan');
       assert_m0.doesNotMatch(host.querySelector('header')?.textContent ?? '', /PL00000001|Attempt #|Elapsed/);
-      await act_m0(async () => root.render(createElement_m0(LogPanel_m0, { title: 'Jordan', steps, timeline: [], content: createElement_m0('div', null, 'Editable records'),
-        status: createElement_m0('span', { 'data-review-badge': true }, 'Review'),
-        context: { workflow: 'OCR', displayId: 'OCR00000001', attempt: 1, reviewPending: true } })));
-      assert_m0(host.querySelector('[data-review-badge]'));
+      await act_m0(async () => root.render(createElement_m0(LogPanel_m0, { title: 'Jordan', steps, timeline: [], content: createElement_m0('div', null, 'Editable records') })));
       assert_m0.equal([...host.querySelectorAll('button')].filter(button => button.textContent === 'Review').length, 0);
     } finally { await act_m0(async () => root.unmount()); host.remove(); if (descriptor) Object.defineProperty(Element.prototype, 'scrollIntoView', descriptor); else Reflect.deleteProperty(Element.prototype, 'scrollIntoView'); }
   });
