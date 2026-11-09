@@ -569,7 +569,7 @@ for (const theme of THEMES) test(`sidebar collapse widens logs @ ${theme} ${WIDT
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre`);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   await page.getByRole("button", { name: "Emergency Contact" }).first().click();
   await page.getByRole("button", { name: /emergency-contacts\.pdf/ }).first().click();
   await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
@@ -595,7 +595,7 @@ for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, as
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results`);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results&assistantOpen=0`);
   await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   const queueTop = () => page.locator(".dashboard-log-column").evaluate(node => Math.round(node.getBoundingClientRect().top));
   const top = await queueTop();
@@ -626,7 +626,7 @@ for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, as
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-unknown`);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-unknown&assistantOpen=0`);
   const toast = page.locator("[data-slot=toast]");
   await expect(toast).toHaveCount(1);
   await expect(toast.locator("button")).toHaveCount(0);
