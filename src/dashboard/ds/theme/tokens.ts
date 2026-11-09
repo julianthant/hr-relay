@@ -126,8 +126,8 @@ export const dsTravel = {
 export const dsLayer = {
   /** sticky table headers, panel toolbars, the row action bar */
   sticky: "z-10",
-  /** dropdowns, popovers, context menus */
-  menu: "z-20",
+  /** dropdowns, popovers, context menus, tooltips: above modal dialogs so one opened inside a dialog is not hidden */
+  menu: "z-[45]",
   /** drawers and their scrim */
   drawer: "z-30",
   /** modal dialogs and their scrim */

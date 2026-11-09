@@ -59,7 +59,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
       await dialog.getByRole("textbox").first().fill("48216, 48220");
       await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-      await expect(dialog.getByRole("checkbox", { name: "Priority", exact: true })).not.toBeChecked();
+      await expect(dialog.getByRole("switch", { name: "Priority", exact: true })).not.toBeChecked();
     } else if (id === "run-steps" || id === "run-rerun-steps") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
       if (id === "run-rerun-steps") {
@@ -70,7 +70,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
         await dialog.getByRole("textbox").first().fill("10555001");
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).click();
+        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).dispatchEvent("click");
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         await expect(dialog.getByText(/\d+ of \d+ included/)).toBeVisible();
       }
@@ -231,12 +231,12 @@ test("run dialog priority", async ({ page }) => {
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByRole("textbox").first().fill(text);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    const box = dialog.getByRole("checkbox", { name: "Priority", exact: true });
+    const box = dialog.getByRole("switch", { name: "Priority", exact: true });
     const footer = dialog.locator("footer");
     await expect(box).toBeChecked({ checked: ticked });
     await expect(footer).not.toContainText(/Interactive|Bulk/);
     if (ticked) await expect(footer).toContainText("Priority"); else await expect(footer).not.toContainText("Priority");
-    await box.click();
+    await box.dispatchEvent("click");
     await expect(box).toBeChecked({ checked: !ticked });
     if (ticked) await expect(footer).not.toContainText("Priority"); else await expect(footer).toContainText("Priority");
   }
@@ -262,9 +262,9 @@ test("customize steps every workflow", async ({ page }) => {
     if (await file.count()) await file.setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
     else await dialog.getByRole("textbox").first().fill(name === "Onboarding" ? "jordan.lee@example.com" : name === "Separations" ? "48216" : "10000001");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    const customize = dialog.getByRole("checkbox", { name: "Customize steps", exact: true });
+    const customize = dialog.getByRole("switch", { name: "Customize steps", exact: true });
     await expect(customize, `${name}: Customize steps`).toBeVisible();
-    await customize.click();
+    await customize.dispatchEvent("click");
     await expect(dialog.getByRole("button", { name: "3 Steps", exact: true }), `${name}: Steps tab`).toBeEnabled();
     await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$/ }), `${name}: start moved`).toHaveCount(0);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -296,6 +296,49 @@ test(`kit search ${WIDTH}`, async ({ page }) => {
     await page.waitForTimeout(300);
     await page.screenshot({ path: join(OUT, `kit-search-${theme}-${WIDTH}.png`) });
     await page.keyboard.press("Escape");
+  }
+  expect(errors).toEqual([]);
+});
+
+// The one menu style on the kit page (plain, icons, sections, two-line) and the one row size, light and dark.
+test(`kit menus and rows ${WIDTH}`, async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl.replace(/\/$/u, "")}/kit.html`, { waitUntil: "domcontentloaded" });
+  for (const theme of ["dark", "light"] as const) {
+    await page.evaluate(value => { for (const el of [document.documentElement, document.body]) { el.setAttribute("data-demo-theme", value); el.classList.toggle("dark", value === "dark"); } }, theme);
+    for (const name of ["Plain list", "With icons", "With sections", "Two-line items"]) {
+      const trigger = page.getByRole("button", { name, exact: true });
+      await trigger.scrollIntoViewIfNeeded();
+      await trigger.click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: join(OUT, `kit-menu-${name.toLowerCase().replace(/\W+/gu, "-")}-${theme}-${WIDTH}.png`) });
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toBeHidden();
+    }
+    const rows = page.getByRole("region", { name: "One-line and two-line rows" });
+    await rows.scrollIntoViewIfNeeded();
+    await page.mouse.move(1, 1);
+    await page.screenshot({ path: join(OUT, `kit-rows-${theme}-${WIDTH}.png`) });
+  }
+  expect(errors).toEqual([]);
+});
+
+// Every Settings page, to audit that they share the row tokens.
+for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  for (const id of ["general", "credentials", "paths", "routes", "preflight", "activity", "keyboard", "storage"]) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}`);
+    await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
+    await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+    await settle(page);
+    await page.screenshot({ path: join(OUT, `settings-${id}-${theme}-${WIDTH}.png`) });
   }
   expect(errors).toEqual([]);
 });

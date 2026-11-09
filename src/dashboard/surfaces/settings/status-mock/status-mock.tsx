@@ -1,7 +1,7 @@
-import { Check, ExternalLink, LoaderCircle } from "lucide-react";
-import { useEffect } from "react";
+import { Check, ChevronDown, ExternalLink, LoaderCircle, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
-import { BodySection, Button, ButtonLink, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { BodySection, Button, ButtonLink, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, FormGroup, IconButton, PageHeading, ResultRow, SearchInput, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
 import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
@@ -22,17 +22,33 @@ export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
 /** Picked spreadsheet value -> version number. */
 export type StatusMockPicks = Readonly<Record<string, number>>;
 
-/** The dialog's spreadsheet picker: pick one or more; each picked one has a version picker on the right. A spreadsheet lacking a needed column is greyed out with the reason. */
+/** The dialog's spreadsheet picker: picked ones are rows with a version picker and a remove ×; an Add dropdown with search lists the rest (Pinned first, then A-Z). One lacking a needed column is greyed out with the reason. */
 export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPicks; onPicks: (next: StatusMockPicks) => void }) {
-  return <div className="flex min-w-0 flex-col gap-2"><RunList title="Reference spreadsheets">{STATUS_MOCK_SPREADSHEETS.map(sheet => {
-    const version = picks[sheet.value];
-    return <RunListRow key={sheet.value} title={sheet.label} description={sheet.description} dimmed={"disabled" in sheet}
-      check={{ checked: version !== undefined, disabled: "disabled" in sheet, onChange: value => onPicks(value ? { ...picks, [sheet.value]: sheet.current } : Object.fromEntries(Object.entries(picks).filter(([key]) => key !== sheet.value))) }}>
-      {version !== undefined && <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[72px] !border-[color:var(--ds-border)] !bg-transparent" value={String(version)} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
-        {Array.from({ length: sheet.current }, (_, index) => sheet.current - index).map(number => <option key={number} value={number}>v{number}</option>)}
-      </Select>}
-    </RunListRow>;
-  })}</RunList><p className="m-0 text-[12px] text-ui-muted">Uses: {STATUS_MOCK_REQUIRED_FIELDS}</p></div>;
+  const [query, setQuery] = useState("");
+  const picked = STATUS_MOCK_SPREADSHEETS.filter(sheet => picks[sheet.value] !== undefined);
+  const needle = query.trim().toLowerCase();
+  const available = STATUS_MOCK_SPREADSHEETS.filter(sheet => picks[sheet.value] === undefined && sheet.label.toLowerCase().includes(needle))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.label.localeCompare(b.label));
+  return <div className="flex min-w-0 flex-col gap-3">
+    <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
+      {picked.map(sheet => <RunListRow key={sheet.value} title={sheet.label} description={sheet.description}>
+        <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[76px]" value={String(picks[sheet.value])} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
+          {Array.from({ length: sheet.current }, (_, index) => sheet.current - index).map(number => <option key={number} value={number}>v{number}</option>)}
+        </Select>
+        <IconButton size="xs" label={`Remove ${sheet.label}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={() => onPicks(Object.fromEntries(Object.entries(picks).filter(([key]) => key !== sheet.value)))} />
+      </RunListRow>)}
+    </RunList>
+    <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
+      <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>Add spreadsheet</Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[320px]">
+        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} /></div>
+        {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] text-ui-muted">{picked.length === STATUS_MOCK_SPREADSHEETS.length ? "Every spreadsheet is added." : "No spreadsheets match."}</p>}
+        {available.map(sheet => <DropdownMenuItem key={sheet.value} disabled={"disabled" in sheet} onClick={() => onPicks({ ...picks, [sheet.value]: sheet.current })} >
+          <DropdownMenuItemCopy title={sheet.label} description={sheet.description} />
+        </DropdownMenuItem>)}
+      </DropdownMenuContent>
+    </DropdownMenu></div>
+  </div>;
 }
 
 /** Live problems arrive as sticky toasts: a title and one line that names where to act. */

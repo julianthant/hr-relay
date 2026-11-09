@@ -25,7 +25,7 @@ import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/to
 const BUTTON_TEXT = "text-[13px]";
 const SOFT = cn(
   "bg-[var(--ds-soft-bg)] text-[color:var(--ds-fg)] border-[color:var(--ds-soft-border)]",
-  "hover:bg-[var(--ds-surface-3)]",
+  "hover:bg-[var(--ds-soft-bg-hover)]",
 );
 const buttonVariants = cva(
   cn(

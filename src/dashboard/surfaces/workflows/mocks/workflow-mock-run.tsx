@@ -1,12 +1,12 @@
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useEffect, useRef, useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Lock, Play } from "lucide-react";
-import { BareButton, Banner, Button, Checkbox, Switch, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
+import { BareButton, Banner, Button, Switch, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockTypedInputValues, changeMockTypedInput, initialMockDraft, mockDraftError, mockDraftInputError, mockInputEntries, mockSelectableSteps, mockOcrReadSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
-import { RunList, RunListRow } from "../../run-start/run-list.js";
+import { RunList, RunListRow, RunSection } from "../../run-start/run-list.js";
 import { TypedInput } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
@@ -84,47 +84,49 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index + 1 || position === index + 1 && startDisabled}>
           <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span></BareButton></li>)}
       </ol><DialogBody key={stage} className="launch-content @container">
-        {stage !== "Options" && <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="text-heading font-semibold">{stage === "Steps" ? "Steps" : source ? "Values for the new run" : "Run input"}</h3>{stage === "Steps" && <span className="text-[12px] text-ui-muted">{included} of {planSteps.length} included</span>}</div>
-          <p className={stage === "Steps" ? "text-[12px] text-ui-muted" : "text-body text-ui-secondary"}>{stage === "Steps" ? source ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included." : flow.methods[0] === "delegated" ? "I-9 Lookup runs inside its parent workflow." : pdf ? "Choose the documents to process." : "Each entry starts one run."}</p>
+        {(stage === "Steps" || stage === "Values") && <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="text-heading font-semibold">{stage === "Steps" ? "Steps" : "Values for the new run"}</h3>{stage === "Steps" && <span className="text-[12px] text-ui-muted">{included} of {planSteps.length} included</span>}</div>
+          <p className={stage === "Steps" ? "text-[12px] text-ui-muted" : "text-body text-ui-secondary"}>{stage === "Steps" ? source ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included." : "Each entry starts one run."}</p>
         </section>}
-        <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
-        {(stage === "Input" || stage === "Values") && <section aria-label={stage} className="flex flex-col gap-3">
-          {flow.methods.length > 1 && <SegmentedChoice label="Input method" value={draft.method} options={flow.methods.map(value => ({ value, label: value === "typed" ? "Employee IDs" : "PDFs" }))} onChange={method => patch({ method })} />}
-          {workflowId === "oath-upload" && <SegmentedChoice label="Processing mode" value={draft.uploadMode} options={[{ value: "full", label: "Full process" }, { value: "upload-only", label: "Upload-only" }]} onChange={uploadMode => patch({ uploadMode })} />}
+        <div className="flex min-w-0 flex-col gap-8">
+        {(stage === "Input" || stage === "Values") && <section aria-label={stage} className="flex flex-col gap-8">
+          {(flow.methods.length > 1 || workflowId === "oath-upload") && <RunList label="Input options">
+            {flow.methods.length > 1 && <RunListRow title="Input method" description="Type Employee IDs or upload PDF scans."><div className="w-[250px]"><SegmentedChoice hideLabel label="Input method" value={draft.method} options={flow.methods.map(value => ({ value, label: value === "typed" ? "Employee IDs" : "PDFs" }))} onChange={method => patch({ method })} /></div></RunListRow>}
+            {workflowId === "oath-upload" && <RunListRow title="Processing mode" description="Full process reads, matches and uploads each scan."><div className="w-[250px]"><SegmentedChoice hideLabel label="Processing mode" value={draft.uploadMode} options={[{ value: "full", label: "Full process" }, { value: "upload-only", label: "Upload-only" }]} onChange={uploadMode => patch({ uploadMode })} /></div></RunListRow>}
+          </RunList>}
           {draft.method === "typed" && (flow.typedInput ? <TypedInput presentation="mock" workflowId={workflowId}
             surface={{ typedInput: flow.typedInput, placeholder: flow.placeholder, parser: { split: { kind: "whole-text" }, rules: [{ when: { kind: "otherwise" }, emit: "value" }] } }}
             text={draft.text} onText={text => patch({ text })} draft={mockTypedInputValues(workflowId, draft)}
             onValue={(field, value) => patch(changeMockTypedInput(workflowId, draft, field, value))}
             preview={{ entries: typedEntries.map((sourceText, index) => ({ index, sourceText })), submissions: [], problem: null }} /> : <>
-            <Field label={flow.inputLabel} description="Separate values with a comma or Shift+Enter.">
-              <Textarea autoFocus rows={4} value={draft.text} placeholder={flow.placeholder} onChange={event => patch({ text: event.target.value })} />
-            </Field>
+            <RunSection title="Input" description={`${flow.inputLabel}. Separate values with a comma or Shift+Enter.`}>
+              <Textarea autoFocus rows={4} aria-label={flow.inputLabel} value={draft.text} placeholder={flow.placeholder} onChange={event => patch({ text: event.target.value })} />
+            </RunSection>
             {typedEntries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{typedEntries.map((entry, number) => <li key={number} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{number + 1}</span><span className="truncate">{entry}</span></li>)}</ul>}
           </>)}
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
-            <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && workflowId === "onbase" && "grid-cols-2")}>
-            {flow.roster && !uploadOnly && !statusMockPicker && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
-            {workflowId === "onbase" && <ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} />}
-            </div>
+            {(workflowId === "onbase" || flow.roster && !uploadOnly && !statusMockPicker) && <RunList label="Documents setup">
+              {flow.roster && !uploadOnly && !statusMockPicker && <RunListRow title="Roster" description="The spreadsheet Relay matches each scan against."><div className="w-[250px]"><ChoicePicker hideLabel label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} /></div></RunListRow>}
+              {workflowId === "onbase" && <RunListRow title="Document type" description="How OnBase files the imported pages."><div className="w-[250px]"><ChoicePicker hideLabel label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /></div></RunListRow>}
+            </RunList>}
             {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
           {workflowId === "emergency-contact" && mock === "run-a" && <StatusMockReadiness frame="run-a" />}
           {workflowId === "emergency-contact" && (mock === "run-ready" || mock === "run-b" || mock === "run-rerun" || mock === "run-rerun-options" || mock === "run-options") && <StatusMockRosterPicker picks={picks} onPicks={setPicks} />}
-          {draft.method === "roster" && <ChoicePicker label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} />}
+          {draft.method === "roster" && <RunList label="Spreadsheet"><RunListRow title="Spreadsheet" description="The library spreadsheet to download."><div className="w-[250px]"><ChoicePicker hideLabel label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} /></div></RunListRow></RunList>}
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}
-          {workflowId === "work-study" && <DateInput label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} />}
-          {workflowId === "old-kronos-reports" && <div className="grid grid-cols-2 gap-4"><DateInput label="Report start" required value={draft.startDate} onChange={startDate => patch({ startDate })} /><DateInput label="Report end" required value={draft.endDate} onChange={endDate => patch({ endDate })} /></div>}
+          {workflowId === "work-study" && <RunList label="Dates"><RunListRow title="Effective date" description="The day the change takes effect."><div className="w-[200px]"><DateInput hideLabel label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} /></div></RunListRow></RunList>}
+          {workflowId === "old-kronos-reports" && <RunList label="Dates"><RunListRow title="Report start" description="First day of the report."><div className="w-[200px]"><DateInput hideLabel label="Report start" required value={draft.startDate} onChange={startDate => patch({ startDate })} /></div></RunListRow><RunListRow title="Report end" description="Last day of the report."><div className="w-[200px]"><DateInput hideLabel label="Report end" required value={draft.endDate} onChange={endDate => patch({ endDate })} /></div></RunListRow></RunList>}
           {error && draft.method !== "delegated" && (draft.text || draft.files.length || fileError) && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </section>}
         {stage === "Options" && chatGptBlocked && <StatusMockReadiness frame="run-b" />}
-        {stage === "Options" && <div className="flex flex-col gap-[var(--ds-space-loose)]">
+        {stage === "Options" && <div className="flex flex-col gap-8">
           <RunList title="Run">
-            {!source && planSteps.length > 0 && <RunListRow title="Customize steps" description="Choose optional steps."><Checkbox label="Customize steps" className="[&_.ds-checkbox-copy]:sr-only" checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} /></RunListRow>}
-            {pdf && !uploadOnly && <RunListRow title="Extract with OCR" description="Turn off to enter records manually in OCR review."><Checkbox label="Extract with OCR" className="[&_.ds-checkbox-copy]:sr-only" checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /></RunListRow>}
+            {!source && planSteps.length > 0 && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value); if (!value) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
+            {pdf && !uploadOnly && <RunListRow title="Extract with OCR" description="Turn off to enter records manually in OCR review."><Switch hideLabel label="Extract with OCR" checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value ? "extract" : "manual" })} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
             {flow.dryRun && <RunListRow title="Dry run" description="Fill and check every step without submitting."><Switch hideLabel label="Dry run" checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
             <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
-            <RunListRow title="Priority" description="Runs before bulk batches."><Checkbox label="Priority" className="[&_.ds-checkbox-copy]:sr-only" checked={priority} onCheckedChange={value => { setPriorityTouched(true); patch({ priority: value === true ? "interactive" : "background" }); }} /></RunListRow>
+            <RunListRow title="Priority" description="Runs before bulk batches."><Switch hideLabel label="Priority" checked={priority} onCheckedChange={value => { setPriorityTouched(true); patch({ priority: value ? "interactive" : "background" }); }} className="!min-h-0 !w-auto !py-0" /></RunListRow>
             <RunListRow title="Browser" description="Headless runs in the background."><div className="w-[250px]"><SegmentedChoice hideLabel label="Browser mode" value={draft.browser} onChange={browser => patch({ browser })} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></div></RunListRow>
             {workflowId === "onboarding" && <RunListRow title="Hire type" description="Applies to every item."><div className="w-[250px]"><SegmentedChoice hideLabel label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} /></div></RunListRow>}
           </RunList>

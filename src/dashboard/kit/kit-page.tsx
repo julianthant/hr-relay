@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { RunList, RunListRow } from "../surfaces/run-start/run-list.js";
 import {
   ArrowUpDown,
   ArrowUpRight,
@@ -120,7 +121,13 @@ import {
   type DsStatus,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuItemCopy,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ds/ui.js";
 
@@ -1156,6 +1163,8 @@ function OverlaysSection() {
           </DropdownMenuContent>
         </DropdownMenu>
       </Row>
+      <Row label="Menus"><KitMenus /></Row>
+      <Row label="Rows"><KitRows /></Row>
       <Row label="Popover">
         <Popover>
           <PopoverTrigger asChild>
@@ -1337,4 +1346,71 @@ function FoundationsSection() {
       </div>
     </Section>
   );
+}
+
+/** The four shapes of the one menu style: plain list, with icons, with sections, two-line items. */
+function KitMenus() {
+  const [sort, setSort] = useState("newest");
+  const [type, setType] = useState("all");
+  const [mode, setMode] = useState("ask");
+  const trigger = (label: string) => <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>{label}</Button></DropdownMenuTrigger>;
+  return <>
+    <DropdownMenu>{trigger("Plain list")}
+      <DropdownMenuContent align="start" className="w-[220px]">
+        <DropdownMenuRadioGroup value={sort} onValueChange={setSort}>
+          <DropdownMenuRadioItem value="newest">Newest first</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="oldest">Oldest first</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <DropdownMenu>{trigger("With icons")}
+      <DropdownMenuContent align="start" className="w-[220px]">
+        <DropdownMenuItem><Pencil aria-hidden />Rename</DropdownMenuItem>
+        <DropdownMenuItem><ClipboardList aria-hidden />Copy details</DropdownMenuItem>
+        <DropdownMenuItem><Camera aria-hidden />Screenshots</DropdownMenuItem>
+        <DropdownMenuItem disabled><Inbox aria-hidden />Archive</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <DropdownMenu>{trigger("With sections")}
+      <DropdownMenuContent align="start" className="w-[240px]">
+        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find an option" placeholder="Find an option" /></div>
+        <DropdownMenuGroup><DropdownMenuLabel>Type</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={type} onValueChange={setType}>
+            <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="runs">Runs</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup><DropdownMenuLabel>Sort by</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={sort} onValueChange={setSort}>
+            <DropdownMenuRadioItem value="newest">Newest first</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="oldest">Oldest first</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <DropdownMenu>{trigger("Two-line items")}
+      <DropdownMenuContent align="start" className="w-[300px]">
+        <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
+          <DropdownMenuRadioItem value="ask"><DropdownMenuItemCopy title="Ask first" description="Relay asks before each live write." /></DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="auto"><DropdownMenuItemCopy title="Run on its own" description="Only for dry runs and approved workflows." /></DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <Select aria-label="Version" value="v6" onChange={() => undefined} className="w-[96px]"><option value="v6">v6</option><option value="v5">v5</option></Select>
+  </>;
+}
+
+/** The one default row size: one-line row, two-line row and a table, all from the `--ds-row-*` tokens. */
+function KitRows() {
+  return <div className="grid w-[640px] max-w-full gap-4">
+    <RunList title="One-line and two-line rows">
+      <RunListRow title="One-line row"><Select aria-label="Version" value="v6" onChange={() => undefined} className="w-[76px]"><option value="v6">v6</option></Select></RunListRow>
+      <RunListRow title="Two-line row" description="A grey line under the title."><Button variant="secondary">Action</Button></RunListRow>
+      <RunListRow title="Two-line row with a switch" description="Controls are 28px."><Switch hideLabel label="Example" checked onCheckedChange={() => undefined} className="!min-h-0 !w-auto !py-0" /></RunListRow>
+    </RunList>
+    <div className="ds-table-list-frame"><table aria-label="Rows example"><thead><tr><th>Name</th><th>Source</th><th>Version</th></tr></thead>
+      <tbody><tr><td>Contact roster</td><td>SharePoint</td><td>v6</td></tr><tr><td>I-9 tracker</td><td>Pinned</td><td>v3</td></tr></tbody></table></div>
+  </div>;
 }

@@ -34,12 +34,12 @@ export const STATUS_MOCK_BLOCKERS = {
   "run-b": [{ id: "chatgpt", title: "ChatGPT is disconnected", note: "Relay reads the scans with your ChatGPT plan.", action: "Reconnect" }],
 } as const;
 
-/** The workflow's library spreadsheets, Pinned first. One lacking a column the workflow needs is greyed out with the reason; `used` marks the last selection; `current` is the newest version number. */
+/** The workflow's library spreadsheets. One lacking a column the workflow needs is greyed out with the reason; `used` marks the last selection; `current` is the newest version number. */
 export const STATUS_MOCK_SPREADSHEETS = [
-  { value: "contact-roster", label: "Contact roster", description: "SharePoint · Pinned", current: 6, used: true },
-  { value: "i9-tracker", label: "I-9 tracker", description: "Pinned", current: 3, used: true },
-  { value: "fall-hires", label: "Fall hires", description: "SharePoint", current: 4, used: false },
-  { value: "pl33065442", label: "PL33065442", description: "Needs Employee ID", current: 1, used: false, disabled: true },
+  { value: "contact-roster", label: "Contact roster", description: "SharePoint · Pinned", current: 6, used: true, pinned: true },
+  { value: "i9-tracker", label: "I-9 tracker", description: "Pinned", current: 3, used: true, pinned: true },
+  { value: "fall-hires", label: "Fall hires", description: "SharePoint", current: 4, used: false, pinned: false },
+  { value: "pl33065442", label: "PL33065442", description: "Needs Employee ID", current: 1, used: false, pinned: false, disabled: true },
 ] as const;
 export const STATUS_MOCK_REQUIRED_FIELDS = "Employee ID, Name";
 

@@ -629,7 +629,7 @@ function PopoverSurface({
         ref={surfaceRef}
         className={cn(
           POPOVER_WIDTH[width],
-          "max-w-[calc(100vw-var(--ds-space-section))] outline-none",
+          "ds-menu-surface !p-0 max-w-[calc(100vw-var(--ds-space-section))]",
           dsLayer.menu,
           dsMotion.enter,
           POPOVER_ORIGIN,
