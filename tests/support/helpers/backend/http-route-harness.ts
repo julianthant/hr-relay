@@ -1,3 +1,4 @@
+import { createStorageBackupObservation } from "../../../../src/backend/runs/queries/storage.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
@@ -363,6 +364,7 @@ export async function harness(options: {
   });
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
   const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock, workflows: [fixtureDescriptor] });
+  const backupObservation = createStorageBackupObservation();
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
@@ -382,8 +384,7 @@ export async function harness(options: {
       projection,
       actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
-      // The harness runs no backup lane; "missing" is its true state.
-      workbookReferences: workflows => workbookLibrary.references(workflows), backupSummary: () => "missing",
+      workbookReferences: workflows => workbookLibrary.references(workflows), backupSummary: backupObservation.read,
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,
@@ -428,6 +429,7 @@ export async function harness(options: {
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
     settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
       environment: {}, clock },
+    backupObservation,
     storage: {
       admission: profile.admission,
       credentials,

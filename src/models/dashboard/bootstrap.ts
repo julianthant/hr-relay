@@ -1,3 +1,4 @@
+import { StorageRestoreTargetWireSchema } from "./storage.js";
 import { WorkbookImportPurposeSchema } from "./workbooks.js";
 import { WorkbookReferenceSlotsSchema } from "./workbook-library.js";
 import { z } from "zod";
@@ -34,6 +35,9 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
   authority: z.enum(["healthy", "unavailable"]),
   backup: z.enum(["current", "stale", "missing", "unavailable"]),
   checkedAt: IsoInstantSchema,
+  lastBackupAt: IsoInstantSchema.nullable(),
+  backupCheckedAt: IsoInstantSchema.nullable(),
+  restoreTarget: StorageRestoreTargetWireSchema,
 });
 
 /** Serve descriptor codes and raw category/role facts; the frontend owns presentation. */

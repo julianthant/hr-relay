@@ -12,6 +12,13 @@ import {
   StorageDoctorOptionsSchema,
 } from "./storage-doctor.js";
 
+import type { StorageDoctorReport } from "./recovery-contracts.js";
+
+interface AuthorityHealthObserver {
+  observed(report: StorageDoctorReport): void;
+  failed(): void;
+}
+
 export class AuthorityHealthPreflightRunner implements PreflightRunner {
   readonly check = PreflightCheckIdSchema.parse("authority.health");
   readonly kind = "io" as const;
@@ -19,21 +26,28 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
   #clock: Clock;
   #admission: RuntimeAdmission;
   #credentials: CredentialStore | undefined;
+  #observer: AuthorityHealthObserver | undefined;
 
-  constructor(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore) {
+  constructor(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore, observer?: AuthorityHealthObserver) {
     this.#admission = admission;
     this.#credentials = credentials;
+    this.#observer = observer;
     this.#options = StorageDoctorOptionsSchema.parse(input);
     this.#clock = clock;
   }
 
   async run(context: PreflightRunnerContext) {
-    if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
-    const report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials).catch((error: unknown) => {
+    let report: StorageDoctorReport;
+    try {
+      if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
+      report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials);
+      if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
+      this.#observer?.observed(report);
+    } catch (error) {
+      this.#observer?.failed();
       if (error instanceof StorageDoctorObservationChangedError) throw new PreflightObservationChangedError({ cause: error });
       throw error;
-    });
-    if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
+    }
     const protectedSummary = report.protectedSettings.state === "available"
       ? report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(", ")
       : report.protectedSettings.cause.summary;

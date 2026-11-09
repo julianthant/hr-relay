@@ -28,7 +28,7 @@ it("independent Setup consumer reads production readiness and reruns/replays the
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap({ appVersion: "0.1.0", clock, modules: [], descriptorSetHash: fingerprint,
     settingsSchemaHash: fingerprint, projection: { generation: () => 1 }, actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 53, authorityGeneration: 1 }),
-    workbookReferences: () => [], backupSummary: () => "missing", preflightReport: () => preflight.readLatest(), })));
+    workbookReferences: () => [], backupSummary: () => ({ backup: "missing", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } }), preflightReport: () => preflight.readLatest(), })));
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async (url, init) => app.request(url, { ...init, headers: { ...init?.headers, host: "localhost" } }) });
   const ready = await client.readiness(); assert.ok(ready.state === "present"); assert.ok(ready.checks.every((check) => check.verdict === "pass"));
   unhealthy = true;

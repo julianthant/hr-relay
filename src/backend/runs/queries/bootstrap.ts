@@ -3,7 +3,7 @@ import { descriptorRuntimeNodes, workflowProjections } from "../../../workflow-k
 import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
-import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire, type WorkflowStartReadiness } from "../../../models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, StorageHealthSummaryWireSchema, type FrontendBootstrapWire, type WorkflowStartWire, type WorkflowStartReadiness } from "../../../models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
 import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
@@ -36,7 +36,7 @@ export interface BootstrapQueryDeps {
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
   readonly workbookReferences: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["references"]>;
-  readonly backupSummary: () => "current" | "stale" | "missing" | "unavailable";
+  readonly backupSummary: (liveGeneration: number | undefined) => Pick<z.infer<typeof StorageHealthSummaryWireSchema>, "backup" | "lastBackupAt" | "backupCheckedAt" | "restoreTarget">;
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }
@@ -84,8 +84,9 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
   const preflight = PreflightReportSchema.parse(deps.preflightReport());
   const workbookReferences = deps.workbookReferences(deps.modules.map(module => module.descriptor));
   let storageAuthority: "healthy" | "unavailable" = "healthy";
+  let liveGeneration: number | undefined;
   try {
-    deps.authorityMeta();
+    liveGeneration = deps.authorityMeta().authorityGeneration;
   } catch {
     // The wire enum is closed; the exact failure surfaces through the
     // authority routes themselves, which throw rather than degrade.
@@ -106,7 +107,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     serverClock: { now: deps.clock.now().toISOString(), zone: deps.timeZone ?? runtimeTimeZone() },
     storage: {
       authority: storageAuthority,
-      backup: deps.backupSummary(),
+      ...deps.backupSummary(liveGeneration),
       checkedAt: deps.clock.now().toISOString(),
     },
     preflight: preflight.results.map((result) => ({

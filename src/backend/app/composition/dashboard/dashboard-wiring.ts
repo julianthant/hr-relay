@@ -75,7 +75,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
-  const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, timeZone, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, readBackupSummary, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
+  const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, timeZone, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, backupObservation, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
   const ledger = createTransactionHistory(database.authority);
   const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
   const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
@@ -301,7 +301,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox }),
-    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
+    preflightReport: () => preflightAuthority.readLatest(), backupSummary: backupObservation.read,
   });
   const { hub } = shell;
   startupCleanups.push(requiredClosure(() => hub.close()));
@@ -356,7 +356,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
-    ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
+    ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState, backupObservation }),
     runHistory: { status: () => runHistory.status(), clear: request => runHistory.clear(confirmedHistoryCommand(request)),
       check: request => runHistory.check(confirmedHistoryCommand(request)) },
     ...explorerBoundary,

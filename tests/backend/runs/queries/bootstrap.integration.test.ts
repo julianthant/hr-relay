@@ -82,7 +82,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
     workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
-    backupSummary: () => "current",
+    backupSummary: () => ({ backup: "current", lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } }),
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
 }
@@ -236,7 +236,7 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
 
 {
 
-type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>;
+type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>["backup"];
 
 /** The wire's own vocabulary, read off the schema — never retyped. */
 function armsOf(key: "authority" | "backup"): readonly string[] {
@@ -263,7 +263,7 @@ function depsOf(
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
     workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
-    backupSummary: () => storage.backup,
+    backupSummary: () => ({ backup: storage.backup, lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } }),
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),
@@ -435,7 +435,7 @@ describe("bootstrap storage summary", () => {
       const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
       assert.deepEqual(
         wire.storage,
-        { authority: "unavailable", backup: "stale", checkedAt: AT.toISOString() },
+        { authority: "unavailable", backup: "stale", checkedAt: AT.toISOString(), lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "unavailable", reason: "Backup verification has not completed. Check again.", fixAction: "check-again" } },
       );
     } finally {
       await world.dispose();

@@ -44,6 +44,8 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/backend/runs/queries/activity-timing.ts` owns successful-root timing shared by the Analytics summary and population producers.
 
+`src/backend/runs/queries/storage.ts` owns the composition-scoped verified backup observation and compact bootstrap projection; `src/backend/storage/sqlite/storage-doctor.ts` owns backup verification.
+
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
 `src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots and action receipts alongside editable revisions.

@@ -193,3 +193,16 @@ export const StorageDoctorLatestWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("completed"), report: StorageDoctorWireSchema }),
 ]);
 export type StorageDoctorLatestWire = z.infer<typeof StorageDoctorLatestWireSchema>;
+
+const StorageBackupFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+
+export const StorageRestoreTargetWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("available"),
+    mode: z.literal("stopped-maintenance"),
+    candidate: RestoreCandidateWireSchema.options[0].pick({
+      manifestFileName: true, backupFileName: true, createdAt: true, schemaVersion: true, authorityGeneration: true,
+    }).extend({ manifestFileName: StorageBackupFileNameSchema, backupFileName: StorageBackupFileNameSchema }),
+  }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1), fixAction: z.literal("check-again") }),
+]);

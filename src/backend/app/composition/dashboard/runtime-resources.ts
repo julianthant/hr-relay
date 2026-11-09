@@ -1,3 +1,4 @@
+import { createStorageBackupObservation, projectStorageDoctor } from "../../../runs/queries/storage.js";
 import { readFileSync } from "node:fs";
 import { join,resolve } from "node:path";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
@@ -21,7 +22,7 @@ import { requireRuntimeAdmission } from "../../../storage/admission/admission-id
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
-import { AuthorityHealthPreflightRunner,summarizeBackupHealth } from "../../../storage/sqlite/index.js";
+import { AuthorityHealthPreflightRunner } from "../../../storage/sqlite/index.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
@@ -178,21 +179,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     reason: "verified backups run after clean shutdown; the last three shutdown backups are retained",
   });
 
-  const readBackupSummary = (): ReturnType<typeof summarizeBackupHealth> => {
-    let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
-    try {
-      liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };
-    } catch {
-      // Unavailable authority is distinct from an absent backup; judge the latter by manifest presence.
-      liveGeneration = { state: "unavailable" };
-    }
-    return summarizeBackupHealth(
-      admission,
-      { backupDirectory },
-      liveGeneration.state === "known" ? liveGeneration.value : undefined,
-      clock,
-    );
-  };
+  const backupObservation = createStorageBackupObservation();
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
@@ -244,7 +231,10 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
       authorityPath: join(stateRoot, "state.db"),
       backupDirectory,
       busyTimeoutMs: 5000,
-    }, clock, context.credentials),
+    }, clock, context.credentials, {
+      observed: report => backupObservation.observe(projectStorageDoctor(report, backupServiceState)),
+      failed: () => backupObservation.invalidate(),
+    }),
   });
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
   const preflightAuthority = createPreflightAuthority({
@@ -257,5 +247,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   });
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, readBackupSummary, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, backupObservation, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }
