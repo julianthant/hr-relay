@@ -2,12 +2,15 @@ import type { NotificationTarget } from "../../../models/notifications/notificat
 
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
+export type NotificationKind = "storage" | "chatgpt" | "run";
 export type NotificationDestination = NotificationTarget
-  | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>;
+  | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
+  | Readonly<{ kind: "settings"; section: "general" | "subscription" }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
+  kind?: NotificationKind; earlier?: boolean;
 }>;
 export type NotificationPinned = Readonly<{ id: string; title: string; detail: string }>;
 export type NotificationsState = Readonly<{ state: "ready"; items: readonly NotificationItem[]; pinned: readonly NotificationPinned[] }>
@@ -33,4 +36,9 @@ export function updateNotification(state: NotificationsState, id: string, contro
 export function applyNotificationReads(state: NotificationsState, reads: Readonly<Record<string, boolean>>): NotificationsState {
   if (state.state !== "ready") return state;
   return { ...state, items: state.items.map(item => reads[item.id] === undefined || reads[item.id] === item.read ? item : { ...item, read: reads[item.id] }) };
+}
+
+/** "2 min ago" -> "2m": the centre shows a short time on the right. */
+export function shortAge(age: string): string {
+  return age.replace(/ min ago$/, "m").replace(/ hr ago$/, "h").replace(/ days? ago$/, "d");
 }
