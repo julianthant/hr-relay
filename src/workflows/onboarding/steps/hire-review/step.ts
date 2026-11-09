@@ -30,10 +30,268 @@ const review = Object.freeze({ ...defineWorkflowStep({ key: "hire-review", label
       label, sources: [{ nodeId: "hire-findings", kind: "output" as const, fieldPath: `rows.${fieldPath}` }],
     })),
   ],
+  review: {
+    pages: [
+      {
+        id: "smart-hr-findings",
+        title: "SS Smart HR transaction search",
+        mode: "Read only",
+        nodeIds: ["hire-findings", "hire-review"],
+        lines: [
+          { id: "read-findings", kind: "read", text: "Read complete UCPath transaction findings for the proposed hire.", nodeIds: ["hire-findings"] },
+          { id: "approve-path", kind: "action", text: "Review the findings and approve the new or existing person hire path.", nodeIds: ["hire-review"] }
+        ],
+        fields: [
+          {
+            id: "scan-completeness",
+            operatorField: "Scan completeness",
+            source: {
+              origin: "UCPath",
+              detail: "Completeness of the UCPath findings scan.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Scan completeness" }
+            }
+          },
+          {
+            id: "observed-at",
+            operatorField: "Observed at",
+            source: {
+              origin: "UCPath",
+              detail: "When the findings were observed.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Observed at" }
+            }
+          },
+          {
+            id: "transaction",
+            operatorField: "Transaction",
+            source: {
+              origin: "UCPath",
+              detail: "Transaction number in a finding.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Transaction" }
+            }
+          },
+          {
+            id: "approval-status",
+            operatorField: "Approval status",
+            source: {
+              origin: "UCPath",
+              detail: "Status in a transaction finding.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Approval status" }
+            }
+          },
+          {
+            id: "ucpath-name",
+            operatorField: "UCPath name",
+            source: {
+              origin: "UCPath",
+              detail: "Name shown in a transaction finding.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "UCPath name" }
+            }
+          },
+          {
+            id: "employee-id",
+            operatorField: "Employee ID",
+            source: {
+              origin: "UCPath",
+              detail: "Employee ID shown in a transaction finding.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Employee ID" }
+            }
+          },
+          {
+            id: "effective-date",
+            operatorField: "Effective date",
+            source: {
+              origin: "UCPath",
+              detail: "Effective date shown in a transaction finding.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Effective date" }
+            }
+          },
+          {
+            id: "position",
+            operatorField: "Position",
+            source: {
+              origin: "UCPath",
+              detail: "Position shown in a transaction finding.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Position" }
+            }
+          },
+          {
+            id: "tracker-profile-id",
+            operatorField: "Tracker Profile ID",
+            source: {
+              origin: "UCPath",
+              detail: "Tracker profile ID shown in a transaction finding.",
+              chain: [],
+              read: { stepKey: "hire-review", page: "SS Smart HR transaction search", field: "Tracker Profile ID" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 });
-const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label: "Create or reuse the I-9 record" }), system: "i9" as const });
-const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", label: "File and verify the UCPath hire" }), system: "ucpath" as const });
-const masterGroup = Object.freeze({ ...defineWorkflowStep({ key: "master-results", label: "Fill verified master results" }), system: "local" as const });
+const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label: "Create or reuse the I-9 record" }), system: "i9" as const,
+  review: {
+    pages: [
+      {
+        id: "new-employee",
+        title: "Create new I9: new employee",
+        mode: "Fill form",
+        nodeIds: ["i9-profile-save"],
+        lines: [
+          { id: "profile", kind: "action", text: "Fill and verify the reviewed employee profile and worksite.", nodeIds: ["i9-profile-save"] },
+          { id: "save-profile", kind: "action", text: "In a live run, save the profile and verify its profile ID.", nodeIds: ["i9-profile-save"] }
+        ],
+        fields: []
+      },
+      {
+        id: "remote-i9",
+        title: "Remote - Section 1 Only",
+        mode: "Fill form",
+        nodeIds: ["i9-remote-create"],
+        lines: [
+          { id: "remote", kind: "action", text: "Select Remote - Section 1 Only and the reviewed start date.", nodeIds: ["i9-remote-create"] },
+          { id: "create", kind: "action", text: "In a live run, create the I-9 and verify its exact profile and date.", nodeIds: ["i9-remote-create"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: [
+      { nodeId: "i9-route", outcome: "create", label: "Create an I-9 profile and remote record for a new hire" },
+      { nodeId: "i9-route", outcome: "existing", label: "Use the confirmed existing person without creating an I-9 record" }
+    ]
+  } as const,
+});
+const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", label: "File and verify the UCPath hire" }), system: "ucpath" as const,
+  review: {
+    pages: [
+      {
+        id: "hire-setup",
+        title: "Smart HR transaction setup",
+        mode: "Fill form",
+        nodeIds: ["hire-create", "concurrent-hire-create"],
+        lines: [{ id: "setup", kind: "action", text: "Select the reviewed hire template, effective date and person.", nodeIds: ["hire-create", "concurrent-hire-create"] }],
+        fields: []
+      },
+      {
+        id: "personal-data",
+        title: "Personal Data",
+        mode: "Fill form",
+        nodeIds: ["hire-create", "concurrent-hire-create"],
+        lines: [
+          {
+            id: "personal",
+            kind: "action",
+            text: "For a new hire, fill and check legal and lived names, identifiers, contact details and the verified Tracker profile.",
+            nodeIds: ["hire-create"]
+          },
+          { id: "existing-person", kind: "check", text: "For an existing person, confirm the independently verified identity.", nodeIds: ["concurrent-hire-create"] }
+        ],
+        fields: []
+      },
+      {
+        id: "job-data",
+        title: "Job Data",
+        mode: "Fill form",
+        nodeIds: ["hire-create", "concurrent-hire-create"],
+        lines: [
+          {
+            id: "job",
+            kind: "action",
+            text: "Fill position, classification, expected end date and hourly pay details.",
+            nodeIds: ["hire-create", "concurrent-hire-create"]
+          },
+          { id: "verify-job", kind: "check", text: "Read every staged job and pay value back.", nodeIds: ["hire-create", "concurrent-hire-create"] }
+        ],
+        fields: []
+      },
+      {
+        id: "earnings-distribution",
+        title: "Earns Dist",
+        mode: "Read only",
+        nodeIds: ["hire-create", "concurrent-hire-create"],
+        lines: [{ id: "earnings", kind: "check", text: "Open earnings distribution and retain the wizard evidence.", nodeIds: ["hire-create", "concurrent-hire-create"] }],
+        fields: []
+      },
+      {
+        id: "employee-experience",
+        title: "Employee Experience",
+        mode: "Read only",
+        nodeIds: ["hire-create"],
+        lines: [{ id: "experience", kind: "check", text: "For a new hire, open Employee Experience and retain the wizard evidence.", nodeIds: ["hire-create"] }],
+        fields: []
+      },
+      {
+        id: "hire-submission",
+        title: "Personal Data",
+        mode: "Fill form",
+        nodeIds: ["hire-create", "concurrent-hire-create"],
+        lines: [
+          {
+            id: "comments",
+            kind: "action",
+            text: "Return to Personal Data, fill the comments and verify the resolved person.",
+            nodeIds: ["hire-create", "concurrent-hire-create"]
+          },
+          { id: "submit", kind: "action", text: "In a live run, click Save and Submit for the reviewed hire.", nodeIds: ["hire-create", "concurrent-hire-create"] }
+        ],
+        fields: []
+      },
+      {
+        id: "hire-receipt",
+        title: "SS Smart HR transaction detail",
+        mode: "Read only",
+        nodeIds: ["hire-receipt", "concurrent-hire-receipt"],
+        lines: [
+          {
+            id: "receipt",
+            kind: "check",
+            text: "Read the exact filed transaction number and current status again.",
+            nodeIds: ["hire-receipt", "concurrent-hire-receipt"]
+          }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const,
+});
+const masterGroup = Object.freeze({ ...defineWorkflowStep({ key: "master-results", label: "Fill verified master results" }), system: "local" as const,
+  review: {
+    pages: [
+      {
+        id: "onboarding-roster",
+        title: "Onboarding roster",
+        mode: "Read only",
+        nodeIds: ["master-results", "concurrent-master-results"],
+        lines: [
+          {
+            id: "fill-results",
+            kind: "action",
+            text: "Fill verified hire results through the roster version captured for this run.",
+            nodeIds: ["master-results", "concurrent-master-results"]
+          },
+          {
+            id: "confirm-results",
+            kind: "check",
+            text: "Retain the result-cell receipt or the reason the roster needs review.",
+            nodeIds: ["master-results", "concurrent-master-results"]
+          }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const,
+});
 const reviewEntries = defineStepEntries(review), entries = defineStepEntries(group), hireEntries = defineStepEntries(hireGroup), masterEntries = defineStepEntries(masterGroup);
 
 function previewProfile(dryRun: DryRunScope | undefined) {

@@ -5,7 +5,29 @@ import { defineStep, defineStepEntries, inheritStepProof } from "../../../../wor
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { i9CheckPersonLookupDefinition, personLookupEntries } from "../person-lookup/step.js";
 import { i9CheckPersonMatchDefinition, personMatchEntries } from "../person-match/step.js";
-export const rosterMatch = defineWorkflowStep({ key: "roster-match", label: "Match retention roster" });
+export const rosterMatch = Object.freeze({
+  ...defineWorkflowStep({ key: "roster-match", label: "Match retention roster" }),
+  review: {
+    pages: [
+      {
+        id: "retention-roster",
+        title: "Retention roster",
+        mode: "Read only",
+        nodeIds: ["retention-row"],
+        lines: [
+          {
+            id: "retention",
+            kind: "check",
+            text: "Compare UCPath employment details with the saved roster row and calculate retention.",
+            nodeIds: ["retention-row"]
+          }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const
+});
 type I9Author = WorkflowAuthor<typeof I9CheckInput>;
 const roster = defineStepEntries(rosterMatch);
 

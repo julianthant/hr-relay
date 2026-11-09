@@ -55,6 +55,82 @@ const IDENTITY_CHECK_DISPLAY = {
     { label: "UCPath name", example: "Quillan, Petra A.", sources: [{ nodeId: "comparison", kind: "output", fieldPath: "packet.ucpathName" }] },
     { label: "Document name", example: "Quillan, Petra A.", sources: [{ nodeId: "comparison", kind: "output", fieldPath: "packet.documentName" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "person-org-search",
+        title: "Person Organizational Summary search",
+        mode: "Read only",
+        nodeIds: ["name-search", "subject"],
+        lines: [
+          { id: "search-name", kind: "action", text: "Search UCPath for the employee named on the Kuali document.", nodeIds: ["name-search"] },
+          { id: "select-subject", kind: "check", text: "Resolve the exact employee ID and name match.", nodeIds: ["subject"] }
+        ],
+        fields: [
+          {
+            id: "searched-name",
+            operatorField: "Searched name",
+            source: {
+              origin: "Kuali document",
+              detail: "Name used for the UCPath search.",
+              chain: [
+                {
+                  label: "Document name",
+                  detail: "Read on the Kuali separation request.",
+                  read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Employee" }
+                }
+              ],
+              read: { stepKey: "identity-check", page: "Person Organizational Summary search", field: "Searched name" }
+            }
+          },
+          {
+            id: "employee-id",
+            operatorField: "Employee ID",
+            source: {
+              origin: "UCPath",
+              detail: "Employee ID of the resolved separation subject.",
+              chain: [],
+              read: { stepKey: "identity-check", page: "Person Organizational Summary search", field: "Employee ID" }
+            }
+          }
+        ]
+      },
+      {
+        id: "identity-review",
+        title: "Person Organizational Summary detail",
+        mode: "Read only",
+        nodeIds: ["comparison", "identity-approval", "approval"],
+        lines: [
+          { id: "compare-identities", kind: "check", text: "Compare document and UCPath identity evidence.", nodeIds: ["comparison"] },
+          { id: "request-approval", kind: "action", text: "Request operator approval when the names or identifiers require it.", nodeIds: ["identity-approval"] },
+          { id: "verify-approval", kind: "check", text: "Verify the approval against the comparison evidence.", nodeIds: ["approval"] }
+        ],
+        fields: [
+          {
+            id: "ucpath-name",
+            operatorField: "UCPath name",
+            source: {
+              origin: "UCPath",
+              detail: "Name in the selected UCPath record.",
+              chain: [{ label: "UCPath result", detail: "Read the name of the UCPath person selected for comparison." }],
+              read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "UCPath name" }
+            }
+          },
+          {
+            id: "document-name",
+            operatorField: "Document name",
+            source: {
+              origin: "Kuali",
+              detail: "Name read from the Kuali separation request.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Employee" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } satisfies WorkflowGroupOptions;
 
 export const NAME_SEARCH_NODE = "name-search";
@@ -108,6 +184,70 @@ const JOB_SUMMARY_DISPLAY = {
     { label: "Payroll title", example: "Fictional analyst", sources: [{ nodeId: "employment", kind: "output", fieldPath: "payrollTitle" }] },
     { label: "Kuali department option", example: "Campus Dining", sources: [{ nodeId: "department-option", kind: "output", fieldPath: "option" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "job-summary",
+        title: "Person Organizational Summary detail",
+        mode: "Read only",
+        nodeIds: ["job-summary", "employment", "department-option"],
+        lines: [
+          { id: "read-jobs", kind: "read", text: "Read the employee’s job summary and identify the active job.", nodeIds: ["job-summary", "employment"] },
+          { id: "match-department", kind: "check", text: "Match its department with the option on the Kuali document.", nodeIds: ["department-option"] }
+        ],
+        fields: [
+          {
+            id: "hr-status",
+            operatorField: "HR status",
+            source: {
+              origin: "UCPath",
+              detail: "HR status for the selected active employment.",
+              chain: [],
+              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "HR status" }
+            }
+          },
+          {
+            id: "department",
+            operatorField: "Department",
+            source: {
+              origin: "UCPath",
+              detail: "Department for the selected active employment.",
+              chain: [],
+              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Department" }
+            }
+          },
+          {
+            id: "payroll-title",
+            operatorField: "Payroll title",
+            source: {
+              origin: "UCPath",
+              detail: "Payroll title for the selected active employment.",
+              chain: [],
+              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Payroll title" }
+            }
+          },
+          {
+            id: "kuali-department-option",
+            operatorField: "Kuali department option",
+            source: {
+              origin: "Kuali and UCPath",
+              detail: "Kuali option matched to the selected UCPath department.",
+              chain: [
+                {
+                  label: "UCPath department",
+                  detail: "Read from the selected active job.",
+                  read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Department" }
+                },
+                { label: "Kuali options", detail: "Read from the separation request." }
+              ],
+              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Kuali department option" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } satisfies WorkflowGroupOptions;
 
 export const JOB_SUMMARY_NODE = "job-summary";

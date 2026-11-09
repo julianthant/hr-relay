@@ -14,7 +14,7 @@ const review = Object.freeze({ pages: Object.freeze([Object.freeze({
 
 function compileReview(candidate: WorkflowStepReview) {
   return compileWorkflow({ ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries], index) =>
-    [index === 0 ? { ...group, review: candidate } : group, entries] as const) });
+    [{ ...group, review: index === 0 ? candidate : undefined }, entries] as const) });
 }
 
 it("accepts frozen review declarations and validates page, node, field and source references", () => {

@@ -19,6 +19,16 @@ it("derives collection field vocabularies without expanding the ordinary boundar
   assert.equal(Object.isFrozen(leaves), true);
 });
 
+it("does not turn a literal in an open union into an operator dropdown", () => {
+  const schema = z.discriminatedUnion("status", [
+    z.strictObject({ status: z.literal("signed"), signer: z.string().min(1) }),
+    z.strictObject({ status: z.literal("unsigned"), signer: z.literal("") }),
+  ]);
+  assert.deepEqual(contractSchemaLeaves(schema).find(leaf => leaf.path === "signer")?.options, [""]);
+  assert.equal(contractCollectionFieldLeaves(schema).find(leaf => leaf.path === "signer")?.options, undefined);
+  assert.deepEqual(contractCollectionFieldLeaves(schema).find(leaf => leaf.path === "status")?.options, ["signed", "unsigned"]);
+});
+
 describe("contractSchemaLeaves", () => {
   it("names every nested field by its dotted path, sorted", () => {
     const schema = z.strictObject({

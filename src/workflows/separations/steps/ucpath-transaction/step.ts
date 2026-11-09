@@ -80,6 +80,92 @@ const UCPATH_TRANSACTION_DISPLAY = {
     { label: "Approval status", example: "Submitted", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "approvalStatus" }] },
     { label: "Effective date", example: "4/26/2031", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "effectiveDate" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "smart-hr-search",
+        title: "SS Smart HR transaction search",
+        mode: "Fill form",
+        nodeIds: ["pending-set", "clear-pending"],
+        lines: [
+          { id: "read-pending", kind: "read", text: "Read the exact pending termination set.", nodeIds: ["pending-set"] },
+          { id: "select-pending", kind: "check", text: "Select and verify the conflicting pending terminations.", nodeIds: ["clear-pending"] },
+          { id: "clear-pending", kind: "action", text: "In a live run, clear the verified pending terminations.", nodeIds: ["clear-pending"] }
+        ],
+        fields: []
+      },
+      {
+        id: "termination-setup",
+        title: "Smart HR transaction setup",
+        mode: "Fill form",
+        nodeIds: ["file-termination"],
+        lines: [{ id: "setup", kind: "action", text: "Enter the termination template and effective date.", nodeIds: ["file-termination"] }],
+        fields: []
+      },
+      {
+        id: "termination-details",
+        title: "Smart HR transaction details",
+        mode: "Fill form",
+        nodeIds: ["file-termination"],
+        lines: [
+          { id: "details", kind: "action", text: "Fill the employee ID and termination reason.", nodeIds: ["file-termination"] },
+          { id: "verify-details", kind: "check", text: "Check the displayed person and dates before continuing.", nodeIds: ["file-termination"] }
+        ],
+        fields: []
+      },
+      {
+        id: "termination-information",
+        title: "Smart HR transaction information",
+        mode: "Fill form",
+        nodeIds: ["file-termination"],
+        lines: [
+          { id: "comments", kind: "action", text: "Fill the reviewed comments and verify the prepared termination.", nodeIds: ["file-termination"] },
+          { id: "save", kind: "action", text: "In a live run, submit the prepared termination.", nodeIds: ["file-termination"] }
+        ],
+        fields: []
+      },
+      {
+        id: "transaction-detail",
+        title: "SS Smart HR transaction detail",
+        mode: "Read only",
+        nodeIds: ["receipt"],
+        lines: [{ id: "verify-receipt", kind: "check", text: "Read the exact transaction number, approval status and effective date.", nodeIds: ["receipt"] }],
+        fields: [
+          {
+            id: "transaction-number",
+            operatorField: "Transaction number",
+            source: {
+              origin: "UCPath",
+              detail: "Number on the filed termination receipt.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Transaction number" }
+            }
+          },
+          {
+            id: "approval-status",
+            operatorField: "Approval status",
+            source: {
+              origin: "UCPath",
+              detail: "Current status on the transaction receipt.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Approval status" }
+            }
+          },
+          {
+            id: "effective-date",
+            operatorField: "Effective date",
+            source: {
+              origin: "UCPath",
+              detail: "Effective date verified against the filed termination.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Effective date" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } satisfies WorkflowGroupOptions;
 
 export const PENDING_SET_NODE = "pending-set";

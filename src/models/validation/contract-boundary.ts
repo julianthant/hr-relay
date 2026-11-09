@@ -257,8 +257,9 @@ function weaker(
 }
 
 /** Merge two descriptions of ONE path — the weaker presence, the wider vocabulary. */
-function mergeLeaf(left: ContractSchemaLeaf, right: ContractSchemaLeaf): ContractSchemaLeaf {
-  const options = left.options === undefined && right.options === undefined
+function mergeLeaf(left: ContractSchemaLeaf, right: ContractSchemaLeaf, vocabulary: "declared" | "complete" = "declared"): ContractSchemaLeaf {
+  const options = (vocabulary === "complete" ? left.options === undefined || right.options === undefined
+    : left.options === undefined && right.options === undefined)
     ? undefined
     : [...new Set([...(left.options ?? []), ...(right.options ?? [])])].sort();
   return Object.freeze({
@@ -320,7 +321,7 @@ function relativeLeaves(
           presence: inEveryArm ? leaf.presence : SOMETIMES,
         });
         const existing = merged.get(path);
-        merged.set(path, existing === undefined ? scoped : mergeLeaf(existing, scoped));
+        merged.set(path, existing === undefined ? scoped : mergeLeaf(existing, scoped, collections ? "complete" : "declared"));
       }
     }
     return [...merged.values()];
@@ -407,7 +408,7 @@ function vocabularyOf(
   return undefined;
 }
 
-/** Operator paths address each collection member without selecting a row. */
+/** Operator paths address each collection member; options require a complete vocabulary. */
 export function contractCollectionFieldLeaves(schema: z.core.$ZodType): readonly ContractSchemaLeaf[] {
   return Object.freeze([...indexLeaves(relativeLeaves(schema, ALWAYS, [], true)).values()]);
 }

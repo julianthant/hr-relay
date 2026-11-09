@@ -5,7 +5,52 @@ import { defineStep, defineStepEntries, inheritStepProof } from "../../../../wor
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { searchPersonMatchTask } from "../../tasks/search-person-match.js";
 import { searchPersonOrgTask } from "../../tasks/search-person-org.js";
-export const personMatch = defineWorkflowStep({ key: "person-match", label: "Match person" });
+export const personMatch = Object.freeze({
+  ...defineWorkflowStep({ key: "person-match", label: "Match person" }),
+  review: {
+    pages: [
+      {
+        id: "smart-person-search",
+        title: "Smart HR person search",
+        mode: "Fill form",
+        nodeIds: ["identifier-match"],
+        lines: [
+          {
+            id: "match",
+            kind: "action",
+            text: "When identifier matching is requested, search by name with the supplied date of birth or SSN.",
+            nodeIds: ["identifier-match"]
+          }
+        ],
+        fields: []
+      },
+      {
+        id: "person-search",
+        title: "Person Organizational Summary search",
+        mode: "Fill form",
+        nodeIds: ["initial-name-search"],
+        lines: [{ id: "search", kind: "action", text: "Otherwise search by the person’s name.", nodeIds: ["initial-name-search"] }],
+        fields: []
+      },
+      {
+        id: "person-details",
+        title: "Person Organizational Summary detail",
+        mode: "Read only",
+        nodeIds: ["identifier-match", "match-outcome"],
+        lines: [
+          {
+            id: "confirm",
+            kind: "check",
+            text: "Confirm candidate identities and retain whether another lookup is needed.",
+            nodeIds: ["identifier-match", "match-outcome"]
+          }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const
+});
 type I9Author = WorkflowAuthor<typeof I9CheckInput>;
 const match = defineStepEntries(personMatch);
 export function personMatchEntries({ task }: I9Author) {

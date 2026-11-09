@@ -83,6 +83,52 @@ const KUALI_FINALIZATION_DISPLAY = {
     { label: "UCPath transaction", example: "T000000001", sources: [{ nodeId: "filing-presence", kind: "output", fieldPath: "transactionId" }] },
     { label: "Approval status", example: "Submitted", sources: [{ nodeId: "filing-presence", kind: "output", fieldPath: "approvalStatus" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "ucpath-filing",
+        title: "SS Smart HR transaction detail",
+        mode: "Read only",
+        nodeIds: ["filing-presence"],
+        lines: [{ id: "verify-filing", kind: "check", text: "Confirm the exact termination filing is current in UCPath.", nodeIds: ["filing-presence"] }],
+        fields: [
+          {
+            id: "ucpath-transaction",
+            operatorField: "UCPath transaction",
+            source: {
+              origin: "UCPath",
+              detail: "Exact current transaction found for the separation.",
+              chain: [],
+              read: { stepKey: "kuali-finalization", page: "SS Smart HR transaction detail", field: "UCPath transaction" }
+            }
+          },
+          {
+            id: "approval-status",
+            operatorField: "Approval status",
+            source: {
+              origin: "UCPath",
+              detail: "Current approval status of the filing.",
+              chain: [],
+              read: { stepKey: "kuali-finalization", page: "SS Smart HR transaction detail", field: "Approval status" }
+            }
+          }
+        ]
+      },
+      {
+        id: "kuali-document",
+        title: "Kuali RRSS Separation Request Form",
+        mode: "Fill form",
+        nodeIds: ["finalize-kuali"],
+        lines: [
+          { id: "fill-finalization", kind: "action", text: "Fill the reviewed transaction, dates, department and timekeeper details.", nodeIds: ["finalize-kuali"] },
+          { id: "verify-staged", kind: "check", text: "Verify the exact document and staged finalization values.", nodeIds: ["finalize-kuali"] },
+          { id: "save-document", kind: "action", text: "In a live run, save the reviewed Kuali document.", nodeIds: ["finalize-kuali"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const,
 } satisfies WorkflowGroupOptions;
 
 export const FILING_PRESENCE_NODE = "filing-presence";

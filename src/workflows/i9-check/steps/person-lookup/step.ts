@@ -5,7 +5,25 @@ import { defineStep, inheritStepProof } from "../../../../workflow-kit/workflow-
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { searchPersonOrgTask } from "../../tasks/search-person-org.js";
 import { i9CheckPersonMatchDefinition, personMatchEntries } from "../person-match/step.js";
-export const personLookup = defineWorkflowStep({ key: "person-lookup", label: "Check hire date" });
+export const personLookup = Object.freeze({
+  ...defineWorkflowStep({ key: "person-lookup", label: "Check hire date" }),
+  review: {
+    pages: [
+      {
+        id: "person-org-summary",
+        title: "Person Organizational Summary detail",
+        mode: "Read only",
+        nodeIds: ["name-search"],
+        lines: [
+          { id: "search-hire-date", kind: "action", text: "When the initial match needs a lookup, search the person by name in UCPath.", nodeIds: ["name-search"] },
+          { id: "read-candidates", kind: "read", text: "Read the candidate records and employment details used for the hire-date check.", nodeIds: ["name-search"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const
+});
 type I9Author = WorkflowAuthor<typeof I9CheckInput>;
 export function personLookupEntries({ task }: I9Author, matched: ReturnType<typeof personMatchEntries>) {
   const searchCall = searchPersonOrgTask(personLookup, "name-search", { kind: "is-true", of: { from: "node", nodeId: "match-outcome", path: "shouldLookup" } });
