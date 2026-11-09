@@ -318,5 +318,7 @@ Task contract modules follow each task ID suffix: Emergency Contact uses `models
 `src/backend/storage/sqlite/delegation-authority.ts` owns current and retained membership selection, revision/reuse custody and scoped authentication proofs. `src/rules/commands/lifecycle-command-id.ts` owns deterministic initial and revised invocation identities shared by factories and native admission.
 
 `app/composition/dashboard/assistant.ts` adapts the dashboard's query owners into the assistant plugin dependencies. `dashboard-wiring.ts` composes them with the selected profile's currentness check. `src/backend/storage/sqlite/assistant-history.ts` owns the conversation and message tables, their migration, acceptance and settlement, decision captions, imports, startup settlement and expiry. `dashboard/surfaces/assistant/assistant-history-model.ts` is the browser's async client and cache of the served history: chat list, drafts, restored transcripts without action or verification authority, and the one-time import of the old tab history.
+The same SQLite history owner also contains the explicitly inactive M1 factory and row codec for structured payloads, accepted metadata/accounting, immutable settlement and reply correlation. The private factory has no registry binding or schema side effect; coordinated activation replaces the text implementation.
+
 
 `src/backend/runs/queries/run-retry.ts` owns read-only Lookup batch-root Retry eligibility. The Queue composition supplies it through the projection authority port. Native commands retain mutation authority.

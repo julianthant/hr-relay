@@ -496,3 +496,32 @@ export const AssistantM1MessagePayloadSchema = z.union([
   z.strictObject({ parts: AssistantReplyPartsSchema, recording: z.strictObject({ kind: z.literal("reply"), acceptedMessageId: z.uuid() }) }),
 ]).refine(payload => new TextEncoder().encode(JSON.stringify(payload)).byteLength <= 80_000, "assistant-message-payload-budget-exceeded");
 export type AssistantM1MessagePayload = z.infer<typeof AssistantM1MessagePayloadSchema>;
+
+const { text: _m1Text, ...M1MessageFields } = AssistantMessageRecordSchema.shape;
+export const AssistantM1MessageRecordSchema = z.strictObject({ ...M1MessageFields, payload: AssistantM1MessagePayloadSchema }).superRefine((row, context) => {
+  if ((row.kind === "inert") !== (row.modelText === null)
+    || (row.kind === "turn") !== (row.role === "operator" && row.delivery !== "settled") || row.kind !== "turn" && row.delivery !== "settled"
+    || (row.code !== null) !== (row.delivery === "refused") || row.subjectRef !== null && row.kind !== "turn"
+    || (row.actionId !== null) !== (row.kind === "proposal" || row.kind === "decision")) context.addIssue({ code: "custom", message: "assistant-message-kind-mismatch" });
+  const recording = row.payload.recording;
+  if (recording.kind === "accepted-turn") {
+    const turn = recording.acceptedTurn;
+    if (row.kind !== "turn" || row.role !== "operator" || row.id !== turn.messageId || row.conversationId !== turn.conversationId
+      || row.ordinal !== turn.ordinal || row.createdAt !== turn.acceptedAt
+      || row.delivery === "sending" && recording.usage.state !== "pending"
+      || (row.delivery === "answered" || row.delivery === "refused") && recording.usage.state === "pending") context.addIssue({ code: "custom", message: "assistant-accepted-turn-mismatch" });
+  } else if (recording.kind === "reply" && (row.role !== "assistant" || row.kind === "turn" || row.kind === "inert")) {
+    context.addIssue({ code: "custom", message: "assistant-reply-kind-mismatch" });
+  }
+});
+export type AssistantM1MessageRecord = z.infer<typeof AssistantM1MessageRecordSchema>;
+export const AssistantM1ConversationViewSchema = AssistantConversationViewSchema.extend({
+  messages: z.array(AssistantStoredMessageSchema.omit({ text: true }).extend({ payload: AssistantM1MessagePayloadSchema })).max(ASSISTANT_MESSAGES_MAX),
+});
+export type AssistantM1ConversationView = z.infer<typeof AssistantM1ConversationViewSchema>;
+export const AssistantM1SettlementSchema = z.strictObject({ delivery: AssistantDeliverySchema.extract(["answered", "refused", "delivery-unknown"]),
+  code: FailureCode.optional(), usage: AssistantTurnUsageSchema,
+  reply: z.strictObject({ id: z.uuid(), kind: z.enum(["answer", "proposal"]), parts: AssistantReplyPartsSchema, modelText: z.string().max(16_000), actionId: z.uuid().optional() }).optional(),
+}).refine(value => (value.delivery === "refused") === (value.code !== undefined)
+  && (value.reply === undefined || (value.reply.kind === "proposal") === (value.reply.actionId !== undefined)), "assistant-settlement-mismatch");
+export type AssistantM1Settlement = z.infer<typeof AssistantM1SettlementSchema>;
