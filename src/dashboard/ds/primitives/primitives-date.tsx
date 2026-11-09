@@ -92,7 +92,7 @@ export function DateInput({ name, label, value, onChange, min, max, inline = fal
       <DateField.Suffix><HeroDatePicker.Trigger ref={calendarTrigger} aria-label={pickerLabel} aria-controls={calendarOpen ? id : undefined}><HeroDatePicker.TriggerIndicator /></HeroDatePicker.Trigger></DateField.Suffix>
     </DateField.Group>
     </HeroDatePicker></PopoverAnchor>
-    <PopoverContent id={id} title={pickerLabel} hideTitle hideClose align={hideLabel ? "end" : "start"} className={cn("date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)] !p-0")}>
+    <PopoverContent id={id} title={pickerLabel} hideTitle hideClose align="end" sideOffset={4} className="date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)]">
       <Calendar label={pickerLabel} value={selected} onChange={setDate} minValue={boundValue("min", min)} maxValue={boundValue("max", max)} autoFocus />
       {typeof footer === "function" ? footer(next => setDate(dateValue(next))) : footer}
     </PopoverContent>

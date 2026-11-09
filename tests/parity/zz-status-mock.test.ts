@@ -16,7 +16,7 @@ const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 test.use({ deviceScaleFactor: Number(process.env.STATUS_MOCK_SCALE ?? 1) });
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
-  "general-a": "general", "general-a-browser": "general", "account": "account", "account-edit": "account", "account-password": "account", "account-delete": "account", "account-duo-setup": "account",
+  "general-a": "general", "general-a-browser": "general", "general-a-date": "general", "account": "account", "account-edit": "account", "account-password": "account", "account-delete": "account", "account-duo-setup": "account",
   "subscription": "subscription", "subscription-limit": "subscription", "subscription-disconnected": "subscription",
   "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard",
 };
@@ -117,6 +117,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       if (id === "subscription-disconnected") await expect(page.getByText("Not connected")).toBeVisible();
     }
     if (id === "general-a-browser") await page.getByRole("combobox", { name: "Browser window" }).or(page.getByRole("button", { name: "Browser window" })).first().click();
+    if (id === "general-a-date") await page.getByRole("button", { name: /Choose job end date/i }).first().click();
     if (settings === "keyboard") await expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);

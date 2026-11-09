@@ -553,6 +553,7 @@ export function PopoverContent({
   hideClose,
   className,
   surfaceRef,
+  sideOffset,
   children,
 }: {
   id?: string;
@@ -561,6 +562,7 @@ export function PopoverContent({
   side?: DsPopoverSide;
   align?: "start" | "center" | "end";
   width?: DsPopoverWidth;
+  sideOffset?: number;
   /** keep the accessible name, drop the visible heading row */
   hideTitle?: boolean;
   hideClose?: boolean;
@@ -581,6 +583,7 @@ export function PopoverContent({
         hideClose={hideClose}
         className={className}
         surfaceRef={surfaceRef}
+        sideOffset={sideOffset}
       >
         {children}
       </PopoverSurface>
@@ -601,6 +604,7 @@ function PopoverSurface({
   hideClose,
   className,
   surfaceRef,
+  sideOffset = 6,
   children,
 }: {
   id?: string;
@@ -609,6 +613,7 @@ function PopoverSurface({
   side: DsPopoverSide;
   align: "start" | "center" | "end";
   width: DsPopoverWidth;
+  sideOffset?: number | undefined;
   hideTitle?: boolean;
   hideClose?: boolean;
   className?: string;
@@ -623,7 +628,7 @@ function PopoverSurface({
       asChild
       side={side}
       align={align}
-      sideOffset={6}
+      sideOffset={sideOffset}
       collisionPadding={8}
       aria-label={title}
     >
