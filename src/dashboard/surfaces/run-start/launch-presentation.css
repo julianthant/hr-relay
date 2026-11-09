@@ -69,10 +69,7 @@
   @apply text-body font-normal text-ui-primary;
 }
 .launch-design textarea {
-  padding: 12px; border: 1px solid var(--ds-soft-border); border-radius: 8px; background: var(--ds-soft-bg); font-size: 14px; line-height: 20px;
-}
-.launch-design .ds-choice-picker > button {
-  @apply h-9;
+  padding: 12px; border: 1px solid var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); font-size: 13px; line-height: 18px;
 }
 .launch-design .launch-flags .ds-checkbox-label {
   @apply font-normal;

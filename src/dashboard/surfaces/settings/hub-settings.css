@@ -40,7 +40,7 @@
 @media(max-width:1100px) { .dashboard-shell .settings-takeover > nav.settings-panel-nav { width:210px; }.hub-settings-row { grid-template-columns:1fr;gap:9px; }.hub-setting-control { justify-content:flex-start; } }
 
 
-.settings-takeover .settings-compact-control [data-slot="date-input-group"] { height:var(--ds-row-control-h); }
+.settings-takeover .settings-compact-control [data-slot="date-input-group"] { height:var(--ds-row-control-h);border-color:var(--ds-soft-border);border-radius:8px;background:var(--ds-picker-bg);font-size:13px; }
 .settings-takeover .ds-field-label>span[aria-hidden="true"][class*="--ds-danger"] { display:none; }
 
 
