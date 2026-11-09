@@ -371,7 +371,7 @@ function ConfirmSurface({
           <DialogPrimitive.Close asChild>
             <Button data-confirm-cancel variant="muted" disabled={busy} className="h-8 focus:[outline-style:solid] focus:outline-[length:var(--ds-focus-ring-w)] focus:outline-offset-[var(--ds-focus-ring-offset)] focus:outline-[color:var(--ds-focus-ring)]">{cancelLabel}</Button>
           </DialogPrimitive.Close>
-          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm} className="h-8 rounded-[10px]">{confirmLabel}</Button>
+          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm} className="h-8 rounded-[8px]">{confirmLabel}</Button>
         </div>
       </DialogPrimitive.Content>
     </>
