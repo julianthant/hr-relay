@@ -84,12 +84,12 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
           </DialogContent>
         </Dialog>;
   const launcher = assistantLauncher();
-  const toggle = <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title="" onClick={() => onOpenChange(!open)} className="session-toggle">
+  const toggle = <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title="" className="session-toggle">
     <UsersRound aria-hidden /><span className="session-pill-title">Sessions</span><span aria-hidden className="text-ui-muted">·</span><span className="session-pill-counts"><BarCounts data={data} /></span>
     {open ? <ChevronDown aria-hidden /> : <ChevronUp aria-hidden />}
   </button>;
   return <section ref={dockRef} aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    <div className="session-bar" aria-label="Session actions" role="group">
+    <div className="session-bar" aria-label="Session actions" role="group" onClick={event => { const target = event.target as Element; if (event.currentTarget.contains(target) && !target.closest(".session-bar-end")) onOpenChange(!open); }}>
       {toggle}<span className="session-bar-end">{open && addControl}{launcher === "a" && <AssistantIconLauncher />}{launcher === "b" && <AssistantDockField />}</span>
     </div>
     {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
