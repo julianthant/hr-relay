@@ -3,8 +3,8 @@ import { cn } from "../../../lib/utils.js";
 import { LOG_TIMELINE_STYLES, type LogTimelineStage } from "./log-timeline-model.js";
 
 export function LogTimeline({ stages, onJump }: { stages: readonly LogTimelineStage[]; onJump: (stepId: string) => void }) {
-  return <TooltipProvider delayDuration={200} disableHoverableContent><nav aria-label="Run timeline" className="shrink-0 overflow-x-auto border-b border-ui-stroke bg-ui-panel px-4 py-2">
-    <ol className="m-0 flex min-w-[32rem] list-none gap-1 p-0">
+  return <TooltipProvider delayDuration={200} disableHoverableContent><nav aria-label="Run timeline" className="shrink-0 border-b border-ui-stroke bg-ui-panel px-4 py-2">
+    <ol className="m-0 flex list-none gap-1 p-0">
       {stages.map(stage => {
         const style = LOG_TIMELINE_STYLES[stage.state];
         const label = stage.statusLabel ?? style.label;

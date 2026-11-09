@@ -107,6 +107,21 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
   await expect(page.getByRole("tooltip").getByText(cut[index], { exact: true }).first()).toBeVisible();
   await page.mouse.move(1, 1);
 
+  // The step strip fits the log column at 1280 and 1024: no clipped or scrolling last column.
+  for (const width of [1280, 1024]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.waitForTimeout(300);
+    const fit = await page.getByRole("navigation", { name: "Run timeline" }).evaluate(nav => {
+      const box = nav.getBoundingClientRect(); const last = [...nav.querySelectorAll("button")].at(-1)?.getBoundingClientRect();
+      return { overflow: nav.scrollWidth - nav.clientWidth, lastRight: last ? Math.round(last.right) : 0, navRight: Math.round(box.right) };
+    });
+    console.log(`STRIP ${theme} ${width} ${JSON.stringify(fit)}`);
+    expect(fit.overflow).toBeLessThanOrEqual(0);
+    expect(fit.lastRight).toBeLessThanOrEqual(fit.navRight);
+    await page.screenshot({ path: `${OUT}/timeline-strip-${theme}-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+
   await open(page, "&explore=fixture-ui-explorer");
   await page.mouse.move(1, 1);
   await shot(page, "explorer", theme);
