@@ -1,3 +1,5 @@
+import { projectWorkflowStartReadiness } from '../../../src/backend/runs/queries/bootstrap.js';
+import { ERROR_CATALOG } from '../../../src/models/failures/error-catalog.js';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
@@ -208,8 +210,20 @@ it('imports a declared reference atomically, shares its type default across work
   expect(f.service.references(workflows).map(slot => slot.current)).toEqual([
     { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' }, { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' },
   ]);
+  expect(projectWorkflowStartReadiness(workflows[0], f.service.references(workflows))).toEqual({
+    scope: 'default-workbook-references', state: 'unavailable', reason: ERROR_CATALOG.WORKBOOK_TYPE_UNAVAILABLE.text,
+    fixAction: { kind: 'review-workbook-reference', workflowId: 'first', typeId: 'roster' },
+  });
   f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid', 'fullName'], keyFieldId: 'eid', defaultWorkbookId: null });
+  expect(projectWorkflowStartReadiness(workflows[1], f.service.references(workflows))).toEqual({
+    scope: 'default-workbook-references', state: 'blocked', reason: 'Second needs Roster.',
+    fixAction: { kind: 'import-workbook', purpose: { kind: 'workflow-reference', workflowId: 'second', typeId: 'roster' } },
+  });
   expect(f.service.references(workflows).every(slot => slot.current.state === 'missing')).toBe(true);
+  const multiple = { id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster', 'another-roster'] };
+  expect(projectWorkflowStartReadiness(multiple, f.service.references([multiple]))).toMatchObject({
+    state: 'blocked', fixAction: { purpose: { workflowId: 'first', typeId: 'roster' } },
+  });
   const workbook = { ...f.record.workbook, libraryId: undefined };
   workbook.sheets = [...workbook.sheets, { ...workbook.sheets[0], id: 'unmapped', name: 'No bindings', columnBindings: undefined }];
   const request = { workbook: encodeEditableWorkbook(workbook), purpose: { kind: 'workflow-reference', workflowId: 'first', typeId: 'roster' } };
@@ -220,6 +234,14 @@ it('imports a declared reference atomically, shares its type default across work
   expect(f.service.revision(result.workbook.libraryId, 1).version).toBe(1);
   expect(f.service.revision(result.workbook.libraryId, 2).version).toBe(2);
   const slots = f.service.references(workflows);
+  expect(projectWorkflowStartReadiness(workflows[0], slots)).toEqual({ scope: 'default-workbook-references', state: 'ready' });
+  expect(projectWorkflowStartReadiness(workflows[1], slots)).toEqual({ scope: 'default-workbook-references', state: 'ready' });
+  const broken = slots.map(slot => ({ ...slot, current: { state: 'unavailable' as const, code: 'WORKBOOK_BINDING_UNAVAILABLE' as const } }));
+  expect(projectWorkflowStartReadiness(workflows[0], broken)).toEqual({
+    scope: 'default-workbook-references', state: 'unavailable', reason: ERROR_CATALOG.WORKBOOK_BINDING_UNAVAILABLE.text,
+    fixAction: { kind: 'review-workbook-reference', workflowId: 'first', typeId: 'roster' },
+  });
+  expect(() => projectWorkflowStartReadiness(workflows[0], slots.filter(slot => slot.workflowId !== 'first'))).toThrow('WORKBOOK_REFERENCE_SLOT_UNAVAILABLE');
   for (const slot of slots) {
     expect(slot.type?.defaultWorkbookId).toBe(result.workbook.libraryId);
     expect(slot.current.state).toBe('bound');

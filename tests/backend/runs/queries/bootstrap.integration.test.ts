@@ -21,6 +21,7 @@ import { AT,makeWorld,type DashboardWorld } from "../../../support/helpers/backe
 
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { PreflightReportSchema } from "../../../../src/models/preflight/preflight.js";
 
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
@@ -117,6 +118,16 @@ describe("bootstrap start-surface block", () => {
           enqueue: descriptor.enqueue,
           version: descriptor.version,
 
+          readiness: descriptor.requiredWorkbookTypeIds.length === 0
+            ? { scope: "default-workbook-references", state: "ready" }
+            : wire.workbookReferences.find(slot => slot.workflowId === descriptor.id)?.current.state === "unavailable"
+              ? { scope: "default-workbook-references", state: "unavailable",
+                reason: ERROR_CATALOG.WORKBOOK_TYPE_UNAVAILABLE.text,
+                fixAction: { kind: "review-workbook-reference", workflowId: descriptor.id, typeId: descriptor.requiredWorkbookTypeIds[0] } }
+              : { scope: "default-workbook-references", state: "blocked",
+              reason: `${descriptor.label} needs ${wire.workbookReferences.find(slot => slot.workflowId === descriptor.id)?.type?.name}.`,
+              fixAction: { kind: "import-workbook", purpose: { kind: "workflow-reference", workflowId: descriptor.id,
+                typeId: descriptor.requiredWorkbookTypeIds[0] } } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,

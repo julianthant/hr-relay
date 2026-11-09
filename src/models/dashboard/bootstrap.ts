@@ -1,3 +1,4 @@
+import { WorkbookImportPurposeSchema } from "./workbooks.js";
 import { WorkbookReferenceSlotsSchema } from "./workbook-library.js";
 import { z } from "zod";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
@@ -39,7 +40,23 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
 /** The Run Modal's start facts for ONE workflow, SERVED from the same descriptor the daemon plans with: strict, and only what the modal reads. */
 const StepKeySchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
+/** Readiness covers default workbook bindings only; scoped runtime preflight still admits every start. */
+export const WorkflowStartReadinessSchema = z.discriminatedUnion("state", [
+  z.strictObject({ scope: z.literal("default-workbook-references"), state: z.literal("ready") }),
+  z.strictObject({
+    scope: z.literal("default-workbook-references"), state: z.literal("blocked"), reason: z.string().min(1),
+    fixAction: z.strictObject({ kind: z.literal("import-workbook"), purpose: WorkbookImportPurposeSchema.options[0] }),
+  }),
+  z.strictObject({
+    scope: z.literal("default-workbook-references"), state: z.literal("unavailable"), reason: z.string().min(1),
+    fixAction: z.strictObject({ kind: z.literal("review-workbook-reference"), workflowId: WorkflowIdSchema,
+      typeId: WorkbookImportPurposeSchema.options[0].shape.typeId }),
+  }),
+]);
+export type WorkflowStartReadiness = z.infer<typeof WorkflowStartReadinessSchema>;
+
 export const WorkflowStartWireSchema = z.strictObject({
+  readiness: WorkflowStartReadinessSchema,
   summary: z.string().min(1).optional(),
   enqueue: EnqueuePolicySchema,
   version: PositiveIntSchema,
@@ -75,6 +92,13 @@ export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   availability: CapabilityAvailabilitySchema,
   role: WorkflowModuleRoleSchema,
   start: WorkflowStartWireSchema,
+}).superRefine((workflow, context) => {
+  const readiness = workflow.start.readiness;
+  if (readiness.state === "ready") return;
+  const reference = readiness.fixAction.kind === "import-workbook" ? readiness.fixAction.purpose : readiness.fixAction;
+  if (reference.workflowId !== workflow.id || !workflow.start.requiredWorkbookTypeIds.includes(reference.typeId)) {
+    context.addIssue({ code: "custom", path: ["start", "readiness", "fixAction"], message: "readiness action must name this workflow's required reference" });
+  }
 });
 export const SystemInstancePrimitiveSchema = z.strictObject({
   system: BrowserSystemIdSchema,

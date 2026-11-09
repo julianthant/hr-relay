@@ -946,6 +946,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.label", origin: "repository-authored" },
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookTypeIds[]', origin: 'repository-authored' },
+    ...['fixAction.purpose.workflowId', 'fixAction.purpose.typeId', 'fixAction.workflowId', 'fixAction.typeId']
+      .map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.readiness.${path}`, origin: 'repository-authored' as const })),
+    { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'captured-hr-value' },
     ...PLANNED_OUTPUT_ORIGINS.flatMap(path => ['wire/planned-run-output', 'wire/start-plan'].map(surface => ({ surface,
       path: surface === 'wire/start-plan' ? `planned[].outputs[].${path}` : path, origin: 'captured-hr-value' as const }))),
     ...([

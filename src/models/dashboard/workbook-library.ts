@@ -97,6 +97,7 @@ export const WorkbookReferenceSlotSchema = z.strictObject({
   ]),
 }).superRefine((slot, ctx) => {
   if (slot.type !== null && slot.type.id !== slot.typeId
+    || slot.current.state === "missing" && slot.type === null
     || slot.current.state === "bound" && (slot.type === null || slot.type.defaultWorkbookId !== slot.current.entry.libraryId || slot.current.entry.metadata.typeId !== slot.typeId))
     ctx.addIssue({ code: "custom", message: "reference slot binding identity mismatch" });
 });

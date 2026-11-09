@@ -135,7 +135,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
           ]
         },
 
-        spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookTypeIds: [...personLookupModule.descriptor.requiredWorkbookTypeIds],
+        readiness: { scope: "default-workbook-references", state: "ready" }, spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookTypeIds: [...personLookupModule.descriptor.requiredWorkbookTypeIds],
       },
     }],
     systemInstances: [
