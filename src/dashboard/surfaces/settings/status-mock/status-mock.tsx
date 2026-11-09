@@ -36,7 +36,7 @@ function RunDialogMock({ variant }: { variant: "a" | "b" }) {
           </FormGroup>
         </DsBodyScope>}
       </DialogBody>
-      <DialogFooter meta={<MetaLine tone="faint" items={confirm ? ["1 run", "Emergency Contact", "Fix 2 things first"] : ["1 run", "Emergency Contact", "Import the roster first"]} />}>
+      <DialogFooter meta={<MetaLine tone="faint" items={confirm ? ["1 run", "Emergency Contact", "2 to fix"] : ["1 run", "Emergency Contact", "Import the roster first"]} />}>
         {confirm && <Button variant="ghost">Back</Button>}
         <Button variant="secondary">Cancel</Button>
         <Button variant="primary" disabled>{confirm ? "Start dry run" : "Continue"}</Button>
@@ -58,10 +58,10 @@ function ToastsMock() {
 }
 
 /** General's Status section: two rows that only show status, checked automatically. No buttons; a storage problem is the sticky toast. */
-export function StatusMockStatusBlock({ problem }: { problem: boolean }) {
+export function StatusMockStatusBlock({ problem, limit }: { problem: boolean; limit: boolean }) {
   return <BodySection title="Status"><FormGroup label="Status">
-    <ResultRow label="Storage" description={problem ? "Needs attention · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago"} value={<StatusDot status={problem ? "failed" : "verifiedDone"} />} />
-    <ResultRow label="ChatGPT" description="Connected as Jordan Lee · checked 2 min ago" value={<StatusDot status="verifiedDone" />} />
+    <ResultRow label="Storage" description={problem ? "Needs attention · run 0412 could not be saved · last backup 12 min ago" : "Saved on this computer · last backup 12 min ago"} value={<StatusDot status={problem ? "failed" : "verifiedDone"} />} />
+    <ResultRow label="ChatGPT" description={limit ? "Usage limit reached · resets 9:40 PM" : "Connected as Jordan Lee · checked 2 min ago"} value={<StatusDot status={limit ? "parked" : "verifiedDone"} />} />
   </FormGroup></BodySection>;
 }
 

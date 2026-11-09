@@ -1,7 +1,7 @@
 import { createPreviewChatGptAccountPort } from "../general/chatgpt-account-model.js";
 
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-a", "run-b", "toasts", "general-a", "general-a-problem", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-a", "run-b", "toasts", "general-a", "general-a-problem", "general-a-chatgpt-limit", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 export function statusMock(): StatusMockId | undefined {
@@ -13,7 +13,8 @@ export function statusMock(): StatusMockId | undefined {
 export const STATUS_MOCK_TOASTS = [
   { tone: "warning", title: "UCPath is down for maintenance", description: "Runs that use UCPath wait until it is back." },
   { tone: "warning", title: "ChatGPT is disconnected", description: "Reconnect it in Settings > General." },
-  { tone: "danger", title: "Saved data needs attention", description: "Restore or check it in Settings > General." },
+  { tone: "danger", title: "Run 0412 could not be saved", description: "See Settings > General." },
+  { tone: "info", title: "Restored a damaged file", description: "Relay used the backup from 12 min ago." },
 ] as const;
 
 export const STATUS_MOCK_BLOCKERS = [
@@ -53,3 +54,6 @@ export const STATUS_MOCK_ANALYTICS = {
 
 /** A connected account, so the ChatGPT section and the Status row agree. */
 export const STATUS_MOCK_ACCOUNT_PORT = (() => { const port = createPreviewChatGptAccountPort(); void port.signIn({ usePlan: true }); return port; })();
+
+/** The same account with its plan's usage limit reached. */
+export const STATUS_MOCK_LIMIT_PORT = { ...STATUS_MOCK_ACCOUNT_PORT, getSnapshot: () => ({ state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: "limit-reached" }) } as typeof STATUS_MOCK_ACCOUNT_PORT;
