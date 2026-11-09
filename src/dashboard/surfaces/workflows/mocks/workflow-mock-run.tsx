@@ -36,7 +36,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const error = fileError ?? (stage === "Steps" || index === stages.length - 1 ? mockDraftError(workflowId, draft) : mockDraftInputError(workflowId, draft)) ?? (workflowId === "oath-upload" ? mockOathDuplicate(runs, draft) : undefined);
   const pdf = draft.method === "pdf";
   const uploadOnly = workflowId === "oath-upload" && draft.uploadMode === "upload-only";
-  const spreadsheetPicker = pdf && flow.roster && !uploadOnly;
+  const spreadsheetPicker = flow.runnable && !uploadOnly;
   const typedEntries = mockInputEntries(workflowId, draft);
   const steps = mockSelectableSteps(workflowId, draft);
   const preparation = mockOcrReadSteps(workflowId, draft);
