@@ -4,15 +4,15 @@ import { Badge, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFoote
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
 import { ActionDialog, FileMenu, Section, type Actions, type DialogKind } from './sheets-design-page.js';
-import { IMPORT_FILE, REFERENCE_SHEETS, libraryEntry, sheetSamples, sheetsOther, sheetsReferences, sheetsResults, type ColumnMatch, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
+import { IMPORT_FILE, MERGE_PREVIEW, REFERENCE_SHEETS, libraryEntry, sheetSamples, sheetsMains, sheetsOther, sheetsReferences, sheetsResults, type ColumnMatch, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
 import { SheetsImportDialog } from './sheets-design-import.js';
 import { sheetsParam, sheetsScenario } from './sheets-design-mode.js';
 
 const noop = async () => ({ state: 'confirmed' as const });
 const when = (iso: string) => formatInstantDate(iso);
 const ROWS = 'grid items-center gap-x-4 px-3 py-2.5 text-body';
-const COLS = 'grid-cols-[minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_190px]';
-const COLS_CHECK = 'grid-cols-[22px_minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_190px]';
+const COLS = 'grid-cols-[minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_150px_130px]';
+const COLS_CHECK = 'grid-cols-[22px_minmax(0,1.4fr)_minmax(0,1.3fr)_64px_92px_150px_130px]';
 const frame = 'overflow-hidden rounded-[10px] border border-ui-stroke';
 const link = 'text-left underline-offset-2 hover:underline';
 const NEEDS = [{ key: 'eid', need: 'EID' }, { key: 'person', need: 'Name' }] as const;
@@ -21,44 +21,70 @@ type Key = (typeof NEEDS)[number]['key'];
 const Dot = () => <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--warning)]" />;
 const missingMatches = (file: SheetFile) => NEEDS.filter(item => !file[item.key]?.header);
 const needsText = (file: SheetFile) => `Needs ${missingMatches(file).map(item => `${item.need === 'EID' ? 'an' : 'a'} ${item.need} column`).join(' and ')}`;
-const problemText = (item: Reference) => `${item.workflow} can't use this yet: choose the column that holds ${missingMatches(item.file!).map(entry => entry.need === 'EID' ? 'employee IDs' : 'names').join(' and ')}`;
 
 function ListHead({ cells, check }: { cells: readonly string[]; check?: ReactNode }) {
-  return <div className={`${ROWS} ${check ? COLS_CHECK : COLS} border-b border-ui-stroke bg-ui-table text-caption text-ui-muted`}>{check}{cells.map((cell, index) => <span key={index}>{cell}</span>)}<span /></div>;
+  return <div className={`${ROWS} ${check ? COLS_CHECK : COLS} border-b border-ui-stroke bg-ui-table text-caption text-ui-muted`}>{check}{cells.map((cell, index) => <span key={index}>{cell}</span>)}<span className={cells.length > 4 ? '' : 'col-span-2'} /></div>;
 }
-function ListRow({ lead, sub, second, rows, updated, end, check, onActivate }: { lead: ReactNode; sub?: ReactNode; second?: ReactNode; rows?: ReactNode; updated?: ReactNode; end?: ReactNode; check?: ReactNode; onActivate?: () => void }) {
-  return <div onClick={onActivate} className={`${ROWS} ${check ? COLS_CHECK : COLS} border-t border-ui-stroke first:border-t-0 ${onActivate ? 'cursor-pointer hover:bg-ui-hover' : ''}`}>{check}
+function ListRow({ lead, sub, second, rows, updated, status, end, check, onActivate }: { lead: ReactNode; sub?: ReactNode; second?: ReactNode; rows?: ReactNode; updated?: ReactNode; status?: ReactNode; end?: ReactNode; check?: ReactNode; onActivate?: () => void }) {
+  const keys = onActivate ? { tabIndex: 0, onKeyDown: (event: { key: string; target: unknown; currentTarget: unknown; preventDefault: () => void }) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) { event.preventDefault(); onActivate(); } } } : {};
+  return <div onClick={onActivate} {...keys} className={`${ROWS} ${check ? COLS_CHECK : COLS} border-t border-ui-stroke first:border-t-0 ${onActivate ? 'cursor-pointer hover:bg-ui-hover' : ''}`}>{check}
     <div className="min-w-0"><div className="truncate font-medium">{lead}</div>{sub && <div className="text-caption text-ui-muted">{sub}</div>}</div>
-    <div className="min-w-0">{second}</div><span className="tabular-nums">{rows}</span><span>{updated}</span><div className="flex items-center justify-end gap-1" onClick={event => event.stopPropagation()}>{end}</div>
+    <div className="min-w-0">{second}</div><span className="tabular-nums">{rows}</span><span>{updated}</span>{status !== undefined && <div className="min-w-0">{status}</div>}<div className={`flex items-center justify-end gap-1 ${status === undefined ? 'col-span-2' : ''}`} onClick={event => event.stopPropagation()}>{end}</div>
   </div>;
 }
 
-function UsedList({ items, problem, sync, actions, onOpen, onReplace }: { items: readonly Reference[]; problem: 'd1' | 'd2'; sync: string | null; actions: Actions; onOpen: (id: string, columns: boolean) => void; onReplace: (id: string) => void }) {
-  return <div className={frame} role="table" aria-label="Used by workflows"><ListHead cells={['Reference', 'Current file', 'Rows', 'Updated']} />{items.map(item => {
+function UsedList({ items, sync, actions, onOpen, onReplace }: { items: readonly Reference[]; sync: string | null; actions: Actions; onOpen: (id: string, columns: boolean) => void; onReplace: (id: string) => void }) {
+  return <div className={frame} role="table" aria-label="Used by workflows"><ListHead cells={['Reference', 'Current file', 'Rows', 'Updated', 'Status']} />{items.map(item => {
     const file = item.file, broken = file ? missingMatches(file).length > 0 : false;
-    const status = file?.sharePoint && sync === 'failed' ? <span className="flex items-center gap-1.5 text-caption text-ui-muted"><Dot />Sync failed</span> : file?.sharePoint && sync === 'ok' ? <span className="text-caption text-ui-muted">Synced 5 min ago</span> : null;
-    return <ListRow key={item.id} onActivate={file ? () => onOpen(item.id, broken) : undefined}
-      lead={file ? <button type="button" className={link} onClick={event => { event.stopPropagation(); onOpen(item.id, broken); }}>{item.title}</button> : item.title}
-      sub={broken && problem === 'd2' ? <>{problemText(item)} <button type="button" className="underline underline-offset-2" onClick={event => { event.stopPropagation(); onOpen(item.id, true); }}>Choose column</button></> : item.note}
-      second={file ? <><div className="truncate">{file.name}</div>{status}</> : <span className="text-ui-muted">No roster yet</span>}
-      rows={file?.rows.toLocaleString()} updated={file && when(file.updatedAt)}
-      end={file ? <>{broken && problem === 'd1' && <span className="mr-1 flex items-center gap-1.5 whitespace-nowrap text-caption text-ui-muted"><Dot />{needsText(file)}</span>}<FileMenu file={file} kind="reference" actions={actions} label={file.name} onReplace={() => onReplace(item.id)} /></> : <Button variant="primary" onClick={() => actions.importFor(item.id)}>Import a roster</Button>} />;
+    const caption = file?.sharePoint && sync === 'ok' ? <span className="text-caption text-ui-muted">Synced 5 min ago</span> : null;
+    const status = !file ? <span className="flex items-center gap-1.5 whitespace-nowrap text-caption"><Dot />Missing</span>
+      : broken ? <span className="flex items-center gap-1.5 whitespace-nowrap text-caption"><Dot />{needsText(file)}</span>
+      : file.sharePoint && sync === 'failed' ? <span className="flex items-center gap-1.5 whitespace-nowrap text-caption"><Dot />Sync failed</span> : <span className="text-caption text-ui-muted">Ready</span>;
+    return <ListRow key={item.id} onActivate={file ? () => onOpen(item.id, broken) : undefined} lead={item.title}
+      second={file ? <><div className="truncate" title={file.name}>{file.name}</div>{caption}</> : <span className="text-ui-muted">No roster yet</span>}
+      rows={file?.rows.toLocaleString()} updated={file && when(file.updatedAt)} status={status}
+      end={file ? <FileMenu file={file} kind="reference" actions={actions} label={file.name} onReplace={() => onReplace(item.id)} /> : <Button variant="primary" onClick={() => actions.importFor(item.id)}>Import a roster</Button>} />;
   })}</div>;
 }
 
-function ResultsList({ groups, actions, forceOpen }: { groups: readonly ResultGroup[]; actions: Actions; forceOpen: boolean }) {
+function MergeDialog({ pending, main, onClose, onConfirm }: { pending: { group: ResultGroup; file: ResultFile } | undefined; main: string | undefined; onClose: () => void; onConfirm: () => void }) {
+  const file = pending?.file;
+  return <Dialog open={!!pending} onOpenChange={open => { if (!open) onClose(); }}><DialogContent size="md" title={main ? 'Merge into main spreadsheet' : 'Use as the main spreadsheet'} description={file?.name}>
+    <DialogBody>{main ? <div className="grid gap-4">
+      <p className="text-body text-ui-muted">Rows from this result are added to {main}. Rows with the same EID are updated.</p>
+      <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 rounded-[7px] border border-ui-stroke px-3 py-2.5 text-body"><dt>New rows</dt><dd className="tabular-nums">{MERGE_PREVIEW.added}</dd><dt>Updated by EID</dt><dd className="tabular-nums">{MERGE_PREVIEW.updated}</dd><dt>Unchanged</dt><dd className="tabular-nums">{MERGE_PREVIEW.unchanged}</dd></dl>
+      <p className="text-caption text-ui-muted">This saves a new version of {main}. To undo it, use the earlier version.</p></div>
+      : <p className="text-body text-ui-muted">{pending?.group.workflow} has no main spreadsheet yet. This result becomes it, with {MERGE_PREVIEW.added + MERGE_PREVIEW.updated + MERGE_PREVIEW.unchanged} rows. Later results can be merged into it.</p>}</DialogBody>
+    <DialogFooter><Button variant="muted" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={onConfirm}>{main ? 'Merge' : 'Use as main spreadsheet'}</Button></DialogFooter>
+  </DialogContent></Dialog>;
+}
+
+function ResultsList({ groups, mains: initial, actions, forceOpen }: { groups: readonly ResultGroup[]; mains: Readonly<Record<string, string>>; actions: Actions; forceOpen: boolean }) {
   const [open, setOpen] = useState<string[]>(forceOpen && groups[0] ? [groups[0].workflow] : []);
+  const [mains, setMains] = useState(initial), [pending, setPending] = useState<{ group: ResultGroup; file: ResultFile }>();
+  const { toast } = useToasts();
   if (!groups.length) return <p className="hub-sheets-empty rounded-[10px] border border-dashed border-ui-stroke">Workbooks made by workflows will appear here, one for each run.</p>;
   const asOpen = (file: ResultFile) => actions.open({ id: file.id, name: file.name, rows: 0, updatedAt: file.createdAt });
-  const buttons = (file: ResultFile) => <><Button onClick={() => asOpen(file)}>Open</Button><IconButton label={`Download ${file.name}`} icon={<Download size={16} />} /></>;
+  const confirm = () => {
+    if (!pending) return;
+    const name = mains[pending.group.workflow];
+    if (name) toast({ tone: 'success', title: `Merged into ${name}`, description: 'Saved as a new version.' });
+    else { const created = `${pending.group.workflow} (main)`; setMains(current => ({ ...current, [pending.group.workflow]: created })); toast({ tone: 'success', title: `${created} created` }); }
+    setPending(undefined);
+  };
+  const buttons = (group: ResultGroup, file: ResultFile) => <><Button onClick={() => asOpen(file)}>Open</Button><IconButton label={`Download ${file.name}`} icon={<Download size={16} />} />
+    <DropdownMenu><DropdownMenuTrigger render={<IconButton label={`Actions for ${file.name}`} icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setPending({ group, file })}>{mains[group.workflow] ? 'Merge into main spreadsheet' : 'Use as main spreadsheet'}</DropdownMenuItem></DropdownMenuContent></DropdownMenu></>;
   return <div className={frame} role="table" aria-label="Results"><ListHead cells={['Workflow', 'Newest workbook', '', 'Created']} />{groups.map(group => {
-    const [newest, ...older] = group.files, expanded = open.includes(group.workflow);
+    const [newest, ...older] = group.files, expanded = open.includes(group.workflow), main = mains[group.workflow];
     return <div key={group.workflow} className="border-t border-ui-stroke first:border-t-0">
-      <ListRow lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} end={buttons(newest)} />
-      {older.length > 0 && <div className="px-3 pb-2"><button type="button" className="flex items-center gap-1 text-caption text-ui-muted hover:text-ui-primary" aria-expanded={expanded} onClick={() => setOpen(current => expanded ? current.filter(name => name !== group.workflow) : [...current, group.workflow])}><ChevronRight size={12} aria-hidden className={expanded ? 'rotate-90' : ''} />{expanded ? 'Hide earlier results' : `${older.length} earlier ${older.length === 1 ? 'result' : 'results'}`}</button></div>}
-      {expanded && <div className="bg-ui-table/40">{older.map(file => <ListRow key={file.id} lead={<span className="font-normal">{file.run}</span>} second={file.name} updated={when(file.createdAt)} end={buttons(file)} />)}</div>}
+      <ListRow lead={group.workflow} sub={newest.run} second={newest.name} updated={when(newest.createdAt)} end={buttons(group, newest)} />
+      <div className="flex items-center justify-between gap-3 px-3 pb-2 text-caption text-ui-muted">
+        {older.length > 0 ? <button type="button" className="flex items-center gap-1 hover:text-ui-primary" aria-expanded={expanded} onClick={() => setOpen(current => expanded ? current.filter(name => name !== group.workflow) : [...current, group.workflow])}><ChevronRight size={12} aria-hidden className={expanded ? 'rotate-90' : ''} />{expanded ? 'Hide earlier results' : `${older.length} earlier ${older.length === 1 ? 'result' : 'results'}`}</button> : <span />}
+        <span>{main ? `Main spreadsheet: ${main}` : 'No main spreadsheet'}</span>
+      </div>
+      {expanded && <div className="bg-ui-table/40">{older.map(file => <ListRow key={file.id} lead={<span className="font-normal">{file.run}</span>} second={file.name} updated={when(file.createdAt)} end={buttons(group, file)} />)}</div>}
     </div>;
-  })}</div>;
+  })}<MergeDialog pending={pending} main={pending ? mains[pending.group.workflow] : undefined} onClose={() => setPending(undefined)} onConfirm={confirm} /></div>;
 }
 
 function OtherList({ files, sync, actions }: { files: readonly SheetFile[]; sync: string | null; actions: Actions }) {
@@ -114,7 +140,7 @@ function ReplaceDialog({ item, onClose, onConfirm }: { item: Reference | undefin
 }
 
 export function SheetsDesignD() {
-  const scenario = sheetsScenario(), problem = sheetsParam('relaySheetsProblem') === 'd2' ? 'd2' : 'd1', sync = sheetsParam('relaySheetsSync'), dropped = sheetsParam('relaySheetsMissing');
+  const scenario = sheetsScenario(), sync = sheetsParam('relaySheetsSync'), dropped = sheetsParam('relaySheetsMissing');
   const [refs, setRefs] = useState<readonly Reference[]>(() => sheetsReferences(scenario).map(item => item.id === dropped ? { ...item, file: null } : item));
   const results = sheetsResults(scenario), others = sheetsOther(scenario);
   const { toast } = useToasts();
@@ -134,8 +160,8 @@ export function SheetsDesignD() {
     <div className="flex items-center gap-2"><Button variant="primary" onClick={() => { setPreset(undefined); setImportOpen(true); }}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page hub-sheets-library min-w-0 text-body">
     {head}
-    <Section title="Used by workflows" description="A reference for looking up people."><UsedList items={refs} problem={problem} sync={sync} actions={actions} onOpen={(id, columns) => setDrawer({ id, columns })} onReplace={setReplacing} /></Section>
-    <Section title="Results"><ResultsList groups={results} actions={actions} forceOpen={sheetsParam('relaySheetsExpanded') === '1'} /></Section>
+    <Section title="Used by workflows" description="A reference for looking up people."><UsedList items={refs} sync={sync} actions={actions} onOpen={(id, columns) => setDrawer({ id, columns })} onReplace={setReplacing} /></Section>
+    <Section title="Results"><ResultsList groups={results} mains={sheetsMains(scenario)} actions={actions} forceOpen={sheetsParam('relaySheetsExpanded') === '1'} /></Section>
     <Section title="Other spreadsheets"><OtherList files={others} sync={sync} actions={actions} /></Section>
     <ReferenceDrawer key={drawer?.id ?? 'closed'} item={refs.find(item => item.id === drawer?.id)} focusColumns={drawer?.columns ?? false} onClose={() => setDrawer(undefined)} onSave={saveColumns} onReplace={id => { setDrawer(undefined); setReplacing(id); }} />
     <ReplaceDialog key={replacing ?? 'none'} item={refs.find(item => item.id === replacing)} onClose={() => setReplacing(undefined)} onConfirm={replaced} />

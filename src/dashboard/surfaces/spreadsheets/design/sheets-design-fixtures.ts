@@ -37,6 +37,9 @@ export function sheetsResults(scenario: SheetsScenario): readonly ResultGroup[] 
   return ALL_RESULTS.slice(0, 2).map(group => ({ ...group, files: group.files.slice(0, 2) }));
 }
 
+export const sheetsMains = (scenario: SheetsScenario): Readonly<Record<string, string>> => scenario === 'empty' ? {} : scenario === 'many' ? { 'Emergency Contact': 'Emergency contacts (main)', Separations: 'Separations (main)' } : { 'Emergency Contact': 'Emergency contacts (main)' };
+export const MERGE_PREVIEW = { added: 12, updated: 4, unchanged: 31 } as const;
+
 const OTHER: readonly SheetFile[] = [
   file('o1', 'Example student applicants.xlsx', 86, '2026-11-01T17:00:00Z'), file('o2', 'Example parking permits.csv', 214, '2026-10-22T17:00:00Z', { sharePoint: true }),
   file('o3', 'Example department codes.xlsx', 57, '2026-10-18T17:00:00Z'), file('o4', 'Example badge requests.xlsx', 31, '2026-10-12T17:00:00Z'),
@@ -62,10 +65,10 @@ export const REFERENCE_SHEETS: Readonly<Record<string, PreviewSheet>> = {
   'onboarding-roster': { headers: ['EID', 'Hire name', 'Start date', 'Department'], rows: sample(8, index => [eid(index), person(index), `11/${String(10 + index).padStart(2, '0')}/2026`, 'Example Dept']) },
   'i9-history': { headers: ['Employee ID', 'Employee', 'Action', 'Action date', 'Completed by'], rows: sample(8, index => [eid(index), person(index), index % 2 ? 'Section 2 done' : 'Reverify', `10/${String(20 + index).padStart(2, '0')}/2026`, 'Example, Reviewer']) },
 };
-export const sheetSamples = (sheet: PreviewSheet, header: string): string => { const column = sheet.headers.indexOf(header); return column < 0 ? '' : sheet.rows.slice(0, 3).map(row => row[column]).join(' · '); };
+export const sheetSamples = (sheet: PreviewSheet, header: string): string => { const column = sheet.headers.indexOf(header); return column < 0 ? '' : sheet.rows.slice(0, 3).map(row => row[column]).join(', '); };
 
 export const IMPORT_FILE = { name: 'Example contacts export.xlsx', rows: 398, sheet: 'Contacts' };
 export const IMPORT_COLUMNS = [
-  { header: 'Employee ID', sample: '10482917 · 10482930 · 10482943', role: 'eid' }, { header: 'Full name', sample: 'Example, Person A · Example, Person B · Example, Person C', role: 'person' },
+  { header: 'Employee ID', sample: '10482917, 10482930, 10482943', role: 'eid' }, { header: 'Full name', sample: 'Example, Person A; Example, Person B; Example, Person C', role: 'person' },
   { header: 'Department', sample: 'Example Dept', role: null }, { header: 'Work phone', sample: '555-0100', role: null }, { header: 'Emergency phone', sample: '555-0142', role: null },
 ] as const;
