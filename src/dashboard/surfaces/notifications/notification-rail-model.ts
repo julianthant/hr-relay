@@ -39,7 +39,7 @@ export function useNotificationRailModel({ notifications, reads, setReads, setOp
     changeOpen,
     onControl: (id, action) => { setNotice(""); void served.control(id, action); },
     onReadAll: () => { setNotice(""); void served.readAll(); },
-    onOpenItem: item => { setNotice(""); served.open(item, onOpenNotification, () => setOpen(false), setNotice); },
+    onOpenItem: item => { setNotice(""); served.open(item, onOpenNotification, () => undefined, setNotice); },
   };
   return {
     state,
@@ -51,10 +51,9 @@ export function useNotificationRailModel({ notifications, reads, setReads, setOp
     onReadAll: () => { if (state.state === "ready") setReads(current => ({ ...current, ...Object.fromEntries(state.items.map(item => [item.id, true])) })); },
     onOpenItem: item => {
       setNotice("");
-      onOpenNotification(item.destination, () => {
-        setReads(current => ({ ...current, [item.id]: true }));
-        changeOpen(false);
-      }, setNotice);
+      const markRead = () => setReads(current => ({ ...current, [item.id]: true }));
+      if (item.destination.kind === "none") markRead();
+      else onOpenNotification(item.destination, markRead, setNotice);
     },
   };
 }

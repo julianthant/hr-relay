@@ -12,19 +12,19 @@ const sample: Extract<NotificationsState, { state: "ready" }> = {
   ],
 };
 const run = (n: number) => RunIdSchema.parse(`00000000-000${n}-4000-8000-00000000000${n}`);
-const settings = (section: "general" | "subscription") => ({ kind: "settings", section }) as const;
-/** Storage notices open General scrolled to its Advanced section (id needed from lane E). */
-const storage = { kind: "settings", section: "general", anchor: "settings-advanced" } as const;
+const settings = (section: "subscription") => ({ kind: "settings", section }) as const;
+/** Storage notices have no destination: they live only here. */
+const storage = { kind: "none" } as const;
 /** Notification centre frames: unread and read items, Today and Earlier. */
 const centreItems: NotificationItem[] = [
-  { id: "c-disk", kind: "storage", title: "Your disk is full", subject: "", workflow: "", detail: "Free up space; Relay cannot save.", tone: "danger", age: "2 min ago", read: false, action: "Open settings", destination: storage },
+  { id: "c-disk", kind: "storage", title: "Your disk is full", subject: "", workflow: "", detail: "Free up space; Relay cannot save.", tone: "danger", age: "2 min ago", read: false, action: "", destination: storage },
   { id: "c-limit", kind: "chatgpt", title: "ChatGPT usage limit reached", subject: "", workflow: "", detail: "Runs that read scans wait until 3:40 PM.", tone: "warning", age: "14 min ago", read: false, action: "Open settings", destination: settings("subscription") },
   { id: "c-waiting", kind: "run", title: "Run waiting for you", subject: "Morrow, Bea", workflow: "Person Lookup", detail: "Waiting on identity review.", tone: "warning", age: "35 min ago", read: false, action: "Review run", destination: { kind: "run", runId: run(5), day: "2026-08-03" } },
   { id: "c-failed", kind: "run", title: "Run failed", subject: "EID 10555001", workflow: "Person Lookup", detail: "Cross Verification failed.", tone: "danger", age: "2 hr ago", read: true, action: "Open log", destination: { kind: "run", runId: run(4), day: "2026-08-03" } },
-  { id: "c-repair", kind: "storage", title: "Relay repaired a saved file", subject: "", workflow: "", detail: "Nothing needs your attention.", tone: "info", age: "1 days ago", read: true, earlier: true, action: "Open settings", destination: storage },
-  { id: "c-window", kind: "storage", title: "Relay is open in another window", subject: "", workflow: "", detail: "Close the other Relay.", tone: "warning", age: "2 days ago", read: true, earlier: true, action: "Open settings", destination: storage },
+  { id: "c-repair", kind: "storage", title: "Relay repaired a saved file", subject: "", workflow: "", detail: "Nothing needs your attention.", tone: "info", age: "1 days ago", read: true, earlier: true, action: "", destination: storage },
+  { id: "c-window", kind: "storage", title: "Relay is open in another window", subject: "", workflow: "", detail: "Close the other Relay.", tone: "warning", age: "2 days ago", read: true, earlier: true, action: "", destination: storage },
   { id: "c-disconnected", kind: "chatgpt", title: "ChatGPT disconnected", subject: "", workflow: "", detail: "Reconnect it in Settings > Subscription.", tone: "danger", age: "3 days ago", read: true, earlier: true, action: "Open settings", destination: settings("subscription") },
-  { id: "c-newer", kind: "storage", title: "Your data is newer than this Relay", subject: "", workflow: "", detail: "Update Relay.", tone: "warning", age: "5 days ago", read: true, earlier: true, action: "Open settings", destination: storage },
+  { id: "c-newer", kind: "storage", title: "Your data is newer than this Relay", subject: "", workflow: "", detail: "Update Relay.", tone: "warning", age: "5 days ago", read: true, earlier: true, action: "", destination: storage },
 ];
 
 export function notificationsSample(scenario: string): NotificationsState {

@@ -1016,13 +1016,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
     if (destination.kind === "settings") {
-      leaveSettings(() => {
-        setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section });
-        opened();
-        if (destination.anchor) window.setTimeout(() => document.getElementById(destination.anchor!)?.scrollIntoView({ block: "start" }), 250);
-      });
+      leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
       return;
     }
+    if (destination.kind === "none") return;
     if (source === "mock" && destination.kind === "run") {
       const validate = () => {
         const context = notificationContext.current;
@@ -1040,7 +1037,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         if (!setActiveWorkflowId(row.workflowId)) return;
         setLaunchOpen(false); exitQueueSelection(); onFilter(["all"]);
         setRoute({ ...routeWithoutTakeovers(routeRef.current), day: destination.day, start: false, run: destination.runId, section: "logs",
-          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined, notifications: false } });
+          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined } });
         opened();
         requestAnimationFrame(() => {
           const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(destination.runId)}"]`);
@@ -1099,7 +1096,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const run = context.runs.find(item => item.id === destination.runId)!;
       setRailPreview(run.workflowId); setRailRun(run.id);
       if (destination.records) setRailReviewId(run.id);
-      setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined, notifications: false } }));
+      setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined } }));
       opened();
       requestAnimationFrame(() => {
         const queueId = mockQueueId(destination.runId);
