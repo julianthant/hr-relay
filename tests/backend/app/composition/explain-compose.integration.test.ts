@@ -1,3 +1,4 @@
+import * as profileCredentials from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileFixtureSet, profileFixtureStorageAdmission, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
@@ -9,7 +10,7 @@ import { z } from "zod";
 import { mkdtempSync,lstatSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,describe,it,vi } from "vitest";
 import { composeExplainRuntime,explainRunFrom,parseDiagnosticArgs } from "../../../../src/backend/app/composition/explain-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
@@ -34,6 +35,7 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const database of databases.splice(0)) database.close();
   for (const profile of heldProfiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -113,6 +115,30 @@ describe("explain run", () => {
     writeFileSync(path, Buffer.alloc(5 * 1024 * 1024 + 1)); assert.throws(() => readLocalDebugLog(root), /boot-log-cap-exceeded/u);
     rmSync(path); symlinkSync(join(root, "missing"), path); assert.throws(() => readLocalDebugLog(root), /boot-log-path-unsafe/u);
   });
+  it("composes CLI explanations from the selected person's authority without creating machine authority", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    explainRunFrom(database, EXIT_RUN_ID);
+    const generation = database.getMeta().authorityGeneration;
+    const byRun = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["run", EXIT_RUN_ID, "--json"] });
+    const byTrace = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["run", EXIT_TRACE_ID, "--json"] });
+    assert.equal(byRun, byTrace);
+    assert.equal(z.object({ runId: z.string() }).parse(JSON.parse(byRun)).runId, EXIT_RUN_ID);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.equal(readdirSync(profile.machine.stateRoot).includes("state.db"), false);
+    profile.machine.assertLive(); profile.admission.assertLive();
+  });
+
+  it("refuses a missing profile selection before reading credentials or opening authority", async () => {
+    await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const registry = profile.machine.readProfileRegistry();
+    vi.spyOn(profile.machine, "readProfileRegistry").mockReturnValue({ ...registry, activeProfileId: null });
+    const credentials = vi.spyOn(profileCredentials, "createCredentialStore");
+    assert.throws(() => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["run", EXIT_RUN_ID] }), /profile-session-stale/u);
+    assert.equal(credentials.mock.calls.length, 0);
+  });
+
   it("resolves either identity form to the same explanation", async () => {
     const database = await seeded();
     const byRun = explainRunFrom(database, EXIT_RUN_ID);
