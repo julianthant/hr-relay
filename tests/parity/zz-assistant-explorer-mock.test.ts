@@ -4,6 +4,7 @@ import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { ASSISTANT_FRAMES } from "../../src/dashboard/surfaces/assistant/assistant-mock-frames.js";
 
 // Design mock renders for the floating Sessions dock, the assistant launcher and Explorer; output goes to the gitignored .work folder.
 const OUT = process.env.AX_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/assistant-explorer-mock";
@@ -24,7 +25,9 @@ const launcherFrames: Frame[] = [
   }),
   { id: "launcher-open", query: "assistantOpen=1&assistantNeeds=2&assistantMock=01-chat-basics", view: RUN },
 ];
+const assistantFrames: Frame[] = ASSISTANT_FRAMES.map(frame => ({ id: frame.id, query: `assistantOpen=1&assistantMock=${frame.id}`, view: RUN, ...frame.menu === "effort" ? { act: async (page: Page) => { await page.getByRole("button", { name: /^Thinking effort:/u }).click(); } } : {} }));
 const FRAMES: Frame[] = [
+  ...assistantFrames,
   { id: "dock-closed", query: "assistantOpen=0", view: RUN },
   { id: "dock-open", query: "assistantOpen=0", view: { ...RUN, sessions: true } },
   { id: "dock-open-assistant", query: "assistantOpen=1&assistantMock=01-chat-basics", view: { ...RUN, sessions: true } },

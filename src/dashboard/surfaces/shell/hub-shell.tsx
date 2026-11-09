@@ -90,7 +90,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
             }}><button tabIndex={0} className="hub-chat-open" type="button" aria-current={chat.id === model.currentId ? "true" : undefined} onClick={() => { void model.select(chat.id); setList(false); }}><strong>{chat.title}</strong><small>{chatAge(chat.minutes)}{chat.id === model.currentId && " · Current"}</small></button>{icon(`Rename chat ${chat.title}`, <Pencil aria-hidden />, () => edit("rename", chat.id))}{icon(`Delete chat ${chat.title}`, <Trash2 aria-hidden />, () => edit("delete", chat.id))}</div>)}</section>;
           })}
         </div></TabPanel>
-          <TabPanel value="activity" className="hub-transcript">{frame ? <AssistantMockActivity /> : <EmptyState title="No activity today" />}</TabPanel>
+          <TabPanel value="activity" className="hub-transcript">{frame || source === "mock" ? <AssistantMockActivity /> : <EmptyState title="No activity today" />}</TabPanel>
         </Tabs> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
           {current && currentSession && <AssistantPanel key={current.id} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}

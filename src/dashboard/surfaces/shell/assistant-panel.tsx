@@ -2,7 +2,7 @@ import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockPr
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { Fragment, useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, X } from "lucide-react";
-import { assistantFrame } from "../assistant/assistant-mock-frames.js";
+import { assistantFrame, ASSISTANT_FRAMES } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockThread } from "./assistant-mock-thread.js";
 import type { DashboardClient } from '../../client/index.js';
 import { Button } from '../../ds/ui.js';
@@ -67,7 +67,8 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
   onNewChat?: () => void; onRename?: () => void; title?: string; headerProps?: HTMLAttributes<HTMLElement>; onOpenSettings?: (section?: string) => void; onSendMessage?: () => void; initialText?: string; draft?: ComposerDraftPort;
 }) {
   const model = useAssistantPanel({ producer, accountClient, served, ports: { onAttachFile, onRegisterSpreadsheet, onRunWorkflow } });
-  const frame = assistantFrame();
+  // The mock chat opens on the first approved frame; a served chat starts empty.
+  const frame = assistantFrame() ?? (served ? undefined : ASSISTANT_FRAMES[0]);
   if (frame) { title = frame.title; initialText = frame.draft ?? ""; }
   const conversation = model.conversation;
   const wasAtLatest = useRef(true);
@@ -83,8 +84,8 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
       <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="Chats" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
     </header><div className="hub-panel-content">
       <div className="hub-thread-wrap"><><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
-        {frame ? <AssistantMockThread frame={frame} /> : <>
-        {(served ? served.state.messages.length === 0 : conversation.scene === 'new') ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
+        {frame && <AssistantMockThread frame={frame} />}<>
+        {!frame && (served ? served.state.messages.length === 0 : conversation.scene === 'new') ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
         {(served?.state.messages ?? conversation.messages).map((message, index) => message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}{message.attachments?.map(file => <span className="hub-sent-file" key={file.id}><Paperclip aria-hidden />{file.name}</span>)}</div> : <AssistantReply key={index}>{message.text}</AssistantReply>)}
         {conversation.files.filter(file => file.status !== 'Attached').map(file => <AssistantFileChip key={file.id} file={file} />)}
         {served && proposal && turn?.state === 'proposal' && <ProposalCard proposal={proposal} disposition={turn.disposition} refusal={assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) ?? served.confirmRefusal}
@@ -97,8 +98,8 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
         {served?.state.restored && <p className="hub-caption">Restored chat. Previous proposals cannot be confirmed.</p>}
         {historyNotice && <p role="status" className="hub-caption">{historyNotice}</p>}
         {model.error ? <p role="alert" className="hub-footer-status">{model.error}</p> : null}
-        {!served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
-        </>}
+        {frame ? null : !served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
+        </>
       </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</></div>
       {served && !accountReady && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings(served.accountAction === 'preflight' ? 'preflight' : 'general')}>{served.accountAction === 'preflight' ? 'Open Preflight' : served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}</div>}
       <ComposerInput key={conversation.id} modelPreference={modelPreference} draft={frame ? undefined : draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); if (served && sent && title === 'New chat') onAutomaticTitle?.(value.text.slice(0, 55)); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={!frame && (model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
