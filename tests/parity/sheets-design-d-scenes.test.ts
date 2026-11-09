@@ -32,7 +32,7 @@ test("sheets design D scenes @ light 1440", async ({ page }) => {
     "drawer": async () => { await open({ relaySheetsScenario: "all" }); await page.getByRole("button", { name: "OCR roster", exact: true }).click(); await expect(dialog()).toBeVisible(); await shot("drawer", dialog()); },
     "fix-columns": async () => {
       await open({ relaySheetsScenario: "all" }); await page.getByRole("button", { name: "I-9 action history", exact: true }).click(); await expect(dialog()).toBeVisible();
-      await dialog().getByText("Employee", { exact: true }).click(); await shot("fix-columns", dialog());
+      await dialog().getByLabel("Sheet columns").getByText("Employee", { exact: true }).click(); await shot("fix-columns", dialog());
       await dialog().getByRole("button", { name: "Save columns", exact: true }).click(); await expect(dialog()).toHaveCount(0); await shot("fix-columns-after");
     },
     "import-1-file": async () => {
