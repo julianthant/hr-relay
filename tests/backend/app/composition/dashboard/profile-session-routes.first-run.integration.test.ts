@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { it, vi } from "vitest";
+import { beforeEach, it, vi } from "vitest";
 import * as dashboardRunners from "../../../../../src/backend/app/preflight/dashboard-runners.js";
 import * as httpServer from "../../../../../src/backend/transports/http/http-server.js";
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
@@ -19,6 +19,17 @@ import type { DashboardComposeInput } from "../../../../../src/backend/app/compo
 vi.mock("../../../../../src/backend/app/preflight/dashboard-runners.js", { spy: true });
 vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true });
 vi.mock("../../../../../src/backend/accounts/chatgpt-account-service.js", { spy: true });
+
+beforeEach(async () => {
+  const [originalRunners, originalHttp, originalAccounts] = await Promise.all([
+    vi.importActual<typeof dashboardRunners>("../../../../../src/backend/app/preflight/dashboard-runners.js"),
+    vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js"),
+    vi.importActual<typeof accounts>("../../../../../src/backend/accounts/chatgpt-account-service.js"),
+  ]);
+  vi.mocked(dashboardRunners.createDashboardPreflightRunners).mockReset().mockImplementation(originalRunners.createDashboardPreflightRunners);
+  vi.mocked(httpServer.startDashboardHttpServer).mockReset().mockImplementation(originalHttp.startDashboardHttpServer);
+  vi.mocked(accounts.createChatGptAccountService).mockReset().mockImplementation(originalAccounts.createChatGptAccountService);
+});
 
 it("serves the original local startup report at Finish and replays it without checks or remote connection calls", async () => {
   const f = await fixture();

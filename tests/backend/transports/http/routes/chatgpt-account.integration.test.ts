@@ -187,7 +187,7 @@ for (const alreadyAborted of [false, true]) it(`ends only the completion GET wai
     assert.equal(response.status, 400);
     assert.equal((await response.json() as { code: string }).code, "CHATGPT_AUTH_UNAVAILABLE");
     assert.equal(cancellation.signal.reason, reason);
-    assert.equal((await (await f.request()).json() as { state: string }).state, "signing-in");
+    assert.equal(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account.state, "signing-in");
     await f.callback(f.authorization());
     const completed = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
     assert.equal(completed.state, "completed");
@@ -214,6 +214,6 @@ it("refuses an already completed authorization result when the completion GET ab
     assert.equal(getEventListeners(request.signal, "abort").length, 0);
     const current = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
     assert.equal(current.state, "completed");
-    assert.equal((await (await f.request()).json() as { state: string }).state, "connected");
+    assert.equal(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account.state, "connected");
   } finally { await f.cleanup(); }
 });
