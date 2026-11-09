@@ -40,13 +40,3 @@ export function useAssistantOpen(): boolean {
 export function focusAssistantLauncher(): void {
   document.querySelector<HTMLElement>("[data-assistant-launcher]")?.focus();
 }
-
-const narrow = typeof window === "undefined" ? undefined : window.matchMedia("(max-width: 1439px)");
-const subscribeNarrow = (listener: () => void) => { narrow?.addEventListener("change", listener); return () => { narrow?.removeEventListener("change", listener); }; };
-
-/** The open assistant takes 432px: below 1440px the workflow rail minimizes while it is open (the remembered rail state is not written). */
-export function useAssistantSqueezesRail(): boolean {
-  const open = useAssistantOpen();
-  const isNarrow = useSyncExternalStore(subscribeNarrow, () => narrow?.matches ?? false, () => false);
-  return open && isNarrow;
-}
