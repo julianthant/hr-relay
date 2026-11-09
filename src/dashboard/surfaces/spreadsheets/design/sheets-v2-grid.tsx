@@ -29,19 +29,17 @@ function FieldRow({ field, dataset, value, onChange, onActive, onPicking }: { fi
 }
 
 export interface WorksheetControl { names: readonly string[]; current: string; runs: string; onSelect: (name: string) => void; onUseForRuns?: (name: string) => void }
-/** The worksheet dropdown: every sheet; the one runs read carries a Runs tag, the others a Use for runs action. */
+/** The worksheet dropdown (the shared menu): a check on the sheet being viewed, a Runs tag after the one runs read, grey "Use for runs" on the others. */
 function WorksheetPicker({ control }: { control: WorksheetControl }) {
-  const [open, setOpen] = useState(false);
-  return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild><Picker aria-label="Worksheet" className={CONTROL}>{control.current}</Picker></PopoverTrigger>
-    <PopoverContent title="Worksheet" hideTitle hideClose align="end" className={`!w-[280px] !p-1 ${dsLayer.modal}`}>
-      <ul aria-label="Worksheets" className={MENU}>{control.names.map(name => <li key={name} className="flex h-7 items-center gap-1 rounded-md pl-2 pr-1 hover:bg-ui-hover">
-        <button type="button" aria-current={name === control.current} className={`flex h-full min-w-0 flex-1 items-center gap-2 bg-transparent text-left text-[13px] ${name === control.current ? 'font-medium' : ''}`} onClick={() => { control.onSelect(name); setOpen(false); }}>
-          <span className="truncate">{name}</span>{name === control.runs && <RunsTag />}</button>
-        {name !== control.runs && control.onUseForRuns && <V2Button look="plain" size="sm" onClick={() => control.onUseForRuns!(name)}>Use for runs</V2Button>}
-      </li>)}</ul>
-    </PopoverContent>
-  </Popover>;
+  return <DropdownMenu><DropdownMenuTrigger render={<Picker aria-label="Worksheet" className={CONTROL}>{control.current}</Picker>} />
+    <DropdownMenuContent align="end" className={`min-w-[240px] ${MENU}`}>
+      <DropdownMenuRadioGroup value={control.current} onValueChange={control.onSelect}>
+        {control.names.map(name => <DropdownMenuRadioItem key={name} className={ROW} value={name}>
+          <span className="flex min-w-0 flex-1 items-center justify-between gap-4"><span className="flex items-center gap-2"><span className="truncate">{name}</span>{name === control.runs && <RunsTag />}</span>
+            {name !== control.runs && control.onUseForRuns && <span role="button" className="text-[12px] text-ui-muted hover:text-ui-primary" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); control.onUseForRuns!(name); }}>Use for runs</span>}</span>
+        </DropdownMenuRadioItem>)}
+      </DropdownMenuRadioGroup>
+    </DropdownMenuContent></DropdownMenu>;
 }
 
 const NO_MAPPING: Readonly<Record<FieldKey, string | null>> = { eid: null, name: null, email: null };
