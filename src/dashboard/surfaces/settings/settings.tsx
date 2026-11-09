@@ -19,7 +19,7 @@ import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
-import { StatusMockAnalytics } from "./status-mock/status-mock.js";
+import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
 import { PreflightSection } from "./preflight/settings-preflight.js";
 import { RoutesSection } from "./routes/settings-routes.js";

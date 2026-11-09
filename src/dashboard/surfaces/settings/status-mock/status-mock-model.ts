@@ -55,35 +55,28 @@ export const STATUS_MOCK_FIRST_RUN = [
   { id: "folders", label: "Download and report folders", state: "running" },
 ] as const;
 
-/** Outcome vocabulary shared by the tiles, the daily chart and the per-workflow bars. Needs attention = finished but not checked after saving, or waiting for you. */
+/** Outcome vocabulary shared by the key figures, the daily chart and the workflow rows. Needs attention = finished but not checked after saving, or waiting for you. */
 export const STATUS_MOCK_OUTCOMES = [
-  { key: "done", label: "Done", fill: "bg-ui-positive" },
-  { key: "failed", label: "Failed", fill: "bg-ui-danger" },
-  { key: "attention", label: "Needs attention", fill: "bg-ui-warning" },
+  { key: "done", label: "Done", fill: "bg-ui-positive/55 in-data-[demo-theme=dark]:bg-ui-positive/80", edge: "border-ui-positive/55" },
+  { key: "failed", label: "Failed", fill: "bg-ui-danger/55 in-data-[demo-theme=dark]:bg-ui-danger/80", edge: "border-ui-danger/55" },
+  { key: "attention", label: "Needs attention", fill: "bg-ui-warning/55 in-data-[demo-theme=dark]:bg-ui-warning/80", edge: "border-ui-warning/55" },
 ] as const;
 export type StatusMockOutcomeKey = (typeof STATUS_MOCK_OUTCOMES)[number]["key"];
 export type StatusMockCounts = Readonly<Record<StatusMockOutcomeKey, number>>;
 
+/** Synthetic week; each workflow's per-day [done, failed, needs attention] counts are the one source for the chart, key figures and table. Served today: finished and running totals, per-workflow counts, per-day run totals, one median time, failure counts by reason. The per-day outcome split, per-workflow lines under a row, the failing workflow per reason, per-day times per workflow and the workflow filter are backend gaps. */
 export const STATUS_MOCK_ANALYTICS = {
-  tiles: [
-    { label: "Done", value: "38", note: "of 52 runs · 5 still running" },
-    { label: "Failed", value: "3", note: "of 47 finished runs", tone: "danger" },
-    { label: "Needs attention", value: "6", note: "3 not checked after saving · 3 waiting for you", tone: "warning" },
-    { label: "Typical time", value: "2m 14s", note: "per finished run" },
-  ],
-  days: [
-    { label: "Sun 20", done: 4, failed: 0, attention: 1 },
-    { label: "Mon 21", done: 6, failed: 1, attention: 0 },
-    { label: "Tue 22", done: 7, failed: 0, attention: 2 },
-    { label: "Wed 23", done: 5, failed: 1, attention: 1 },
-    { label: "Thu 24", done: 8, failed: 0, attention: 1 },
-    { label: "Fri 25", done: 5, failed: 1, attention: 0 },
-    { label: "Sat 26", done: 3, failed: 0, attention: 1 },
-  ],
+  period: "Sep 20 – 26, 2026",
+  running: 5,
+  typicalTime: "2m 14s",
+  dayLabels: ["Sun 20", "Mon 21", "Tue 22", "Wed 23", "Thu 24", "Fri 25", "Sat 26"],
   workflows: [
-    { label: "Separations", done: 19, failed: 1, attention: 3, time: "2m 41s" },
-    { label: "Emergency Contact", done: 12, failed: 2, attention: 2, time: "1m 38s" },
-    { label: "Person Lookup", done: 7, failed: 0, attention: 1, time: "0m 52s" },
+    { id: "separations", label: "Separations", time: "2m 41s", lines: ["Failed reading the scan · 1", "Saved, not checked afterward · 2", "Waiting for you · 1"], seconds: [190, 170, 160, 165, 150, 175, 155],
+      byDay: [[2, 0, 1], [3, 0, 0], [4, 0, 1], [2, 0, 0], [4, 0, 1], [2, 1, 0], [2, 0, 0]] },
+    { id: "emergency-contact", label: "Emergency Contact", time: "1m 38s", lines: ["Failed at UCPath save · 2", "Saved, not checked afterward · 1", "Waiting for you · 1"], seconds: [110, 95, 100, 92, 98, 90, 96],
+      byDay: [[1, 0, 0], [2, 1, 0], [2, 0, 1], [2, 1, 1], [3, 0, 0], [1, 0, 0], [1, 0, 0]] },
+    { id: "person-lookup", label: "Person Lookup", time: "0m 52s", lines: ["Waiting for you · 1"], seconds: [60, 55, 52, 50, 54, 48, 51],
+      byDay: [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [2, 0, 0], [0, 0, 1]] },
   ],
   reasons: [
     { label: "UCPath did not answer", runs: 2, workflow: "Emergency Contact" },

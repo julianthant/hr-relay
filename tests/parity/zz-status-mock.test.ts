@@ -365,3 +365,42 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   }
   expect(errors).toEqual([]);
 });
+
+// Analytics states: the open Workflows row, both toolbar menus, the hover tooltip on a bar, and the other variant's key figures.
+for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&statusMock=analytics-a`);
+  await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  const shot = async (name: string) => { await page.waitForTimeout(300); await page.screenshot({ path: join(OUT, `analytics-${name}-${theme}-${WIDTH}.png`) }); };
+  const scroller = page.locator("#dashboard-settings-content");
+  await page.getByRole("button", { name: "Custom…" }).click();
+  await shot("menu-custom");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /By workflow/ }).click();
+  await shot("menu-workflow");
+  await page.getByRole("menuitemradio", { name: "Separations" }).dispatchEvent("click");
+  await expect(page.getByRole("button", { name: "Separations" }).first()).toBeVisible();
+  await shot("filtered");
+  await page.getByRole("button", { name: "Separations" }).first().click();
+  await page.getByRole("menuitemradio", { name: "All workflows" }).dispatchEvent("click");
+  await page.getByRole("img", { name: /^Wed 23: / }).first().hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await shot("tooltip-bar");
+  await page.mouse.move(1, 1);
+  await page.getByRole("button", { name: "Show Separations details" }).click();
+  await scroller.evaluate(node => { node.scrollTop = 420; });
+  await shot("workflows-open");
+  await scroller.evaluate(node => { node.scrollTop = 760; });
+  await page.getByRole("img", { name: /^Thu 24: Separations/ }).hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await shot("tooltip-time");
+  await page.keyboard.press("Tab");
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&statusMock=analytics-b`);
+  await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
