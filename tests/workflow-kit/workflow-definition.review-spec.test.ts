@@ -87,8 +87,11 @@ it("rejects unknown review metadata and preserves explicit local steps with no p
 
 it("requires every declared case when a branch step supplies review metadata", () => {
   const compile = (branchLabels: WorkflowStepReview["branchLabels"]) => compileWorkflow({ ...onboardingWorkflow,
-    steps: onboardingWorkflow.steps.map(([group, entries]) => [group.key === "i9-creation"
-      ? { ...group, review: { pages: [], branchLabels } } : group, entries] as const) });
+    steps: onboardingWorkflow.steps.map(([group, entries]) => {
+      if (group.key !== "i9-creation") return [group, entries] as const;
+      assert.ok(group.review);
+      return [{ ...group, review: { ...group.review, branchLabels } }, entries] as const;
+    }) });
   assert.throws(() => compile([]), /omits branch outcome i9-route\//u);
   assert.throws(() => compile([{ nodeId: "i9-route", outcome: "create", label: "Create the I-9 record." }]), /omits branch outcome i9-route\/existing/u);
   assert.doesNotThrow(() => compile([
