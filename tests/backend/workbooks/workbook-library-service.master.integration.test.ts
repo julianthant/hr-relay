@@ -1,3 +1,4 @@
+import { applyProductionConnectionPolicy } from "../../support/helpers/backend/sqlite-connection-policy.js";
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -16,7 +17,7 @@ const at = IsoInstantSchema.parse('2026-11-02T00:00:00.000Z');
 const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 function open(path = ':memory:', initialize = true) {
-  const database = new DatabaseSync(path); databases.push(database);
+  const database = new DatabaseSync(path); databases.push(database); applyProductionConnectionPolicy(database);
   if (initialize) for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
   const tx = <T>(work: () => T): T => {
     database.exec('BEGIN IMMEDIATE');
