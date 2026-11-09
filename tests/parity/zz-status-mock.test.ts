@@ -70,6 +70,13 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     // Toasts stack collapsed; hover expands them so all three show.
     if (firstToast) { await page.mouse.move(WIDTH - 130, HEIGHT - 70); await page.waitForTimeout(800); }
     await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}.png`) });
+    // The Run dialog body scrolls too; a second frame shows its lower half (picker note, blockers, facts).
+    const body = page.locator(".launch-content");
+    if (id.startsWith("run") && await body.count() && await body.evaluate(node => node.scrollHeight - node.clientHeight > 8)) {
+      await body.evaluate(node => { node.scrollTop = node.scrollHeight; });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}-more.png`) });
+    }
     // Settings pages scroll inside the window; a second full-window frame shows what sits below the fold.
     const scroller = page.locator("#dashboard-settings-content");
     if (settings && await scroller.evaluate(node => node.scrollHeight - node.clientHeight > 8)) {
