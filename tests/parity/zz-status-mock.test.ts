@@ -18,7 +18,7 @@ test.use({ deviceScaleFactor: Number(process.env.STATUS_MOCK_SCALE ?? 1) });
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
   "general-a": "general", "general-a-browser": "general", "account": "account", "account-edit": "account", "account-password": "account", "account-delete": "account", "account-duo-setup": "account",
   "subscription": "subscription", "subscription-limit": "subscription", "subscription-disconnected": "subscription",
-  "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard", "settings-storage": "storage",
+  "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard",
 };
 
 let server: FixtureServer;
@@ -38,7 +38,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
   for (const id of STATUS_MOCK_IDS.filter(item => ONLY === undefined || ONLY.includes(item))) {
     await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     const settings = SETTINGS_PAGE[id];
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${settings ? `&settings=${settings}` : ""}${id === "settings-storage" ? "" : `&statusMock=${id}`}`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${settings ? `&settings=${settings}` : ""}&statusMock=${id}`);
     // The modal frames open with their dialog, which hides the page behind it from the accessibility tree.
     if (settings) await expect(page.locator("nav.settings-panel-nav")).toBeVisible();
     else if (!id.startsWith("signup")) await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
@@ -372,9 +372,9 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  for (const id of ["general", "account", "subscription", "preflight", "activity", "keyboard", "storage"]) {
+  for (const id of ["general", "account", "subscription", "activity", "keyboard"]) {
     // General and Account show the moved rows, which only the mock Account page carries.
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "account" ? "&statusMock=account" : id === "subscription" ? "&statusMock=subscription" : ""}`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "account" ? "&statusMock=account" : id === "subscription" ? "&statusMock=subscription" : id === "activity" ? "&statusMock=analytics-a" : "&statusMock=general-a"}`);
     await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await settle(page);
@@ -466,7 +466,9 @@ test("account, subscription and general interactions", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await nav.getByRole("link", { name: "Subscription", exact: true }).click();
-  await expect(page.getByText("Your plan is managed through ChatGPT.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Connected account" }).getByText("Plus plan")).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Storage" })).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "Preflight" })).toHaveCount(0);
   for (const name of ["5-hour limit", "Weekly limit"]) await expect(page.getByRole("progressbar", { name: `${name} left` })).toBeVisible();
   const full = page.getByRole("switch", { name: "Full access" });
   await expect(full).not.toBeChecked();
@@ -501,8 +503,6 @@ test("sidebar click-through shows the mock pages", async ({ page }) => {
     Spreadsheets: () => expect(page.getByRole("region", { name: "Spreadsheets", exact: true })).toBeVisible(),
     Explorer: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
     Analytics: () => expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible(),
-    Storage: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
-    Preflight: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
     Keyboard: () => expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible(),
   };
   for (const [name, check] of Object.entries(marks)) {

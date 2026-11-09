@@ -63,6 +63,9 @@ const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   credentials: "account",
   // Subscription is a mock-only entry; without it the link opens General.
   subscription: "general",
+  // The Status pages are not part of the combined mock; links to them open General.
+  storage: "general",
+  preflight: "general",
 });
 
 const servedEntry = (id: string, label: string): SettingsNavEntry => ({
@@ -150,7 +153,7 @@ export function buildSettingsNav(
   if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
     statusEntries.unshift({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
-  groups.push({ id: "status", heading: "Status", entries: statusEntries });
+  if (statusMock() === undefined) groups.push({ id: "status", heading: "Status", entries: statusEntries });
   groups.push({
     id: "help",
     heading: "Help",

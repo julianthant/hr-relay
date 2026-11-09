@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { BodySection, Button, DateInput, FormGroup, PageHeading, ResultRow, SegmentedChoice, Select, Switch } from "../../../ds/ui.js";
-import { middle } from "../general/settings-storage.js";
+import { AppDataPaths, middle } from "../general/settings-storage.js";
+import { STATUS_MOCK_SUBSCRIPTION } from "./status-mock-model.js";
 
 const DOWNLOADS = "/Users/jordan.lee/Documents/Relay downloads";
 
@@ -55,5 +56,6 @@ export function StatusMockGeneral() {
     <Section title="Assistant">
       <Pick label="Send shortcut" description="Choose which keys send a message in the assistant." value={send} options={["Enter", "⌘Enter"]} onChange={setSend} />
     </Section>
+    <AppDataPaths title="Advanced" locations={STATUS_MOCK_SUBSCRIPTION.appData} />
   </section>;
 }
