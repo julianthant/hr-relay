@@ -20,6 +20,7 @@ const contract = defineTaskContract({ id: taskId("workflow:guard/read"), title: 
   subject: { kind: "none", reason: "Synthetic guard control" }, scenarios: [], example: {},
   freshness: { defaultMaxAgeMs: 0 }, provenance: { default: "derived" } });
 const alias = contract;
+const otherContract = defineTaskContract({ ...contract, id: taskId("workflow:guard/other") });
 const fail = taskFailer(contract);
 export function accepted(code: "declared") { fail(code, "declared dynamic code"); }
 export const task = defineTask(contract, { async run({ ctx }) {
@@ -50,6 +51,18 @@ export function rejectedUnowned(ctx: TaskCtxCommon<readonly ["declared"]>) { ret
 export function rejectedHelper(ctx: TaskCtxCommon<readonly ["declared" | "undeclared"]>) { return ctx.fail("undeclared", "helper contract mismatch"); }
 export const badHelperTask = defineTask(contract, { async run({ ctx }) { return rejectedHelper(ctx); } });
 export function rejectedIdentity(id: typeof contract.id) { throw new Failure(id, "declared", "no contract"); }
+export function rejectedForeignFactory() {
+  return defineTask(contract, { async run() { return taskFailer(otherContract)("declared", "foreign factory"); } });
+}
+export function rejectedForeignConstructor() {
+  return defineTask(contract, { async run() { throw new Failure(otherContract.id, "declared", "foreign constructor"); } });
+}
+export function acceptedOwnerAlias() {
+  return defineTask(contract, { async run() { return taskFailer(alias)("declared", "same factory owner"); } });
+}
+export function acceptedConstructorAlias() {
+  return defineTask(contract, { async run() { throw new Failure(alias.id, "declared", "same constructor owner"); } });
+}
 `;
 
 function unwrapped(expression: ts.Expression): ts.Expression {
@@ -69,15 +82,21 @@ function canonicalSymbol(checker: ts.TypeChecker, node: ts.Node, name: string, o
       && declaration.initializer !== undefined && canonicalSymbol(checker, unwrapped(declaration.initializer), name, owner, seen)) === true;
 }
 
-function sealedContract(checker: ts.TypeChecker, expression: ts.Expression, seen = new Set<ts.Symbol>()): boolean {
+function sealedContract(checker: ts.TypeChecker, expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.CallExpression | undefined {
   expression = unwrapped(expression);
-  if (ts.isCallExpression(expression)) return canonicalSymbol(checker, expression.expression, "defineTaskContract", CONTRACT_OWNER);
+  if (ts.isCallExpression(expression)) return canonicalSymbol(checker, expression.expression, "defineTaskContract", CONTRACT_OWNER)
+    ? expression : undefined;
   let symbol = checker.getSymbolAtLocation(expression);
   if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-  if (symbol === undefined || seen.has(symbol)) return false;
+  if (symbol === undefined || seen.has(symbol)) return undefined;
   seen.add(symbol);
-  return symbol.declarations?.some(declaration => ts.isVariableDeclaration(declaration)
-    && declaration.initializer !== undefined && sealedContract(checker, declaration.initializer, seen)) === true;
+  for (const declaration of symbol.declarations ?? []) {
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined) {
+      const contract = sealedContract(checker, declaration.initializer, seen);
+      if (contract !== undefined) return contract;
+    }
+  }
+  return undefined;
 }
 
 function finiteCodes(type: ts.Type): boolean {
@@ -137,6 +156,11 @@ function failureIssues(source: ts.SourceFile, checker: ts.TypeChecker, calls: re
     const declared = codes === undefined ? undefined : checker.getTypeOfSymbolAtLocation(codes, contract);
     return declared === undefined ? undefined : checker.getIndexTypeOfType(declared, ts.IndexKind.Number);
   };
+  const matchesOwner = (node: ts.Node, contract: ts.Expression): boolean => {
+    const identity = sealedContract(checker, contract);
+    return ownerContracts(node, checker, calls).every(owner => owner === undefined
+      || sealedContract(checker, owner) === identity);
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const signature = checker.getResolvedSignature(node);
@@ -152,6 +176,8 @@ function failureIssues(source: ts.SourceFile, checker: ts.TypeChecker, calls: re
           const contracts = factoryFail ? (factory === undefined ? [] : [factory]) : ownerContracts(node, checker, calls);
           if (contracts.length === 0 || contracts.some(contract => contract === undefined || !sealedContract(checker, contract))) {
             report(node, "failure authority does not resolve to an owning sealed contract");
+          } else if (factory !== undefined && !matchesOwner(node, factory)) {
+            report(node, "failure authority differs from the owning task contract");
           } else {
             for (const contract of contracts) {
               if (contract !== undefined) checkCode(node, node.arguments[0], contractCodes(contract));
@@ -168,7 +194,8 @@ function failureIssues(source: ts.SourceFile, checker: ts.TypeChecker, calls: re
         || !sealedContract(checker, contract.expression)) {
         report(node, "TaskError identity does not resolve to a sealed contract.id");
       } else {
-        checkCode(node, node.arguments?.[1], contractCodes(contract.expression));
+        if (!matchesOwner(node, contract.expression)) report(node, "TaskError identity differs from the owning task contract");
+        else checkCode(node, node.arguments?.[1], contractCodes(contract.expression));
       }
     }
     ts.forEachChild(node, visit);
@@ -187,7 +214,7 @@ function context() {
   new Map([[CONTROL_PATH, CONTROL_SOURCE]]));
   const calls: ts.CallExpression[] = [];
   for (const source of program.getSourceFiles()) {
-    if (!resolve(source.fileName).startsWith(resolve(REPO_ROOT, "src") + "/")) continue;
+    if (!relative(REPO_ROOT, source.fileName).replaceAll("\\", "/").startsWith("src/")) continue;
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) calls.push(node);
       ts.forEachChild(node, visit);
@@ -206,7 +233,7 @@ describe("workflow failure code declarations", () => {
       return resolve(source.fileName) !== CONTROL_PATH && (path.startsWith("src/workflows/")
         || path.startsWith("src/backend/") && !path.startsWith("src/backend/runtime/"));
     });
-    assert.ok(authored.some(source => source.fileName.endsWith("/systems/crm/tasks/read-onboarding-results.ts")));
+    assert.ok(authored.some(source => source.fileName.replaceAll("\\", "/").endsWith("/systems/crm/tasks/read-onboarding-results.ts")));
     assert.deepEqual(authored.flatMap(source => failureIssues(source, checker, calls)), []);
   });
 
@@ -222,9 +249,9 @@ describe("workflow failure code declarations", () => {
       if (name.startsWith("accepted") || name === "helper") assert.deepEqual(issues, [], name);
       else assert.equal(issues.length, 1, `${name}: ${issues.join("; ")}`);
     }
-    assert.equal(functions.length, 15);
+    assert.equal(functions.length, 19);
     const issues = failureIssues(source, checker, calls);
-    assert.equal(issues.length, 12, issues.join("\n"));
+    assert.equal(issues.length, 14, issues.join("\n"));
     assert.ok(issues.some(issue => issue.includes("undeclared")));
     assert.ok(issues.some(issue => issue.includes("sealed contract.id")));
   });

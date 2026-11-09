@@ -1219,7 +1219,7 @@ export function compileWorkflow<
         if (matches.length !== 1 || operatorField === undefined || operatorField.visibility === "logs") {
           throw new Error(`workflow ${definition.id} review field ${field.id} requires one visible operator field ${field.operatorField}`);
         }
-        if (operatorField.sources.some(source => !page.nodeIds.includes(source.nodeId))) {
+        if (operatorField.sources.some(source => !page.nodeIds.some(nodeId => nodeId === source.nodeId))) {
           throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
         }
         assertRead(field.source.read);

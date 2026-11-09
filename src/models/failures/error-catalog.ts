@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 import { BoundarySourceSchema } from "./boundary-failure.js";
 
-export function failureCodeFromTaskCode(code: string): string {
+export function failureCodeFromTaskCode(code: string) {
   return ErrorCodeSchema.parse(code.toUpperCase().replaceAll("-", "_"));
 }
 
