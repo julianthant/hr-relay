@@ -25,9 +25,9 @@
 .hub-chat-row { display:flex;align-items:center;gap:3px;border:0;border-radius:10px;padding:8px 5px;margin-bottom:3px; }
 .hub-chat-row:is(:hover,[data-current="true"]) { background:var(--ui-table); }
 .hub-chat-row button { border:0;background:transparent; }
-.hub-chat-row .hub-icon { width:32px;height:32px;min-width:32px; }
+.hub-chat-row .hub-icon { width:28px;height:28px;min-width:28px; }
 .hub-chat-row .hub-icon:hover { background:var(--ui-hover); }
-.hub-chat-row .hub-icon svg { width:18px;height:18px; }
+.hub-chat-row .hub-icon svg { width:16px;height:16px; }
 .hub-chat-open { flex:1;min-width:0;padding:5px 8px;display:grid;gap:2px;border-radius:6px;text-align:left; }
 .hub-chat-open strong { font-size:12px;font-weight:500;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .hub-chat-open small { font-size:11px;color:var(--ui-muted); }

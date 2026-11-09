@@ -8,7 +8,7 @@ import { cn } from "../../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
 import { navbarDayLabel, navbarSearch, type NavbarData, type NavbarSearchResult } from "./navbar-view-model.js";
 
-const iconButton = cn("inline-flex size-7.5 shrink-0 items-center justify-center rounded-md text-ui-secondary hover:bg-ui-hover hover:text-ui-primary disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent", dsFocus);
+const iconButton = cn("inline-flex size-7 shrink-0 items-center justify-center rounded-md text-ui-secondary hover:bg-ui-hover hover:text-ui-primary disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent", dsFocus);
 
 export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => void }) {
   const preferences = useShortcutPreferences();

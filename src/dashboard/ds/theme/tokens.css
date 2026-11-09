@@ -4,6 +4,7 @@
    The single source of every color, size, radius, shadow, focus ring and */
 
 :root {
+  --ds-sidebar-width: 312px; /* Settings sidebar and workflow rail: one width, never shrinks */
   --ds-layer-skip-focus: 1000;
   --ds-layer-toast-viewport: 100;
   --ds-layer-toast-card: 1000;
