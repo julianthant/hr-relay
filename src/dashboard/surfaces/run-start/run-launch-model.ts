@@ -15,6 +15,7 @@ import type { LaunchVerificationPlan } from "./run-launch-recovery.js";
 import { START_DOOR_ABSENCE } from "./run-start-model.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import type { WorkflowBootstrapPrimitive } from "../shell/shell-model.js";
+import type { WorkbookCompatibility } from "../../../models/dashboard/workbook-library.js";
 import { RUN_START_DOOR_ID, restoreDashboardTakeoverFocus } from "../../app/dashboard-app-model.js";
 import type { RerunValuesRequestSchema } from "../../../models/dashboard/rerun-values.js";
 import type { z } from "zod";
@@ -59,15 +60,21 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
   return { open, setOpen, openStart, openRerun, rerunSource, rerunInputText, closeFocus, handOffToIntake, rememberLauncher };
 }
 
-export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]): readonly RunStartWorkflow[] {
-  return workflows.map((entry) => ({ workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
+export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[], compatibility: WorkbookCompatibility): readonly RunStartWorkflow[] {
+  return workflows.map((entry) => {
+    const projection = compatibility.workflows.find(workflow => workflow.workflowId === entry.id);
+    if (entry.start.workbookReference !== undefined && projection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${entry.id}`);
+    return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
     role: entry.role, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,
     spreadsheetIntake: entry.start.spreadsheetIntake,
     ...(entry.start.uploadRun === undefined ? {} : { uploadRun: entry.start.uploadRun }),
-    requiredWorkbookTypeIds: entry.start.requiredWorkbookTypeIds,
+    requiredWorkbookFields: entry.start.requiredWorkbookFields,
+    workbookReference: entry.start.workbookReference,
+    referenceSources: projection?.sources ?? [],
     inputRun: entry.start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
-      : { state: "present", surface: entry.start.inputRun } }));
+      : { state: "present", surface: entry.start.inputRun } };
+  });
 }
 
 /** Copy only explicitly selected, available producer values; never checkpoint execution. */
@@ -137,12 +144,13 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     if (plan.planned.some((planned, index) => {
       const selections = (request.workbookReferences ?? []).filter(selection => selection.entry === acceptedEntries[index]);
       const references = planned.workbookReferences ?? [];
-      return new Set(selections.map(selection => selection.typeId)).size !== selections.length
+      return selections.length > 1
         || new Set(references.map(reference => reference.type.id)).size !== references.length
         || references.length !== selections.length
-        || references.some(reference => !selections.some(selection => selection.typeId === reference.type.id
-          && (selection.libraryId === undefined || selection.libraryId === reference.libraryId)
-          && (selection.versionId === undefined || selection.versionId === reference.versionId)
+        || references.some(reference => !selections.some(selection => selection.libraryId === reference.libraryId
+          && selection.versionId === reference.versionId
+          && selection.expectedVersion === reference.version
+          && reference.worksheets.length === 1 && reference.worksheets[0]?.sheetId === selection.sheetId
           && canonicalJsonStringify(selection.selectedRow ?? null) === canonicalJsonStringify(reference.selectedRow ?? null)));
     })) throw launchPlanIdentityMismatch();
     return plan;

@@ -21,7 +21,8 @@ const FillSchema = z.union([
   z.strictObject({ type: z.literal("gradient"), gradient: z.literal("angle"), degree: z.number().finite(), stops: StopsSchema }),
   z.strictObject({ type: z.literal("gradient"), gradient: z.literal("path"), center: z.strictObject({ left: z.number().min(0).max(1), top: z.number().min(0).max(1) }), stops: StopsSchema }),
 ]);
-const FieldSchema = z.string().refine(value => CANONICAL_FIELD_IDS.some(id => id === value) || /^roster\.[a-zA-Z][a-zA-Z\d]*$/u.test(value));
+export const CustomRosterFieldIdSchema = z.string().regex(/^roster\.[a-zA-Z][a-zA-Z\d]*$/u);
+const FieldSchema = z.string().refine(value => CANONICAL_FIELD_IDS.some(id => id === value) || CustomRosterFieldIdSchema.safeParse(value).success);
 const BindingSchema = z.strictObject({ id: WorkbookIdSchema, sourceColumn: IndexSchema.nullable(), sourceHeader: z.string(), fieldId: FieldSchema.nullable(), basis: z.enum(["header", "values", "manual", "unmapped"]) });
 const PrimitiveCellSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
 const DateCellWireSchema = z.strictObject({ type: z.literal("date"), value: IsoInstantSchema });
@@ -229,10 +230,6 @@ export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: Workb
 export const WorkbookReferenceLookupSchema = z.union([WorkbookReferenceRequestSchema.pick({ typeId: true, keys: true, fields: true }),
   WorkbookAllRowsRequestSchema.pick({ mode: true, typeId: true, fields: true })]);
 export type WorkbookReferenceLookup = z.infer<typeof WorkbookReferenceLookupSchema>;
-export const WorkbookRunReferenceSelectionSchema = WorkbookSelectedRowReferenceRequestBaseSchema.pick({ typeId: true, libraryId: true, versionId: true, selectedRow: true })
-  .extend({ entry: z.number().int().positive() }).refine(selection => selection.selectedRow === undefined
-    || (selection.libraryId !== undefined && selection.versionId !== undefined),
-  { message: 'selected workbook rows require an explicit library and version' });
 export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookReferenceRequestSchema, snapshot: WorkbookReferenceSnapshotSchema }).superRefine((reference, ctx) => {
   const { request, snapshot } = reference;
   const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId));

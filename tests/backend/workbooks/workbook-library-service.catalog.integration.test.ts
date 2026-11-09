@@ -1,16 +1,17 @@
 import { installRetainedMergeFixture } from '../../support/fixtures/storage/retained-workbook-merge.js';
+import { SQLITE_MIGRATIONS } from '../../../src/backend/storage/sqlite/migrations.js';
 import { projectWorkflowStartReadiness } from '../../../src/backend/runs/queries/bootstrap.js';
 import { ERROR_CATALOG } from '../../../src/models/failures/error-catalog.js';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
-import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
-import { WorkbookLibraryOriginSchema, WorkbookLibraryChangeSchema, WorkbookReferenceSlotSchema } from '../../../src/models/dashboard/workbook-library.js';
+import { createWorkbookLibraryService, projectWorkbookCompatibilityFromRepository, verifyRetainedNamedWorkbookReference } from '../../../src/backend/workbooks/workbook-library-service.js';
+import { WorkbookLibraryOriginSchema, WorkbookLibraryChangeSchema, WorkbookLibraryEntrySchema, WorkbookCompatibilitySchema, projectWorkbookCompatibility } from '../../../src/models/dashboard/workbook-library.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
 import { unexpectedWorkbookSync } from '../../support/helpers/backend/workbook-sync.js';
 import type { WorkbookSyncDownload } from '../../../src/backend/workbooks/workbook-library-service.js';
 import type { z } from 'zod';
-import { encodeEditableWorkbook } from '../../../src/models/dashboard/workbooks.js';
+import { encodeEditableWorkbook, RunWorkbookNamedReferenceSchema } from '../../../src/models/dashboard/workbooks.js';
 import { spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 
 const databases: DatabaseSync[] = [];
@@ -18,6 +19,10 @@ afterEach(() => databases.splice(0).forEach(database => database.close()));
 function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: Pick<Parameters<typeof createWorkbookLibraryService>[0], 'resultRun'> = {}) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(sql);
+  const selectionTable = SQLITE_MIGRATIONS.find(migration => migration.version === 24)?.statements
+    .find(statement => statement.startsWith('CREATE TABLE workflow_workbook_selections'));
+  if (selectionTable === undefined) throw new Error('current workbook selections migration unavailable');
+  database.exec(selectionTable);
   database.exec("CREATE TABLE runs (id TEXT PRIMARY KEY,state TEXT NOT NULL,lifecycle_json TEXT NOT NULL); CREATE TABLE run_requests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL)");
   const transaction = <T>(work: () => T) => {
     database.exec('BEGIN IMMEDIATE');
@@ -202,77 +207,80 @@ it('captures exact named all-row bytes separately from live CAS and refuses miss
   const edited = structuredClone(f.service.read(id).workbook);
   edited.sheets[0].rows[1].cells[1].value = 'Changed, Person';
   f.service.save(id, 2, edited);
-  const request = { mode: 'all', typeId: 'ocr-roster', libraryId: id, versionId: 'original', expectedVersion: 3, fields: ['eid', 'fullName'] };
+  const request = { kind: 'selected-source', mode: 'all', typeId: 'ocr-roster', keyFieldId: 'eid',
+    libraryId: id, versionId: 'original', sheetId: 'people', expectedVersion: 3,
+    fields: ['eid', 'fullName'], writableFields: [] };
   const captured = f.service.snapshot(request);
   expect(captured).toMatchObject({ version: 3, versionId: 'original', versionName: 'Original version', rows: [{ matches: [{ values: { fullName: 'Example, Person' } }] }] });
+  expect(() => f.service.snapshot({ mode: 'all', typeId: 'ocr-roster', libraryId: id,
+    versionId: 'original', expectedVersion: 3, fields: ['eid', 'fullName'] }))
+    .toThrow(expect.objectContaining({ code: 'WORKBOOK_INVALID' }));
   expect(() => f.service.snapshot({ ...request, versionId: 'missing' })).toThrow(expect.objectContaining({ code: 'WORKBOOK_REVISION_UNAVAILABLE' }));
   expect(() => f.service.snapshot({ ...request, expectedVersion: 2 })).toThrow(expect.objectContaining({ code: 'WORKBOOK_VERSION_CONFLICT' }));
 });
 
 
-it('imports independently, explicitly binds a shared type default across workflows and exposes only mapped column facts', () => {
-  const workflows = [{ id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster'] }, { id: 'second', label: 'Second', requiredWorkbookTypeIds: ['roster'] }];
-  const f = fixture();
-  expect(f.service.references(workflows).map(slot => slot.current)).toEqual([
-    { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' }, { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' },
+it('serves one General Library worksheet to two workflows without type assignment or a default', () => {
+  const workflows = [
+    { id: 'ocr', label: 'OCR', requiredWorkbookFields: ['eid', 'fullName'],
+      workbookReference: { id: 'ocr-roster', keyFieldId: 'eid', mode: 'all' as const, writableFields: [] } },
+    { id: 'second', label: 'Second', requiredWorkbookFields: ['eid'],
+      workbookReference: { id: 'action-history', keyFieldId: 'eid', mode: 'keys' as const, writableFields: [] } },
+  ];
+  const f = fixture(), id = f.record.libraryId;
+  expect(f.service.metadata(id).typeId).toBe('general');
+  const blank = structuredClone(f.record.workbook);
+  blank.sheets[0].rows[1].cells[1].value = null;
+  f.service.save(id, f.record.version, blank);
+  const report = f.service.compatibility(workflows);
+  expect(WorkbookCompatibilitySchema.parse(report)).toEqual(report);
+  expect(report.workflows.map(workflow => workflow.sources.map(source => source.libraryId))).toEqual([[id], [id]]);
+  expect(report.libraries[0].sheets[0].mappings).toEqual([
+    { fieldId: 'eid', column: 0, basis: 'manual' }, { fieldId: 'fullName', column: 1, basis: 'manual' },
   ]);
-  expect(f.service.references(workflows).every(slot => slot.status === 'unavailable' && slot.reasonCode === 'WORKBOOK_TYPE_UNAVAILABLE')).toBe(true);
-  expect(projectWorkflowStartReadiness(workflows[0], f.service.references(workflows))).toEqual({
-    scope: 'default-workbook-references', state: 'unavailable', reason: ERROR_CATALOG.WORKBOOK_TYPE_UNAVAILABLE.text,
-    fixAction: { kind: 'review-workbook-reference', workflowId: 'first', typeId: 'roster' },
-  });
-  f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid', 'fullName'], keyFieldId: 'eid', defaultWorkbookId: null });
-  expect(projectWorkflowStartReadiness(workflows[1], f.service.references(workflows))).toEqual({
-    scope: 'default-workbook-references', state: 'blocked', reason: 'Second needs Roster.',
-    fixAction: { kind: 'import-workbook', workflowId: 'second', typeId: 'roster' },
-  });
-  expect(f.service.references(workflows).every(slot => slot.current.state === 'missing' && slot.status === 'missing' && slot.reasonCode === 'WORKBOOK_REFERENCE_MISSING')).toBe(true);
-  const multiple = { id: 'first', label: 'First', requiredWorkbookTypeIds: ['roster', 'another-roster'] };
-  expect(projectWorkflowStartReadiness(multiple, f.service.references([multiple]))).toMatchObject({
-    state: 'blocked', fixAction: { workflowId: 'first', typeId: 'roster' },
-  });
-  const workbook = { ...f.record.workbook, libraryId: undefined };
-  workbook.sheets = [...workbook.sheets, { ...workbook.sheets[0], id: 'unmapped', name: 'No bindings', columnBindings: undefined }];
-  const request = { workbook: encodeEditableWorkbook(workbook) };
-  const result = f.service.importWorkbook(request);
-  expect(Object.keys(result)).toEqual(['workbook']);
-  expect(result.workbook.version).toBe(1);
-  expect(f.service.metadata(result.workbook.libraryId).typeId).toBe('general');
-  expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBeNull();
-  expect(f.service.references(workflows).every(slot => slot.status === 'missing')).toBe(true);
-  f.service.operatorOperation(result.workbook.libraryId, 'assign-roster', { kind: 'metadata', expectedVersion: 1,
-    metadata: { typeId: 'roster', sharePoint: null } });
-  f.service.putType({ id: 'roster', name: 'Roster', fields: ['eid', 'fullName'], keyFieldId: 'eid', defaultWorkbookId: result.workbook.libraryId });
-  expect(f.service.metadata(result.workbook.libraryId).typeId).toBe('roster');
-  expect(f.service.revision(result.workbook.libraryId, 1).version).toBe(1);
-  expect(f.service.revision(result.workbook.libraryId, 2).version).toBe(2);
-  const slots = f.service.references(workflows);
-  expect(slots.every(slot => slot.status === 'bound' && slot.reasonCode === null)).toBe(true);
-  expect(WorkbookReferenceSlotSchema.safeParse({ ...slots[0], status: 'missing', reasonCode: 'WORKBOOK_REFERENCE_MISSING' }).success).toBe(false);
-  expect(WorkbookReferenceSlotSchema.safeParse({ ...slots[0], subtitle: 'invented' }).success).toBe(false);
-  expect(projectWorkflowStartReadiness(workflows[0], slots)).toEqual({ scope: 'default-workbook-references', state: 'ready' });
-  expect(projectWorkflowStartReadiness(workflows[1], slots)).toEqual({ scope: 'default-workbook-references', state: 'ready' });
-  const broken = slots.map(slot => ({ ...slot, current: { state: 'unavailable' as const, code: 'WORKBOOK_BINDING_UNAVAILABLE' as const } }));
-  expect(projectWorkflowStartReadiness(workflows[0], broken)).toEqual({
-    scope: 'default-workbook-references', state: 'unavailable', reason: ERROR_CATALOG.WORKBOOK_BINDING_UNAVAILABLE.text,
-    fixAction: { kind: 'review-workbook-reference', workflowId: 'first', typeId: 'roster' },
-  });
-  expect(() => projectWorkflowStartReadiness(workflows[0], slots.filter(slot => slot.workflowId !== 'first'))).toThrow('WORKBOOK_REFERENCE_SLOT_UNAVAILABLE');
-  for (const slot of slots) {
-    expect(slot.type?.defaultWorkbookId).toBe(result.workbook.libraryId);
-    expect(slot.current.state).toBe('bound');
-    if (slot.current.state !== 'bound') throw new Error('reference not bound');
-    expect(slot.current.columns).toEqual([
-      { sheetId: 'people', sheetName: 'Sheet 1', eid: [{ column: 0, fieldId: 'eid', basis: 'manual' }], name: [{ column: 1, fieldId: 'fullName', basis: 'manual' }] },
-      { sheetId: 'unmapped', sheetName: 'No bindings', eid: [], name: [] },
-    ]);
-    expect(JSON.stringify(slot.current.columns)).not.toContain('10000001');
-  }
-  const other = f.service.importWorkbook({ workbook: request.workbook });
-  expect(other.workbook.version).toBe(1);
-  expect(f.service.metadata(other.workbook.libraryId).typeId).toBe('general');
-  expect(f.service.types().find(type => type.id === 'roster')?.defaultWorkbookId).toBe(result.workbook.libraryId);
+  expect(projectWorkflowStartReadiness(workflows[0], report)).toEqual({ scope: 'workbook-sources', state: 'selection-needed',
+    fixAction: { kind: 'choose-workbook-sources', workflowId: 'ocr' } });
+  expect(projectWorkflowStartReadiness(workflows[1], report)).toEqual({ scope: 'workbook-sources', state: 'selection-needed',
+    fixAction: { kind: 'choose-workbook-sources', workflowId: 'second' } });
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+});
+it('refuses a named snapshot whose stored row value changed while its current revision still matches', () => {
+  const f = fixture(), id = f.record.libraryId;
+  const snapshot = f.service.snapshot({ kind: 'selected-source', mode: 'keys', typeId: 'roster', keyFieldId: 'eid',
+    libraryId: id, versionId: 'original', sheetId: 'people', expectedVersion: 1,
+    keys: ['10000001'], fields: ['eid', 'fullName'], writableFields: [] });
+  const named = f.repository.libraryVersion(id, 'original'), workbook = structuredClone(named.workbook);
+  workbook.sheets[0].rows[1].cells[1].value = 'Altered';
+  const reference = RunWorkbookNamedReferenceSchema.parse({ request: { typeId: 'roster', libraryId: id,
+    versionId: 'original', keys: ['10000001'], fields: ['eid', 'fullName'] }, snapshot });
+  expect(() => verifyRetainedNamedWorkbookReference({ ...f.repository,
+    libraryVersion: () => ({ ...named, workbook }) }, reference))
+    .toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_CORRUPT' }));
+});
+it('serves one concrete fix for an empty Library or incomplete worksheet mappings', () => {
+  const workflow = { id: 'needs-email', label: 'Email lookup', requiredWorkbookFields: ['email'],
+    workbookReference: { id: 'email-roster', keyFieldId: 'email', mode: 'keys' as const, writableFields: [] } };
+  const empty = projectWorkbookCompatibility([workflow], []);
+  expect(projectWorkflowStartReadiness(workflow, empty)).toEqual({ scope: 'workbook-sources', state: 'unavailable',
+    reasonCode: 'WORKBOOK_LIBRARY_EMPTY', reason: ERROR_CATALOG.WORKBOOK_LIBRARY_EMPTY.text,
+    fixAction: { kind: 'import-workbook', workflowId: workflow.id } });
+  const f = fixture(), incomplete = f.service.compatibility([workflow]);
+  expect(projectWorkflowStartReadiness(workflow, incomplete)).toEqual({ scope: 'workbook-sources', state: 'unavailable',
+    reasonCode: 'WORKBOOK_FIELDS_MISSING', reason: ERROR_CATALOG.WORKBOOK_FIELDS_MISSING.text,
+    fixAction: { kind: 'review-workbook-fields', workflowId: workflow.id, requiredFields: ['email'] } });
+});
+
+it('does not read a Results or unavailable version as a reference candidate', () => {
+  const f = fixture();
+  const result = WorkbookLibraryEntrySchema.parse({ ...f.service.catalog()[0], state: {
+    ...f.service.catalog()[0].state, origin: { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' },
+  } });
+  const report = projectWorkbookCompatibilityFromRepository({ catalog: () => [result],
+    libraryVersion: () => { throw new Error('Result version must not be read'); }, lastUsed: () => undefined },
+  [{ id: 'ocr', label: 'OCR', requiredWorkbookFields: ['eid'],
+    workbookReference: { id: 'ocr-roster', keyFieldId: 'eid', mode: 'all', writableFields: [] } }]);
+  expect(report.libraries).toEqual([]);
+  expect(report.workflows[0].sources).toEqual([]);
 });
 
 it('rejects retired import fields before effects and keeps explicit default binding separate', () => {

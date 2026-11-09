@@ -16,7 +16,7 @@ import { SpreadsheetTypeDialog, SpreadsheetsSettings } from '../../../../src/das
 import { StorageHealthSummaryWireSchema } from '../../../../src/models/dashboard/bootstrap.js';
 import { SavedWorkbookSchema,WorkbookTypeSchema,WorkbookCreateRequestSchema,decodeEditableWorkbook,encodeSavedWorkbook,type SavedWorkbook, type WorkbookType } from '../../../../src/models/dashboard/workbooks.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
-import { WorkbookLibraryEntrySchema, type WorkbookLibraryEntry } from '../../../../src/models/dashboard/workbook-library.js';
+import { WorkbookLibraryEntrySchema, projectWorkbookCompatibility, type WorkbookLibraryEntry } from '../../../../src/models/dashboard/workbook-library.js';
 import { FIXTURE_EDITABLE_SETTINGS } from '../../../parity/helpers/fixture-settings.js';
 import { FixtureCommandBinding } from '../../../support/helpers/dashboard/command-binding.js';
 import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
@@ -58,6 +58,11 @@ function world() {
     const path = new URL(String(url)).pathname; const method = init?.method ?? 'GET'; const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined; calls.push({ path, method, body });
     if (path.endsWith('/settings/editable')) return Response.json(FIXTURE_EDITABLE_SETTINGS);
     if (path.endsWith('/catalog')) return Response.json([catalogEntry(record)]);
+    if (path.endsWith('/compatibility')) return Response.json(projectWorkbookCompatibility([], [{ libraryId: record.libraryId,
+      versionId: 'current', origin: { kind: 'local' }, removed: false,
+      sheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name,
+        mappings: sheet.columnBindings?.flatMap((binding, column) => binding.fieldId !== null && binding.basis !== 'unmapped'
+          ? [{ fieldId: binding.fieldId, column, basis: binding.basis }] : []) ?? [] })) }]));
     if (path.endsWith('/types')) return Response.json([rosterType]);
     if (method === 'POST') {
       await postGate;

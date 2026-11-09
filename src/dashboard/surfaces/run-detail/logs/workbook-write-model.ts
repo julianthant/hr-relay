@@ -6,7 +6,7 @@ import { fmtActionClock } from "../../shared/status/format.js";
 import type { CommandRequest } from "../../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
-import { SPREADSHEET_FIELDS } from "../../spreadsheets/spreadsheet-fields-model.js";
+import { SPREADSHEET_FIELDS } from '../../../../models/fields/workbook-fields.js';
 import { deriveStableUuid } from "../../../../rules/identity/stable-uuid.js";
 
 export type WorkbookWrite = RunWorkbookWritesWire["operations"][number];

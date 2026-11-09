@@ -5,6 +5,7 @@ import { WorkbookImportRequestSchema, EditableWorkbookSchema, WorkbookCreateRequ
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_INTAKE_MAPPING } from "../../support/fixtures/dashboard/fixture-intake.js";
 import { WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
+import { WorkbookCompatibilitySchema } from "../../../src/models/dashboard/workbook-library.js";
 
 const NOW = IsoInstantSchema.parse("2026-01-01T00:00:00.000Z");
 const draft = EditableWorkbookSchema.parse({ name: "Dates.xlsx", themes: { theme1: "theme" }, hasFormulas: false,
@@ -30,6 +31,13 @@ function schemaFailure(error: unknown): boolean {
   assert.equal(error.kind, "schema");
   return true;
 }
+it('reads only strict compatibility wire from the dedicated GET route', async () => {
+  const empty = WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [] });
+  const read = harness(empty);
+  assert.deepEqual(await read.client.workbookCompatibility(), empty);
+  assert.equal(read.calls[0].url, 'http://workbooks.test/api/v1/workbooks/compatibility');
+  await assert.rejects(harness({ ...empty, extra: true }).client.workbookCompatibility(), schemaFailure);
+});
 
 it('binds catalogue changes and result lookups to the exact library and action', async () => {
   const record = saved(), version = { id: 'original', snapshotId: JSON.stringify([record.libraryId, 'original']), name: 'Original version', version: 1, savedAt: NOW, source: 'import' };

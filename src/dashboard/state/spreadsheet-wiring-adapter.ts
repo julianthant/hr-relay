@@ -5,28 +5,35 @@ import type { DashboardClient } from '../client/index.js';
 import { DashboardClientError } from '../client/errors.js';
 import { useDashboardClient, useDashboardCommandBinding } from './client-context.js';
 import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookType } from '../../models/dashboard/workbooks.js';
-import type { WorkbookLibraryEntry, WorkbookLibraryAction, WorkbookLibraryActionResult } from '../../models/dashboard/workbook-library.js';
+import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibraryAction, WorkbookLibraryActionResult } from '../../models/dashboard/workbook-library.js';
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { cellText, type EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
 import { NOT_MAPPED, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-mock-model.js';
-import { spreadsheetField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
+import { spreadsheetEditorField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 
 type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'
-  | 'workbookCatalog' | 'workbookLibraryAction' | 'workbookLibraryActionStatus' | 'workbookLibraryVersion' | 'workbookTypes' | 'workbookPutType'>;
+  | 'workbookCatalog' | 'workbookCompatibility' | 'workbookLibraryAction' | 'workbookLibraryActionStatus' | 'workbookLibraryVersion' | 'workbookTypes' | 'workbookPutType'>;
 export type LibraryChangeResult = Readonly<{ state: 'confirmed' }> | Readonly<{ state: 'refused' | 'uncertain' | 'recorded'; message: string }>;
 type SaveIntent = { draft: EditableWorkbook; expectedVersion: number; libraryId?: string; error?: unknown };
 type Draft = { document: EditableWorkbook; dirty: boolean; opened?: SavedWorkbook; intent?: SaveIntent; saving?: Promise<SpreadsheetSaveResult> };
 type Snapshot = { files: readonly RegisteredSpreadsheet[]; loading: boolean; refreshing: boolean; opening?: string; openError: string; error: string;
-  catalog: readonly WorkbookLibraryEntry[]; types: readonly WorkbookType[]; catalogLoading: boolean; catalogRefreshing: boolean; catalogError: string; pendingLibraries: readonly string[]; pendingTypes: readonly WorkbookType[] };
+  catalog: readonly WorkbookLibraryEntry[]; compatibility?: WorkbookCompatibility; types: readonly WorkbookType[]; typesError: string; catalogLoading: boolean; catalogRefreshing: boolean; catalogError: string; pendingLibraries: readonly string[]; pendingTypes: readonly WorkbookType[] };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+function assertCatalogCompatibility(catalog: readonly WorkbookLibraryEntry[], compatibility: WorkbookCompatibility): void {
+  const local = catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed);
+  if (compatibility.libraries.length !== local.length || compatibility.libraries.some(library =>
+    local.find(entry => entry.libraryId === library.libraryId)?.state.selectedVersionId !== library.versionId))
+    throw new Error('WORKBOOK_COMPATIBILITY_CATALOG_MISMATCH');
+}
 function libraryRow(id: string, document: EditableWorkbook, addedAt?: string, version?: number): RegisteredSpreadsheet {
   return { id, name: document.name, typeId: 'local', addedAt, version, rowCount: document.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0), status: version !== undefined && version > 1 ? 'Updated' : undefined, sheets: document.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1,
-    columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cellText), mapping: sheet.columnBindings?.map(binding => binding.fieldId ? spreadsheetField(binding.fieldId).label : NOT_MAPPED) ?? [], bindings: sheet.columnBindings })) };
+    columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cellText), mapping: sheet.columnBindings?.map((binding, column) => binding.fieldId ? spreadsheetEditorField(binding.fieldId,
+      binding.sourceHeader || cellText(sheet.rows[(sheet.headerRow ?? 1) - 1].cells[column])).label : NOT_MAPPED) ?? [], bindings: sheet.columnBindings })) };
 }
 
 export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
-  let snapshot: Snapshot = { files: [], loading: true, refreshing: false, openError: '', error: '', catalog: [], types: [], catalogLoading: true, catalogRefreshing: false, catalogError: '', pendingLibraries: [], pendingTypes: [] };
+  let snapshot: Snapshot = { files: [], loading: true, refreshing: false, openError: '', error: '', catalog: [], types: [], typesError: '', catalogLoading: true, catalogRefreshing: false, catalogError: '', pendingLibraries: [], pendingTypes: [] };
   const listeners = new Set<() => void>();
   const drafts = new Map<string, Draft>();
   const aliases = new Map<string, string>();
@@ -58,19 +65,25 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       readAuthority = authority; readReady = false; listed = false;
       listing++; opening++; pendingList = undefined;
       catalogRequest++;
-      snapshot = { files: [], loading: true, refreshing: false, openError: '', error: '', catalog: [], types: [], catalogLoading: true, catalogRefreshing: false, catalogError: '', pendingLibraries: pendingLibraryIds(), pendingTypes: [...typeIntents.values()] };
+      snapshot = { files: [], loading: true, refreshing: false, openError: '', error: '', catalog: [], types: [], typesError: '', catalogLoading: true, catalogRefreshing: false, catalogError: '', pendingLibraries: pendingLibraryIds(), pendingTypes: [...typeIntents.values()] };
     },
     draft(id: string | null) { return id === null ? undefined : drafts.get(keyFor(id)); },
     async refreshCatalog() {
       const request = ++catalogRequest;
-      publish({ catalogRefreshing: true, catalogError: '' });
+      publish({ catalogRefreshing: true, catalogError: '', compatibility: undefined });
       try {
-        const [catalog, types] = await Promise.all([
+        const [catalogRead, compatibilityRead, typesRead] = await Promise.allSettled([
           readWithDeadline(() => client.workbookCatalog(), 'DASHBOARD_READ_FAILED'),
+          readWithDeadline(() => client.workbookCompatibility(), 'DASHBOARD_READ_FAILED'),
           readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED'),
         ]);
         if (request !== catalogRequest) return;
-        publish({ catalog, types, catalogLoading: false, catalogRefreshing: false });
+        if (catalogRead.status === 'rejected') throw catalogRead.reason;
+        if (compatibilityRead.status === 'rejected') throw compatibilityRead.reason;
+        const catalog = catalogRead.value, compatibility = compatibilityRead.value;
+        assertCatalogCompatibility(catalog, compatibility);
+        publish({ catalog, compatibility, ...(typesRead.status === 'rejected' ? { typesError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text } : { types: typesRead.value, typesError: '' }),
+          catalogLoading: false, catalogRefreshing: false });
       } catch { if (request === catalogRequest) publish({ catalogLoading: false, catalogRefreshing: false, catalogError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); }
     },
     async saveType(type: WorkbookType): Promise<LibraryChangeResult> {
@@ -88,7 +101,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       try {
         const types = await readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED');
         if (authority !== readAuthority || !types.some(current => canonicalJsonStringify(current) === canonicalJsonStringify(type))) return { state: 'uncertain', message: 'The type change is unconfirmed. Check its result before editing it again.' };
-        typeIntents.delete(type.id); publish({ types, pendingTypes: [...typeIntents.values()] });
+        typeIntents.delete(type.id); publish({ types, typesError: '', pendingTypes: [...typeIntents.values()] });
         return { state: 'confirmed' };
       } catch (error) { return { state: 'uncertain', message: `The type change is unconfirmed. ${message(error)}` }; }
     },
@@ -109,14 +122,20 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
           const saved = await readWithDeadline(() => client.workbookLibraryVersion(libraryId, action.operationId), 'DASHBOARD_READ_FAILED');
           if (saved.version.id !== action.operationId || saved.libraryId !== libraryId || canonicalJsonStringify(saved.workbook) !== canonicalJsonStringify(action.change.from.workbook)) return { state: 'uncertain', message: 'The values-only version readback does not match the saved draft.' };
         }
-        const [catalog, types] = await Promise.all([readWithDeadline(() => client.workbookCatalog(), 'DASHBOARD_READ_FAILED'), readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED')]);
+        const [catalogRead, compatibilityRead, typesRead] = await Promise.allSettled([readWithDeadline(() => client.workbookCatalog(), 'DASHBOARD_READ_FAILED'), readWithDeadline(() => client.workbookCompatibility(), 'DASHBOARD_READ_FAILED'),
+          readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED')]);
         if (authority !== readAuthority || request !== catalogRequest) return { state: 'uncertain', message: 'Library authority changed. Check the result from the current library.' };
+        if (catalogRead.status === 'rejected') throw catalogRead.reason;
+        if (compatibilityRead.status === 'rejected') throw compatibilityRead.reason;
+        const catalog = catalogRead.value, compatibility = compatibilityRead.value;
+        assertCatalogCompatibility(catalog, compatibility);
         const current = catalog.find(entry => entry.libraryId === libraryId);
         const matches = record.result.removed ? current === undefined : current !== undefined && canonicalJsonStringify(current.state) === canonicalJsonStringify(record.result)
           && (action.change.kind !== 'rename' || current.name === action.change.name)
           && (action.change.kind !== 'metadata' || canonicalJsonStringify(current.metadata) === canonicalJsonStringify(action.change.metadata));
         libraryIntents.delete(libraryId);
-        publish({ catalog, types, catalogLoading: false, catalogRefreshing: false, catalogError: '', pendingLibraries: pendingLibraryIds() });
+        publish({ catalog, compatibility, ...(typesRead.status === 'rejected' ? { typesError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text } : { types: typesRead.value, typesError: '' }),
+          catalogLoading: false, catalogRefreshing: false, catalogError: '', pendingLibraries: pendingLibraryIds() });
         const draft = drafts.get(keyFor(libraryId));
         if (draft && !draft.dirty) { adapter.close(libraryId); if (!record.result.removed) await adapter.open(libraryId); }
         await adapter.list();

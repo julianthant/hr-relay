@@ -41,7 +41,7 @@ import type {
   WorkflowDescriptor,
   WorkflowDescriptorSpec,
 } from "./workflow.js";
-import { defineWorkflowDescriptor, parseRequiredWorkbookTypeIds } from "./workflow.js";
+import { defineWorkflowDescriptor, parseWorkbookRequirement } from "./workflow.js";
 
 /** The closed entry algebra. */
 export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction" | "branch";
@@ -800,7 +800,8 @@ export interface WorkflowDefinition<
   Completion extends CompletionProgram | undefined = CompletionProgram | undefined,
 > extends WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion> {
   readonly kind: "workflow-definition";
-  readonly requiredWorkbookTypeIds: readonly string[];
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion>["workbookReference"];
   readonly input: InputSchema;
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
@@ -833,8 +834,9 @@ export function defineStep<const Spec extends {
 
 export function inheritStepProof<Input extends z.ZodType>(parent: WorkflowDefinition<Input>) {
   return {
-    requiredWorkbookTypeIds: parent.requiredWorkbookTypeIds,
-    ...(parent.referenceLookups === undefined ? {} : { referenceLookups: parent.referenceLookups }),
+    requiredWorkbookFields: parent.requiredWorkbookFields,
+    ...(parent.workbookReference === undefined ? {} : { workbookReference: parent.workbookReference }),
+    ...(parent.referenceKeys === undefined ? {} : { referenceKeys: parent.referenceKeys }),
     version: 1,
     icon: parent.icon,
     category: parent.category,
@@ -888,7 +890,7 @@ export function defineWorkflow<
 ): WorkflowDefinition<InputSchema, ResultSchema, Completion> {
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
-  const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
+  const { requiredWorkbookFields, workbookReference } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference);
   const { steps: authorSteps, input, role, intake, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay));
   validateSteps(id, authored.steps, authored.result.references);
@@ -897,7 +899,8 @@ export function defineWorkflow<
   Object.freeze(authored.result.references);
   return Object.freeze({
     ...presentation,
-    requiredWorkbookTypeIds,
+    requiredWorkbookFields,
+    ...(workbookReference === undefined ? {} : { workbookReference }),
     kind: "workflow-definition",
     input,
     role,
@@ -1174,6 +1177,8 @@ export function compileWorkflow<
       result: definition.result.schema,
       graph: (flattenEntries(steps) as readonly RuntimeEntry[]).map((entry) => ({ id: entry.id, kind: entry.kind, dependsOn: entry.references.map(({ id }) => id) })),
       contracts,
+      requiredWorkbookFields: definition.requiredWorkbookFields,
+      workbookReference: definition.workbookReference,
     }),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),

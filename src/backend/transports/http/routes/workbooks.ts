@@ -4,9 +4,10 @@ import { WorkbookLibraryError, type WorkbookLibraryService } from "../../../work
 import type { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import type { DashboardApp } from "./api-types.js";
 import { WorkbookLibraryActionSchema } from "../../../../models/dashboard/workbook-library.js";
+import type { WorkbookReferenceWorkflow } from "../../../workbooks/workbook-library-service.js";
 
 export interface WorkbooksRouteDeps {
-  readonly workbooks?: Readonly<{ library: WorkbookLibraryService; intake: ReturnType<typeof createWorkbookIntakeBridge> }>;
+  readonly workbooks?: Readonly<{ library: WorkbookLibraryService; intake: ReturnType<typeof createWorkbookIntakeBridge>; workflows: readonly WorkbookReferenceWorkflow[] }>;
 }
 function workbookRequest<Value>(schema: z.ZodType<Value>, value: unknown): Value {
   const parsed = schema.safeParse(value);
@@ -20,6 +21,7 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   };
   app.get("/api/v1/workbooks/list", c => c.json(service().library.list().map(encodeSavedWorkbook)));
   app.get("/api/v1/workbooks/catalog", c => c.json(service().library.catalog()));
+  app.get("/api/v1/workbooks/compatibility", c => c.json(service().library.compatibility(service().workflows)));
   app.get("/api/v1/workbooks/results", c => c.json(service().library.results()));
   app.post("/api/v1/workbooks/import", async c => c.json(service().library.importWorkbook(workbookRequest(WorkbookImportRequestSchema, await c.req.json())), 201));
   app.post("/api/v1/workbooks/:libraryId/library-actions", async c => {

@@ -107,6 +107,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/chatgpt-credential-worker.ts` | inherited-lifetime ChatGPT transaction exclusion; requires the fake keychain |
 | `processes/failure-resolution-peer.ts` | failure resolution peer |
 | `helpers/backend/http-route-harness.ts` | http route harness |
+| `fixtures/storage/retained-workbook-merge.ts` | Authenticated completed merge record retained for historical replay and retired-action route proofs. |
 | `helpers/backend/served-database-surfaces-fixtures.ts` | served database surfaces fixtures |
 | `helpers/backend/settings-activation-fixture.ts` | settings activation fixture |
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |

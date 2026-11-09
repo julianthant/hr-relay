@@ -41,15 +41,15 @@ it("captures all roster data rows at the selected version and leaves keyed-empty
     service.operatorOperation(first.libraryId, "set-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
     const request = { mode: "all" as const, typeId: "ocr-roster", libraryId: first.libraryId, expectedVersion: 2,
       fields: ["eid", "fullName"] };
-    const reference = RunWorkbookAllRowsReferenceSchema.parse({ request, snapshot: service.snapshot(request) });
+    const reference = RunWorkbookAllRowsReferenceSchema.parse({ request, snapshot: repository.snapshot(request) });
     const captured = bindOcrRoster({ schemaHash: deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), value: reference }, clock.now().toISOString());
     assert.deepEqual(captured.rows.map(row => row.eid), ["10000001", "10000001", null]);
     assert.deepEqual(reference.snapshot.rows.map(row => row.matches[0].rowId), ["one", "two", "missing"]);
-    assert.deepEqual(service.snapshot({ typeId: "ocr-roster", libraryId: first.libraryId, keys: [], fields: ["eid", "fullName"] }).rows, []);
+    assert.deepEqual(repository.snapshot({ typeId: "ocr-roster", libraryId: first.libraryId, keys: [], fields: ["eid", "fullName"] }).rows, []);
     const current = service.read(first.libraryId);
     const changed = structuredClone(current.workbook); changed.sheets[0].rows[1].cells[1].value = "Example, Changed";
     service.save(first.libraryId, 2, changed);
-    assert.throws(() => service.snapshot(request), { code: "WORKBOOK_VERSION_CONFLICT" });
+    assert.throws(() => repository.snapshot(request), { code: "WORKBOOK_VERSION_CONFLICT" });
     assert.equal(captured.rows[0].name, "Example, Avery");
     assert.equal(captured.workbookVersion, 2);
   } finally { database.close(); }

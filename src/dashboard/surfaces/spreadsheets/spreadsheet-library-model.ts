@@ -1,7 +1,7 @@
 import { WorkbookLibraryEntrySchema, type WorkbookLibraryEntry } from '../../../models/dashboard/workbook-library.js';
 import { WorkbookTypeSchema, type WorkbookType } from '../../../models/dashboard/workbooks.js';
 import { registeredSpreadsheetWorkbook, type RegisteredSpreadsheet, type SpreadsheetType } from './spreadsheet-mock-model.js';
-import { fieldForSpreadsheetHeader } from './spreadsheet-fields-model.js';
+import { fieldForSpreadsheetHeader } from '../../../models/fields/workbook-fields.js';
 
 export function mockWorkbookTypes(types: readonly SpreadsheetType[]): WorkbookType[] {
   return [...types.map(type => type.definition ?? WorkbookTypeSchema.parse({ id: type.id, name: type.name, fields: type.fields.map(field => {

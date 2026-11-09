@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { WorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import type { WorkbookRunReferenceSelectionSchema } from "../../../../src/models/dashboard/workbooks.js";
+import type { WorkbookActiveSelectionSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import assert from "node:assert/strict";
@@ -110,7 +110,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   return {
     kernel, lifecycle, childRuns, step,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
-      workbookReferences?: readonly z.infer<typeof WorkbookRunReferenceSelectionSchema>[] }>) {
+      workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[] }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },

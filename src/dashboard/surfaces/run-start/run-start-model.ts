@@ -1,5 +1,5 @@
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
+import { WorkbookActiveSelectionSchema } from "../../../models/dashboard/workbook-library.js";
 import type { WorkbookLibraryEntry } from "../../../models/dashboard/workbook-library.js";
 import {
   stepOmissionFactsSchema,
@@ -435,14 +435,20 @@ export function toggleStepSelection(
 }
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
-  selections: Readonly<Record<string, { libraryId: string; versionId: string }>>, submissionCount: number,
+  selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
+  eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
   selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] }) {
-  if (selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+  if (requiredTypes.length > 1 || selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
   return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
     const selection = selections[typeId];
-    const entry = catalog.find(entry => entry.type.id === typeId && entry.libraryId === selection?.libraryId);
-    if (!entry || entry.state.removed || entry.state.origin.kind !== 'local' || !entry.state.versions.some(version => version.id === selection.versionId)) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
-    return WorkbookRunReferenceSelectionSchema.parse({ entry: index + 1, typeId, libraryId: entry.libraryId, versionId: selection.versionId,
+    const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
+    if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
+      || !entry.state.versions.some(version => version.id === selection.versionId)
+      || writable && entry.state.selectedVersionId !== selection.versionId
+      || !eligibleSources.some(source => source.libraryId === selection.libraryId && source.versionId === selection.versionId && source.sheetId === selection.sheetId))
+      throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    return WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
+      sheetId: selection.sheetId, expectedVersion: entry.version,
       ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
   })).flat();
 }

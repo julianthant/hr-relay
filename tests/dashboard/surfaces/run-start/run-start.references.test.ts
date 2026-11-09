@@ -10,40 +10,50 @@ const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 3
   type: { id: 'roster-type', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: 'roster' },
   state: { libraryId: 'roster', revision: 4, selectedVersionId: 'current', removed: false, origin: { kind: 'local' },
     versions: ['earlier', 'current'].map((id, index) => ({ id, name: id, snapshotId: id, version: index + 1, savedAt: '2026-11-01T00:00:00Z', source: 'operator' })) } });
-const selections = { 'roster-type': { libraryId: 'roster', versionId: 'earlier' } };
+const selections = { 'roster-type': { libraryId: 'roster', versionId: 'current', sheetId: 'people' } };
+const sources = [{ libraryId: 'roster', versionId: 'current', sheetId: 'people' }];
 it('sends the exact named version, selection identity for each parsed input', () => {
-  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 2)).toEqual([
-    { entry: 1, typeId: 'roster-type', libraryId: 'roster', versionId: 'earlier' },
-    { entry: 2, typeId: 'roster-type', libraryId: 'roster', versionId: 'earlier' },
+  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 2, sources, false)).toEqual([
+    { entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
+    { entry: 2, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
   ]);
 });
 it('refuses missing reference identities, unavailable named versions', () => {
-  expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1)).toThrow();
-  expect(() => launchWorkbookReferences(['roster-type'], [], selections, 1)).toThrow();
-  expect(() => launchWorkbookReferences(['roster-type'], [entry], { 'roster-type': { libraryId: 'roster', versionId: 'deleted' } }, 1)).toThrow();
-  expect(() => launchWorkbookReferences(['roster-type'], [{ ...entry, state: { ...entry.state, origin: { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' } } }], selections, 1)).toThrow();
+  expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1, sources, false)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [], selections, 1, sources, false)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], { 'roster-type': { libraryId: 'roster', versionId: 'deleted', sheetId: 'people' } }, 1, sources, false)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [{ ...entry, state: { ...entry.state, origin: { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' } } }], selections, 1, sources, false)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], selections, 1, [], false)).toThrow();
+});
+it('pins an explicitly chosen historical worksheet even when its sheet ID differs from current', () => {
+  const historical = { 'roster-type': { libraryId: 'roster', versionId: 'earlier', sheetId: 'former-people' } };
+  const compatible = [{ libraryId: 'roster', versionId: 'earlier', sheetId: 'former-people' }];
+  expect(launchWorkbookReferences(['roster-type'], [entry], historical, 1, compatible, false)).toEqual([
+    { entry: 1, libraryId: 'roster', versionId: 'earlier', sheetId: 'former-people', expectedVersion: 3 },
+  ]);
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], historical, 1, compatible, true)).toThrow();
 });
 
 it('pairs each selected physical row with its own ordinary entry and leaves single-source fresh references unselected', () => {
-  const rows = [{ sheetId: 'first', rowId: 'same-row' }, { sheetId: 'second', rowId: 'same-row' }];
-  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 2, { typeId: 'roster-type', rows })).toEqual(rows.map((selectedRow, index) => ({
-    entry: index + 1, typeId: 'roster-type', libraryId: 'roster', versionId: 'earlier', selectedRow,
+  const rows = [{ sheetId: 'people', rowId: 'first' }, { sheetId: 'people', rowId: 'second' }];
+  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 2, sources, false, { typeId: 'roster-type', rows })).toEqual(rows.map((selectedRow, index) => ({
+    entry: index + 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3, selectedRow,
   })));
-  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 1)[0]).not.toHaveProperty('selectedRow');
-  expect(() => launchWorkbookReferences(['roster-type'], [entry], selections, 1, { typeId: 'roster-type', rows })).toThrow();
+  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 1, sources, false)[0]).not.toHaveProperty('selectedRow');
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], selections, 1, sources, false, { typeId: 'roster-type', rows })).toThrow();
 });
 
 it('projects full selected row choices into coordinate-only strict request references', () => {
   const workbook = EditableWorkbookWireSchema.parse({ name: 'Saved roster', libraryId: 'roster', themes: [], hasFormulas: false,
-    sheets: ['first', 'second'].map(id => ({ id, name: id, width: 1, hidden: [],
+    sheets: ['people'].map(id => ({ id, name: id, width: 1, hidden: [],
       columnBindings: [{ id: 'email-column', sourceColumn: 0, sourceHeader: 'Email', fieldId: 'email', basis: 'manual' }],
-      rows: [{ id: 'header', cells: [{ value: 'Email' }] }, { id: 'same-row', cells: [{ value: 'duplicate@example.test' }] }],
+      rows: [{ id: 'header', cells: [{ value: 'Email' }] }, { id: 'first', cells: [{ value: 'duplicate@example.test' }] }, { id: 'second', cells: [{ value: 'other@example.test' }] }],
     })),
   });
-  const rows = workbookRowChoices(workbook, entry.type);
+  const rows = workbookRowChoices(workbook, 'email', 'people');
   expect(rows[0]).toHaveProperty('sourceLabel'); expect(rows[0]).toHaveProperty('key');
-  const references = launchWorkbookReferences(['roster-type'], [entry], selections, rows.length, { typeId: 'roster-type', rows });
-  const expected = ['first', 'second'].map((sheetId, index) => ({ entry: index + 1, typeId: 'roster-type', libraryId: 'roster', versionId: 'earlier', selectedRow: { sheetId, rowId: 'same-row' } }));
+  const references = launchWorkbookReferences(['roster-type'], [entry], selections, rows.length, sources, false, { typeId: 'roster-type', rows });
+  const expected = ['first', 'second'].map((rowId, index) => ({ entry: index + 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3, selectedRow: { sheetId: 'people', rowId } }));
   expect(JSON.parse(JSON.stringify(references))).toEqual(expected);
   const parsed = StartPlanRequestSchema.parse({ workflowId: 'row-workflow', submissions: rows.map(() => ({ email: 'duplicate@example.test', mode: 'new-hire' })),
     dryRun: false, browserMode: 'headed', captureBrowserScreenshots: true, workbookReferences: references });
@@ -52,8 +62,8 @@ it('projects full selected row choices into coordinate-only strict request refer
 
 const request = StartPlanRequestSchema.parse({ workflowId: 'row-workflow', submissions: [{ email: 'one@example.test' }, { email: 'two@example.test' }, { email: 'three@example.test' }],
   dryRun: false, browserMode: 'headed', captureBrowserScreenshots: true,
-  workbookReferences: [1, 2, 3].map(entry => ({ entry, typeId: 'roster-type', libraryId: 'roster', versionId: 'earlier', selectedRow: { sheetId: 'people', rowId: `row-${entry}` } })) });
-const reference = (row: number) => ({ libraryId: 'roster', version: 1, versionId: 'earlier', versionName: 'Earlier', worksheets: entry.worksheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name })), type: entry.type, selectedRow: { sheetId: 'people', rowId: `row-${row}` } });
+  workbookReferences: [1, 2, 3].map(entry => ({ entry, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3, selectedRow: { sheetId: 'people', rowId: `row-${entry}` } })) });
+const reference = (row: number) => ({ libraryId: 'roster', version: 3, versionId: 'current', versionName: 'Current', worksheets: entry.worksheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name })), type: entry.type, selectedRow: { sheetId: 'people', rowId: `row-${row}` } });
 const plan = StartPlanWireSchema.parse({ wireVersion: 1, startPlanId: '10000000-0000-4000-8000-000000000001', workflowId: request.workflowId, expectedVersion: 1,
   expiresAt: '2026-11-04T00:00:00Z', dryRun: false, priority: 'interactive', plannedBy: 'local-operator', configSnapshotId: '10000000-0000-4000-8000-000000000002',
   fingerprints: Object.fromEntries(['descriptorFingerprint', 'configFingerprint', 'ingressSchemaHash', 'canonicalInputSchemaHash', 'inputFingerprint'].map(key => [key, 'a'.repeat(64)])),
@@ -102,5 +112,5 @@ it('refuses missing returned references and selections outside the input vector'
   const proposed = structuredClone(plan);
   delete proposed.planned[0].workbookReferences;
   await expect(launch(proposed).preview(request)).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });
-  await expect(launch(plan).preview({ ...request, workbookReferences: [...(request.workbookReferences ?? []), { entry: 4, typeId: 'extra' }] })).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });
+  await expect(launch(plan).preview({ ...request, workbookReferences: [...(request.workbookReferences ?? []), { entry: 4, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 }] })).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });
 });

@@ -161,7 +161,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const kernel = createCommandKernel({
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
     readableDescriptors: { resolve: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor },
-    workbookRows: createRunWorkbookService({ database, clock }),
+    workbookRows: createRunWorkbookService({ database, clock,
+      resolveDescriptor: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor }),
     applicationQuitAvailable: true,
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
@@ -291,7 +292,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       return run === undefined ? undefined : { workflowId: run.envelope.workflow, enqueuedAt: run.envelope.enqueuedAt };
     } });
 
-  const shell = composeShell({ workbookReferences: workflows => workbookLibrary.references(workflows), database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
+  const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
@@ -355,7 +356,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     intake,
     ocr: createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
+    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake), workflows: shell.bootstrap.modules.map(module => module.descriptor) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     runHistory: { status: () => runHistory.status(), clear: request => runHistory.clear(confirmedHistoryCommand(request)),

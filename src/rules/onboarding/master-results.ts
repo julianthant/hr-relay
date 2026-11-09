@@ -16,5 +16,6 @@ export function onboardingMasterResults(plan: z.infer<typeof OnboardingWritePlan
   const cells = OnboardingRosterCellsSchema.parse({ transactionNumber: hire.transactionId, transactionApprovalStatus: hire.approvalStatus,
     ...(hire.emplId === null ? {} : { eid: hire.emplId }), ...(remote === null ? {} : { i9ProfileId: remote.profileId }) });
   return WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writeId: "onboarding-results", typeId: ONBOARDING_ROSTER_TYPE_ID,
-    key: writePlan.roster.rowKey.email, values: Object.entries(cells).map(([fieldId, value]) => ({ fieldId, value })) });
+    referenceDigest: writePlan.roster.referenceDigest, key: writePlan.roster.rowKey.email,
+    values: Object.entries(cells).map(([fieldId, value]) => ({ fieldId, value })) });
 }

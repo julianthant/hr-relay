@@ -15,7 +15,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
 }) {
   const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     wireVersion: 1,
-    workbookReferences: [],
+    workbookCompatibility: { workflows: [], libraries: [] },
     appVersion: FIXTURE_APP_VERSION,
     descriptorHash: bootstrapDescriptorHash(CONTRACT_FINGERPRINT),
     settingsSchemaHash: descriptorSetHash(["settings-schema"]),
@@ -134,7 +134,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
           ]
         },
 
-        readiness: { scope: "default-workbook-references", state: "ready" }, spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookTypeIds: [...personLookupModule.descriptor.requiredWorkbookTypeIds],
+        readiness: { scope: "workbook-sources", state: "ready" }, spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookFields: [...personLookupModule.descriptor.requiredWorkbookFields],
       },
     }],
     systemInstances: [

@@ -55,9 +55,9 @@ export function createRunResourcesFactory(input:Readonly<{
 }>) {
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
- const runWorkbooks=createRunWorkbookService({database:input.database,clock:input.clock});
  const descriptors=new Map([...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].map(module=>[String(module.descriptor.id),module.descriptor]));
  const resolveDescriptor=input.resolveDescriptor??((workflowId:string)=>descriptors.get(workflowId));
+ const runWorkbooks=createRunWorkbookService({database:input.database,clock:input.clock,resolveDescriptor});
  const nominatim=input.nominatim;
  const compose=(config:Config)=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);

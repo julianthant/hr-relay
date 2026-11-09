@@ -71,6 +71,8 @@ import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type Target
 import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { snapshotWorkbookReference, WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
@@ -506,6 +508,37 @@ function executeStartRun(
       const current = startSupersedeTargets(repositories.runs.listByItem({ workflow: plan.workflowId, itemId: entry.itemId }));
       if (entry.supersedeTargets === undefined || canonicalJsonStringify(entry.supersedeTargets) !== canonicalJsonStringify(current)) {
         reject(request, "replan-required", "Active runs changed after the supersede preview; review a fresh plan before starting");
+      }
+    }
+  }
+  for (const planned of plan.planned) {
+    const captured = planned.workbookReferences ?? [];
+    const requirement = descriptor.workbookReference;
+    if (captured.length !== (requirement === undefined ? 0 : 1)) {
+      reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
+    }
+    for (const bound of captured) {
+      try {
+        const reference = parseRunWorkbookReference(bound);
+        const snapshot = reference.snapshot;
+        const worksheet = snapshot.worksheets[0];
+        if (requirement === undefined || snapshot.worksheets.length !== 1 || worksheet === undefined
+          || !("versionId" in snapshot) || snapshot.versionId === undefined
+          || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const refreshed = snapshotWorkbookReference(repositories.workbooks, {
+          kind: "selected-source", typeId: requirement.id, keyFieldId: requirement.keyFieldId,
+          fields: descriptor.requiredWorkbookFields, writableFields: requirement.writableFields,
+          mode: requirement.mode, keys: "mode" in reference.request ? [] : reference.request.keys,
+          libraryId: snapshot.libraryId, versionId: snapshot.versionId, sheetId: worksheet.sheetId,
+          expectedVersion: snapshot.version,
+          ...("selectedRow" in reference.request && reference.request.selectedRow !== undefined
+            ? { selectedRow: reference.request.selectedRow } : {}),
+        });
+        if (canonicalJsonStringify(bindRunWorkbookReference(reference.request, refreshed)) !== canonicalJsonStringify(bound))
+          throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+      } catch (error) {
+        if (!(error instanceof WorkbookLibraryError)) throw error;
+        reject(request, "replan-required", "Workbook source changed after planning; review a fresh plan before starting");
       }
     }
   }

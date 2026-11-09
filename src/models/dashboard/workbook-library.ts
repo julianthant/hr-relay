@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema, CommandIdSchema } from "../../rules/identity/ids.js";
 import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema } from "./workbooks.js";
+import { SPREADSHEET_FIELDS } from "../fields/workbook-fields.js";
 
 export const WorkbookSourceSelectionSchema = z.strictObject({
   libraryId: WorkbookIdSchema, sheetId: WorkbookIdSchema,
@@ -15,6 +16,185 @@ export const WorkflowWorkbookSelectionRecordSchema = z.strictObject({
 });
 export const WorkflowWorkbookSelectionInputSchema = WorkflowWorkbookSelectionRecordSchema.omit({ revision: true });
 export type WorkflowWorkbookSelectionRecord = z.infer<typeof WorkflowWorkbookSelectionRecordSchema>;
+
+const KnownWorkbookFieldSchema = z.string().refine(value => SPREADSHEET_FIELDS.some(field => field.id === value),
+  { message: "unknown workbook field" });
+export const WorkbookFieldRequirementSchema = z.strictObject({
+  id: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema, mode: z.enum(["keys", "all"]),
+  writableFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
+});
+export const WorkbookRequirementDeclarationSchema = z.strictObject({
+  requiredWorkbookFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
+  workbookReference: WorkbookFieldRequirementSchema.optional(),
+}).superRefine((workflow, context) => {
+  const reference = workflow.workbookReference;
+  if (workflow.requiredWorkbookFields.length === 0 ? reference !== undefined : reference === undefined
+    || reference !== undefined && (!workflow.requiredWorkbookFields.includes(reference.keyFieldId)
+      || reference.writableFields.some(field => !workflow.requiredWorkbookFields.includes(field)))) {
+    context.addIssue({ code: "custom", message: "workbook reference key and writable fields must belong to required fields" });
+  }
+});
+export const WorkflowWorkbookRequirementSchema = WorkbookRequirementDeclarationSchema.safeExtend({
+  id: WorkflowIdSchema, label: z.string().min(1),
+});
+export type WorkflowWorkbookRequirement = z.infer<typeof WorkflowWorkbookRequirementSchema>;
+export interface WorkflowWorkbookRequirementInput {
+  readonly id: string;
+  readonly label: string;
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: Readonly<{ id: string; keyFieldId: string; mode: 'keys' | 'all'; writableFields: readonly string[] }>;
+}
+export interface WorkflowWorkbookSelectionInput {
+  readonly workflowId: string;
+  readonly revision: number;
+  readonly acceptedCommandId: string;
+  readonly usedAt: string;
+  readonly sources: readonly Readonly<{ libraryId: string; sheetId: string }>[];
+}
+
+const WorkbookCoverageSchema = z.strictObject({
+  workflowId: WorkflowIdSchema, status: z.enum(["compatible", "missing-fields", "duplicate-fields"]),
+  reasonCode: z.enum(["WORKBOOK_FIELDS_MISSING", "WORKBOOK_FIELDS_DUPLICATE"]).nullable(),
+  missingFields: z.array(KnownWorkbookFieldSchema), duplicateFields: z.array(KnownWorkbookFieldSchema),
+});
+export const WorkbookMappedFieldSchema = z.strictObject({ fieldId: z.string().min(1),
+  column: z.number().int().nonnegative(), basis: z.enum(["header", "values", "manual"]) });
+export function workbookFieldCoverage(requiredFields: readonly string[], mappedFields: readonly string[]) {
+  const missingFields = requiredFields.filter(field => !mappedFields.includes(field));
+  const duplicateFields = requiredFields.filter(field => mappedFields.filter(mapped => mapped === field).length > 1);
+  return { status: missingFields.length > 0 ? "missing-fields" as const
+    : duplicateFields.length > 0 ? "duplicate-fields" as const : "compatible" as const,
+    reasonCode: missingFields.length > 0 ? "WORKBOOK_FIELDS_MISSING" as const
+      : duplicateFields.length > 0 ? "WORKBOOK_FIELDS_DUPLICATE" as const : null,
+    missingFields, duplicateFields };
+}
+export const WorkbookCompatibilitySchema = z.strictObject({
+  workflows: z.array(z.strictObject({ workflowId: WorkflowIdSchema, requiredWorkbookFields: z.array(KnownWorkbookFieldSchema),
+    workbookReference: WorkbookFieldRequirementSchema.optional(),
+    lastUsed: WorkflowWorkbookSelectionRecordSchema.nullable(),
+    selectionState: z.enum(["none", "available", "stale"]),
+    staleSources: z.array(WorkbookSourceSelectionSchema.extend({
+      reasonCode: z.enum(["SOURCE_MISSING", "SOURCE_REMOVED", "MAPPING_CHANGED"]),
+    })),
+    sources: z.array(z.strictObject({ libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema,
+      sheetId: WorkbookIdSchema, sheetName: z.string().min(1) })),
+  })),
+  libraries: z.array(z.strictObject({ libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema,
+    sheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, sheetName: z.string().min(1),
+      mappings: z.array(WorkbookMappedFieldSchema),
+      workflows: z.array(WorkbookCoverageSchema) })),
+  })),
+}).superRefine((report, context) => {
+  const unique = (values: readonly string[]) => new Set(values).size === values.length;
+  if (!unique(report.workflows.map(workflow => workflow.workflowId))
+    || !unique(report.libraries.map(library => library.libraryId))
+    || report.libraries.some(library => !unique(library.sheets.map(sheet => sheet.sheetId)))) {
+    context.addIssue({ code: "custom", message: "duplicate workbook compatibility identity" });
+  }
+  for (const workflow of report.workflows) {
+    const eligible = new Set(workflow.sources.map(source => JSON.stringify([source.libraryId, source.sheetId])));
+    const expectedStale = workflow.lastUsed?.sources.filter(source => !eligible.has(JSON.stringify([source.libraryId, source.sheetId]))) ?? [];
+    const expectedState = workflow.lastUsed === null ? "none" : expectedStale.length === 0 ? "available" : "stale";
+    if (workflow.lastUsed !== null && workflow.lastUsed.workflowId !== workflow.workflowId
+      || !unique(workflow.sources.map(source => JSON.stringify([source.libraryId, source.sheetId])))
+      || !unique(workflow.staleSources.map(source => JSON.stringify([source.libraryId, source.sheetId])))
+      || workflow.selectionState !== expectedState
+      || JSON.stringify(workflow.staleSources.map(source => [source.libraryId, source.sheetId]))
+        !== JSON.stringify(expectedStale.map(source => [source.libraryId, source.sheetId]))) {
+      context.addIssue({ code: "custom", message: "workbook compatibility selection identity mismatch" });
+    }
+    const compatible = report.libraries.flatMap(library => library.sheets.flatMap(sheet =>
+      sheet.workflows.some(coverage => coverage.workflowId === workflow.workflowId && coverage.status === "compatible")
+        ? [JSON.stringify([library.libraryId, library.versionId, sheet.sheetId, sheet.sheetName])] : []));
+    if (!unique(compatible) || workflow.sources.length !== compatible.length
+      || workflow.sources.some(source => !compatible.includes(JSON.stringify([source.libraryId, source.versionId, source.sheetId, source.sheetName])))) {
+      context.addIssue({ code: "custom", message: "workbook compatibility directions disagree" });
+    }
+  }
+  for (const library of report.libraries) for (const sheet of library.sheets) for (const coverage of sheet.workflows) {
+    const workflow = report.workflows.find(candidate => candidate.workflowId === coverage.workflowId);
+    const expected = workflow === undefined ? undefined : workbookFieldCoverage(workflow.requiredWorkbookFields,
+      sheet.mappings.map(mapping => mapping.fieldId));
+    if (workflow === undefined || expected === undefined || coverage.status !== expected.status
+      || coverage.reasonCode !== expected.reasonCode
+      || JSON.stringify(coverage.missingFields) !== JSON.stringify(expected.missingFields)
+      || JSON.stringify(coverage.duplicateFields) !== JSON.stringify(expected.duplicateFields)) {
+      context.addIssue({ code: "custom", message: "workbook coverage facts disagree with worksheet mappings" });
+    }
+  }
+});
+export type WorkbookCompatibility = z.infer<typeof WorkbookCompatibilitySchema>;
+
+export const WorkbookActiveSelectionSchema = z.strictObject({
+  entry: z.number().int().positive(), libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema,
+  sheetId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema,
+  selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
+}).superRefine((selection, context) => {
+  if (selection.selectedRow !== undefined && selection.selectedRow.sheetId !== selection.sheetId) {
+    context.addIssue({ code: "custom", message: "selected row must belong to selected worksheet" });
+  }
+});
+export const WorkbookActiveSnapshotRequestSchema = z.strictObject({
+  kind: z.literal("selected-source"), typeId: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema,
+  fields: z.array(KnownWorkbookFieldSchema).min(1),
+  writableFields: z.array(KnownWorkbookFieldSchema),
+  mode: z.enum(["keys", "all"]), keys: z.array(z.string().min(1)),
+  libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema, sheetId: WorkbookIdSchema,
+  expectedVersion: WorkbookRevisionSchema,
+  selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
+}).superRefine((request, context) => {
+  if (new Set(request.fields).size !== request.fields.length || !request.fields.includes(request.keyFieldId)
+    || new Set(request.writableFields).size !== request.writableFields.length
+    || request.writableFields.some(field => !request.fields.includes(field))
+    || request.mode === "all" && request.keys.length !== 0
+    || request.selectedRow !== undefined && (request.mode !== "keys" || request.keys.length !== 1
+      || request.selectedRow.sheetId !== request.sheetId)) {
+    context.addIssue({ code: "custom", message: "invalid selected workbook source request" });
+  }
+});
+
+export interface WorkbookCompatibilitySource {
+  readonly libraryId: string;
+  readonly versionId: string;
+  readonly origin: Readonly<{ kind: "local" | "workflow" | "unavailable" }>;
+  readonly removed: boolean;
+  readonly sheets: readonly Readonly<{ id: string; name: string; mappings: readonly z.infer<typeof WorkbookMappedFieldSchema>[] }>[];
+}
+
+export function projectWorkbookCompatibility(workflowsInput: readonly WorkflowWorkbookRequirementInput[],
+  sources: readonly WorkbookCompatibilitySource[], lastUsedInput: readonly WorkflowWorkbookSelectionInput[] = []): WorkbookCompatibility {
+  const workflows = workflowsInput.map(workflow => WorkflowWorkbookRequirementSchema.parse(workflow));
+  const lastUsed = lastUsedInput.map(record => WorkflowWorkbookSelectionRecordSchema.parse(record));
+  const libraries = sources.filter(source => source.origin.kind === "local" && !source.removed).map(source => ({
+    libraryId: source.libraryId, versionId: source.versionId,
+    sheets: source.sheets.map(sheet => ({ sheetId: sheet.id, sheetName: sheet.name, mappings: sheet.mappings,
+      workflows: workflows.filter(workflow => workflow.workbookReference !== undefined).map(workflow => {
+        return { workflowId: workflow.id, ...workbookFieldCoverage(workflow.requiredWorkbookFields,
+          sheet.mappings.map(mapping => mapping.fieldId)) };
+      }) })),
+  }));
+  return WorkbookCompatibilitySchema.parse({ libraries, workflows: workflows.map(workflow => {
+    const saved = lastUsed.find(record => record.workflowId === workflow.id) ?? null;
+    const compatible = libraries.flatMap(library => library.sheets.flatMap(sheet =>
+      sheet.workflows.some(coverage => coverage.workflowId === workflow.id && coverage.status === "compatible")
+        ? [{ libraryId: library.libraryId, versionId: library.versionId, sheetId: sheet.sheetId, sheetName: sheet.sheetName }] : []));
+    return {
+    workflowId: workflow.id, requiredWorkbookFields: workflow.requiredWorkbookFields,
+    ...(workflow.workbookReference === undefined ? {} : { workbookReference: workflow.workbookReference }),
+    lastUsed: saved,
+    selectionState: saved === null ? "none" : saved.sources.every(source => compatible.some(candidate =>
+      candidate.libraryId === source.libraryId && candidate.sheetId === source.sheetId)) ? "available" : "stale",
+    sources: compatible,
+    staleSources: saved?.sources.flatMap(source => {
+      if (compatible.some(candidate => candidate.libraryId === source.libraryId && candidate.sheetId === source.sheetId)) return [];
+      const prior = sources.find(candidate => candidate.libraryId === source.libraryId);
+      const reasonCode = prior === undefined || prior.origin.kind !== "local" ? "SOURCE_MISSING" as const
+        : prior.removed ? "SOURCE_REMOVED" as const : "MAPPING_CHANGED" as const;
+      return [{ ...source, reasonCode }];
+    }) ?? [],
+  }; }) });
+}
+
 
 const NameSchema = z.string().refine(value => value.trim().length > 0);
 export const WorkbookLibraryOriginSchema = z.discriminatedUnion("kind", [
@@ -108,32 +288,6 @@ export type WorkbookLibraryAction = z.infer<typeof WorkbookLibraryActionSchema>;
 export type WorkbookLibraryActionResult = z.infer<typeof WorkbookLibraryActionResultSchema>;
 export type WorkbookLibraryActionRecord = z.infer<typeof WorkbookLibraryActionRecordSchema>;
 
-export const WorkbookReferenceSlotSchema = z.strictObject({
-  workflowId: WorkflowIdSchema, workflowLabel: NameSchema, typeId: WorkbookIdSchema,
-  type: WorkbookTypeSchema.nullable(),
-  status: z.enum(["bound", "missing", "unavailable"]),
-  reasonCode: z.enum(["WORKBOOK_REFERENCE_MISSING", "WORKBOOK_TYPE_UNAVAILABLE", "WORKBOOK_BINDING_UNAVAILABLE"]).nullable(),
-  current: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("missing") }),
-    z.strictObject({ state: z.literal("unavailable"), code: z.enum(["WORKBOOK_TYPE_UNAVAILABLE", "WORKBOOK_BINDING_UNAVAILABLE"]) }),
-    z.strictObject({ state: z.literal("bound"), entry: WorkbookLibraryEntrySchema,
-      columns: z.array(z.strictObject({ sheetId: WorkbookIdSchema, sheetName: NameSchema,
-        eid: z.array(z.strictObject({ column: z.number().int().nonnegative(), fieldId: z.literal("eid"), basis: z.enum(["header", "values", "manual"]) })),
-        name: z.array(z.strictObject({ column: z.number().int().nonnegative(), fieldId: z.enum(["fullName", "firstName", "lastName", "middleName", "livedName"]), basis: z.enum(["header", "values", "manual"]) })),
-      })),
-    }),
-  ]),
-}).superRefine((slot, ctx) => {
-  if (slot.status !== slot.current.state
-    || slot.reasonCode !== (slot.current.state === "bound" ? null : slot.current.state === "missing" ? "WORKBOOK_REFERENCE_MISSING" : slot.current.code)
-    || slot.current.state === "missing" && slot.type?.defaultWorkbookId !== null
-    || slot.current.state === "unavailable" && (slot.current.code === "WORKBOOK_TYPE_UNAVAILABLE" ? slot.type !== null : slot.type === null || slot.type.defaultWorkbookId === null)
-    || slot.type !== null && slot.type.id !== slot.typeId
-    || slot.current.state === "bound" && (slot.type === null || slot.type.defaultWorkbookId !== slot.current.entry.libraryId || slot.current.entry.metadata.typeId !== slot.typeId))
-    ctx.addIssue({ code: "custom", message: "reference slot binding identity mismatch" });
-});
-export const WorkbookReferenceSlotsSchema = z.array(WorkbookReferenceSlotSchema)
-  .refine(slots => new Set(slots.map(slot => JSON.stringify([slot.workflowId, slot.typeId]))).size === slots.length);
 export const WorkbookResultsSchema = z.strictObject({
   workflows: z.array(z.strictObject({ workflowId: WorkflowIdSchema, workflowLabel: NameSchema,
     runs: z.array(z.strictObject({ runId: RunIdSchema, partitionDay: DateOnlySchema,
@@ -152,4 +306,3 @@ export const WorkbookResultsSchema = z.strictObject({
         || origin.runId !== run.runId || origin.partitionDay !== run.partitionDay;
     })))) ctx.addIssue({ code: "custom", message: "workbook result group identity mismatch" });
 });
-export type WorkbookReferenceSlot = z.infer<typeof WorkbookReferenceSlotSchema>;

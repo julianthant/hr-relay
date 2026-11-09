@@ -7,7 +7,7 @@ import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema
   WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookOperationSchema, WorkbookOperatorOperationRequestSchema,
   WorkbookOperationReceiptSchema, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
-import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema,
+import { WorkbookCompatibilitySchema, WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema,
   WorkbookLibraryStateSchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionRecordSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { PlannedRunOutputSchema } from "../../../../src/models/dashboard/run-outputs.js";
 import { ProfileFirstRunCheckSchema } from "../../../../src/models/profiles/public-profile.js";
@@ -23,6 +23,7 @@ import { ActivityReportSelectionSchema } from "../../../../src/models/dashboard/
 import { RunSearchIndexRecordSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../../../src/models/dashboard/search-index.js";
 import { ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../../src/models/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { WorkbookReferenceWriteSchema } from "../../../../src/models/processing/workbooks/read-result.js";
 import { NativePathPickerResponseSchema } from "../../../../src/models/dashboard/native-path-picker.js";
 import { DiagnosticBundleWireSchema } from "../../../../src/models/dashboard/diagnostic-bundle.js";
 import { WorkflowExplorerWireSchema } from "../../../../src/models/dashboard/explorer.js";
@@ -735,6 +736,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/saved-workbook", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: SavedWorkbookWireSchema },
   { id: "wire/workbook-list", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookListWireSchema },
   { id: "wire/workbook-library-catalog", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryCatalogSchema },
+  { id: "wire/workbook-compatibility", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookCompatibilitySchema },
   { id: "wire/workbook-library-version", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryVersionViewSchema },
   { id: "request/workbook-library-action", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionSchema },
   { id: "wire/workbook-library-action-result", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionResultSchema },
@@ -767,6 +769,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/dashboard-day", egress: "operator-loopback", module: "src/models/dashboard/projection.ts", schema: DashboardDayWireSchema },
   { id: "wire/stream-envelope", egress: "operator-loopback", module: "src/models/dashboard/subscription.ts", schema: DashboardStreamEnvelopeSchema },
   { id: "wire/bootstrap", egress: "operator-loopback", module: "src/models/dashboard/bootstrap.ts", schema: FrontendBootstrapWireSchema },
+  { id: "request/workbook-reference-write", egress: "operator-loopback", module: "src/models/processing/workbooks/read-result.ts", schema: WorkbookReferenceWriteSchema },
   { id: "wire/diagnostic-bundle", egress: "operator-loopback", module: "src/models/dashboard/diagnostic-bundle.ts", schema: DiagnosticBundleWireSchema },
   { id: "wire/activity-report", egress: "operator-loopback", module: "src/models/dashboard/activity.ts", schema: ActivityReportSelectionSchema },
   { id: "wire/activity-population", egress: "operator-loopback", module: "src/models/dashboard/activity-population.ts", schema: ActivityPopulationSelectionSchema },
@@ -922,6 +925,20 @@ const DECISION_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
     "options[].input.table.rows[].name", "options[].input.table.rows[].rowId", "options[].input.table.rows[].sheetId"].map(path => [path, "captured-hr-value"] as const),
   ...ANSWER_LEAF_ORIGINS.map(([path, origin]) => [`answer.${path}`, origin] as const),
 ];
+const COMPATIBILITY_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ...['workflows[].workflowId', 'workflows[].requiredWorkbookFields[]',
+    'workflows[].workbookReference.id', 'workflows[].workbookReference.keyFieldId',
+    'workflows[].workbookReference.writableFields[]', 'workflows[].lastUsed.workflowId',
+    'workflows[].lastUsed.acceptedCommandId', 'workflows[].lastUsed.sources[].libraryId',
+    'workflows[].staleSources[].libraryId', 'workflows[].sources[].libraryId',
+    'workflows[].sources[].versionId', 'libraries[].libraryId', 'libraries[].versionId',
+    'libraries[].sheets[].workflows[].workflowId', 'libraries[].sheets[].workflows[].missingFields[]',
+    'libraries[].sheets[].workflows[].duplicateFields[]'].map(path => [path, 'repository-authored'] as const),
+  ...['workflows[].lastUsed.sources[].sheetId', 'workflows[].staleSources[].sheetId',
+    'workflows[].sources[].sheetId', 'workflows[].sources[].sheetName',
+    'libraries[].sheets[].sheetId', 'libraries[].sheets[].sheetName'].map(path => [path, 'captured-hr-value'] as const),
+  ['libraries[].sheets[].mappings[].fieldId', 'operator-authored'],
+];
 
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
@@ -951,10 +968,21 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].parent.title", origin: "captured-hr-value" },
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.label", origin: "repository-authored" },
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
-    { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookTypeIds[]', origin: 'repository-authored' },
-    ...['fixAction.workflowId', 'fixAction.typeId']
+    { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookFields[]', origin: 'repository-authored' },
+    ...['id', 'keyFieldId', 'writableFields[]'].map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.workbookReference.${path}`, origin: 'repository-authored' as const })),
+    ...['fixAction.workflowId', 'fixAction.requiredFields[]']
       .map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.readiness.${path}`, origin: 'repository-authored' as const })),
-    { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'captured-hr-value' },
+    { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'repository-authored' },
+    ...COMPATIBILITY_LEAF_ORIGINS.flatMap(([path, origin]) => [
+      { surface: 'wire/bootstrap', path: `workbookCompatibility.${path}`, origin },
+      { surface: 'wire/workbook-compatibility', path, origin },
+    ]),
+    { surface: 'request/workbook-reference-write', path: 'referenceDigest', origin: 'repository-authored' },
+    { surface: 'request/workbook-reference-write', path: 'writeId', origin: 'repository-authored' },
+    { surface: 'request/workbook-reference-write', path: 'typeId', origin: 'repository-authored' },
+    { surface: 'request/workbook-reference-write', path: 'key', origin: 'captured-hr-value' },
+    { surface: 'request/workbook-reference-write', path: 'values[].fieldId', origin: 'repository-authored' },
+    { surface: 'request/workbook-reference-write', path: 'values[].value', origin: 'captured-hr-value' },
     ...PLANNED_OUTPUT_ORIGINS.flatMap(path => ['wire/planned-run-output', 'wire/start-plan'].map(surface => ({ surface,
       path: surface === 'wire/start-plan' ? `planned[].outputs[].${path}` : path, origin: 'captured-hr-value' as const }))),
     ...([
@@ -982,19 +1010,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
     ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
     ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
-    ...LIBRARY_MUTABLE_TYPE_ORIGINS.flatMap(path => [
-      { surface: 'wire/bootstrap', path: `workbookReferences[].type.${path}`, origin: 'captured-hr-value' as const },
-      { surface: 'wire/bootstrap', path: `workbookReferences[].current.entry.type.${path}`, origin: 'captured-hr-value' as const },
-    ]),
-    ...LIBRARY_STATE_ORIGINS.map(entry => ({ surface: 'wire/bootstrap', path: `workbookReferences[].current.entry.state.${entry.path}`,
-      origin: entry.origin })),
-    ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/bootstrap',
-      path: `workbookReferences[].current.entry.${path}`, origin: 'captured-hr-value' as const })),
-    { surface: 'wire/bootstrap', path: 'workbookReferences[].typeId', origin: 'repository-authored' },
-    { surface: 'wire/bootstrap', path: 'workbookReferences[].current.entry.libraryId', origin: 'repository-authored' },
-    { surface: 'wire/bootstrap', path: 'workbookReferences[].workflowLabel', origin: 'repository-authored' },
-    ...['current.columns[].sheetId', 'current.columns[].sheetName'].map(path => ({ surface: 'wire/bootstrap',
-      path: `workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),
     { surface: 'request/workbook-reference', path: 'versionId', origin: 'repository-authored' },
     { surface: 'request/workbook-reference', path: 'selectedRow.sheetId', origin: 'captured-hr-value' },

@@ -6,7 +6,7 @@ import { CanonicalWorkerTransitionRequestSchema } from "../storage/sqlite/run-st
 import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-input.js";
 import { z } from "zod";
 import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
-import { RunWorkbookSnapshotReferenceSchema, RunWorkbookNamedReferenceSchema, parseRunWorkbookReference, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
+import { RunWorkbookSnapshotReferenceSchema, RunWorkbookNamedReferenceSchema, CapturedWorkbookWriteSourceSchema, parseRunWorkbookReference, encodeSavedWorkbook, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../models/dashboard/run-decision.js";
 import { projectDecision } from "./decisions/project-decision.js";
@@ -22,7 +22,9 @@ import { deriveStableUuid, lifecycleCommandId } from "../../rules/identity/ident
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { localDatePart, type Clock } from "../../rules/time/clock.js";
-import { WorkbookLibraryError, snapshotWorkbookReference, writeRunWorkbook, readRetainedWorkbookReference } from "../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError, snapshotRetainedWorkbookReference, writeRecordedRunWorkbook, readRetainedWorkbookReference,
+  verifyRetainedNamedWorkbookReference } from "../workbooks/workbook-library-service.js";
+import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
 import { WorkbookReferenceReadRequestSchema } from "../../models/processing/workbooks/read-reference.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInput } from "../../models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
@@ -36,6 +38,7 @@ import { bindOcrRoster } from "../../models/workflows/ocr/roster.js";
 import { CrmDocDownloadCanonicalInput } from "../../models/workflows/crm-doc-download/input.js";
 import { ReadCrmDocumentRows, CrmDocumentRowCandidateSchema, CrmDocumentRowChoiceSchema, CRM_DOCUMENT_ROW_CHOICE_GATE_ID } from "../../models/workflows/crm-doc-download/read-document-rows.js";
 import { taskImplFingerprint } from "../../workflow-kit/fingerprints.js";
+import { workbookMatches } from "../workbooks/master-changes.js";
 
 
 const onboardingInputBinding = Object.freeze({
@@ -171,9 +174,37 @@ function resolvingEntry(entries: readonly WorkbookOperationRecord[], entry: Work
     && candidate.operation.change.kind === "patch" && candidate.operation.change.resolves?.operationId === entry.operation.operationId);
 }
 
-function liveCandidates(repositories: AuthorityRepositories, reference: Reference, key: string) {
+function liveCandidates(repositories: AuthorityRepositories, reference: Reference, key: string, historical = false) {
   if ("mode" in reference.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-  const live = snapshotWorkbookReference(repositories.workbooks, { ...reference.request, libraryId: reference.snapshot.libraryId, keys: [key] });
+  if (!historical && "versionId" in reference.snapshot && reference.snapshot.versionId !== undefined
+    && reference.snapshot.worksheets.length === 1) {
+    verifyRetainedNamedWorkbookReference(repositories.workbooks, reference);
+    const record = repositories.workbooks.read(reference.snapshot.libraryId);
+    const capturedSheet = reference.snapshot.worksheets[0];
+    const state = repositories.workbooks.libraryState(reference.snapshot.libraryId);
+    if (record === undefined || capturedSheet === undefined
+      || state.removed || state.selectedVersionId !== reference.snapshot.versionId) {
+      throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+    }
+    const sheet = encodeSavedWorkbook(record).workbook.sheets.find(item => item.id === capturedSheet.sheetId);
+    if (sheet === undefined || sheet.name !== capturedSheet.name) throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+    const fields = reference.request.fields;
+    if (new Set(fields).size !== fields.length || fields.some(field =>
+      sheet.columnBindings?.filter(binding => binding.fieldId === field).length !== 1)) throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+    const keyFieldId = reference.snapshot.type.keyFieldId;
+    if (keyFieldId === null) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    const candidates = workbookMatches({ ...encodeSavedWorkbook(record).workbook, sheets: [sheet] }, keyFieldId, key)
+      .map(match => {
+        const rowNumber = sheet.rows.findIndex(row => row.id === match.rowId) + 1;
+        const values = Object.fromEntries(fields.map(field => {
+          const column = sheet.columnBindings?.findIndex(binding => binding.fieldId === field) ?? -1;
+          return [field, match.row.cells[column]?.value];
+        }));
+        return { sheetId: sheet.id, rowId: match.rowId, values, label: `${sheet.name} · Row ${rowNumber}`, rowNumber };
+      });
+    return { version: record.version, candidates };
+  }
+  const live = snapshotRetainedWorkbookReference(repositories.workbooks, { ...reference.request, libraryId: reference.snapshot.libraryId, keys: [key] });
   if (live.type.keyFieldId !== reference.snapshot.type.keyFieldId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
   const sheets = new Set(reference.snapshot.worksheets.map(sheet => sheet.sheetId));
   const record = repositories.workbooks.read(live.libraryId);
@@ -186,6 +217,37 @@ function liveCandidates(repositories: AuthorityRepositories, reference: Referenc
     if (sheet === undefined || row === undefined || row < 0) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
     return { ...match, label: `${sheet.name} · Row ${row + 1}`, rowNumber: row + 1 };
   }) };
+}
+
+function liveOperationCandidates(repositories: AuthorityRepositories, reference: Reference, entry: WorkbookOperationRecord, key: string) {
+  const source = entry.operation.source;
+  if (source.kind !== "run-reference") return liveCandidates(repositories, reference, key, true);
+  if (!("versionId" in reference.snapshot) || source.authority.versionId !== reference.snapshot.versionId) {
+    throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  }
+  verifyRetainedNamedWorkbookReference(repositories.workbooks, reference);
+  const capturedSheet = reference.snapshot.worksheets.find(sheet => sheet.sheetId === source.authority.sheetId);
+  const current = repositories.workbooks.read(entry.libraryId);
+  const state = repositories.workbooks.libraryState(entry.libraryId);
+  if (capturedSheet === undefined || current === undefined
+    || state.removed || state.selectedVersionId !== source.authority.versionId)
+    throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+  const workbook = encodeSavedWorkbook(current).workbook;
+  const sheet = workbook.sheets.find(item => item.id === source.authority.sheetId);
+  if (sheet === undefined || sheet.name !== capturedSheet.name
+    || sheet.columnBindings?.filter(binding => binding.fieldId === source.authority.keyFieldId).length !== 1) {
+    throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+  }
+  const candidates = workbookMatches(workbook, source.authority.keyFieldId, key)
+    .filter(match => match.sheetId === sheet.id).map(match => {
+      const rowNumber = sheet.rows.findIndex(row => row.id === match.rowId) + 1;
+      return { sheetId: sheet.id, rowId: match.rowId, label: `${sheet.name} · Row ${rowNumber}`, rowNumber };
+    });
+  return { version: current.version, candidates };
+}
+function expectedSourceChange(cause: unknown): cause is WorkbookLibraryError {
+  return cause instanceof WorkbookLibraryError && (cause.code === "WORKBOOK_VERSION_CONFLICT"
+    || cause.code === "WORKBOOK_NOT_FOUND" || cause.code === "WORKBOOK_REVISION_UNAVAILABLE");
 }
 
 function onboardingReference(run: RunRecord) {
@@ -559,7 +621,12 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
   if (run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== ONBOARDING_ROSTER_GATE_ID) {
     return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   }
-  const live = liveCandidates(repositories, reference.value, binding.rowKey.email);
+  let live: ReturnType<typeof liveCandidates>;
+  try { live = liveCandidates(repositories, reference.value, binding.rowKey.email); }
+  catch (cause) {
+    if (!expectedSourceChange(cause)) throw cause;
+    return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
+  }
   const picks = live.candidates.map(match => {
     onboardingRosterRow({ ...binding, workbookVersion: live.version }, match);
     return { sheetId: match.sheetId, rowId: match.rowId, label: match.label, rowNumber: match.rowNumber,
@@ -597,7 +664,12 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
     const reference = referenceOfOperation(run, entry).value;
     const change = entry.operation.change;
     if (change.kind !== "patch" && change.kind !== "add") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-    const live = liveCandidates(repositories, reference, change.key);
+    let live: ReturnType<typeof liveOperationCandidates>;
+    try { live = liveOperationCandidates(repositories, reference, entry, change.key); }
+    catch (cause) {
+      if (!expectedSourceChange(cause)) throw cause;
+      return { ...base, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE" } };
+    }
     if (live.candidates.length === 0) return { ...base, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE" } };
     const target = { runId: run.envelope.runId, expectedVersion: run.version, libraryId: entry.libraryId,
       operationId: entry.operation.operationId, receiptDigest: sha256Hex(canonicalJsonStringify(entry.receipt)), workbookVersion: live.version };
@@ -611,7 +683,8 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
   }) });
 }
 
-export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDatabase; clock: Clock }>) {
+export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDatabase; clock: Clock;
+  resolveDescriptor?: (workflowId: string) => AnyWorkflowDescriptor | undefined }>) {
   return Object.freeze({
     read(captured: RunRecord, value: z.input<typeof WorkbookReferenceReadRequestSchema>) {
       const command = WorkbookReferenceReadRequestSchema.parse(value);
@@ -661,24 +734,68 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
         const run = repositories.runs.get(captured.envelope.runId);
         if (run?.lifecycle.state !== "running" || run.envelope.attempt !== captured.envelope.attempt
           || Number(run.claimGeneration) !== Number(captured.claimGeneration)
+          || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify(captured.envelope)
           || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const reference = referenceFor(run, command.typeId);
-        if ("mode" in reference.value.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if ("mode" in reference.value.request || command.referenceDigest !== reference.digest) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const operationId = deriveStableUuid("run-workbook-write-request", canonicalJsonStringify({ runId: run.envelope.runId, writeId: command.writeId }));
         const previous = repositories.workbooks.runOperations(run.envelope.runId).find(entry => entry.operation.operationId === operationId);
         if (previous !== undefined && previous.libraryId !== reference.value.snapshot.libraryId) throw new WorkbookLibraryError("WORKBOOK_OPERATION_CONFLICT");
-        if (previous === undefined) {
-          const currentType = repositories.workbooks.types().find(type => type.id === reference.value.snapshot.type.id);
-          if (currentType === undefined || currentType.keyFieldId !== reference.value.snapshot.type.keyFieldId
-            || repositories.workbooks.metadata(reference.value.snapshot.libraryId).typeId !== currentType.id
-            || reference.value.request.fields.some(field => !currentType.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const values = Object.fromEntries(command.values.map(cell => [cell.fieldId, cell.value]));
+        if (previous !== undefined && ((previous.operation.source.kind !== "run-reference" && previous.operation.source.kind !== "run")
+          || previous.operation.source.referenceDigest !== command.referenceDigest
+          || previous.operation.change.kind !== "patch" || previous.operation.change.key !== command.key
+          || canonicalJsonStringify(previous.operation.change.values) !== canonicalJsonStringify(values))) {
+          throw new WorkbookLibraryError("WORKBOOK_OPERATION_CONFLICT");
         }
+        if (previous !== undefined) {
+          referenceOfOperation(run, previous);
+          appendReceipt(repositories, run, previous.receipt);
+          return previous.receipt;
+        }
+        verifyRetainedNamedWorkbookReference(repositories.workbooks, reference.value);
+        const descriptor = deps.resolveDescriptor?.(run.envelope.workflow), declaration = descriptor?.workbookReference;
+        if (run.envelope.dryRun || run.cancelRequested === true || repositories.deletedRuns.get(run.envelope.runId) !== undefined
+          || descriptor === undefined || descriptor.contractFingerprint !== run.envelope.contractFingerprint || declaration === undefined
+          || declaration.mode !== "keys" || declaration.id !== reference.value.request.typeId
+          || declaration.id !== reference.value.snapshot.type.id
+          || declaration.keyFieldId !== reference.value.snapshot.type.keyFieldId
+          || canonicalJsonStringify(descriptor.requiredWorkbookFields) !== canonicalJsonStringify(reference.value.request.fields)
+          || !reference.value.request.fields.includes(declaration.keyFieldId)
+          || declaration.writableFields.length === 0
+          || declaration.writableFields.some(field => !reference.value.request.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const row = reference.value.snapshot.rows.find(row => row.key === command.key);
         if (row === undefined || command.values.some(cell => !reference.value.request.fields.includes(cell.fieldId))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-        const match = row.state === "matched" ? row.matches[0] : undefined;
-        const receipt = writeRunWorkbook(repositories.workbooks, deps.clock, run.envelope.runId, reference.value.snapshot.libraryId, operationId,
-          { kind: "patch", key: command.key, values: Object.fromEntries(command.values.map(cell => [cell.fieldId, cell.value])), expectedVersion: reference.value.snapshot.version,
-            ...(match === undefined ? {} : { selection: { sheetId: match.sheetId, rowId: match.rowId, expectedVersion: reference.value.snapshot.version } }) }, reference.digest);
+        if (!("versionId" in reference.value.snapshot)
+          || reference.value.snapshot.worksheets.length !== 1) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const source = CapturedWorkbookWriteSourceSchema.parse({ kind: "run-reference", runId: run.envelope.runId,
+          referenceDigest: reference.digest, authority: { versionId: reference.value.snapshot.versionId,
+            sheetId: reference.value.snapshot.worksheets[0]?.sheetId, keyFieldId: declaration.keyFieldId,
+            requiredFields: [...reference.value.request.fields], writableFields: [...declaration.writableFields] } });
+        const libraryState = repositories.workbooks.libraryState(reference.value.snapshot.libraryId);
+        if (libraryState.removed || libraryState.selectedVersionId !== source.authority.versionId)
+          throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+        if (command.values.some(cell => !source.authority.writableFields.includes(cell.fieldId))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const admitted = "selectedRow" in reference.value.request ? reference.value.request.selectedRow : undefined;
+        let chosen = admitted ?? (run.envelope.workflow !== "onboarding" && row.state === "matched" ? row.matches[0] : undefined);
+        let expectedVersion = reference.value.snapshot.version;
+        if (run.envelope.workflow === "onboarding") {
+          const roster = onboardingReference(run);
+          const binding = roster.roster.state === "resolved" ? roster.roster.row.binding
+            : authenticateOnboardingRosterExecution(repositories, run)?.row.binding;
+          if (roster.reference.digest !== reference.digest || binding === undefined
+            || binding.referenceDigest !== command.referenceDigest || binding.workbookId !== reference.value.snapshot.libraryId
+            || binding.workbookType !== command.typeId
+            || binding.rowKey.email !== command.key) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          chosen = { sheetId: binding.sheetId, rowId: binding.rowId };
+          expectedVersion = binding.workbookVersion;
+        }
+        if (chosen === undefined || chosen.sheetId !== source.authority.sheetId
+          || run.envelope.workflow !== "onboarding" && !row.matches.some(candidate =>
+            candidate.sheetId === chosen.sheetId && candidate.rowId === chosen.rowId)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const selection = { ...chosen, expectedVersion };
+        const receipt = writeRecordedRunWorkbook(repositories.workbooks, deps.clock, source, reference.value.snapshot.libraryId, operationId,
+          { kind: "patch", key: command.key, values, expectedVersion, selection });
         appendReceipt(repositories, run, receipt);
         return receipt;
       });
@@ -697,14 +814,20 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
       const reference = referenceOfOperation(run, original);
       const change = original.operation.change;
       if (change.kind !== "patch" && change.kind !== "add") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-      const live = liveCandidates(repositories, reference.value, change.key);
+      let live: ReturnType<typeof liveOperationCandidates>;
+      try { live = liveOperationCandidates(repositories, reference.value, original, change.key); }
+      catch (cause) {
+        if (!expectedSourceChange(cause)) throw cause;
+        rejectCommandRequest(command, "invalid-state", "The captured workbook source changed. Reload its row choice.");
+      }
       if (live.version !== command.target.workbookVersion || !live.candidates.some(candidate => candidate.sheetId === command.payload.sheetId && candidate.rowId === command.payload.rowId)) {
         rejectCommandRequest(command, "invalid-state", "The live workbook row changed. Reload its row choice.");
       }
-      const receipt = writeRunWorkbook(repositories.workbooks, deps.clock, run.envelope.runId, original.libraryId,
+      if (original.operation.source.kind !== "run" && original.operation.source.kind !== "run-reference") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+      const receipt = writeRecordedRunWorkbook(repositories.workbooks, deps.clock, original.operation.source, original.libraryId,
         deriveStableUuid("run-workbook-row-resolution", command.commandId), { kind: "patch", key: change.key, values: change.values,
           expectedVersion: live.version, selection: { ...command.payload, expectedVersion: live.version },
-          resolves: { operationId: original.operation.operationId, receiptDigest: command.target.receiptDigest } }, reference.digest);
+          resolves: { operationId: original.operation.operationId, receiptDigest: command.target.receiptDigest } });
       if (receipt.state !== "applied") rejectCommandRequest(command, "invalid-state", "The selected row cannot accept the captured change; operator-owned cells remain protected.");
       appendReceipt(repositories, run, receipt, command.commandId);
       return receipt;

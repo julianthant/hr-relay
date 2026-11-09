@@ -1,4 +1,4 @@
-import { WorkbookLibraryEntrySchema } from '../../../src/models/dashboard/workbook-library.js';
+import { WorkbookLibraryEntrySchema, WorkbookCompatibilitySchema, projectWorkbookCompatibility } from '../../../src/models/dashboard/workbook-library.js';
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import assert from 'node:assert/strict';
 import { describe, it, vi } from 'vitest';
@@ -13,6 +13,9 @@ function setup() {
   const client = {
     workbookResults: vi.fn<WorkbookLibraryQueries['workbookResults']>(async () => { throw new Error('Unexpected workbookResults call'); }),
     workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
+    workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [
+      { libraryId: 'saved', versionId: 'original', sheets: [{ sheetId: 'sheet', sheetName: 'People', mappings: [], workflows: [] }] },
+    ] })),
     workbookList: vi.fn(async () => [saved()]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>() } satisfies WorkbookLibraryQueries;
   return { client, adapter: createSpreadsheetWiringAdapter(client) };
 }
@@ -181,6 +184,41 @@ it('blocks a new save after read-authority replacement until current library dat
 });
 
 describe('named library actions', () => {
+  it('refreshes compatibility with catalog and disables stale eligibility after a failed read', async () => {
+    const { client, adapter } = setup(), file = entry();
+    client.workbookCatalog.mockResolvedValue([file]); client.workbookTypes.mockResolvedValue([file.type]);
+    await adapter.refreshCatalog();
+    assert.equal(client.workbookCompatibility.mock.calls.length, 1);
+    assert.equal(adapter.snapshot().compatibility?.workflows.length, 0);
+    client.workbookCompatibility.mockRejectedValueOnce(new Error('offline'));
+    await adapter.refreshCatalog();
+    assert.equal(adapter.snapshot().compatibility, undefined);
+    assert.equal(adapter.snapshot().catalogError, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+  });
+  it('replaces Run eligibility after a workbook mapping change without replacing the adapter', async () => {
+    const { client, adapter } = setup(), file = entry();
+    const workflow = { id: 'onboarding', label: 'Onboarding', requiredWorkbookFields: ['eid'],
+      workbookReference: { id: 'roster', keyFieldId: 'eid', mode: 'keys' as const, writableFields: [] } };
+    const projection = (fieldId: string | undefined) => projectWorkbookCompatibility([workflow], [{ libraryId: file.libraryId,
+      versionId: file.state.selectedVersionId, origin: { kind: 'local' }, removed: false,
+      sheets: [{ id: 'sheet', name: 'People', mappings: fieldId === undefined ? [] : [{ fieldId, column: 0, basis: 'manual' as const }] }] }]);
+    client.workbookCatalog.mockResolvedValue([file]);
+    client.workbookCompatibility.mockResolvedValueOnce(projection(undefined)).mockResolvedValueOnce(projection('eid')).mockResolvedValueOnce(projection(undefined));
+    await adapter.refreshCatalog(); assert.deepEqual(adapter.snapshot().compatibility?.workflows[0].sources, []);
+    await adapter.refreshCatalog(); assert.equal(adapter.snapshot().compatibility?.workflows[0].sources[0].sheetId, 'sheet');
+    await adapter.refreshCatalog(); assert.deepEqual(adapter.snapshot().compatibility?.workflows[0].sources, []);
+  });
+  it('keeps verified Run compatibility when the independent type editor read fails', async () => {
+    const { client, adapter } = setup(), file = entry();
+    client.workbookCatalog.mockResolvedValue([file]); client.workbookTypes.mockRejectedValue(new Error('types offline'));
+    await adapter.refreshCatalog();
+    assert.equal(adapter.snapshot().compatibility?.libraries[0].libraryId, 'saved');
+    assert.equal(adapter.snapshot().catalogError, '');
+    assert.equal(adapter.snapshot().typesError, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+    client.workbookTypes.mockResolvedValue([file.type]);
+    assert.equal((await adapter.saveType(file.type)).state, 'confirmed');
+    assert.equal(adapter.snapshot().typesError, '');
+  });
   const entry = () => WorkbookLibraryEntrySchema.parse({ libraryId: 'saved', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 0,
     worksheets: [{ id: 'sheet', name: 'People' }], metadata: { typeId: 'roster', sharePoint: null },
     type: { id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null },

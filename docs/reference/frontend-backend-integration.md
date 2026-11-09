@@ -469,15 +469,15 @@ before the account owner when the active profile changes or the page closes.
 
 ### Run reference and output plans
 
-`WorkflowStartWire.requiredWorkbookTypeIds` declares each required reference type. The dashboard sends
-`workbookReferences: [{entry, typeId, libraryId?, versionId?, selectedRow?: {sheetId, rowId}}]` on the existing
-start-plan request. Without a row selection, the in-use version is the default. An explicit named version
-preserves its immutable bytes. The browser cannot supply lookup keys or fields. A workflow declares
-`referenceLookups(input) -> [{typeId, keys, fields}]`; the single ingress parse derives these before reference
-binding and requires exact required-type membership. Missing lookup capability refuses planning.
+`WorkflowStartWire.requiredWorkbookFields` and `workbookReference` declare the required fields,
+logical capture ID, key, mode and writable outputs. The dashboard sends one explicit
+`workbookReferences: [{entry, libraryId, versionId, sheetId, expectedVersion, selectedRow?}]` selection
+per entry. The browser cannot supply lookup keys, fields or write authority. Keyed workflows
+declare `referenceKeys(input)`; planning derives the captured request from that callback and the
+frozen static declaration. Each selected worksheet must map every required field exactly once.
 
 `selectedRow` requires an explicit library, an immutable named version and exactly one derived key.
-The descriptor's `inputRun.workbookRows` must declare that required type, and its input field must equal
+The descriptor's `inputRun.workbookRows` must declare that logical capture ID, and its input field must equal
 the derived key. The selected sheet/row pair must occur exactly once among that key's retained matches.
 Expected unavailable selections produce entry refusals. Captured references bind canonical input before
 identity, display and output planning. [Onboarding binding](workflow-model.md#11-shape) owns its typed values and execution authentication.

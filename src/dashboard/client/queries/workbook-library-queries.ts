@@ -9,13 +9,14 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { httpError, schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
-import { WorkbookResultsSchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
+import { WorkbookResultsSchema, WorkbookCompatibilitySchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
   type WorkbookLibraryEntry, type WorkbookLibraryAction, type WorkbookLibraryActionResult } from "../../../models/dashboard/workbook-library.js";
 
 export interface WorkbookLibraryQueries {
   workbookResults(): Promise<z.infer<typeof WorkbookResultsSchema>>;
   workbookImport(workbook: unknown): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookCatalog(): Promise<readonly WorkbookLibraryEntry[]>;
+  workbookCompatibility(): Promise<z.infer<typeof WorkbookCompatibilitySchema>>;
   workbookTypes(): Promise<readonly z.infer<typeof WorkbookTypeSchema>[]>;
   workbookPutType(type: z.infer<typeof WorkbookTypeSchema>): Promise<z.infer<typeof WorkbookTypeSchema>>;
 
@@ -60,6 +61,10 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
     async workbookCatalog() {
       const path = '/api/v1/workbooks/catalog';
       return parseOrThrow(WorkbookLibraryCatalogSchema, path, await transport.requestJson(path));
+    },
+    async workbookCompatibility() {
+      const path = '/api/v1/workbooks/compatibility';
+      return parseOrThrow(WorkbookCompatibilitySchema, path, await transport.requestJson(path));
     },
     async workbookTypes() {
       const path = '/api/v1/workbooks/types';

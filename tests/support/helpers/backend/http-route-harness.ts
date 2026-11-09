@@ -152,6 +152,7 @@ export const disposeHttpRouteHarness = async () => {
 };
 
 export async function harness(options: {
+  readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
   readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
@@ -372,7 +373,7 @@ export async function harness(options: {
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
     ...(options.ocr === undefined ? {} : { ocr: options.ocr }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE) },
+    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -382,7 +383,7 @@ export async function harness(options: {
       projection,
       actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
-      workbookReferences: workflows => workbookLibrary.references(workflows),
+      workbookCompatibility: workflows => workbookLibrary.compatibility(workflows),
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,

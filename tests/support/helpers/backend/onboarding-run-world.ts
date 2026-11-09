@@ -65,25 +65,24 @@ export function createOnboardingRunWorld() {
         columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index,
           sourceHeader: fieldId, fieldId, basis: "manual" })),
         rows: [{ id: `${id}-header`, cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) },
-          { id: `${id}-person`, cells: [email, "Fixture", "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) }] };
+          { id: `${id}-person`, cells: [email, "Fixture", "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) },
+          ...(match === "duplicate" && id === "people" ? [{ id: "people-second",
+            cells: [email, "Second", "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) }] : [])] };
     }
     const saved = library.create({ name: "Synthetic.xlsx", themes: [], hasFormulas: false,
-      sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", match === "duplicate" ? key : "other@example.test")] });
+      sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", "other@example.test")] });
     repository.putType({ id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
     library.operatorOperation(saved.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
-    const declared = repository.types().find(type => type.id === "onboarding-roster"); assert.ok(declared);
-    repository.putType({ ...declared, defaultWorkbookId: saved.libraryId });
     const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
     let snapshots = 0;
     const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600_000,
       workbooks: { types: () => library.types(), catalog: () => library.catalog(), libraryVersion: (id, versionId) => library.libraryVersion(id, versionId), snapshot: value => { snapshots++; return library.snapshot(value); } }, configFingerprint: config.configFingerprint,
       configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
-    const selection = { entry: 1, typeId: "onboarding-roster", ...(options.selectedRow ? {
-      libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
-      selectedRow: { sheetId: "people", rowId: "people-person" },
-    } : {}) };
+    const selection = { entry: 1, libraryId: saved.libraryId,
+      versionId: library.libraryVersion(saved.libraryId).version.id, sheetId: "people", expectedVersion: 2,
+      ...(options.selectedRow ? { selectedRow: { sheetId: "people", rowId: "people-person" } } : {}) };
     const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: options.mode ?? "new-hire", configuredJobEndDate: "06/30/2027" }],
       dryRun: options.dryRun ?? false, workbookReferences: [selection] };
     const plan = (value: unknown = request) => {
@@ -166,7 +165,8 @@ export function createOnboardingRunWorld() {
     const scheduler = new ManualScheduler(f.clock), ids = { uuid: randomUUID }, log = recordingLogger().log;
     const writeSequencer = createWriteSequencer({ lifecycle, stores: taskStoreRegistry, authority: f.database,
       sessions: manager, emitter, clock: f.clock, ids, scheduler, taskDeadlineMs: 60_000, operator: "local-operator", log });
-    const workbooks = createRunWorkbookService({ database: f.database, clock: f.clock });
+    const workbooks = createRunWorkbookService({ database: f.database, clock: f.clock,
+      resolveDescriptor: id => id === descriptor.id ? descriptor : undefined });
     const adapter: ProviderAdapter<"workbooks.library"> = { capability: "workbooks.library", invoke(request, invocation) {
       const running = f.database.authority.runs.listByWorkflow(descriptor.id).filter(run => run.lifecycle.state === "running");
       assert.equal(running.length, 1); const run = running[0]; assert.ok(run);

@@ -171,7 +171,7 @@ export function createDashboardModelFixtures() {
 
       version: 7,
 
-      readiness: { scope: "default-workbook-references", state: "ready" }, spreadsheetIntake: true, requiredWorkbookTypeIds: [],
+      readiness: { scope: "workbook-sources", state: "ready" }, spreadsheetIntake: true, requiredWorkbookFields: [],
       inputRun: {
         placeholder: "Enter EIDs or names, semicolon-separated",
         parser: {
@@ -198,7 +198,7 @@ export function createDashboardModelFixtures() {
 
   const BOOTSTRAP = {
     wireVersion: 1,
-    workbookReferences: [],
+    workbookCompatibility: { workflows: [], libraries: [] },
     appVersion: "1.0.0",
     descriptorHash: HASH_A,
     settingsSchemaHash: HASH_B,

@@ -63,8 +63,8 @@ async function review(page: Page, fixture: WorkbookRowsFixture, dialog: Locator,
   expect(fixture.plans).toHaveLength(1); expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0);
   const request = fixture.plans[0];
   expect(request.submissions).toEqual(ROW_EMAILS.map(email => ({ email, mode })));
-  expect(request.workbookReferences).toEqual(ROW_IDS.map((rowId, index) => ({ entry: index + 1, typeId: fixture.type.id, libraryId: fixture.libraryId,
-    versionId: 'roster-1', selectedRow: { sheetId: 'people', rowId } })));
+  expect(request.workbookReferences).toEqual(ROW_IDS.map((rowId, index) => ({ entry: index + 1, libraryId: fixture.libraryId,
+    versionId: 'roster-1', sheetId: 'people', expectedVersion: 5, selectedRow: { sheetId: 'people', rowId } })));
   expect(request).toMatchObject({ dryRun: false, browserMode: 'headed', captureBrowserScreenshots: true });
   expect(fixture.plan?.planned.map(entry => entry.workbookReferences?.[0].selectedRow?.rowId)).toEqual(['alpha', 'bravo']);
   if (capture) await evidence(page, info, 'selected-confirm');

@@ -392,9 +392,9 @@ function LoadedApp({
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
     ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
-  const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows)), [composeWorkflows, workflows]);
-  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability]);
-  const explorerCatalog = useMemo(() => workflowComposition.explorerSources ? buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.explorerSources, boot.featureAvailability) : workflowCatalog, [workflows, workflowComposition, workflowCatalog, boot.featureAvailability]);
+  const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows, boot.workbookCompatibility)), [composeWorkflows, workflows, boot.workbookCompatibility]);
+  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows, boot.workbookCompatibility), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability, boot.workbookCompatibility]);
+  const explorerCatalog = useMemo(() => workflowComposition.explorerSources ? buildWorkflowCatalog(launchWorkflows(workflows, boot.workbookCompatibility), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.explorerSources, boot.featureAvailability) : workflowCatalog, [workflows, workflowComposition, workflowCatalog, boot.featureAvailability, boot.workbookCompatibility]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessions !== "mock") && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch, boot.actor.id);

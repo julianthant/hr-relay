@@ -37,7 +37,8 @@ it("preserves the keyed reference schema hash and reads each active reference by
   assert.throws(() => parseRunWorkbookReference({ ...all, schemaHash: keyed.schemaHash }));
   assert.throws(() => parseRunWorkbookReference({ ...keyed, schemaHash: all.schemaHash }));
 });
-import { WorkbookSelectedRowReferenceRequestSchema, WorkbookRunReferenceSelectionSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { WorkbookSelectedRowReferenceRequestSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { WorkbookActiveSelectionSchema } from "../../../src/models/dashboard/workbook-library.js";
 
 it("retains selected physical row authority only with one key, explicit library and immutable version", () => {
   const selectedRow = { sheetId: "people", rowId: "person" };
@@ -51,8 +52,9 @@ it("retains selected physical row authority only with one key, explicit library 
   assert.equal(bindRunWorkbookReference(request, snapshot).schemaHash, deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output"));
   const { selectedRow: _selection, ...ordinary } = request;
   assert.equal(bindRunWorkbookReference(ordinary, snapshot).schemaHash, deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output"));
-  assert.deepEqual(WorkbookRunReferenceSelectionSchema.parse({ entry: 1, typeId: request.typeId,
-    libraryId: request.libraryId, versionId: request.versionId, selectedRow }).selectedRow, selectedRow);
+  assert.deepEqual(WorkbookActiveSelectionSchema.parse({ entry: 1,
+    libraryId: request.libraryId, versionId: request.versionId, sheetId: selectedRow.sheetId,
+    expectedVersion: 1, selectedRow }).selectedRow, selectedRow);
   for (const value of [{ ...request, libraryId: undefined }, { ...request, versionId: undefined },
     { ...request, keys: [] }, { ...request, keys: [...request.keys, "other@example.test"] }]) {
     assert.equal(WorkbookSelectedRowReferenceRequestSchema.safeParse(value).success, false);
@@ -64,7 +66,12 @@ it("retains selected physical row authority only with one key, explicit library 
   assert.equal(RunWorkbookSelectedRowReferenceSchema.safeParse({ request, snapshot: { ...snapshot, versionId: "different" } }).success, false);
   assert.equal(RunWorkbookSelectedRowReferenceSchema.safeParse({ request, snapshot: { ...snapshot,
     rows: [{ ...snapshot.rows[0], state: "ambiguous", matches: [...snapshot.rows[0].matches, ...snapshot.rows[0].matches] }] } }).success, false);
-  assert.equal(WorkbookRunReferenceSelectionSchema.safeParse({ entry: 1, typeId: request.typeId, selectedRow }).success, false);
+  assert.equal(WorkbookActiveSelectionSchema.safeParse({ entry: 1, selectedRow }).success, false);
+  assert.equal(WorkbookActiveSelectionSchema.safeParse({ entry: 1, typeId: request.typeId,
+    libraryId: request.libraryId, versionId: request.versionId, sheetId: selectedRow.sheetId,
+    expectedVersion: 1 }).success, false);
+  assert.equal(WorkbookActiveSelectionSchema.safeParse({ entry: 1, libraryId: request.libraryId,
+    versionId: request.versionId, sheetId: selectedRow.sheetId }).success, false);
 });
 
 it("retains the exact published selected-row hash even without a selector or version metadata", () => {

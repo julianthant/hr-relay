@@ -1,6 +1,8 @@
 import { columnName } from './spreadsheet-editor-model.js';
 import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
-import { fieldForSpreadsheetHeader, spreadsheetField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
+import { fieldForSpreadsheetHeader, spreadsheetField } from '../../../models/fields/workbook-fields.js';
+import { spreadsheetEditorField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
+import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';
 
 export function spreadsheetHeaderRow(sheet: EditableSheet): number {
   const row = sheet.headerRow ?? 1;
@@ -27,7 +29,7 @@ export function prepareSpreadsheetColumns(document: EditableWorkbook): EditableW
   }) };
 }
 export function setSpreadsheetColumnField(sheet: EditableSheet, column: number, fieldId: string | null): EditableSheet {
-  if (fieldId !== null) spreadsheetField(fieldId);
+  if (fieldId !== null && !CustomRosterFieldIdSchema.safeParse(fieldId).success) spreadsheetField(fieldId);
   if (!sheet.columnBindings || column < 0 || column >= sheet.width) throw new Error('SPREADSHEET_COLUMN_BINDING_UNAVAILABLE');
   return { ...sheet, columnBindings: sheet.columnBindings.map((binding, index) => index === column ? { ...binding, fieldId, basis: fieldId === null ? 'unmapped' : 'manual' } : binding) };
 }
@@ -47,7 +49,7 @@ export function spreadsheetColumnErrors(document: EditableWorkbook): readonly st
       selected++;
       const binding = sheet.columnBindings?.[column];
       if (!binding?.fieldId) continue;
-      const field = spreadsheetField(binding.fieldId);
+      const field = spreadsheetEditorField(binding.fieldId, binding.sourceHeader || cellText(sheet.rows[spreadsheetHeaderRow(sheet) - 1].cells[column]));
       if (fields.has(field.id)) errors.push(`${sheet.name}: ${field.label} is mapped more than once.`);
       fields.add(field.id);
     }
@@ -58,7 +60,7 @@ export function spreadsheetColumnErrors(document: EditableWorkbook): readonly st
 export function spreadsheetColumnValueIssues(document: EditableWorkbook): readonly string[] {
   return document.sheets.flatMap(sheet => sheet.columnBindings?.flatMap((binding, column) => {
     if (sheet.hidden.includes(column) || !binding.fieldId) return [];
-    const field = spreadsheetField(binding.fieldId);
+    const field = spreadsheetEditorField(binding.fieldId, binding.sourceHeader || cellText(sheet.rows[spreadsheetHeaderRow(sheet) - 1].cells[column]));
     return sheet.rows.slice(spreadsheetHeaderRow(sheet)).flatMap((row, index) => spreadsheetValueMatches(field.id, cellText(row.cells[column])) ? []
       : [`${sheet.name}, ${row.sourceRow === undefined ? 'current row' : 'row'} ${row.sourceRow ?? spreadsheetHeaderRow(sheet) + index + 1}, column ${columnName(binding.sourceColumn ?? column)}: does not match ${field.label}.`]);
   }) ?? []);
