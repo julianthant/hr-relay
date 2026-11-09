@@ -584,5 +584,39 @@ for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, as
   expect(await queueTop()).toBe(top);
   await settle(page);
   await page.screenshot({ path: join(OUT, `command-results-toasts-${theme}-${WIDTH}.png`) });
+  await expect(toasts.locator("button")).toHaveCount(0);
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  const panel = page.locator(".notification-panel");
+  await expect(panel.getByText("Retry: partial result")).toBeVisible();
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-results-notifications-${theme}-${WIDTH}.png`) });
+  await panel.getByRole("button", { name: /Retry: partial result/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-results-review-${theme}-${WIDTH}.png`) });
+  expect(errors).toEqual([]);
+});
+
+// A lost command response is a sticky toast that only notifies; its Priority notification opens the recovery review.
+for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-unknown`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  const toast = page.locator("[data-slot=toast]");
+  await expect(toast).toHaveCount(1);
+  await expect(toast.locator("button")).toHaveCount(0);
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-unknown-toast-${theme}-${WIDTH}.png`) });
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  const panel = page.locator(".notification-panel");
+  await expect(panel.getByText("Pause all: outcome unknown")).toBeVisible();
+  await settle(page);
+  await page.screenshot({ path: join(OUT, `command-unknown-notification-${theme}-${WIDTH}.png`) });
+  await panel.getByRole("button", { name: /Pause all: outcome unknown/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   expect(errors).toEqual([]);
 });

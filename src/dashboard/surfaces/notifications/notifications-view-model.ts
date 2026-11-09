@@ -7,6 +7,8 @@ export type NotificationDestination = NotificationTarget
   | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
   | Readonly<{ kind: "settings"; section: "subscription" }>
   | Readonly<{ kind: "recovery"; key: string }>
+  | Readonly<{ kind: "command-result"; id: string }>
+  | Readonly<{ kind: "bulk-result" }>
   | Readonly<{ kind: "none" }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
@@ -39,7 +41,7 @@ export function updateNotification(state: NotificationsState, id: string, contro
   return { ...state, items: state.items.map(item => item.id === id && item.read !== (control === "read") ? { ...item, read: control === "read" } : item) };
 }
 
-/** Commands whose outcome is unknown stay Priority until the operator recovers them. */
+/** Commands whose outcome is unknown or refused stay Priority until the operator opens them. */
 export function withCommandNotices(state: NotificationsState, notices: readonly NotificationItem[]): NotificationsState {
   return state.state === "ready" && notices.length > 0 ? { ...state, items: [...notices, ...state.items] } : state;
 }

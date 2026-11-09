@@ -56,23 +56,13 @@ export type DashboardActionHandler = (action: ActionDescriptorWire, target: Acti
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
-/** Persistent refusal context. It is a client-side feed of command
- * answers not a replacement for the durable audit trail */
-export function CommandResultFeed({
-  results,
-  onDismiss,
-  onRefreshRow,
-}: {
-  results: readonly CommandResultFeedEntry[];
-  onDismiss: (id: string) => void;
-  onRefreshRow: (entry: CommandResultFeedEntry) => void;
-}) {
-  return <>{results.map(entry => {
-    const conflict = entry.settlement.reason === "conflict";
-    return <Notice key={entry.id} sticky tone={conflict ? "warning" : "danger"} title={`${entry.actionLabel}: ${conflict ? "row changed" : "rejected"}`}
-      description={`${entry.subject} · ${entry.settlement.message}`} onClose={() => onDismiss(entry.id)}
-      action={conflict ? { label: "Refresh row", onClick: () => onRefreshRow(entry) } : undefined} />;
-  })}</>;
+export const commandResultTitle = (entry: CommandResultFeedEntry) => `${entry.actionLabel}: ${entry.settlement.reason === "conflict" ? "row changed" : "rejected"}`;
+export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${entry.settlement.message}`;
+
+/** Persistent refusal context: sticky toasts that only notify; each has a Priority notification item that opens the run. */
+export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {
+  return <>{results.map(entry => <Notice key={entry.id} sticky tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
+    title={commandResultTitle(entry)} description={commandResultDetail(entry)} />)}</>;
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {

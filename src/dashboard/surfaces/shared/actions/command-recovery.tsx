@@ -21,7 +21,7 @@ export function CommandRecovery({ entries, pendingKey, onReview, onReplay }: {
 }) {
   const pending = entries.find(entry => entry.inFlightKey === pendingKey);
   return <>
-    {entries.map(entry => <Notice key={entry.inFlightKey} tone="warning" sticky title={recoveryTitle(entry)} description={recoveryDetail(entry)} action={{ label: "Review", onClick: () => onReview(entry.inFlightKey) }} />)}
+    {entries.map(entry => <Notice key={entry.inFlightKey} tone="warning" sticky title={recoveryTitle(entry)} description={recoveryDetail(entry)} />)}
     <Dialog open={pending !== undefined} onOpenChange={open => { if (!open) onReview(null); }}>
       {pending !== undefined && <DialogContent
         size="sm"

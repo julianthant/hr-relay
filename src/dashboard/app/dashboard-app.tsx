@@ -59,6 +59,8 @@ type CommandResultFeedEntry,
 import {
 CommandResultFeed,
 ConfirmCommandDialog,
+commandResultDetail,
+commandResultTitle,
 type ActionTarget,
 type PendingCommand,
 } from "../surfaces/shared/actions/actions.js";
@@ -77,6 +79,7 @@ type QueueSortKey,
 import {
 ConfirmBulkCommandDialog,
 BulkCommandFeedback,
+bulkResultNotice,
 PauseAllQuitControls,
 type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
@@ -468,6 +471,7 @@ function LoadedApp({
   /** Keep partial batch results until dismissed so every outcome can be read. */
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
   const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
+  const [bulkReview, setBulkReview] = useState(false);
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
@@ -1015,8 +1019,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
   const shownRecovery: readonly CommandRecoveryEntry[] = statusMock() === "command-unknown" ? [...recoveryEntries, STATUS_MOCK_UNKNOWN_COMMAND] : recoveryEntries;
-  const commandNotices: readonly NotificationItem[] = shownRecovery.map(entry => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
-    detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "recovery", key: entry.inFlightKey } }));
+  const commandNotices: readonly NotificationItem[] = [
+    ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
+      detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "recovery", key: entry.inFlightKey } })),
+    ...commandResults.map((entry): NotificationItem => ({ id: `command-result:${entry.id}`, kind: "command", priority: true, title: commandResultTitle(entry), subject: "", workflow: "",
+      detail: commandResultDetail(entry), tone: entry.settlement.reason === "conflict" ? "warning" : "danger", age: entry.clock, read: false,
+      action: entry.settlement.reason === "conflict" ? "Refresh row" : "Open run", destination: { kind: "command-result", id: entry.id } })),
+    ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
+  ];
   const railNotifications = withCommandNotices(notifications, commandNotices);
   const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => item.kind === "command" ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
   const railInbox = workflowComposition.inbox === "served" ? { ...inbox, state: withCommandNotices(inbox.state, commandNotices), open: openInbox } : undefined;
@@ -1027,6 +1037,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
     if (destination.kind === "recovery") { setPendingRecovery(destination.key); opened(); return; }
+    if (destination.kind === "bulk-result") { setBulkReview(true); opened(); return; }
+    if (destination.kind === "command-result") {
+      const entry = commandResults.find(result => result.id === destination.id);
+      setCommandResults(previous => previous.filter(result => result.id !== destination.id));
+      if (entry !== undefined) selectRun(entry.targetRunId);
+      opened();
+      return;
+    }
     if (destination.kind === "settings") {
       leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
       return;
@@ -1121,7 +1139,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         target?.focus({ preventScroll: true });
       });
     });
-  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
+  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun, commandResults, selectRun]);
 
   const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
     openNotification(destination, opened, refused, workflowComposition.inbox);
@@ -1209,17 +1227,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               void executeShell(request, retained.label, plan, true);
             }}
           />
-          <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={() => setBulkOutcome(null)} onSelectRun={selectRun} />
+          <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); setBulkOutcome(null); }} onSelectRun={selectRun} />
 
 
-          <CommandResultFeed
-            results={commandResults}
-            onDismiss={(id) => setCommandResults((previous) => previous.filter((entry) => entry.id !== id))}
-            onRefreshRow={(entry) => {
-              setCommandResults((previous) => previous.filter((result) => result.id !== entry.id));
-              selectRun(entry.targetRunId);
-            }}
-          />
+          <CommandResultFeed results={commandResults} />
 
           <div className="flex min-h-0 flex-1">
 

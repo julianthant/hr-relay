@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
+import type { NotificationItem } from "../notifications/notifications-view-model.js";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
@@ -305,32 +306,44 @@ export function QueueToolbar({
       )}
 
       {/* Keep every per-run batch outcome until dismissal; summaries cannot replace the vector. */}
-      <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={onDismissBulkOutcome} onSelectRun={onSelectRun} />
+      <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={false} onReviewed={onDismissBulkOutcome} onSelectRun={onSelectRun} />
     </ActionBar>
   );
 }
 
-export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelectRun }: {
-  bulkOutcome: BulkBatchOutcome | null; onDismissBulkOutcome: () => void; onSelectRun: (runId: string) => void;
+function bulkSummary(outcome: BulkBatchOutcome) {
+  const vector = outcome.response.state === "vector" ? outcome.response : undefined;
+  if (vector === undefined) return { title: `${outcome.plan.label}: nothing was sent`, tone: "danger" as const, counts: undefined,
+    detail: outcome.response.state === "refused" ? outcome.response.message : undefined };
+  const buckets = bulkResultCounts(vector);
+  const counts = [
+    ...BULK_RESULT_OUTCOMES.map(item => `${buckets[item]} ${OUTCOME_TONE[item].word}`),
+    ...(vector.results.length < vector.requestedCount ? [`${vector.requestedCount - vector.results.length} not attempted`] : []),
+  ].join(" · ");
+  return { title: `${outcome.plan.label}: partial result`, tone: "warning" as const, counts, detail: counts };
+}
+
+/** The Priority notification item that opens the per-run review. */
+export function bulkResultNotice(outcome: BulkBatchOutcome): NotificationItem {
+  const { title, tone, detail } = bulkSummary(outcome);
+  return { id: "bulk-result", kind: "command", priority: true, title, subject: "", workflow: "", detail: detail ?? "", tone, age: "Just now", read: false, action: "Review", destination: { kind: "bulk-result" } };
+}
+
+/** The toast only notifies; its Priority notification item opens the per-run review (`reviewing`), and closing the review clears the result. */
+export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, onSelectRun }: {
+  bulkOutcome: BulkBatchOutcome | null; reviewing: boolean; onReviewed: () => void; onSelectRun: (runId: string) => void;
 }) {
-  // The toast's own close dismisses the outcome, so the open dialog keeps its own copy.
-  const [reviewing, setReviewing] = useState<BulkBatchOutcome | null>(null);
-  const shown = reviewing ?? bulkOutcome;
-  const vector = shown?.response.state === "vector" ? shown.response : undefined;
-  const buckets = useMemo(() => vector === undefined ? undefined : bulkResultCounts(vector), [vector]);
+  const reviewing = open ? bulkOutcome : null;
+  const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
   const assurance = useMemo(
     () => vector === undefined ? undefined : bulkClosingAssurance(vector),
     [vector],
   );
-  const counts = vector === undefined || buckets === undefined ? undefined : [
-    ...BULK_RESULT_OUTCOMES.map(outcome => `${buckets[outcome]} ${OUTCOME_TONE[outcome].word}`),
-    ...(vector.results.length < vector.requestedCount ? [`${vector.requestedCount - vector.results.length} not attempted`] : []),
-  ].join(" · ");
+  const summary = bulkOutcome === null ? undefined : bulkSummary(bulkOutcome);
+  const counts = summary?.counts;
   return <>
-    {bulkOutcome !== null && <Notice sticky tone={vector === undefined ? "danger" : "warning"} title={vector === undefined ? `${bulkOutcome.plan.label}: nothing was sent` : `${bulkOutcome.plan.label}: partial result`}
-      description={vector === undefined ? bulkOutcome.response.state === "refused" ? bulkOutcome.response.message : undefined : counts}
-      onClose={onDismissBulkOutcome} action={{ label: "Review", onClick: () => setReviewing(bulkOutcome) }} />}
-    <Dialog open={reviewing !== null} onOpenChange={open => { if (!open) setReviewing(null); }}>
+    {summary !== undefined && <Notice sticky tone={summary.tone} title={summary.title} description={summary.detail} />}
+    <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
       {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
         <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-cozy)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
           {vector === undefined ? (
@@ -346,7 +359,7 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
                   <BareButton
                     key={entry.runId}
                     type="button"
-                    onClick={() => { setReviewing(null); onSelectRun(entry.runId); }}
+                    onClick={() => { onReviewed(); onSelectRun(entry.runId); }}
                     className={cn(
                       "flex min-w-0 cursor-pointer items-center text-left",
                       "h-[var(--ds-h-sm)] gap-[var(--ds-space-base)] px-[var(--ds-space-tight)]",
@@ -425,7 +438,7 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
             </p>
           )}
         </div>
-        <DialogFooter><Button variant="secondary" onClick={() => setReviewing(null)}>Close</Button></DialogFooter>
+        <DialogFooter><Button variant="secondary" onClick={onReviewed}>Close</Button></DialogFooter>
       </DialogContent>}
     </Dialog>
   </>;

@@ -807,12 +807,8 @@ export interface DsToast {
   description?: string;
   /** ms before auto-dismiss; default 3000. `danger` never auto-dismisses unless a duration is given. */
   duration?: number;
-  /** stays until its owner dismisses it or the operator closes it */
+  /** stays until its owner dismisses it or the operator clicks it */
   sticky?: boolean;
-  /** One soft button at the right edge; it dismisses the toast, then runs. */
-  action?: { label: string; onClick: () => void };
-  /** Runs when the operator closes the toast, never when its owner withdraws it. */
-  onClose?: () => void;
 }
 
 interface ToastContextValue {
@@ -833,19 +829,16 @@ export function useToasts(): ToastContextValue {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const manager = useMemo(() => ToastPrimitive.createToastManager(), []);
   const nextId = useRef(0);
-  const withdrawn = useRef(new Set<string>());
   const value = useMemo<ToastContextValue>(() => ({
     toast: input => {
       const id = `toast-${++nextId.current}`;
       manager.add({ id, title: input.title, description: input.description,
         type: input.tone === "danger" ? "error" : input.tone,
         timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 0 : 3000),
-        data: input.action === undefined ? undefined : { action: input.action },
-        onClose: () => { if (!withdrawn.current.delete(id)) input.onClose?.(); },
       });
       return id;
     },
-    dismiss: id => { withdrawn.current.add(id); manager.close(id); },
+    dismiss: id => manager.close(id),
   }), [manager]);
   return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager} limit={3}>
     {children}<ToastViewport />
@@ -854,21 +847,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 /** A toast tied to the surface that renders it: shown while mounted, withdrawn when the state clears.
  * `sticky` is for a state the operator must act on elsewhere; otherwise it dismisses itself. Without a `ToastProvider` it renders inline. */
-export function Notice({ tone, title, description, sticky = false, action, onClose }: Pick<DsToast, "tone" | "title" | "description" | "sticky" | "action" | "onClose">) {
+export function Notice({ tone, title, description, sticky = false }: Pick<DsToast, "tone" | "title" | "description" | "sticky">) {
   const toasts = useContext(ToastContext);
-  const run = useRef(action?.onClick);
-  run.current = action?.onClick;
-  const closed = useRef(onClose);
-  closed.current = onClose;
-  const label = action?.label;
-  const closable = onClose !== undefined;
   useEffect(() => {
     if (toasts === null) return;
-    const id = toasts.toast({ tone, title, description, sticky, duration: 6000, action: label === undefined ? undefined : { label, onClick: () => run.current?.() }, onClose: closable ? () => closed.current?.() : undefined });
+    const id = toasts.toast({ tone, title, description, sticky, duration: 6000 });
     return () => toasts.dismiss(id);
-  }, [toasts, tone, title, description, sticky, label, closable]);
+  }, [toasts, tone, title, description, sticky]);
   if (toasts !== null) return null;
-  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span>{action && <button type="button" onClick={action.onClick}>{action.label}</button>}</div>;
+  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span></div>;
 }
 
 function ToastViewport() {
@@ -876,14 +863,11 @@ function ToastViewport() {
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
     {toasts.map(item => {
-      const action = (item.data as { action?: NonNullable<DsToast["action"]> } | undefined)?.action;
       return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
         onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
         className={cn(inert && "pointer-events-none")}>
         <BaseToastContent><BaseToastIcon type={item.type} />
           <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
-          {action && <Button size="sm" variant="secondary" className="shrink-0" onKeyDown={event => event.stopPropagation()}
-            onClick={event => { event.stopPropagation(); close(item.id); action.onClick(); }}>{action.label}</Button>}
         </BaseToastContent>
       </BaseToast>;
     })}
