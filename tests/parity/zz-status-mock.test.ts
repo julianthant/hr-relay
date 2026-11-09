@@ -47,7 +47,16 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     const firstToast = { toasts: "Relay is missing files", "toasts-open": "Relay is missing files", "toasts-storage": "Your disk is full", "toasts-restored": "Restored a file from the 6:30 PM backup" }[id as string];
     if (firstToast) await expect(page.getByText(firstToast)).toBeVisible();
-    if (id === "queue-toolbar") {
+    if (id.startsWith("rail")) {
+      const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
+      await expect(rail.getByRole("button", { name: "Emergency Contact", exact: true })).toBeVisible();
+      // The minimized state is remembered per browser, so each frame sets the one it needs.
+      const want = id === "rail" ? "Collapse sidebar" : "Expand sidebar";
+      const toggle = page.getByRole("button", { name: /^(Collapse|Expand) sidebar$/ });
+      if (await toggle.getAttribute("aria-label") !== want) await toggle.click();
+      await expect(page.getByRole("button", { name: want, exact: true })).toBeVisible();
+      if (id === "rail-min-bell") { await page.getByRole("button", { name: /^Notifications/ }).click(); await expect(page.getByRole("button", { name: "Collapse sidebar", exact: true })).toBeVisible(); }
+    } else if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
     } else if (id === "run-person-lookup" || id === "run-person-lookup-many") {
@@ -126,6 +135,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
     // Toasts stack collapsed at the top centre; only the "-open" frame hovers the stack.
+    if (id === "rail-min-tooltip") { await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).hover(); await expect(page.getByRole("tooltip")).toBeVisible(); }
     if (id === "toasts-open") { await page.mouse.move(WIDTH / 2, 40); await page.waitForTimeout(800); }
     await page.screenshot({ path: join(OUT, `${id}-${theme}-${WIDTH}.png`) });
     // The Run dialog body scrolls too; a second frame shows its lower half (picker note, blockers, facts).

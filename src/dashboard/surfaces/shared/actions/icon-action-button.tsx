@@ -7,8 +7,8 @@ type Size = "sm" | "md";
 type Tone = "destructive" | "warning" | "primary" | "muted";
 
 const SIZE_CLASS: Record<Size, string> = {
-  sm: "h-6 w-6 rounded-[8px]",
-  md: "h-7 w-7 rounded-[10px]",
+  sm: "h-6 w-6 rounded-[6px]",
+  md: "h-7 w-7 rounded-[8px]",
 };
 
 const TONE_CLASS: Record<Tone, string> = {

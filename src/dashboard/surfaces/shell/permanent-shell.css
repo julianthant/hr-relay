@@ -22,7 +22,7 @@
 .workspace-rail-header button, .workspace-rail-header .rail-notification-toggle { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
 .workspace-rail { --rail-hover-fill: color-mix(in srgb, var(--ds-fg) 8.5%, var(--ds-surface-1)); }
 .workspace-rail-header button:not([aria-pressed="true"]):hover, .workspace-rail-header button:not([aria-pressed="true"]):focus-visible { background: var(--rail-hover-fill); color: var(--ui-primary); }
-.workspace-rail-header h2 { margin: 0; font-size: 18px; line-height: 1.4; font-weight: 600; }
+.workspace-rail-header h2 { margin: 0; color: var(--ds-fg-list); font-size: 18px; line-height: 1.4; font-weight: 600; }
 .workspace-rail-body { display: flex; flex: 1; min-height: 0; flex-direction: column; pointer-events: auto; }
 
 .workspace-rail-footer { height: 48px; padding: 6px 16px; flex-shrink: 0; background: var(--ds-surface-1); pointer-events: auto; }
@@ -39,12 +39,28 @@
 .workflow-rail-group li + li { margin-top: var(--ds-space-hair); }
 .workflow-rail-group { display: flex; flex-direction: column; gap: 2px; }
 .workflow-rail h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 8px 6px; color: var(--ui-muted); font-size: 14px; font-weight: 400; }
-.workflow-rail button { display: flex; width: 100%; height: 32px; align-items: center; gap: 8px; padding: 0 8px 0 calc(8px + 14px + 8px); border: 0; border-radius: 10px; color: var(--ui-primary); font-size: var(--ds-text-ui); font-weight: 400; text-align: left; cursor: pointer; }
+.workflow-rail button { display: flex; width: 100%; height: 32px; align-items: center; gap: 8px; padding: 0 8px 0 calc(8px + 14px + 8px); border: 0; border-radius: 10px; color: var(--ds-fg-list); font-size: var(--ds-text-ui); font-weight: 400; text-align: left; cursor: pointer; }
 .workflow-rail button:hover { background: var(--ds-surface-3); }
 .workflow-rail button[aria-current="page"] { background: var(--ds-surface-selected); }
-/* The running-count pill sits in a fixed slot left of the name, so names stay aligned when it is hidden. */
-.workflow-rail-running { order: -1; display: flex; width: 28px; flex-shrink: 0; }
-.workflow-rail button:has(> .workflow-rail-running) { gap: 6px; padding-left: 6px; }
+/* The running-count pill is the row's far-right item; the name keeps the group's left edge. */
+.workflow-rail-running { display: flex; flex-shrink: 0; margin-left: auto; }
+
+.dashboard-shell:not([data-settings-takeover="true"]):has(.workspace-rail[data-collapsed]) { --shell-rail-width: 56px; }
+.workspace-rail-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
+.workspace-rail[data-collapsed] .workspace-rail-header { height: auto; flex-direction: column; justify-content: flex-start; gap: 4px; padding: 16px 0 8px; }
+.workspace-rail[data-collapsed] .workspace-rail-header h2 { display: none; }
+.workspace-rail[data-collapsed] .workspace-rail-actions { flex-direction: column; gap: 4px; }
+.workflow-rail[data-collapsed] { padding: 8px 0 16px; align-items: center; }
+.workflow-rail[data-collapsed] .workflow-rail-groups { gap: 8px; align-items: center; width: 100%; padding: 6px 0 0; overflow-x: visible; }
+.workflow-rail[data-collapsed] .workflow-rail-group { gap: 0; align-items: center; }
+.workflow-rail[data-collapsed] .workflow-rail-group + .workflow-rail-group { width: 28px; padding-top: 8px; border-top: 1px solid var(--ui-stroke); }
+.workflow-rail[data-collapsed] li + li { margin-top: 4px; }
+.workflow-rail[data-collapsed] button { position: relative; background: color-mix(in srgb, var(--ds-fg) 5%, transparent); width: 28px; height: 28px; justify-content: center; gap: 0; padding: 0; border-radius: 8px; color: var(--ui-secondary); font-size: 11px; font-weight: 500; letter-spacing: .02em; }
+.workflow-rail[data-collapsed] button:hover { background: var(--ds-surface-3); color: var(--ui-primary); }
+.workflow-rail[data-collapsed] button[aria-current="page"] { color: var(--ui-primary); }
+.workflow-rail[data-collapsed] .workflow-rail-running { position: absolute; top: -4px; right: -5px; margin: 0; }
+.workflow-rail[data-collapsed] .workflow-rail-running > span { height: 14px; min-width: 14px; justify-content: center; padding: 0 3px; font-size: 10px; line-height: 1; background: color-mix(in srgb, var(--ui-positive) 24%, var(--ds-surface-1)); box-shadow: 0 0 0 2px var(--ds-surface-1); }
+.workflow-rail[data-collapsed] .workflow-rail-running > span > span { display: none; }
 
 .dashboard-panel-columns { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(var(--ds-w-side-panel),30%) minmax(0,1fr); gap: var(--ds-space-cozy); padding: var(--ds-space-cozy); background: var(--ui-canvas); }
 .dashboard-queue-column, .dashboard-log-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -103,7 +119,7 @@
 .settings-takeover .ds-path-control > button { border: 0; box-shadow: none; background: var(--ui-hover); border-radius: var(--ds-radius-md); font-weight: 400; }
 .settings-takeover .ds-path-control > button:hover { background: var(--ui-table); }
 
-.queue-attention-toggle { width: 28px; min-width: 28px; height: 28px; border: 1px solid var(--ui-stroke); border-radius: 10px; background: var(--ui-panel); color: var(--ui-secondary); }
+.queue-attention-toggle { width: 28px; min-width: 28px; height: 28px; border: 1px solid var(--ui-stroke); border-radius: 8px; background: var(--ui-panel); color: var(--ui-secondary); }
 .queue-attention-toggle[data-selected] { background: color-mix(in srgb,var(--ui-info) 15%,var(--ui-panel)); border-color: color-mix(in srgb,var(--ui-info) 45%,var(--ui-stroke)); color: var(--ui-info); }
 
 
@@ -129,11 +145,11 @@ html[data-hub]:not([data-hub-input="pointer"]) .sessions-bar:has(.sessions-bar-t
 /* Hub paints a focused button's own fill. Keep the toggle clear so the bar tint reaches the icon group. */
 html[data-hub]:not([data-hub-input="pointer"]) .sessions-bar > button.sessions-bar-toggle.sessions-bar-toggle:focus-visible { background-color:transparent !important; }
 .sessions-bar-actions { background-color:transparent; }
-.sessions-bar-icon { width:28px; height:28px; padding:0; border:0; border-radius:10px; background:transparent; color:var(--ui-secondary); translate:none; transform:none; transition:background-color 120ms ease-out, color 120ms ease-out; }
+.sessions-bar-icon { width:28px; height:28px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--ui-secondary); translate:none; transform:none; transition:background-color 120ms ease-out, color 120ms ease-out; }
 .sessions-bar-icon:hover { background:var(--ds-surface-3); color:var(--ui-primary); }
 .sessions-bar-icon:active { background:var(--ui-stroke); translate:none; }
 .sessions-bar-icon:is([aria-expanded=true],[aria-pressed=true]) { background:var(--ui-hover); color:var(--ui-primary); }
 .sessions-bar-icon:focus-visible { outline:2px solid var(--ui-info); outline-offset:-2px; }
-.sessions-bar-toggle { display:flex; flex:1 1 auto; min-width:0; align-items:center; gap:8px; align-self:stretch; padding:0 12px; border:0; border-radius:0; text-align:left; background:transparent; color:var(--ui-primary); cursor:pointer; }
+.sessions-bar-toggle { display:flex; flex:1 1 auto; min-width:0; align-items:center; gap:8px; align-self:stretch; padding:0 12px; border:0; border-radius:0; text-align:left; background:transparent; color:var(--ds-fg-list); cursor:pointer; }
 @media (prefers-reduced-motion: reduce) { .sessions-bar, .sessions-bar-icon, .sessions-bar-toggle { transition:none; } }
 html[data-motion=off] :is(.sessions-bar, .sessions-bar-icon, .sessions-bar-toggle) { transition:none; }

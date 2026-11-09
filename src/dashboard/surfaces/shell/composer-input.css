@@ -3,7 +3,7 @@
 #hub-panel-assistant .hub-composer:has(textarea:focus-visible){outline:2px solid var(--ui-primary);outline-offset:2px}
 #hub-panel-assistant .hub-composer textarea{display:block;resize:none;width:100%;max-height:120px;min-height:50px;border:0!important;border-radius:0;padding:6px 12px 4px;outline:none;background:transparent;font-size:13px;line-height:20px}
 #hub-panel-assistant .hub-toolbar{display:flex;align-items:center;gap:4px;min-width:0;padding:6px 8px 8px}
-#hub-panel-assistant .hub-toolbar .hub-input-button{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;height:28px;min-width:28px;padding:0 8px;border:0;border-radius:10px;background:transparent;color:var(--ui-primary);font-size:12px;font-weight:500;white-space:nowrap;touch-action:manipulation}
+#hub-panel-assistant .hub-toolbar .hub-input-button{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;height:28px;min-width:28px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:var(--ui-primary);font-size:12px;font-weight:500;white-space:nowrap;touch-action:manipulation}
 #hub-panel-assistant .hub-toolbar [data-size=icon-sm]{width:28px;padding:0;color:var(--ui-secondary)}
 #hub-panel-assistant .hub-toolbar .hub-input-button:is(:hover,:active,[aria-expanded=true]){background:var(--ui-hover);color:var(--ui-primary)}
 #hub-panel-assistant .hub-toolbar .hub-input-button:focus-visible{outline:2px solid var(--ui-primary)!important;outline-offset:2px;background:var(--ui-hover)!important;color:var(--ui-primary)!important;box-shadow:none!important}
@@ -15,7 +15,7 @@
 #hub-panel-assistant #hub-send:enabled:hover{opacity:.85}
 #hub-panel-assistant #hub-send:focus-visible{background:var(--ui-primary)!important;color:var(--ui-panel)!important}
 #hub-panel-assistant .hub-attachment{display:inline-flex;max-width:calc(100% - 16px);align-self:flex-start;align-items:center;gap:6px;padding:3px 7px;background:var(--ui-table);border:1px solid var(--ui-stroke);border-radius:999px;font-size:11px;margin:8px 7px 6px}
-#hub-panel-assistant .hub-attachment .hub-icon{height:26px;width:26px;min-width:26px;padding:0;border:0;border-radius:999px;background:transparent}
+#hub-panel-assistant .hub-attachment .hub-icon{height:26px;width:26px;min-width:26px;padding:0;border:0;border-radius:6px;background:transparent}
 #hub-panel-assistant .hub-attachment>span{min-width:0;overflow-wrap:anywhere}
 #hub-panel-assistant .hub-attachment .hub-icon svg{width:16px;height:16px}
 #hub-panel-assistant .hub-attachment>svg{width:16px;height:16px;flex:none}

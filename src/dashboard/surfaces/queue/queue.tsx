@@ -787,7 +787,7 @@ export function QueueRow({
                     dsText.title,
                     // Truncate rather than wrap — wrapping shoved the status
                     // pill onto a second line under the name.
-                    "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]",
+                    "min-w-0 truncate font-normal text-[color:var(--ds-fg-list)]",
                   )}
                   // A renamed row’s subject identity outranks a tooltip repeating its truncated custom name.
                   {...(titleTooltip === undefined ? {} : { title: titleTooltip })}
