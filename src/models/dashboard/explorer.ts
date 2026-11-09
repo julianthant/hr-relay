@@ -249,6 +249,7 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("gate"),
     resolvedBy: z.enum(["operator", "children-terminal", "external"]),
+    condition: NodeConditionSchema.optional(),
     statusKey: z.string().min(1).optional(),
   }),
 ]);
@@ -411,8 +412,9 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     for (const decision of step.decisions) {
       const node = ownNodes.find(candidate => candidate.id === decision.nodeId);
       if (node === undefined) context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: `review decision names unknown or outside node ${decision.nodeId}` });
-      if (decision.kind === "failure" && (decision.action !== "stop" || decision.failureCode !== failureCodeFromTaskCode(decision.outcome)
-        || !node?.tasks.some(task => task.taskId === decision.taskId && task.errorCodes.some(code => code === decision.outcome)))) {
+      if (decision.kind === "failure" && (decision.action !== "stop"
+        || !node?.tasks.some(task => task.taskId === decision.taskId && task.errorCodes.some(code => code === decision.outcome))
+        || decision.failureCode !== failureCodeFromTaskCode(decision.outcome))) {
         context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: "review failure must stop for an exact declared task code" });
       }
     }

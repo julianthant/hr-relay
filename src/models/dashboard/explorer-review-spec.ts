@@ -5,6 +5,7 @@ import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { SessionNeedSchema } from "../sessions/session.js";
 import { FileAcceptSpecSchema, SurfaceFieldSchema, UploadFieldSpecSchema } from "../workflow/ingress.js";
 import { OperatorFieldDisplaySchema } from "../workflow/presentation.js";
+import { StepOmissionFormSchema } from "../workflow/step-omission.js";
 import { WorkflowReviewSourceSchema } from "../workflow/review-spec.js";
 
 const TextSchema = z.string().min(1);
@@ -28,6 +29,7 @@ export const ExplorerReviewSpecSchema = z.strictObject({
   runOptions: z.strictObject({
     start: z.strictObject({ input: z.boolean(), upload: z.boolean(), emptyOpensUpload: z.boolean() }),
     supportsDryRun: z.boolean(),
+    omittableSteps: z.array(z.strictObject({ stepKey: TextSchema, label: TextSchema, form: StepOmissionFormSchema })),
     mode: z.strictObject({ field: TextSchema, label: TextSchema, initial: TextSchema.nullable(),
       options: z.array(z.strictObject({ value: TextSchema, label: TextSchema, defaults: z.array(SurfaceFieldSchema) })).min(1) }).optional(),
     controls: z.array(z.strictObject({ field: TextSchema, label: TextSchema, placement: z.enum(["input", "step"]),
@@ -42,7 +44,8 @@ export const ExplorerReviewSpecSchema = z.strictObject({
       id: TextSchema, workflowId: WorkflowIdSchema, stepKey: TextSchema, stepTitle: TextSchema,
       nodeId: NodeIdSchema, taskId: TaskIdSchema, need: SessionNeedSchema,
       scope: z.enum(["direct", "delegated"]),
-      timing: z.enum(["when-step-runs", "when-delegated-step-runs"]),
+      preparation: z.literal("before-owning-workflow-claim"),
+      useTiming: z.enum(["when-step-runs", "when-delegated-step-runs"]),
       delegationPath: z.array(z.strictObject({ workflowId: WorkflowIdSchema, stepKey: TextSchema, nodeId: NodeIdSchema })),
       signIn: z.literal("required-by-declaration"), lock: z.enum(["exclusive-required", "not-exclusive"]),
     })),

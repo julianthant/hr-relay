@@ -1234,6 +1234,14 @@ export function compileWorkflow<
         throw new Error(`workflow ${definition.id} review names unknown branch outcome ${label.nodeId}/${label.outcome}`);
       }
     }
+    for (const node of ownNodes) {
+      if (node.kind !== "branch") continue;
+      for (const outcome of Object.keys(node.cases)) {
+        if (!review.branchLabels.some(label => label.nodeId === node.id && label.outcome === outcome)) {
+          throw new Error(`workflow ${definition.id} review omits branch outcome ${node.id}/${outcome}`);
+        }
+      }
+    }
   }
   const compiled: CompiledWorkflow<InputSchema, ResultSchema, Completion> = Object.freeze({
     kind: "compiled-workflow",

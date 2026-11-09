@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import {
   EXPLORER_SOURCE_ROOT,
   buildWorkflowExplorer,
@@ -499,14 +499,14 @@ describe("the workflow explorer projection", () => {
     );
     assert.deepEqual(
       wire.workflows.map((workflow) => String(workflow.id)),
-      WORKFLOW_MODULES.map((module) => String(module.descriptor.id)),
+      READABLE_WORKFLOW_MODULES.map((module) => String(module.descriptor.id)),
     );
     assert.deepEqual(roles.get("separations"), { kind: "composition" });
     assert.equal(roles.has("separations-kuali-read"), false);
     assert.deepEqual(roles.get("person-lookup"), { kind: "composition" });
     assert.deepEqual(roles.get("onboarding"), { kind: "composition" });
     assert.deepEqual(roles.get("emergency-contact"), { kind: "composition" });
-    assert.equal(roles.has("emergency-contact-member"), false);
+    assert.deepEqual(roles.get("emergency-contact-member"), { kind: "composition" });
     assert.equal(roles.has("onboarding-i9-search"), false);
     assert.deepEqual(
       wire.workflows.flatMap((workflow) =>
@@ -517,10 +517,11 @@ describe("the workflow explorer projection", () => {
           )
           .map(({ id }) => `${String(workflow.id)}:${String(id)}`),
       ),
-      ["onboarding:i9-lookup-child", "onboarding:i9-route", "i9-check-start:read-documents", "i9-check-start:check-people", "emergency-contact:read-document", "emergency-contact:members"],
+      ["onboarding:i9-lookup-child", "onboarding:i9-route", "i9-check-start:read-documents", "i9-check-start:check-people", "emergency-contact:read-document", "emergency-contact:members",
+        "ocr:read-pages", "ocr:lookup-identities", "ocr:lookup-signers"],
 
     );
-    for (const module of WORKFLOW_MODULES) {
+    for (const module of READABLE_WORKFLOW_MODULES) {
       const projected = wire.workflows.find(
         ({ id }) => id === module.descriptor.id,
       );
@@ -552,7 +553,7 @@ describe("the workflow explorer projection", () => {
     );
     const withHarness = buildWorkflowExplorer({
       ...explorerQueryDeps(CLOCK, HASH),
-      modules: [...WORKFLOW_MODULES, harness],
+      modules: [...READABLE_WORKFLOW_MODULES, harness],
     });
     const harnessRoles = new Map(
       withHarness.workflows.map((workflow) => [
@@ -581,11 +582,12 @@ describe("the workflow explorer projection", () => {
     );
   });
 
-  it("projects the registered Onboarding delegation without admitting its child as a public workflow", () => {
+  it("projects the registered Onboarding delegation and its readable child without a start surface", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     const onboarding = wire.workflows.find(workflow => workflow.id === "onboarding");
     assert.ok(onboarding);
-    assert.equal(wire.workflows.some(workflow => workflow.id === "i9-lookup"), false);
+    const lookup = wire.workflows.find(workflow => workflow.id === "i9-lookup"); assert.ok(lookup);
+    assert.equal(lookup.surfaces.inputRun.state, "absent");
     const child = onboarding.nodes.find(node => node.id === "i9-lookup-child");
     assert.ok(child);
     assert.deepEqual(child.shape, {

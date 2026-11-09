@@ -457,6 +457,7 @@ function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
       return {
         kind: "gate",
         resolvedBy: node.resolvedBy,
+        ...(node.resolvedBy !== "operator" || node.when === undefined ? {} : { condition: node.when }),
         ...(node.statusKey === undefined ? {} : { statusKey: node.statusKey }),
       };
   }

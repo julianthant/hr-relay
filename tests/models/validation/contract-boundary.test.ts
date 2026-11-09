@@ -2,10 +2,22 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
+import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractCollectionFieldLeaves, contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
 
 const paths = (schema: z.core.$ZodType): readonly string[] =>
   contractSchemaLeaves(schema).map((leaf) => leaf.path);
+
+it("derives collection field vocabularies without expanding the ordinary boundary census", () => {
+  const schema = z.strictObject({ rows: z.array(z.strictObject({ cells: z.array(z.union([
+    z.strictObject({ state: z.literal("found"), value: z.enum(["", "active"]) }),
+    z.strictObject({ state: z.literal("missing"), value: z.literal("unavailable") }),
+  ])) })) });
+  assert.deepEqual(contractSchemaLeaves(schema), [{ path: "rows", kind: "list", presence: "always" }]);
+  const leaves = contractCollectionFieldLeaves(schema);
+  assert.deepEqual(leaves.find(leaf => leaf.path === "rows.cells.state")?.options, ["found", "missing"]);
+  assert.deepEqual(leaves.find(leaf => leaf.path === "rows.cells.value")?.options, ["", "active", "unavailable"]);
+  assert.equal(Object.isFrozen(leaves), true);
+});
 
 describe("contractSchemaLeaves", () => {
   it("names every nested field by its dotted path, sorted", () => {

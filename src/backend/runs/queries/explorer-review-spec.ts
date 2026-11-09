@@ -24,6 +24,11 @@ function runOptions(module: ExplorerModuleView): ExplorerReviewSpec["runOptions"
   return {
     start: { input: inputRun !== undefined, upload: upload !== undefined, emptyOpensUpload: inputRun?.emptyOpensUpload === true },
     supportsDryRun: workflowDryRunSupport(descriptor).state === "supported",
+    omittableSteps: descriptor.stepOmissions.map(omission => {
+      const step = descriptor.timeline.find(group => group.key === omission.step);
+      if (step === undefined) throw new Error(`workflow ${descriptor.id} review omission names unknown step ${omission.step}`);
+      return { stepKey: step.key, label: step.label, form: omission.form };
+    }),
     ...(typed === undefined ? {} : { mode: { field: typed.modeField, label: typed.modeLabel, initial: typed.initialMode,
       options: typed.modes.map(mode => ({ value: mode.value, label: mode.label,
         defaults: mode.defaults.filter(field => visibleFields.has(field.field)) })) } }),
@@ -50,7 +55,8 @@ function sessionRequirements(module: ExplorerModuleView, modules: readonly Explo
             id: [...path.map(edge => `${edge.workflowId}/${edge.nodeId}`), `${workflowId}/${node.id}/${contract.id}/${index}`].join("/"),
             workflowId, stepKey: group.key, stepTitle: group.label, nodeId: node.id, taskId: contract.id, need,
             scope: path.length === 0 ? "direct" : "delegated",
-            timing: path.length === 0 ? "when-step-runs" : "when-delegated-step-runs",
+            preparation: "before-owning-workflow-claim",
+            useTiming: path.length === 0 ? "when-step-runs" : "when-delegated-step-runs",
             delegationPath: path, signIn: "required-by-declaration",
             lock: need.exclusive === true ? "exclusive-required" : "not-exclusive",
           });
@@ -79,9 +85,9 @@ function decisions(node: ExplorerNodeWire, labels: readonly { nodeId: string; ou
   };
   switch (node.shape.kind) {
     case "task":
-      add("succeeded", "continue", "The declared read completes successfully.");
+      add("succeeded", "continue", "The step finishes successfully; continue.");
       if (node.shape.condition !== undefined) outcomes.push({ id: `${node.id}/skipped`, nodeId: node.id, kind: "condition",
-        outcome: "skipped", action: "continue", label: { state: "authored", text: "The declared condition does not apply; skip this read." } });
+        outcome: "skipped", action: "continue", label: { state: "authored", text: "This step does not apply; continue." } });
       break;
     case "branch":
       for (const branch of node.shape.cases) {
@@ -92,9 +98,11 @@ function decisions(node: ExplorerNodeWire, labels: readonly { nodeId: string; ou
       }
       break;
     case "gate":
-      add("waiting", node.shape.resolvedBy === "operator" ? "ask" : "stop", node.shape.resolvedBy === "operator"
-        ? "Ask the operator to resolve this review before continuing." : "Wait for the declared review source before continuing.");
-      add("resolved", "continue", "The declared review is resolved; continue.");
+      add("waiting", node.shape.resolvedBy === "operator" ? "ask" : "continue", node.shape.resolvedBy === "operator"
+        ? "Ask the operator to resolve this review before continuing." : "Wait for the required results, then continue automatically.");
+      add("resolved", "continue", "The review is complete; continue.");
+      if (node.shape.condition !== undefined) outcomes.push({ id: `${node.id}/skipped`, nodeId: node.id, kind: "condition",
+        outcome: "skipped", action: "continue", label: { state: "authored", text: "This review does not apply; continue." } });
       break;
     case "child-run":
       add("dispatched", "continue", node.shape.await === "none" ? "Start the delegated work without waiting for its result." : "Start the delegated work and wait for its terminal result.");

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { NodeIdSchema } from "../../rules/identity/ids.js";
 
 const ReviewIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);

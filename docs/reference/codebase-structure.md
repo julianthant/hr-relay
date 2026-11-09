@@ -89,6 +89,7 @@ Paths in this table are relative to `src/backend/`.
 | `profiles/` | Control-authenticated registry, credential inventory and session authority. `profile-session.ts` owns private draft/session publication, `profile-onboarding.ts` owns issued draft attempts and verified method receipts, and `onboarding-duo.ts` defines the provider capability contract. Browser enrollment lives in `runtime/browser/onboarding-duo-provider.ts`. `profile-errors.ts` owns shared profile refusals. Native verifier publication and its cryptography live in `storage/configuration/verifier-store.ts` and `storage/configuration/synthetic-verifier.ts`. Browser-safe schemas live in `models/profiles/`. |
 | `runs/lifecycle/startup-crash-recovery.ts` | Startup process-closure receipts, dead-worker run reconciliation and previous-day pristine queue cancellation before work admission. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
+| `runs/queries/explorer.ts` and `explorer-review-spec.ts` | Definition-derived Explorer catalog and operator review: run options, scoped session requirements, ordered page/source cards and declared outcomes. |
 | `runs/commands/command-refusal.ts` | Shared command rejection construction; runtime recovery imports it directly. |
 | `runs/trust/` | Canonical run readers and receipt services. |
 | `runs/start/recovery-plan.ts` | Server-derived checkpoint recovery admission and completed-transaction validation. `models/run/recovery-plan.ts` owns its internal plan; ordinary Rerun remains in `rerun.ts` and `rerun-values.ts`. |
@@ -132,6 +133,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer flow parts the timeline renders. |
+| `src/models/workflow/review-spec.ts` | Strict step-owned Explorer page, line, field-source and branch-label declarations. `src/models/dashboard/explorer-review-spec.ts` owns their generated wire shape. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
 | `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/runtime/build-id.ts` owns the worker-scoped app build id. |
 | `src/models/events/` | Timeline, stored confirmed-action, and confirmation-proof schemas. |
