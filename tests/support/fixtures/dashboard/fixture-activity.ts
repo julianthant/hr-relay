@@ -1,3 +1,4 @@
+import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
 import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton, createActivityDatePartReader } from "../../../../src/models/dashboard/activity-volume.js";
 import { FIXTURE_DAY, uuidOf } from "./fixture-identity.js";
@@ -53,6 +54,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
       registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" },
       runs: 9,
       completion: { readBack: 5, warnings: 1, warningsUnknown: 0 },
+      needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
       failed: 1, cancelled: 0, partial: 0, open: 2,
     },
 
@@ -64,6 +66,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
       },
       runs: 3,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
+      needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
       failed: 1, cancelled: 1, partial: 0, open: 0,
     },
   ],
@@ -87,8 +90,8 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
     { outcome: "cancelled", runs: 1 },
   ],
   failures: [
-    { code: "SESSION_LOST", runs: 1, transient: 1, sample: [ACTIVITY_SAMPLE_RUN_ID] },
-    { code: "SUBJECT_MISMATCH", runs: 1, transient: 0, sample: [ACTIVITY_BLOCKED_RUN_ID] },
+    { code: "SESSION_LOST", sentence: operatorFailureSentence("SESSION_LOST"), workflowId: "person-lookup", registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" }, runs: 1, transient: 1, sample: [ACTIVITY_SAMPLE_RUN_ID] },
+    { code: "SUBJECT_MISMATCH", sentence: operatorFailureSentence("SUBJECT_MISMATCH"), workflowId: "retired-workflow", registration: { state: "unregistered", reason: "workflow retired-workflow is no longer registered; its label and category are unavailable" }, runs: 1, transient: 0, sample: [ACTIVITY_BLOCKED_RUN_ID] },
   ],
   durations: {
     measuredRuns: 9,

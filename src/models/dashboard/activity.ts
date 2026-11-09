@@ -79,17 +79,38 @@ export const ActivityPeopleTotalSchema = z.discriminatedUnion("state", [
 ]);
 export type ActivityPeopleTotal = z.infer<typeof ActivityPeopleTotalSchema>;
 
-/** One workflow's row of the report — a CROSS-TAB of the workflow axis with the status axis, counted in the one pass beside `statuses[]`. */
+/** Arithmetic mean over measured successful root runs, with explicit measurement coverage. */
+export const ActivityTypicalTimeSchema = z.strictObject({
+  measure: z.literal("successful-root-run-mean"),
+  measuredRuns: z.number().int().nonnegative(),
+  unmeasuredRuns: z.number().int().nonnegative(),
+  meanMs: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.number().nonnegative() }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
+}).superRefine((timing, context) => {
+  if ((timing.measuredRuns === 0) !== (timing.meanMs.state === "absent"))
+    context.addIssue({ code: "custom", path: ["meanMs"], message: "a successful-root mean requires measured runs" });
+});
+
+/** One workflow's status cross-tab and successful-root timing. */
 export const ActivityWorkflowTotalSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   registration: ActivityWorkflowRegistrationSchema,
   runs: z.number().int().nonnegative(),
   completion: ActivityCompletionSchema,
   failed: z.number().int().nonnegative(),
+  needsAttention: z.number().int().nonnegative(),
+  typicalTime: ActivityTypicalTimeSchema,
   cancelled: z.number().int().nonnegative(),
   partial: z.number().int().nonnegative(),
   /** every non-terminal status — what this workflow still has open in range */
   open: z.number().int().nonnegative(),
+}).superRefine((workflow, context) => {
+  if (workflow.needsAttention !== workflow.failed)
+    context.addIssue({ code: "custom", path: ["needsAttention"], message: "needs attention must equal failed runs" });
+  if (workflow.typicalTime.measuredRuns + workflow.typicalTime.unmeasuredRuns > workflow.completion.readBack + workflow.completion.warnings + workflow.completion.warningsUnknown)
+    context.addIssue({ code: "custom", path: ["typicalTime"], message: "successful-root timing cannot exceed completed runs" });
 });
 export type ActivityWorkflowTotal = z.infer<typeof ActivityWorkflowTotalSchema>;
 
@@ -113,9 +134,12 @@ export const ActivityOutcomeTotalSchema = z.strictObject({
   runs: z.number().int().nonnegative(),
 });
 
-/** A failure breakdown by the failure record's own closed `code`, with the exact runs behind it; `transient` rides along because "17 failures" reads differently once 14 are visible as retried. */
+/** Failures grouped by workflow and recorded code, with the catalog operator sentence. */
 export const ActivityFailureTotalSchema = z.strictObject({
   code: ErrorCodeSchema,
+  sentence: z.string().min(1),
+  workflowId: WorkflowIdSchema,
+  registration: ActivityWorkflowRegistrationSchema,
   runs: z.number().int().nonnegative(),
   transient: z.number().int().nonnegative(),
   sample: z.array(RunIdSchema).max(ACTIVITY_SAMPLE_LIMIT),
