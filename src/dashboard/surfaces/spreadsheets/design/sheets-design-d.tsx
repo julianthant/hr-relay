@@ -4,6 +4,7 @@ import { Badge, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFoote
 import { formatInstantDate } from '../../../lib/date-format.js';
 import { SpreadsheetVersions } from '../spreadsheet-versions.js';
 import { ActionDialog, FileMenu, Section, type Actions, type DialogKind } from './sheets-design-page.js';
+import { ColumnMapping } from './sheets-design-columns.js';
 import { IMPORT_FILE, REFERENCE_SHEETS, libraryEntry, sheetSamples, sheetsOther, sheetsReferences, sheetsResults, type ColumnMatch, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
 import { FilePickRow, SheetsImportDialog } from './sheets-design-import.js';
 import { sheetsParam, sheetsScenario } from './sheets-design-mode.js';
@@ -78,28 +79,23 @@ function OtherList({ files, sync, actions }: { files: readonly SheetFile[]; sync
     </div></div>;
 }
 
-function ColumnPicker({ sheet, header, onPick, used }: { sheet: (typeof REFERENCE_SHEETS)[string]; header: string | null; onPick: (header: string) => void; used: readonly string[] }) {
-  return <ul className="mt-2 grid gap-1.5" aria-label="Sheet columns">{sheet.headers.filter(name => !used.includes(name)).map(name => <li key={name}><label className={`flex cursor-pointer items-start gap-2.5 rounded-[7px] border px-3 py-2 ${header === name ? 'border-ui-primary bg-ui-table' : 'border-ui-stroke'}`}><input type="radio" name="pick-column" className="mt-1" checked={header === name} onChange={() => onPick(name)} /><span className="min-w-0"><span className="block text-body font-medium">{name}</span><span className="block truncate text-caption text-ui-muted">{sheetSamples(sheet, name)}</span></span></label></li>)}</ul>;
-}
-
 function ReferenceDrawer({ item, focusColumns, onClose, onSave, onReplace }: { item: Reference | undefined; focusColumns: boolean; onClose: () => void; onSave: (id: string, picks: Partial<Record<Key, string>>) => void; onReplace: (id: string) => void }) {
-  const [picks, setPicks] = useState<Partial<Record<Key, string>>>({});
   const file = item?.file, sheet = item ? REFERENCE_SHEETS[item.id] : undefined;
+  const initial = { eid: file?.eid?.header ?? '', person: file?.person?.header ?? '' };
+  const [values, setValues] = useState<Record<string, string>>(initial);
   useEffect(() => { if (focusColumns) document.getElementById('sheets-drawer-columns')?.scrollIntoView({ block: 'start' }); }, [focusColumns, item?.id]);
   const entry = file && item ? libraryEntry(file, 'reference') : undefined;
-  const headerOf = (key: Key) => picks[key] ?? file?.[key]?.header ?? null;
-  const used = NEEDS.map(entry => headerOf(entry.key)).filter((value): value is string => !!value);
-  const pending = NEEDS.find(entry => !file?.[entry.key]?.header);
-  return <Drawer open={!!item} onOpenChange={open => { if (!open) { setPicks({}); onClose(); } }}><DrawerContent title={item?.title ?? ''} description={item ? `${item.workflow} looks people up here.` : undefined} size="560px">
-    {item && file && sheet && entry && <div className="grid gap-6 p-6 text-body">
-      <section aria-label="File"><dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5"><dt className="text-ui-muted">File</dt><dd className="font-medium">{file.name}</dd><dt className="text-ui-muted">Source</dt><dd>{file.sharePoint ? 'SharePoint' : 'This Mac'}</dd><dt className="text-ui-muted">Rows</dt><dd>{file.rows.toLocaleString()}</dd><dt className="text-ui-muted">Updated</dt><dd>{when(file.updatedAt)}</dd></dl></section>
-      <section aria-label="Preview"><h3 className="mb-2 text-title font-semibold">Preview</h3><div className="overflow-hidden rounded-[7px] border border-ui-stroke"><table className="w-full text-caption"><thead><tr className="bg-ui-table text-left text-ui-muted">{sheet.headers.map(name => <th key={name} className="px-2.5 py-1.5 font-medium">{name}</th>)}</tr></thead><tbody>{sheet.rows.map((row, index) => <tr key={index} className="border-t border-ui-stroke">{row.map((cell, column) => <td key={column} className="whitespace-nowrap px-2.5 py-1">{cell}</td>)}</tr>)}</tbody></table></div><p className="mt-1.5 text-caption text-ui-muted">First 8 of {file.rows.toLocaleString()} rows.</p></section>
-      <section id="sheets-drawer-columns" aria-label="Columns"><h3 className="mb-1 text-title font-semibold">Columns</h3><p className="mb-3 text-caption text-ui-muted">What {item.workflow} needs, and the column that holds it.</p>
-        <ul className="grid gap-2">{NEEDS.map(entry => { const header = headerOf(entry.key), matched = !!file[entry.key]?.header; return <li key={entry.key} className="flex items-center gap-3"><span className="w-12 font-medium">{entry.need}</span><span className="flex-1">{header ?? <span className="text-ui-muted">Choose a column</span>}</span>{matched ? <Badge tone="info"><Check size={12} aria-hidden /> Matched</Badge> : header ? <Badge tone="info">Chosen</Badge> : <Badge tone="warning">Not matched</Badge>}</li>; })}</ul>
-        {pending && <><div className="mt-4 flex items-center justify-between gap-3"><p className="text-caption text-ui-muted">Pick the column that holds the {pending.need === 'EID' ? 'employee IDs' : 'names'}. Sample values are shown.</p><Button variant="primary" className="shrink-0" disabled={!picks[pending.key]} onClick={() => { onSave(item.id, picks); setPicks({}); }}>Save columns</Button></div><ColumnPicker sheet={sheet} header={picks[pending.key] ?? null} used={used.filter(name => name !== picks[pending.key])} onPick={name => setPicks(current => ({ ...current, [pending.key]: name }))} /></>}
-      </section>
-      <section aria-label="Versions"><h3 className="mb-2 text-title font-semibold">Versions</h3><ul className="divide-y divide-ui-stroke rounded-[7px] border border-ui-stroke">{entry.state.versions.toReversed().map(version => <li key={version.id} className="flex items-center justify-between gap-3 px-3 py-2"><span>{version.name}<span className="block text-caption text-ui-muted">{when(version.savedAt)}</span></span>{version.id === entry.state.selectedVersionId && <Badge>In use</Badge>}</li>)}</ul></section>
-      <div className="flex gap-2"><Button onClick={() => onReplace(item.id)}>Replace</Button><Button>Open</Button><Button>Download</Button></div>
+  const changed = values.eid !== initial.eid || values.person !== initial.person, complete = values.eid !== '' && values.person !== '';
+  return <Drawer open={!!item} onOpenChange={open => { if (!open) onClose(); }}><DrawerContent title={item?.title ?? ''} description={item ? `${item.workflow} looks people up here.` : undefined} size="560px">
+    {item && file && sheet && entry && <div className="flex h-full min-h-0 flex-col text-body">
+      <div className="grid min-h-0 flex-1 content-start gap-6 overflow-y-auto p-6">
+        <section aria-label="File"><dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5"><dt className="text-ui-muted">File</dt><dd className="font-medium">{file.name}</dd><dt className="text-ui-muted">Source</dt><dd>{file.sharePoint ? 'SharePoint' : 'This Mac'}</dd><dt className="text-ui-muted">Rows</dt><dd>{file.rows.toLocaleString()}</dd><dt className="text-ui-muted">Updated</dt><dd>{when(file.updatedAt)}</dd></dl></section>
+        <section aria-label="Preview"><h3 className="mb-2 text-title font-semibold">Preview</h3><div className="overflow-hidden rounded-[7px] border border-ui-stroke"><table className="w-full text-caption"><thead><tr className="bg-ui-table text-left text-ui-muted">{sheet.headers.map(name => <th key={name} className="px-2.5 py-1.5 font-medium">{name}</th>)}</tr></thead><tbody>{sheet.rows.map((row, index) => <tr key={index} className="border-t border-ui-stroke">{row.map((cell, column) => <td key={column} className="whitespace-nowrap px-2.5 py-1">{cell}</td>)}</tr>)}</tbody></table></div><p className="mt-1.5 text-caption text-ui-muted">First 8 of {file.rows.toLocaleString()} rows.</p></section>
+        <section id="sheets-drawer-columns" aria-label="Columns"><h3 className="mb-1 text-title font-semibold">Columns</h3><p className="mb-3 text-caption text-ui-muted">Choose the column that holds each value {item.workflow} needs.</p>
+          <ColumnMapping needs={NEEDS.map(entry => ({ key: entry.key, label: entry.need }))} headers={sheet.headers} samples={header => sheetSamples(sheet, header)} values={values} onChange={(key, header) => setValues(current => ({ ...current, [key]: header }))} /></section>
+        <section aria-label="Versions"><h3 className="mb-2 text-title font-semibold">Versions</h3><ul className="divide-y divide-ui-stroke rounded-[7px] border border-ui-stroke">{entry.state.versions.toReversed().map(version => <li key={version.id} className="flex items-center justify-between gap-3 px-3 py-2"><span>{version.name}<span className="block text-caption text-ui-muted">{when(version.savedAt)}</span></span>{version.id === entry.state.selectedVersionId && <Badge>In use</Badge>}</li>)}</ul></section>
+      </div>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-ui-stroke px-6 py-3"><div className="flex gap-2"><Button onClick={() => onReplace(item.id)}>Replace</Button><Button>Open</Button><Button>Download</Button></div><Button variant="primary" disabled={!changed || !complete} onClick={() => onSave(item.id, { eid: values.eid, person: values.person })}>Save columns</Button></div>
     </div>}
   </DrawerContent></Drawer>;
 }

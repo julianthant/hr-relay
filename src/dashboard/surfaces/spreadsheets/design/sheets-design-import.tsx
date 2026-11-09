@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
-import { Check, FileSpreadsheet, Upload } from 'lucide-react';
+import { FileSpreadsheet, Upload } from 'lucide-react';
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, Select } from '../../../ds/ui.js';
+import { ColumnMapping } from './sheets-design-columns.js';
 import { IMPORT_COLUMNS, IMPORT_FILE, type Reference } from './sheets-design-fixtures.js';
 import type { SheetsStep } from './sheets-design-mode.js';
 import '../../run-start/launch-presentation.css';
@@ -16,17 +17,11 @@ export function FilePickRow({ title, hint, onFile }: { title: string; hint: stri
 
 const STEPS: readonly SheetsStep[] = ['pick', 'purpose', 'columns'];
 const OTHER = 'other';
-
-function Mapping({ label, value }: { label: string; value: string }) {
-  return <>
-    <span className="text-body">{label}</span>
-    <div className="flex min-w-0 items-center gap-2"><Select aria-label={`${label} column`} className="min-w-0 flex-1" defaultValue={value}>{IMPORT_COLUMNS.map(column => <option key={column.header}>{column.header}</option>)}</Select><Check size={14} aria-hidden className="shrink-0 text-ui-muted" /></div>
-    <span className="min-w-0 truncate text-caption text-ui-muted">{IMPORT_COLUMNS.find(column => column.header === value)?.sample}</span>
-  </>;
-}
+const NEEDS = [{ key: 'eid', label: 'EID' }, { key: 'person', label: 'Name' }] as const;
 
 export function SheetsImportDialog({ open, onOpenChange, references, startStep, preset, onDone }: { open: boolean; onOpenChange: (open: boolean) => void; references: readonly Reference[]; startStep: SheetsStep; preset?: string; onDone?: (purpose: string) => void }) {
   const [step, setStep] = useState<SheetsStep>(startStep);
+  const [mapped, setMapped] = useState<Record<string, string>>({ eid: 'Employee ID', person: 'Full name' });
   const [purpose, setPurpose] = useState(preset ?? references.find(item => !item.file)?.id ?? OTHER);
   const reference = references.find(item => item.id === purpose);
   const isReference = reference !== undefined;
@@ -44,7 +39,7 @@ export function SheetsImportDialog({ open, onOpenChange, references, startStep, 
       ].map(option => <label key={option.id} className={`flex cursor-pointer items-start gap-3 rounded-[7px] border px-3 py-2.5 text-left ${purpose === option.id ? 'border-ui-primary bg-ui-table' : 'border-ui-stroke'}`}><input type="radio" name="sheet-purpose" className="mt-1" checked={purpose === option.id} onChange={() => setPurpose(option.id)} /><span className="grid gap-0.5"><span className="text-body font-medium">{option.title}</span><span className="text-caption text-ui-muted">{option.note}</span></span></label>)}</fieldset>}
       {step === 'columns' && <div className="grid gap-4">
         {isReference ? <><p className="text-body text-ui-muted">We matched these from the headers.</p>
-          <div className="grid grid-cols-[44px_minmax(0,200px)_minmax(0,1fr)] items-center gap-x-4 gap-y-3"><Mapping label="EID" value="Employee ID" /><Mapping label="Name" value="Full name" /></div></> : <p className="text-body text-ui-muted">All columns are kept as they are.</p>}
+          <ColumnMapping needs={NEEDS} headers={IMPORT_COLUMNS.map(column => column.header)} samples={header => IMPORT_COLUMNS.find(column => column.header === header)?.sample ?? ''} values={mapped} onChange={(key, header) => setMapped(current => ({ ...current, [key]: header }))} /></> : <p className="text-body text-ui-muted">All columns are kept as they are.</p>}
         <Disclosure summary={`Other columns (${IMPORT_COLUMNS.filter(column => !column.role).length})`} summaryClassName="text-body"><ul className="grid gap-1 pl-5 text-body">{IMPORT_COLUMNS.filter(column => !column.role).map(column => <li key={column.header} className="flex justify-between gap-3"><span>{column.header}</span><span className="text-caption text-ui-muted">{column.sample}</span></li>)}</ul></Disclosure>
       </div>}
     </DialogBody>

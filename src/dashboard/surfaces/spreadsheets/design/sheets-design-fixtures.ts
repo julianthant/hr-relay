@@ -62,7 +62,7 @@ export const REFERENCE_SHEETS: Readonly<Record<string, PreviewSheet>> = {
   'onboarding-roster': { headers: ['EID', 'Hire name', 'Start date', 'Department'], rows: sample(8, index => [eid(index), person(index), `11/${String(10 + index).padStart(2, '0')}/2026`, 'Example Dept']) },
   'i9-history': { headers: ['Employee ID', 'Employee', 'Action', 'Action date', 'Completed by'], rows: sample(8, index => [eid(index), person(index), index % 2 ? 'Section 2 done' : 'Reverify', `10/${String(20 + index).padStart(2, '0')}/2026`, 'Example, Reviewer']) },
 };
-export const sheetSamples = (sheet: PreviewSheet, header: string): string => { const column = sheet.headers.indexOf(header); return column < 0 ? '' : sheet.rows.slice(0, 3).map(row => row[column]).join(', '); };
+export const sheetSamples = (sheet: PreviewSheet, header: string): string => { const column = sheet.headers.indexOf(header); return column < 0 ? '' : sheet.rows.slice(0, 3).map(row => row[column]).join('; '); };
 
 export const IMPORT_FILE = { name: 'Example contacts export.xlsx', rows: 398, sheet: 'Contacts' };
 export const IMPORT_COLUMNS = [
