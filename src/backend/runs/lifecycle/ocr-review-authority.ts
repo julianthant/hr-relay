@@ -78,7 +78,7 @@ export function ocrChildRetryAvailable(repositories: AuthorityRepositories, read
     || repositories.gateResults.get(`${parent.envelope.runId}:approve-records`) !== undefined
     || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
     || repositories.workerControls.resetForRun(child.envelope.runId) !== undefined
-    || repositories.runtimeConfig.get()?.configSnapshotId !== child.envelope.configSnapshotId
+    || repositories.runtimeConfig.get()?.configFingerprint !== child.envelope.configFingerprint
     || [parent, child].some(run => repositories.writeIntents.listByRun(run.envelope.runId).length > 0)) return false;
   if (parent.lifecycle.state !== "queued" || parent.delegationRefresh !== undefined) {
     const descriptor = resolveDescriptor(parent.envelope.workflow);

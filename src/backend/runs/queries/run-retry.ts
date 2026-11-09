@@ -18,7 +18,7 @@ export function aggregateMemberRetryAvailable(repositories: AuthorityRepositorie
     || parent.lifecycle.state === "terminal" && !["done", "failed"].includes(parent.lifecycle.outcome)
     || owner.contractFingerprint !== parent.envelope.contractFingerprint || owner.version !== parent.envelope.descriptorVersion
     || descriptor.contractFingerprint !== run.envelope.contractFingerprint || descriptor.version !== run.envelope.descriptorVersion
-    || repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
+    || repositories.runtimeConfig.get()?.configFingerprint !== run.envelope.configFingerprint
     || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
     || repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return false;
   const authorization = authorizeWorkflowDelegationRefresh(owner, parent);

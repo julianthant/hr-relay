@@ -706,3 +706,20 @@ for (const unknown of [false, true]) it(`refuses another member Retry after a ${
     f.database.authority.runs.listChildren(f.parentRun.envelope.runId), f.resolve); assert.ok(rows);
   assert.equal(rows.members[0]?.statusLabel, "Saved");
 });
+
+it("offers and applies a member Retry after a restart re-activates the same config under a new snapshot id", async () => {
+  const f = fixture;
+  const previous = failed(f);
+  const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
+  const prior = f.database.authority.configSnapshots.get(active.configSnapshotId); assert.ok(prior);
+  const configSnapshotId = randomUUID();
+  f.database.withAuthorityTransaction(repositories => {
+    repositories.configSnapshots.insert({ ...prior, configSnapshotId });
+    repositories.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
+      configFingerprint: active.configFingerprint, activatedAt: f.clock.now().toISOString(), configSnapshotId });
+  });
+  assert.equal(aggregateMemberRetryAvailable(f.database.authority, f.canonical.lifecycle, previous, f.resolve), true);
+  const applied = f.canonical.kernel.execute(f.runCommand("retry", previous)); assert.equal(applied.state, "applied", JSON.stringify(applied));
+  const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
+  assert.equal(replacement.envelope.configSnapshotId, previous.envelope.configSnapshotId);
+});

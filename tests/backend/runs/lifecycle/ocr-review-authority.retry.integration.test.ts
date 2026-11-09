@@ -249,3 +249,23 @@ it("refuses approval of the previous review after a failed page has been replace
   assert.equal(repositories.gateResults.get(`${f.run.envelope.runId}:approve-records`), undefined);
   assert.equal(repositories.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.retryOf === failed.envelope.runId).length, 1);
 });
+
+it("retries a failed signer child after a restart re-activates the same config under a new snapshot id", async () => {
+  const firstNames = ["Avery", "Morgan"] as const;
+  const f = await world.fixture({ record: true, release: true, pageCount: 2, signerLookup: { firstNames, failOnce: firstNames[1] } });
+  const repositories = f.database.authority;
+  const failed = repositories.runs.listChildren(f.run.envelope.runId).find(child => child.envelope.workflow === "i9-lookup"
+    && child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(failed);
+  const active = repositories.runtimeConfig.get(); assert.ok(active);
+  const prior = repositories.configSnapshots.get(active.configSnapshotId); assert.ok(prior);
+  const configSnapshotId = randomUUID();
+  f.database.withAuthorityTransaction(writes => {
+    writes.configSnapshots.insert({ ...prior, configSnapshotId });
+    writes.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
+      configFingerprint: active.configFingerprint, activatedAt: f.clock.now().toISOString(), configSnapshotId });
+  });
+  assert.equal(ocrChildRetryAvailable(repositories, f.canonical.lifecycle, failed, f.resolve), true);
+  const applied = f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", requestedBy: "local-operator",
+    source: "run-detail", requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
+  assert.equal(applied.state, "applied", JSON.stringify(applied));
+});
