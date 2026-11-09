@@ -50,7 +50,7 @@
 #hub-panel-assistant .hub-caption{font-size:11px}
 #hub-panel-assistant [data-action=approve].primary, .hub-assistant-detail .hub-btn.primary{border:1px solid var(--hub-primary-border)}
 #hub-panel-assistant .hub-spinner{display:inline-block;width:10px;height:10px;flex:none;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:middle;margin-right:5px;animation:hub-spin .8s linear infinite}
-#hub-panel-assistant .hub-chat-title{border:0;background:transparent;border-radius:8px;padding:4px 6px;min-height:30px}
+#hub-panel-assistant .hub-chat-title{border:0;background:transparent;border-radius:8px;padding:4px 6px;min-height:28px}
 #hub-panel-assistant .hub-chat-title>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #hub-panel-assistant .hub-chat-title:hover{background:var(--ui-hover)}
 #hub-panel-assistant>.hub-panel-content{overflow:visible}

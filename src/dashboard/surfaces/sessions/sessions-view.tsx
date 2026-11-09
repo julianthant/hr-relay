@@ -58,7 +58,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     trigger.focus({ preventScroll: true });
   }, [addOpen, addLocked, data.state, validWorkflow]);
   const addControl = <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild><Button ref={addTriggerRef} size="sm" variant="secondary" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />}>Add workers</Button></DialogTrigger>
+          <DialogTrigger asChild><Button ref={addTriggerRef} size="md" variant="secondary" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />}>Add workers</Button></DialogTrigger>
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>

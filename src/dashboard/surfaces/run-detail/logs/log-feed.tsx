@@ -159,7 +159,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
       {trailingContent}
       <div ref={end} />
     </div>
-    <footer className={cn("flex shrink-0 items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2", embedded && "sticky bottom-0 mt-auto")}>
+    <footer className={cn("log-footer flex shrink-0 items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2", embedded && "sticky bottom-0 mt-auto")}>
       <SearchInput className="w-44 min-w-0 shrink" aria-label="Search logs" placeholder="Search logs…" value={query} onChange={event => { setQuery(event.target.value); setCopyState("idle"); }} onClear={() => setQuery("")} />
       <span className="shrink-0 whitespace-nowrap text-caption tabular-nums text-ui-muted" role="status">{count} {query.trim() ? "matching " : ""}{count === 1 ? "action" : "actions"}</span>
       {footerContent}

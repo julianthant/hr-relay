@@ -69,6 +69,8 @@
 .dashboard-action-panel > .operations-toolbar { flex: 1; min-width: 0; height: 46px; min-height: 46px; margin: 0; border: 0; border-radius: 0; background: transparent; }
 .dashboard-log-column { gap: var(--ds-space-cozy); }
 .dashboard-log-column > section:not(.dashboard-action-panel) { flex: 1; min-height: 0; }
+/* The floating dock covers the window's bottom right: the Logs footer lifts its controls above it (28px dock + 8px gap + 8px). */
+.dashboard-log-column .log-footer { padding-bottom: 44px; }
 .dashboard-log-date { display: flex; flex-shrink: 0; align-items: center; }
 .dashboard-log-date .date-input-group { height: 28px; }
 

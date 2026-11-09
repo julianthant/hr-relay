@@ -29,8 +29,18 @@
 .toolbar-assistant:hover, .toolbar-assistant[aria-pressed="true"] { background: var(--ds-picker-bg-hover); }
 .toolbar-assistant svg { color: var(--ui-secondary); }
 .toolbar-assistant-chip { display: inline-flex; min-width: 16px; height: 16px; align-items: center; justify-content: center; padding: 0 4px; border-radius: 8px; background: var(--ui-info); color: var(--ui-canvas); font-size: 11px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+/* Narrow toolbar: the label drops to the tooltip and the chip sits on the icon; with C present, Sort collapses sooner to make room. */
+@container actions (max-width: 760px) {
+  .toolbar-assistant { position: relative; width: 28px; padding: 0; justify-content: center; }
+  .toolbar-assistant-text { display: none; }
+  .toolbar-assistant-chip { position: absolute; top: -5px; right: -5px; box-shadow: 0 0 0 2px var(--ui-panel); }
+}
+@container actions (max-width: 640px) {
+  .operations-toolbar:has(.toolbar-assistant) .queue-sort.ds-select-control { width: 28px; padding-inline: 6px; justify-content: center; }
+  .operations-toolbar:has(.toolbar-assistant) .queue-sort [data-slot="select-value"], .operations-toolbar:has(.toolbar-assistant) .queue-sort > svg:last-child { display: none; }
+}
 /* The floating Sessions panel: the shared menu surface above the pill. */
-.session-float { width: min(calc(100vw - 24px), 1000px); max-height: min(28rem, calc(100vh - 72px)); display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--ui-stroke); border-radius: 16px; background: var(--ui-field); color: var(--ui-primary); box-shadow: 0 8px 28px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08); overflow: hidden; }
+.session-float { width: 1000px; max-width: 100%; max-height: min(28rem, calc(100vh - 72px)); display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--ui-stroke); border-radius: 16px; background: var(--ui-field); color: var(--ui-primary); box-shadow: 0 8px 28px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08); overflow: hidden; }
 [data-demo-theme="dark"] .session-float { box-shadow: 0 10px 32px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4); }
 .session-float-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 8px 12px; }
 .session-float-title { margin: 0; font-size: 14px; font-weight: 500; line-height: 20px; color: var(--ds-fg-list); }
