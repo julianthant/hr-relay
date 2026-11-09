@@ -396,6 +396,14 @@
       "replacementRequired": true
     },
     {
+      "name": "workflow-failure-codes",
+      "file": "tests/architecture/workflow-kit/workflow-failure-codes.test.ts",
+      "status": "active",
+      "owner": "docs/reference/task-contract.md",
+      "invariant": "Reason: Explorer must describe every intentional workflow failure. A semantic TypeScript audit follows the workflow registry implementation import closure and authored workflows, checks canonical task fail calls and direct TaskError constructors against sealed contract errorCodes, and rejects undeclared dynamic codes and widened types. Runtime infrastructure failures remain covered by the unlisted-failure rule. Positive and negative controls exercise the same checker.",
+      "replacementRequired": true
+    },
+    {
       "name": "task-contract-sealing",
       "file": "tests/architecture/workflow-kit/task-contract-sealing.test.ts",
       "status": "active",

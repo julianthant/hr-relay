@@ -12,6 +12,60 @@ const group = Object.freeze({
     { label: "Personal email", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.personalEmail" }] },
     { label: "CRM record", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.recordId" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "crm-record-search",
+        title: "CRM onboarding search results",
+        mode: "Read only",
+        nodeIds: ["document-records"],
+        lines: [{ id: "find-records", kind: "action", text: "Find each requested identity and verify the latest eligible CRM record.", nodeIds: ["document-records"] }],
+        fields: [
+          {
+            id: "employee-id",
+            operatorField: "Employee ID",
+            source: {
+              origin: "CRM",
+              detail: "Employee ID on the selected record.",
+              chain: [],
+              read: { stepKey: "search-records", page: "CRM onboarding search results", field: "Employee ID" }
+            }
+          },
+          {
+            id: "work-email",
+            operatorField: "Work email",
+            source: {
+              origin: "CRM",
+              detail: "Work email on the selected record.",
+              chain: [],
+              read: { stepKey: "search-records", page: "CRM onboarding search results", field: "Work email" }
+            }
+          },
+          {
+            id: "personal-email",
+            operatorField: "Personal email",
+            source: {
+              origin: "CRM",
+              detail: "Personal email on the selected record.",
+              chain: [],
+              read: { stepKey: "search-records", page: "CRM onboarding search results", field: "Personal email" }
+            }
+          },
+          {
+            id: "crm-record",
+            operatorField: "CRM record",
+            source: {
+              origin: "CRM",
+              detail: "Selected CRM record identifier.",
+              chain: [],
+              read: { stepKey: "search-records", page: "CRM onboarding search results", field: "CRM record" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 
 export function buildSearchRecords(author: WorkflowAuthor<typeof CrmDocDownloadInput>) {

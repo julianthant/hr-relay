@@ -6,7 +6,26 @@ import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-acco
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-export const OCR_PAGE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "read-page", label: "Read source page" }), system: "local" as const });
+export const OCR_PAGE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "read-page", label: "Read source page" }), system: "local" as const,
+  description: "Read the exact original page through the declared subscription or manual reading and retain page-bound observations or assertions without approving a person's identity.",
+  review: {
+    pages: [
+      {
+        id: "source-page",
+        title: "Original source page",
+        mode: "Read only",
+        nodeIds: ["extract", "read-page-reading", "manual-reading"],
+        lines: [
+          { id: "subscription", kind: "read", text: "For a subscription reading, read the exact original page through the connected OCR account.", nodeIds: ["extract"] },
+          { id: "bind-reading", kind: "check", text: "Check the reading against the exact original page and form type.", nodeIds: ["read-page-reading"] },
+          { id: "manual", kind: "read", text: "For a manual reading, use the operator’s reading of this exact original page.", nodeIds: ["manual-reading"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const,
+});
 
 export function buildStep(author: WorkflowAuthor<typeof OcrPageWorkflowInputSchema>) {
   const { task, result } = author;

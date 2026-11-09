@@ -15,6 +15,63 @@ const group = Object.freeze({
     { label: "PDF documents", sources: [{ nodeId: "worksheet-archives", kind: "output", fieldPath: "documentCount" }] },
     { label: "Archive", sources: [{ nodeId: "worksheet-archives", kind: "output", fieldPath: "worksheets.relativePath" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "worksheet-archives",
+        title: "Worksheet archives",
+        mode: "Read only",
+        nodeIds: ["worksheet-archives"],
+        lines: [
+          { id: "package", kind: "action", text: "Package the verified PDFs into one archive for each resolved worksheet.", nodeIds: ["worksheet-archives"] },
+          { id: "check", kind: "check", text: "Retain every person and document in the archive counts.", nodeIds: ["worksheet-archives"] }
+        ],
+        fields: [
+          {
+            id: "worksheet-archives",
+            operatorField: "Worksheet archives",
+            source: {
+              origin: "Downloaded PDFs and saved roster",
+              detail: "Number of worksheet archives.",
+              chain: [],
+              read: { stepKey: "package-worksheets", page: "Worksheet archives", field: "Worksheet archives" }
+            }
+          },
+          {
+            id: "people",
+            operatorField: "People",
+            source: {
+              origin: "Downloaded PDFs and saved roster",
+              detail: "Number of people included.",
+              chain: [],
+              read: { stepKey: "package-worksheets", page: "Worksheet archives", field: "People" }
+            }
+          },
+          {
+            id: "pdf-documents",
+            operatorField: "PDF documents",
+            source: {
+              origin: "Downloaded PDFs and saved roster",
+              detail: "Number of downloaded PDF documents included.",
+              chain: [],
+              read: { stepKey: "package-worksheets", page: "Worksheet archives", field: "PDF documents" }
+            }
+          },
+          {
+            id: "archive",
+            operatorField: "Archive",
+            source: {
+              origin: "Downloaded PDFs and saved roster",
+              detail: "The archive associated with the resolved worksheet.",
+              chain: [],
+              read: { stepKey: "package-worksheets", page: "Worksheet archives", field: "Archive" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 const entries = defineStepEntries(group);
 
