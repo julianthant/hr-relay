@@ -46,6 +46,12 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "queue-toolbar") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+    } else if (id === "run-person-lookup") {
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).last().click();
+      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await expect(dialog.getByText("Workflow preview")).toBeVisible();
+      await dialog.getByRole("textbox").first().fill("10000001");
     } else if (id === "run-options-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
@@ -204,10 +210,10 @@ test("run dialog priority", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  for (const [text, ticked] of [["48216", true], ["48216, 48220", false]] as const) {
+  for (const [workflow, text, ticked] of [["Separations", "48216", true], ["Separations", "48216, 48220", false], ["Person Lookup", "10000001", true], ["Person Lookup", "10000001; 10000002", false]] as const) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
-    await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
+    await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: workflow, exact: true }).last().click();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByRole("textbox").first().fill(text);
@@ -224,7 +230,7 @@ test("run dialog priority", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-// Ticking Customize steps adds the Steps step after Options, enables its tab, and moves the start button there, for every workflow that opens the redesigned dialog.
+// Ticking Customize steps adds the Steps step after Options, enables its tab, and moves the start button there, for every workflow in the rail, Person Lookup included.
 test("customize steps every workflow", async ({ page }) => {
   test.setTimeout(240_000);
   const errors: string[] = [];
@@ -232,15 +238,13 @@ test("customize steps every workflow", async ({ page }) => {
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
   const reached: string[] = [];
-  const skipped: string[] = [];
   for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
-    // Only the workflow-preview dialog is the redesigned one; the others still open the shipped dialog.
-    if (!await dialog.getByText("Workflow preview").count()) { skipped.push(name); continue; }
+    await expect(dialog.getByText("Workflow preview"), `${name}: redesigned dialog`).toBeVisible();
     const file = dialog.locator('input[type="file"]');
     if (await file.count()) await file.setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
     else await dialog.getByRole("textbox").first().fill(name === "Onboarding" ? "jordan.lee@example.com" : name === "Separations" ? "48216" : "10000001");
@@ -255,7 +259,6 @@ test("customize steps every workflow", async ({ page }) => {
     await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$|^Start run$/ }), `${name}: start on Steps`).toBeVisible();
     reached.push(name);
   }
-  console.log("CUSTOMIZE reached", reached.join(", "), "| shipped dialog", skipped.join(", "));
-  expect(reached).toEqual(expect.arrayContaining(["Separations", "Emergency Contact"]));
+  expect(reached).toEqual(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]);
   expect(errors).toEqual([]);
 });
