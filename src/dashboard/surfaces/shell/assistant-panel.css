@@ -1,8 +1,8 @@
 #hub-panel-assistant .hub-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--ui-secondary);flex:none}
 #hub-panel-assistant .hub-icon:hover,#hub-panel-assistant .hub-plain:hover{background:var(--ds-surface-3);color:var(--ui-primary)}
 #hub-panel-assistant .hub-icon svg{width:16px;height:16px}
-#hub-panel-assistant .hub-btn{min-height:32px;padding:5px 12px;border:1px solid var(--ui-stroke);border-radius:8px;background:var(--ui-panel);font-size:12px;font-weight:500;white-space:nowrap}
-#hub-panel-assistant .hub-btn:hover{background:var(--ui-hover)}
+#hub-panel-assistant .hub-btn{min-height:28px;padding:0 12px;border:1px solid var(--ds-soft-border);border-radius:10px;background:var(--ds-soft-bg);font-size:13px;font-weight:400;white-space:nowrap}
+#hub-panel-assistant .hub-btn:hover{background:var(--ds-soft-bg-hover)}
 #hub-panel-assistant .hub-btn.primary{background:var(--hub-primary);color:var(--hub-primary-ink);border-color:var(--hub-primary)}
 #hub-panel-assistant .hub-btn.danger{background:var(--ui-danger);color:var(--ui-panel)}
 #hub-panel-assistant .hub-plain{border:0;background:transparent;border-radius:8px;text-align:left}
@@ -30,7 +30,7 @@
 #hub-panel-assistant .hub-card-footer{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:9px 10px;border-top:1px solid var(--ui-stroke);min-height:48px;white-space:nowrap}
 #hub-panel-assistant .hub-footer-status{color:var(--ui-muted);font-size:11px;flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:18px}
 #hub-panel-assistant .hub-footer-actions{display:flex;gap:5px;flex:none}
-#hub-panel-assistant .hub-footer-actions .hub-btn{padding:4px 9px;font-size:11px;min-height:28px}
+#hub-panel-assistant .hub-footer-actions .hub-btn{padding:0 12px;font-size:13px;min-height:28px}
 #hub-panel-assistant .hub-resolved{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;width:100%;padding:10px 12px;border:1px solid var(--ui-stroke);border-radius:9px;white-space:normal;font-size:11px;line-height:18px}
 #hub-panel-assistant .hub-resolved .hub-resolved-title{min-width:0;flex:1;overflow-wrap:anywhere}
 #hub-panel-assistant .hub-resolved-status{flex-basis:100%;padding-left:22px;color:var(--ui-muted);white-space:normal;overflow-wrap:anywhere}
@@ -77,11 +77,11 @@
 .hub-assistant-detail h2{letter-spacing:normal!important;font-size:18px!important;line-height:26px!important;font-weight:600;margin:0 0 6px}
 .hub-assistant-detail p{font-size:13px;line-height:21px;color:var(--ui-muted);margin:0 0 20px}
 .hub-assistant-detail footer{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
-.hub-assistant-detail .hub-btn{min-height:32px;padding:5px 12px;border:1px solid var(--ui-stroke);border-radius:8px;background:var(--ui-panel);font-size:12px;font-weight:500}
+.hub-assistant-detail .hub-btn{min-height:28px;padding:0 12px;border:1px solid var(--ds-soft-border);border-radius:10px;background:var(--ds-soft-bg);font-size:13px;font-weight:400}
 html[data-motion=off] :is(#hub-panel-assistant,.hub-assistant-menu,.hub-assistant-detail) *,html[data-motion=off] .hub-assistant-menu{animation:none!important;transition:none!important}
 @media(prefers-reduced-motion:reduce){#hub-panel-assistant *, .hub-assistant-menu,.hub-assistant-menu *, .hub-assistant-detail *{animation:none!important;transition:none!important}}
 
-#hub-panel-assistant .hub-btn{border-color:var(--ui-stroke-control)}
+#hub-panel-assistant .hub-btn{border-color:var(--ds-soft-border)}
 #hub-panel-assistant [data-action=approve].primary{border-color:var(--hub-primary-border)}
 
 #hub-panel-assistant .hub-card-footer .hub-btn{border-radius:7px}
@@ -108,3 +108,5 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 #hub-panel-assistant .hub-assistant-strip{display:flex;align-items:center;gap:10px;margin:0 12px;padding:8px 10px;border:1px solid var(--ui-stroke);border-radius:10px;font-size:12px;line-height:18px;color:var(--ui-secondary)}
 #hub-panel-assistant .hub-assistant-strip>span{flex:1;min-width:0;overflow-wrap:anywhere}
 #hub-panel-assistant .hub-assistant-strip>button{flex:none}
+
+#hub-panel-assistant strong{font-weight:500}

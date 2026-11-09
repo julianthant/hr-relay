@@ -6,8 +6,8 @@
 .hub-onboarding p,.hub-onboarding h1,.hub-onboarding h2,.hub-onboarding ol,.hub-onboarding ul { margin:0; }
 .hub-onboarding p { text-wrap:pretty; }
 .hub-onboarding h1,.hub-onboarding h2 { text-wrap:balance; }
-.hub-onboarding h1 { font-size:27px; line-height:1.25; font-weight:600; letter-spacing:-.025em; }
-.hub-onboarding h2 { font-size:20px; line-height:1.3; font-weight:600; letter-spacing:-.015em; }
+.hub-onboarding h1 { font-size:28px; line-height:1.25; font-weight:400; letter-spacing:normal; }
+.hub-onboarding h2 { font-size:20px; line-height:1.3; font-weight:500; letter-spacing:normal; }
 .hub-onboarding button,.hub-onboarding input,.hub-onboarding select,.hub-onboarding a { -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
 .hub-onboarding button,.hub-onboarding a { outline:none; }
 .hub-onboarding :is(button,a,select,[tabindex]):focus-visible { background:var(--hub-focus-fill)!important; color:var(--hub-focus-ink)!important; box-shadow:none!important; outline:none!important; transition:none; }
