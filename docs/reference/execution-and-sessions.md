@@ -756,6 +756,11 @@ remain unknown and untouched. Recovery accepts missing paths only after the pers
 abort step that follows actual owned drain. Failed retention or closure stays uncertain; startup
 and extension message pumps settle before replacement. No Chromium PID or marker proves closure.
 
+Application shutdown drains every tracked onboarding draft, then explicitly stops the owned Duo
+provider even if a draft drain failed or no draft remains tracked. Provider stop revokes future
+opens and awaits the existing attempt, extension pump, native browser and profile closure proofs.
+A failed drain or stop remains a shutdown failure; it never clears UNKNOWN enrollment evidence.
+
 Standalone browser verification holds the exclusive runtime listener throughout its admitted lifetime.
 Its reservation binds the installation/profile, lock port, fresh scratch profile, browser system and
 Duo credential. Startup retires an interrupted verification-only reservation before new admission,

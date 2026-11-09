@@ -405,7 +405,14 @@ export function createProfileOnboarding(input: {
     endTransition(operationId: string): void { if (transition !== operationId) return unavailable(); transition = undefined; },
     hasLiveAttempt(attemptId: string): boolean { const lease = leases.get(attemptId); return lease !== undefined && !lease.revoked && !lease.closed; },
     async close(): Promise<void> {
-      for (const operationId of new Set([...browsers.keys(), ...[...leases.values()].filter(lease => !lease.closed).map(lease => lease.attempt.operationId)])) await owner.drain(operationId);
+      const failures: unknown[] = [];
+      for (const operationId of new Set([...browsers.keys(), ...[...leases.values()].filter(lease => !lease.closed).map(lease => lease.attempt.operationId)])) {
+        try { await owner.drain(operationId); } catch (error) { failures.push(error); }
+      }
+      try { await input.provider?.stop(); }
+      catch (error) { retainCustody(error); failures.push(error); }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, "profile-onboarding-shutdown-unproved");
     },
     assertClosed(): void {
       if ([...leases.values()].some(lease => !lease.closed)) return unavailable();
