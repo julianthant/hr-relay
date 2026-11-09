@@ -362,7 +362,7 @@ export type AssistantM1Acceptance =
   | Readonly<{ state: "repeat"; ordinal: number; revision: number; delivery: Exclude<Delivery, "settled">;
     conversationCreatedAt: string; acceptedTurn: AssistantAcceptedTurn; usage: Extract<AssistantM1MessagePayload["recording"], { kind: "accepted-turn" }>["usage"] }>;
 
-export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epoch(): number }>) {
+export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epoch(): number; afterCommit(publish: () => void): void }>) {
   const { database } = ports, profileId = z.uuid().parse(ports.profileId());
   const liveAttempts = new Map<string, AssistantM1Attempt>();
   const files = createAssistantAttachmentStore(database, () => profileId, refuse);
@@ -485,16 +485,15 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
         database.prepare("UPDATE assistant_conversations SET selected_at=? WHERE id=?").run(now, operation.conversationId);
         return { result: saved(operation.conversationId, bump(operation.conversationId)), changes: 1 };
       });
-      case "clear": {
-        const result: AssistantHistoryResult = ports.mutate("assistant_conversations", () => {
-          requireRevision(operation.conversationId, operation.expectedRevision, now);
-          const sending = database.prepare("SELECT 1 FROM assistant_messages WHERE conversation_id=? AND delivery='sending'").get(operation.conversationId) !== undefined;
-          database.prepare("DELETE FROM assistant_conversations WHERE id=?").run(operation.conversationId);
-          return { result: { state: "cleared", conversationId: operation.conversationId, transmissionMayHaveStarted: sending }, changes: 1 };
+      case "clear": return ports.mutate("assistant_conversations", () => {
+        requireRevision(operation.conversationId, operation.expectedRevision, now);
+        const sending = database.prepare("SELECT 1 FROM assistant_messages WHERE conversation_id=? AND delivery='sending'").get(operation.conversationId) !== undefined;
+        database.prepare("DELETE FROM assistant_conversations WHERE id=?").run(operation.conversationId);
+        ports.afterCommit(() => {
+          for (const [id, attempt] of liveAttempts) if (attempt.acceptedTurn.conversationId === operation.conversationId) liveAttempts.delete(id);
         });
-        for (const [id, attempt] of liveAttempts) if (attempt.acceptedTurn.conversationId === operation.conversationId) liveAttempts.delete(id);
-        return result;
-      }
+        return { result: { state: "cleared", conversationId: operation.conversationId, transmissionMayHaveStarted: sending }, changes: 1 };
+      });
       case "draft": return ports.mutate("assistant_conversations", () => {
         const record = requireOwned(operation.conversationId, now);
         database.prepare("UPDATE assistant_conversations SET draft=?,composer=? WHERE id=?").run(operation.draft, operation.composer, operation.conversationId);
@@ -563,7 +562,7 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
     /** Repeats return stored facts; only a new acceptance belongs to the orchestration attempt. */
     accept(input: Readonly<{ conversationId: string; expectedRevision: number; messageId: string; text: string; modelText: string; subjectRef: string | null;
       attachments: readonly string[]; proposalAnswer: AssistantAcceptedTurn["proposalAnswer"]; now: string }>): AssistantM1Acceptance {
-      const result = ports.mutate("assistant_messages", (): { result: AssistantM1Acceptance; changes: number } => {
+      return ports.mutate("assistant_messages", (): { result: AssistantM1Acceptance; changes: number } => {
         const record = requireOwned(input.conversationId, input.now), prior = messageRow(input.messageId);
         if (prior !== undefined) {
           const recording = prior.payload.recording;
@@ -587,10 +586,11 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
           subjectRef: input.subjectRef, actionId: null, delivery: "sending", code: null, payload: { parts: [{ kind: "text", runs: [{ kind: "plain", text: input.text }] }],
             recording: { kind: "accepted-turn", acceptedTurn, usage: { state: "pending" } } }, createdAt: input.now, updatedAt: input.now });
         files.accept(input.conversationId, input.messageId, input.attachments, record.expiresAt, input.now);
-        return withinBudget(input.now, { result: { state: "accepted", ordinal, revision, conversationCreatedAt: record.createdAt, acceptedTurn }, changes: 1 });
+        const result: Extract<AssistantM1Acceptance, { state: "accepted" }> = { state: "accepted", ordinal, revision, conversationCreatedAt: record.createdAt, acceptedTurn };
+        const outcome = withinBudget(input.now, { result, changes: 1 });
+        ports.afterCommit(() => { liveAttempts.set(result.acceptedTurn.messageId, result); });
+        return outcome;
       });
-      if (result.state === "accepted") liveAttempts.set(result.acceptedTurn.messageId, result);
-      return result;
     },
     nextOrdinal: (conversationId: string, now: string) => ports.read(() => { requireOwned(conversationId, now); return nextOrdinal(conversationId); }),
     sending(attempt: AssistantM1Attempt, now: string): boolean {
@@ -612,7 +612,7 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
     },
     /** One guarded settlement; returns the new revision, or undefined when the turn is gone, expired or already settled. */
     settle(attempt: AssistantM1Attempt, input: AssistantM1Settlement, now: string): number | undefined {
-      const result = ports.mutate("assistant_messages", () => {
+      return ports.mutate("assistant_messages", () => {
         const current = currentAttempt(attempt, now);
         if (current === undefined) return { result: undefined, changes: 0 };
         const { chat, row } = current, conversationId = chat.id, messageId = row.id, recording = row.payload.recording;
@@ -626,10 +626,12 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
         if (reply !== undefined) insertMessage({ id: reply.id, conversationId, ordinal: appendable(conversationId), role: "assistant", kind: reply.kind,
           modelText: reply.modelText, subjectRef: null, actionId: reply.actionId ?? null, delivery: "settled", code: null,
           payload: { parts: reply.parts, recording: { kind: "reply", acceptedMessageId: messageId } }, createdAt: now, updatedAt: now });
-        return withinBudget(now, { result: bump(conversationId), changes: 1 });
+        const outcome = withinBudget(now, { result: bump(conversationId), changes: 1 });
+        ports.afterCommit(() => {
+          if (liveAttempts.get(attempt.acceptedTurn.messageId) === attempt) liveAttempts.delete(attempt.acceptedTurn.messageId);
+        });
+        return outcome;
       });
-      if (result !== undefined && liveAttempts.get(attempt.acceptedTurn.messageId) === attempt) liveAttempts.delete(attempt.acceptedTurn.messageId);
-      return result;
     },
     /** At most one caption per action; nothing when the conversation was cleared or expired; a full chat or budget refuses. `modelText` defaults to the display text. */
     appendDecision(input: Readonly<{ conversationId: string; actionId: string; messageId: string; text: string; modelText?: string; now: string }>): void {
@@ -644,31 +646,31 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
     },
     /** Startup: every unfinished send becomes `delivery-unknown`; it is never resumed. */
     settleInterrupted(now: string): number {
-      const interrupted = new Set<string>();
-      const result = ports.mutate("assistant_messages", () => {
+      return ports.mutate("assistant_messages", () => {
         const rows = database.prepare(`SELECT m.* FROM assistant_messages m JOIN assistant_conversations c ON c.id=m.conversation_id
           WHERE m.delivery='sending' AND c.profile_id=?`).all(profileId).map(assistantM1MessageFromRow);
         for (const row of rows) {
           validateMembership(row, conversationRow(row.conversationId) ?? refuse("ASSISTANT_CONVERSATION_STALE"));
           database.prepare("UPDATE assistant_messages SET delivery='delivery-unknown',updated_at=? WHERE id=? AND delivery='sending'").run(now, row.id);
           bump(row.conversationId);
-          interrupted.add(row.id);
         }
         const changes = rows.length;
-        return { result: changes, changes: changes + files.reclaim(now, true) };
+        const reclaimed = files.reclaim(now, true);
+        ports.afterCommit(() => { for (const row of rows) liveAttempts.delete(row.id); });
+        return { result: changes, changes: changes + reclaimed };
       });
-      for (const id of interrupted) liveAttempts.delete(id);
-      return result;
     },
     reclaimExpired(now: string): number {
-      const expired = new Set<string>();
-      const result = ports.mutate("assistant_conversations", () => {
+      return ports.mutate("assistant_conversations", () => {
+        const expired = new Set<string>();
         for (const row of database.prepare("SELECT id FROM assistant_conversations WHERE profile_id=? AND expires_at<=?").all(profileId, now)) expired.add(z.object({ id: z.uuid() }).parse(row).id);
         const changes = Number(database.prepare("DELETE FROM assistant_conversations WHERE profile_id=? AND expires_at<=?").run(profileId, now).changes);
-        return { result: changes, changes: changes + files.reclaim(now, false) };
+        const reclaimed = files.reclaim(now, false);
+        ports.afterCommit(() => {
+          for (const [id, attempt] of liveAttempts) if (expired.has(attempt.acceptedTurn.conversationId)) liveAttempts.delete(id);
+        });
+        return { result: changes, changes: changes + reclaimed };
       });
-      for (const [id, attempt] of liveAttempts) if (expired.has(attempt.acceptedTurn.conversationId)) liveAttempts.delete(id);
-      return result;
     },
   });
 }

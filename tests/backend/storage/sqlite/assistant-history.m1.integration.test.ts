@@ -17,18 +17,39 @@ function world() {
   database.exec("PRAGMA foreign_keys=ON");
   for (const statement of [...ASSISTANT_HISTORY_MIGRATION.statements, ...ASSISTANT_ATTACHMENTS_MIGRATION.statements, ...ASSISTANT_M1_HISTORY_STATEMENTS]) database.exec(statement);
   const profileId = randomUUID();
-  let epoch = 7, generation = 0;
+  let epoch = 7, generation = 0, depth = 0, sequence = 0, dirty = false;
+  const callbacks: (() => void)[] = [];
+  function transaction<T>(work: () => T): T {
+    const nested = depth > 0, savepoint = `prepared_${String(++sequence)}`, before = callbacks.length, dirtyBefore = dirty;
+    database.exec(nested ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE"); depth++;
+    let result: T;
+    try {
+      result = work();
+      database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : "COMMIT");
+    } catch (error) {
+      if (nested) { database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`); database.exec(`RELEASE SAVEPOINT ${savepoint}`); }
+      else database.exec("ROLLBACK");
+      callbacks.splice(before); dirty = dirtyBefore; throw error;
+    } finally { depth--; }
+    if (!nested) {
+      if (dirty) generation++;
+      dirty = false;
+      const committed = callbacks.splice(0); for (const publish of committed) publish();
+    }
+    return result;
+  }
   const schemaBefore = database.prepare("SELECT name,sql FROM sqlite_schema ORDER BY name").all();
   const ports: Parameters<typeof createAssistantM1HistoryRepository>[0] = { database, profileId: () => profileId, epoch: () => epoch,
-    read: work => { database.exec("BEGIN"); try { const result = work(); database.exec("COMMIT"); return result; } catch (error) { database.exec("ROLLBACK"); throw error; } },
-    mutate: (_table, work) => { database.exec("BEGIN IMMEDIATE"); try { const value = work(); database.exec("COMMIT"); if (value.changes > 0) generation++; return value.result; } catch (error) { database.exec("ROLLBACK"); throw error; } } };
+    afterCommit: publish => { if (depth === 0) publish(); else callbacks.push(publish); },
+    read: work => { if (depth > 0) return work(); database.exec("BEGIN"); try { const result = work(); database.exec("COMMIT"); return result; } catch (error) { database.exec("ROLLBACK"); throw error; } },
+    mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) };
   const history = createAssistantM1HistoryRepository(ports);
   assert.deepEqual(database.prepare("SELECT name,sql FROM sqlite_schema ORDER BY name").all(), schemaBefore, "prepared construction never changes schema");
   const create = (title = "Chat") => { const id = randomUUID(); history.apply({ operation: "create", conversationId: id, title }, NOW); return id; };
   const revision = (id: string) => { const chat = history.conversation(id, NOW); assert.ok(chat); return chat.revision; };
   const input = (id: string, text = "Explain") => ({ conversationId: id, expectedRevision: revision(id), messageId: randomUUID(), text,
     modelText: `masked ${text}`, subjectRef: null, attachments: [], proposalAnswer: null, now: LATER });
-  return { database, history, create, revision, input, restart: () => createAssistantM1HistoryRepository(ports), generation: () => generation, epoch: () => epoch, profileId: () => profileId,
+  return { database, history, create, revision, input, outer: transaction, restart: () => createAssistantM1HistoryRepository(ports), generation: () => generation, epoch: () => epoch, profileId: () => profileId,
     changeEpoch: () => epoch++ };
 }
 it("prepares real accepted metadata, pending usage and one atomic structured reply settlement", () => {
@@ -260,4 +281,53 @@ it("restores stored facts after owner restart without restoring a live attempt",
   assert.equal(row.delivery, "delivery-unknown"); assert.equal(row.payload.recording.kind, "accepted-turn");
   if (row.payload.recording.kind !== "accepted-turn") assert.fail();
   assert.deepEqual(row.payload.recording.usage, { state: "pending" });
+});
+
+for (const operation of ["clear", "settle", "interrupt", "expire"] as const) it(`preserves the actual sending right after nested ${operation} and outer rollback`, () => {
+  const w = world(), id = w.create(), attempt = w.history.accept(w.input(id));
+  const before = w.history.conversation(id, LATER), generation = w.generation();
+  assert.throws(() => w.outer(() => {
+    if (operation === "clear") w.history.apply({ operation: "clear", conversationId: id, expectedRevision: w.revision(id) }, LATER);
+    if (operation === "settle") w.history.settle(attempt, { delivery: "answered", usage: aggregateAssistantUsage([]) }, LATER);
+    if (operation === "interrupt") w.history.settleInterrupted(LATER);
+    if (operation === "expire") {
+      const expiry = w.history.list(NOW).chats[0]?.expiresAt; assert.ok(expiry); w.history.reclaimExpired(expiry);
+    }
+    throw new Error("outer-rollback");
+  }), /outer-rollback/u);
+  assert.equal(w.generation(), generation); assert.deepEqual(w.history.conversation(id, LATER), before);
+  assert.equal(w.history.sending(attempt, LATER), true);
+  assert.equal(w.history.settle(attempt, { delivery: "answered", usage: aggregateAssistantUsage([]) }, LATER), 3);
+});
+it("publishes a new nested acceptance only after outer commit and grants no right on rollback", () => {
+  const w = world(), id = w.create(), input = w.input(id);
+  let rolledBack: ReturnType<typeof w.history.accept> | undefined;
+  assert.throws(() => w.outer(() => {
+    rolledBack = w.history.accept(input);
+    assert.equal(w.history.sending(rolledBack, LATER), false, "SAVEPOINT release is not publication");
+    throw new Error("outer-rollback");
+  }), /outer-rollback/u);
+  assert.ok(rolledBack); assert.equal(w.history.sending(rolledBack, LATER), false);
+  assert.equal(w.history.conversation(id, LATER)?.messages.length, 0);
+  const committed = w.outer(() => {
+    const accepted = w.history.accept(input); assert.equal(w.history.sending(accepted, LATER), false); return accepted;
+  });
+  assert.equal(w.history.sending(rolledBack, LATER), false);
+  assert.equal(w.history.sending(committed, LATER), true);
+  assert.equal(w.outer(() => w.history.settle(committed, { delivery: "answered", usage: aggregateAssistantUsage([]) }, LATER)), 3);
+  assert.equal(w.history.sending(committed, LATER), false);
+});
+it("discards inner-savepoint publications while committing unrelated outer work", () => {
+  const w = world(), id = w.create(), attempt = w.history.accept(w.input(id)), generation = w.generation();
+  w.outer(() => {
+    assert.throws(() => w.outer(() => {
+      w.history.settle(attempt, { delivery: "answered", usage: aggregateAssistantUsage([]) }, LATER);
+      throw new Error("inner-rollback");
+    }), /inner-rollback/u);
+    w.history.apply({ operation: "draft", conversationId: id, draft: "retained", composer: "" }, LATER);
+  });
+  assert.equal(w.generation(), generation + 1);
+  assert.equal(w.history.conversation(id, LATER)?.draft, "retained");
+  assert.equal(w.history.sending(attempt, LATER), true);
+  assert.equal(w.history.settle(attempt, { delivery: "answered", usage: aggregateAssistantUsage([]) }, LATER), 3);
 });
