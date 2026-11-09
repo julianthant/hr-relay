@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, it, vi } from "vitest";
+import { withAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { PersonLookupCanonicalInput } from "../../../src/models/workflows/person-lookup/input.js";
+import { parseCanonicalInputSnapshot } from "../../../src/models/workflow/canonical-input.js";
+import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { createAssistantAuthorization } from "../../../src/backend/assistant/authorization.js";
 import { createAssistantProposals, plannedRowDisplay } from "../../../src/backend/assistant/proposals.js";
 import { AssistantToolRefusal } from "../../../src/backend/assistant/plugins/plugin.js";
@@ -410,4 +415,28 @@ it.each(["ready", "refused", "unknown"] as const)("keeps a confirmed Resume appl
   assert.equal(o.captions().join().includes("private capacity diagnostic"), false);
   await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
   assert.deepEqual(o.ensured, [command.commandId]);
+});
+
+it("refuses pause, resume and cancel cards for a protected selected Lookup before any authorization or run effect", async () => {
+  const o = await owners(), active = o.database.authority.runtimeConfig.get(); assert.ok(active);
+  const eid = "10000001", base = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(), itemId: randomUUID() }));
+  const run = RunRecordSchema.parse({ ...base, envelope: { ...base.envelope, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint },
+    input: { ...base.input, raw: { emplId: eid }, parsed: { schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+      value: { mode: "search", emplId: eid, crmCheck: true, keepNonHdh: false, includeCrmDates: false },
+      protectedBindings: [{ kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: randomUUID() }] } } });
+  const canonical = parseCanonicalInputSnapshot(PersonLookupCanonicalInput, run.input.parsed);
+  assert.ok(canonical.mode === "search" && "emplId" in canonical && canonical.emplId === eid);
+  assert.equal(o.database.authority.runs.enqueue(run).state, "inserted");
+  assert.equal(o.h.lifecycle.read(run.envelope.runId).state, "present");
+  const reference = o.references.issue("R", run.envelope.runId, "Protected test subject", run.envelope.runId, run.version);
+  const snapshot = () => withAuthorityDatabaseReadOnly(o.h.profile.admission, o.h.profile.path, raw => Object.fromEntries(
+    ["assistant_chats", "assistant_actions", "commands", "command_audits", "runs"].map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all()])));
+  const before = snapshot();
+  for (const action of ["pause", "resume", "cancel"] as const) {
+    await assert.rejects(o.tool("propose_run_action").propose({ run: reference, action }, o.context),
+      (error: unknown) => error instanceof AssistantToolRefusal && error.code === "ASSISTANT_PROPOSAL_REFUSED" && !error.message.includes(eid));
+    assert.deepEqual(snapshot(), before, action);
+    assert.deepEqual(o.database.authority.runs.get(run.envelope.runId), run);
+  }
+  assert.deepEqual(o.captions(), []); assert.deepEqual(o.ensured, []);
 });

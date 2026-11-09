@@ -250,6 +250,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         const input = runActionParameters.parse(value), reference = context.references.resolve(input.run, ["R"]);
         const run = requireTrustRun(deps.runs, reference.target);
         if (reference.version !== undefined && reference.version !== run.version) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
+        if (hasProtectedSubject(run.input.parsed.protectedBindings)) refuse();
         const descriptor = deps.descriptors.resolve(run.envelope.workflow), label = descriptor?.label ?? run.envelope.workflow;
         const target = { runId: run.envelope.runId, expectedVersion: run.version };
         const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
