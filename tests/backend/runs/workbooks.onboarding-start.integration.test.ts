@@ -103,8 +103,24 @@ describe("selected saved Onboarding row start authority", () => {
       assert.deepEqual(reference.request.fields, ONBOARDING_ROSTER_FIELDS);
       assert.deepEqual(reference.request.selectedRow, wire.planned[index].workbookReferences?.[0]?.selectedRow);
     }
+    assert.deepEqual(f.repository.lastUsed(descriptor.id)?.sources, [{ libraryId: f.id, sheetId: "people" }]);
     assert.deepEqual(f.database.authority.runs.listByWorkflow(descriptor.id).map(run => run.envelope.runId).sort(), runs.map(run => run.envelope.runId).sort());
     assert.deepEqual(f.writeCalls, []);
+  });
+
+  it("refuses a reviewed batch whose accepted entries use different physical worksheets", async () => {
+    const f = await fixture();
+    const request = f.request([first, second]);
+    request.workbookReferences = [f.selection(1, "archive", "archived"), f.selection(2, "people", "second")];
+    const { record } = f.plan(request);
+    assert.equal(record.planned.length, 2);
+    const command = world.startCommand(record);
+    const result = f.kernel.execute(command);
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "replan-required");
+    assert.equal(f.database.authority.startPlans.get(record.startPlanId)?.consumedBy, undefined);
+    assert.deepEqual(f.database.authority.runs.listByWorkflow(descriptor.id), []);
+    assert.equal(f.repository.lastUsed(descriptor.id), undefined);
   });
 
   it("retains ambiguous physical selection in the reference digest and plan fingerprint", async () => {

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { rmSync } from "node:fs";
 import { afterAll, afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { buildRunWorkbookSection, createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
-import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookLibraryAdapter } from "../../../src/backend/processing/providers/workbook-library-adapter.js";
 import { createProviderClient } from "../../../src/backend/processing/providers/provider-client.js";
 import { readWorkbookResultTask } from "../../../src/backend/processing/workbooks/tasks/read-result.js";
@@ -177,6 +178,53 @@ it("binds the exact selected worksheet and revision through real planning and st
   const selected = f.database.authority.startPlans.get(explicit.startPlanId); assert.ok(selected);
   const selectedRun = f.start(selected), selectedBound = selectedRun.input.workbookReferences?.[0]; assert.ok(selectedBound);
   expect(parseRunWorkbookReference(selectedBound)).toMatchObject({ request: { libraryId: f.id }, snapshot: { libraryId: f.id, version: 3 } });
+});
+
+it("records a source only for a nonempty confirmed Start and keeps the latest accepted command on replay", async () => {
+  const f = await fixture();
+  const first = f.plan();
+  expect(f.repository.lastUsed(descriptor.id)).toBeUndefined();
+  const refused = f.planner.plan({ ...f.request, workbookReferences: [] });
+  expect(refused.planned).toEqual([]);
+  const emptyPlan = f.database.authority.startPlans.get(refused.startPlanId); assert.ok(emptyPlan);
+  expect(f.kernel.execute(world.startCommand(emptyPlan)).state).toBe("applied");
+  expect(f.repository.lastUsed(descriptor.id)).toBeUndefined();
+  const firstCommand = world.startCommand(first);
+  expect(f.kernel.execute(firstCommand).state).toBe("applied");
+  expect(f.repository.lastUsed(descriptor.id)).toMatchObject({
+    revision: 1, acceptedCommandId: firstCommand.commandId, sources: [{ libraryId: f.id, sheetId: "people" }],
+  });
+  const rejectedPlan = f.plan();
+  const rejectedCommand = world.startCommand(rejectedPlan);
+  const rejected = f.kernel.execute({ ...rejectedCommand, payload: { ...rejectedCommand.payload,
+    inputFingerprint: "b".repeat(64) } });
+  expect(rejected.state).toBe("rejected");
+  expect(f.repository.lastUsed(descriptor.id)?.acceptedCommandId).toBe(firstCommand.commandId);
+  const second = f.plan();
+  const secondCommand = world.startCommand(second);
+  expect(f.kernel.execute(secondCommand).state).toBe("applied");
+  const latest = f.repository.lastUsed(descriptor.id);
+  expect(latest).toMatchObject({ revision: 2, acceptedCommandId: secondCommand.commandId });
+  expect(f.kernel.execute(firstCommand).state).toBe("already-applied");
+  expect(f.repository.lastUsed(descriptor.id)).toEqual(latest);
+});
+
+it("rolls back a confirmed Start when the real preference insert fails", async () => {
+  const f = await fixture(), plan = f.plan(), command = world.startCommand(plan);
+  const profile = world.profiles.at(-1); assert.ok(profile);
+  using raw = new DatabaseSync(profile.path);
+  raw.exec("CREATE TRIGGER reject_start_selection BEFORE INSERT ON workflow_workbook_selections BEGIN SELECT RAISE(ABORT, 'injected preference failure'); END");
+  const generation = f.database.getMeta().authorityGeneration;
+  assert.throws(() => f.kernel.execute(command), error => error instanceof WorkbookLibraryError
+    && error.code === "WORKBOOK_STORAGE_FAILED" && error.cause instanceof Error
+    && error.cause.message === "injected preference failure");
+  expect(f.repository.lastUsed(descriptor.id)).toBeUndefined();
+  expect(f.database.authority.startPlans.get(plan.startPlanId)?.consumedBy).toBeUndefined();
+  expect(f.database.authority.runs.listByWorkflow(descriptor.id)).toEqual([]);
+  expect(f.database.authority.runSessions.listByWorkflow(descriptor.id)).toEqual([]);
+  expect(f.database.authority.commands.get(command.commandId)).toBeUndefined();
+  expect(f.database.authority.commandAudits.findByCommand(command.commandId)).toBeUndefined();
+  expect(f.database.getMeta().authorityGeneration).toBe(generation);
 });
 
 it("requires exactly one valid explicit source selection", async () => {

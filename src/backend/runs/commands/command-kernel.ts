@@ -511,8 +511,10 @@ function executeStartRun(
       }
     }
   }
+  let selectedSources: { libraryId: string; sheetId: string }[] | undefined;
   for (const planned of plan.planned) {
     const captured = planned.workbookReferences ?? [];
+    const sources: { libraryId: string; sheetId: string }[] = [];
     const requirement = descriptor.workbookReference;
     if (captured.length !== (requirement === undefined ? 0 : 1)) {
       reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
@@ -536,11 +538,16 @@ function executeStartRun(
         });
         if (canonicalJsonStringify(bindRunWorkbookReference(reference.request, refreshed)) !== canonicalJsonStringify(bound))
           throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+        sources.push({ libraryId: snapshot.libraryId, sheetId: worksheet.sheetId });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
         reject(request, "replan-required", "Workbook source changed after planning; review a fresh plan before starting");
       }
     }
+    if (selectedSources !== undefined && canonicalJsonStringify(sources) !== canonicalJsonStringify(selectedSources)) {
+      reject(request, "replan-required", "Workbook source selection differs between planned entries; review a fresh plan before starting");
+    }
+    selectedSources = sources;
   }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
@@ -624,6 +631,12 @@ function executeStartRun(
     now,
     `plan ${plan.startPlanId}`,
   );
+
+  if (fanOut.runs.length > 0 && selectedSources !== undefined && selectedSources.length > 0) {
+    repositories.workbooks.rememberLastUsed({
+      workflowId: plan.workflowId, acceptedCommandId: request.commandId, usedAt: now, sources: selectedSources,
+    });
+  }
 
   return applied(
     request,
