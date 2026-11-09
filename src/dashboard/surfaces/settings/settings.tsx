@@ -1,4 +1,4 @@
-import { ArrowLeft,ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Settings as SettingsIcon,Sparkles,Table2 } from "lucide-react";
+import { ArrowLeft,ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Settings as SettingsIcon,Sparkles,Table2 } from "lucide-react";
 import { z } from "zod";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
@@ -22,7 +22,7 @@ import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
-import { StatusMockAccount } from "./status-mock/status-mock.js";
+import { StatusMockAccount,StatusMockSubscription } from "./status-mock/status-mock.js";
 import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
 import { StatusMockGeneral } from "./status-mock/status-mock-general.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
@@ -58,6 +58,7 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   capabilities: Table2,
   keyboard: MessagesSquare,
   unrendered: CircleAlert,
+  subscription: CreditCard,
   spreadsheets: Folder,
   explorer: Search,
   activity: History,
@@ -330,7 +331,8 @@ export function SettingsPage({
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
         )}
         {resolution.state === "open" && resolution.entry.id === "general" && mockStatus !== undefined && <StatusMockGeneral />}
-        {resolution.state === "open" && resolution.entry.id === "credentials" && (mockStatus?.startsWith("account") || mockStatus?.startsWith("general-a-chatgpt") ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
+        {resolution.state === "open" && resolution.entry.id === "credentials" && (mockStatus?.startsWith("account") ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
+        {resolution.state === "open" && resolution.entry.id === "subscription" && <StatusMockSubscription frame={mockStatus ?? "subscription"} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <PreflightSection editor={editor} workflowLabels={workflowLabels} />
         )}

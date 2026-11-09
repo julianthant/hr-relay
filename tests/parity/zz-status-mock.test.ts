@@ -16,8 +16,8 @@ const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 test.use({ deviceScaleFactor: Number(process.env.STATUS_MOCK_SCALE ?? 1) });
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
-  "general-a": "general", "account": "credentials", "account-edit": "credentials", "account-delete": "credentials", "account-duo-setup": "credentials",
-  "general-a-chatgpt-limit": "credentials", "general-a-chatgpt-disconnected": "credentials",
+  "general-a": "general", "general-a-browser": "general", "account": "credentials", "account-edit": "credentials", "account-password": "credentials", "account-delete": "credentials", "account-duo-setup": "credentials",
+  "subscription": "subscription", "subscription-limit": "subscription", "subscription-disconnected": "subscription",
   "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard", "settings-storage": "storage",
 };
 
@@ -107,11 +107,16 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (settings === "credentials") {
       await expect(page.getByRole("heading", { name: "Account", exact: true }).or(page.locator(".ds-page-heading-title", { hasText: "Account" }))).toBeVisible();
       if (id === "account-edit") await expect(page.getByRole("dialog", { name: "Edit name" })).toBeVisible();
+      if (id === "account-password") await expect(page.getByRole("dialog", { name: "Change password" })).toBeVisible();
       if (id === "account-delete") await expect(page.getByRole("alertdialog").or(page.getByRole("dialog")).getByRole("button", { name: "Delete account", exact: true })).toBeVisible();
       if (id === "account-duo-setup") await expect(page.getByText("Needs setup")).toBeVisible();
-      if (id.endsWith("limit")) await expect(page.getByText("Usage limit reached")).toBeVisible();
-      if (id.endsWith("disconnected")) await expect(page.getByText("Not connected")).toBeVisible();
     }
+    if (settings === "subscription") {
+      await expect(page.locator(".ds-page-heading-title", { hasText: "Subscription" })).toBeVisible();
+      if (id === "subscription-limit") await expect(page.getByText("0% left")).toBeVisible();
+      if (id === "subscription-disconnected") await expect(page.getByText("Not connected")).toBeVisible();
+    }
+    if (id === "general-a-browser") await page.getByRole("combobox", { name: "Browser window" }).or(page.getByRole("button", { name: "Browser window" })).first().click();
     if (settings === "keyboard") await expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible();
     if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
     await settle(page);
@@ -367,9 +372,9 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  for (const id of ["general", "credentials", "preflight", "activity", "keyboard", "storage"]) {
+  for (const id of ["general", "credentials", "subscription", "preflight", "activity", "keyboard", "storage"]) {
     // General and Account show the moved rows, which only the mock Account page carries.
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "credentials" ? "&statusMock=account" : ""}`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "credentials" ? "&statusMock=account" : id === "subscription" ? "&statusMock=subscription" : ""}`);
     await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await settle(page);
@@ -423,36 +428,59 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   expect(errors).toEqual([]);
 });
 
-// Account edit and delete flows, and General's toggles and pickers, on the mock fixtures.
-test("account and general interactions", async ({ page }) => {
+// Account edit, password and delete flows, Subscription, and General's toggles and pickers, on the mock fixtures.
+test("account, subscription and general interactions", async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=credentials&statusMock=account`);
   await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
-  await expect(page.locator("nav.settings-panel-nav").getByRole("link", { name: "Routes" })).toHaveCount(0);
-  await expect(page.locator("nav.settings-panel-nav").getByRole("link", { name: "Paths" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Edit Name", exact: true }).click();
+  const nav = page.locator("nav.settings-panel-nav");
+  for (const name of ["General", "Account", "Subscription"]) await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
+  for (const name of ["Routes", "Paths"]) await expect(nav.getByRole("link", { name })).toHaveCount(0);
+  for (const name of ["Relay account", "UCPath sign-in", "Workflow configuration", "Security"]) await expect(page.getByRole("group", { name, exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit Last signed in" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit name", exact: true }).click();
   const edit = page.getByRole("dialog", { name: "Edit name" });
   await expect(edit.getByRole("button", { name: "Close" })).toHaveCount(0);
   await edit.getByRole("textbox", { name: "Name" }).fill("Casey Park");
   await edit.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("Casey Park")).toBeVisible();
-  await page.getByRole("button", { name: "Edit Name", exact: true }).click();
+  await expect(page.getByText("Casey Park").first()).toBeVisible();
+  await page.getByRole("button", { name: "Edit name", exact: true }).click();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Change Relay password", exact: true }).click();
+  const password = page.getByRole("dialog", { name: "Change password" });
+  await expect(password.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await password.getByRole("textbox", { name: "Current password" }).fill("old-secret");
+  await password.getByRole("textbox", { name: "New password", exact: true }).fill("new-secret");
+  await password.getByRole("textbox", { name: "Confirm new password" }).fill("other");
+  await expect(password.getByText("The passwords don’t match.")).toBeVisible();
+  await expect(password.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await password.getByRole("textbox", { name: "Confirm new password" }).fill("new-secret");
+  await password.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-  await expect(page.getByText("Not connected")).toBeVisible();
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=general&statusMock=general-a`);
-  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await nav.getByRole("link", { name: "Subscription", exact: true }).click();
+  await expect(page.getByText("Your plan is managed through ChatGPT.")).toBeVisible();
+  for (const name of ["5-hour limit", "Weekly limit"]) await expect(page.getByRole("progressbar", { name: `${name} left` })).toBeVisible();
   const full = page.getByRole("switch", { name: "Full access" });
   await expect(full).not.toBeChecked();
   await full.dispatchEvent("click");
   await expect(full).toBeChecked();
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await expect(page.getByText("Not connected")).toBeVisible();
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=general&statusMock=general-a`);
+  await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+  await expect(page.getByRole("group", { name: "General", exact: true })).toBeVisible();
+  for (const name of ["Downloads", "Job end date", "Theme", "Animations", "Browser window"]) await expect(page.getByRole("group", { name: "General", exact: true }).getByText(name, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Run without a browser window")).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });

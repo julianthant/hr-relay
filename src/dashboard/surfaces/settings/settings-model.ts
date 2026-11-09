@@ -9,6 +9,7 @@ EditableSettingsWire
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../../models/dashboard/settings.js";
+import { statusMock } from "./status-mock/status-mock-model.js";
 
 
 export type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
@@ -30,6 +31,7 @@ export type SettingsNavIcon =
   | "capabilities"
   | "keyboard"
   | "unrendered"
+  | "subscription"
   | "spreadsheets"
   | "explorer"
   | "activity";
@@ -125,6 +127,8 @@ export function buildSettingsNav(
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
     clientEntry("credentials", "Account", "credentials"),
+    // Mock-only until the plan and limits are served.
+    ...(statusMock() === undefined ? [] : [clientEntry("subscription", "Subscription", "subscription")]),
   ] });
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
     .map(section => servedEntry(section.id, section.label)) ?? [];

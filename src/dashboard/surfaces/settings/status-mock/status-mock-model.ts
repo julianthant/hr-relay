@@ -1,12 +1,18 @@
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "settings-storage", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-duo-setup", "general-a-chatgpt-limit", "general-a-chatgpt-disconnected", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "search-keyboard", "settings-storage", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
-/** Account page fixtures: Email is not served after sign-in, so the page has no email row. */
+/** Account and Subscription fixtures. Email is not served after sign-in, so the Account page has no email row; the ChatGPT email comes with the connected account. */
 export const STATUS_MOCK_ACCOUNT = {
-  values: { name: "Jordan Lee", initials: "JL", timekeeper: "Lee, Jordan", ucpathUsername: "jlee", lastSignedIn: "Aug 3, 2026, 8:41 AM" },
+  values: { name: "Jordan Lee", username: "jordan.lee", initials: "JL", ucpathUsername: "jlee", timekeeper: "Lee, Jordan", timekeeperInitials: "JL", lastSignedIn: "Aug 3, 2026, 8:41 AM" },
   email: "jordan.lee@example.com",
-  limitNote: "Usage limit reached · resets 9:40 PM",
+} as const;
+
+/** Plan name, price and limits are not served today (backend gap); the 5-hour limit frame is the one that has run out. */
+export const STATUS_MOCK_SUBSCRIPTION = {
+  plan: { name: "ChatGPT Plus", price: "$20 / month" },
+  limits: [{ label: "5-hour limit", resets: "2h 10m", left: 64 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
+  limitReached: [{ label: "5-hour limit", resets: "1h 25m", left: 0 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
 } as const;
 
 /** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. */

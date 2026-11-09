@@ -2,10 +2,11 @@ import { Check, ChevronDown, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, dsIcon, useToasts } from "../../../ds/ui.js";
-import { AccountSettings, type AccountChatGpt, type AccountValues } from "../account/account-settings.js";
+import { AccountSettings, type AccountValues } from "../account/account-settings.js";
+import { SubscriptionSettings, type SubscriptionAccount, type SubscriptionPermissions } from "../subscription/subscription-settings.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
-import { STATUS_MOCK_ACCOUNT, STATUS_MOCK_BLOCKERS, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_SPREADSHEETS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
+import { STATUS_MOCK_ACCOUNT, STATUS_MOCK_BLOCKERS, STATUS_MOCK_SUBSCRIPTION, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_SPREADSHEETS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
 
 
 
@@ -71,13 +72,19 @@ function ToastsLiveMock() {
 export function StatusMockAccount({ frame }: { frame: StatusMockId }) {
   const [values, setValues] = useState<AccountValues>(STATUS_MOCK_ACCOUNT.values);
   const [duo, setDuo] = useState<"ready" | "setup">(frame === "account-duo-setup" ? "setup" : "ready");
-  const [chatgpt, setChatGpt] = useState<AccountChatGpt>(frame === "general-a-chatgpt-disconnected" ? { state: "disconnected" }
-    : frame === "general-a-chatgpt-limit" ? { state: "limit", email: STATUS_MOCK_ACCOUNT.email, note: STATUS_MOCK_ACCOUNT.limitNote } : { state: "connected", email: STATUS_MOCK_ACCOUNT.email });
-  return <AccountSettings values={values} duo={duo} chatgpt={chatgpt}
-    initialEdit={frame === "account-edit" ? "name" : undefined} initialConfirmDelete={frame === "account-delete"}
+  return <AccountSettings values={values} duo={duo}
+    initialEdit={frame === "account-edit" ? "name" : frame === "account-password" ? "relayPassword" : undefined} initialConfirmDelete={frame === "account-delete"}
     onSave={(field, value) => { if (field !== "ucpathPassword") setValues(current => ({ ...current, [field]: value })); }}
-    onDuoSetup={() => setDuo("ready")} onSignOut={noop}
-    onChatGptConnect={() => setChatGpt({ state: "connected", email: STATUS_MOCK_ACCOUNT.email })} onChatGptDisconnect={() => setChatGpt({ state: "disconnected" })} onDelete={noop} />;
+    onPasswordChange={noop} onDuoSetup={() => setDuo("ready")} onSignOut={noop} onDelete={noop} />;
+}
+
+/** The Subscription page on fixtures; the frame picks a connected plan, one whose 5-hour limit has run out, or a disconnected ChatGPT. */
+export function StatusMockSubscription({ frame }: { frame: StatusMockId }) {
+  const connected = (limits: typeof STATUS_MOCK_SUBSCRIPTION.limits | typeof STATUS_MOCK_SUBSCRIPTION.limitReached): SubscriptionAccount => ({ state: "connected", email: STATUS_MOCK_ACCOUNT.email, plan: STATUS_MOCK_SUBSCRIPTION.plan, limits });
+  const [account, setAccount] = useState<SubscriptionAccount>(frame === "subscription-disconnected" ? { state: "disconnected" } : connected(frame === "subscription-limit" ? STATUS_MOCK_SUBSCRIPTION.limitReached : STATUS_MOCK_SUBSCRIPTION.limits));
+  const [permissions, setPermissions] = useState<SubscriptionPermissions>({ defaultPermissions: true, fullAccess: false });
+  return <SubscriptionSettings account={account} permissions={permissions} onPermissions={setPermissions}
+    onConnect={() => setAccount(connected(STATUS_MOCK_SUBSCRIPTION.limits))} onDisconnect={() => setAccount({ state: "disconnected" })} />;
 }
 
 /** Sign-up frames: the first-run check, as the Ready step (A) or its own step before Ready (B). */
