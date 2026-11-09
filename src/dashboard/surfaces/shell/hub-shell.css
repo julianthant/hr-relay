@@ -10,7 +10,7 @@
 .hub-field::placeholder { color:var(--ui-muted); }
 .hub-slot { position:fixed;top:12px;right:12px;bottom:12px;width:420px;max-width:calc(100vw - 32px);border:1px solid var(--ui-stroke);border-radius:8px;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);z-index:var(--hub-panel-layer); }
 :root:has(#hub-shell-assistant:not([hidden])) #dashboard-main-region { padding-right:432px; }
-:root:has(#hub-shell-assistant:not([hidden])) .session-dock { right:444px; max-width: calc(100vw - 456px); }
+:root:has(#hub-shell-assistant:not([hidden])) .session-dock { right:452px; }
 :root:has(#hub-shell-assistant:not([hidden])) [data-slot=toast-viewport] { right:448px; }
 .hub-slot[hidden] { display:none; }
 .hub-slot-header { display:flex;padding:10px 12px;min-height:52px;align-items:center;border-bottom:1px solid var(--ui-stroke);gap:8px; }
