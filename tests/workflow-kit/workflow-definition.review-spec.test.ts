@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
+import { z } from "zod";
+import { SearchPersonOrg } from "../../src/models/systems/ucpath/search-person-org.js";
 import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../../src/models/workflow/review-spec.js";
 import { compileWorkflow } from "../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { onboardingWorkflow } from "../../src/workflows/onboarding/workflow.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
+import { createSearchWorkflowDefinitionFixtures } from "../support/helpers/search-workflow-definition-fixtures.js";
 
 const review = Object.freeze({ pages: Object.freeze([Object.freeze({
   id: "employee-search", title: "Employee search", mode: "Read only" as const, nodeIds: ["searching", "matching", "search-identity"],
@@ -17,6 +20,36 @@ function compileReview(candidate: WorkflowStepReview) {
   return compileWorkflow({ ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries], index) =>
     [{ ...group, review: index === 0 ? candidate : undefined }, entries] as const) });
 }
+
+it("freezes nested review data when the authored review is already shallow-frozen", () => {
+  const authoredReview = Object.freeze({ pages: [{ id: "search", title: "Employee search", mode: "Read only", nodeIds: ["search"],
+    lines: [{ id: "read", kind: "read", text: "Read the requested search kind.", nodeIds: ["search"] }],
+    fields: [{ id: "kind", operatorField: "Search kind", source: { origin: "Run input", detail: "The requested search kind.",
+      chain: [{ label: "Requested kind", detail: "Use the admitted input.", read: { stepKey: "search", page: "Employee search", field: "Search kind" } }] } }],
+  }], branchLabels: [] } satisfies WorkflowStepReview);
+  assert.equal(Object.isFrozen(authoredReview), true);
+  assert.equal(Object.isFrozen(authoredReview.pages), false);
+  const { fixtureWorkflow, lookupInput } = createSearchWorkflowDefinitionFixtures();
+  const definition = fixtureWorkflow("review-freeze", author => {
+    const search = author.task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
+    return { steps: [[{ key: "search", label: "Search", review: authoredReview, operatorFields: [
+      { label: "Search kind", sources: [{ nodeId: "search", kind: "input", fieldPath: "kind" }] },
+    ] }, [search]]], result: author.result(z.strictObject({ state: z.literal("done") }), [], () => ({ state: "done" as const })) };
+  });
+  assert.doesNotThrow(() => compileWorkflow(definition));
+  const frozen = definition.steps[0]?.[0].review; assert.ok(frozen);
+  const page = frozen.pages[0]; assert.ok(page);
+  const field = page.fields[0]; assert.ok(field);
+  const link = field.source.chain[0]; assert.ok(link?.read);
+  for (const value of [definition, definition.steps[0]?.[0], frozen, frozen.pages, page, page.nodeIds, page.lines,
+    page.fields, field, field.source, field.source.chain, link, link.read, frozen.branchLabels]) assert.equal(Object.isFrozen(value), true);
+  assert.equal(Reflect.set(page.nodeIds, "0", "changed"), false);
+  assert.equal(Reflect.set(field.source, "detail", "changed"), false);
+  assert.equal(Reflect.set(link.read, "field", "changed"), false);
+  assert.equal(page.nodeIds[0], "search");
+  assert.equal(field.source.detail, "The requested search kind.");
+  assert.equal(link.read.field, "Search kind");
+});
 
 it("accepts frozen review declarations and validates page, node, field and source references", () => {
   assert.doesNotThrow(() => compileReview(review));

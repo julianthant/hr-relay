@@ -9,6 +9,12 @@ import { manualClock } from "../../src/rules/time/clock.js";
 import { compileWorkflow } from "../../src/workflow-kit/workflow-definition.js";
 import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
 
+function assertFrozenRecursively(value: unknown): void {
+  if (value === null || typeof value !== "object") return;
+  assert.equal(Object.isFrozen(value), true);
+  Object.values(value).forEach(assertFrozenRecursively);
+}
+
 it("authors every registered step and retains every visible operator field exactly once", () => {
   for (const { definition, descriptor } of READABLE_WORKFLOW_MODULES) {
     for (const [group] of definition.steps) {
@@ -19,6 +25,7 @@ it("authors every registered step and retains every visible operator field exact
       assert.deepEqual([...fields].sort(), visible.map(field => field.label).sort(), `${definition.id}/${group.key}`);
       assert.equal(Object.isFrozen(group.review), true);
       assert.equal(Object.isFrozen(group.review.pages), true);
+      assertFrozenRecursively(group.review);
     }
   }
 });

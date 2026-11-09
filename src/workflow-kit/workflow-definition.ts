@@ -1,5 +1,6 @@
 import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../models/workflow/review-spec.js";
 import { assertSchemaOffersCollectionPath } from "../models/validation/contract-boundary.js";
+import { deepFreeze } from "../rules/validation/immutability.js";
 import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
@@ -906,7 +907,9 @@ export function defineWorkflow<
     role,
     ...(intake === undefined ? {} : { intake }),
     steps: Object.freeze(authored.steps.map(([group, entries]) => Object.freeze([
-      Object.freeze(Object.defineProperty({ ...group }, GROUP_OWNER, {
+      Object.freeze(Object.defineProperty({ ...group,
+        ...(group.review === undefined ? {} : { review: deepFreeze(WorkflowStepReviewSchema.parse(group.review)) }),
+      }, GROUP_OWNER, {
         value: group[GROUP_OWNER] ?? group, enumerable: false,
       })),
       Object.freeze([...entries]),
