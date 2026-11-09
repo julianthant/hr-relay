@@ -47,6 +47,7 @@ import { boundProfileCredentials,createBoundProfileFixture } from "../../../supp
 import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 
 const hostFacts = { primaryDisplay: null };
@@ -60,7 +61,7 @@ const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 });
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 = 8, extractionEvidence = false,
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 23 = 8, extractionEvidence = false,
   workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
@@ -132,7 +133,8 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
+    if (sourceVersion === 23) raw.exec("DROP TABLE workflow_workbook_selections");
+    else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
     else if (sourceVersion === 19) restoreSchema19RunSettlementFixture(raw);
     else restoreSchema18WorkbookReferenceFixture(raw);
     if (sourceVersion < 18) removeEmptySchema18WorkbookCatalog(raw);
@@ -695,4 +697,44 @@ it.each(([17, 18] as const).flatMap(version => (["run", "terminal-run", "plan", 
         assert.equal(raw.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name='workbook_reference_upgrade_guard'").get()?.count, 0);
       } finally { raw.close(); }
     } finally { await f.close(); }
+});
+
+
+it.each(workbookFormats.flatMap(format => (['run', 'terminal-run', 'plan', 'consumed-plan'] as const).map(owner => ({ ...format, owner }))))(
+  'upgrades schema 23 $format $owner references through a verified historical backup and strict current readback', async ({ owner, schema, value }) => {
+  const f = await readyBoundEight(owner.includes('run') ? 'queued' : 'idle', 23, false,
+    { owner, schemaHash: deriveSchemaHash(schema, 'output'), value: JsonValueSchema.parse(schema.parse(value)) });
+  try {
+    const before = rawEight(f.path, 23);
+    const result = await (owner === 'run'
+      ? upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)
+      : upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock));
+    assert.deepEqual(result, { state: 'upgraded', fromSchemaVersion: 23, toSchemaVersion: 24, credentials: 'unchanged' });
+    const after = rawEight(f.path, 24);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === 'database_states') assert.deepEqual(after[table], rows.map(row => ({ ...row, schema_version: 24 })));
+      else if (table === 'database_upgrades') assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows);
+    }
+    assert.deepEqual(after.workflow_workbook_selections, []);
+    const settled = after.database_upgrades?.find(row => row.phase === 'settled');
+    assert.ok(settled && typeof settled.payload_json === 'string');
+    const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(settled.payload_json));
+    assert.ok(record.phase === 'settled');
+    const restore = f.acquireRestore();
+    try {
+      const stopped = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
+      try {
+        const backup = verifyStoppedBackupManifestAtPath(stopped, record.backup.manifestPath);
+        assert.equal(backup.manifest.schemaVersion, 23);
+      } finally { stopped.release(); }
+    } finally { restore.release(); }
+    const fresh = f.machine.admitProfile(f.claim);
+    try {
+      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: 'selection-upgrade-readback' }, systemClock,
+        undefined, undefined, undefined, boundProfileCredentials(fresh));
+      try { assert.equal(database.authority.workbooks.lastUsed('person-lookup'), undefined); }
+      finally { database.close(); }
+    } finally { fresh.release(); }
+  } finally { await f.close(); }
 });

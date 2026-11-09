@@ -9,6 +9,7 @@ import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../
 
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  database.exec("DROP TABLE workflow_workbook_selections");
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));
   assert.ok(trigger);

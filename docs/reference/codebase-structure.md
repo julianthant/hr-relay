@@ -48,7 +48,7 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
-`src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots and action receipts alongside editable revisions.
+`src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots, action receipts and per-workflow last-used source selections alongside editable revisions. `src/models/config/authority.ts` owns the current authority schema and build-envelope version constants; SQLite migrations re-export those bindings.
 
 `src/models/profiles/profile-identity.ts` owns the derived name/initials runtime shape.
 `src/backend/storage/configuration/protected-settings-upgrade.ts` owns stopped source authentication and

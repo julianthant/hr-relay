@@ -9,7 +9,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const forbidden = (): never => { throw new Error("Unexpected live workbook or write access"); };
-const repository: WorkbookLibraryRepository = { create: forbidden, read: forbidden, revision: forbidden, list: forbidden, save: forbidden,
+const repository: WorkbookLibraryRepository = { lastUsed: forbidden, rememberLastUsed: forbidden, create: forbidden, read: forbidden, revision: forbidden, list: forbidden, save: forbidden,
   history: forbidden, creation: forbidden, versions: forbidden, types: forbidden, putType: forbidden, metadata: forbidden,
   enqueue: forbidden, drain: forbidden, operation: forbidden, journal: forbidden, snapshot: forbidden, runOperations: forbidden, catalog: forbidden, libraryState: forbidden, libraryVersion: forbidden,
   libraryActionRecord: forbidden, libraryAction: forbidden };

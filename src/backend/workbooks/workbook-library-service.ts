@@ -13,7 +13,7 @@ import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encode
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { workbookMatches } from "./master-changes.js";
-import { WorkbookReferenceSlotsSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
+import { WorkbookReferenceSlotsSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 
 export class WorkbookLibraryError extends Error {
@@ -24,6 +24,8 @@ export class WorkbookLibraryError extends Error {
 }
 
 export interface WorkbookLibraryRepository {
+  lastUsed(workflowId: string): WorkflowWorkbookSelectionRecord | undefined;
+  rememberLastUsed(value: unknown): WorkflowWorkbookSelectionRecord;
   create(record: SavedWorkbook, origin?: z.infer<typeof WorkbookLibraryOriginSchema>): SavedWorkbook;
   read(libraryId: string): SavedWorkbook | undefined;
   revision(libraryId: string, version: number): SavedWorkbook;

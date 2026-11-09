@@ -1046,7 +1046,7 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
   for (const operation of section.operations) {
     const { receipt, native, resolution } = operation;
     const key = JSON.stringify([receipt.libraryId, receipt.operationId]);
-    if (ids.has(key) || native.runId !== section.runId || receipt.source.kind !== "run" || receipt.source.runId !== section.runId) {
+    if (ids.has(key) || native.runId !== section.runId || (receipt.source.kind !== "run" && receipt.source.kind !== "run-reference") || receipt.source.runId !== section.runId) {
       ctx.addIssue({ code: "custom", message: "workbook writes must preserve exact run and operation membership" });
     }
     ids.add(key);

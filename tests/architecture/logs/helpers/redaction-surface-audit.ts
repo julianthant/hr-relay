@@ -832,9 +832,11 @@ const LIBRARY_TYPE_ORIGINS = ['id', 'name', 'keyFieldId', 'fields[]', 'defaultWo
 const LIBRARY_MUTABLE_TYPE_ORIGINS = [...LIBRARY_TYPE_ORIGINS, 'fieldLabels', 'requiredFields[]'] as const;
 const LIBRARY_METADATA_ORIGINS = ['typeId'] as const;
 const LIBRARY_CHANGE_ORIGINS = ['key', 'values', 'sheetId', 'rowId', 'selection.sheetId', 'selection.rowId', 'name', 'metadata.typeId', 'resolves.operationId'] as const;
+const LIBRARY_CAPTURED_WRITE_SOURCE_ORIGINS = ['source.authority.versionId', 'source.authority.sheetId', 'source.authority.keyFieldId',
+  'source.authority.requiredFields[]', 'source.authority.writableFields[]'] as const;
 const LIBRARY_RECEIPT_ORIGINS = ['operationId', 'libraryId', 'key', 'candidates[].sheetId', 'candidates[].rowId',
   'changes[].sheetId', 'changes[].rowId', 'changes[].fieldId', 'changes[].key', 'changes[].oldValue', 'changes[].newValue',
-  'source.runId', 'source.syncId'] as const;
+  'source.runId', 'source.syncId', ...LIBRARY_CAPTURED_WRITE_SOURCE_ORIGINS] as const;
 const LIBRARY_VERSION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
   ...['id', 'snapshotId'].map(path => ({ path, origin: 'repository-authored' as const })),
   { path: 'name', origin: 'operator-authored' },
@@ -1152,7 +1154,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     ...(surface === 'durable/workbook-operation' && path === 'name' ? { exception: 'Operator-approved manual named-version retention (docs/reference/data-intake-and-edit-data.md, Saved workbook reference data) preserves the operator-entered name in local durable workbook authority and its operation journal only; it does not authorize process or OS notification egress.' } : {}) }))),
   ...WORKBOOK_VALUE_ORIGINS.flatMap(entry => ['request/workbook-operation', 'durable/workbook-operation'].map(surface => ({ surface,
     path: `${surface.startsWith('durable/') ? 'change.' : ''}workbook.${entry.path}`, origin: entry.origin }))),
-  ...['operationId', 'source.runId', 'source.syncId'].map(path => ({ surface: 'durable/workbook-operation', path, origin: 'captured-hr-value' as const })),
+  ...['operationId', 'source.runId', 'source.syncId', ...LIBRARY_CAPTURED_WRITE_SOURCE_ORIGINS].map(path => ({ surface: 'durable/workbook-operation', path, origin: 'captured-hr-value' as const })),
   ...LIBRARY_RECEIPT_ORIGINS.map(path => ({ surface: 'wire/workbook-operation-receipt', path, origin: 'captured-hr-value' as const })),
   { surface: 'wire/workbook-named-version', path: 'name', origin: 'operator-authored' },
   { surface: 'wire/workbook-named-version', path: 'snapshot.libraryId', origin: 'repository-authored' },

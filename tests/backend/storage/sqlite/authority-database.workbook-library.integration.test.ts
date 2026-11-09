@@ -103,3 +103,30 @@ it.each(["head", "creation-value", "creation-missing"])("refuses corrupt workboo
   assert.throws(f.open, error => error instanceof Error && error.cause instanceof WorkbookLibraryError
     && error.cause.code === "WORKBOOK_STORAGE_CORRUPT");
 });
+
+it('accounts for workflow selections once, rolls them back atomically and validates them on normal readback', async () => {
+  const f = await fixture();
+  let database = f.open();
+  try {
+    const value = { workflowId: 'person-lookup', acceptedCommandId: '11111111-1111-4111-8111-111111111111', usedAt: clock.now().toISOString(),
+      sources: [{ libraryId: 'removed-or-stale', sheetId: 'people' }] };
+    const before = database.getMeta().authorityGeneration;
+    assert.equal(database.authority.workbooks.lastUsed(value.workflowId), undefined);
+    assert.equal(database.getMeta().authorityGeneration, before);
+    const first = database.authority.workbooks.rememberLastUsed(value);
+    assert.equal(database.getMeta().authorityGeneration, before + 1);
+    assert.deepEqual(database.authority.workbooks.rememberLastUsed(value), first);
+    assert.equal(database.getMeta().authorityGeneration, before + 1);
+    assert.throws(() => database.withAuthorityTransaction(repositories => {
+      repositories.workbooks.rememberLastUsed({ ...value, acceptedCommandId: '22222222-2222-4222-8222-222222222222' });
+      throw new Error('rollback-selection');
+    }), /rollback-selection/u);
+    assert.deepEqual(database.authority.workbooks.lastUsed(value.workflowId), first);
+    assert.equal(database.getMeta().authorityGeneration, before + 1);
+    database.close(); database = f.open();
+    assert.deepEqual(database.authority.workbooks.lastUsed(value.workflowId), first);
+  } finally { database.close(); }
+  const raw = new DatabaseSync(f.path);
+  try { raw.exec('UPDATE workflow_workbook_selections SET revision=revision+1'); } finally { raw.close(); }
+  assert.throws(f.open, /workflow_workbook_selections/u);
+});

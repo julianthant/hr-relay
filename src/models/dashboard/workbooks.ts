@@ -2,7 +2,7 @@ import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValu
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { CANONICAL_FIELD_IDS } from "../fields/registry.js";
-import { IsoInstantSchema, WorkflowIdSchema, LOCAL_OPERATOR_ACTOR_ID, FingerprintSchema } from "../../rules/identity/ids.js";
+import { IsoInstantSchema, WorkflowIdSchema, RunIdSchema, LOCAL_OPERATOR_ACTOR_ID, FingerprintSchema } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { IntakeSessionWireSchema } from "../intake/wire.js";
 import { IntakeCommandRequestSchema, CommandResultSchema } from "../../rules/commands/commands.js";
@@ -122,10 +122,25 @@ export const WorkbookLinkSchema = z.strictObject({ url: z.url().refine(value => 
 export const WorkbookMetadataSchema = z.strictObject({ typeId: WorkbookIdSchema, sharePoint: WorkbookLinkSchema.nullable() });
 const WorkbookCellValueWireSchema = z.union([PrimitiveCellSchema, DateCellWireSchema]);
 export const WorkbookCellValuesSchema = z.record(FieldSchema, WorkbookCellValueWireSchema);
+const CapturedWorkbookFieldsSchema = z.array(FieldSchema).min(1)
+  .refine(fields => new Set(fields).size === fields.length, { message: 'captured workbook fields must be unique' });
+export const WorkbookReferenceWriteAuthoritySchema = z.strictObject({
+  versionId: WorkbookIdSchema, sheetId: WorkbookIdSchema, keyFieldId: FieldSchema,
+  requiredFields: CapturedWorkbookFieldsSchema, writableFields: CapturedWorkbookFieldsSchema,
+}).superRefine((authority, context) => {
+  if (!authority.requiredFields.includes(authority.keyFieldId)
+    || authority.writableFields.some(field => !authority.requiredFields.includes(field))) {
+    context.addIssue({ code: 'custom', message: 'captured workbook authority must include its key and every writable field in requiredFields' });
+  }
+});
+export const CapturedWorkbookWriteSourceSchema = z.strictObject({
+  kind: z.literal('run-reference'), runId: RunIdSchema, referenceDigest: FingerprintSchema, authority: WorkbookReferenceWriteAuthoritySchema,
+});
 export const WorkbookWriteSourceSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('operator') }),
   z.strictObject({ kind: z.literal('run'), runId: z.string().min(1), referenceDigest: FingerprintSchema.optional() }),
   z.strictObject({ kind: z.literal('sync'), syncId: z.string().min(1) }),
+  CapturedWorkbookWriteSourceSchema,
 ]);
 export const WorkbookOperationSchema = z.strictObject({
   operationId: WorkbookIdSchema, source: WorkbookWriteSourceSchema, at: IsoInstantSchema,
@@ -141,6 +156,15 @@ export const WorkbookOperationSchema = z.strictObject({
     z.strictObject({ kind: z.literal('metadata'), expectedVersion: z.number().int().positive(), metadata: WorkbookMetadataSchema }),
   ]),
 }).superRefine((op, ctx) => {
+  if (op.source.kind === 'run-reference') {
+    const change = op.change, authority = op.source.authority;
+    if (change.kind !== 'patch' || change.expectedVersion === undefined || change.selection === undefined
+      || change.selection.expectedVersion !== change.expectedVersion || change.selection.sheetId !== authority.sheetId
+      || Object.keys(change.values).length === 0 || Object.keys(change.values).some(field => !authority.writableFields.includes(field))) {
+      ctx.addIssue({ code: 'custom', message: 'captured workbook writes require an exact worksheet selection, version and writable fields' });
+    }
+    return;
+  }
   if ((['save', 'version', 'metadata'].includes(op.change.kind) && op.source.kind !== 'operator')
     || (op.change.kind === 'sync' && op.source.kind !== 'sync')
     || (['patch', 'add'].includes(op.change.kind) && op.source.kind !== 'run'))

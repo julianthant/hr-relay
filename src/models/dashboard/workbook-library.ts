@@ -1,6 +1,19 @@
 import { z } from "zod";
-import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema } from "../../rules/identity/ids.js";
+import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema, CommandIdSchema } from "../../rules/identity/ids.js";
 import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema } from "./workbooks.js";
+
+export const WorkbookSourceSelectionSchema = z.strictObject({
+  libraryId: WorkbookIdSchema, sheetId: WorkbookIdSchema,
+});
+const WorkbookSourceSelectionsSchema = z.array(WorkbookSourceSelectionSchema).min(1)
+  .refine(sources => new Set(sources.map(source => JSON.stringify([source.libraryId, source.sheetId]))).size === sources.length,
+    { message: "workbook source selections must have unique library/sheet pairs" });
+export const WorkflowWorkbookSelectionRecordSchema = z.strictObject({
+  workflowId: WorkflowIdSchema, revision: z.number().int().positive(),
+  acceptedCommandId: CommandIdSchema, usedAt: IsoInstantSchema, sources: WorkbookSourceSelectionsSchema,
+});
+export const WorkflowWorkbookSelectionInputSchema = WorkflowWorkbookSelectionRecordSchema.omit({ revision: true });
+export type WorkflowWorkbookSelectionRecord = z.infer<typeof WorkflowWorkbookSelectionRecordSchema>;
 
 const NameSchema = z.string().refine(value => value.trim().length > 0);
 export const WorkbookLibraryOriginSchema = z.discriminatedUnion("kind", [

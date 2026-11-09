@@ -109,12 +109,23 @@ function referenceFor(run: RunRecord, typeId: string) {
 
 function referenceOfOperation(run: RunRecord, entry: WorkbookOperationRecord) {
   const source = entry.operation.source;
-  const found = source.kind !== "run" || source.runId !== run.envelope.runId ? undefined
+  const found = (source.kind !== "run" && source.kind !== "run-reference") || source.runId !== run.envelope.runId ? undefined
     : references(run).find(reference => reference.digest === source.referenceDigest && reference.value.snapshot.libraryId === entry.libraryId);
   if (found === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const change = entry.operation.change;
   if ("mode" in found.value.request || (change.kind !== "patch" && change.kind !== "add") || !found.value.request.keys.includes(change.key)
     || Object.keys(change.values).some(field => !found.value.request.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  if (source.kind === "run-reference") {
+    const authority = source.authority, request = found.value.request, snapshot = found.value.snapshot;
+    if (!("versionId" in snapshot) || snapshot.versionId !== authority.versionId
+      || !snapshot.worksheets.some(sheet => sheet.sheetId === authority.sheetId)
+      || snapshot.type.keyFieldId !== authority.keyFieldId
+      || authority.requiredFields.length !== request.fields.length
+      || authority.requiredFields.some(field => !request.fields.includes(field))
+      || Object.keys(change.values).some(field => !authority.writableFields.includes(field))) {
+      throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    }
+  }
   return found;
 }
 
@@ -150,7 +161,7 @@ function appendReceipt(repositories: AuthorityRepositories, run: RunRecord, rece
 
 function capturedOperations(repositories: AuthorityRepositories, run: RunRecord) {
   const entries = repositories.workbooks.runOperations(run.envelope.runId)
-    .filter(entry => entry.operation.source.kind === "run" && entry.operation.source.referenceDigest !== undefined);
+    .filter(entry => (entry.operation.source.kind === "run" || entry.operation.source.kind === "run-reference") && entry.operation.source.referenceDigest !== undefined);
   for (const entry of entries) referenceOfOperation(run, entry);
   return entries;
 }

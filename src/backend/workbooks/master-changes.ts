@@ -15,7 +15,7 @@ function workbookKey(value: unknown): string | undefined {
   if (typeof value === 'string') return value.length ? value : undefined;
   return typeof value === 'number' && Number.isFinite(value) ? String(value) : undefined;
 }
-function workbookCells(workbook: EditableWorkbookWire, type: WorkbookType | undefined) {
+function workbookCells(workbook: EditableWorkbookWire, type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined) {
   const cells = new Map<string, { sheetId: string; rowId: string; fieldId: string; key?: string; value: EditableWorkbookWire['sheets'][number]['rows'][number]['cells'][number]['value'] }>();
   const counts = new Map<string, number>();
   if (type?.keyFieldId) for (const sheet of workbook.sheets) {
@@ -37,7 +37,7 @@ function workbookCells(workbook: EditableWorkbookWire, type: WorkbookType | unde
   }
   return cells;
 }
-function journalChanges(before: EditableWorkbookWire, after: EditableWorkbookWire, type: WorkbookType | undefined) {
+function journalChanges(before: EditableWorkbookWire, after: EditableWorkbookWire, type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined) {
   const oldCells = workbookCells(before, type), newCells = workbookCells(after, type);
   return [...new Set([...oldCells.keys(), ...newCells.keys()])].flatMap(id => {
     const previous = oldCells.get(id), next = newCells.get(id);
@@ -55,15 +55,18 @@ export function workbookMatches(workbook: EditableWorkbookWire, keyField: string
   });
 }
 export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWire; version: number; ownership: WorkbookOwnership;
-  type: WorkbookType | undefined; operation: WorkbookOperation; libraryId: string; sequence: number }>): Readonly<{
+  type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined; operation: WorkbookOperation; libraryId: string; sequence: number }>): Readonly<{
     workbook: EditableWorkbookWire; ownership: WorkbookOwnership; receipt: WorkbookOperationReceipt;
   }> {
   let workbook = structuredClone(input.workbook), ownership = structuredClone(input.ownership);
-  const { operation, type } = input, change = operation.change;
+  const { operation } = input, change = operation.change;
+  const type = operation.source.kind === 'run-reference'
+    ? { keyFieldId: operation.source.authority.keyFieldId, fields: operation.source.authority.writableFields } : input.type;
   const receipt: WorkbookOperationReceipt = { operationId: operation.operationId, sequence: input.sequence, libraryId: input.libraryId,
     state: 'applied', version: input.version, ...('key' in change ? { key: change.key } : {}), candidates: [], changes: [], source: operation.source, at: operation.at };
   const refuse = (reason: NonNullable<WorkbookOperationReceipt['reason']>, resolve = false) => ({ workbook: input.workbook, ownership: input.ownership,
     receipt: WorkbookOperationReceiptSchema.parse({ ...receipt, state: resolve ? 'resolve-required' : 'refused', reason, changes: [] }) });
+  if (operation.source.kind === 'run-reference' && change.kind !== 'patch') return refuse('invalid');
   if ('expectedVersion' in change && change.expectedVersion !== undefined && change.expectedVersion !== input.version) return refuse('version-conflict', change.kind === 'patch');
   if (change.kind !== 'metadata' && change.kind !== 'version' && (workbook.hasFormulas || workbook.unsupportedMetadata || ('workbook' in change && (change.workbook.hasFormulas || change.workbook.unsupportedMetadata)))) return refuse('metadata-unsupported');
   if (change.kind === 'version' || change.kind === 'metadata') return { workbook, ownership, receipt };

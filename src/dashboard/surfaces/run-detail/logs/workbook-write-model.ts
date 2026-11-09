@@ -13,7 +13,7 @@ export type WorkbookWrite = RunWorkbookWritesWire["operations"][number];
 export function workbookWriteMatchesReplay(operation: WorkbookWrite, command: CommandRequest): boolean {
   return command.family === "run" && command.type === "resolve-workbook-row"
     && operation.receipt.libraryId === command.target.libraryId && operation.receipt.operationId === command.target.operationId
-    && operation.receipt.source.kind === "run" && operation.receipt.source.runId === command.target.runId
+    && (operation.receipt.source.kind === "run" || operation.receipt.source.kind === "run-reference") && operation.receipt.source.runId === command.target.runId
     && sha256Hex(canonicalJsonStringify(operation.receipt)) === command.target.receiptDigest;
 }
 export function workbookWriteLogStep(operation: WorkbookWrite): LogStep {
