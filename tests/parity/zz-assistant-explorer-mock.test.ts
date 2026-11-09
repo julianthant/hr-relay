@@ -5,7 +5,7 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
-// Design mock renders for the floating Sessions dock, the three assistant launchers and Explorer; output goes to the gitignored .work folder.
+// Design mock renders for the floating Sessions dock, the assistant launcher and Explorer; output goes to the gitignored .work folder.
 const OUT = process.env.AX_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/assistant-explorer-mock";
 const THEMES = (process.env.AX_MOCK_THEMES ?? "light,dark").split(",");
 const WIDTH = Number(process.env.AX_MOCK_WIDTH ?? 1280);
@@ -14,12 +14,11 @@ test.use({ deviceScaleFactor: Number(process.env.AX_MOCK_SCALE ?? 1) });
 
 type Frame = { id: string; query?: string; view?: Record<string, unknown>; settings?: string; act?: (page: Page) => Promise<void> };
 const RUN = { preview: "separations", mockRun: "mock:separations:sample" };
-const LAUNCHERS = ["a", "b", "c"] as const;
-const launcherFrames = LAUNCHERS.flatMap((l): Frame[] => [
-  { id: `launcher-${l}-closed`, query: `assistantLauncher=${l}&assistantOpen=0`, view: RUN },
-  { id: `launcher-${l}-needs`, query: `assistantLauncher=${l}&assistantOpen=0&assistantNeeds=2`, view: RUN },
-  { id: `launcher-${l}-open`, query: `assistantLauncher=${l}&assistantOpen=1&assistantNeeds=2&assistantMock=01-chat-basics`, view: RUN },
-]);
+const launcherFrames: Frame[] = [
+  { id: "launcher-closed", query: "assistantOpen=0", view: RUN },
+  { id: "launcher-needs", query: "assistantOpen=0&assistantNeeds=2", view: RUN },
+  { id: "launcher-open", query: "assistantOpen=1&assistantNeeds=2&assistantMock=01-chat-basics", view: RUN },
+];
 const FRAMES: Frame[] = [
   { id: "dock-closed", query: "assistantOpen=0", view: RUN },
   { id: "dock-open", query: "assistantOpen=0", view: { ...RUN, sessions: true } },

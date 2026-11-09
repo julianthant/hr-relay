@@ -1,7 +1,7 @@
 import type { InboxWiring } from "../../state/inbox-wiring-adapter.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { memo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { LogOut, PanelLeft, Settings } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { IconButton, Tooltip } from "../../ds/ui.js";
 import type { NavbarData, NavbarSearchResult } from "./search/navbar-view-model.js";
 import type { PaletteAction } from "./search/search-palette-model.js";

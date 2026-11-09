@@ -1,16 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-/** Design mock: three assistant togglers, chosen from the URL (`assistantLauncher=a|b|c`). */
-export const LAUNCHERS = ["a", "b", "c"] as const;
-export type Launcher = (typeof LAUNCHERS)[number];
-
 function param(name: string): string | null {
   return typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(name);
-}
-
-export function assistantLauncher(): Launcher {
-  const value = param("assistantLauncher");
-  return LAUNCHERS.find(item => item === value) ?? "a";
 }
 
 /** Decisions waiting on the operator (`assistantNeeds=<n>`); a served count is a backend gap. */

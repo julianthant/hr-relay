@@ -1,7 +1,6 @@
 import { type IdleSessionCountdown } from './session-idle-model.js';
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { assistantLauncher } from "../shell/assistant-launcher-model.js";
-import { AssistantDockField, AssistantIconLauncher } from "../shell/assistant-launcher.js";
+import { AssistantLauncher } from "../shell/assistant-launcher.js";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, LogOut, Minus, Plus, Settings, UsersRound } from "lucide-react";
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, IconButton, Input, Select, Skeleton, Tooltip } from "../../ds/ui.js";
@@ -85,12 +84,11 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
             <DialogFooter><Button variant="muted" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="outline" disabled={!validCount || !validWorkflow || data.state !== "ready" || addLocked} onClick={event => { addFocusOrigin.current = event.currentTarget.closest('[role="dialog"]'); onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
           </DialogContent>
         </Dialog>;
-  const launcher = assistantLauncher();
   const toggle = <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title="" className="session-toggle">
     <UsersRound aria-hidden /><span className="session-pill-title">Sessions</span><span aria-hidden className="text-ui-muted">·</span><span className="session-pill-counts"><BarCounts data={data} /></span>
     {open ? <ChevronDown aria-hidden /> : <ChevronUp aria-hidden />}
   </button>;
-  return <section ref={dockRef} aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
+  return <div className="session-footer ui-theme-scope font-ui text-ui-primary"><section ref={dockRef} aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     <div className="session-bar" aria-label="Session actions" role="group" onClick={event => { const target = event.target as Element; if (event.currentTarget.contains(target) && !target.closest(".session-bar-end")) onOpenChange(!open); }}>
       {toggle}<span className="session-bar-end">{addControl}{account && <>
         <Tooltip side="top" content="Settings"><IconButton id={SETTINGS_GEAR_ID} variant="ghost" size="sm" label="Settings" title="" aria-pressed={account.settingsOpen} onClick={account.onSettings} icon={<Settings aria-hidden className="size-4" />} /></Tooltip>
@@ -103,5 +101,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       {data.state === "ready" ? data.workers.length ? <div data-session-strip className="flex items-stretch gap-3 overflow-x-auto pb-1">{data.workers.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={(id, control) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); }} />)}</div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
       </div>
     </div>}
-  </section>;
+  </section>
+    <AssistantLauncher />
+  </div>;
 }
