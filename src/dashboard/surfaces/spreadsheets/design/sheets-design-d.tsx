@@ -7,6 +7,7 @@ import { ActionDialog, FileMenu, Section, type Actions, type DialogKind } from '
 import { IMPORT_FILE, MERGE_PREVIEW, REFERENCE_SHEETS, libraryEntry, sheetSamples, sheetsMains, sheetsOther, sheetsReferences, sheetsResults, type ColumnMatch, type Reference, type ResultFile, type ResultGroup, type SheetFile } from './sheets-design-fixtures.js';
 import { SheetsImportDialog } from './sheets-design-import.js';
 import { sheetsParam, sheetsScenario } from './sheets-design-mode.js';
+import '../../run-start/launch-presentation.css';
 
 const noop = async () => ({ state: 'confirmed' as const });
 const when = (iso: string) => formatInstantDate(iso);
@@ -49,7 +50,7 @@ function UsedList({ items, sync, actions, onOpen, onReplace }: { items: readonly
 
 function MergeDialog({ pending, main, onClose, onConfirm }: { pending: { group: ResultGroup; file: ResultFile } | undefined; main: string | undefined; onClose: () => void; onConfirm: () => void }) {
   const file = pending?.file;
-  return <Dialog open={!!pending} onOpenChange={open => { if (!open) onClose(); }}><DialogContent size="md" title={main ? 'Merge into main spreadsheet' : 'Use as the main spreadsheet'} description={file?.name}>
+  return <Dialog open={!!pending} onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="launch-design" size="md" title={main ? 'Merge into main spreadsheet' : 'Use as the main spreadsheet'} description={file?.name}>
     <DialogBody>{main ? <div className="grid gap-4">
       <p className="text-body text-ui-muted">Rows from this result are added to {main}. Rows with the same EID are updated.</p>
       <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 rounded-[7px] border border-ui-stroke px-3 py-2.5 text-body"><dt>New rows</dt><dd className="tabular-nums">{MERGE_PREVIEW.added}</dd><dt>Updated by EID</dt><dd className="tabular-nums">{MERGE_PREVIEW.updated}</dd><dt>Unchanged</dt><dd className="tabular-nums">{MERGE_PREVIEW.unchanged}</dd></dl>
@@ -130,7 +131,7 @@ function ReferenceDrawer({ item, focusColumns, onClose, onSave, onReplace }: { i
 function ReplaceDialog({ item, onClose, onConfirm }: { item: Reference | undefined; onClose: () => void; onConfirm: (id: string) => void }) {
   const [checked, setChecked] = useState(false);
   const close = () => { setChecked(false); onClose(); };
-  return <Dialog open={!!item} onOpenChange={open => { if (!open) close(); }}><DialogContent size="lg" title={`Replace ${item?.title ?? ''}`} description={checked ? 'Step 2 of 2' : 'Step 1 of 2'}>
+  return <Dialog open={!!item} onOpenChange={open => { if (!open) close(); }}><DialogContent className="launch-design" size="lg" title={`Replace ${item?.title ?? ''}`} description={checked ? 'Step 2 of 2' : 'Step 1 of 2'}>
     <DialogBody>{!checked ? <Dropzone label="Choose the new file" accept=".xlsx,.csv" hint="Excel or CSV file" onFile={() => setChecked(true)} /> : <div className="grid gap-4">
       <div className="flex items-center gap-2 rounded-[7px] border border-ui-stroke bg-ui-table px-3 py-2"><span className="min-w-0 flex-1 truncate">{IMPORT_FILE.name}</span><span className="text-caption text-ui-muted">{IMPORT_FILE.rows} rows</span></div>
       <ul className="grid gap-1.5">{['EID column: Employee ID', 'Name column: Full name'].map(line => <li key={line} className="flex items-center gap-2"><Check size={14} aria-hidden />{line}</li>)}</ul>
@@ -160,7 +161,7 @@ export function SheetsDesignD() {
     <div className="flex items-center gap-2"><Button variant="primary" onClick={() => { setPreset(undefined); setImportOpen(true); }}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page hub-sheets-library min-w-0 text-body">
     {head}
-    <Section title="Used by workflows" description="A reference for looking up people."><UsedList items={refs} sync={sync} actions={actions} onOpen={(id, columns) => setDrawer({ id, columns })} onReplace={setReplacing} /></Section>
+    <Section title="Used by workflows"><UsedList items={refs} sync={sync} actions={actions} onOpen={(id, columns) => setDrawer({ id, columns })} onReplace={setReplacing} /></Section>
     <Section title="Results"><ResultsList groups={results} mains={sheetsMains(scenario)} actions={actions} forceOpen={sheetsParam('relaySheetsExpanded') === '1'} /></Section>
     <Section title="Other spreadsheets"><OtherList files={others} sync={sync} actions={actions} /></Section>
     <ReferenceDrawer key={drawer?.id ?? 'closed'} item={refs.find(item => item.id === drawer?.id)} focusColumns={drawer?.columns ?? false} onClose={() => setDrawer(undefined)} onSave={saveColumns} onReplace={id => { setDrawer(undefined); setReplacing(id); }} />

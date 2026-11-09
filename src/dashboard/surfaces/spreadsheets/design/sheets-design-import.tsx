@@ -3,6 +3,7 @@ import { Check, FileSpreadsheet } from 'lucide-react';
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, Disclosure, Dropzone, Select } from '../../../ds/ui.js';
 import { IMPORT_COLUMNS, IMPORT_FILE, type Reference } from './sheets-design-fixtures.js';
 import type { SheetsStep } from './sheets-design-mode.js';
+import '../../run-start/launch-presentation.css';
 
 const STEPS: readonly SheetsStep[] = ['pick', 'purpose', 'columns'];
 const OTHER = 'other';
@@ -24,7 +25,7 @@ export function SheetsImportDialog({ open, onOpenChange, references, startStep, 
   const title = step === 'pick' ? 'Import a spreadsheet' : step === 'purpose' ? 'What is this for?' : 'Check the columns';
   const next = () => setStep(STEPS[index + 1]);
   const finish = () => { onDone?.(purpose); onOpenChange(false); setStep('pick'); };
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="lg" title={title} description={`Step ${index + 1} of ${STEPS.length}`}>
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="launch-design" size="lg" title={title} description={`Step ${index + 1} of ${STEPS.length}`}>
     <DialogBody>
       {step !== 'pick' && <div className="mb-4 flex items-center gap-2 rounded-[7px] border border-ui-stroke bg-ui-table px-3 py-2 text-body"><FileSpreadsheet size={16} aria-hidden /><span className="min-w-0 flex-1 truncate">{IMPORT_FILE.name}</span><span className="text-caption text-ui-muted">{IMPORT_FILE.rows} rows · {IMPORT_FILE.sheet}</span></div>}
       {step === 'pick' && <Dropzone label="Choose a spreadsheet" accept=".xlsx,.csv" hint="Excel or CSV file" onFile={next} />}
