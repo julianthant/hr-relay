@@ -83,7 +83,7 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await shot(page, "row-hover", theme);
   await hoverRow(/Your disk is full/).hover();
   await expect(hoverRow(/Your disk is full/).getByRole("button", { name: "Dismiss" })).toBeHidden();
-  await page.getByRole("button", { name: "Search runs" }).hover();
+  await page.getByRole("button", { name: "Search", exact: true }).hover();
   await expect(page.getByRole("tooltip")).toContainText("Search");
   await shot(page, "search-hover", theme);
   await panel(page).getByRole("button", { name: "Notification actions" }).hover();
@@ -178,5 +178,82 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await expect(panel(page)).toBeVisible();
   await page.mouse.move(1, 1);
   await shot(page, "toast-and-panel", theme);
+  expect(errors).toEqual([]);
+});
+
+for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await open(page, "centre");
+  const palette = page.getByRole("dialog", { name: "Search Relay" });
+  const input = palette.getByRole("combobox", { name: "Search Relay" });
+  const label = (text: string) => palette.locator(".search-palette-label", { hasText: new RegExp(`^${text}$`) });
+  const selected = palette.locator("[cmdk-item][data-selected=true]");
+  const metrics = () => palette.evaluate(el => {
+    const q = (s: string) => el.querySelector(s)!.getBoundingClientRect();
+    return { width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height, input: q(".search-palette-input").height, row: q(".search-palette-row").height, inputSize: parseFloat(getComputedStyle(el.querySelector(".search-palette-input")!).fontSize) };
+  });
+
+  // Open with no query: input first, first row selected, no footer count.
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(palette).toBeVisible();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveAttribute("placeholder", "Search Relay");
+  for (const text of ["Quick actions", "Runs", "Workflows", "Spreadsheets"]) await expect(label(text)).toBeVisible();
+  await expect(selected).toHaveText(/Start a run/);
+  await expect(palette.getByText(/\d+ runs?$/)).toHaveCount(0);
+  const m = await metrics();
+  console.log(`PALETTE ${theme} ${JSON.stringify(m)}`);
+  expect(m.width).toBeGreaterThan(740); expect(m.width).toBeLessThanOrEqual(760);
+  expect(m.input).toBe(51); expect(m.row).toBe(35); expect(m.inputSize).toBe(16);
+  expect(m.height).toBeLessThanOrEqual(500);
+  await page.mouse.move(1, 1);
+  await shot(page, "palette-open", theme);
+
+  // Arrows move the selection; Enter opens the Spreadsheets settings page; Escape closes.
+  await page.keyboard.press("ArrowDown");
+  await expect(selected).toHaveText(/Spreadsheets/);
+  await page.keyboard.press("ArrowUp");
+  await expect(selected).toHaveText(/Start a run/);
+  await page.keyboard.press("Escape");
+  await expect(palette).toBeHidden();
+  await expect(page.getByRole("button", { name: "Search", exact: true })).toBeFocused();
+
+  // Typing filters every section.
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await input.fill("sep");
+  await expect(label("Quick actions")).toHaveCount(0);
+  await expect(palette.locator("[cmdk-item]").first()).toBeVisible();
+  await expect(selected).toHaveCount(1);
+  await page.mouse.move(1, 1);
+  await shot(page, "palette-typing", theme);
+
+  // A chip filters to one section and is a filled pill.
+  await input.fill("");
+  await palette.getByRole("button", { name: "Workflows", exact: true }).click();
+  await expect(palette.getByRole("button", { name: "Workflows", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(label("Runs")).toHaveCount(0);
+  const hovered = palette.getByRole("button", { name: "Spreadsheets", exact: true });
+  await hovered.hover();
+  const fill = (name: string) => palette.getByRole("button", { name, exact: true }).evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(await fill("Spreadsheets")).not.toBe("rgba(0, 0, 0, 0)");
+  expect(await fill("Spreadsheets")).not.toBe(await fill("Workflows"));
+  expect(await palette.getByRole("button", { name: "Runs", exact: true }).evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  await shot(page, "palette-chip", theme);
+
+  // No matches is one grey line.
+  await palette.getByRole("button", { name: "All", exact: true }).click();
+  await input.fill("zzzzqq");
+  await expect(palette.getByText("No matches", { exact: true })).toBeVisible();
+  await expect(palette.locator("[cmdk-item]")).toHaveCount(0);
+  await shot(page, "palette-empty", theme);
+
+  // Enter on a quick action opens it.
+  await input.fill("settings");
+  await page.keyboard.press("Enter");
+  await expect(palette).toBeHidden();
+  await expect(page.locator(".ds-page-heading-title").first()).toBeVisible();
   expect(errors).toEqual([]);
 });

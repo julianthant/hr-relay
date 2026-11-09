@@ -4,6 +4,8 @@ import { memo, useRef, useState, type Dispatch, type SetStateAction } from "reac
 import { PanelLeft } from "lucide-react";
 import { IconButton, Tooltip } from "../../ds/ui.js";
 import type { NavbarData, NavbarSearchResult } from "./search/navbar-view-model.js";
+import type { PaletteAction } from "./search/search-palette-model.js";
+import { shortcutLabel, useShortcutPreferences } from "../settings/navigation/keyboard-preferences-model.js";
 import { RailSearch } from "./search/navbar-view.js";
 import { NotificationBell, NotificationPing, NotificationsPanel } from "../notifications/notifications-view.js";
 import { useNotificationRailModel, type NotificationReads } from "../notifications/notification-rail-model.js";
@@ -13,7 +15,7 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { WorkflowRail } from "./workflow-rail.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch }: {
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
   settingsOpen: boolean;
@@ -22,6 +24,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   setReads: Dispatch<SetStateAction<NotificationReads>>;
   inbox?: InboxWiring;
   searchData: NavbarData;
+  onSearchAction: (action: PaletteAction) => void;
   onSearch: (result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => void;
   onOpenNotification: (destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => void;
 }) {
@@ -31,6 +34,8 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   const [activeId, setActiveId] = useViewState("notificationActive", "", "replace");
   const [notice, setNotice] = useState("");
   const notificationRail = useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification, onActive: setActiveId, served: inbox });
+  const start = useShortcutPreferences().bindings.start[0];
+  const choose = (id: string) => workflows.find(flow => flow.id === id)?.source === "preview" ? onPreview(id) : onSelect(id);
   const bell = useRef<HTMLButtonElement>(null);
   const [collapsed, setCollapsed] = useRailCollapsed();
   const toggleBell = () => { if (collapsed && !open) setCollapsed(false); notificationRail.changeOpen(!open); };
@@ -44,7 +49,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
         </Tooltip>
         <NotificationBell ref={bell} open={open} unread={(notificationRail.unread ?? 0) > 0} onToggle={toggleBell}
           label={notificationRail.state.state === "loading" ? "Notifications loading" : notificationRail.state.state === "unavailable" ? "Notifications unavailable" : `Notifications, ${notificationRail.unread} unread`} />
-        <RailSearch data={searchData} onResult={onSearch} />
+        <RailSearch data={searchData} workflows={workflows} startKey={start && shortcutLabel(start).toUpperCase()} onAction={onSearchAction} onWorkflow={choose} onResult={onSearch} />
       </div>
     </header>
     <div className="workspace-rail-body">
