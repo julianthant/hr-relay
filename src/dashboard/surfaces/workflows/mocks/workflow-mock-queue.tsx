@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, GitBranch, ListChecks, RotateCcw, RotateCw } from "lucide-react";
 import { LogFooterButton } from "../../run-detail/logs/log-action-button.js";
-import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
+import { ConfirmDialog, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
 import { queueRunHeader } from "../../run-detail/run-header-model.js";
@@ -70,17 +70,15 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel outcomes={outcomes} surfaces={surfaces} panelLabel={label} header={false} day={day} sort={sort} filter={filter}
     state={queueState}
     handlers={queueHandlers} workflowLabelOf={mockWorkflowLabelOf} />
-    <Dialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }}>
-      <DialogContent title={`Delete ${pendingDelete?.subject ?? "run"}?`} size="sm" onCloseAutoFocus={event => {
+    <ConfirmDialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }} destructive title={`Delete ${pendingDelete?.subject ?? "run"}?`}
+      description={pendingDelete ? mockDeletionCopy(mockDeletionIds(allRuns, pendingDelete.id).length - 1) : undefined} confirmLabel="Delete run"
+      onConfirm={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}
+      onCloseAutoFocus={event => {
         event.preventDefault();
         if (!deleted.current) { deleteLauncher.current?.focus(); return; }
         deleted.current = false;
         focusRemainingRow();
-      }}>
-        <DialogBody>{pendingDelete && <p className="m-0 text-body text-ui-secondary">{mockDeletionCopy(mockDeletionIds(allRuns, pendingDelete.id).length - 1)}</p>}</DialogBody>
-        <DialogFooter><Button variant="muted" onClick={() => setPendingDelete(undefined)}>Cancel</Button><Button variant="danger" onClick={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}>Delete</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
+      }} />
   </div>;
 }
 
