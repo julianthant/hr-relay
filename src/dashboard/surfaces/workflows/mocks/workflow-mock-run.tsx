@@ -1,7 +1,7 @@
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useEffect, useRef, useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Lock, Play } from "lucide-react";
-import { BareButton, Banner, Button, Checkbox, Switch, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
+import { BareButton, Banner, Button, Switch, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockTypedInputValues, changeMockTypedInput, initialMockDraft, mockDraftError, mockDraftInputError, mockInputEntries, mockSelectableSteps, mockOcrReadSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
@@ -120,11 +120,11 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         {stage === "Options" && chatGptBlocked && <StatusMockReadiness frame="run-b" />}
         {stage === "Options" && <div className="flex flex-col gap-8">
           <RunList title="Run">
-            {!source && planSteps.length > 0 && <RunListRow title="Customize steps" description="Choose optional steps."><Checkbox label="Customize steps" className="[&_.ds-checkbox-copy]:sr-only" checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} /></RunListRow>}
-            {pdf && !uploadOnly && <RunListRow title="Extract with OCR" description="Turn off to enter records manually in OCR review."><Checkbox label="Extract with OCR" className="[&_.ds-checkbox-copy]:sr-only" checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /></RunListRow>}
+            {!source && planSteps.length > 0 && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value); if (!value) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
+            {pdf && !uploadOnly && <RunListRow title="Extract with OCR" description="Turn off to enter records manually in OCR review."><Switch hideLabel label="Extract with OCR" checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value ? "extract" : "manual" })} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
             {flow.dryRun && <RunListRow title="Dry run" description="Fill and check every step without submitting."><Switch hideLabel label="Dry run" checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
             <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
-            <RunListRow title="Priority" description="Runs before bulk batches."><Checkbox label="Priority" className="[&_.ds-checkbox-copy]:sr-only" checked={priority} onCheckedChange={value => { setPriorityTouched(true); patch({ priority: value === true ? "interactive" : "background" }); }} /></RunListRow>
+            <RunListRow title="Priority" description="Runs before bulk batches."><Switch hideLabel label="Priority" checked={priority} onCheckedChange={value => { setPriorityTouched(true); patch({ priority: value ? "interactive" : "background" }); }} className="!min-h-0 !w-auto !py-0" /></RunListRow>
             <RunListRow title="Browser" description="Headless runs in the background."><div className="w-[250px]"><SegmentedChoice hideLabel label="Browser mode" value={draft.browser} onChange={browser => patch({ browser })} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></div></RunListRow>
             {workflowId === "onboarding" && <RunListRow title="Hire type" description="Applies to every item."><div className="w-[250px]"><SegmentedChoice hideLabel label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} /></div></RunListRow>}
           </RunList>

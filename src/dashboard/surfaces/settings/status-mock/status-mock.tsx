@@ -1,7 +1,7 @@
 import { Check, ChevronDown, ExternalLink, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
-import { BodySection, Button, ButtonLink, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, FormGroup, IconButton, PageHeading, ResultRow, SearchInput, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
+import { BodySection, Button, ButtonLink, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, FormGroup, IconButton, PageHeading, ResultRow, SearchInput, Select, StatusDot, dsIcon, useToasts } from "../../../ds/ui.js";
 import { CHATGPT_USAGE_URL } from "../general/chatgpt-account-model.js";
 import { ActivityRange } from "../../activity/activity-range.js";
 import { ACTIVITY_SAMPLE_RANGE } from "../../activity/activity-fixture.js";
@@ -32,19 +32,19 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
   return <div className="flex min-w-0 flex-col gap-3">
     <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
       {picked.map(sheet => <RunListRow key={sheet.value} title={sheet.label} description={sheet.description}>
-        <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[72px] !border-[color:var(--ds-border)] !bg-transparent" value={String(picks[sheet.value])} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
+        <Select aria-label={`${sheet.label} version`} variant="toolbar" className="w-[76px]" value={String(picks[sheet.value])} onChange={event => onPicks({ ...picks, [sheet.value]: Number(event.target.value) })}>
           {Array.from({ length: sheet.current }, (_, index) => sheet.current - index).map(number => <option key={number} value={number}>v{number}</option>)}
         </Select>
         <IconButton size="xs" label={`Remove ${sheet.label}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={() => onPicks(Object.fromEntries(Object.entries(picks).filter(([key]) => key !== sheet.value)))} />
       </RunListRow>)}
     </RunList>
     <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
-      <DropdownMenuTrigger asChild><Button variant="outline" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>Add spreadsheet</Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>Add spreadsheet</Button></DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[320px]">
-        <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} /></div>
+        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} /></div>
         {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] text-ui-muted">{picked.length === STATUS_MOCK_SPREADSHEETS.length ? "Every spreadsheet is added." : "No spreadsheets match."}</p>}
-        {available.map(sheet => <DropdownMenuItem key={sheet.value} disabled={"disabled" in sheet} onClick={() => onPicks({ ...picks, [sheet.value]: sheet.current })} className="flex-col items-start gap-0">
-          <span className="text-[14px] leading-5">{sheet.label}</span><span className="text-[13px] leading-[18px] text-ui-secondary">{sheet.description}</span>
+        {available.map(sheet => <DropdownMenuItem key={sheet.value} disabled={"disabled" in sheet} onClick={() => onPicks({ ...picks, [sheet.value]: sheet.current })} >
+          <DropdownMenuItemCopy title={sheet.label} description={sheet.description} />
         </DropdownMenuItem>)}
       </DropdownMenuContent>
     </DropdownMenu></div>

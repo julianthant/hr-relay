@@ -7,7 +7,7 @@
   --hub-primary: var(--ui-info);
   --hub-primary-ink: var(--ds-accent-fg);
   --hub-primary-hover: color-mix(in srgb, var(--ui-info) 88%, var(--ds-accent-fg));
-  --hub-switch: var(--ui-info);
+  --hub-switch: var(--ds-switch-on);
   --hub-shadow: 0 8px 32px #0002;
   --hub-panel-shadow: 0 4px 16px #0002;
   --hub-dialog-shadow: 0 20px 60px #0003;

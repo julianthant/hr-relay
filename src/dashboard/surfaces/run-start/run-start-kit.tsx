@@ -18,6 +18,7 @@ import {
   Refusal,
   Select,
   SegmentedChoice,
+  Switch,
   Textarea,
   Well,
   dsFg,
@@ -503,7 +504,7 @@ export function TypedInput({
       </RunListRow>
       {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
         <RunListRow key={control.field} title={control.label} description={MOCK_CONTROL_NOTES[control.field]}>
-          <Checkbox label={control.label} className="[&_.ds-checkbox-copy]:sr-only" checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />
+          <Switch hideLabel label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value)} className="!min-h-0 !w-auto !py-0" />
         </RunListRow>)}
     </RunList>
     <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}</RunSection>

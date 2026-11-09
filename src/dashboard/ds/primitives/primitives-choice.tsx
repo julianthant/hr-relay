@@ -43,12 +43,12 @@ export function SegmentedChoice<T extends string>({ label, value, options, onCha
   const name = useId();
   const selected = options.findIndex(option => option.value === value);
   return <fieldset className="min-w-0"><legend className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]", hideLabel && "sr-only")}>{label}</legend>
-    <div className="ds-segment relative flex h-[var(--ds-h-md)] rounded-full bg-[var(--ds-surface-3)] p-[2px]">
+    <div className="ds-segment relative flex h-[var(--ds-h-md)] rounded-full border border-[color:var(--ds-border-subtle)] bg-[var(--ds-segment-track)] p-[2px]">
       {selected >= 0 && <span aria-hidden className="pointer-events-none absolute inset-y-[2px] left-[2px] rounded-full bg-[var(--ds-segment-thumb)] shadow-[0_1px_2px_rgb(0_0_0/0.14)] transition-transform duration-[180ms] ease-out motion-reduce:transition-none"
         style={{ width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${selected * 100}%)` }} />}
       {options.map(option => <label key={option.value} className="relative z-10 min-w-0 flex-1 cursor-pointer">
         <input type="radio" name={`${label}-${name}`} value={option.value} checked={option.value === value} onChange={() => onChange(option.value)} className="peer sr-only" />
-        <span className="flex h-full items-center justify-center rounded-full px-4 text-center text-[13px] leading-none text-[color:var(--ds-fg-muted)] transition-colors duration-[180ms] ease-out peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)] motion-reduce:transition-none">{option.label}</span>
+        <span className="flex h-full items-center justify-center rounded-full px-4 text-center text-[13px] leading-none text-[color:var(--ds-fg-secondary)] transition-colors duration-[180ms] ease-out peer-checked:text-[color:var(--ds-fg)] peer-focus-visible:outline-2 peer-focus-visible:outline-[color:var(--ds-accent)] motion-reduce:transition-none">{option.label}</span>
       </label>)}
     </div>
   </fieldset>;
