@@ -59,7 +59,10 @@ const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   routes: "general",
   providers: "general",
   "provider-env": "general",
-  "protected-store": "credentials",
+  "protected-store": "account",
+  credentials: "account",
+  // Subscription is a mock-only entry; without it the link opens General.
+  subscription: "general",
 });
 
 const servedEntry = (id: string, label: string): SettingsNavEntry => ({
@@ -126,7 +129,7 @@ export function buildSettingsNav(
   const groups: SettingsNavGroup[] = [];
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
-    clientEntry("credentials", "Account", "credentials"),
+    clientEntry("account", "Account", "credentials"),
     // Mock-only until the plan and limits are served.
     ...(statusMock() === undefined ? [] : [clientEntry("subscription", "Subscription", "subscription")]),
   ] });
@@ -179,7 +182,7 @@ export function resolveSettingsSection(
   if (requested.length === 0) {
     return first === undefined ? { state: "empty" } : { state: "open", entry: first };
   }
-  const found = entries.find((entry) => entry.id === (SETTINGS_ALIASES[requested] ?? requested));
+  const found = entries.find((entry) => entry.id === requested) ?? entries.find((entry) => entry.id === SETTINGS_ALIASES[requested]);
   return found === undefined ? { state: "unknown", requested } : { state: "open", entry: found };
 }
 export { CAPABILITY_SPECS,capabilityAvailableCount,capabilityMatrix,dryRunPostureSentence } from "./preflight/settings-capabilities-model.js";

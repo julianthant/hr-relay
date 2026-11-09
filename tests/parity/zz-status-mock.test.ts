@@ -16,7 +16,7 @@ const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 test.use({ deviceScaleFactor: Number(process.env.STATUS_MOCK_SCALE ?? 1) });
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
-  "general-a": "general", "general-a-browser": "general", "account": "credentials", "account-edit": "credentials", "account-password": "credentials", "account-delete": "credentials", "account-duo-setup": "credentials",
+  "general-a": "general", "general-a-browser": "general", "account": "account", "account-edit": "account", "account-password": "account", "account-delete": "account", "account-duo-setup": "account",
   "subscription": "subscription", "subscription-limit": "subscription", "subscription-disconnected": "subscription",
   "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard", "settings-storage": "storage",
 };
@@ -104,7 +104,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         await expect(id === "run-b" ? dialog.getByText("ChatGPT is disconnected") : dialog.getByRole("button", { name: /^Start (dry|live) run$/ })).toBeVisible();
       }
     }
-    if (settings === "credentials") {
+    if (settings === "account") {
       await expect(page.getByRole("heading", { name: "Account", exact: true }).or(page.locator(".ds-page-heading-title", { hasText: "Account" }))).toBeVisible();
       if (id === "account-edit") await expect(page.getByRole("dialog", { name: "Edit name" })).toBeVisible();
       if (id === "account-password") await expect(page.getByRole("dialog", { name: "Change password" })).toBeVisible();
@@ -372,9 +372,9 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  for (const id of ["general", "credentials", "subscription", "preflight", "activity", "keyboard", "storage"]) {
+  for (const id of ["general", "account", "subscription", "preflight", "activity", "keyboard", "storage"]) {
     // General and Account show the moved rows, which only the mock Account page carries.
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "credentials" ? "&statusMock=account" : id === "subscription" ? "&statusMock=subscription" : ""}`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "account" ? "&statusMock=account" : id === "subscription" ? "&statusMock=subscription" : ""}`);
     await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await settle(page);
@@ -434,7 +434,7 @@ test("account, subscription and general interactions", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=credentials&statusMock=account`);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=account&statusMock=account`);
   await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
   const nav = page.locator("nav.settings-panel-nav");
   for (const name of ["General", "Account", "Subscription"]) await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
@@ -482,5 +482,38 @@ test("account, subscription and general interactions", async ({ page }) => {
   await expect(page.getByText("Run without a browser window")).toHaveCount(0);
   await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change", exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// Under any statusMock, every sidebar page shows its mock design; old and new links resolve.
+test("sidebar click-through shows the mock pages", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=general-a`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const nav = page.locator("nav.settings-panel-nav");
+  const marks: Record<string, () => Promise<void>> = {
+    General: () => expect(page.getByRole("group", { name: "General", exact: true }).getByText("Browser window", { exact: true })).toBeVisible(),
+    Account: () => expect(page.getByRole("group", { name: "Relay account", exact: true })).toBeVisible(),
+    Subscription: () => expect(page.getByRole("group", { name: "Plan limits" }).or(page.getByText("Plan limits", { exact: true }))).toBeVisible(),
+    Spreadsheets: () => expect(page.getByRole("region", { name: "Spreadsheets", exact: true })).toBeVisible(),
+    Explorer: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
+    Analytics: () => expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible(),
+    Storage: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
+    Preflight: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
+    Keyboard: () => expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible(),
+  };
+  for (const [name, check] of Object.entries(marks)) {
+    await nav.getByRole("link", { name, exact: true }).click();
+    await check();
+    await expect(page.getByText("No such settings section")).toHaveCount(0);
+  }
+  for (const id of ["account", "credentials", "subscription", "spreadsheets", "activity"]) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}&statusMock=general-a`);
+    await expect(nav).toBeVisible();
+    await expect(page.getByText("No such settings section")).toHaveCount(0);
+  }
   expect(errors).toEqual([]);
 });

@@ -7,12 +7,8 @@ import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashb
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { plural } from "../shared/status/format.js";
-import type { EditableWorkbook } from "../../../rules/spreadsheets/workbook-io.js";
-import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
-import { sheetsDesign } from "../spreadsheets/design/sheets-v2-mode.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
@@ -163,7 +159,6 @@ export function SettingsPage({
   dataContent,
   appearance,
   deleteAccount,
-  spreadsheetSource,
   onOpenRun,
   actorId,
   profileName,
@@ -186,7 +181,6 @@ export function SettingsPage({
   dataContent?: ReactNode;
   appearance?: ReactNode;
   deleteAccount?: ReactNode;
-  spreadsheetSource?: "mock" | "served";
   onOpenRun?: (runId: string, partitionDay: string) => void;
   actorId: string;
   profileName: string;
@@ -200,9 +194,6 @@ export function SettingsPage({
   onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
-  const [workbookDraft, setWorkbookDraft] = useState<{ document: EditableWorkbook | null; dirty: boolean }>({ document: null, dirty: false });
-  const spreadsheets = useSpreadsheetWiringAdapter(false, null);
-  const onWorkbook = (document: EditableWorkbook | null, dirty: boolean) => setWorkbookDraft({ document, dirty });
   const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved, onSaveProblem });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
@@ -237,7 +228,7 @@ export function SettingsPage({
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
-  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount;
+  const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
   const hasDirtyDraft = totalDirty > 0;
 
   useEffect(() => {
@@ -269,8 +260,6 @@ export function SettingsPage({
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     exitFocusTarget.current = null;
-    if (spreadsheetSource !== "mock") spreadsheets.adapter.discard();
-    setWorkbookDraft({ document: null, dirty: false });
     editor.discard();
     editor.protectedEditor.discard();
     setPendingExit(undefined);
@@ -322,8 +311,8 @@ export function SettingsPage({
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
         )}
-        {isDataSection && (activeId === "activity" && (mockStatus === "analytics-a" || mockStatus === "analytics-b") ? <StatusMockAnalytics variant={mockStatus === "analytics-a" ? "a" : "b"} /> : dataContent)}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (sheetsDesign() ? <SheetsV2 onOpenRun={onOpenRun} /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
+        {isDataSection && (activeId === "activity" && mockStatus !== undefined ? <StatusMockAnalytics variant={mockStatus === "analytics-b" ? "b" : "a"} /> : dataContent)}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} locations={appDataLocations} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
@@ -331,7 +320,7 @@ export function SettingsPage({
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
         )}
         {resolution.state === "open" && resolution.entry.id === "general" && mockStatus !== undefined && <StatusMockGeneral />}
-        {resolution.state === "open" && resolution.entry.id === "credentials" && (mockStatus?.startsWith("account") ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
+        {resolution.state === "open" && resolution.entry.id === "account" && (mockStatus !== undefined ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
         {resolution.state === "open" && resolution.entry.id === "subscription" && <StatusMockSubscription frame={mockStatus ?? "subscription"} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <PreflightSection editor={editor} workflowLabels={workflowLabels} />

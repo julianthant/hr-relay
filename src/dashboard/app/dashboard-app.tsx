@@ -316,7 +316,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
       className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
     >
       <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
-        ["general", "paths", "performance", "providers", "routes", "credentials"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
+        ["general", "paths", "performance", "providers", "routes", "credentials", "account"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
           ? <SettingsSectionSkeleton section={new URLSearchParams(window.location.search).get("settings")!} /> : undefined
       } />
     </main>
@@ -1169,7 +1169,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             client={client} workflowCatalog={explorerCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
-            spreadsheetSource={workflowComposition.spreadsheets} onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
+            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
           <>
           {}
           <CommandRecovery

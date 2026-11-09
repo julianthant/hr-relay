@@ -33,7 +33,7 @@ for (const theme of ["light", "dark"] as const) {
     };
     const open = async (query: Record<string, string> = {}) => {
       await page.setViewportSize({ width: 1280, height: 720 });
-      await page.goto(`${server.baseUrl}/?${new URLSearchParams({ settings: "spreadsheets", relaySheetsDesign: "v2", ...query })}`);
+      await page.goto(`${server.baseUrl}/?${new URLSearchParams({ settings: "spreadsheets", ...query })}`);
       await expect(page.getByRole("heading", { name: "Spreadsheets", exact: true })).toBeVisible();
     };
     const dialog = () => page.getByRole("dialog").first();
