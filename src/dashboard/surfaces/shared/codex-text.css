@@ -1,0 +1,8 @@
+/* Codex text steps for the Logs panel and Explorer: dimmer ink, grey and faint steps, lighter weights. */
+.dashboard-log-column, .codex-text {
+  --ui-primary: color-mix(in srgb, var(--ds-fg) 86%, var(--ui-canvas));
+  --ui-secondary: color-mix(in srgb, var(--ds-fg) 64%, var(--ui-canvas));
+  --ui-muted: color-mix(in srgb, var(--ds-fg) 50%, var(--ui-canvas));
+}
+:is(.dashboard-log-column, .codex-text) :is(.font-semibold, .font-bold, strong, h1, h2, h3, h4) { font-weight: 500; }
+:is(.dashboard-log-column, .codex-text) .font-medium { font-weight: 400; }
