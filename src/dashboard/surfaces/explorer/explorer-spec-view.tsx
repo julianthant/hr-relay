@@ -18,8 +18,8 @@ const ROW = "grid grid-cols-[1rem_minmax(9rem,1fr)_minmax(11rem,1fr)] items-star
 
 function FillRow({ row, value, onSource }: { row: SpecRow; value: string; onSource?: (trigger: HTMLButtonElement) => void }) {
   const body = <>
-    <PencilLine aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-info" /><span className="self-center">{row.label}</span>
-    <span className="flex min-h-7 min-w-0 items-center justify-between gap-2 self-center rounded-md border border-ui-stroke-control bg-ui-field px-2.5 py-1 text-ui-info">{value}{onSource && <ArrowUpRight aria-hidden className="size-3.5 shrink-0" />}</span>
+    <PencilLine aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-info" /><span className="self-center font-medium">{row.label}</span>
+    <span className="flex min-h-7 min-w-0 items-center justify-between gap-2 self-center rounded-md border border-ui-stroke-control bg-ui-field px-2.5 py-1 font-medium text-ui-info">{value}{onSource && <ArrowUpRight aria-hidden className="size-3.5 shrink-0" />}</span>
   </>;
   return onSource
     ? <button type="button" aria-label={`Show source for ${row.label}`} onClick={event => onSource(event.currentTarget)} className={cn(ROW, "w-full py-1.5 text-left hover:bg-ui-hover", dsFocus)}>{body}</button>
@@ -27,7 +27,7 @@ function FillRow({ row, value, onSource }: { row: SpecRow; value: string; onSour
 }
 
 function ReadRow({ label, value }: { label: string; value: string }) {
-  return <div className={cn(ROW, "py-2")}><Eye aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-muted" /><span className="self-center">{label}</span><span className="self-center text-right text-ui-secondary">{value}</span></div>;
+  return <div className={cn(ROW, "py-2")}><Eye aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-muted" /><span className="self-center font-medium">{label}</span><span className="self-center text-right text-ui-secondary">{value}</span></div>;
 }
 
 function PickCard({ block }: { block: Extract<SpecBlock, { kind: "pick" }> }) {
@@ -75,7 +75,7 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
       </Select>
     } />
     {spec.options.length > 0 && <section aria-labelledby="run-options" className="mb-8 mt-6 border-b border-ui-stroke pb-6">
-      <h2 id="run-options" className="m-0 mb-4 ds-text-section font-semibold">Run options</h2>
+      <h2 id="run-options" className="m-0 mb-4 text-heading">Run options</h2>
       <div className="grid grid-cols-4 gap-4">{spec.options.map(option => <div key={option.id} className="flex min-w-0 flex-col gap-1.5">
         <span id={`option-${option.id}`} className="text-body font-medium text-ui-secondary">{option.label}</span>
         <Select aria-labelledby={`option-${option.id}`} value={options[option.id]} onChange={event => { setOptions(current => ({ ...current, [option.id]: event.target.value })); setSource(undefined); }}>
@@ -88,7 +88,7 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
         const description = firstMatch(step.description, values);
         return <li key={step.id} id={`explorer-step-${index + 1}`} data-step-number={index + 1} tabIndex={-1} className="relative border-b border-ui-stroke pb-6 pt-6 first:pt-0 last:border-b-0">
           <span aria-hidden className={cn("absolute -left-10 flex size-7 items-center justify-center rounded-full border border-ui-stroke bg-ui-panel text-caption tabular-nums text-ui-secondary", index === 0 ? "top-0" : "top-6")}>{index + 1}</span>
-          <div className="mb-3 flex min-h-7 flex-wrap items-center gap-3"><h2 className="m-0 ds-text-section font-semibold">{step.title}</h2>{step.system && <span className="flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-caption text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</div>
+          <div className="mb-3 flex min-h-7 flex-wrap items-center gap-3"><h2 className="m-0 text-heading">{step.title}</h2>{step.system && <span className="flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</div>
           <div className="flex min-w-0 flex-col gap-3">
             {step.sessions && <div className="flex flex-wrap gap-2">{step.sessions.filter(session => matches(session, values)).map(session => <span key={session.system} className="flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body"><Monitor aria-hidden className="size-4 text-ui-muted" />{session.system}<LockKeyhole aria-hidden className="ml-2 size-3 text-ui-muted" /></span>)}</div>}
             {description && <p className="m-0 text-body text-ui-secondary">{description.text}</p>}

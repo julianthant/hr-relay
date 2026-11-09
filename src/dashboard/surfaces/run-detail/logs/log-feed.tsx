@@ -18,11 +18,11 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
     <dl className={cn("m-0", (entry.title !== undefined || entry.result !== undefined) && "px-3")}>
       {entry.fields.map(field => {
         const Icon = field.kind === "fill" ? PencilLine : field.kind === "compute" ? Cpu : Eye;
-        return <div key={field.id} data-log-field={field.kind} className="grid min-w-0 grid-cols-[var(--spacing-log-time)_1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] border-b border-ui-stroke py-2.5 last:border-b-0">
-          <time className="self-start pt-0.5 font-data text-caption tabular-nums text-ui-muted max-[1100px]:hidden">{field.time}</time>
+        return <div key={field.id} data-log-field={field.kind} className="grid min-w-0 grid-cols-[var(--spacing-log-time)_1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] border-b border-ui-stroke py-2.5 last:border-b-0">
+          <time className="self-start pt-0.5 font-data text-caption tabular-nums text-ui-muted max-[1100px]:hidden @max-[448px]:hidden">{field.time}</time>
           <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", field.kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
           <dt className="min-w-0 text-body font-medium">{field.label}</dt>
-          <FieldValueCell value={field.value} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] max-[1100px]:truncate", field.kind === "fill" ? "text-ui-info font-medium" : field.unread ? "text-ui-danger/75" : "text-ui-secondary")} />
+          <FieldValueCell value={field.value} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", field.kind === "fill" ? "text-ui-info font-medium" : field.unread ? "text-ui-danger/75" : "text-ui-secondary")} />
         </div>;
       })}
     </dl>
@@ -136,7 +136,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
   };
   return <div className={cn("ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col bg-ui-panel font-ui text-body text-ui-primary", embedded && "relative flex-none")}>
     {navigation?.(jump)}
-    <div className={cn("min-w-0 flex-1 px-4 pb-6 pt-5", !embedded && "overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info")} ref={scroller} role={embedded ? undefined : "region"} aria-label={embedded ? undefined : label} tabIndex={embedded ? undefined : 0} aria-busy={loading || undefined}>
+    <div className={cn("@container min-w-0 flex-1 px-4 pb-6 pt-5", !embedded && "overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info")} ref={scroller} role={embedded ? undefined : "region"} aria-label={embedded ? undefined : label} tabIndex={embedded ? undefined : 0} aria-busy={loading || undefined}>
       {beforeContent}
       {hidden.map(step => {
         const content = afterStep?.(step.id);
