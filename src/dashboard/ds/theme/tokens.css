@@ -1008,7 +1008,9 @@ body[data-demo-theme="light"] {
 .ds-menu-item[data-disabled], .ds-menu-item[aria-disabled="true"] { pointer-events: none; opacity: 0.5; }
 .ds-menu-item > svg:not(.ds-menu-check) { width: 16px; height: 16px; flex: none; color: var(--ui-muted); }
 .ds-menu-item[data-selected] , .ds-menu-item[data-checked] { padding-right: 34px; }
-.ds-menu-check { position: absolute; top: 50%; right: 10px; width: 16px; height: 16px; transform: translateY(-50%); stroke-width: 1.5; color: var(--ds-menu-fg); }
+/* The check sits 12px from the menu's outer edge (1px border + 4px menu padding + 7px), centred on the item. */
+.ds-menu-indicator { position: absolute; top: 50%; right: 7px; display: flex; width: 16px; height: 16px; transform: translateY(-50%); pointer-events: none; }
+.ds-menu-check { width: 16px; height: 16px; stroke-width: 1.5; color: var(--ds-menu-fg); }
 .ds-menu-item:has(.ds-menu-copy) { padding-block: 5px; }
 .ds-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
 .ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ds-menu-fg); }
