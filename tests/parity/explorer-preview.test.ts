@@ -28,7 +28,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       const workflows = surface.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await expect(workflows).toHaveAttribute("data-value", "fixture-separations");
       await workflows.click();
-      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Person Lookup", "I-9 Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "OCR", "CRM Doc Download", "SharePoint Download", "OnBase", "Old Kronos Reports"]);
+      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "CRM Doc Download", "SharePoint Download", "OnBase", "Old Kronos Reports"]);
       await attachPresentationReference(page, test.info(), "explorer-workflow-menu.png");
       await page.keyboard.press("Escape");
       await expect(surface.getByRole("complementary", { name: "Workflow browser" })).toHaveCount(0);

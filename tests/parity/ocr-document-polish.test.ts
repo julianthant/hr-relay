@@ -104,7 +104,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(single.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
       await single.getByRole("button", { name: "Delete", exact: true }).click(); await deletion.getByRole("button", { name: "Delete", exact: true }).click();
       await expect(single).toHaveCount(0); await expect(queue.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
-      await rail.getByRole("button", { name: "I-9 Lookup", exact: true }).click();
+      await expect(rail.getByRole("button", { name: "I-9 Lookup", exact: true })).toHaveCount(0);
+      await rail.getByRole("button", { name: "OnBase", exact: true }).click();
+      await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
+      await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /I-9 Lookup/u }).click();
       const lookupRetry = queue.getByRole("button", { name: "Retry", exact: true });
       await lookupRetry.click();
       await expect(rerun).toBeVisible();

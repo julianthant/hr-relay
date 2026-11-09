@@ -11,7 +11,7 @@ import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { FIXTURE_INTAKE_IDS } from "../support/fixtures/dashboard/fixture-intake.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 import { attachPresentationReference } from "./helpers/presentation-reference.js";
-import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { PREVIEW_FIXTURE_WORKFLOWS } from "./helpers/workflow-composition.js";
 import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
@@ -29,8 +29,8 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
     await expect(logs).toBeVisible();
     if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
   }
-  for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
-    if (["person-lookup", "separations"].includes(flow.id)) {
+  for (const flow of PREVIEW_FIXTURE_WORKFLOWS) {
+    if (["person-lookup", "separations", "i9-check-start"].includes(flow.id)) {
       await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: flow.id, mockRun: `mock:${flow.id}:sample` }))}`);
     } else {
       await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}`);
@@ -84,7 +84,7 @@ for (const theme of PARITY_THEMES) {
       const picker = explorer.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await picker.click();
       const options = await page.locator('[data-slot="select-content"][data-open]').getByRole("option").evaluateAll(nodes => nodes.map(node => ({ label: node.textContent, value: node.getAttribute("data-value") })));
-      expect(options).toHaveLength(14);
+      expect(options).toHaveLength(13);
       await page.keyboard.press("Escape");
       for (const option of options) {
         if (option.value === null) throw new Error("explorer-workflow-option-value-missing");

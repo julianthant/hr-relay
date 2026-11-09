@@ -49,7 +49,7 @@ test.describe("start-run picker hierarchy", () => {
         const workerWorkflow = page.getByRole("dialog", { name: "Add workers" })
           .getByRole("combobox", { name: "Workflow" });
         await workerWorkflow.click();
-        await expect(page.getByRole("option")).toHaveText(["Person Lookup", "I-9 Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "OCR", "CRM Doc Download", "SharePoint Download", "OnBase", "Old Kronos Reports"]);
+        await expect(page.getByRole("option")).toHaveText(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "CRM Doc Download", "SharePoint Download", "OnBase", "Old Kronos Reports"]);
       });
     }
   }

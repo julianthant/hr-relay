@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { PREVIEW_FIXTURE_WORKFLOWS } from "./helpers/workflow-composition.js";
 import { manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
 import { seedMockRuns, mockOcrReadSteps, mockSelectableSteps, initialMockDraft } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -109,8 +109,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-      await expect(rail.getByRole("button")).toHaveCount(14);
-      for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
+      await expect(rail.getByRole("button")).toHaveCount(13);
+      await expect(rail.getByRole("button", { name: "I-9 Lookup", exact: true })).toHaveCount(0);
+      for (const flow of PREVIEW_FIXTURE_WORKFLOWS) {
         await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
         await page.getByRole("button", { name: "Start a run", exact: true }).click();
         let dialog = page.getByRole("dialog", { name: "Start a run", exact: true });

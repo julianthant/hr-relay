@@ -25,7 +25,7 @@ for (const composition of ["product", "parity"] as const) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const queue = page.getByRole("region", { name: "Queue", exact: true });
-      for (const label of ["Onboarding", "I-9 Lookup", "Work-Study", "Kronos Pay Rule", "Oath Signature", "Oath Upload", "Emergency Contact", "OnBase", "I-9 Check", "CRM Doc Download", "SharePoint Download", "Old Kronos Reports"]) {
+      for (const label of ["Onboarding", "Work-Study", "Kronos Pay Rule", "Oath Signature", "Oath Upload", "Emergency Contact", "OnBase", "I-9 Check", "CRM Doc Download", "SharePoint Download", "Old Kronos Reports"]) {
         await rail.getByRole("button", { name: label, exact: true }).click();
         for (const reload of [false, true]) {
           if (reload) await page.reload();
@@ -64,7 +64,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.locator("#hub-shell-assistant")).toBeHidden();
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const queue = page.getByRole("region", { name: "Queue", exact: true });
-      for (const label of ["I-9 Lookup", "SharePoint Download"]) {
+      for (const label of ["SharePoint Download"]) {
         await rail.getByRole("button", { name: label, exact: true }).click();
         for (const reload of [false, true]) {
           if (reload) await page.reload();

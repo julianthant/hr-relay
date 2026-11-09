@@ -10,7 +10,7 @@ import { buildWorkflowCatalog as buildWorkflowCatalog_m0 } from "../../../../src
 
 describe_m0("complete workflow presentation mocks", () => {
   it_m0("covers every rail workflow and renders every declared variant without missing contract values", () => {
-    expect_m0(new Set(buildWorkflowCatalog_m0([], true, previewFixtureSources([])).map(item => item.id))).toEqual(new Set(MOCK_WORKFLOWS_m0.filter(item => item.id !== "ocr").map(item => item.id)));
+    expect_m0(new Set(buildWorkflowCatalog_m0([], true, previewFixtureSources([])).map(item => item.id))).toEqual(new Set(MOCK_WORKFLOWS_m0.filter(item => !["ocr", "i9-lookup"].includes(item.id)).map(item => item.id)));
     for (const flow of MOCK_WORKFLOWS_m0) {
       const values = initialWorkflowChoices_m0(flow.id);
       for (const scenario of [values, ...workflowChoices_m0(flow.id).flatMap(choice => choice.options.map(([value]) => updateWorkflowChoice_m0(flow.id, values, choice.key, value)))]) {

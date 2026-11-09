@@ -2,7 +2,7 @@ import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./help
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { PREVIEW_FIXTURE_WORKFLOWS } from "./helpers/workflow-composition.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -20,7 +20,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
-      for (const flow of MOCK_WORKFLOWS) {
+      for (const flow of PREVIEW_FIXTURE_WORKFLOWS) {
         await chooseSelect(surface.getByRole("combobox", { name: "Explorer workflow", exact: true }), `fixture-${flow.id}`);
         await expect(surface.getByRole("list", { name: "Workflow steps", exact: true })).toBeVisible();
         await expect(surface.locator("li[data-step-number]:visible")).not.toHaveCount(0);
@@ -250,11 +250,14 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
       await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-    for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {
-      await rail.getByRole("button", { name: flow.label, exact: true }).click();
+    for (const flow of PREVIEW_FIXTURE_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {
+      if (flow.id === "i9-check-start") {
+        await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: flow.id, mockRun: `mock:${flow.id}:sample` }))}`);
+        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+      } else await rail.getByRole("button", { name: flow.label, exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Attempts for/u }).first()).toBeVisible();
       await expect(logs.getByRole("tab")).toHaveCount(0);
-      await expect(logs.getByRole("button", { name: /^Review records|^Records/u })).toHaveCount(flow.id === "ocr" ? 1 : 0);
+      await expect(logs.getByRole("button", { name: /^Review records|^Records/u })).toHaveCount(0);
       await expect(logs.getByRole("tab", { name: "Result", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("tab", { name: /^Linked runs/u })).toHaveCount(0);
       await expect(logs).not.toContainText("Fictional workflow preview");
@@ -262,7 +265,7 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
       if (flow.id === "onboarding") await attachShellA11y(page, info, `canonical-${flow.id}-${theme.attribute}.a11y.yml`);
     }
     await page.goto(`${server.baseUrl}/?day=invalid-day`);
-    await rail.getByRole("button", { name: "OCR", exact: true }).click();
+    await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
     await expect(page.getByText("Choose a valid date", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Search runs", exact: true }).click();
     const search = page.getByRole("dialog", { name: "Search runs", exact: true });

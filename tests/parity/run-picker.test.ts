@@ -19,13 +19,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-    await expect(rail.getByRole("button")).toHaveCount(15);
+    await expect(rail.getByRole("button")).toHaveCount(13);
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
-    await expect(picker.getByRole("button")).toHaveCount(15);
-    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
-    await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("button")).toHaveCount(12);
+    for (const label of ["OCR", "I-9 Lookup"]) {
+      await expect(rail.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+      await expect(picker.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+    }
     await expect(picker.getByRole("heading")).toHaveText(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
     await expect(picker.locator("button span").filter({ hasText: /^pl$|^sp$/u })).toHaveCount(0);
     const originalDialog = await dialog.elementHandle(), originalPicker = await picker.elementHandle();
@@ -71,19 +73,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     expect(metrics).toEqual({ textAligned: true, rowHeight: 32 });
     await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeFocused();
-    for (const label of ["OCR", "I-9 Lookup"]) {
-      await rail.getByRole("button", { name: label, exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      if (label === "OCR") {
-        await expect(picker.getByRole("button", { name: label, exact: true })).toBeEnabled();
-        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("OCR");
-        await expect(dialog.locator('input[type="file"]')).toHaveCount(1);
-      } else {
-        await expect(picker.getByRole("button", { name: label, exact: true })).toBeDisabled();
-        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
-      }
-      await page.keyboard.press("Escape");
-    }
+    await rail.getByRole("button", { name: "SharePoint Download", exact: true }).click();
+    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await expect(picker.getByRole("button", { name: "SharePoint Download", exact: true })).toHaveCount(0);
+    await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
+    await page.keyboard.press("Escape");
     expect(errors).toEqual([]); expect(writes).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   } finally { await page.close(); await server.close(); }
