@@ -45,9 +45,8 @@ test("sheets design D scenes @ light 1280x720", async ({ page }) => {
     "import-1-file": async () => {
       await open({ relaySheetsScenario: "all", relaySheetsMissing: "ocr-roster" }); await shot("missing-ocr");
       await page.getByRole("button", { name: "Import a roster", exact: true }).click(); await expect(dialog()).toBeVisible(); await shot("import-1-file");
-      await dialog().locator('input[type="file"]').setInputFiles(file); await expect(dialog().getByText("What is this for?")).toBeVisible(); await shot("import-2-purpose");
-      await dialog().getByRole("button", { name: "Next", exact: true }).click(); await shot("import-3-columns");
-      await dialog().getByRole("button", { name: /^Import OCR roster$/ }).click(); await expect(dialog()).toHaveCount(0); await shot("import-4-done");
+      await dialog().locator('input[type="file"]').setInputFiles(file); await expect(dialog().getByText("Check the columns")).toBeVisible(); await shot("import-2-columns");
+      await dialog().getByRole("button", { name: "Import spreadsheet", exact: true }).click(); await expect(dialog()).toHaveCount(0); await shot("import-3-done");
     },
     "replace-1-file": async () => {
       await open({ relaySheetsScenario: "all" }); await rowMenu("Example contact roster.xlsx", "Replace"); await expect(dialog()).toBeVisible(); await shot("replace-1-file");

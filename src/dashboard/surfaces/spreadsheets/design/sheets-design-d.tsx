@@ -119,26 +119,27 @@ export function SheetsDesignD() {
   const { toast } = useToasts();
   const [drawer, setDrawer] = useState<{ id: string; columns: boolean }>();
   const [replacing, setReplacing] = useState<string>();
-  const [importOpen, setImportOpen] = useState(false), [preset, setPreset] = useState<string>();
+  const [importOpen, setImportOpen] = useState(false), [target, setTarget] = useState<string>();
+  const [added, setAdded] = useState<readonly SheetFile[]>([]);
   const [versions, setVersions] = useState<ReturnType<typeof libraryEntry> | null>(null);
   const [dialog, setDialog] = useState<{ kind: DialogKind; files: readonly SheetFile[] }>();
   useEffect(() => { if (sync === 'failed') toast({ tone: 'danger', title: "Couldn't sync Example contact roster.xlsx", description: 'SharePoint did not answer. Relay keeps using the last synced version.' }); }, [sync, toast]);
   const update = (id: string, change: (file: SheetFile) => SheetFile) => setRefs(current => current.map(item => item.id === id && item.file ? { ...item, file: change(item.file) } : item));
-  const actions: Actions = { versions: (file, kind) => setVersions(libraryEntry(file, kind)), dialog: (kind, files) => setDialog({ kind, files }), open: () => undefined, importFor: id => { setPreset(id); setImportOpen(true); } };
+  const actions: Actions = { versions: (file, kind) => setVersions(libraryEntry(file, kind)), dialog: (kind, files) => setDialog({ kind, files }), open: () => undefined, importFor: id => { setTarget(id); setImportOpen(true); } };
   const match = (label: string, header: string): ColumnMatch => ({ label, header });
   const saveColumns = (id: string, picks: Partial<Record<Key, string>>) => { update(id, file => ({ ...file, eid: picks.eid ? match('EID column', picks.eid) : file.eid, person: picks.person ? match('Name column', picks.person) : file.person })); setDrawer(undefined); toast({ tone: 'success', title: 'Columns saved' }); };
   const replaced = (id: string) => update(id, file => ({ ...file, name: IMPORT_FILE.name, rows: IMPORT_FILE.rows, updatedAt: '2026-11-08T17:30:00Z' }));
-  const imported = (purpose: string) => setRefs(current => current.map(item => item.id === purpose ? { ...item, file: { id: item.id, name: IMPORT_FILE.name, rows: IMPORT_FILE.rows, updatedAt: '2026-11-08T17:30:00Z', eid: match('EID column', 'Employee ID'), person: match('Name column', 'Full name') } } : item));
+  const imported = () => { const made = { id: target ?? `imported-${added.length + 1}`, name: IMPORT_FILE.name, rows: IMPORT_FILE.rows, updatedAt: '2026-11-08T17:30:00Z', eid: match('EID column', 'Employee ID'), person: match('Name column', 'Full name') }; if (target) setRefs(current => current.map(item => item.id === target ? { ...item, file: made } : item)); else setAdded(current => [...current, made]); };
   const head = <div className="mb-6 flex items-center justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
-    <div className="flex items-center gap-2"><Button variant="primary" onClick={() => { setPreset(undefined); setImportOpen(true); }}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
+    <div className="flex items-center gap-2"><Button variant="primary" onClick={() => { setTarget(undefined); setImportOpen(true); }}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page hub-sheets-library min-w-0 text-body">
     {head}
     <Section title="Used by workflows"><UsedList items={refs} sync={sync} actions={actions} onOpen={(id, columns) => setDrawer({ id, columns })} onReplace={setReplacing} /></Section>
     <Section title="Results"><ResultsList groups={results} actions={actions} /></Section>
-    <Section title="Other spreadsheets"><OtherList files={others} sync={sync} actions={actions} /></Section>
+    <Section title="Other spreadsheets"><OtherList files={[...others, ...added]} sync={sync} actions={actions} /></Section>
     <ReferenceDrawer key={drawer?.id ?? 'closed'} item={refs.find(item => item.id === drawer?.id)} focusColumns={drawer?.columns ?? false} onClose={() => setDrawer(undefined)} onSave={saveColumns} onReplace={id => { setDrawer(undefined); setReplacing(id); }} />
     <ReplaceDialog key={replacing ?? 'none'} item={refs.find(item => item.id === replacing)} onClose={() => setReplacing(undefined)} onConfirm={replaced} />
-    <SheetsImportDialog key={`${importOpen}:${preset ?? ''}`} open={importOpen} onOpenChange={setImportOpen} references={refs} startStep="pick" preset={preset} onDone={imported} />
+    <SheetsImportDialog key={String(importOpen)} open={importOpen} onOpenChange={setImportOpen} startStep="pick" onDone={imported} />
     <SpreadsheetVersions entry={versions} pending={false} onClose={() => setVersions(null)} onDownload={async () => undefined} onChange={noop} onCheck={noop} />
     <ActionDialog state={dialog} onClose={() => setDialog(undefined)} />
   </section>;

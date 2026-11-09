@@ -34,7 +34,7 @@ test(`sheets design renders @ ${THEME.attribute} ${WIDTH}`, async ({ page }) => 
     }
     // Import flow, variant A chrome, library with one reference missing.
     await page.setViewportSize({ width: WIDTH, height: 900 });
-    for (const step of ["pick", "purpose", "columns"]) {
+    for (const step of ["pick", "columns"]) {
       if (!wanted(`import-${step}`)) continue;
       await page.goto(url(server.baseUrl, { relaySheetsDesign: "a", relaySheetsScenario: "missing", relaySheetsStep: step }));
       const dialog = page.getByRole("dialog").first(); await expect(dialog).toBeVisible();

@@ -108,8 +108,8 @@ export function SheetsDesignPage({ design }: { design: SheetsDesign }) {
   const [tab, setTab] = useState('used');
   const [versions, setVersions] = useState<ReturnType<typeof libraryEntry> | null>(null);
   const [dialog, setDialog] = useState<{ kind: DialogKind; files: readonly SheetFile[] }>();
-  const [importOpen, setImportOpen] = useState(startStep !== undefined), [preset, setPreset] = useState<string>();
-  const actions: Actions = { versions: (file, kind) => setVersions(libraryEntry(file, kind)), dialog: (kind, files) => setDialog({ kind, files }), open: () => undefined, importFor: id => { setPreset(id); setImportOpen(true); } };
+  const [importOpen, setImportOpen] = useState(startStep !== undefined);
+  const actions: Actions = { versions: (file, kind) => setVersions(libraryEntry(file, kind)), dialog: (kind, files) => setDialog({ kind, files }), open: () => undefined, importFor: () => setImportOpen(true) };
   const head = <div className="mb-6 flex items-center justify-between gap-4"><div><h1>Spreadsheets</h1><p className="hub-sheets-intro !mb-0">Rosters your workflows look people up in, and the workbooks they make.</p></div>
     <div className="flex items-center gap-2"><Button variant="primary" onClick={() => actions.importFor()}>Import spreadsheet</Button><DropdownMenu><DropdownMenuTrigger render={<IconButton label="More spreadsheet actions" icon={<MoreHorizontal size={16} />} />} /><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => undefined}>Create type</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>;
   const body = design === 'a' ? <>
@@ -127,7 +127,7 @@ export function SheetsDesignPage({ design }: { design: SheetsDesign }) {
       <TabPanel value="other" className="pt-4"><OtherTable files={others} actions={actions} /></TabPanel></Tabs></>;
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page hub-sheets-library min-w-0 text-body">
     {head}{body}
-    <SheetsImportDialog key={`${importOpen}:${preset ?? ''}`} open={importOpen} onOpenChange={setImportOpen} references={references} startStep={importOpen && startStep && !preset ? startStep : preset ? 'purpose' : 'pick'} preset={preset} />
+    <SheetsImportDialog open={importOpen} onOpenChange={setImportOpen} startStep={startStep ?? 'pick'} />
     <SpreadsheetVersions entry={versions} pending={false} onClose={() => setVersions(null)} onDownload={async () => undefined} onChange={noop} onCheck={noop} />
     <ActionDialog state={dialog} onClose={() => setDialog(undefined)} />
   </section>;
