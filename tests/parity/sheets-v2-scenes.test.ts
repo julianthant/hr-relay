@@ -70,8 +70,7 @@ for (const theme of ["light", "dark"] as const) {
       },
       "detail-columns": async () => {
         await open(); await openSheet("Contact roster"); await page.getByRole("button", { name: "Columns" }).click(); await expect(page.getByRole("region", { name: "Fields" })).toBeVisible(); await expect(page.getByRole("region", { name: "Show columns" })).toBeVisible(); await shot("detail-columns");
-        await page.getByRole("button", { name: /^Legal name column/u }).click(); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toBeVisible(); await shot("detail-columns-pick"); await page.keyboard.press("Escape");
-        if (!(await page.getByRole("region", { name: "Fields" }).isVisible())) await page.getByRole("button", { name: "Columns" }).click();
+        await page.getByRole("button", { name: /^Legal name column/u }).click(); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toBeVisible(); await shot("detail-columns-pick"); await page.keyboard.press("Escape"); await expect(page.getByRole("menuitemradio", { name: /^Full name/u })).toHaveCount(0); await expect(page.getByRole("region", { name: "Fields" })).toBeVisible();
         await page.getByRole("button", { name: /^Employee ID column/u }).hover(); await shot("detail-columns-hover");
       },
       "detail-unmapped": async () => {

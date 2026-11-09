@@ -11,12 +11,12 @@ const style = (cell: Cell) => `${cell.bold ? 'font-weight:700;' : ''}${cell.fill
 const tint = (percent: number) => `linear-gradient(color-mix(in srgb, var(--ui-info) ${percent}%, transparent), color-mix(in srgb, var(--ui-info) ${percent}%, transparent))`;
 
 /** One field row in the Columns popover: field name left, a column picker right. Unmapped reads "Choose column" in grey with a dashed border. */
-function FieldRow({ field, dataset, value, onChange, onActive }: { field: Field; dataset: Dataset; value: string | null; onChange: (header: string | null) => void; onActive: (active: boolean) => void }) {
+function FieldRow({ field, dataset, value, onChange, onActive, onPicking }: { field: Field; dataset: Dataset; value: string | null; onChange: (header: string | null) => void; onActive: (active: boolean) => void; onPicking: (picking: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const unmapped = 'dashed';
   return <div className="flex items-center justify-between gap-4 px-2 py-1" onMouseEnter={() => onActive(true)} onMouseLeave={() => !open && onActive(false)} onFocus={() => onActive(true)} onBlur={() => !open && onActive(false)}>
     <span className="min-w-0 truncate text-[13px]">{field.label}</span>
-    <DropdownMenu open={open} onOpenChange={next => { setOpen(next); onActive(next); }}><DropdownMenuTrigger render={value
+    <DropdownMenu open={open} onOpenChange={next => { setOpen(next); onActive(next); onPicking(next); }}><DropdownMenuTrigger render={value
       ? <Picker aria-label={`${field.label} column, ${value}`} className="w-[170px]">{value}</Picker>
       : <Picker aria-label={`${field.label} column, not mapped`} data-unmapped={unmapped} className="w-[170px] !border-dashed !border-[color:var(--ui-stroke-control)] !text-[color:var(--ds-fg-muted)] hover:!border-[color:var(--ui-muted)] focus-visible:!border-[color:var(--ui-muted)] data-[popup-open]:!border-[color:var(--ui-muted)]">Choose column</Picker>} />
       <DropdownMenuContent align="end" className={`min-w-[360px] ${MENU}`}><DropdownMenuGroup><DropdownMenuLabel>{field.label} column</DropdownMenuLabel>
@@ -56,6 +56,8 @@ export function MappingGrid({ dataset, mapping: given, onMap, worksheets, column
   const mapping = viewOnly ? NO_MAPPING : given;
   const unmapped = viewOnly ? [] : FIELDS.filter(field => !mapping[field.key]);
   const [columns, setColumns] = useState(columnsOpen && unmapped.length > 0);
+  // Escape in a field's column list closes that list only: the popover ignores a close while one is open.
+  const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
   const view = dataset.rows.map((row, i) => ({ row, i })).filter(({ row }) => !q || row.some(cell => cell.text.toLowerCase().includes(q)));
@@ -87,14 +89,14 @@ export function MappingGrid({ dataset, mapping: given, onMap, worksheets, column
       <SearchInput aria-label="Search this sheet" placeholder="Search this sheet" value={query} onChange={event => { setSelection(undefined); setQuery(event.target.value); }} onClear={() => setQuery('')} className="min-w-0 flex-1" />
       {box && <V2Button className={CONTROL} onClick={() => void copy()}>Copy</V2Button>}
       {worksheets && worksheets.names.length > 1 && <WorksheetPicker control={worksheets} />}
-      <Popover open={columns} onOpenChange={setColumns}>
+      <Popover open={columns} onOpenChange={next => { if (!(picking && !next)) setColumns(next); }}>
         <Tooltip open={columns || !unmapped.length ? false : undefined} content={`${unmapped.map(field => field.label).join(' and ')} ${unmapped.length > 1 ? "aren't" : "isn't"} mapped`}>
           <PopoverTrigger asChild><Picker aria-label="Columns" className={CONTROL}>{unmapped.length > 0 && <span aria-hidden className="mr-1.5 inline-block size-1.5 rounded-full align-middle bg-[var(--warning)]" />}Columns{unseen ? ` · ${unseen} more` : ''}</Picker></PopoverTrigger>
         </Tooltip>
         <PopoverContent title="Columns" hideTitle hideClose align="end" width="md" className={`!w-[360px] !p-1 ${dsLayer.modal}`}>
           {!viewOnly && <section aria-label="Fields" className="pb-1">
             <h3 className="px-2 py-1 text-[11px] font-normal text-ui-muted">Fields</h3>
-            {FIELDS.map(field => <FieldRow key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onActive={on => setActive(current => on ? field.key : current === field.key ? null : current)}
+            {FIELDS.map(field => <FieldRow key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onActive={on => setActive(current => on ? field.key : current === field.key ? null : current)} onPicking={setPicking}
               onChange={header => { setSelection(undefined); onMap({ [field.key]: header }); }} />)}
           </section>}
           <section aria-label="Show columns" className={viewOnly ? '' : 'border-t border-ui-stroke pt-1'}>
