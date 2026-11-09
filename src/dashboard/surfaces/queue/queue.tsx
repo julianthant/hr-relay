@@ -2,7 +2,7 @@ import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { Fragment, memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
   BareButton,
@@ -21,6 +21,7 @@ import {
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
 import type { QueueMemberSelection, QueueRecordMember } from "../../../models/dashboard/projection.js";
 import { isTerminalQueueStatus } from "../../../models/dashboard/projection.js";
+import { IconActionButton } from "../shared/actions/icon-action-button.js";
 import {
   FooterActions,
   OutcomeActionButton,
@@ -295,6 +296,7 @@ function RowFooterLine({
   // Settled durations need a served end; never substitute now for an unmeasured terminal run.
   const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
     ? undefined : runTiming(surface, nowIso, isTerminalQueueStatus);
+  const groupCount = surface.surfaceKind === "operation" ? Math.max(surface.memberRollup.total - surface.memberRollup.terminal, 1) : undefined;
   return (
     <div
       data-queue-row-footer
@@ -322,7 +324,7 @@ function RowFooterLine({
           onSelect={onSelect}
         />
         {/* The compact alias is display-only; the tooltip retains the exact trace. */}
-        <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)]" title={surface.traceId}>
+        <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)] max-[1099px]:hidden" title={surface.traceId}>
           {runDisplayId(surface.runId, surface.traceId)}
         </span>
         {timing !== undefined && (
@@ -336,6 +338,7 @@ function RowFooterLine({
           actions={actions}
           target={{ runId: surface.runId, expectedVersion: surface.rowRevision }}
           onPreviewAction={onPreviewAction}
+          {...(groupCount === undefined ? {} : { groupCount })}
           {...(onAction === undefined ? {} : { onAction })}
         />
       </div>
@@ -720,6 +723,9 @@ export function QueueRow({
     ? onRenameTitle : undefined;
   const selectedBatchMember = batch === undefined ? undefined
     : batch.items.flatMap(item => item.attempts).find(attempt => attempt.runId === state.selectedRunId);
+  /** The batch footer's Pause all / Stop all: one command per member still running. */
+  const batchAll = (command: "pause" | "cancel") => (batch?.members ?? []).filter(member => !isTerminalQueueStatus(member.status)).flatMap(member =>
+    actionsOf(member).filter(action => action.kind === "command" && action.command === command).map(action => () => onAction?.(action, { runId: member.runId, expectedVersion: member.rowRevision })));
   const bulkKey = batch?.key ?? surface.runId;
   const batchTiming = batch === undefined ? undefined : runTiming(batch, state.nowIso, isTerminalQueueStatus);
   const batchWarnings = batch?.members.flatMap(member => member.warnings.state === "present" ? [member.warnings] : []) ?? [];
@@ -910,6 +916,11 @@ export function QueueRow({
               title={selectedBatchMember === undefined ? "Select a person for run actions"
                 : `${queueRowTitle(selectedBatchMember)} · attempt ${selectedBatchMember.attempt} · run ${selectedBatchMember.runId} · revision ${selectedBatchMember.rowRevision}`}
               className="flex shrink-0 items-center gap-[var(--ds-space-tight)]">
+              {([["pause", "Pause all", <Pause key="p" aria-hidden className={dsIcon.md} />], ["cancel", "Stop all", <X key="x" aria-hidden className={dsIcon.md} />]] as const).map(([command, word, icon]) => {
+                const each = batchAll(command);
+                return each.length === 0 ? null : <IconActionButton key={command} tone="muted" icon={icon} label={`${word} ${each.length}`}
+                  onClick={event => { event.stopPropagation(); each.forEach(run => run()); }} />;
+              })}
               <span className="sr-only">{selectedBatchMember === undefined ? "Select a person for run actions" : `Selected person: ${queueRowTitle(selectedBatchMember)}, attempt ${selectedBatchMember.attempt}`}</span>
               {selectedBatchMember !== undefined && <FooterActions actions={actionsOf(selectedBatchMember)}
                 target={{ runId: selectedBatchMember.runId, expectedVersion: selectedBatchMember.rowRevision }}

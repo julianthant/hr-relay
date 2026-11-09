@@ -101,7 +101,7 @@ Waiting, parked and failed runs sit under Needs you. Double-clicking a run title
 
 A queue row draws its served subtitle ("12 people") as a muted line under the title when it differs from the title.
 Double-clicking a run title in its queue row renames it in place, and the Logs header shows the same name: Enter saves, Escape cancels, and an empty name restores the default name (the PDF or run name). Queue rows draw no subtitle; a group's count chip ("12/12") carries its size.
-Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
+The queue column is `--ds-w-queue-column` (360px, the smallest width where a running card's footer fits; 336px below 1100px window width, where the footer also drops the run id). A running card's footer has Pause beside Cancel; on a group or batch card they read `Pause all N` and `Stop all N` and act on every member still running. Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
 how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
 that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
 under steps; read/fill observations use aligned label/value rows with shared facts at the heading. Timeline segments are

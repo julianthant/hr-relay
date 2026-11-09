@@ -405,7 +405,7 @@
   /* The queue and the run's CONTEXT RAIL are equal resting side panels. 376px
    leaves the centre log panel as the largest column at every three-panel */
   --ds-w-side-panel: 376px;
-  --ds-w-queue-column: 336px; /* the queue column at 1280px leaves the log toolbar its labels beside the 312px sidebar */
+  --ds-w-queue-column: 360px; /* the smallest width where a running card's footer (clock, #n, run id, 1h 59m 59s, pause, cancel) fits one line; 336px below 1100px */
   --ds-w-context-rail: var(--ds-w-side-panel);
   /* The rail while the Data surface is being EDITED in it. 376px reads a
    ledger fine but is tight to type a date into once the row carries a label, */
@@ -2114,3 +2114,5 @@ body[data-demo-theme],
 
 [data-demo-theme="light"] { --ds-card-bg: var(--ui-canvas); }
 [data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; --ds-fg-list: #c4c4c6; --ds-sidebar-fg: #c5c5c7; --ds-sidebar-grey: #7c7c80; }
+
+@media (max-width: 1099px) { :root { --ds-w-queue-column: 336px; } }

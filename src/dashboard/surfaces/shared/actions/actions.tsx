@@ -105,11 +105,14 @@ export function FooterActions({
   target,
   onAction = NOOP_ACTION,
   onPreviewAction,
+  groupCount,
 }: {
   actions: readonly ActionDescriptorWire[];
   target: ActionTarget;
   onAction?: DashboardActionHandler;
   onPreviewAction?: (action: 'retry' | 'delete') => void;
+  /** A group or batch card: Pause and Stop act on every member still running. */
+  groupCount?: number;
 }) {
   const footer = actionsAt(actions, "footer");
   if (footer.length === 0 && !onPreviewAction) return null;
@@ -121,18 +124,21 @@ export function FooterActions({
         <IconActionButton tone="muted" icon={<RotateCcw aria-hidden className={dsIcon.sm} />} label="Retry" onClick={event => { event.stopPropagation(); onPreviewAction('retry'); }} />
         <IconActionButton tone="destructive" icon={<Trash2 aria-hidden className={dsIcon.sm} />} label="Delete" onClick={event => { event.stopPropagation(); onPreviewAction('delete'); }} />
       </>}
-      {footer.map((a) => (
+      {footer.map((a) => {
+        const label = groupCount === undefined ? a.label
+          : a.key === "pause" ? `Pause all ${groupCount}` : a.key === CANCEL_TREE_KEY ? `Stop all ${groupCount}` : a.label;
+        return (
         <IconActionButton
           key={a.key}
           tone={INTENT_TONE[a.intent]}
           icon={ICONS[a.icon ?? "external"]}
-          label={a.label}
+          label={label}
           title={
-            a.key === CANCEL_TREE_KEY
+            a.key === CANCEL_TREE_KEY && groupCount === undefined
               ? CANCEL_TREE_TITLE
               : a.kind === "command" && a.confirm
-                ? `${a.label} — asks first`
-                : a.label
+                ? `${label} — asks first`
+                : label
           }
           onClick={(e) => {
             e.stopPropagation();
@@ -141,7 +147,8 @@ export function FooterActions({
             if (a.kind === "command" && (a.command === "pause" || a.command === "resume")) row?.focus({ preventScroll: true });
           }}
         />
-      ))}
+        );
+      })}
     </span>
   );
 }
