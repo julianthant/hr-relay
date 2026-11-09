@@ -4,8 +4,6 @@
 .notification-group-head { display: flex; height: 20px; align-items: center; justify-content: space-between; padding: 0 4px 0 0; margin-bottom: 3px; }
 .notification-group-head button { width: 24px; height: 24px; margin-block: -2px; border-radius: 8px; color: var(--ui-muted); }
 .notification-group-label { margin: 0; padding: 0 8px; font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ui-muted); }
-/* The workflow rail's first row, kept above Priority: same markup and metrics as `.workflow-rail h3`. */
-.notification-search-row { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 8px 6px; color: var(--ui-muted); font-size: 14px; font-weight: 400; }
 .notification-list { margin: 0; padding: 0; list-style: none; }
 .notification-list li + li { margin-top: 1px; }
 .notification-item {

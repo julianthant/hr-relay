@@ -43,13 +43,9 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await shot(page, "bell-unread", theme);
   await expect(dot(page)).toBeVisible();
   await expect(bell(page)).toHaveAttribute("aria-pressed", "false");
-  const searchRow = (sel: string) => page.locator(sel).first().evaluate(h => { const r = h.getBoundingClientRect(), icon = h.querySelector("svg")!.getBoundingClientRect(); return { top: r.top, left: r.left, height: r.height, icon: icon.left }; });
-  const workflowSearch = await searchRow(".workflow-rail h3");
   await bell(page).click();
   await expect(panel(page)).toBeVisible();
   await expect(bell(page)).toHaveAttribute("aria-pressed", "true");
-  expect(await searchRow(".notification-search-row")).toEqual(workflowSearch);
-  await expect(panel(page).getByText("Search", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toHaveCount(0);
   for (const label of ["Priority", "Today", "Yesterday", "Friday", "November 3"]) await expect(panel(page).getByRole("heading", { name: label, exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toHaveCount(0);
