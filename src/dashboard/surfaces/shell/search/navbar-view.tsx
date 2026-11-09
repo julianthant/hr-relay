@@ -2,7 +2,7 @@ import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { shortcutActionForEvent, shortcutLabel, useShortcutPreferences } from "../../settings/navigation/keyboard-preferences-model.js";
 import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { Button, DatePicker, Kbd, Tooltip, dsFocus } from "../../../ds/ui.js";
+import { Button, DatePicker, Tooltip, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
 import type { NavbarData, NavbarSearchResult } from "./navbar-view-model.js";
@@ -32,7 +32,7 @@ export function RailSearch({ data, workflows, startKey, onAction, onWorkflow, on
     return () => window.removeEventListener("keydown", onKey);
   }, [preferences, setOpen]);
   return <div className="rail-search">
-    <Tooltip side="bottom" content={<span className="flex items-center gap-2">Search{preferences.bindings.search[0] && <Kbd>{shortcutLabel(preferences.bindings.search[0])}</Kbd>}</span>}><button ref={trigger} type="button" aria-label="Search" aria-haspopup="dialog" aria-expanded={open} className={iconButton} onClick={() => setOpen(true)}><Search aria-hidden className="size-4" /></button></Tooltip>
+    <Tooltip side="bottom" content="Search" shortcut={preferences.bindings.search[0] && shortcutLabel(preferences.bindings.search[0])}><button ref={trigger} type="button" aria-label="Search" aria-haspopup="dialog" aria-expanded={open} className={iconButton} onClick={() => setOpen(true)}><Search aria-hidden className="size-4" /></button></Tooltip>
     <SearchPalette open={open} onOpenChange={next => { setOpen(next); if (!next) setNotice(""); }} query={query} onQuery={value => { setQuery(value); setNotice(""); }}
       runs={data.unavailable ? [] : data.results} workflows={workflows} sheets={PALETTE_SPREADSHEETS} startKey={startKey} onAction={onAction} onWorkflow={onWorkflow}
       onRun={result => onResult(result, () => { setOpen(false); setNotice(""); }, setNotice)} notice={notice || data.unavailable || ""}
