@@ -21,7 +21,7 @@ export const Grey = ({ children, className = '' }: { children: ReactNode; classN
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
 /** Every dropdown in the mock: 13px, 28px rows, capped at 280px tall and scrolling after that. */
 export const MENU = 'max-h-[280px] overflow-y-auto';
-export const ROW = 'h-7 py-0 text-[13px]';
+export const ROW = '!min-h-7 !py-1';
 export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon size={14} aria-hidden className="shrink-0" /> : null; };
 export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;

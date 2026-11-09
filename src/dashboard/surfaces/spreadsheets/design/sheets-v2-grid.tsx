@@ -100,7 +100,7 @@ export function MappingGrid({ dataset, mapping: given, onMap, worksheets, column
           {!viewOnly && <div className="ds-menu-separator" />}
           <section aria-label="Show columns">
             <h3 className="ds-menu-label m-0">Show columns (view only)</h3>
-            <div className={MENU}>{others.map(header => <div key={header} className="ds-menu-item"><Checkbox label={header} checked={extra.includes(header)} onCheckedChange={checked => { setSelection(undefined); setExtra(current => checked === true ? [...current, header] : current.filter(item => item !== header)); }} /></div>)}</div>
+            <div className={MENU}>{others.map(header => <div key={header} className={`ds-menu-item ${ROW}`}><Checkbox label={header} checked={extra.includes(header)} onCheckedChange={checked => { setSelection(undefined); setExtra(current => checked === true ? [...current, header] : current.filter(item => item !== header)); }} /></div>)}</div>
           </section>
         </PopoverContent>
       </Popover>
