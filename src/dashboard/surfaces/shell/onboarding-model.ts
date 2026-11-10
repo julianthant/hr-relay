@@ -24,6 +24,8 @@ export interface ServedOnboardingPort {
   readonly unavailable?: boolean;
   readonly authorityScope?: object;
   readonly readRevision?: number;
+  /** Set only for the first profile read, so a later sign-in refusal stays on the form. */
+  readonly refusal?: Extract<PublicProfileState, { state: "refused" }>["code"];
   complete(): Promise<PublicProfileState>;
   cancel(): Promise<PublicProfileState>;
   cancelDuo(method: ProfileOnboardingMethod, attemptId: string): Promise<PublicProfileState>;
@@ -217,12 +219,13 @@ type ProfileAccountDeletion = { state: "idle" } | { state: "deleting" } | { stat
 
 export function usePublicProfileSession(client: DashboardClient, enabled: boolean) {
   const [readRevision, setReadRevision] = useState(0);
-  const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean }>();
+  const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean; gate?: boolean }>();
   const state = enabled && settlement?.client === client ? settlement.state : undefined;
   const failure = enabled && settlement?.client === client && settlement.failure;
   const generation = useRef(0);
   const live = useRef(false);
   const busy = useRef(false);
+  const initialRead = useRef(true);
   const active = state?.state === "active" ? state : undefined;
   const selection = useMemo(() => ({ client, enabled, profileId: active?.profileId, epoch: active?.epoch, duoState: active?.duoState }), [client, enabled, active?.profileId, active?.epoch, active?.duoState]);
   const currentSelection = useRef(selection); currentSelection.current = selection;
@@ -230,6 +233,8 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
   const deletionRef = useRef<typeof deletion>(undefined);
   const accountDeletion: ProfileAccountDeletion = deletion?.selection === selection ? deletion.outcome : { state: "idle" };
   const settle = useCallback((value: PublicProfileState) => {
+    const gate = initialRead.current;
+    initialRead.current = false;
     setSettlement(current => {
       const retained = current?.client === client && current.state?.state === PROFILE_ONBOARDING_STATE && (value.state === "refused" || value.state === "error");
       const parsedCode = ProfileOnboardingBrowserFailureCodeSchema.safeParse(value.state === "refused" || value.state === "error" ? value.code : undefined);
@@ -237,12 +242,13 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       const browserCode = parsedCode.success ? parsedCode.data : closureUnproved ? "DUO_SETUP_STOP_FAILED" as const : undefined;
       const retainedState = retained && current.state?.state === PROFILE_ONBOARDING_STATE && browserCode !== undefined
         ? { ...current.state, browser: { state: "failed" as const, generation: current.state.browser.generation, code: browserCode } } : current?.state;
-      return { client, state: retained ? retainedState : value, failure: retained && (closureUnproved || browserCode === undefined) };
+      return { client, state: retained ? retainedState : value, failure: retained && (closureUnproved || browserCode === undefined), gate: retained ? current?.gate : gate };
     });
   }, [client]);
   useEffect(() => {
     live.current = enabled; busy.current = false;
     if (!enabled) return;
+    initialRead.current = true;
     const lifetime = generation;
     const request = ++generation.current;
     void client.readProfileSession().then(value => {
@@ -345,7 +351,9 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       start: method => run(port => port.start(method)), confirmDuo: scope => run(port => port.confirmDuo(scope)),
     };
   }, [client, onboarding, scope, settle, settleRead, failure, readRevision, unavailable]);
-  return { state, failure, port, accountDeletion,
+  const refusal = settlement?.client === client && settlement.gate === true && state?.state === "refused" ? state.code : undefined;
+  const servedPort = useMemo<ServedOnboardingPort>(() => refusal === undefined ? port : Object.freeze({ ...port, refusal }), [port, refusal]);
+  return { state, failure, port: servedPort, accountDeletion,
     deleteAccount: async (): Promise<void> => {
       if (!live.current || currentSelection.current !== selection || active?.duoState !== "ready" || busy.current || deletionRef.current?.selection === selection) return;
       const request = ++generation.current; busy.current = true;
