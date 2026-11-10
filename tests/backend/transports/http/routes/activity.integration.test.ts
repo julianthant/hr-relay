@@ -50,6 +50,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       registration: { state: "registered", label: "Fixture Graph", code: "fx", categoryId: "operations" },
       runs: 1,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+      needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
       failed: 0, cancelled: 0, partial: 0, open: 1,
     }]);
     assert.equal(report.terminalRuns, 0);

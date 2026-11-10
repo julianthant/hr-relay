@@ -5,7 +5,7 @@ import { workbookRowChoices } from '../../../../src/dashboard/surfaces/run-start
 import { EditableWorkbookWireSchema } from '../../../../src/models/dashboard/workbooks.js';
 import { launchWorkbookReferences } from '../../../../src/dashboard/surfaces/run-start/run-start-model.js';
 import { WorkbookLibraryEntrySchema } from '../../../../src/models/dashboard/workbook-library.js';
-const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 3, name: 'Roster.xlsx', rowCount: 1,
+const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 1,
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: 'roster-type', sharePoint: null },
   type: { id: 'roster-type', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: 'roster' },
   state: { libraryId: 'roster', revision: 4, selectedVersionId: 'current', removed: false, origin: { kind: 'local' },

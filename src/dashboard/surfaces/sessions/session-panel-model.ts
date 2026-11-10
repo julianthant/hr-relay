@@ -1,4 +1,3 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { z } from "zod";
 import type {
 WorkerCardWireSchema,
@@ -358,14 +357,6 @@ export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text
 
 export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle", "waiting", "paused", "failed"];
 
-
-/** How a settled lease ended, in the operator's words rather than the enum's. */
-export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
-  operator: "stopped by you",
-  shutdown: "shut down",
-  crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
-  "not-started": "did not start",
-};
 
 /** A served step interrupt names what happens to the current step. A directive alone does not. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {

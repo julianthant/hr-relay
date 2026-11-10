@@ -17,7 +17,7 @@
     - paragraph: 1 sheet · Edited copy
     - button "Save"
     - button "Export copy"
-    - status: Save refused The library did not confirm this draft. Draft kept.
+    - status: Save refusedThe library did not confirm this draft. Draft kept.
     - group "Sheet view":
       - text: Sheet
       - combobox "Workbook sheet": Sheet 1

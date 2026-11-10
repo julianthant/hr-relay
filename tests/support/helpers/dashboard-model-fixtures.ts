@@ -169,7 +169,7 @@ export function createDashboardModelFixtures() {
 
       version: 7,
 
-      spreadsheetIntake: true, requiredWorkbookTypeIds: [],
+      readiness: { scope: "default-workbook-references", state: "ready" }, spreadsheetIntake: true, requiredWorkbookTypeIds: [],
       inputRun: {
         placeholder: "Enter EIDs or names, semicolon-separated",
         parser: {
@@ -196,6 +196,7 @@ export function createDashboardModelFixtures() {
 
   const BOOTSTRAP = {
     wireVersion: 1,
+    workbookReferences: [],
     appVersion: "1.0.0",
     descriptorHash: HASH_A,
     settingsSchemaHash: HASH_B,
@@ -203,7 +204,7 @@ export function createDashboardModelFixtures() {
     projectionGeneration: 1,
     actor: { id: "local-operator", label: "Local operator" },
     serverClock: { now: NOW, zone: "America/Los_Angeles" },
-    storage: { authority: "healthy", backup: "current", checkedAt: NOW },
+    storage: { authority: "healthy" },
     workflows: [WORKFLOW_PRIMITIVE],
     systemInstances: [{ system: "ucpath", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "test URL not configured" } }],
     settingsSections: [{ id: "general", label: "General", revision: 1 }],

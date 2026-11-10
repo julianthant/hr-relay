@@ -3,7 +3,21 @@ import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinit
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { readOnbaseSourcePage } from "../../tasks/read-source-page.js";
 
-export const ONBASE_SOURCE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-page", label: "Prepare this person's PDF page" }), system: "onbase" as const });
+export const ONBASE_SOURCE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-page", label: "Prepare this person's PDF page" }), system: "onbase" as const,
+  review: {
+    pages: [
+      {
+        id: "source-page",
+        title: "Source PDF page",
+        mode: "Read only",
+        nodeIds: ["source-page"],
+        lines: [{ id: "source", kind: "check", text: "Extract and verify exactly the approved person’s original PDF page.", nodeIds: ["source-page"] }],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const,
+});
 export function buildSource(author: WorkflowAuthor<typeof OnbaseInputSchema>) {
   const sourceTask = readOnbaseSourcePage(ONBASE_SOURCE_STEP);
   const source = author.task(sourceTask.identity, [], sourceTask.bind);

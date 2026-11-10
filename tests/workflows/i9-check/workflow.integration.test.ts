@@ -7,7 +7,7 @@ import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-ex
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
 import { I9CheckInput, I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
-import { ReadRetentionRow } from "../../../src/models/workflows/i9-check/check.js";
+import { ReadRetentionRow } from "../../../src/models/workflows/i9-check/read-retention-row.js";
 import { I9CheckRowSchema } from "../../../src/models/workflows/i9-check/check.js";
 import { descriptorRuntimeNodes, workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";

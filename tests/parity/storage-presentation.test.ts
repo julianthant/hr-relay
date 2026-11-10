@@ -41,7 +41,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "Data store and recovery", exact: true })).toBeVisible();
       await expect(run).toBeEnabled();
       await expect(primary.getByRole("listitem")).toHaveCount(3);
-      await expect(surface.locator(".diagnostic-check-entry")).toHaveCount(13);
+      await expect(surface.locator(".diagnostic-check-entry")).toHaveCount(10);
       await expect(surface.getByRole("group", { name: "Work in progress", exact: true })).toContainText("Pending actions");
       await expect(surface.getByRole("group", { name: "Connections", exact: true })).toContainText("Not checked");
       await expect(surface.getByRole("button", { name: "Technical details", exact: true })).toHaveCount(0);

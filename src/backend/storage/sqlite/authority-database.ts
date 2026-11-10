@@ -2037,6 +2037,15 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
+export function configureWritableConnection(database: DatabaseSync, busyTimeoutMs: number): void {
+  database.exec("PRAGMA foreign_keys = ON");
+  // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
+  database.exec("PRAGMA secure_delete = ON");
+  database.exec("PRAGMA journal_mode = WAL");
+  database.exec("PRAGMA synchronous = FULL");
+  database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
+}
+
 export class AuthorityDatabase implements Disposable {
   readonly #admission: RuntimeAdmission;
   readonly #admitMutation: () => void;
@@ -4322,12 +4331,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #configureConnection(): void {
-    this.#database.exec("PRAGMA foreign_keys = ON");
-    // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
-    this.#database.exec("PRAGMA secure_delete = ON");
-    this.#database.exec("PRAGMA journal_mode = WAL");
-    this.#database.exec("PRAGMA synchronous = FULL");
-    this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
+    configureWritableConnection(this.#database, this.#busyTimeoutMs);
   }
 
   #configureReadOnlyConnection(): void {

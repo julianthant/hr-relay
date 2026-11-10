@@ -26,10 +26,8 @@ import { WorkflowCountWireSchema as WorkflowCountWireSchema_m1 } from "../../../
 
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
-import {
-WORKER_STOP_REASON_LABEL as WORKER_STOP_REASON_LABEL_m2,
-WORKER_TONE as WORKER_TONE_m2
-} from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { WORKER_STOP_REASON_LABEL as WORKER_STOP_REASON_LABEL_m2 } from "../../../../src/dashboard/surfaces/sessions/worker-stop-reason-label.js";
+import { WORKER_TONE as WORKER_TONE_m2 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 
 
 

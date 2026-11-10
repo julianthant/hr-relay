@@ -73,6 +73,16 @@ afterEach(_afterEachFixture0);
 describe("read-only upgrade phase reporting", () => {
 afterEach(_afterEachFixture0);
 
+  it("refuses an aborted health check before inspection", async () => {
+    const f = await fixture();
+    const runner = new AuthorityHealthPreflightRunner(f.admission, f.options, systemClock, f.credentialStore);
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(runner.run({
+      signal: controller.signal, timeoutMs: 10_000, deadlineMonotonicMs: 10_000, redaction: "presence-only",
+    }), /aborted before inspection/u);
+  });
+
   it("projects baseline and each upgrade phase through doctor, browser wire and preflight without private journal payload", async () => {
     const f = await fixture();
     const baseline = await doctorAuthorityStorage(f.admission,f.options, undefined, f.credentialStore);

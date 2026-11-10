@@ -1,6 +1,6 @@
 import type { RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
-import { WORKER_STOP_REASON_LABEL } from "../../surfaces/sessions/session-panel-model.js";
+import { WORKER_STOP_REASON_LABEL } from "../../surfaces/sessions/worker-stop-reason-label.js";
 
 const QUEUEING_RUN = new Set(["resume", "retry", "recover-run"]);
 const QUEUEING_BULK = new Set(["resume", "retry"]);

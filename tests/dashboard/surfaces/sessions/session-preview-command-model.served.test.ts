@@ -2,7 +2,7 @@ import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/
 import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
-import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
+import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/worker-stop-reason-label.js";
 // @vitest-environment jsdom
 import { act, createElement, type ComponentProps } from "react";
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";

@@ -41,7 +41,7 @@ function pidAlive(pid: number): boolean {
 }
 
 /** The dashboard process with one fixture worker whose first UCPath search holds on the barrier; Ctrl+C arrives while that run is inside its step.
- * Shutdown holds admission and pauses every live run, so the held run finishes its step and parks at the next boundary. */
+ * Shutdown holds admission and pauses every live run before it stops the worker; the pause cancels the held step, so the run parks while its search is still pending. */
 async function interruptMidRun(emplIds: readonly string[]) {
   const f = await createBoundProfileFixture();
   cleanups.push(() => f.close());
@@ -94,9 +94,8 @@ async function interruptMidRun(emplIds: readonly string[]) {
 
   const interruptedAt = systemClock.now().toISOString();
   assert.equal(child.kill("SIGINT"), true);
-  // The parent asks its worker to stop after the run; only then does the held step finish.
   await until(() => markers().find(name => name === `stop-shutdown-${String(workerPid)}`), "the parent's worker-stop", diagnostics);
-  assert.ok(runs().some(run => run.state === "running"), "Ctrl+C never interrupts the run inside its step");
+  await until(() => runs().every(run => run.state === "queued") || undefined, "the held run to park before its search returns", diagnostics);
   writeFileSync(join(barrier, "release"), "");
   const exit = await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => { reject(new Error(`dashboard did not exit\n${diagnostics()}`)); }, scaledMs(90_000)))]);
 
