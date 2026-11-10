@@ -45,7 +45,7 @@ function notificationItem(row: Extract<NotificationWire, { kind: "notification" 
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
   const context = row.context;
   const tone = policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info");
-  return { id: row.notificationId, title: row.title, tone,
+  return { id: row.notificationId, title: row.title, tone, ...(row.link?.kind === "storage" ? {} : { kind: "run" as const }),
       // The wire has no priority or resolved flag; error and warning notices count as still needing the operator.
       priority: tone === "danger" || tone === "warning",
       subject: context.state === "available" ? context.subject : inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE"),

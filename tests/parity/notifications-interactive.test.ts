@@ -20,22 +20,26 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const bell = page.getByRole("button", { name: /^Notifications, \d+ unread$/u });
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true, includeHidden: true });
+      const item = (subject: string) => inbox.locator("li.notification-row").filter({ has: page.locator("button.notification-item", { hasText: subject }) });
+      const open = (subject: string) => item(subject).locator("button.notification-item");
+      const menuButton = inbox.getByRole("button", { name: "Notification actions", exact: true });
       await expect(bell).toHaveAccessibleName("Notifications, 3 unread"); await bell.click();
-      await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "Morrow, Bea", exact: true }) }).getByRole("button", { name: "Mark unread: Approval waiting", exact: true }).click();
+      await item("Morrow, Bea").hover();
+      await item("Morrow, Bea").getByRole("button", { name: "Mark as unread", exact: true }).click();
       await expect(bell).toHaveAccessibleName("Notifications, 4 unread");
-      await inbox.getByRole("tab", { name: "Unread", exact: true }).click();
-      await inbox.getByRole("button", { name: "Read all", exact: true }).click();
-      await expect(inbox).toContainText("All caught up"); await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
-      await expect(inbox.getByRole("button", { name: "Read all", exact: true })).toBeDisabled();
-      await expect(inbox.getByRole("tab", { name: "Unread", exact: true })).toBeFocused();
-      await inbox.getByRole("tab", { name: "All", exact: true }).click();
-      await inbox.getByRole("button", { name: "Filter notifications by category", exact: true }).click();
-      await page.getByRole("menuitemradio", { name: "Needs you", exact: true }).click();
-      await expect(inbox.locator(".notification-row")).toHaveCount(11);
+      await menuButton.click();
+      await page.getByRole("menuitem", { name: "Mark all as read", exact: true }).click();
+      await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
+      await expect(inbox.locator(".notification-unread-dot")).toHaveCount(0);
+      await menuButton.click();
+      await expect(page.getByRole("menuitem", { name: "Mark all as read", exact: true })).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await expect(inbox).toBeVisible();
+      await expect(inbox.locator("li.notification-row")).toHaveCount(13);
 
-      const contact = inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "emergency-contacts.pdf", exact: true }) });
-      await contact.getByRole("button", { name: "Review records", exact: true }).focus(); await page.keyboard.press("Enter");
-      await expect(inbox).toHaveCount(0);
+      const contact = open("emergency-contacts.pdf");
+      await contact.focus(); await page.keyboard.press("Enter");
+      await expect(inbox).toBeVisible();
       const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
       await expect(drawer).toBeVisible(); await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await expect.poll(async () => { const box = await drawer.boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(width);
@@ -43,31 +47,29 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
 
       await drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true }).fill("619-555-0199");
-      await bell.click(); await contact.getByRole("button", { name: "Review records", exact: true }).click();
+      await contact.click();
       await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
       await expect(drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true })).toHaveValue("619-555-0199");
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      await bell.click();
-      await expect(inbox.locator(".notification-row")).toHaveCount(10);
-      await inbox.getByRole("button", { name: "Filter notifications by category", exact: true }).click();
-      await page.getByRole("menuitemradio", { name: "All updates", exact: true }).click();
+      await expect(inbox.locator("li.notification-row")).toHaveCount(13);
       await expect(inbox).toContainText("Records approved"); await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
-      await contact.getByRole("button", { name: "View records", exact: true }).click();
+      await contact.click();
       await expect(drawer).toBeVisible(); await expect(drawer).toContainText("619-555-0199");
       await expect(drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true })).toHaveCount(0);
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toHaveCount(0);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(drawer).toHaveCount(0);
-      await bell.click(); await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "Morrow, Bea", exact: true }) }).getByRole("button", { name: "Review run", exact: true }).click();
-      await expect(inbox).toHaveCount(0); expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.openGateRun);
+      await open("Morrow, Bea").click();
+      await expect(inbox).toBeVisible(); expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.openGateRun);
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("Morrow, Bea");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.openGateRun}"]`)).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.openGateRun}"] [data-demo-row-title]`)).toBeInViewport();
       await expect(page.locator("#dashboard-main-region")).toBeFocused();
-      await bell.click(); await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "EID 10101010", exact: true }) }).getByRole("button", { name: "Open log", exact: true }).click();
+      await open("EID 10101010").click();
       expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.doneRun);
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("EID 10101010");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.doneRun}"] [data-demo-row-title]`)).toBeInViewport();
+      await bell.click();
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await page.getByRole("button", { name: "Start run", exact: true }).click();
       const launcher = page.getByRole("dialog", { name: "Start run", exact: true });
@@ -76,8 +78,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await launcher.getByRole("button", { name: "Continue", exact: true }).click(); await launcher.getByRole("button", { name: "Preview plan", exact: true }).click();
       await launcher.getByRole("button", { name: "Start preview", exact: true }).click();
       await expect(bell).toHaveAccessibleName("Notifications, 1 unread"); await bell.click();
-      const created = inbox.locator(".notification-row").filter({ hasText: "notification.hire@example.com" });
-      await expect(created).toContainText("Completed"); await expect(created).toContainText("Just now"); await created.getByRole("button", { name: "notification.hire@example.com", exact: true }).click();
+      const created = item("notification.hire@example.com");
+      await expect(created).toContainText("Completed"); await open("notification.hire@example.com").click();
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("notification.hire@example.com");
       await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
 
@@ -106,10 +108,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         ["EID 10333015", FIXTURE_IDS.partialRun], ["EID 10101010", FIXTURE_IDS.doneRun],
         ["Onboarding cohort — July stragglers", FIXTURE_IDS.groupOf12], ["Separation audit — August", FIXTURE_IDS.groupOf13],
       ] as const;
+      const item = (subject: string) => inbox.locator("li.notification-row").filter({ has: page.locator("button.notification-item", { hasText: subject }) });
+      await bell.click();
       for (const [subject, id] of targets) {
-        await bell.click();
-        const item = inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: subject, exact: true }) });
-        await item.getByRole("button", { name: /^(?:Open log|Review run)$/u }).click();
+        await item(subject).locator("button.notification-item").click();
         expect(new URL(page.url()).searchParams.get("run")).toBe(id);
         await expect(logs.getByRole("heading", { level: 2 })).toHaveText(subject);
         const row = page.locator(`.dashboard-queue-column [data-demo-row-id="${id}"]`);
@@ -126,9 +128,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         ["detect-test.pdf", "mock:onbase:sample", 4],
         ["i9.pdf", "mock:i9-check-start:sample", 2],
       ] as const) {
-        await bell.click();
-        const item = inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: subject, exact: true }) });
-        await item.getByRole("button", { name: "Review records", exact: true }).click();
+        await item(subject).locator("button.notification-item").click();
         await expect(logs.getByRole("heading", { level: 2, includeHidden: true })).toHaveText(subject);
         const review = logs.getByRole("region", { name: "OCR records", exact: true });
         await expect(review.locator("[data-review-record-id]")).toHaveCount(count);
@@ -140,9 +140,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(bell).toBeInViewport();
         if (subject === "detect-test.pdf") await expect(review).toContainText("3 selected for approval");
       }
-      await bell.click();
-      await expect(inbox.locator(".notification-row")).toHaveCount(13);
-      await expect(inbox.getByRole("button", { name: "sick-hours.pdf", exact: true })).toHaveCount(0);
+      await expect(inbox.locator("li.notification-row")).toHaveCount(13);
+      await expect(inbox.locator("button.notification-item", { hasText: "sick-hours.pdf" })).toHaveCount(0);
       await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
 
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
