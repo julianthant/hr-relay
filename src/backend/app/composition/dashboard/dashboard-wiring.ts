@@ -306,12 +306,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   input.onInitialPreflight?.(initialPreflight);
-  const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
-  if (blockingChecks.length > 0) {
-    throw new Error(
-      `dashboard preflight refused startup: ${blockingChecks.map(({ check, summary }) => `${check}: ${summary}`).join("; ")}`,
-    );
-  }
   // Boot spawns the standing members; each one that fails shows on its card with its cause.
   void workers.startActive();
 
