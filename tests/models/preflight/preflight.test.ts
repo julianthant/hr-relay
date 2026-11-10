@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
 import { describe,it } from "vitest";
-import { buildPreflightReport,createPreflightAuthority,executePreflightRunner,PreflightReportSchema,PreflightRerunCommandRequestSchema,PreflightRerunCommandResultSchema,requiredPreflightChecks,type PreflightDeadlineScheduler } from "../../../src/models/preflight/preflight.js";
+import { buildPreflightReport,createPreflightAuthority,executePreflightRunner,PreflightRunnerTimeoutError,PreflightReportSchema,PreflightRerunCommandRequestSchema,PreflightRerunCommandResultSchema,requiredPreflightChecks,type PreflightDeadlineScheduler } from "../../../src/models/preflight/preflight.js";
 import { auditRuntimeDependencyCoverage,PREFLIGHT_CHECKS,PreflightCheckIdSchema,RUNTIME_DEPENDENCIES,RUNTIME_DEPENDENCY_REGISTRY,RuntimeCapabilitySchema,type RuntimeCapability } from "../../../src/models/runtime/runtime-dependencies.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
@@ -647,7 +647,8 @@ describe("preflight selection and reports", () => {
     assert.equal(settled, false, "timeout cancellation must not detach a still-running detector");
 
     release.resolve();
-    await assert.rejects(execution, /preflight runner config\.valid exceeded its registered 1000ms timeout/);
+    await assert.rejects(execution, (error: unknown) => error instanceof PreflightRunnerTimeoutError
+      && error.message === "preflight runner config.valid exceeded its registered 1000ms timeout");
     assert.equal(scheduler.cancelled, true);
   });
 

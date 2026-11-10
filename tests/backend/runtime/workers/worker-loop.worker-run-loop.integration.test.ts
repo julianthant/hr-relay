@@ -28,7 +28,7 @@ describe("worker run loop", () => {
     assert.equal(claims, 1); assert.equal(h.sessions.opens("ucpath"), 0); assert.equal(h.sessions.opens("crm"), 0);
     assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "worker" && event.outcome === "failed"));
   });
-  for (const code of ["PREFLIGHT_BLOCKED", "PREFLIGHT_OBSERVATION_CHANGED"] as const) it(`keeps a standing worker alive after ${code} and claims when readiness returns`, async () => {
+  for (const code of ["PREFLIGHT_BLOCKED", "PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_TIMEOUT"] as const) it(`keeps a standing worker alive after ${code} and claims when readiness returns`, async () => {
     const h = await loopHarness();
     h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     let claims = 0;
@@ -60,6 +60,76 @@ describe("worker run loop", () => {
     assert.equal(report.closure, "proved");
     assert.deepEqual(refusalEvents, [{ code, message: summary }]);
   });
+
+  it("doubles the re-poll delay across consecutive preflight refusals up to a minute, then a claim resets it", async () => {
+    const h = await loopHarness();
+    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    const base = 20_000;
+    const summary = "Readiness checks blocked this worker.";
+    const delays: number[] = [];
+    let claims = 0;
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, idleRepollMs: base,
+      onStanding: refusal => {
+        if (refusal !== undefined) delays.push(Date.parse(refusal.retryAt) - h.authority.clock.nowMs());
+      },
+      claimNext: (request, sessions) => {
+        claims += 1;
+        if (claims <= 3 || claims === 5) return { state: "preflight-refused", code: "PREFLIGHT_BLOCKED", summary };
+        if (claims >= 6) { h.stop.abort(); return { state: "refused", refusal: { reason: "none-eligible" } }; }
+        return h.deps.claimNext(request, sessions);
+      },
+    });
+    const fire = async (expected: number) => {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const now = h.authority.clock.monotonicMs();
+      const timer = h.scheduler.pending().find(entry => entry.deadlineMonotonicMs - now === expected);
+      assert.ok(timer, `delay ${expected}; pending ${h.scheduler.pending().map(entry => entry.deadlineMonotonicMs - now).join(",")}`);
+      timer.fire();
+    };
+    await fire(base);
+    await fire(base * 2);
+    await fire(base * 3);
+    const started = Date.now();
+    while (delays.length < 4 && Date.now() - started < 10_000) await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(delays, [base, base * 2, 60_000, base]);
+    await fire(base);
+    const report = await looping;
+    assert.equal(claims, 6);
+    assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
+    assert.equal(report.stopped, "stop-signal");
+  });
+
+  it("resets the refusal delay after an idle poll with nothing eligible", async () => {
+    const h = await loopHarness();
+    const base = 20_000;
+    const delays: number[] = [];
+    let claims = 0;
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, idleRepollMs: base,
+      onStanding: refusal => {
+        if (refusal !== undefined) delays.push(Date.parse(refusal.retryAt) - h.authority.clock.nowMs());
+      },
+      claimNext: () => {
+        claims += 1;
+        if (claims === 1 || claims === 3) return { state: "preflight-refused", code: "PREFLIGHT_TIMEOUT", summary: "A readiness check took too long. Check again." };
+        if (claims === 4) h.stop.abort();
+        return { state: "refused", refusal: { reason: "none-eligible" } };
+      },
+    });
+    const fire = async (expected: number) => {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const now = h.authority.clock.monotonicMs();
+      const timer = h.scheduler.pending().find(entry => entry.deadlineMonotonicMs - now === expected);
+      assert.ok(timer, `delay ${expected}; pending ${h.scheduler.pending().map(entry => entry.deadlineMonotonicMs - now).join(",")}`);
+      timer.fire();
+    };
+    await fire(base);
+    await fire(base);
+    await fire(base);
+    assert.deepEqual(delays, [base, base]);
+    await looping;
+    assert.equal(claims, 4);
+  });
+
   for (const fails of [false, true]) it(`admits idle refresh between claims and releases its turn after ${fails ? "failure" : "success"}`, async () => {
     const h = await loopHarness({ exitWhenIdle: false });
     let release: () => void = () => undefined;
