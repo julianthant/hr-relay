@@ -18,6 +18,8 @@ Proves a change the way the operator uses it: sign in, Run, read Logs, check the
 
 ## Launch
 
+With the dashboard stopped, run `npm run verify:prelogin` before `npm run dashboard`. Start only with `npm run dashboard`. Never start the BFF and Vite by hand.
+
 ```bash
 EVID=/Users/julianhein/Projects/hr-relay/.work/verify/<workflow>-$(date +%F)   # evidence survives cleanup
 mkdir -p "$EVID"
@@ -44,9 +46,11 @@ After sign-in, open Settings › Preflight and Run preflight, and read the stora
 
 ## Hand over for login
 
+Wait until the sign-in page shows the sign-in form, not a named refusal. If `GET http://127.0.0.1:3938/api/v1/profile/state` reports `resumable: true`, press Resume and confirm the dashboard opens. Ask the operator only when sign-in needs the password.
+
 1. `playwright-cli -s=verify snapshot` of the signed-out page only.
-2. Tell the operator: "Sign in and approve Duo in the open window; say done." Take no snapshot, screenshot or `eval` until they do.
-3. After "done": snapshot, confirm the signed-in dashboard, screenshot to `$EVID/00-signed-in.png`.
+2. When the password is required, tell the operator: "Sign in and approve Duo in the open window; say done." Take no snapshot, screenshot or `eval` until they do.
+3. After the dashboard is open: snapshot, confirm the signed-in dashboard, screenshot to `$EVID/00-signed-in.png`.
 
 ## Drive a dry run
 

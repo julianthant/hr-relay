@@ -1,5 +1,6 @@
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { boundFixtureWorker, stopSyntheticDatabaseWorkers, syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -106,20 +107,9 @@ describe("canonical run-record service", () => {
       auditOnlySqlite.close();
     }
     const auditOnlyGeneration = auditOnly.database.getMeta().authorityGeneration;
-    assert.throws(() => auditOnly.service.create(auditOnly.request), /command-audit-settlement-mismatch/u);
+    assert.throws(() => auditOnly.service.create(auditOnly.request), /has an audit without its command/u);
     assert.equal(auditOnly.database.getMeta().authorityGeneration, auditOnlyGeneration);
-    assert.throws(() => auditOnly.database.close(), error => {
-      assert.ok(error instanceof AggregateError);
-      assert.equal(error.message, "fixture-worker-closure-unproved");
-      assert.equal(error.errors.length, 1);
-      const failure: unknown = error.errors[0];
-      assert.ok(failure instanceof Error);
-      assert.equal(failure.message, "authority table command_audits failed native record validation: command-audit-settlement-mismatch");
-      assert.ok(failure.cause instanceof Error);
-      assert.equal(failure.cause.message, "command-audit-settlement-mismatch");
-      assert.equal(failure.cause.cause, undefined);
-      return true;
-    });
+    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(auditOnly.root, "state.db")), /^Error: authority database foreign-key validation failed for 1 row\(s\)$/u);
     const repair = new DatabaseSync(join(auditOnly.root, "state.db"));
     try {
       const trigger = repair.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='command_audits_retained'").get();

@@ -21,8 +21,8 @@ type PublicProfileState
 } from "../../../../models/profiles/public-profile.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
-import { serializeErrorCauses } from "../../../../models/failures/error-origins.js";
-import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
+import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
+import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
 import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
@@ -38,10 +38,15 @@ import { failureStatus } from "../../../transports/http/routes/failure-status.js
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
 import { openStaticBundle,staticBundleHandler } from "../../../transports/http/static-bundle.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
+import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
+import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
+import { probeOwnedViteServer } from "../../host/local-vite-probe.js";
 import { RuntimeCustodyUncertainError,composeProfileRuntime } from "../storage-compose.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type DashboardRuntime } from "./runtime-contracts.js";
 import { composeDashboardRuntime } from "./runtime-startup.js";
 import { composeApplicationStop,retainPublicFailureCustody } from "./shutdown-custody.js";
+
+const FRONTEND_PROBE_MS = 2000;
 
 export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; shutdownRequested: Promise<void>; stop(): Promise<void> }>> {
   let resolveApplicationQuit: () => void = () => undefined;
@@ -128,13 +133,13 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const publicFailure = (error: Error) => {
     const custodyUnproved = retainPublicFailureCustody(error, retainedCustodyFailures);
     const mapped = failureStatus(error);
-    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? serializeErrorCauses(error) : [];
+    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? serializeTokenedErrorCauses(error) : [];
     for (const cause of causes) {
       const diagnostic = new Error(cause.name);
       diagnostic.name = cause.name;
       diagnostic.stack = cause.stack;
       appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: cause.code, error: diagnostic,
-        area: "profile-request", reason: "profile-request-cause", now: clock.now() });
+        area: "profile-request", reason: cause.token ?? "profile-request-cause", now: clock.now() });
     }
     if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
@@ -142,8 +147,16 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       code: custodyUnproved ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
   };
   app.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
+  let frontendOwned = false;
   app.use("/api/v1/profile/*", async (c, next) => {
     if (!loopback(c.req.raw)) return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 403);
+    // Vite proxies with the browser's Host, so a dev-frontend request names the frontend port; direct BFF requests are not probed.
+    if (frontend === "vite-dev" && !frontendOwned && new URL(`http://${c.req.header("host") ?? ""}`).port === String(input.isolation.frontendPort)) {
+      const probe = await (input.frontendProbe ?? probeOwnedViteServer)({ port: input.isolation.frontendPort, signal: c.req.raw.signal,
+        deadlineMonotonicMs: clock.monotonicMs() + FRONTEND_PROBE_MS, clock, ownerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] });
+      if (probe.state !== "owned") return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }), 403);
+      frontendOwned = true;
+    }
     return next();
   });
   app.get("/api/v1/profile/state", c => {
@@ -191,7 +204,11 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
     const runtime = await composeDashboardRuntime({ ...input, onInitialPreflight, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
-      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
+      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } })
+      .catch((error: unknown) => {
+        if (error instanceof RuntimeCustodyUncertainError || error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) throw error;
+        throw new ProfileRuntimeStartFailedError({ cause: error });
+      });
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };

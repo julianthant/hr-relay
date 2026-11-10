@@ -120,6 +120,7 @@ type CommandAction,
 } from "./commands/command-dispatch.js";
 import { settleCommandResult } from "./commands/command-result.js";
 import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workflowWorkersStopped } from "./commands/worker-startup-toast.js";
+import { preflightAttentionToast } from "./commands/preflight-attention-toast.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
 } from "./dashboard-app-model.js";
@@ -275,6 +276,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
+          startupPreflight={profileSource === "served"}
         /></DashboardPageBoundary></ViewNavigationProvider>
       )}
       <StatusMockHost />
@@ -361,6 +363,8 @@ interface LoadedAppProps {
   onSelectMode: (on: boolean) => void;
   bulkIds: ReadonlySet<string>;
   onBulkIds: (next: ReadonlySet<string>) => void;
+  /** Served sign-in reads the readiness report once and toasts attention failures. */
+  startupPreflight?: boolean;
 }
 
 
@@ -388,6 +392,7 @@ function LoadedApp({
   onSelectMode,
   bulkIds,
   onBulkIds,
+  startupPreflight = false,
 }: LoadedAppProps) {
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
@@ -953,6 +958,24 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       settings: section,
     }));
   }, [setRoute]);
+  const shownPreflight = useRef(new Set<string>());
+  useEffect(() => {
+    if (!startupPreflight) return;
+    let active = true;
+    void (async () => {
+      let wire: Awaited<ReturnType<typeof client.readPreflight>>;
+      try { wire = await client.readPreflight(); }
+      catch { return; }
+      if (!active || wire.state !== "present") return;
+      const attention = preflightAttentionToast(wire.report);
+      if (attention === undefined) return;
+      const key = `${wire.report.configFingerprint}:${wire.report.descriptorFingerprint ?? ""}:${wire.report.checkedAt}`;
+      if (shownPreflight.current.has(key)) return;
+      shownPreflight.current.add(key);
+      toast({ tone: attention.tone, title: attention.title, sticky: true });
+    })();
+    return () => { active = false; };
+  }, [startupPreflight, client, toast]);
 
   const renderQueueBody = useCallback((body: ReactNode) => (
     <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}

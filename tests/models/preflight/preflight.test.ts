@@ -650,6 +650,80 @@ describe("preflight selection and reports", () => {
     await assert.rejects(execution, /preflight runner config\.valid exceeded its registered 1000ms timeout/);
     assert.equal(scheduler.cancelled, true);
   });
+
+  it("records a check that misses its deadline or rejects with a kebab token when incomplete failures are admitted", async () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    const check = PreflightCheckIdSchema.parse("config.valid");
+    const clock = manualClock(new Date("2026-08-10T12:00:00-07:00"), 700);
+    const hung = (incompleteAsFailure: true | undefined) => {
+      const deadlines = new Set<() => void>();
+      const began = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const authority = createPreflightAuthority({
+        configFingerprint: CONFIG_FINGERPRINT,
+        requestedCapabilities: ["dashboard.serve"],
+        ...(incompleteAsFailure === undefined ? {} : { incompleteAsFailure }),
+        runners: selected.map(id => ({
+          check: id,
+          kind: PREFLIGHT_CHECKS.find(({ id: candidate }) => candidate === id)?.runner ?? "pure",
+          async run() {
+            if (id !== check) return { check: id, state: "healthy" as const, summary: `${id} healthy` };
+            began.resolve();
+            await release.promise;
+            return { check: id, state: "healthy" as const, summary: "late healthy answer" };
+          },
+        })),
+        clock,
+        scheduler: {
+          schedule(_at, onDeadline) {
+            deadlines.add(onDeadline);
+            return { cancel: () => { deadlines.delete(onDeadline); } };
+          },
+        },
+      });
+      return { authority, began, release, fire: () => { for (const deadline of deadlines) deadline(); } };
+    };
+    const admitted = hung(true);
+    const refresh = admitted.authority.refresh(new AbortController().signal);
+    await admitted.began.promise;
+    admitted.fire();
+    admitted.release.resolve();
+    const report = await refresh;
+    const row = report.results.find(result => result.check === check);
+    assert.equal(row?.status, "fail");
+    if (row?.status === "fail") assert.equal(row.summary, "check did not complete (timeout)");
+
+    const rejected = hung(undefined);
+    const refusal = rejected.authority.refresh(new AbortController().signal);
+    await rejected.began.promise;
+    rejected.fire();
+    rejected.release.resolve();
+    await assert.rejects(refusal, (error: unknown) => {
+      const errors = error instanceof AggregateError ? error.errors : [error];
+      return errors.some(item => item instanceof Error && /preflight runner config\.valid exceeded its registered/u.test(item.message));
+    });
+
+    const thrown = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      incompleteAsFailure: true,
+      runners: selected.map(id => ({
+        check: id,
+        kind: PREFLIGHT_CHECKS.find(({ id: candidate }) => candidate === id)?.runner ?? "pure",
+        async run() {
+          if (id === check) throw new Error("foo-bar: x");
+          return { check: id, state: "healthy" as const, summary: `${id} healthy` };
+        },
+      })),
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+    const failed = await thrown.refresh(new AbortController().signal);
+    const token = failed.results.find(result => result.check === check);
+    assert.equal(token?.status, "fail");
+    if (token?.status === "fail") assert.equal(token.summary, "check did not complete (foo-bar)");
+  });
+
   it("rejects duplicate requested capabilities and unknown, duplicate, missing, or unrequested observations", () => {
     assert.throws(() => requiredPreflightChecks(["dashboard.serve", "dashboard.serve"]), /requested capabilities contain duplicates/);
     assert.throws(() => buildPreflightReport({

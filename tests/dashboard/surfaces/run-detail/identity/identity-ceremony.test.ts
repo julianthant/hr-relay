@@ -10,13 +10,10 @@ type CommandAction,
 import {
 identityCeremonyFor,
 identityDraftProblem,
-optionFor,
 type IdentityGateDetail,
 } from "../../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 
-import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
-import { CommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
-import { IdentityApprovalResultSchema } from "../../../../../src/rules/separations/identity-approval.js";
+import { DashboardCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 
 
 
@@ -26,15 +23,16 @@ const NOW = "2026-08-14T17:00:00.000Z";
 const CHECKED = "10833507";
 /** The person a search on the document's NAME resolves — a different human. */
 const NAME_SEARCH = "10203262";
-const RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 
 const runId = (n: number): string =>
   `${String(n).repeat(8)}-${String(n).repeat(4)}-4${String(n).repeat(3)}-8${String(n).repeat(3)}-${String(n).repeat(12)}`;
 
+const UNSERVED_REF = "00000000-0000-4000-8000-0000000000ff";
+
 const CONTEXT = { actorId: "local-operator", source: "run-detail" } as const;
 
 const { ONE_CLICK, CHOOSE, NAME_MISMATCH, gateDetail } =
-  createIdentityCeremonyFixtures(NOW, CHECKED, NAME_SEARCH, RESULT_SCHEMA_HASH, runId);
+  createIdentityCeremonyFixtures(NOW, CHECKED, NAME_SEARCH, runId);
 
 
 
@@ -92,47 +90,89 @@ describe("identityCeremonyFor — the server names the ceremony (ref write-safet
       assert.equal(ceremony.kind, "unsupported");
       if (ceremony.kind !== "unsupported") continue;
       assert.match(ceremony.reason, diagnostic);
-      assert.equal(identityDraftProblem(ceremony, ""), ceremony.reason);
+      assert.equal(identityDraftProblem(ceremony, { decision: "approved", optionRef: "" }), ceremony.reason);
     }
   });
 });
 
-describe("identityDraftProblem — only a shown candidate can be sent", () => {
-  it("asks for a candidate, refuses one the packet never showed, and accepts a shown one", () => {
-    const ceremony = identityCeremonyFor(gateDetail(CHOOSE));
-    assert.match(identityDraftProblem(ceremony, "") ?? "", /Pick which candidate/);
-    assert.match(identityDraftProblem(ceremony, "99999999") ?? "", /not one of the candidates/);
-    assert.equal(identityDraftProblem(ceremony, NAME_SEARCH), undefined);
+describe("identityDraftProblem — only a served candidate can be sent", () => {
+  it("refuses a ref the review never served, accepts a served one, and checks a typed value's shape", () => {
+    const detail = gateDetail(CHOOSE);
+    const ceremony = identityCeremonyFor(detail);
+    assert.match(identityDraftProblem(ceremony, { decision: "approved", optionRef: "" }) ?? "", /Pick which candidate/);
+    assert.match(identityDraftProblem(ceremony, { decision: "approved", optionRef: UNSERVED_REF }) ?? "", /Pick which candidate/);
+    assert.equal(identityDraftProblem(ceremony, { decision: "approved", optionRef: detail.options[1].ref }), undefined);
+    assert.match(identityDraftProblem(ceremony, { decision: "approved", typedEid: "1234" }) ?? "", /8-digit/);
+    assert.equal(identityDraftProblem(ceremony, { decision: "approved", typedEid: "10203262" }), undefined);
   });
 
   it("carries the unsupported reason through as the problem, so the send stays blocked", () => {
     const forged = { ...gateDetail(CHOOSE), approvalShape: "biometric-scan" } as unknown as IdentityGateDetail;
-    assert.match(identityDraftProblem(identityCeremonyFor(forged), CHECKED) ?? "", /biometric-scan/);
+    assert.match(identityDraftProblem(identityCeremonyFor(forged), { decision: "approved", typedEid: CHECKED }) ?? "", /biometric-scan/);
   });
 });
 
-describe("composeCommandRequest — the ceremonies reach the real command endpoint", () => {
-  it("composes a CHOSEN candidate under the server's own chosenFrom label", () => {
+describe("composeCommandRequest — the ceremonies reach the identity-answer endpoint", () => {
+  const COMMAND_CONTEXT = { ...CONTEXT, gateId: "identity-approval" } as const;
+  const parsedGateAnswer = (composed: ReturnType<typeof composeCommandRequest>) => {
+    assert.equal(composed.state, "ready");
+    if (composed.state !== "ready") throw new Error("expected a ready command");
+    const parsed = DashboardCommandRequestSchema.parse(composed.request);
+    assert.equal(parsed.family, "gate");
+    if (parsed.family !== "gate" || parsed.type !== "answer-identity-gate") throw new Error("expected answer-identity-gate");
+    return parsed;
+  };
+
+  it("composes a CHOSEN candidate by the served gateRef and the picked option's ref, never an EID", () => {
     const detail = gateDetail(CHOOSE);
+    const picked = detail.options[1];
     const composed = composeCommandRequest(
       APPROVE,
       { runId: runId(1), expectedVersion: 3 },
-      { ...CONTEXT, gate: available(detail), gateAnswer: { decision: "approved", eid: NAME_SEARCH } },
+      { ...COMMAND_CONTEXT, gate: available(detail), gateAnswer: { decision: "approved", optionRef: picked.ref } },
     );
-    assert.equal(composed.state, "ready");
-    if (composed.state !== "ready") return;
-    const parsed = CommandRequestSchema.parse(composed.request);
-    assert.equal(parsed.family, "gate");
-    if (parsed.family !== "gate") return;
-    assert.equal(parsed.payload.result.schemaHash, detail.resultSchemaHash);
-    const result = IdentityApprovalResultSchema.parse(parsed.payload.result.value);
-    assert.equal(result.decision, "approved");
-    if (result.decision !== "approved") return;
-    assert.equal(result.eid, NAME_SEARCH);
-    // NOT invented: the label is the served option's, which the post-gate node
-    // re-derives and refuses a contradiction to.
-    assert.equal(result.chosenFrom, optionFor(detail.options, NAME_SEARCH)?.chosenFrom);
-    assert.equal(result.chosenFrom, "name-search");
-    assert.equal(result.evidenceDigest, detail.evidenceDigest);
+    const parsed = parsedGateAnswer(composed);
+    assert.deepEqual(parsed.target, { runId: detail.runId, gateId: "identity-approval", expectedVersion: 3 });
+    assert.deepEqual(parsed.payload, { decision: "approved", gateRef: detail.gateRef, optionRef: picked.ref });
+  });
+
+  it("composes the one-click candidate from the served ref", () => {
+    const detail = gateDetail(ONE_CLICK);
+    const parsed = parsedGateAnswer(composeCommandRequest(APPROVE, { runId: runId(1), expectedVersion: 3 }, { ...COMMAND_CONTEXT, gate: available(detail) }));
+    assert.deepEqual(parsed.payload, { decision: "approved", gateRef: detail.gateRef, optionRef: detail.options[0].ref });
+  });
+
+  it("composes a typed 8-digit Employee ID as typedEid and refuses a malformed one", () => {
+    const detail = gateDetail(CHOOSE);
+    const parsed = parsedGateAnswer(composeCommandRequest(
+      APPROVE, { runId: runId(1), expectedVersion: 3 },
+      { ...COMMAND_CONTEXT, gate: available(detail), gateAnswer: { decision: "approved", typedEid: "10203262" } },
+    ));
+    assert.deepEqual(parsed.payload, { decision: "approved", gateRef: detail.gateRef, typedEid: "10203262" });
+    const refused = composeCommandRequest(
+      APPROVE, { runId: runId(1), expectedVersion: 3 },
+      { ...COMMAND_CONTEXT, gate: available(detail), gateAnswer: { decision: "approved", typedEid: "1234" } },
+    );
+    assert.equal(refused.state, "refused");
+  });
+
+  it("refuses a picked ref the review did not serve", () => {
+    const composed = composeCommandRequest(
+      APPROVE, { runId: runId(1), expectedVersion: 3 },
+      { ...COMMAND_CONTEXT, gate: available(gateDetail(CHOOSE)), gateAnswer: { decision: "approved", optionRef: UNSERVED_REF } },
+    );
+    assert.equal(composed.state, "refused");
+  });
+
+  it("sends a rejection as the decision and the served gateRef alone", () => {
+    const detail = gateDetail(ONE_CLICK);
+    const reject: CommandAction = { ...identityApprovalAction("Reject"), key: "resolve-gate-rejected", intent: "destructive", resolution: "rejected" };
+    const parsed = parsedGateAnswer(composeCommandRequest(reject, { runId: runId(1), expectedVersion: 3 }, { ...COMMAND_CONTEXT, gate: available(detail) }));
+    assert.deepEqual(parsed.payload, { decision: "rejected", gateRef: detail.gateRef });
+  });
+
+  it("refuses when the run detail names no open gate", () => {
+    const composed = composeCommandRequest(APPROVE, { runId: runId(1), expectedVersion: 3 }, { ...CONTEXT, gate: available(gateDetail(ONE_CLICK)) });
+    assert.equal(composed.state, "refused");
   });
 });

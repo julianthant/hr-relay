@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import type { Clock } from "../../rules/time/clock.js";
+import { leadingKebabToken } from "../failures/error-origins.js";
 import {
   FingerprintSchema,
 } from "../../rules/identity/ids.js";
@@ -65,6 +66,8 @@ export interface PreflightRunner {
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
 
+export class PreflightRunnerTimeoutError extends Error {}
+
 /** Executes one detector under its registered deadline: a timeout rejects the eventual return rather than racing the runner promise away. */
 export async function executePreflightRunner(
   runner: PreflightRunner,
@@ -86,7 +89,7 @@ export async function executePreflightRunner(
   if (signal.aborted) forwardAbort();
   signal.addEventListener("abort", forwardAbort, { once: true });
   let timedOut = false;
-  const timeoutError = new Error(
+  const timeoutError = new PreflightRunnerTimeoutError(
     `preflight runner ${runner.check} exceeded its registered ${String(check.timeoutMs)}ms timeout`,
   );
   const deadline = scheduler.schedule(deadlineMonotonicMs, () => {
@@ -256,6 +259,14 @@ interface CreatePreflightAuthorityInput {
   readonly runners: readonly PreflightRunner[];
   readonly clock: Clock;
   readonly scheduler: PreflightDeadlineScheduler;
+  /** Dashboard only: a runner that rejects becomes an unhealthy row instead of rejecting the refresh. */
+  readonly incompleteAsFailure?: true;
+}
+
+function incompleteObservation(check: PreflightCheckId, error: unknown): z.infer<typeof PreflightObservationSchema> {
+  const reason = error instanceof PreflightRunnerTimeoutError ? "timeout"
+    : (error instanceof Error ? leadingKebabToken(error.message) : undefined) ?? "error";
+  return { check, state: "unhealthy", summary: `check did not complete (${reason})`, impact: "this check's result is unknown" };
 }
 
 /** The one runtime preflight authority: selection comes from the strict dependency registry, and a rerun is read-only but idempotent by command id. */
@@ -296,7 +307,8 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
     const settlements = await Promise.allSettled(selectedChecks.map(async (check) => {
       const runner = runners.get(check);
       if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
-      return executePreflightRunner(runner, signal, input.clock, input.scheduler);
+      const observation = executePreflightRunner(runner, signal, input.clock, input.scheduler);
+      return input.incompleteAsFailure === true ? observation.catch((error: unknown) => { if (signal.aborted) throw error; return incompleteObservation(check, error); }) : observation;
     }));
     const observations: z.infer<typeof PreflightObservationSchema>[] = [];
     const failures: unknown[] = [];

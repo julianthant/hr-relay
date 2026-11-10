@@ -4,7 +4,7 @@ import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
-import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
+import { CommandRequestSchema, type CommandRequest, type DashboardCommandRequest } from "../../rules/commands/commands.js";
 import { OcrApprovedSnapshotSchema, ocrSnapshotDigest, operatorOcrRecordId, blankOperatorOcrFields } from "../../models/ocr/review.js";
 import { OcrApprovalReferenceSchema } from "../../models/workflows/ocr/result.js";
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
@@ -57,8 +57,8 @@ export function useRunReview(client: DashboardClient, selection: LogSelection, b
   return value;
 }
 
-export async function verifyOcrReviewEffect(client: DashboardClient, request: CommandRequest) {
-  if (!(request.family === "ocr-review" || request.family === "gate" && request.payload.ocrApproval !== undefined)) throw new Error("RUN_REVIEW_COMMAND_MISMATCH");
+export async function verifyOcrReviewEffect(client: DashboardClient, request: DashboardCommandRequest) {
+  if (!(request.family === "ocr-review" || request.family === "gate" && request.type === "resolve-gate" && request.payload.ocrApproval !== undefined)) throw new Error("RUN_REVIEW_COMMAND_MISMATCH");
   const recorded = await client.ocrCommandResult(request.target.runId, request.commandId);
   if (recorded.state !== "recorded" || canonicalJsonStringify(recorded.request) !== canonicalJsonStringify(request)) return { state: "mismatch" as const, evidence: recorded };
   if (checkedCommandResult(request, recorded.result).state !== "applied") return { state: "mismatch" as const, evidence: recorded };
@@ -136,7 +136,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
     if (start === undefined || start.scope.client !== client || memory.attempt?.state === "pending") return;
     memory.attempt = { request, captured, state: "pending", text: "Pending" };
     publishReview(memory);
-    const options = { scope: start.scope, readback: (input: CommandRequest) => verifyOcrReviewEffect(client, input) };
+    const options = { scope: start.scope, readback: (input: DashboardCommandRequest) => verifyOcrReviewEffect(client, input) };
     let outcome = check ? await start.executor.check(request.commandId, { ...options, observe: async input => {
       if (!(input.family === "ocr-review" || input.family === "gate")) throw new Error("RUN_REVIEW_COMMAND_MISMATCH");
       const result = await client.ocrCommandResult(input.target.runId, input.commandId);

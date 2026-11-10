@@ -5,6 +5,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { fixtureUuid } from "../../../support/fixtures/ledger-projection-fixtures.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { HISTORY_NOW,historyClock,historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 async function peers(){
   const world=await historyWorld({terminalize:true}),fixture=world.commit(90);
@@ -46,6 +47,35 @@ describe("current peer run custody",()=>{
     }finally{await f.world.dispose();}
   });
 
+  it("clears two confirmed runs in one history command and keeps their confirmed history",async ()=>{
+    const world=await historyWorld({terminalize:true});
+    try{
+      const fixtures=[world.commit(1),world.commit(2)],range={from:"2026-07-01",to:"2026-09-09"};
+      const retained=()=>fixtures.map(f=>({intent:world.database.authority.writeIntents.get(f.commit.writeIntentId),
+        attempts:world.database.authority.writeAttempts.listByIntent(f.commit.writeIntentId)}));
+      const before=retained(),history=world.history.query(range);
+      assert.equal(history.rows.length,2);
+      const service=testRunService(world.database,historyClock);
+      const seeded=world.database.authority.runs.listByWorkflow(personLookupDescriptor.id).filter(run=>run.lifecycle.state!=="terminal");
+      for(const run of seeded){
+        if(!("workerId" in run.lifecycle))throw new Error("seeded run is not claimed");
+        const requested=service.transition({commandId:fixtureUuid(`seed-cancel-${run.envelope.runId}`),runId:run.envelope.runId,
+          expectedVersion:run.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:HISTORY_NOW}});
+        if(requested.state!=="applied")throw new Error("seeded run cancellation refused");
+        assert.equal(service.terminalize({kind:"cancelled",commandId:fixtureUuid(`seed-settle-${run.envelope.runId}`),runId:run.envelope.runId,
+          expectedVersion:requested.run.version,claim:{workerId:run.lifecycle.workerId,claimGeneration:run.claimGeneration},endedAt:HISTORY_NOW},personLookupDescriptor).state,"applied");
+      }
+      const commandId=fixtureUuid("confirmed-history-clear");
+      assert.deepEqual(service.clearHistory({commandId}),{state:"cleared",commandId,deletedRuns:2+seeded.length});
+      for(const f of fixtures)assert.ok(world.database.authority.deletedRuns.get(f.commit.transaction.runId));
+      assert.deepEqual(retained(),before);
+      assert.deepEqual(world.history.query(range).rows.map(row=>row.eventId),history.rows.map(row=>row.eventId));
+      world.reopen();
+      assert.deepEqual(retained(),before);
+      assert.deepEqual(world.history.query(range).rows.map(row=>row.eventId),history.rows.map(row=>row.eventId));
+    }finally{await world.dispose();}
+  });
+
   it("refuses a corrupt current peer before deleting a retry or writing a tombstone",async ()=>{
     const f=await peers();
     try{
@@ -60,7 +90,7 @@ describe("current peer run custody",()=>{
         assert.equal(raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,?,json(?)) WHERE id=?")
           .run("$.input",corrupt,f.source.envelope.runId).changes,1);
       }
-      assert.throws(()=>f.service.delete({runId:retry.envelope.runId,expectedVersion:retry.version,commandId:fixtureUuid("corrupt-peer-delete")}),/record|invalid|authority/u);
+      assert.throws(()=>f.service.delete({runId:retry.envelope.runId,expectedVersion:retry.version,commandId:fixtureUuid("corrupt-peer-delete")}),/unexpectedField/u);
       const checked=new DatabaseSync(f.world.path,{readOnly:true});
       try{
         assert.equal(checked.prepare("SELECT count(*) AS n FROM runs WHERE id=?").get(retry.envelope.runId)?.n,1);
