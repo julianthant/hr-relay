@@ -11,7 +11,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await installServedSurfaces(page);
       // The fixture BFF serves no workbook library; one Roster type fills the types table.
-      await page.route('**/api/v1/workbooks/**', route => route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/types') ? [{ id: 'roster', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: null }] : [] }));
+      await page.route('**/api/v1/workbooks/**', route => route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/types') ? [{ id: 'roster', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: null }] : new URL(route.request().url()).pathname.endsWith('/compatibility') ? { libraries: [], workflows: [] } : [] }));
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);

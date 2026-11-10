@@ -43,7 +43,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await page.getByRole("button", { name: "Clear search", exact: true }).click();
           await expect(search).toHaveValue("");
           await expect(search).toBeFocused();
-          await expect(page.locator(".shortcut-reference-row")).toHaveCount(5);
+          await expect(page.locator(".shortcut-reference-row")).toHaveCount(6);
         }
       }
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);

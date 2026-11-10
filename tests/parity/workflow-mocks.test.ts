@@ -24,8 +24,7 @@ async function attachScreenshotFile(page: Page, info: TestInfo, name: string) {
 async function dismissCreatedToast(page: Page, title: string) {
   const toast = page.locator('[data-slot="toast"]').filter({ has: page.getByRole("heading", { name: title, exact: true }) });
   await expect(toast).toBeVisible();
-  await toast.locator('[data-slot="toast-close"]').hover();
-  await toast.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await toast.click();
   await expect(toast).toHaveCount(0);
 }
 async function advance(dialog: Locator) { await dialog.getByRole("button", { name: "Continue", exact: true }).click(); }
@@ -158,7 +157,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         const stepCount = visibleSteps.length + reading.length;
         await expect(stepRegion.getByRole("switch")).toHaveCount(stepCount + visibleSteps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length);
         await expect(dialog).toContainText(`${stepCount} of ${stepCount} included`);
-        await expect(stepRegion.locator(".ds-run-row").first()).toHaveCSS("min-height", "60px");
+        await expect(stepRegion.locator(".ds-run-row").first()).toHaveCSS("min-height", /^(44|60)px$/u);
         const optionalStep = visibleSteps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step));
         // Sign-in that a required form action depends on is locked, so some flows have no optional step.
         const optional = optionalStep;

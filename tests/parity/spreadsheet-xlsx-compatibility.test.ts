@@ -24,7 +24,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await installServedSurfaces(page);
       // The fixture BFF serves no workbook library: an empty one keeps the served library quiet.
-      await page.route('**/api/v1/workbooks/**', route => route.fulfill({ json: [] }));
+      await page.route('**/api/v1/workbooks/**', route => route.fulfill({ json: route.request().url().endsWith('/compatibility') ? { libraries: [], workflows: [] } : [] }));
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=performance`);
       const personal = page.locator('.settings-nav-group').filter({ has: page.getByText('Personal', { exact: true }) });

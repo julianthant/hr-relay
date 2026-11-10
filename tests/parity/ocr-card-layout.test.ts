@@ -172,7 +172,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       expect(initialCount).toBeGreaterThan(0);
       for (let remaining = initialCount; remaining > 0; remaining--) {
         await deletes.first().click();
-        await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+        await page.getByRole("dialog").getByRole("button", { name: "Delete run", exact: true }).click();
         await expect(deletes).toHaveCount(remaining - 1);
       }
       await expect(queue).toContainText("No Emergency Contact runs");

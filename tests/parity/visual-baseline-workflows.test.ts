@@ -82,7 +82,7 @@ for (const theme of PARITY_THEMES) {
       const picker = explorer.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await picker.click();
       const options = await page.locator('[data-slot="select-content"][data-open]').getByRole("option").evaluateAll(nodes => nodes.map(node => ({ label: node.textContent, value: node.getAttribute("data-value") })));
-      expect(options).toHaveLength(14);
+      expect(options).toHaveLength(13);
       await page.keyboard.press("Escape");
       for (const option of options) {
         if (option.value === null) throw new Error("explorer-workflow-option-value-missing");

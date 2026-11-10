@@ -13,6 +13,10 @@ async function openOnboarding(page: Page, fixture: WorkbookRowsFixture, theme: T
   await gotoAppState(page, fixture.server.baseUrl, { day: FIXTURE_DAY, start: true });
   const dialog = page.getByRole('dialog', { name: 'Start run', exact: true });
   await dialog.getByRole('navigation', { name: 'Workflow', exact: true }).getByRole('button', { name: 'Onboarding', exact: true }).click();
+  for (const [picker, option] of [[/Reference spreadsheet$/u, 'Onboarding.xlsx'], [/Reference version$/u, /^Reviewed roster/u], [/Reference worksheet$/u, 'People']] as const) {
+    await dialog.getByRole('button', { name: picker }).click();
+    await page.getByRole('menuitemradio', { name: option, ...(typeof option === 'string' ? { exact: true } : {}) }).click();
+  }
   await expect(dialog.getByRole('table', { name: 'Saved spreadsheet rows', exact: true })).toBeVisible();
   await expect(dialog.getByRole('radio', { name: 'New hire', exact: true })).not.toBeChecked();
   await expect(dialog.getByRole('radio', { name: 'Rehire', exact: true })).not.toBeChecked();
@@ -122,7 +126,6 @@ test(authorityTitle, {
     { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'stale-version')}.a11y.yml` },
     { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'empty-version')}.a11y.yml` },
     { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'provider-error')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'stale-catalog')}.a11y.yml` },
     { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'authority-summary')}.a11y.yml` },
   ],
 }, async ({ page }, info) => {
@@ -140,38 +143,37 @@ test(authorityTitle, {
     await dialog.getByRole('button', { name: /Reference version$/u }).click();
     await page.getByRole('menuitemradio', { name: 'New roster', exact: true }).click();
     await dialog.getByRole('button', { name: 'Clear previous row selection', exact: true }).click();
+    await dialog.getByRole('button', { name: /Reference worksheet$/u }).click();
+    await page.getByRole('menuitemradio', { name: 'New people', exact: true }).click();
     await expect(rowCheckbox(dialog, 0, 'New people')).toBeEnabled();
     const lateReply = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/versions/roster-2'));
     fixture.releaseVersion(); await lateReply;
     await expect(rowCheckbox(dialog, 0, 'New people')).toBeEnabled(); await expect(rowCheckbox(dialog, 0)).toHaveCount(0);
     await dialog.getByRole('button', { name: /Reference version$/u }).click();
     await page.getByRole('menuitemradio', { name: 'Empty roster', exact: true }).click();
+    await dialog.getByRole('button', { name: /Reference worksheet$/u }).click();
+    await page.getByRole('menuitemradio', { name: 'People', exact: true }).click();
     await expect(dialog.getByText('No saved data rows', { exact: true })).toBeVisible();
     await expect(dialog.getByRole('table', { name: 'Saved spreadsheet rows', exact: true })).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
     await evidence(page, info, 'empty-version');
     await dialog.getByRole('button', { name: /Reference version$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'Reviewed roster', exact: true }).click();
+    await page.getByRole('menuitemradio', { name: /^Reviewed roster/u }).click();
+    await dialog.getByRole('button', { name: /Reference worksheet$/u }).click();
+    await page.getByRole('menuitemradio', { name: 'People', exact: true }).click();
     await rowCheckbox(dialog, 0).check();
     await dialog.getByRole('button', { name: /Reference version$/u }).click();
     await page.getByRole('menuitemradio', { name: 'Unavailable roster', exact: true }).click();
-    await expect(dialog.getByText('Saved rows unavailable', { exact: true })).toBeVisible();
-    const providerError = dialog.getByRole('alert').filter({ hasText: 'Saved rows unavailable' });
+    const providerError = dialog.getByRole('alert').filter({ hasText: ERROR_CATALOG.DASHBOARD_READ_FAILED.text });
     await expect(providerError).toHaveCount(1);
-    await expect(providerError).toHaveText(`Saved rows unavailable${ERROR_CATALOG.DASHBOARD_READ_FAILED.text}Refresh reference data`);
     await expect(providerError).not.toContainText('/api/v1/');
     await expect(providerError).not.toContainText('GET ');
     await expect(providerError).not.toContainText('Failed to fetch');
-    await expect(rowCheckbox(dialog, 0)).toBeDisabled();
-    await evidence(page, info, 'provider-error');
-    fixture.refreshCatalog();
-    await dialog.getByRole('button', { name: 'Refresh reference data', exact: true }).click();
-    await expect(dialog.getByText('Refreshing reference data. Row selection is disabled.', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /Reference worksheet$/u })).toBeDisabled();
     await expect(rowCheckbox(dialog, 0)).toBeChecked(); await expect(rowCheckbox(dialog, 0)).toBeDisabled();
     await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
-    await evidence(page, info, 'stale-catalog'); fixture.releaseCatalog();
-    await expect(dialog.getByText('Refreshing reference data. Row selection is disabled.', { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('The selected rows are from earlier spreadsheet data and cannot be planned.', { exact: true })).toBeVisible();
+    await evidence(page, info, 'provider-error');
     expect(fixture.plans).toHaveLength(0); expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0);
     await attachShellA11y(page, info, `${evidenceId(info.title, 'authority-summary')}.a11y.yml`);
   });

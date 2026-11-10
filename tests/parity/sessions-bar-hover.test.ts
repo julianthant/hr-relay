@@ -80,9 +80,10 @@ for (const theme of themes) {
       active: document.activeElement === node,
       visible: node.matches(':focus-visible'),
       bar: getComputedStyle(node.parentElement!).backgroundColor,
-      outline: getComputedStyle(node).outlineWidth,
+      outline: getComputedStyle(node).outlineStyle,
+      filled: getComputedStyle(node).backgroundColor !== 'rgba(0, 0, 0, 0)',
     }));
-    expect(focus, JSON.stringify(focus)).toEqual({ active: true, visible: true, bar: 'rgba(0, 0, 0, 0)', outline: '2px' });
+    expect(focus, JSON.stringify(focus)).toEqual({ active: true, visible: true, bar: 'rgba(0, 0, 0, 0)', outline: 'none', filled: true });
     await save(panel, `${theme.name}-focus`);
 
     await add.hover();

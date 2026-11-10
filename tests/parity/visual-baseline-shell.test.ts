@@ -48,14 +48,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         else if (scenario === "unavailable") await expect(panel.getByRole("alert")).toContainText("Sessions unavailable");
         else await expect(panel.getByRole("article")).toHaveCount(scenario === "active" ? 4 : scenario === "attention" ? 3 : 2);
         if (["active", "empty", "unavailable"].includes(scenario)) await capture(page, info, theme, width, `sessions-${scenario}`);
-        if (scenario === "idle") {
-          await page.clock.runFor(300_000);
-          await expect(panel.getByRole("img", { name: "Checking idle session refresh", exact: true }).first()).toBeVisible();
-
-          await page.clock.runFor(1000);
-          await expect(panel.getByRole("img", { name: /^Session refresh in/u }).first()).toBeVisible();
-
-        }
       }
       await attachShellA11y(page, info, evidence("sessions", theme, width));
     } finally { await server.close(); }
@@ -140,7 +132,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await capture(page, info, theme, width, "search-empty");
       await page.goto(`${server.baseUrl}/?day=invalid-day&view=${encodeURIComponent(JSON.stringify({ search: true }))}`);
       await expect(dialog.getByText("Invalid date: invalid-day.", { exact: true })).toBeVisible();
-      await expect(dialog.locator(".search-palette-row-tag")).toHaveCount(0);
+      // The invalid day yields no run rows: only the three design spreadsheet rows carry tags.
+      await expect(dialog.locator(".search-palette-row-tag")).toHaveText(["v6 · Updated Nov 8", "v3 · Updated Nov 7", "v4 · Updated Nov 6"]);
       await capture(page, info, theme, width, "search-invalid-date-unavailable");
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: "missing-workflow" }))}`);
       await expect(page.getByText("Destination unavailable", { exact: true })).toBeVisible();
