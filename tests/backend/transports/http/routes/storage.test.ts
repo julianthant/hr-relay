@@ -51,3 +51,30 @@ it.each(["clear", "result"])("guards history %s before body effects and returns 
   const response = await server.request(path, { method: "POST", headers: { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json" }, body: JSON.stringify({ commandId, target: { profileId: "00000000-0000-4000-8000-000000000001", epoch: 1 } }) });
   assert.deepEqual(await response.json(), { state: "refused", commandId, reason: "unavailable" });
 });
+
+
+it("validates injected doctor results and preserves last completed history after failures", async () => {
+  const latestCandidate = {
+    state: "verified-compatible", selection: "single-database", schemaVersion: 1,
+    manifestFileName: "backup.manifest.json", backupFileName: "backup.sqlite", createdAt: "2026-09-26T11:00:00.000Z",
+    authorityGeneration: 1, ageMs: 3_600_000, generationGap: { state: "known", value: 0 }, restoreEligibility: { state: "eligible" },
+  };
+  const completed = StorageDoctorWireSchema.parse({ ...report, backup: { state: "current", latest: latestCandidate }, restoreCandidates: [latestCandidate] });
+  let result: StorageDoctorWire = completed;
+  let fail = false;
+  let calls = 0;
+  const server = app(async () => { calls++; if (fail) throw new Error("synthetic doctor failed"); return result; });
+  assert.equal((await server.request("/api/v1/storage/doctor")).status, 200);
+  fail = true;
+  assert.equal((await server.request("/api/v1/storage/doctor")).status, 500);
+  assert.deepEqual(await (await server.request("/api/v1/storage/doctor/latest")).json(), { state: "completed", report: completed });
+  fail = false;
+  result = { ...completed };
+  Object.assign(result, { mode: "invalid" });
+  assert.equal((await server.request("/api/v1/storage/doctor")).status, 500);
+  assert.deepEqual(await (await server.request("/api/v1/storage/doctor/latest")).json(), { state: "completed", report: completed });
+  result = StorageDoctorWireSchema.parse({ ...completed, checkedAt: "2026-09-26T12:30:00.000Z" });
+  assert.equal((await server.request("/api/v1/storage/doctor")).status, 200);
+  assert.deepEqual(await (await server.request("/api/v1/storage/doctor/latest")).json(), { state: "completed", report: result });
+  assert.equal(calls, 4);
+});

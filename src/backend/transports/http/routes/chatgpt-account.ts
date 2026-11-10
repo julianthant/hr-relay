@@ -1,9 +1,10 @@
 import type { ChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { randomUUID } from "node:crypto";
+import type { Clock } from "../../../../rules/time/clock.js";
 import { ChatGptAccountError, type ChatGptAccountService, type ChatGptAuthorization } from "../../../accounts/chatgpt-account-service.js";
 import { ChatGptCredentialError } from "../../../storage/configuration/chatgpt-credential-repository.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
-import { ChatGptAccountViewSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
+import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
   ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema,
   type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
@@ -11,10 +12,10 @@ import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import { wireError } from "./failure-status.js";
 
-export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "signOut">; readonly chatGptOcrTest?: ChatGptOcrTestService }
-function failure(error: unknown, dispatched = false) {
+export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "signOut" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+function failure(error: unknown, dispatched = false, unknownCode: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE") {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
-  const code: ErrorCatalogCode = known ? error.code : "CHATGPT_AUTH_UNAVAILABLE";
+  const code: ErrorCatalogCode = known ? error.code : unknownCode;
   return { state: code === "CHATGPT_CREDENTIAL_UNCERTAIN" || code === "CHATGPT_RESOURCE_CLOSURE_UNPROVED" || !known && dispatched ? "uncertain" as const : "refused" as const, code, message: ERROR_CATALOG[code].text };
 }
 
@@ -33,7 +34,7 @@ async function waitForCompletion(completion: Promise<ChatGptSignInCompletion>, s
   finally { signal.removeEventListener("abort", abort); }
 }
 
-export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAccountRouteDeps): void {
+export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAccountRouteDeps & { readonly clock: Clock }): void {
   let latest: { id: string; authorization: ChatGptAuthorization; pending: boolean; completion: Promise<ChatGptSignInCompletion>;
     loggingFailure?: { cause: unknown } } | undefined;
   const service = () => {
@@ -47,12 +48,16 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
   app.get("/api/v1/settings/chatgpt-account", async c => {
     c.header("Cache-Control", "no-store");
     try {
-      const account = await service().refreshAccount();
-      return c.json(ChatGptAccountViewSchema.parse(latest?.pending === true
-        ? { state: "signing-in", attemptId: latest.id, expiresAt: latest.authorization.expiresAt, authorizationUrl: latest.authorization.authorizationUrl, account } : account));
+      const status = await service().readStatus(c.req.raw.signal), account = status.account;
+      return c.json(ChatGptAccountStatusSchema.parse({ ...status, account: latest?.pending === true
+        ? { state: "signing-in", attemptId: latest.id, expiresAt: latest.authorization.expiresAt, authorizationUrl: latest.authorization.authorizationUrl, account } : account }));
     } catch (error) {
-      const result = failure(error);
-      return c.json(ChatGptAccountViewSchema.parse({ state: "unavailable", code: result.code, message: result.message }));
+      const result = failure(error, true, "CHATGPT_CONNECTION_FAILED");
+      return c.json(ChatGptAccountStatusSchema.parse({
+        account: { state: "unavailable", code: result.code, message: result.message },
+        connection: { state: result.state, checkedAt: deps.clock.now().toISOString(), failureCode: result.code },
+        usage: { state: "unavailable", reason: result.code === "CHATGPT_SERVICE_CLOSED" ? "closed" : "unavailable" },
+      }));
     }
   });
   app.post("/api/v1/settings/chatgpt-account/sign-in", async c => {

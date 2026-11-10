@@ -5,6 +5,7 @@ import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runn
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createTrustNotifications } from "./notifications.js";
 import { z } from "zod";
+import type { PreflightReportWireSchema } from "../../../../models/preflight/preflight-contract.js";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
 import { type IdFactory } from "../../../../rules/identity/identifiers.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -29,6 +30,7 @@ export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
 export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
+  readonly onInitialPreflight?: (report: z.infer<typeof PreflightReportWireSchema>) => void;
   readonly requestApplicationQuit?: () => void;
   readonly updateHost?: ApplicationUpdateHost;
   readonly lifetimeLock: RuntimeLifetimeLock;

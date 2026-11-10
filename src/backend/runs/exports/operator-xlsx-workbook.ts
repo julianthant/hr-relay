@@ -327,10 +327,10 @@ function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<
     columns: [
       { width: 24 }, { width: 14 }, { width: 18 }, { width: 12 }, { width: 14 },
       { width: 14 }, { width: 16 }, { width: 12 }, { width: 14 }, { width: 12 },
-      { width: 12 }, { width: 56 },
+      { width: 12 }, { width: 56 }, { width: 18 }, { width: 56 }, { width: 18 }, { width: 18 },
     ],
     data: [
-      headerRow(["Workflow", "Code", "Category", "Runs", "Read back", "Warnings", "Warnings unread", "Failed", "Cancelled", "Partial", "Open", "Registration note"]),
+      headerRow(["Workflow", "Code", "Category", "Runs", "Read back", "Warnings", "Warnings unread", "Failed", "Cancelled", "Partial", "Open", "Registration note", "Needs attention", "Typical time: successful root mean (ms)", "Successful roots measured", "Successful roots unmeasured"]),
       ...report.workflows.map((workflow) => [
         cell(workflow.registration.state === "registered" ? workflow.registration.label : "Unavailable"),
         cell(workflow.registration.state === "registered" ? workflow.registration.code : ""),
@@ -344,6 +344,10 @@ function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<
         numericCell(workflow.partial),
         numericCell(workflow.open),
         cell(workflow.registration.state === "unregistered" ? workflow.registration.reason : ""),
+        numericCell(workflow.needsAttention),
+        workflow.typicalTime.meanMs.state === "present" ? numericCell(workflow.typicalTime.meanMs.value) : cell(workflow.typicalTime.meanMs.reason),
+        numericCell(workflow.typicalTime.measuredRuns),
+        numericCell(workflow.typicalTime.unmeasuredRuns),
       ]),
     ],
   };
@@ -385,11 +389,12 @@ function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<
     sheet: "Failures",
     showGridLines: false,
     stickyRowsCount: 1,
-    columns: [{ width: 38 }, { width: 14 }, { width: 14 }, { width: 24 }],
+    columns: [{ width: 38 }, { width: 14 }, { width: 14 }, { width: 24 }, { width: 24 }, { width: 56 }, { width: 56 }],
     data: [
-      headerRow(["Failure code", "Runs", "Transient", "Sampled run identifiers"]),
+      headerRow(["Failure code", "Runs", "Transient", "Sampled run identifiers", "Workflow id", "Workflow label", "Reason"]),
       ...report.failures.map((entry) => [
         cell(entry.code), numericCell(entry.runs), numericCell(entry.transient), cell(entry.sample.join("\n")),
+        cell(entry.workflowId), cell(entry.registration.state === "registered" ? entry.registration.label : entry.registration.reason), cell(entry.sentence),
       ]),
     ],
   };

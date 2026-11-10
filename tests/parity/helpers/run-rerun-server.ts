@@ -75,7 +75,7 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
     projectionGeneration: projection.generation(), serverClock: { now: h.clock.now().toISOString(), zone: "America/Los_Angeles" },
     workflows: catalog?.workflows ?? [{ id: h.descriptor.id, code: h.descriptor.code, label: h.descriptor.label, categoryId: h.descriptor.category,
       descriptorFingerprint: h.descriptor.contractFingerprint, availability: { state: "available" }, role: h.workflow.role,
-      start: { enqueue: h.workflow.enqueue, version: h.workflow.version, steps: h.workflow.steps,
+      start: { readiness: { scope: "default-workbook-references", state: "ready" }, enqueue: h.workflow.enqueue, version: h.workflow.version, steps: h.workflow.steps,
         inputRun: h.descriptor.surfaces.inputRun, spreadsheetIntake: false, requiredWorkbookTypeIds: [...h.descriptor.requiredWorkbookTypeIds] } }],
   });
   const fixtures = createFixtureBff({ profile: { bootstrap, descriptorHash, day: snapshot() } });

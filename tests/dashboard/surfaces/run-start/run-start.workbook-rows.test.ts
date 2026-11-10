@@ -17,7 +17,7 @@ const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok
 const descriptorId = descriptor.id;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds], steps: projectStartSteps(descriptor), inputRun: { state: "present", surface: descriptor.surfaces.inputRun } };
-const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: 1, rowCount: 2,
+const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
   worksheets: [{ id: "first", name: "First" }, { id: "second", name: "Second" }], metadata: { typeId: "onboarding-roster", sharePoint: null },
   type: { id: "onboarding-roster", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "roster" },
   state: { libraryId: "roster", revision: 1, selectedVersionId: "version", removed: false, origin: { kind: "local" }, versions: [{ id: "version", name: "Reviewed", snapshotId: "snapshot", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });

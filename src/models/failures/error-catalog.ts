@@ -222,6 +222,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Preflight report could not be read or verified. Re-check readiness.",
     EmptyParametersSchema,
   ),
+  PROFILE_FIRST_RUN_CHECK_UNAVAILABLE: catalogEntry(
+    "The initial local startup check did not complete. Resume sign-in to retry startup.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_RERUN_UNAVAILABLE: catalogEntry(
     "Preflight re-check could not be completed or verified. Read current readiness before retrying.",
     EmptyParametersSchema,
@@ -775,6 +779,14 @@ export const ERROR_CATALOG = Object.freeze({
     "Relay could not read the models available to this ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
     EmptyParametersSchema,
   ),
+  CHATGPT_CONNECTION_FAILED: catalogEntry(
+    "Relay could not verify the ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CONNECTION_CANCELLED: catalogEntry(
+    "The ChatGPT connection check was cancelled. Check again when the account and profile are current.",
+    EmptyParametersSchema,
+  ),
   CHATGPT_REQUEST_REJECTED: catalogEntry(
     "ChatGPT rejected the request Relay sent. Relay's integration needs correction; review the local diagnostics before retrying.",
     EmptyParametersSchema,
@@ -857,6 +869,9 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_SYNC_LINK_REQUIRED: catalogEntry("Link a SharePoint workbook before syncing.", EmptyParametersSchema),
   WORKBOOK_SYNC_CONTEXT_CHANGED: catalogEntry("The profile, settings or credentials changed during Sync. Start a new Sync command.", EmptyParametersSchema),
   WORKBOOK_SYNC_IMPORT_FAILED: catalogEntry("The downloaded file cannot be imported as a supported workbook.", EmptyParametersSchema),
+  WORKBOOK_TYPE_UNAVAILABLE: catalogEntry("This workflow's spreadsheet type is unavailable. Restore its reference definition before importing a file for it.", EmptyParametersSchema),
+  WORKBOOK_REFERENCE_MISSING: catalogEntry("No spreadsheet is bound to this workflow reference.", EmptyParametersSchema),
+  WORKBOOK_BINDING_UNAVAILABLE: catalogEntry("This workflow's selected spreadsheet is unavailable or has a different type. Import a replacement for this reference.", EmptyParametersSchema),
   WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE: catalogEntry("The workbook's workflow source was not retained. Its saved data remains available, but its run cannot be confirmed.", EmptyParametersSchema),
   WORKBOOK_SYNC_LAYOUT_CHANGED: catalogEntry("The SharePoint worksheets or columns no longer match this spreadsheet type. Review the source before creating a version.", EmptyParametersSchema),
   SHAREPOINT_LINK_UNSUPPORTED: catalogEntry("Use a direct workbook file URL from the configured SharePoint tenant.", EmptyParametersSchema),

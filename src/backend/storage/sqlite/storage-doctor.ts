@@ -8,7 +8,7 @@ type Stats,
 type BigIntStats,
 } from "node:fs";
 import { constants as systemConstants } from "node:os";
-import { basename,dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
+import { basename,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import {
@@ -24,7 +24,7 @@ import { observeCredentialPresence } from "../configuration/credential-store.js"
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { AuthorityDatabase } from "./authority-database.js";
-import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
+import { verifyBackupManifestAtPath } from "./backup-service.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
 BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
@@ -653,11 +653,6 @@ function authorityIdentityChanged(
   );
 }
 
-export const BackupSummaryOptionsSchema = z.strictObject({
-  backupDirectory: z.string().min(1),
-  maxBackupAgeMs: z.number().int().positive().optional(),
-});
-
 export const SpanAuthorityHealthSummarySchema = z.strictObject({
   state: z.enum(["healthy", "degraded"]),
   summary: z.string().min(1),
@@ -687,65 +682,6 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
   });
 }
 
-
-export function summarizeBackupHealth(
-  admissionInput: RuntimeAdmission,
-  input: unknown,
-  liveAuthorityGeneration: number | undefined,
-  clock: Clock = systemClock,
-): "current" | "stale" | "missing" | "unavailable" {
-  const options = BackupSummaryOptionsSchema.parse(input);
-  const directory = resolve(options.backupDirectory);
-  if (basename(directory) !== "authority" || basename(dirname(directory)) !== "backups") {
-    throw new Error("backup-summary-directory-shape-mismatch");
-  }
-  const admission = requireRuntimeAdmission(admissionInput);
-  admission.assertStateRoot(directory);
-  const expected = admission.authorityBackupExpectedSource();
-  if (expected.kind !== "profile") throw new Error("profile-backup-binding-required");
-  const activeIdentity = AuthorityDatabase.sourceDatabaseIdentity(expected);
-  let manifests: string[];
-  try {
-    if (!fileStatus(directory).isDirectory()) return "missing";
-    manifests = readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".manifest.json"))
-      .map(({ name }) => name);
-  } catch (error) { return errnoCode(error) === "ENOENT" ? "missing" : "unavailable"; }
-  let newest: { createdAtMs: number; authorityGeneration: number } | undefined;
-  for (const name of manifests) {
-    let createdAtMs: number;
-    let authorityGeneration: number;
-    try {
-      const manifest = parseBackupManifestFile(join(directory, name));
-      if (manifest.sourceDatabaseIdentity !== activeIdentity || manifest.installationId !== expected.binding.installationId
-        || manifest.profileId !== expected.binding.profileId) continue;
-      const copy = fileStatus(join(directory, manifest.backupFileName));
-      if (!copy.isFile() || privateFileNumber(copy.size) !== manifest.byteSize) continue;
-      createdAtMs = Date.parse(manifest.createdAt);
-      authorityGeneration = manifest.authorityGeneration;
-    } catch (error) {
-      const code = errnoCode(error);
-      if (/^E[A-Z]+$/u.test(code) && code !== "ENOENT") return "unavailable";
-      // An invalid manifest or missing copy cannot be a usable backup.
-      continue;
-    }
-    // Ties on created-at break by generation: two backups in one clock tick
-    // are ordered by what they actually captured.
-    if (newest === undefined
-      || createdAtMs > newest.createdAtMs
-      || (createdAtMs === newest.createdAtMs && authorityGeneration > newest.authorityGeneration)) {
-      newest = { createdAtMs, authorityGeneration };
-    }
-  }
-  if (newest === undefined) return "missing";
-  const age = clock.nowMs() - newest.createdAtMs;
-  if (options.maxBackupAgeMs !== undefined && age > options.maxBackupAgeMs) return "stale";
-  if (liveAuthorityGeneration !== undefined
-    && liveAuthorityGeneration > newest.authorityGeneration) {
-    return "stale";
-  }
-  return "current";
-}
 
 type CandidateWithMtime = Readonly<{
   candidate: RestoreCandidate;

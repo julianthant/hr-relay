@@ -78,7 +78,7 @@ export function createOnboardingRunWorld() {
     let snapshots = 0;
     const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600_000,
-      workbooks: { catalog: () => library.catalog(), libraryVersion: (id, versionId) => library.libraryVersion(id, versionId), snapshot: value => { snapshots++; return library.snapshot(value); } }, configFingerprint: config.configFingerprint,
+      workbooks: { types: () => library.types(), catalog: () => library.catalog(), libraryVersion: (id, versionId) => library.libraryVersion(id, versionId), snapshot: value => { snapshots++; return library.snapshot(value); } }, configFingerprint: config.configFingerprint,
       configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
     const selection = { entry: 1, typeId: "onboarding-roster", ...(options.selectedRow ? {
       libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,

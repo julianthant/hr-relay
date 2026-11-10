@@ -77,7 +77,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
-  const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, timeZone, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, readBackupSummary, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
+  const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, timeZone, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
   const ledger = createTransactionHistory(database.authority);
   const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
   const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
@@ -218,7 +218,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
 
   const startPlans = createStartPlanService({
-    workbooks: { snapshot: value => workbookLibrary.snapshot(value), catalog: () => workbookLibrary.catalog(), libraryVersion: (id, versionId) => workbookLibrary.libraryVersion(id, versionId) },
+    workbooks: { types: () => workbookLibrary.types(), snapshot: value => workbookLibrary.snapshot(value), catalog: () => workbookLibrary.catalog(), libraryVersion: (id, versionId) => workbookLibrary.libraryVersion(id, versionId) },
     preflight: runtimePreflight.admission,
     protectedSecrets,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
@@ -279,9 +279,13 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
         context.assertCurrent();
       } };
     } });
-  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
+  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync,
+    resultRun: runId => {
+      const run = database.authority.runs.get(runId);
+      return run === undefined ? undefined : { workflowId: run.envelope.workflow, enqueuedAt: run.envelope.enqueuedAt };
+    } });
 
-  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
+  const shell = composeShell({ workbookReferences: workflows => workbookLibrary.references(workflows), database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
@@ -290,12 +294,13 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox }),
-    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
+    preflightReport: () => preflightAuthority.readLatest(),
   });
   const { hub } = shell;
   startupCleanups.push(requiredClosure(() => hub.close()));
 
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
+  input.onInitialPreflight?.(initialPreflight);
   const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
   if (blockingChecks.length > 0) {
     throw new Error(
@@ -320,6 +325,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     assistant,
     chatGptOcrTest,
     chatGptAccount: {
+      readStatus: async signal => { assertCurrent(); const result = await chatGptAccount.readStatus(signal); assertCurrent(); return result; },
       refreshAccount: async () => { assertCurrent(); const result = await chatGptAccount.refreshAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },

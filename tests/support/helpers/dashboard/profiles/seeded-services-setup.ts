@@ -18,6 +18,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
 import { join } from "node:path";
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
+import { projectWorkbookReferences } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { createCommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";
@@ -159,7 +160,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => database.getMeta(),
         // The seeded adapter runs no backup lane; "missing" is its true state.
-        backupSummary: () => "missing",
+        workbookReferences: workflows => projectWorkbookReferences(database.authority.workbooks, workflows),
         preflightReport: () => healthyDashboardPreflightReport(clock),
       },
       projection,
