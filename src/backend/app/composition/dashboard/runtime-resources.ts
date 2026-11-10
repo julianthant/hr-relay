@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
-import { join,resolve } from "node:path";
+import { join } from "node:path";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "../../../../models/config/secrets.js";
 import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { BackupServiceStateWireSchema,type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
-import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
 import { ActorIdSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { runtimeTimeZone,systemClock } from "../../../../rules/time/clock.js";
@@ -15,17 +14,15 @@ import { importLocalDebugLog } from "../../../storage/events/local-debug-log.js"
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
-import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { activeSettingsRuntimeIdentity,readBootSettings } from "../../../runtime/settings/settings-runtime.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
-import { AuthorityHealthPreflightRunner } from "../../../storage/sqlite/index.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
-import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
+import { createDashboardPreflight } from "../../preflight/dashboard-runners.js";
 import { composeRuntimePreflight } from "../../preflight/runtime-admission.js";
 import { DESCRIPTORS,SERVER_REGISTRY,descriptorSetHash } from "../../registries/workflow-registry.js";
 import { RuntimeCustodyUncertainError } from "../storage-compose.js";
@@ -211,34 +208,26 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
 
   // Start only after startup acceptance; stop drains the exact owned observation.
 
-  const dashboardPreflightRunners = createDashboardPreflightRunners({
+  const { runners: dashboardPreflightRunners, authority: preflightAuthority } = createDashboardPreflight({
     repoRoot,
     config: resolved.config,
     stateRoot,
     artifactRoot,
     backendPort: input.applicationTransport?.listener.port ?? input.backendPortOverride ?? input.isolation.backendPort,
-    frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
+    // The built bundle is served by the BFF itself; only a dev frontend reserves its own port.
+    frontendPort: frontend === "built-bundle" ? 0 : input.frontendPortOverride ?? input.isolation.frontendPort,
     ...(env[DASHBOARD_LAUNCH_NONCE_ENV] === undefined
       ? {}
       : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
     clock,
-    authorityHealth: new AuthorityHealthPreflightRunner(admission, {
-      stateRootTrustAnchor: resolve(stateRoot, ".."),
-      stateRoot,
-      authorityPath: join(stateRoot, "state.db"),
-      backupDirectory,
-      busyTimeoutMs: 5000,
-    }, clock, context.credentials, database),
-  });
-  if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
-  const preflightAuthority = createPreflightAuthority({
+    admission,
+    credentials: context.credentials,
+    backupDirectory,
+    authorityOwner: database,
     configFingerprint: resolved.fingerprint,
     descriptorFingerprint: setHash,
-    requestedCapabilities: ["dashboard.serve"],
-    runners: dashboardPreflightRunners.runners,
-    clock,
-    scheduler: createTimeoutDeadlineScheduler(clock),
   });
+  if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
   return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };

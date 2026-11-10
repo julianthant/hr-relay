@@ -32,6 +32,11 @@ it("preserves first-run report and unavailable results through the shared comple
   }
 });
 
+it("returns the parsed refused body for a 403 profile state", async () => {
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:5174", fetchImpl: async () => Response.json({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }, { status: 403 }) });
+  assert.deepEqual(await client.readProfileSession(), { state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" });
+});
+
 it("refuses foreign public session payloads instead of treating them as login success", async () => {
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:5174", fetchImpl: async () => Response.json({ state: "active", token: "client-supplied" }) });
   await assert.rejects(client.readProfileSession());

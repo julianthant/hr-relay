@@ -39,7 +39,7 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualRemove = fs.rmSync, actualCreate = fs.mkdtempSync;
-  const snapshotPrefix = join(fs.realpathSync(tmpdir()), "relay-readonly-authority-");
+  const snapshotPrefix = join(fs.realpathSync(tmpdir()), `relay-readonly-authority-pid${String(process.pid)}-`);
   const injected = new Error('upgrade-snapshot-remove-refused');
   let snapshots = 0, directory: string | undefined, removals = 0;
   let restore: OfflineMaintenanceOperation | undefined = entry === "service" ? f.admission.acquireOfflineMaintenance() : undefined, proved = false;
@@ -93,7 +93,7 @@ for (const entry of ['service', 'command'] as const) it(`releases proved upgrade
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualCreate = fs.mkdtempSync, injected = new Error('upgrade-source-create-unavailable');
-  const snapshotPrefix = join(fs.realpathSync(tmpdir()), "relay-readonly-authority-");
+  const snapshotPrefix = join(fs.realpathSync(tmpdir()), `relay-readonly-authority-pid${String(process.pid)}-`);
   let snapshots = 0, refused = 0;
   const restore = entry === 'service' ? f.admission.acquireOfflineMaintenance() : undefined;
   const creation = vi.spyOn(fs, 'mkdtempSync').mockImplementation((...args) => {
