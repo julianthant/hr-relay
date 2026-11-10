@@ -15,6 +15,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 
+/** The live authority files changed while a read-only snapshot was copied or read: an observation race, not damage. */
+export class AuthoritySourceChangedError extends Error {
+  constructor() { super("authority-readonly-source-changed"); this.name = "AuthoritySourceChangedError"; }
+}
+
+/** True when the error, or an error in its cause chain, is an observation race. */
+export function isAuthoritySourceChanged(error: unknown): boolean {
+  return error instanceof AuthoritySourceChangedError || error instanceof Error && error.cause !== undefined && isAuthoritySourceChanged(error.cause);
+}
+
 function identity(stats: BigIntStats): string {
   return [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
 }
@@ -143,7 +153,7 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
       const current = inspect(source.path);
       if ((current === undefined) !== (source.stats === undefined)
         || current !== undefined && source.stats !== undefined && identity(current) !== identity(source.stats)) {
-        throw new Error("authority-readonly-source-changed");
+        throw new AuthoritySourceChangedError();
       }
     }
   };
@@ -171,6 +181,7 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
       try {
         failure = z.object({ message: z.string(), code: z.string().optional() }).strict().parse(JSON.parse(copy.stdout));
       } catch { throw copyFailed(); }
+      if (failure.message === "authority-readonly-source-changed") throw new AuthoritySourceChangedError();
       throw Object.assign(new Error(failure.message), failure.code === undefined ? {} : { code: failure.code });
     }
     if (copy.stdout !== "copied") throw copyFailed();
