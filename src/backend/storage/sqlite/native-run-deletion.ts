@@ -6,7 +6,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { DeletedRunRecordSchema, type RunDeleteInput } from "../../../models/run/deleted-run.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../models/config/authority.js";
-import { artifactReferencesIn, containsDeletionArtifactReference } from "./artifact-references.js";
+import { artifactReferencesIn, deletionArtifactReferenceMatcher } from "./artifact-references.js";
 import { DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
@@ -172,7 +172,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
     }
     return z.union([z.string(),z.number()]).parse(Reflect.get(raw,step.key));
   })}));
-  const retainedDigests = new Set<string>();
+  const retainedDigests = new Set<string>(), referencesIn = deletionArtifactReferenceMatcher(candidates.values());
   for (const { name: table } of AUTHORITY_TABLE_REGISTRY) {
     if (table === "deleted_runs" || candidates.size === 0) continue;
     const step = steps.find(step => step.table === table);
@@ -181,7 +181,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
     for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
       if (step !== undefined && removedKeys.has(z.union([z.string(), z.number()]).parse(row[step.key]))) continue;
       for (const record of deletionArtifactValues(database, table, row)) {
-        for (const ref of candidates.values()) if (containsDeletionArtifactReference(record, ref)) retainedDigests.add(ref.sha256);
+        for (const digest of referencesIn(record)) retainedDigests.add(digest);
       }
     }
   }
