@@ -699,7 +699,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     } else runtimeError = error;
     try {
       debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
-        code: refusal?.code ?? "WORKER_RUNTIME_FAILED",
+        code: refusal?.code ?? "WORKER_RUNTIME_FAILED", ...(refusal?.summary === undefined ? {} : { message: refusal.summary }),
         reason: refusedBeforeEffects ? "operation-refused"
           : hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
     } catch (loggingError) { cleanupErrors.push(loggingError); }

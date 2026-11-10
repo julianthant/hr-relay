@@ -11,6 +11,7 @@ import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
@@ -31,10 +32,18 @@ describe("worker run loop", () => {
     const h = await loopHarness();
     h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     let claims = 0;
+    const refusalEvents: { code?: string; message?: string }[] = [];
+    const debugWriter = createDebugEventWriter({ repository: h.authority.database.authority.timelineEvents, clock: h.authority.clock, build: "test" });
+    const summary = code === "PREFLIGHT_BLOCKED" ? "authority.health: authority database is degraded (authority-invariant)" : undefined;
     const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false,
+      debugEvents: { emit: (input, scope, workflow) => {
+        const event = input as { area?: string; code?: string; message?: string };
+        if (event.area === "worker-admission") refusalEvents.push({ code: event.code, message: event.message });
+        return debugWriter.emit(input, scope, workflow);
+      } },
       claimNext: (request, sessions) => {
         claims++;
-        if (claims === 1) return { state: "preflight-refused", code, runId: RunIdSchema.parse(RUN_ID) };
+        if (claims === 1) return { state: "preflight-refused", code, runId: RunIdSchema.parse(RUN_ID), ...(summary === undefined ? {} : { summary }) };
         if (claims === 3) h.stop.abort();
         return h.deps.claimNext(request, sessions);
       },
@@ -49,6 +58,7 @@ describe("worker run loop", () => {
     assert.equal(report.stopped, "stop-signal");
     assert.equal(report.preflightRefusal, undefined);
     assert.equal(report.closure, "proved");
+    assert.deepEqual(refusalEvents, [{ code, message: summary }]);
   });
   for (const fails of [false, true]) it(`admits idle refresh between claims and releases its turn after ${fails ? "failure" : "success"}`, async () => {
     const h = await loopHarness({ exitWhenIdle: false });

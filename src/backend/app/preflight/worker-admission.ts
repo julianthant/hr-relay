@@ -10,7 +10,9 @@ export function workerPreflightRefusal(error: unknown, runId?: RunRecord["envelo
     ? "PREFLIGHT_OBSERVATION_CHANGED"
     : error instanceof PreflightAdmissionRefusal && (error.reason === "blocked" || error.reason === "unavailable" || error.reason === "scope-mismatch")
       ? "PREFLIGHT_BLOCKED" : undefined;
-  return code === undefined ? undefined : { state: "preflight-refused", code, ...(runId === undefined ? {} : { runId }) };
+  if (code === undefined) return undefined;
+  const summary = error instanceof PreflightAdmissionRefusal ? error.observationSummary : undefined;
+  return { state: "preflight-refused", code, ...(runId === undefined ? {} : { runId }), ...(summary === undefined || summary === "" ? {} : { summary }) };
 }
 
 class PreparationRequired extends Error {

@@ -311,7 +311,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       if (claimed.state === "preflight-refused") {
         preflightRefusal = WorkerPreflightRefusalSchema.parse(claimed);
         deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId: claimRequest.commandId,
-          area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused" }, { kind: "worker", workerId });
+          area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused",
+          ...(preflightRefusal.summary === undefined ? {} : { message: preflightRefusal.summary }) }, { kind: "worker", workerId });
         if (deps.exitWhenIdle) { stopped = "preflight-refused"; break; }
         preflightRefusal = undefined;
         idleDelayMs = deps.idleCadence?.() ?? deps.idleRepollMs;

@@ -93,6 +93,7 @@ export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema
 
 export const WorkerPreflightRefusalSchema = z.strictObject({
   state: z.literal("preflight-refused"), code: z.enum(["PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_BLOCKED"]), runId: RunIdSchema.optional(),
+  summary: z.string().min(1).max(4096).optional(),
 });
 export type WorkerPreflightRefusal = z.infer<typeof WorkerPreflightRefusalSchema>;
 
