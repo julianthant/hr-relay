@@ -4,7 +4,7 @@ import type { DashboardDayWire } from '../../../models/dashboard/projection.js';
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest, type DashboardCommandRequest } from '../../../rules/commands/commands.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptions, type CommandOutcome } from '../../app/commands/command-executor.js';
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
+import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from '../../../models/failures/error-catalog.js';
 import { sessionsFromDay } from './sessions-view-model.js';
 import { useIdleSessionRefresh } from './session-idle-model.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,8 +13,8 @@ import type { WorkflowCatalogEntry } from '../workflows/workflow-catalog-model.j
 import { sessionWorkerAuthorityKey, type SessionControl, type SessionsViewState } from './sessions-view-model.js';
 
 export type SessionPreviewRequest = Readonly<{ id: string; target: string; action: SessionControl; authorityKey?: string } | { id: string; target: string; action: 'refresh'; browserIds: readonly string[]; nativeCommandIds?: readonly string[]; authorityKey?: string } | { id: string; target: 'add'; action: 'add'; workflow: string; count: number; ordinal: number }>;
-export type SessionPreviewResult = Readonly<{ data?: SessionsViewState } & ({ id: string; state: 'confirmed' } | { id: string; state: 'refused'; message: string } | { id: string; state: 'uncertain'; message: string })>;
-export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest; state: 'pending' | 'checking' | 'confirmed' | 'refused' | 'uncertain'; message: string; diagnostic?: unknown }>;
+export type SessionPreviewResult = Readonly<{ data?: SessionsViewState } & ({ id: string; state: 'confirmed' } | { id: string; state: 'refused' | 'uncertain'; message: string; code?: ErrorCatalogCode })>;
+export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest; state: 'pending' | 'checking' | 'confirmed' | 'refused' | 'uncertain'; message: string; code?: ErrorCatalogCode; diagnostic?: unknown }>;
 export interface SessionPreviewCommandPort {
   send(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
   check(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
@@ -51,7 +51,7 @@ export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCo
   const card = day.workerCards.find(card => card.workerId === (request.type === "spawn-worker" ? request.payload.workerId : request.target.workerId));
   const lifetimeId = card?.controls?.basis.state === "present" ? card.controls.basis.value.lifetimeId : null;
   switch (request.type) {
-    case "remove-worker": return card === undefined;
+    case "remove-worker": return !day.workerAuthority.members.some(member => member.workerId === request.target.workerId);
     case "spawn-worker": return lifetimeId !== null;
     case "retry-worker": case "stop-worker": return lifetimeId !== null && lifetimeId !== request.target.lifetimeId;
     case "pause-worker": return card?.directive === "pause";
@@ -78,7 +78,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     const outcome = retained.outcome;
     if (retained.state === "pending" || outcome === undefined) return { request, state: "pending", message: `${label(request)} requested…` };
     if (outcome.kind === "confirmed") return { request, state: "confirmed", message: `${label(request)} confirmed` };
-    return { request, state: outcome.kind === "uncertain" ? "uncertain" : "refused", message: outcome.feedback.text };
+    return { request, state: outcome.kind === "uncertain" ? "uncertain" : "refused", message: outcome.feedback.text, code: outcome.feedback.code };
   };
   const valid = (attempt: NativeAttempt, binding: SessionCommandBinding) => {
     const next = requireBinding();
@@ -112,6 +112,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     const data = attempt.snapshot === undefined ? undefined : sessionsFromDay(attempt.snapshot, current().catalog, requireBinding().nowIso);
     return all ? { id: request.id, state: "confirmed", data } : { id: request.id,
       state: attempt.commands.length === 1 && (outcome?.kind === "refused" || outcome?.kind === "conflict" || outcome?.kind === "confirmation-required" || outcome?.kind === "failed") ? "refused" : "uncertain",
+      code: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.code : undefined,
       message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN"), data };
   };
   const port: SessionPreviewCommandPort = {
@@ -190,7 +191,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
             const record = await binding.client.workerCommandResult(sent.commandId);
             return record.state === "recorded" && canonicalJsonStringify(record.request) === canonicalJsonStringify(sent) ? record.result : undefined;
           } });
-          if (settled?.kind === "refused" && settled.reason === undefined) return { id: request.id, state: "refused", message: settled.feedback.text };
+          if (settled?.kind === "refused" && settled.reason === undefined) return { id: request.id, state: "refused", message: settled.feedback.text, code: settled.feedback.code };
           if (settled?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: checked && settled !== undefined ? settled.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
         }
         await read(attempt, binding);
@@ -209,7 +210,7 @@ const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Wo
 
 export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; onRefused?: (problem: string) => void }>) {
   const sourceKey = source?.snapshot ?? port;
-  const [readback, setReadback] = useState<{ key: object; data: SessionsViewState }>(() => ({ key: sourceKey, data: initial }));
+  const [readback, setReadback] = useState<{ key: object; data: SessionsViewState; removed: readonly string[] }>(() => ({ key: sourceKey, data: initial, removed: [] }));
   const data = readback.key === sourceKey ? readback.data : initial;
   const epoch = useRef<object>({});
   const identity = useRef(source?.scope ?? port);
@@ -227,6 +228,16 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     operationsRef.current = { ...operationsRef.current, [operation.request.target]: operation };
     setOperations(operationsRef.current);
   }, []);
+  const acceptReadback = useCallback((key: object, request: SessionPreviewRequest, result: SessionPreviewResult) => {
+    const data = result.data;
+    if (data === undefined || key !== latestSource.current) return;
+    setReadback(previous => {
+      const knownRemoved = previous.key === key ? previous.removed : [];
+      const removed = request.action === "remove" && result.state === "confirmed" ? [...knownRemoved, request.target] : knownRemoved;
+      return { key, removed, data: data.state === "ready" && removed.length > 0
+        ? { ...data, workers: data.workers.filter(worker => !removed.includes(worker.id)) } : data };
+    });
+  }, []);
   // A control another mount sent is still in flight: follow it to its settled outcome instead of resending.
   useEffect(() => {
     for (const operation of Object.values(operationsRef.current)) {
@@ -239,9 +250,12 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       });
     }
   }, [port, retain]);
-  // A proven outcome after uncertainty releases the control: a confirmation stays as any confirmation does, a refusal clears and toasts once.
   const settleProven = useCallback((request: SessionPreviewRequest, result: SessionPreviewResult) => {
     if (result.state === 'confirmed') { retain({ request, state: 'confirmed', message: request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` }); return; }
+    if (request.action === 'remove' && result.state === 'refused') {
+      retain({ request, state: 'refused', message: result.message, code: result.code });
+      return;
+    }
     const next = { ...operationsRef.current }; delete next[request.target];
     operationsRef.current = next; setOperations(next);
     onRefused.current?.(request.action === 'retry' ? "Couldn't restart this worker." : result.message);
@@ -251,11 +265,13 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     const { request } = operation;
     if (port.audited === undefined || operation.state !== 'uncertain' || reconciling.current.has(request.id)) return;
     const attemptEpoch = epoch.current;
+    const snapshot = latestSource.current;
     reconciling.current.set(request.id, port.audited(request).then(result => {
       if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
+      acceptReadback(snapshot, request, result);
       settleProven(request, result);
     }, () => undefined).finally(() => { reconciling.current.delete(request.id); }));
-  }, [port, settleProven]);
+  }, [port, acceptReadback, settleProven]);
   // A later served day may follow a settlement whose reply never arrived.
   useEffect(() => { for (const operation of Object.values(operationsRef.current)) reconcile(operation); }, [sourceKey, reconcile]);
     const perform = useCallback(async (request: SessionPreviewRequest, checking = false) => {
@@ -274,14 +290,15 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     if (attemptEpoch !== epoch.current) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('DASHBOARD_AUTHORITY_REPLACED') }; }
     if (!result || !['confirmed', 'refused', 'uncertain'].includes(result.state) || result.state !== 'confirmed' && typeof result.message !== 'string') { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_READBACK_MISMATCH') }; }
     if (result.id !== request.id) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_RESULT_IDENTITY_MISMATCH') }; }
-    if (result.data !== undefined && snapshot === latestSource.current && attemptEpoch === epoch.current) setReadback({ key: snapshot, data: result.data });
+    if (attemptEpoch === epoch.current) acceptReadback(snapshot, request, result);
     if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
     if (checking && result.state === 'refused') { settleProven(request, result); return; }
-    retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
+    retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), code: result.state === 'confirmed' ? undefined : result.code,
+      message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
     // A lost reply is read back at once; the audit is committed before the server replies.
     const retained = operationsRef.current[request.target];
     if (result.state === 'uncertain' && !checking && retained !== undefined) reconcile(retained);
-  }, [port, retain, settleProven, reconcile]);
+  }, [port, acceptReadback, retain, settleProven, reconcile]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
   idle.current = keepAlive.confirmed;
   return { data, operations, idleCountdowns: keepAlive.countdowns,
