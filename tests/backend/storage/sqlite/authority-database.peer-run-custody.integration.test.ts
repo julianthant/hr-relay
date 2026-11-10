@@ -60,7 +60,7 @@ describe("current peer run custody",()=>{
         assert.equal(raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,?,json(?)) WHERE id=?")
           .run("$.input",corrupt,f.source.envelope.runId).changes,1);
       }
-      assert.throws(()=>f.service.delete({runId:retry.envelope.runId,expectedVersion:retry.version,commandId:fixtureUuid("corrupt-peer-delete")}),/record|invalid|authority/u);
+      assert.throws(()=>f.service.delete({runId:retry.envelope.runId,expectedVersion:retry.version,commandId:fixtureUuid("corrupt-peer-delete")}),/unexpectedField/u);
       const checked=new DatabaseSync(f.world.path,{readOnly:true});
       try{
         assert.equal(checked.prepare("SELECT count(*) AS n FROM runs WHERE id=?").get(retry.envelope.runId)?.n,1);

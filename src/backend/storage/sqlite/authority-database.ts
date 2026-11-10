@@ -6380,6 +6380,9 @@ export class AuthorityDatabase implements Disposable {
         return this.#authorityWrite("runs", () => {
           const run = this.#readRunRow(request.runId);
           if (run === undefined) throw new Error("run-deletion-owner-missing");
+          for (const runId of request.cascadeRunIds) {
+            for (const { id } of this.#database.prepare("SELECT id FROM write_intents WHERE run_id=?").all(runId)) assertConfirmationPublication(this.#database, String(id));
+          }
           const prepared = prepareNativeRunDeletion(this.#database,run,request,ref => inspectArtifactDeletionFile(this.#admission,ref));
           const record = executeNativeRunDeletion(this.#database,prepared,step => this.#lifecycleHooks?.afterDeleteStep?.({runId:request.runId,step}));
           return {result:record,changes:1 + record.removed.reduce((sum,entry) => sum + entry.rows,0)};
