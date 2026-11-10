@@ -15,8 +15,8 @@ it("resolves an EID-learned email and mixed batch to only their exact worksheet 
   const resolved = rowsOf(reference());
   assert.deepEqual(resolved.map(person => person.resolution.state), ["resolved", "resolved"]);
   assert.deepEqual(resolved.map(person => person.resolution.state === "resolved" ? person.resolution.selected.row : null), [
-    { worksheetId: "july", worksheetName: "July 6", rowId: "row-0", names: { legalName: { firstName: "Legal", lastName: "Fixture", middleName: "" }, livedName: null } },
-    { worksheetId: "august", worksheetName: "August 2", rowId: "row-1", names: { legalName: { firstName: "Second", lastName: "Fixture", middleName: "" }, livedName: null } },
+    { referenceDigest: digest, worksheetId: "july", worksheetName: "July 6", rowId: "row-0", names: { legalName: { firstName: "Legal", lastName: "Fixture", middleName: "" }, livedName: null } },
+    { referenceDigest: digest, worksheetId: "august", worksheetName: "August 2", rowId: "row-1", names: { legalName: { firstName: "Second", lastName: "Fixture", middleName: "" }, livedName: null } },
   ]);
 });
 
@@ -64,8 +64,8 @@ it("binds each downloaded identity to its retained row and refuses swapped PDFs 
     return { ...person, resolution: { state: "resolved", selected } };
   }) });
   const people = bindCrmWorksheetPeople(downloads, rows, choice);
-  assert.deepEqual(people.map(person => [person.identity.recordId, person.reference.worksheetId, person.reference.rowId]), [
-    ["one", "august", "operator-choice"], ["two", "august", "row-1"],
+  assert.deepEqual(people.map(person => [person.identity.recordId, person.reference.referenceDigest, person.reference.worksheetId, person.reference.rowId]), [
+    ["one", digest, "august", "operator-choice"], ["two", digest, "august", "row-1"],
   ]);
   assert.throws(() => bindCrmWorksheetPeople({ people: downloads.people.toReversed() }, rows, choice));
   assert.throws(() => bindCrmWorksheetPeople(downloads, rows, { ...choice, referenceDigest: "b".repeat(64), sourceDigests: ["b".repeat(64)] }));
@@ -92,6 +92,7 @@ it("keeps each complete source's coverage and refuses to join or collapse agreei
     [digest, "Legal"], ["b".repeat(64), "Other"],
   ]);
   assert.equal(covered.selected.referenceDigest, "b".repeat(64));
+  assert.equal(covered.selected.row.referenceDigest, "b".repeat(64));
   assert.equal(covered.selected.row.names.legalName.firstName, "Second");
   const agreed = reference();
   const repeated = resolveCrmDocumentRows(records, [

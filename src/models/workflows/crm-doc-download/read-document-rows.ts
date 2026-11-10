@@ -54,7 +54,7 @@ export const ReadCrmDocumentRows = defineTaskContract({
     subject: { kind: "email", value: "fixture@example.test" },
     identity: { recordId: "fixture-record", eid: null, workEmail: "fixture@example.test", personalEmail: null },
   }), resolution: { state: "resolved", selected: { key: "fixture@example.test", referenceDigest: "a".repeat(64), row: {
-    worksheetId: "fixture-sheet", worksheetName: "July 6", rowId: "fixture-row",
+    referenceDigest: "a".repeat(64), worksheetId: "fixture-sheet", worksheetName: "July 6", rowId: "fixture-row",
     names: { legalName: { firstName: "Fixture", lastName: "Person", middleName: "" }, livedName: null },
   } } } }] },
 });

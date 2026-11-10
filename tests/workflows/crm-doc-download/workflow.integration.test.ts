@@ -28,7 +28,7 @@ import { decodeWorkbookReference } from "../../../src/models/processing/workbook
 import { ReadCrmDocumentRows, CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../../src/models/workflows/crm-doc-download/read-document-rows.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../src/models/workflow/gates.js";
-import { ONBOARDING_ROSTER_TYPE_ID, ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_TYPE_ID, ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_NAME_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 import { WorkerIdSchema, WorkflowIdSchema, ActorIdSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -40,6 +40,7 @@ import { testRunLifecycle, testWorkerPorts } from "../../support/fixtures/run-li
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
+import { importWorkbook } from "../../../src/rules/spreadsheets/workbook-io.js";
 import { CRM_DOCUMENT_RECORDS_FIXTURE, crmDocumentWorkbookFixture } from "../../support/fixtures/crm-doc-download.js";
 
 async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-failed" | "cancelled" | "split", descriptor: AnyWorkflowDescriptor = crmDocDownloadModule.descriptor) {
@@ -55,19 +56,24 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: f.clock, sync: unexpectedWorkbookSync });
     let libraryId: string, workbookReferences: { entry: number; libraryId: string; versionId: string; sheetId: string; expectedVersion: number }[];
     if (mode === "split") {
-      const base = crmDocumentWorkbookFixture(false);
-      const july = base.sheets.find(sheet => sheet.id === "july"), august = base.sheets.find(sheet => sheet.id === "august");
-      assert.ok(july && august);
-      const first = library.create({ name: "First.xlsx", themes: [], hasFormulas: false, sheets: [july] });
-      const roster = structuredClone(july); roster.id = "roster"; roster.name = "Roster";
-      const shared = roster.rows[1]; assert.ok(shared); shared.cells[1] = { value: "Other" };
-      const covered = structuredClone(august.rows[1]); assert.ok(covered); roster.rows.push(covered);
-      const second = library.create({ name: "Second.xlsx", themes: [], hasFormulas: false, sheets: [roster] });
-      assert.equal(library.metadata(first.libraryId).typeId, "general");
-      assert.equal(library.metadata(second.libraryId).typeId, "general");
-      const reference = (id: string, sheetId: string) => ({ entry: 1, libraryId: id, versionId: "original", sheetId, expectedVersion: library.read(id).version });
+      const headers = [...ONBOARDING_ROSTER_NAME_FIELDS];
+      const csvLibrary = async (name: string, dataRows: readonly (readonly string[])[]) => {
+        const csv = [headers.join(","), ...dataRows.map(row => [...row, "", "", ""].join(","))].join("\n");
+        const imported = await importWorkbook(name, new TextEncoder().encode(csv).buffer);
+        const sheet = imported.sheets[0]; assert.ok(sheet);
+        assert.equal(sheet.id, "csv");
+        assert.deepEqual(sheet.rows.map(row => row.id), ["row-0", ...dataRows.map((_, index) => `row-${String(index + 1)}`)]);
+        const saved = library.create({ ...imported, sheets: [{ ...sheet, headerRow: 1,
+          columnBindings: headers.map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+          rows: sheet.rows.map((row, rowIndex) => rowIndex === 0 ? row : { ...row, cells: row.cells.map((cell, index) => index >= 4 ? { value: null } : cell) }) }] });
+        assert.equal(library.metadata(saved.libraryId).typeId, "general");
+        return saved;
+      };
+      const first = await csvLibrary("First.csv", [["two@example.test", "Second", "Fixture", ""], ["one@example.test", "Legal", "Fixture", ""]]);
+      const second = await csvLibrary("Second.csv", [["one@example.test", "Other", "Fixture", ""]]);
+      const reference = (id: string) => ({ entry: 1, libraryId: id, versionId: "original", sheetId: "csv", expectedVersion: library.read(id).version });
       libraryId = first.libraryId;
-      workbookReferences = [reference(first.libraryId, july.id), reference(second.libraryId, roster.id)];
+      workbookReferences = [reference(first.libraryId), reference(second.libraryId)];
     } else {
       const workbook = crmDocumentWorkbookFixture(mode === "ambiguous");
       const selectedSheet = workbook.sheets[0], secondSheet = workbook.sheets[1]; assert.ok(selectedSheet && secondSheet);
@@ -114,6 +120,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
           assert.notEqual(read.sources[0]?.referenceDigest, read.sources[1]?.referenceDigest);
           capturedDigests = read.sources.map(source => source.referenceDigest);
           assert.deepEqual(read.sources.map(source => decodeWorkbookReference(source.reference).snapshot.rows.flatMap(row => row.matches).map(match => match.values.firstName)), [["Legal"], ["Other"]]);
+          assert.deepEqual(read.sources.map(source => decodeWorkbookReference(source.reference).snapshot.worksheets), [[{ sheetId: "csv", name: "Sheet 1" }], [{ sheetId: "csv", name: "Sheet 1" }]]);
         } else assert.equal(read.reference.snapshot.versionId, "original");
         for (const changed of [
           { ...captured, claimGeneration: Number(captured.claimGeneration) + 1 },
@@ -159,10 +166,13 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       const [shared, covered] = rows.people; assert.ok(shared && covered);
       assert.equal(shared.resolution.state, "resolve-required"); assert.equal(covered.resolution.state, "resolved");
       if (shared.resolution.state !== "resolve-required" || covered.resolution.state !== "resolved") throw new Error("split resolution changed");
-      assert.deepEqual(shared.resolution.candidates.map(candidate => [candidate.referenceDigest, candidate.row.names.legalName.firstName]), [
-        [capturedDigests[0], "Legal"], [capturedDigests[1], "Other"],
+      assert.deepEqual(shared.resolution.candidates.map(candidate => [candidate.referenceDigest, candidate.row.worksheetId, candidate.row.rowId, candidate.row.referenceDigest, candidate.row.names.legalName.firstName]), [
+        [capturedDigests[0], "csv", "row-2", capturedDigests[0], "Legal"], [capturedDigests[1], "csv", "row-1", capturedDigests[1], "Other"],
       ]);
-      assert.equal(covered.resolution.selected.referenceDigest, capturedDigests[1]);
+      assert.equal(covered.resolution.selected.referenceDigest, capturedDigests[0]);
+      assert.equal(covered.resolution.selected.row.referenceDigest, capturedDigests[0]);
+      assert.equal(covered.resolution.selected.row.worksheetId, "csv");
+      assert.equal(covered.resolution.selected.row.rowId, "row-1");
       assert.equal(covered.resolution.selected.row.names.legalName.firstName, "Second");
       const choices = buildRunWorkbookSection(f.db.authority, parked).referenceChoices; assert.equal(choices?.length, 1); assert.ok(choices);
       const choice = choices[0]; assert.ok(choice?.resolution.state === "available");
@@ -181,6 +191,40 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       assert.equal(event.payload.referenceDigest, other.referenceDigest);
       assert.equal(resolved.referenceDigest, capturedDigests[0]);
       assert.equal(resolved.resolution.selected.referenceDigest, other.referenceDigest);
+      assert.equal(other.sheetId, "csv"); assert.equal(other.rowId, "row-1");
+      manager.releaseRunConfigFingerprint();
+      const resumed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: slot.workerId });
+      assert.equal(resumed.state, "applied"); if (resumed.state !== "applied") throw new Error("resolved batch was not claimable");
+      const resumedResources = resources.forRun(resumed.run);
+      manager.bindRunConfigFingerprint(resumed.run.envelope.configFingerprint, resumedResources.defaultBrowserMode, { runId, descriptorFingerprint: descriptor.contractFingerprint });
+      result = await executeClaimedRun({ ...execution, providers: resumedResources.providers }, { ...context, run: resumed.run,
+        claim: { workerId: slot.workerId, claimGeneration: resumed.run.claimGeneration } });
+      const failures = f.db.authority.failures.listByRun(runId);
+      assert.equal(result.state, "done", JSON.stringify(failures.map(failure => failure.summary)));
+      const terminal = f.db.authority.runResults.get(runId); assert.ok(terminal);
+      const output = ReadCrmWorksheetArchives.output.parse(terminal.result.value);
+      assert.deepEqual([output.worksheetCount, output.personCount, output.documentCount], [2, 2, 2]);
+      assert.deepEqual(output.worksheets.map(sheet => [sheet.referenceDigest, sheet.worksheetId, sheet.worksheetName, sheet.people.map(person => person.rowId)]), [
+        [capturedDigests[1], "csv", "Sheet 1", ["row-1"]],
+        [capturedDigests[0], "csv", "Sheet 1", ["row-1"]],
+      ]);
+      assert.deepEqual(output.collection.files.map(file => file.relativePath), output.worksheets.map(sheet => sheet.relativePath));
+      assert.deepEqual(output.worksheets.map(sheet => sheet.relativePath), [
+        `${capturedDigests[1]}/Sheet 1/Sheet 1.zip`, `${capturedDigests[0]}/Sheet 1/Sheet 1.zip`,
+      ]);
+      for (const [index, sheet] of output.worksheets.entries()) {
+        const archiveBytes = readFileSync(join(f.snapshot.config.paths.onboardingDocsDir, sheet.relativePath));
+        assert.equal(archiveBytes.byteLength, sheet.artifact.bytes);
+        const zip = await JSZip.loadAsync(archiveBytes);
+        const folder = index === 0 ? "Fixture, Other EID" : "Fixture, Second EID";
+        const pdf = `${folder}/Signed Offer Letter.pdf`;
+        assert.deepEqual(Object.keys(zip.files), [pdf]);
+        const document = zip.file(pdf); assert.ok(document);
+        assert.deepEqual(await document.async("nodebuffer"), Buffer.from(`%PDF-1.7 worksheet person ${index === 0 ? "1" : "2"}`));
+      }
+      assert.equal(f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`)?.state, "ready");
+      assert.equal(downloads, 2);
+      assert.deepEqual(f.db.authority.writeIntents.countDryRunEvidenceByRun(runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
       return;
     }
     if (mode === "ambiguous") {
@@ -292,7 +336,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
 
 it("crm-doc-download/worksheet-archives — executes registered CRM sessions, run-bound references and both PDFs in the selected worksheet ZIP", () => runCrm("complete"));
 it("retains multiple operator row choices and resumes the same batch to publish both exact PDFs in one worksheet archive", () => runCrm("ambiguous"));
-it("reads two complete General sources without joining rows and records the chosen source", () => runCrm("split"));
+it("reads two General CSVs that share csv/row-1, records the chosen source, and publishes both archives", () => runCrm("split"));
 it.each(["missing", "download-failed", "cancelled"] as const)("publishes no collection for %s", mode => runCrm(mode));
 
 it("authenticates batch choices in the retained reference step proof", () => {

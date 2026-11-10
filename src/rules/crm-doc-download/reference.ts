@@ -60,7 +60,7 @@ export function resolveCrmDocumentRows(value: z.input<typeof CrmDocumentRecordsS
           }
           const values = match.values;
           const row = CrmWorksheetPersonSchema.shape.reference.parse({
-            worksheetId: match.sheetId, worksheetName: worksheet.name, rowId: match.rowId,
+            referenceDigest: source.referenceDigest, worksheetId: match.sheetId, worksheetName: worksheet.name, rowId: match.rowId,
             names: {
               legalName: { firstName: values.firstName, lastName: values.lastName, middleName: values.middleName },
               livedName: ONBOARDING_ROSTER_NAME_FIELDS.slice(4).every(field => values[field] === null) ? null : {
@@ -101,6 +101,7 @@ export function bindCrmWorksheetPeople(downloadedValue: z.input<typeof CrmDownlo
     if (!candidates.some(value => canonicalJsonStringify(value) === canonicalJsonStringify(candidate))) {
       throw new Error("CRM document row choice is outside the retained membership");
     }
-    return CrmWorksheetPersonSchema.parse({ identity: person.identity, reference: candidate.row, documents: documents.documents });
+    return CrmWorksheetPersonSchema.parse({ identity: person.identity,
+      reference: { ...candidate.row, referenceDigest: candidate.referenceDigest }, documents: documents.documents });
   });
 }
