@@ -297,6 +297,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
+      let idleDelayMs: number | undefined;
       try {
       if (descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run")) await sessions.closeAll("parked");
       const claimRequest = {
@@ -309,10 +310,13 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       const claimed = await deps.claimNext(claimRequest, sessions);
       if (claimed.state === "preflight-refused") {
         preflightRefusal = WorkerPreflightRefusalSchema.parse(claimed);
-        stopped = "preflight-refused";
         deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId: claimRequest.commandId,
-          area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused" }, { kind: "worker", workerId });
-        break;
+          area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused",
+          ...(preflightRefusal.summary === undefined ? {} : { message: preflightRefusal.summary }) }, { kind: "worker", workerId });
+        if (deps.exitWhenIdle) { stopped = "preflight-refused"; break; }
+        preflightRefusal = undefined;
+        idleDelayMs = deps.idleCadence?.() ?? deps.idleRepollMs;
+        continue;
       }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
         const notBefore = claimed.refusal.notBefore;
@@ -325,7 +329,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           stopped = "idle";
           break;
         }
-        await boundedWait(deps.scheduler, clock, decision.delayMs, deps.stopSignal);
+        idleDelayMs = decision.delayMs;
         continue;
       }
 
@@ -422,7 +426,10 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }
-      } finally { deps.claimTurn?.end(); }
+      } finally {
+        deps.claimTurn?.end();
+        if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
+      }
     }
   } finally {
     closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
@@ -434,7 +441,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       ...(closure === "proved" && preflightRefusal === undefined ? {} : {
         diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
         errorSummary: closure === "unproved" ? `worker ${workerId} browser session closure is unproved`
-          : ERROR_CATALOG.PREFLIGHT_OBSERVATION_CHANGED.text,
+          : ERROR_CATALOG[preflightRefusal?.code ?? "PREFLIGHT_OBSERVATION_CHANGED"].text,
       }),
     });
   }

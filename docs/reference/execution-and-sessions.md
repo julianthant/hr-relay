@@ -244,13 +244,17 @@ open. A protected-settings change during preparation refuses as stale. These ses
 the whole-authority storage doctor while the active run is writing checkpoints or timeline events.
 Full workflow preflight remains required at start and worker claim; explicit storage doctor retains
 its fail-loud mixed-authority-snapshot check.
-An explicit `PREFLIGHT_OBSERVATION_CHANGED` stops the worker with `stopped: preflight-refused`
-before claim or browser preparation. The report retains that refusal; it does not repeat the check.
+Claim admission returns typed `PREFLIGHT_BLOCKED` and `PREFLIGHT_OBSERVATION_CHANGED` refusals
+without claiming the queued run. Standing workers stay alive, wait on the configured idle cadence,
+and poll again; readiness still gates browser preparation and every claim. Drain workers exit with
+`stopped: preflight-refused` and retain the exact refusal in their report, including a blocked or
+changed-observation boot check. Standing workers defer boot readiness to the selected claim.
 Other detector failures and unproved resource closure retain their failure behavior.
-The doctor preserves every consistency comparison. Available initial and final reads with an
-advanced authority generation throw `StorageDoctorObservationChangedError`; `authority.health`
-maps only that class to the preflight refusal. Fingerprint drift without a generation advance,
-backwards generations and unavailable-source transitions remain ordinary detector failures.
+The doctor preserves every consistency comparison. SQLite read locks and forward-generation
+changes between initial, corpus, run and final snapshots throw `StorageDoctorObservationChangedError`;
+`authority.health` maps only that class to the observation-change refusal. Fingerprint drift without
+a generation advance, backwards generations and other unavailable-source transitions remain ordinary
+detector failures.
 
 A successful callback resets to neutral entry and proves authentication again. Failure or
 cancellation poison-closes the resource. Failed closure retains poison and refuses reuse;
@@ -751,6 +755,11 @@ before reuse or deletion, followed by a fresh exact owner check. Random or stale
 remain unknown and untouched. Recovery accepts missing paths only after the persisted finish or
 abort step that follows actual owned drain. Failed retention or closure stays uncertain; startup
 and extension message pumps settle before replacement. No Chromium PID or marker proves closure.
+
+Application shutdown drains every tracked onboarding draft, then explicitly stops the owned Duo
+provider even if a draft drain failed or no draft remains tracked. Provider stop revokes future
+opens and awaits the existing attempt, extension pump, native browser and profile closure proofs.
+A failed drain or stop remains a shutdown failure; it never clears UNKNOWN enrollment evidence.
 
 Standalone browser verification holds the exclusive runtime listener throughout its admitted lifetime.
 Its reservation binds the installation/profile, lock port, fresh scratch profile, browser system and
