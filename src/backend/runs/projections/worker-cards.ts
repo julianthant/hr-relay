@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { WorkerBrowserWireSchema, WorkerCardWireSchema, WorkerLastRunWireSchema, type StepInterruptWire } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
@@ -127,6 +128,11 @@ export function workerCardOf(input: Readonly<{
       missing: view.browserSystems.filter(system => !browsers.some(browser => browser.system === system && browser.signIn === "signed-in")) } }),
     browsers,
     ...(state === "waiting" && view.activity?.waiting !== undefined ? { waitingActivity: view.activity.waiting } : {}),
+    ...(state === "idle" && view.activity?.refusal !== undefined ? { refusal: {
+      code: view.activity.refusal.code,
+      summary: view.activity.refusal.summary ?? operatorFailureSentence(view.activity.refusal.code),
+      retryAt: view.activity.refusal.retryAt,
+    } } : {}),
     ...(interrupt === undefined ? {} : { interrupt }),
     revision: input.foldRevision + view.version + 1,
   });
