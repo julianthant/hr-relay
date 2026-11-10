@@ -406,7 +406,7 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   expect(errors).toEqual([]);
 });
 
-// Analytics states: the open Workflows row, both toolbar menus, the hover tooltip on a bar, and the other variant's key figures.
+// Analytics states: the open Workflows row, both toolbar menus, and the hover card on every chart (the Assistant charts after scrolling to each).
 for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async ({ page }) => {
   test.setTimeout(240_000);
   const errors: string[] = [];
@@ -417,6 +417,14 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
   const shot = async (name: string) => { await page.waitForTimeout(300); await page.screenshot({ path: join(OUT, `analytics-${name}-${theme}-${WIDTH}.png`) }); };
   const scroller = page.locator("#dashboard-settings-content");
+  const scrollTo = (top: number) => scroller.evaluate((node, value) => { node.scrollTop = value; }, top);
+  await shot("top");
+  for (let top = 640, n = 1; n < 8; top += 640, n++) {
+    await scrollTo(top);
+    await shot(`page-${n}`);
+    if (await scroller.evaluate(node => node.scrollTop + node.clientHeight >= node.scrollHeight - 2)) break;
+  }
+  await scrollTo(0);
   await page.getByRole("button", { name: "Custom…" }).click();
   await shot("menu-custom");
   await page.keyboard.press("Escape");
@@ -427,18 +435,37 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await shot("filtered");
   await page.getByRole("button", { name: "Separations" }).first().click();
   await page.getByRole("menuitemradio", { name: "All workflows" }).dispatchEvent("click");
-  await page.getByRole("img", { name: /^Wed 23: / }).first().hover();
-  await expect(page.getByRole("tooltip")).toBeVisible();
-  await shot("tooltip-bar");
+  const tip = page.locator(".ds-chart-tip");
+  await page.getByRole("img", { name: /^Wed 23: Done/ }).first().hover();
+  await expect(tip).toBeVisible();
+  await shot("hover-runs");
   await page.mouse.move(1, 1);
+  await expect(tip).toHaveCount(0);
   await page.getByRole("button", { name: "Show Separations details" }).click();
-  await scroller.evaluate(node => { node.scrollTop = 420; });
+  await scrollTo(420);
   await shot("workflows-open");
-  await scroller.evaluate(node => { node.scrollTop = 760; });
-  await page.getByRole("img", { name: /^Thu 24: Separations/ }).hover();
-  await expect(page.getByRole("tooltip")).toBeVisible();
-  await shot("tooltip-time");
-  await page.keyboard.press("Tab");
+  // Every other chart: hover a day and check the card stays inside the chart card.
+  for (const [name, day] of [["time", /^Thu 24: Separations/], ["messages", /^Wed 23: Questions/], ["tools", /^Wed 23: Person Lookup/], ["actions", /^Wed 23: Approved/]] as const) {
+    await page.getByRole("img", { name: day }).hover();
+    await expect(tip).toBeVisible();
+    const inside = await tip.evaluate(node => { const box = node.getBoundingClientRect(), card = node.closest("figure")!.getBoundingClientRect(); return box.left >= card.left && box.right <= card.right && box.top >= card.top && box.bottom <= card.bottom; });
+    expect(inside, `${name} card inside its chart`).toBe(true);
+    await shot(`hover-${name}`);
+    await page.mouse.move(1, 1);
+  }
+  // The 30d choice swaps the Messages chart to month days and keeps the same card.
+  await page.getByRole("group", { name: "Messages period" }).getByText("30d").click();
+  await page.getByRole("img", { name: /^Sep 23: Questions/ }).hover();
+  await expect(tip).toContainText("Sep 23, 2026");
+  await shot("hover-messages-30d");
+  await page.mouse.move(1, 1);
+  // Keyboard focus on a day shows the same card; arrow keys move on, Escape hides it.
+  await page.getByRole("img", { name: /^Mon 21: Approved/ }).focus();
+  await expect(tip).toContainText("Sep 21, 2026");
+  await page.keyboard.press("ArrowRight");
+  await expect(tip).toContainText("Sep 22, 2026");
+  await page.keyboard.press("Escape");
+  await expect(tip).toHaveCount(0);
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&statusMock=analytics-b`);
   await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
   expect(errors).toEqual([]);
