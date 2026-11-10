@@ -5,7 +5,7 @@ import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMe
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../ds/primitives/dropdown-menu.js";
 import { DATASETS, initialSheets, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "../../spreadsheets/design/sheets-v2-model.js";
 import { AccountSettings, type AccountValues } from "../account/account-settings.js";
-import { SubscriptionSettings, type SubscriptionAccount, type SubscriptionPermissions } from "../subscription/subscription-settings.js";
+import { SubscriptionSettings, type SubscriptionAccount } from "../subscription/subscription-settings.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
 import { STATUS_MOCK_ACCOUNT, STATUS_MOCK_BLOCKERS, STATUS_MOCK_SUBSCRIPTION, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
@@ -135,8 +135,7 @@ export function StatusMockAccount({ frame }: { frame: StatusMockId }) {
 export function StatusMockSubscription({ frame }: { frame: StatusMockId }) {
   const connected = (limits: typeof STATUS_MOCK_SUBSCRIPTION.limits | typeof STATUS_MOCK_SUBSCRIPTION.limitReached): SubscriptionAccount => ({ state: "connected", email: STATUS_MOCK_ACCOUNT.email, plan: STATUS_MOCK_SUBSCRIPTION.plan, limits });
   const [account, setAccount] = useState<SubscriptionAccount>(frame === "subscription-disconnected" ? { state: "disconnected" } : connected(frame === "subscription-limit" ? STATUS_MOCK_SUBSCRIPTION.limitReached : STATUS_MOCK_SUBSCRIPTION.limits));
-  const [permissions, setPermissions] = useState<SubscriptionPermissions>({ defaultPermissions: true, fullAccess: false });
-  return <SubscriptionSettings account={account} permissions={permissions} onPermissions={setPermissions}
+  return <SubscriptionSettings account={account}
     onConnect={() => setAccount(connected(STATUS_MOCK_SUBSCRIPTION.limits))} onDisconnect={() => setAccount({ state: "disconnected" })} />;
 }
 

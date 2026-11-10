@@ -10,6 +10,7 @@ import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { settingNote,settingTitle } from "../settings-presentation.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { statusMock } from "../status-mock/status-mock-model.js";
+import { AssistantPermissions } from "./assistant-permissions.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { HubBrowserWindowSettings } from "./hub-preferences.js";
@@ -90,6 +91,7 @@ export function CompactSettingsSection({ editor, appearance, deleteAccount }: { 
   const mock = statusMock();
   return <section className="settings-compact-page">
     <PageHeading title="General" />
+    <AssistantPermissions />
     {mock === undefined && <ChatGptAccountSettings />}
     {appearance}
     {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
