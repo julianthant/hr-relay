@@ -85,9 +85,10 @@ async function fixture(duplicate = false, full = false) {
   const type = repository.types().find(value => value.id === patch.typeId); assert.ok(type);
   repository.putType({ ...type, defaultWorkbookId: saved.libraryId });
   const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
-  const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
-    descriptors: { resolve: id => id === descriptor.id ? selectedDescriptor : undefined }, workbooks: library, planTtlMs: 600_000,
+  const makePlanner = (workbooks: Parameters<typeof createStartPlanService>[0]["workbooks"] = library) => createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
+    descriptors: { resolve: id => id === descriptor.id ? selectedDescriptor : undefined }, workbooks, planTtlMs: 600_000,
     configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
+  const planner = makePlanner();
   const selection = { entry: 1, typeId: patch.typeId };
   const request = { workflowId: descriptor.id, submissions: [{ eid: patch.key }], dryRun: false, workbookReferences: [selection] };
   const plan = () => {
@@ -139,7 +140,7 @@ async function fixture(duplicate = false, full = false) {
     library.operatorOperation(saved.libraryId, randomUUID(), { kind: "save", expectedVersion: current.version,
       workbook: encodeEditableWorkbook(workbook) });
   };
-  return { ...h, repository, library, id: saved.libraryId, planner, selection, request, plan, start, running, runs, section, choice, edit };
+  return { ...h, repository, library, id: saved.libraryId, planner, makePlanner, selection, request, plan, start, running, runs, section, choice, edit };
 }
 
 it("binds exact values, revision and all worksheet identities through real planning and start confirmation", async () => {
@@ -173,6 +174,35 @@ it("requires exactly the declared consumer types and refuses missing, duplicate 
   }
   expect(() => f.planner.plan({ ...f.request, workbookReferences: [{ ...f.selection, entry: 2 }] })).toThrow();
   expect(f.database.authority.runs.listByWorkflow(descriptor.id)).toEqual([]);
+});
+
+it("rechecks the canonical default on each plan while preserving an explicit named-version override", async () => {
+  const f = await fixture();
+  expect(f.plan().planned).toHaveLength(1);
+  const type = f.repository.types().find(type => type.id === patch.typeId); assert.ok(type);
+  const oldCatalog = f.library.catalog();
+  f.repository.putType({ ...type, defaultWorkbookId: null });
+  const staleCatalogPlanner = f.makePlanner({ ...f.library, catalog: () => oldCatalog });
+  expect(staleCatalogPlanner.plan(f.request).planned).toEqual([]);
+  const missing = f.plan();
+  expect(missing.planned).toEqual([]);
+  expect(missing.refused).toMatchObject([{ code: "capability-unavailable" }]);
+  const explicit = f.planner.plan({ ...f.request,
+    workbookReferences: [{ ...f.selection, libraryId: f.id, versionId: "original" }] });
+  expect(explicit.refused).toEqual([]);
+  expect(explicit.planned[0]?.workbookReferences).toMatchObject([{ libraryId: f.id, versionId: "original" }]);
+  f.repository.putType({ ...type, defaultWorkbookId: f.id });
+  expect(f.plan().planned).toHaveLength(1);
+  const foreign = f.library.create({ name: "Other.xlsx", themes: [], hasFormulas: false,
+    sheets: [{ id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "header", cells: [{ value: "Name" }] }] }] });
+  const mismatched = f.planner.plan({ ...f.request, workbookReferences: [{ ...f.selection, libraryId: foreign.libraryId }] });
+  expect(mismatched.planned).toEqual([]);
+  expect(mismatched.refused).toMatchObject([{ code: "capability-unavailable" }]);
+  const badDefaultPlanner = f.makePlanner({ ...f.library, types: () => f.library.types().map(current => current.id === patch.typeId
+    ? { ...current, defaultWorkbookId: foreign.libraryId } : current) });
+  const badDefault = badDefaultPlanner.plan(f.request);
+  expect(badDefault.planned).toEqual([]);
+  expect(badDefault.refused).toMatchObject([{ code: "capability-unavailable" }]);
 });
 
 it("executes the registered workbook task through its real provider using the captured run reference", async () => {

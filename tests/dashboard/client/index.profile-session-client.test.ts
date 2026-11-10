@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import type { DeleteProfileAccountRequest } from "../../../src/models/profiles/public-profile.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
 
 it("keeps real profile responses and fixed failures distinct without retry or token projection", async () => {
   const requests: { path: string; origin: unknown; body: unknown }[] = [];
@@ -13,6 +15,21 @@ it("keeps real profile responses and fixed failures distinct without retry or to
   assert.deepEqual(await client.logOutProfile(), { state: "error", code: "RUNTIME_CUSTODY_UNCERTAIN" });
   assert.equal(requests.length, 1);
   assert.deepEqual(requests[0], { path: "/api/v1/profile/logout", origin: "http://127.0.0.1:5174", body: "{}" });
+});
+
+it("preserves first-run report and unavailable results through the shared completion parser", async () => {
+  const profileId = "00000000-0000-4000-8000-000000000001", operationId = "00000000-0000-4000-8000-000000000002";
+  const report = healthyDashboardPreflightReport(manualClock(new Date("2026-11-08T12:00:00Z")));
+  const firstRunCheck = { scope: "local-startup", profileId, epoch: 7, state: "passed", report };
+  for (const body of [
+    { state: "active", profileId, epoch: 7, duoState: "ready", firstRunCheck },
+    { state: "error", code: "RUNTIME_CUSTODY_UNCERTAIN", firstRunCheck },
+    { state: "error", code: "INTERNAL_FAILURE", firstRunCheck: { scope: "local-startup", profileId, epoch: 7, state: "unavailable", code: "PROFILE_FIRST_RUN_CHECK_UNAVAILABLE" } },
+  ]) {
+    const fetchImpl = async () => Response.json(body, { status: body.state === "active" ? 200 : 500 });
+    const client = createDashboardClient({ baseUrl: "http://127.0.0.1:5174", fetchImpl });
+    assert.deepEqual(await client.completeProfileOnboarding({ operationId }), body);
+  }
 });
 
 it("refuses foreign public session payloads instead of treating them as login success", async () => {

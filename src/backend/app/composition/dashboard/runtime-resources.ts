@@ -21,7 +21,7 @@ import { requireRuntimeAdmission } from "../../../storage/admission/admission-id
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
-import { AuthorityHealthPreflightRunner,summarizeBackupHealth } from "../../../storage/sqlite/index.js";
+import { AuthorityHealthPreflightRunner } from "../../../storage/sqlite/index.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
@@ -178,22 +178,6 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     reason: "verified backups run after clean shutdown; the last three shutdown backups are retained",
   });
 
-  const readBackupSummary = (): ReturnType<typeof summarizeBackupHealth> => {
-    let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
-    try {
-      liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };
-    } catch {
-      // Unavailable authority is distinct from an absent backup; judge the latter by manifest presence.
-      liveGeneration = { state: "unavailable" };
-    }
-    return summarizeBackupHealth(
-      admission,
-      { backupDirectory },
-      liveGeneration.state === "known" ? liveGeneration.value : undefined,
-      clock,
-    );
-  };
-
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
   chatGptAccount.setDebugEvents(debugEvents);
@@ -257,5 +241,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   });
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, readBackupSummary, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

@@ -1,3 +1,5 @@
+import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
+import { activityTypicalTime, successfulActivityTiming } from "./activity-timing.js";
 import { z } from "zod";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -22,7 +24,7 @@ import { ActivityReportWireSchema, ACTIVITY_SAMPLE_LIMIT, type ActivityReportWir
 import { buildActivityVolumeBoundarySkeleton, createActivityDatePartReader } from "../../../models/dashboard/activity-volume.js";
 import { TERMINAL_QUEUE_STATUSES } from "../../../models/dashboard/projection.js";
 
-type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal,"workflowId"|"registration">;
+type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal,"workflowId"|"registration"|"needsAttention"|"typicalTime">;
 function emptyActivityWorkflowCounts():ActivityWorkflowCounts {
   return {runs:0,completion:{readBack:0,warnings:0,warningsUnknown:0},failed:0,cancelled:0,partial:0,open:0};
 }
@@ -96,7 +98,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
     const workflows = new Map<string, ActivityWorkflowCounts>();
     const statuses = new Map<string, { runs: number; sample: string[] }>();
     const outcomes = new Map<string, number>();
-    const failures = new Map<string, { runs: number; transient: number; sample: string[] }>();
+    const failures = new Map<string, { workflowId: string; code: string; runs: number; transient: number; sample: string[] }>();
     const measured: { runId: string; ms: number }[] = [];
 
     const completion = { readBack: 0, warnings: 0, warningsUnknown: 0 };
@@ -158,21 +160,24 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       if (failureId === undefined) continue;
       if (row.failureCode === null || row.failureTransient === null) throw new Error("run-summary-failure-unavailable");
       const failure={code:row.failureCode,transient:row.failureTransient};
-      const bucket = failures.get(failure.code) ?? { runs: 0, transient: 0, sample: [] };
+      const key = JSON.stringify([surface.workflowId, failure.code]);
+      const bucket = failures.get(key) ?? { workflowId: surface.workflowId, code: failure.code, runs: 0, transient: 0, sample: [] };
       bucket.runs += 1;
       if (failure.transient) bucket.transient += 1;
       if (bucket.sample.length < ACTIVITY_SAMPLE_LIMIT) bucket.sample.push(surface.runId);
-      failures.set(failure.code, bucket);
+      failures.set(key, bucket);
     }
 
+    const timingRows = inRange.map(row => ({ workflowId: row.workflow, status: deriveRunStatus(row), parentRunId: row.parent?.runId ?? null, durationMs: row.durationMs }));
     const categories = new Map<string, number>();
     let unregisteredCategoryRuns = 0;
     const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, counts]) => {
+      const typicalTime = activityTypicalTime(successfulActivityTiming(workflowId, timingRows));
       const descriptor = deps.descriptors.resolve(workflowId);
       if (descriptor === undefined) {
         unregisteredCategoryRuns += counts.runs;
         return {
-          ...counts,
+          ...counts, needsAttention: counts.failed, typicalTime,
           workflowId,
           registration: {
             state: "unregistered",
@@ -182,7 +187,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       }
       categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
       return {
-        ...counts,
+        ...counts, needsAttention: counts.failed, typicalTime,
         workflowId,
         registration: {
           state: "registered",
@@ -230,8 +235,9 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))
         .map(([status, bucket]) => ({ status, runs: bucket.runs, sample: bucket.sample })),
       outcomes: [...outcomes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([outcome, runs]) => ({ outcome, runs })),
-      failures: [...failures.entries()].sort(([a], [b]) => a.localeCompare(b))
-        .map(([code, bucket]) => ({ code, runs: bucket.runs, transient: bucket.transient, sample: bucket.sample })),
+      failures: [...failures.values()].sort((a, b) => a.workflowId.localeCompare(b.workflowId) || a.code.localeCompare(b.code))
+        .map(bucket => ({ ...bucket, sentence: operatorFailureSentence(bucket.code),
+          registration: workflowTotals.find(workflow => workflow.workflowId === bucket.workflowId)!.registration })),
       durations: {
         measuredRuns: measured.length,
         unmeasuredRuns: unmeasured,
