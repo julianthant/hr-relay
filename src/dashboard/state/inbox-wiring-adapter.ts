@@ -39,7 +39,8 @@ export function notificationPolicy(row: NotificationWire) {
 export function notificationTargetMatches(row: NotificationWire, target: NotificationTarget): boolean {
   if (row.kind === "command") {
     const link = row.link;
-    if ((target.kind === "recovery" || target.kind === "command-result") && link.kind === target.kind) return link.commandId === target.commandId;
+    if (target.kind === "recovery" && link.kind === "recovery") return link.commandId === target.commandId;
+    if (target.kind === "command-result" && (link.kind === "command-result" || link.kind === "recovery")) return link.commandId === target.commandId;
     if (target.kind === "bulk-result" && link.kind === "bulk-result") return link.bulkCommandId === target.bulkCommandId;
     return false;
   }
