@@ -4,6 +4,7 @@ import { RunList, RunListRow } from "../../run-start/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, dsIcon } from "../../../ds/ui.js";
 import { ChartHeading, KeyFigures, LineChart, StackedBars, clock } from "./status-mock-charts.js";
 import { analyticsDays } from "./status-mock-assistant-data.js";
+import { AssistantAnalytics } from "./status-mock-assistant-charts.js";
 import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_OUTCOMES, type StatusMockCounts } from "./status-mock-model.js";
 
 const PERIODS = [{ value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }] as const;
@@ -91,6 +92,7 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
       <BodySection title="Why runs failed" description="Failed runs in this period.">
         <RunList label="Why runs failed">{data.reasons.map(reason => <RunListRow key={reason.label} title={reason.label} description={reason.workflow}><span className="text-[13px] tabular-nums">{reason.runs}</span></RunListRow>)}</RunList>
       </BodySection>
+      <AssistantAnalytics />
     </div>
   </section>;
 }
