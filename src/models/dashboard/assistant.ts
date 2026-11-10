@@ -5,11 +5,12 @@ import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
 import { RowRevisionSchema, RunDetailSectionSchema } from "./primitives.js";
 import { CrossDateSearchQuerySchema } from "./search.js";
 import { WorkbookCellChangeSchema, WorkbookIdSchema, WorkbookRevisionSchema } from "./workbooks.js";
-import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../rules/validation/sha256.js";
 import { OcrFormTypeSchema } from "../ocr/form-registry.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { z } from "zod";
-import { FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema } from "../../rules/identity/ids.js";
+import { CommandIdSchema, FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
@@ -464,6 +465,46 @@ export const AssistantSessionOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("unknown") }),
 ]);
 export type AssistantSessionOutcome = z.infer<typeof AssistantSessionOutcomeSchema>;
+/** One reviewed row's closed operation; Relay issues its command only after typed yes. */
+export const AssistantM2ProposalOperationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("workflow-start"), workflowId: WorkflowIdSchema, submission: JsonValueSchema, expected: StartPlanWireSchema.shape.fingerprints }),
+  z.strictObject({ kind: z.literal("rerun"), runId: RunIdSchema, expectedVersion: PositiveIntSchema }),
+  z.strictObject({ kind: z.literal("run-action"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, action: z.enum(["pause", "resume", "cancel"]) }),
+]);
+export const AssistantM2ProposalRowSchema = AssistantProposalRowSchema.safeExtend({ id: z.uuid(), ordinal: PositiveIntSchema, operation: AssistantM2ProposalOperationSchema });
+export type AssistantM2ProposalRow = z.infer<typeof AssistantM2ProposalRowSchema>;
+const AssistantM2ProposalShape = z.strictObject({
+  id: z.uuid(), profileId: z.uuid(), conversationId: z.uuid(), revision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema,
+  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), createdAt: IsoInstantSchema,
+  rows: z.array(AssistantM2ProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
+});
+/** Digest of everything the operator saw, in order; yes binds to it. */
+export function assistantM2ProposalDigest(snapshot: Omit<z.input<typeof AssistantM2ProposalShape>, "renderedDigest"> & { renderedDigest?: string }): string {
+  const { renderedDigest: _digest, ...rendered } = snapshot;
+  return sha256Hex(canonicalJsonStringify(JsonValueSchema.parse(rendered)));
+}
+/** The exact proposal the operator reviewed; it has no own timeout, only its conversation's retention. */
+export const AssistantM2ProposalSnapshotSchema = AssistantM2ProposalShape.refine(snapshot => snapshot.rows.every((row, index) => row.ordinal === index + 1
+  && row.operation.kind === snapshot.rows[0]?.operation.kind) && new Set(snapshot.rows.map(row => row.id)).size === snapshot.rows.length
+  && snapshot.renderedDigest === assistantM2ProposalDigest(snapshot), "assistant-proposal-snapshot-invalid");
+export type AssistantM2ProposalSnapshot = z.infer<typeof AssistantM2ProposalSnapshotSchema>;
+/** A row's own result; UNKNOWN is terminal and never reclaimed. */
+export const AssistantM2RowResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("not-started") }),
+  z.strictObject({ state: z.literal("claimed"), commandId: CommandIdSchema }),
+  z.strictObject({ state: z.literal("applied"), commandId: CommandIdSchema, runIds: z.array(RunIdSchema).max(ASSISTANT_START_ROWS_MAX) }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema, commandId: CommandIdSchema.nullable() }),
+  z.strictObject({ state: z.literal("unknown"), commandId: CommandIdSchema }),
+]);
+export type AssistantM2RowResult = z.infer<typeof AssistantM2RowResultSchema>;
+export const AssistantM2ProposalStateSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("open") }),
+  z.strictObject({ state: z.literal("answered"), answerMessageId: z.uuid() }),
+  z.strictObject({ state: z.literal("superseded") }),
+]);
+export const AssistantM2ProposalRecordSchema = z.strictObject({ snapshot: AssistantM2ProposalSnapshotSchema, lifecycle: AssistantM2ProposalStateSchema,
+  rows: z.array(z.strictObject({ rowId: z.uuid(), result: AssistantM2RowResultSchema })).min(1).max(ASSISTANT_START_ROWS_MAX) });
+export type AssistantM2ProposalRecord = z.infer<typeof AssistantM2ProposalRecordSchema>;
 export function assistantSessionAttribution(claim: AssistantSessionClaim): z.infer<typeof AssistantCommandAttributionSchema> {
   const { acceptedTurn: turn } = AssistantSessionClaimSchema.parse(claim);
   return AssistantCommandAttributionSchema.parse({ kind: "assistant", requestedBy: claim.command.requestedBy, profileId: turn.profileId,

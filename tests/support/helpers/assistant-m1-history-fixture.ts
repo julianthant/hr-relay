@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { ASSISTANT_HISTORY_MIGRATION, ASSISTANT_M1_HISTORY_STATEMENTS, createAssistantM1HistoryRepository } from "../../../src/backend/storage/sqlite/assistant-history.js";
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "../../../src/backend/storage/sqlite/assistant-attachments.js";
+import { ASSISTANT_M2_PROPOSAL_STATEMENTS, createAssistantProposalRepository } from "../../../src/backend/storage/sqlite/assistant-proposals.js";
 
 export function assistantM1HistoryFixture(config: Readonly<{ now: string; acceptedAt: string; profileId?: string }>) {
   const database = new DatabaseSync(":memory:");
@@ -36,11 +37,17 @@ export function assistantM1HistoryFixture(config: Readonly<{ now: string; accept
     read: work => { if (depth > 0) return work(); database.exec("BEGIN"); try { const result = work(); database.exec("COMMIT"); return result; } catch (error) { database.exec("ROLLBACK"); throw error; } },
     mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) };
   const history = createAssistantM1HistoryRepository(ports);
+  /** Applies the candidate M2 statements over this populated M1 database and opens the prepared proposal owner. */
+  const proposals = () => {
+    for (const statement of ASSISTANT_M2_PROPOSAL_STATEMENTS) database.exec(statement);
+    return createAssistantProposalRepository({ database, profileId: () => profileId, read: work => ports.read(work),
+      mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) });
+  };
   assert.deepEqual(database.prepare("SELECT name,sql FROM sqlite_schema ORDER BY name").all(), schemaBefore, "prepared construction never changes schema");
   const create = (title = "Chat") => { const id = randomUUID(); history.apply({ operation: "create", conversationId: id, title }, config.now); return id; };
   const revision = (id: string) => { const chat = history.conversation(id, config.now); assert.ok(chat); return chat.revision; };
   const input = (id: string, text = "Explain") => ({ conversationId: id, expectedRevision: revision(id), messageId: randomUUID(), text,
     modelText: `masked ${text}`, subjectRef: null, attachments: [], proposalAnswer: null, now: config.acceptedAt });
-  return { database, history, create, revision, input, outer: transaction, restart: () => createAssistantM1HistoryRepository(ports), generation: () => generation, epoch: () => epoch, profileId: () => profileId,
+  return { database, history, proposals, create, revision, input, outer: transaction, restart: () => createAssistantM1HistoryRepository(ports), generation: () => generation, epoch: () => epoch, profileId: () => profileId,
     changeEpoch: () => epoch++ };
 }
