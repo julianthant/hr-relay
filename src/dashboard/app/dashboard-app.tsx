@@ -85,7 +85,7 @@ import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/ident
 import { RunStartButton } from "../surfaces/run-start/run-start.js";
 import { SessionPanel } from "../surfaces/sessions/session-panel.js";
 import {
-DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
+DASHBOARD_MAIN_REGION_ID, SETTINGS_PREFLIGHT_SECTION_ID, buildSettingsNav, resolveSettingsSection
 } from "../surfaces/settings/settings-model.js";
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
@@ -114,6 +114,7 @@ type CommandAction,
 } from "./commands/command-dispatch.js";
 import { settleCommandResult } from "./commands/command-result.js";
 import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workflowWorkersStopped } from "./commands/worker-startup-toast.js";
+import { preflightAttentionToast } from "./commands/preflight-attention-toast.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
 } from "./dashboard-app-model.js";
@@ -263,6 +264,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
+          startupPreflight={profileSource === "served"}
         /></DashboardPageBoundary></ViewNavigationProvider>
       )}
     </ToastProvider>
@@ -348,6 +350,8 @@ interface LoadedAppProps {
   onSelectMode: (on: boolean) => void;
   bulkIds: ReadonlySet<string>;
   onBulkIds: (next: ReadonlySet<string>) => void;
+  /** Served sign-in reads the readiness report once and toasts attention failures. */
+  startupPreflight?: boolean;
 }
 
 
@@ -375,6 +379,7 @@ function LoadedApp({
   onSelectMode,
   bulkIds,
   onBulkIds,
+  startupPreflight = false,
 }: LoadedAppProps) {
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
@@ -936,6 +941,26 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       settings: section,
     });
   }, [route, setRoute]);
+  const openReadiness = useRef(openSettings);
+  openReadiness.current = openSettings;
+  const shownPreflight = useRef(new Set<string>());
+  useEffect(() => {
+    if (!startupPreflight) return;
+    let active = true;
+    void (async () => {
+      let wire: Awaited<ReturnType<typeof client.readPreflight>>;
+      try { wire = await client.readPreflight(); }
+      catch { return; } // no served report; Settings readiness reports the failed read
+      if (!active || wire.state !== "present") return;
+      const attention = preflightAttentionToast(wire.report);
+      if (attention === undefined) return;
+      const key = `${wire.report.configFingerprint}:${wire.report.descriptorFingerprint ?? ""}:${wire.report.checkedAt}`;
+      if (shownPreflight.current.has(key)) return;
+      shownPreflight.current.add(key);
+      toast({ tone: attention.tone, title: attention.title, sticky: true, action: { label: attention.action, onClick: () => openReadiness.current(SETTINGS_PREFLIGHT_SECTION_ID) } });
+    })();
+    return () => { active = false; };
+  }, [startupPreflight, client, toast]);
 
   const renderQueueBody = useCallback((body: ReactNode) => (
     <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
