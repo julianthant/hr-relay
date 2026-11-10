@@ -21,11 +21,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     await expect(rail.getByRole("button")).toHaveCount(15);
     const labels = await rail.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")));
-    expect(labels).toHaveLength(15);
+    expect(labels).toHaveLength(14);
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     const run = page.getByRole("dialog", { name: "Start run", exact: true });
     const picker = run.getByRole("navigation", { name: "Workflow", exact: true });
-    const parentOnly = ["SharePoint Download", "I-9 Lookup"];
+    const parentOnly = ["I-9 Lookup"];
     expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels.filter(label => !parentOnly.includes(label!)));
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeDisabled();
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toHaveAttribute("aria-description", /no standalone launch input/u);

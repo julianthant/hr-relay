@@ -63,8 +63,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       const palette = theme.attribute === "dark"
-        ? { canvas: "rgb(24, 24, 24)", panel: "rgb(34, 34, 34)", table: "rgb(43, 43, 43)" }
-        : { canvas: "rgb(250, 250, 250)", panel: "rgb(255, 255, 255)", table: "rgb(244, 244, 244)" };
+        ? { canvas: "rgb(15, 15, 17)", panel: "rgb(24, 24, 27)", table: "rgb(31, 31, 35)" }
+        : { canvas: "rgb(249, 249, 249)", panel: "rgb(253, 253, 253)", table: "rgb(246, 246, 246)" };
       const writes: string[] = [];
       page.on("request", request => { if (request.method() !== "GET") writes.push(request.method() + " " + new URL(request.url()).pathname); });
       for (const [name, path] of [
