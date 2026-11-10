@@ -2,7 +2,7 @@
 import { expect, type Locator } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
+import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 
@@ -52,7 +52,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
 
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await assertThemeApplied(page, theme);
+      // The specimen page has no app root; its html and body carry the theme.
+      for (const root of ["html", "body"]) await expect(page.locator(root)).toHaveAttribute("data-demo-theme", theme.attribute);
       await attachShellA11y(page, info, evidence);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }

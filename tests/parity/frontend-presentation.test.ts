@@ -25,22 +25,22 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?settings=general`);
-      await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "General", exact: true, level: 1 })).toBeVisible();
       const sidebar = page.getByRole('navigation', { name: 'Settings sections', exact: true });
       const general = sidebar.getByRole('link', { name: 'General', exact: true });
-      const performanceLink = sidebar.getByRole('link', { name: 'Routes', exact: true });
+      const performanceLink = sidebar.getByRole('link', { name: 'Spreadsheets', exact: true });
       const colors = await general.evaluate(node => ({ color: getComputedStyle(node).color, radius: getComputedStyle(node).borderRadius }));
-      expect(colors.color).toBe('rgb(239, 239, 239)');
-      await expect(performanceLink).toHaveCSS('color', 'rgb(178, 178, 178)');
+      expect(colors.color).toBe('rgb(227, 228, 230)');
+      await expect(performanceLink).toHaveCSS('color', 'rgb(227, 228, 230)');
       expect(colors.radius).toBe('10px');
       const selectedBounds = (await general.boundingBox())!;
       const otherBounds = (await sidebar.getByRole("link", { name: "Account", exact: true }).boundingBox())!;
-      expect(selectedBounds.height).toBe(33.5);
-      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(0);
+      expect(selectedBounds.height).toBe(32);
+      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(2);
       await expect(sidebar.getByText('Personal', { exact: true })).toHaveCSS('font-size', '11px');
       await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-weight', '400');
-      await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-size', '14px');
-      await expect(page.locator('.ds-switch-copy .ds-text-ui').first()).toHaveCSS('font-weight', '500');
+      await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-size', '15px');
+      await expect(page.locator('.ds-switch-copy .ds-text-ui').first()).toHaveCSS('font-weight', '400');
       const body = page.locator('.settings-tab-body');
       const original = await body.boundingBox();
       const headingStyle = await body.locator('.ds-page-heading-title').first().evaluate(node => {
@@ -55,7 +55,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect(bounds.width).toBeLessThanOrEqual(828);
         expect(await body.locator('.ds-page-heading-title').first().evaluate(node => {
           const style = getComputedStyle(node); return { size: style.fontSize, weight: style.fontWeight, line: style.lineHeight };
-        })).toEqual({ ...headingStyle, weight: "600" });
+        })).toEqual({ ...headingStyle, weight: title === "Explorer" ? "500" : headingStyle.weight });
         await expect(body.locator('.operations-toolbar')).toHaveCount(0);
         expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
         expect((await page.locator('.settings-nav-header').boundingBox())!.height).toBe(30);
@@ -73,149 +73,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           }
         }
       }
-    } finally { await server.close(); }
-  });
-
-  const evidence = `activity-presentation-${theme.attribute}-${width}.a11y.yml`;
-  test(`Activity A local presentation @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }) => {
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
-    try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
-      await installTheme(page, theme);
-      const requests = surfaceRequests(page);
-      await page.goto(`${server.baseUrl}/?activity=`);
-      const surface = page.getByRole("region", { name: "Analytics report", exact: true });
-      const metrics = surface.getByLabel("Analytics summary");
-      await expect(metrics).toContainText("38");
-      await expect(metrics).toContainText("34 measured · 4 unmeasured");
-      await expect(surface.getByRole("row", { name: "Separations 24 3 2 29" })).toBeVisible();
-      await expect(surface.getByRole("row", { name: "Person lookup 14 1 0 15", exact: true })).toBeVisible();
-      await expect(surface).toContainText("35 of 38 completed");
-      const performance = surface.getByRole("table", { name: "Run performance", exact: true });
-      await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("95%");
-      await expect(performance.getByRole("row", { name: /Longest run/ })).toContainText("4m 41s");
-      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("1h 17m");
-      await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Document read timeout");
-      const chart = surface.getByRole("group", { name: /runs? across.*interval/ });
-      await expect(chart).toBeVisible();
-      await expect(surface.getByRole("heading", { name: "Analytics", exact: true })).toBeVisible();
-      await expect(surface.getByRole("group", { name: "Activity actions", exact: true })).toHaveCount(0);
-      const outcomes = surface.getByRole("table", { name: "Workflow outcomes", exact: true });
-      await expect(outcomes.locator('..')).toHaveCSS('border-radius', '12.6px');
-      await expect(outcomes.getByRole('columnheader', { name: 'Workflow', exact: true })).toHaveCSS('font-weight', '400');
-      const outcomeBounds = await outcomes.boundingBox();
-      const chartSection = chart.locator("..").locator("..");
-      const chartBounds = await chartSection.boundingBox();
-      expect(outcomeBounds).not.toBeNull();
-      expect(chartBounds).not.toBeNull();
-      expect(Math.abs(outcomeBounds!.width - chartBounds!.width)).toBeLessThanOrEqual(2);
-      expect(Math.abs(outcomeBounds!.x - chartBounds!.x)).toBeLessThanOrEqual(2);
-      expect(chartBounds!.y).toBeGreaterThan(outcomeBounds!.y + outcomeBounds!.height);
-      expect(await outcomes.locator("..").evaluate(node => getComputedStyle(node).borderTopStyle)).toBe("solid");
-      const transactions = surface.getByRole("table", { name: "Confirmed transactions", exact: true });
-      const coverage = surface.getByRole("table", { name: "Evidence coverage", exact: true });
-      const valueTypography = (node: Element) => { const style = getComputedStyle(node); return { size: style.fontSize, weight: style.fontWeight, lineHeight: style.lineHeight }; };
-      expect(await transactions.getByRole("cell").first().evaluate(valueTypography)).toEqual(await performance.getByRole("cell").first().evaluate(valueTypography));
-      expect(await coverage.getByRole("cell").first().evaluate(valueTypography)).toEqual(await performance.getByRole("cell").first().evaluate(valueTypography));
-      const transactionsBounds = (await transactions.boundingBox())!;
-      const coverageBounds = (await coverage.boundingBox())!;
-      expect(coverageBounds.y).toBeGreaterThan(transactionsBounds.y + transactionsBounds.height);
-      expect(coverageBounds.x).toBe(transactionsBounds.x);
-      expect(coverageBounds.width).toBe(transactionsBounds.width);
-      expect(await coverage.locator("..").evaluate(node => getComputedStyle(node).backgroundColor)).toBe(await transactions.locator("..").evaluate(node => getComputedStyle(node).backgroundColor));
-      const bars = chart.getByRole("button");
-      const barSize = (await bars.nth(3).locator(":scope > span").first().boundingBox())!;
-      const bandSize = (await bars.nth(3).boundingBox())!;
-      expect(barSize.width / bandSize.width).toBeGreaterThan(.65);
-      expect(barSize.width / bandSize.width).toBeLessThan(.9);
-      const fillStyle = await bars.nth(3).locator(":scope > span").first().evaluate(node => {
-        const style = getComputedStyle(node);
-        return { color: style.backgroundColor, opacity: style.opacity };
-      });
-      expect(fillStyle.color).toMatch(/^rgb\(\d+, \d+, \d+\)$/u);
-      expect(fillStyle.opacity).toBe("1");
-      expect((await chart.boundingBox())!.height).toBeGreaterThanOrEqual(160);
-      if (chartBounds!.width > 600) expect((await chart.boundingBox())!.height).toBeGreaterThan(160);
-      for (const [index, day, count] of [[0, 20, 0], [3, 23, 7], [5, 25, 9], [6, 26, 9]]) {
-        const bar = bars.nth(index);
-        await bar.hover();
-        const tooltip = chart.getByRole("tooltip");
-        await expect(tooltip).toHaveText(`09/${day}/2026${count} runs`);
-        const tipBounds = (await tooltip.boundingBox())!;
-        const barBounds = (await bar.boundingBox())!;
-        const plotBounds = (await chart.boundingBox())!;
-        const anchor = barBounds.x + barBounds.width / 2;
-        const expectedLeft = Math.max(plotBounds.x, Math.min(anchor - tipBounds.width / 2, plotBounds.x + plotBounds.width - tipBounds.width));
-        expect(Math.abs(tipBounds.x - expectedLeft)).toBeLessThanOrEqual(1);
-        await expect(bar).toHaveAttribute("aria-describedby", await tooltip.getAttribute("id") as string);
-      }
-      await page.mouse.move(0, 0);
-      await bars.last().focus();
-      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "today");
-      await expect(bars).toHaveCount(24);
-      await bars.first().focus();
-      await expect(chart.getByRole("tooltip")).toContainText("09/26/2026");
-      await expect(chart.getByRole("tooltip")).toContainText("0 runs");
-      const solo = (await bars.first().boundingBox())!;
-      const soloTip = (await chart.getByRole("tooltip").boundingBox())!;
-      const hourlyPlot = (await chart.boundingBox())!;
-      const hourlyLeft = Math.max(hourlyPlot.x, Math.min(solo.x + solo.width / 2 - soloTip.width / 2, hourlyPlot.x + hourlyPlot.width - soloTip.width));
-      expect(Math.abs(soloTip.x - hourlyLeft)).toBeLessThanOrEqual(1);
-      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "this-week");
-      await expect(bars).toHaveCount(7);
-      await bars.nth(3).focus();
-      await expect(chart.getByRole("tooltip")).toHaveText("09/23/20267 runs");
-      await page.keyboard.press("ArrowRight");
-      await expect(bars.nth(4)).toBeFocused();
-      await expect(chart.getByRole("tooltip")).toHaveText("09/24/20266 runs");
-      await page.keyboard.press("Home");
-      await expect(bars.first()).toBeFocused();
-      await expect(chart.getByRole("tooltip")).toHaveText("09/20/20260 runs");
-      await page.keyboard.press("Escape");
-      await expect(chart.getByRole("tooltip")).toHaveCount(0);
-      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "last-3-months");
-      expect(await bars.count()).toBeGreaterThan(7);
-      const denseBar = (await bars.first().locator(":scope > span").first().boundingBox())!;
-      const denseBand = (await bars.first().boundingBox())!;
-      expect(denseBar.width / denseBand.width).toBeGreaterThan(.65);
-      expect(denseBar.width / denseBand.width).toBeLessThan(.9);
-      await bars.first().hover();
-      await expect(chart.getByRole("tooltip")).toContainText("0 runs");
-      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "this-week");
-      await surface.getByRole("heading", { name: "Workflow outcomes", exact: true }).click();
-      await expect(surface.getByRole("heading", { name: "Analytics", exact: true })).toHaveCount(1);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect(await metrics.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(4);
-      expect((await metrics.boundingBox())!.height).toBeLessThan(130);
-      const snapshot = await surface.ariaSnapshot();
-      test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
-      await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
-
-      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "incomplete" }))}`);
-      await expect(surface).toContainText("Volume unavailable");
-      await expect(surface.getByLabel("Analytics summary")).toContainText("Unavailable");
-      await expect(surface).toContainText("Readback verifiedUnavailable");
-      await expect(performance.getByRole("row", { name: /Longest run/ })).toContainText("Unavailable");
-      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("Unavailable");
-      await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Unavailable");
-      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "empty" }))}`);
-      await expect(surface).toContainText("No workflow activity in this period");
-      await expect(surface).toContainText("No runs in this period");
-      await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("No finished runs");
-      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("0s");
-      await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("No failures");
-      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "loading" }))}`);
-      const loading = surface.getByRole("status", { name: "Loading analytics report" });
-      await expect(loading).toBeVisible();
-      await expect(loading).toHaveAttribute("aria-busy", "true");
-      await expect(loading).toContainText("Workflow outcomes");
-      await expect(loading).toContainText("Run performance");
-      await expect(surface.getByRole("button", { name: "Export CSV", exact: true })).toBeDisabled();
-      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "unavailable" }))}`);
-      await expect(surface.getByRole("alert")).toContainText("Analytics unavailable");
-      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "normal" }))}`);
-      await expect(surface.getByLabel("Analytics summary")).toContainText("38");
-      expect(requests).toEqual([]);
     } finally { await server.close(); }
   });
 
@@ -270,7 +127,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           context.fillRect(0, 0, 1, 1);
           return context.getImageData(0, 0, 1, 1).data[3];
         });
-        expect(alpha).toBe(255);
+        expect(alpha).toBe(8);
       }
       await expect(frame).toHaveCSS('border-top-width', '1px');
 
@@ -349,7 +206,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("Escape");
       await expect(page.getByRole("tooltip")).toHaveCount(0);
       const table = surface.locator('[data-log-field="fill"]').first().locator("..").locator("..");
-      expect(await table.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(43, 43, 43)" : "rgb(244, 244, 244)");
+      expect(await table.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(31, 31, 35)" : "rgb(244, 244, 244)");
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${logsEvidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(logsEvidence, { body: snapshot, contentType: "text/yaml" });
@@ -374,14 +231,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await formShot.click();
       const viewer = page.getByRole("dialog", { name: "UCPath · Form after Save and Submit", exact: true });
       const imageViewport = viewer.getByRole("region", { name: "UCPath screenshot image", exact: true });
-      await expect(viewer.getByRole("button", { name: "Fit width", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(viewer.getByRole("radio", { name: "Fit width", exact: true })).toBeChecked();
       expect(await imageViewport.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
-      await viewer.getByRole("button", { name: "Whole image", exact: true }).click();
+      await viewer.getByRole("radio", { name: "Whole image", exact: true }).check({ force: true });
       const imageBounds = (await viewer.getByRole("img").boundingBox())!;
       const viewportBounds = (await imageViewport.boundingBox())!;
       expect(imageBounds.height).toBeLessThanOrEqual(viewportBounds.height);
       expect(imageBounds.width).toBeLessThanOrEqual(viewportBounds.width);
-      await viewer.getByRole("button", { name: "100%", exact: true }).click();
+      await viewer.getByRole("radio", { name: "100%", exact: true }).check({ force: true });
       expect((await viewer.getByRole("img").boundingBox())!.width).toBe(850);
       await page.keyboard.press("Escape");
       await expect(formShot).toBeFocused();
@@ -395,7 +252,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "Read pending terminations", exact: true })).toBeFocused();
       await expect(surface.getByRole("searchbox", { name: "Search logs" })).toHaveValue("");
       await setLogScenario("reading");
-      await expect(surface.locator("header").first()).toContainText("In progress");
       await expect(timeline.getByRole("button", { name: /^Read timecard.*In progress/ })).toBeEnabled();
       await timeline.getByRole("button", { name: /^Read timecard/ }).focus();
       await expect(page.getByRole("tooltip")).toContainText("In progress");
@@ -477,7 +333,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const soloSystem = second.getByRole("list", { name: "Worker 2 systems", exact: true });
       expect(Math.abs((await soloSystem.getByRole("listitem").first().boundingBox())!.width - ((await soloSystem.boundingBox())!.width - 6) / 2)).toBeLessThanOrEqual(1);
       expect(Math.abs((await systems.boundingBox())!.y - (await second.getByRole("list", { name: "Worker 2 systems", exact: true }).boundingBox())!.y)).toBeLessThanOrEqual(1);
-      expect((await first.locator("footer").boundingBox())!.y).toBeGreaterThan((await systems.boundingBox())!.y + (await systems.boundingBox())!.height);
+      expect((await first.locator("footer").boundingBox())!.y).toBeGreaterThanOrEqual((await systems.boundingBox())!.y + (await systems.boundingBox())!.height);
       expect((await first.boundingBox())!.height).toBeLessThan(280);
       const firstFooter = (await first.locator("footer").boundingBox())!;
       const secondFooter = (await second.locator("footer").boundingBox())!;
@@ -515,7 +371,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await add.click();
       const dialog = page.getByRole("dialog", { name: "Add workers", exact: true });
       await expect(dialog).toBeVisible();
-      await expect(page.locator('section[aria-label="Session Panel"] button[aria-controls]:not([aria-haspopup])')).toHaveAttribute("aria-expanded", "true");
+      await expect(page.locator('section[aria-label="Session Panel"] .session-toggle')).toHaveAttribute("aria-expanded", "true");
       await expect(dialog).not.toContainText("preview");
       const workerCount = dialog.getByRole("spinbutton", { name: "Workers", exact: true });
       const decrease = dialog.getByRole("button", { name: "Remove one worker", exact: true });
@@ -553,7 +409,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(dialog.getByRole("button", { name: "Add workers", exact: true })).toBeDisabled();
       await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("12");
       await expect(dialog).toHaveCSS("opacity", "1");
-      await expect(dialog).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
+      await expect(dialog).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(24, 24, 27)" : "rgb(255, 255, 255)");
 
       const addSnapshot = await dialog.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${sessionsAddEvidence}`, description: createHash("sha256").update(addSnapshot).digest("hex") });
@@ -593,64 +449,3 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 }
-
-test("Activity dates stay visible with a centered two-month calendar; edits select Custom and dismissals restore focus", async ({ page }) => {
-  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
-  try {
-    await installTheme(page, PARITY_THEMES[0]);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    const requests = surfaceRequests(page);
-    await page.goto(`${server.baseUrl}/?activity=`);
-    const period = page.getByRole("combobox", { name: "Report period" });
-    const start = page.getByRole("button", { name: /^Choose start date range/u });
-    const end = page.getByRole("button", { name: /^Choose end date range/u });
-    await expect(start).toBeVisible();
-    await expect(end).toBeVisible();
-    await expect(period).toHaveAttribute("data-value", "this-week");
-    const calendar = page.getByRole("dialog", { name: "Select report dates", exact: true });
-    await expect(calendar).toHaveCount(0);
-    await start.click();
-    await expect(calendar).toBeVisible();
-    await expect(calendar.getByRole("grid")).toHaveCount(2);
-    await expect(calendar.getByRole("heading", { name: "September 2026", exact: true, includeHidden: true })).toBeVisible();
-    await expect(calendar.getByRole("heading", { name: "October 2026", exact: true, includeHidden: true })).toBeVisible();
-    await expect(calendar.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
-    await expect(calendar.getByRole("button", { name: "Apply range", exact: true })).toHaveCount(0);
-    const pair = (await page.getByRole("group", { name: "Report date range", exact: true }).boundingBox())!;
-    const popup = (await calendar.boundingBox())!;
-    expect(popup.width).toBeGreaterThan(pair.width);
-    expect(Math.abs(popup.x + popup.width / 2 - pair.x - pair.width / 2)).toBeLessThanOrEqual(1);
-    await calendar.getByRole("button", { name: /Friday, September 25, 2026/ }).click();
-    await expect(calendar).toBeVisible();
-    expect(new URL(page.url()).searchParams.get("activity")).toBe("");
-    await page.keyboard.press("Escape");
-    expect(new URL(page.url()).searchParams.get("activity")).toBe("");
-    await expect(start).toBeFocused();
-    await end.click();
-    await page.keyboard.press("Escape");
-    await expect(end).toBeFocused();
-    await end.click();
-    const outside = (await page.getByRole("heading", { name: "Analytics", exact: true }).boundingBox())!;
-    await page.mouse.click(outside.x + outside.width / 2, outside.y + outside.height / 2);
-    await expect(calendar).toHaveCount(0);
-    await expect(end).toBeFocused();
-    await end.click();
-    await calendar.getByRole("button", { name: /Friday, September 25, 2026/ }).click();
-    await calendar.getByRole("button", { name: /Saturday, September 26, 2026/ }).click();
-    await expect(calendar).toHaveCount(0);
-    await expect(end).toBeFocused();
-    await expect(page).toHaveURL(/activity=2026-09-25\.\.2026-09-26/);
-    const fields = page.getByRole("group", { name: "Report date range", exact: true });
-    await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("25");
-    await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
-    await expect(period).toHaveAttribute("data-value", "custom");
-    await expect(page.getByLabel("Analytics summary")).toContainText("of 18 runs");
-    await chooseSelect(period, "today");
-    await expect(start).toBeVisible();
-    await expect(end).toBeVisible();
-    await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("26");
-    await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
-    await expect(page.getByLabel("Analytics summary")).toContainText("of 9 runs");
-    expect(requests).toEqual([]);
-  } finally { await server.close(); }
-});

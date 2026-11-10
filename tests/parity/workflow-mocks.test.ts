@@ -41,7 +41,6 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
   try {
     await page.setViewportSize({ width: 1280, height: 720 }); await installFrozenMonotonic(page); await installTheme(page, theme);
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     for (const [index, type] of types.entries()) {
@@ -107,7 +106,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     try {
       await page.setViewportSize({ width, height: 720 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       await expect(rail.getByRole("button")).toHaveCount(14);
       for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
@@ -282,7 +280,6 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
   try {
     await page.setViewportSize({ width: 1280, height: 720 }); await installFrozenMonotonic(page); await installTheme(page, theme);
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();

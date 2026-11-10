@@ -47,7 +47,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
       }
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const searchButton = page.getByRole("button", { name: "Search runs", exact: true });
       await searchButton.click();
       await expectSearchCorners(page);

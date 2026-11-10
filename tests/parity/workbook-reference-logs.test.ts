@@ -51,7 +51,6 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
         await page.goto(`${server.baseUrl}/?fixture=picked-a&day=${day.day}&run=${row.runId}&view=${encodeURIComponent(JSON.stringify({ workflow: row.workflowId, preview: null }))}`);
         const logs = page.getByRole('region', { name: 'Run logs', exact: true });
         await expect(logs).toBeVisible();
-        await page.getByRole('button', { name: 'Close assistant', exact: true }).click();
         const decision = logs.locator('[data-decision-state]');
         await expect(decision).toHaveCount(1);
         await expect(page.getByText('Write parked', { exact: true })).toHaveCount(0);

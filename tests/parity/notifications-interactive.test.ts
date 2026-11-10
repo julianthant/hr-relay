@@ -18,7 +18,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       await moveAssistantLauncherAboveFooter(page);
       const bell = page.getByRole("button", { name: /^Notifications, \d+ unread$/u });
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });
@@ -96,7 +95,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       await moveAssistantLauncherAboveFooter(page);
       const bell = page.getByRole("button", { name: /^Notifications, \d+ unread$/u });
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });

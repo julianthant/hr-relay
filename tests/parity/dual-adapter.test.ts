@@ -155,9 +155,9 @@ for (const adapter of ["fixture", "seeded"] as const) {
       const offenders: string[] = [];
       for (const element of document.querySelectorAll("button, a[href], [role='button']")) {
         const label =
-          element.getAttribute("aria-label") ??
-          element.getAttribute("title") ??
-          element.textContent?.trim() ??
+          element.getAttribute("aria-label") ||
+          element.getAttribute("title") ||
+          element.textContent?.trim() ||
           "";
         if (label.length === 0) offenders.push(element.outerHTML.slice(0, 120));
       }

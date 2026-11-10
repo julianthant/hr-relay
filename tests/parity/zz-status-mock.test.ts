@@ -43,7 +43,6 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (settings) await expect(page.locator("nav.settings-panel-nav")).toBeVisible();
     else if (!id.startsWith("signup")) await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
     // A modal dialog blocks pointer clicks, so close the assistant panel through the DOM.
-    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     const firstToast = { toasts: "Relay is missing files", "toasts-open": "Relay is missing files", "toasts-storage": "Your disk is full", "toasts-restored": "Restored a file from the 6:30 PM backup" }[id as string];
     if (firstToast) await expect(page.getByText(firstToast)).toBeVisible();
@@ -228,7 +227,6 @@ test("run dialog keys", async ({ page }) => {
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
-  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
@@ -258,7 +256,6 @@ test("run dialog priority", async ({ page }) => {
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   for (const [workflow, text, ticked] of [["Separations", "48216", true], ["Separations", "48216, 48220", false], ["Person Lookup", "10000001", true], ["Person Lookup", "10000001; 10000002", false]] as const) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
-    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: workflow, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
@@ -286,7 +283,6 @@ test("customize steps every workflow", async ({ page }) => {
   const reached: string[] = [];
   for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
-    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
@@ -319,7 +315,6 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
   const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
   for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
-    await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
@@ -587,7 +582,6 @@ for (const theme of THEMES) test(`logs footer states @ ${theme} ${WIDTH}`, async
   await page.getByRole("button", { name: /^Notifications/ }).click();
   await page.locator(".notification-panel").getByRole("button", { name: /Run failed/ }).click();
   await page.getByRole("button", { name: /^Notifications/ }).click();
-  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   await expect(logs.getByRole("button", { name: "Rerun", exact: true })).toBeVisible();
   await shot("logs-failed");
   await logs.getByRole("button", { name: "Rerun", exact: true }).hover();
@@ -607,7 +601,6 @@ for (const theme of THEMES) test(`sidebar collapse widens logs @ ${theme} ${WIDT
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   await page.getByRole("button", { name: "Emergency Contact" }).first().click();
   await page.getByRole("button", { name: /emergency-contacts\.pdf/ }).first().click();
-  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   const width = (selector: string) => page.locator(selector).evaluate(node => Math.round(node.getBoundingClientRect().width));
   await expect(page.getByRole("button", { name: "Collapse sidebar", exact: true })).toBeVisible();
   await settle(page);
@@ -631,7 +624,6 @@ for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, as
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results&assistantOpen=0`);
-  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   const queueTop = () => page.locator(".dashboard-log-column").evaluate(node => Math.round(node.getBoundingClientRect().top));
   const top = await queueTop();
   const toasts = page.locator("[data-slot=toast]");

@@ -23,7 +23,6 @@ async function open(page: Page, scenario: string, extra = "") {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=${scenario}${extra}`);
   await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
 }
 

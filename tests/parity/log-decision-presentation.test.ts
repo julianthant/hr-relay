@@ -21,10 +21,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const surface = page.getByRole("region", { name: "Selected run logs", exact: true });
       await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveCount(0);
-      const chooseScenario = async (id: string) => { await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${id}`); await page.getByRole("button", { name: "Close assistant", exact: true }).click(); };
+      const chooseScenario = async (id: string) => { await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${id}`); };
       for (const example of logDecisionExamples) {
         await chooseScenario( example.id);
         if (example.entry.kind === "decision") {

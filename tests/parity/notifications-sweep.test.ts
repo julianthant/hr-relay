@@ -16,7 +16,6 @@ test.afterAll(async () => { await server.close(); });
 async function open(page: Page, query: string) {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${query}`);
-  await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
 }
 

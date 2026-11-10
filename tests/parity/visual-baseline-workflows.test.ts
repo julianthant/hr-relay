@@ -24,7 +24,6 @@ async function witness(page: Page, info: TestInfo, name: string) {
 async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (typeof PARITY_THEMES)[number]) {
   for (const scenario of previewScenarios) {
     await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${scenario.id}`);
-    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs).toBeVisible();
     if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
@@ -36,7 +35,6 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
       await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}`);
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: flow.label, exact: true }).click();
     }
-    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs).toBeVisible();
