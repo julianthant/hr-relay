@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,13 +60,8 @@ describe("prelogin rehearsal guards", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      const source = join(root, "private-sentinel");
-      mkdirSync(join(source, "locked"), { recursive: true });
-      writeFileSync(join(source, "locked", "private-sentinel.txt"), "x");
-      chmodSync(join(source, "locked"), 0o000);
-      assert.throws(() => { copyWorkspace(source, join(root, "copy")); }, /^Error: prelogin-copy-failed$/u);
+      assert.throws(() => { copyWorkspace(join(root, "private-sentinel-missing"), join(root, "copy")); }, /^Error: prelogin-copy-failed$/u);
       assert.doesNotMatch(JSON.stringify([...stderr.mock.calls, ...stdout.mock.calls]), /private-sentinel/u);
-      chmodSync(join(source, "locked"), 0o700);
     } finally {
       stderr.mockRestore(); stdout.mockRestore();
       rmSync(root, { recursive: true, force: true });

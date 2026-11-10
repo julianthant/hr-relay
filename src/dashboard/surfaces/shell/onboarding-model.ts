@@ -217,6 +217,9 @@ export function useMockDuoSetup(enabled = true) {
 type ProfileAccountDeletion = { state: "idle" } | { state: "deleting" } | { state: "uncertain" }
   | { state: "refused"; code: Extract<PublicProfileState, { state: "refused" | "error" }>["code"] };
 
+/** The profile gate's own refusals: this page cannot sign in at all, so it shows no form. */
+const PAGE_REFUSALS = new Set<string>(["DASHBOARD_FRONTEND_NOT_OWNED", "PROFILE_SESSION_STALE"]);
+
 export function usePublicProfileSession(client: DashboardClient, enabled: boolean) {
   const [readRevision, setReadRevision] = useState(0);
   const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean; gate?: boolean }>();
@@ -351,7 +354,7 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       start: method => run(port => port.start(method)), confirmDuo: scope => run(port => port.confirmDuo(scope)),
     };
   }, [client, onboarding, scope, settle, settleRead, failure, readRevision, unavailable]);
-  const refusal = settlement?.client === client && settlement.gate === true && state?.state === "refused" ? state.code : undefined;
+  const refusal = settlement?.client === client && settlement.gate === true && state?.state === "refused" && PAGE_REFUSALS.has(state.code) ? state.code : undefined;
   const servedPort = useMemo<ServedOnboardingPort>(() => refusal === undefined ? port : Object.freeze({ ...port, refusal }), [port, refusal]);
   return { state, failure, port: servedPort, accountDeletion,
     deleteAccount: async (): Promise<void> => {
