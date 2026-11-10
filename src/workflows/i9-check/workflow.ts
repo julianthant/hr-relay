@@ -14,7 +14,7 @@ export const I9_CHECK_NODE_PURPOSES = [
 ] as const;
 export const i9CheckWorkflow = defineWorkflow({
   id: "i9-check",
-  requiredWorkbookTypeIds: [],
+  requiredWorkbookFields: [],
   version: 1,
   code: "ic",
   label: "I-9 Check",

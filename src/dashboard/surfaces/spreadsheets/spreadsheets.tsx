@@ -95,7 +95,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, onOp
   const libraryButtons = useRef(new Map<string, HTMLButtonElement>());
   const [busy, setBusy] = useState(false);
   const [localFileError, setFileError] = useState("");
-  const fileError = localFileError || (source === "served" ? served.error || served.openError || served.catalogError : "");
+  const fileError = localFileError || (source === "served" ? served.error || served.openError || served.catalogError || served.typesError : "");
   const loading = source === "served" && !fileError ? served.loading || served.catalogLoading ? "Loading spreadsheets…" : served.opening ? "Loading spreadsheet…" : "" : "";
   const [importOpen, setImportOpen] = useViewState("spreadsheetImport", false);
   const [importView, setImportView] = useViewState("spreadsheetImportView", "mapping");

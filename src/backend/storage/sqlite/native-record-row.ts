@@ -15,6 +15,7 @@ import { type AuthorityTableName } from "../../../models/config/authority.js";
 
 const RowSchema = z.record(z.string(), z.union([z.string(),z.number(),z.null()]));
 const fields = {
+  workflow_workbook_selections: {workflow_id:"workflowId",revision:"revision",accepted_command_id:"acceptedCommandId",used_at:"usedAt"},
   ocr_source_uploads: {id:"artifact.id",created_at:"uploadedAt"},
   ocr_review_revisions: {id:"id",run_id:"sourceRunId",revision:"revision",command_id:"origin.commandId",created_at:"createdAt"},
   ocr_approved_snapshots: {id:"snapshotId",run_id:"sourceRunId",revision:"revision",created_at:"approvedAt"},

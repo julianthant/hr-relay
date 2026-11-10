@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { buildBootstrap } from "../../../src/backend/runs/queries/bootstrap.js";
+import { projectWorkbookCompatibility } from "../../../src/models/dashboard/workbook-library.js";
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsPreflightRoutes } from "../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
@@ -28,7 +29,7 @@ it("independent Setup consumer reads production readiness and reruns/replays the
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap({ appVersion: "0.1.0", clock, modules: [], descriptorSetHash: fingerprint,
     settingsSchemaHash: fingerprint, projection: { generation: () => 1 }, actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 53, authorityGeneration: 1 }),
-    workbookReferences: () => [], preflightReport: () => preflight.readLatest(), })));
+    workbookCompatibility: workflows => projectWorkbookCompatibility(workflows, []), preflightReport: () => preflight.readLatest(), })));
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async (url, init) => app.request(url, { ...init, headers: { ...init?.headers, host: "localhost" } }) });
   const ready = await client.readiness(); assert.ok(ready.state === "present"); assert.ok(ready.checks.every((check) => check.verdict === "pass"));
   unhealthy = true;

@@ -69,6 +69,10 @@ import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type Target
 import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
+import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
@@ -494,6 +498,48 @@ function executeStartRun(
       }
     }
   }
+  const captureReference = createWorkbookReferenceCapture(repositories.workbooks);
+  let selectedSources: { libraryId: string; sheetId: string }[] | undefined;
+  for (const planned of plan.planned) {
+    const captured = planned.workbookReferences ?? [];
+    const sources: { libraryId: string; sheetId: string }[] = [];
+    const requirement = descriptor.workbookReference;
+    if (requirement === undefined ? captured.length !== 0 : captured.length < 1 || captured.length > MAX_SELECTED_WORKBOOK_SOURCES) {
+      reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
+    }
+    for (const bound of captured) {
+      try {
+        const reference = parseRunWorkbookReference(bound);
+        const snapshot = reference.snapshot;
+        const worksheet = snapshot.worksheets[0];
+        if (requirement === undefined || snapshot.worksheets.length !== 1 || worksheet === undefined
+          || !("versionId" in snapshot) || snapshot.versionId === undefined
+          || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const refreshed = captureReference({
+          kind: "selected-source", typeId: requirement.id, keyFieldId: requirement.keyFieldId,
+          fields: descriptor.requiredWorkbookFields, writableFields: requirement.writableFields,
+          mode: requirement.mode, keys: "mode" in reference.request ? [] : reference.request.keys,
+          libraryId: snapshot.libraryId, versionId: snapshot.versionId, sheetId: worksheet.sheetId,
+          expectedVersion: snapshot.version,
+          ...("selectedRow" in reference.request && reference.request.selectedRow !== undefined
+            ? { selectedRow: reference.request.selectedRow } : {}),
+        });
+        if (canonicalJsonStringify(bindRunWorkbookReference(reference.request, refreshed)) !== canonicalJsonStringify(bound))
+          throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+        sources.push({ libraryId: snapshot.libraryId, sheetId: worksheet.sheetId });
+        if (new Set(sources.map(source => JSON.stringify([source.libraryId, source.sheetId]))).size !== sources.length) {
+          reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
+        }
+      } catch (error) {
+        if (!(error instanceof WorkbookLibraryError)) throw error;
+        reject(request, "replan-required", "Workbook source changed after planning; review a fresh plan before starting");
+      }
+    }
+    if (selectedSources !== undefined && canonicalJsonStringify(sources) !== canonicalJsonStringify(selectedSources)) {
+      reject(request, "replan-required", "Workbook source selection differs between planned entries; review a fresh plan before starting");
+    }
+    selectedSources = sources;
+  }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
@@ -576,6 +622,12 @@ function executeStartRun(
     now,
     `plan ${plan.startPlanId}`,
   );
+
+  if (fanOut.runs.length > 0 && selectedSources !== undefined && selectedSources.length > 0) {
+    repositories.workbooks.rememberLastUsed({
+      workflowId: plan.workflowId, acceptedCommandId: request.commandId, usedAt: now, sources: selectedSources,
+    });
+  }
 
   return applied(
     request,
@@ -1658,7 +1710,7 @@ function executeResolveGate(
       + "no gate result was recorded",
     );
   }
-  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now);
+  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now, current);
   if (current.envelope.workflow === "ocr" && String(node.id) === "approve-records") {
     const approval = request.payload.ocrApproval;
     if (approval === undefined || request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
@@ -1844,6 +1896,7 @@ function verifyGateEvidenceCurrent(
   gate: Extract<ReturnType<typeof descriptorRuntimeNodes>[number], { kind: "gate" }>,
   scope: ReturnType<typeof gateEvidenceScope>,
   now: string,
+  run: RunRecord,
 ): void {
   const declaration = findGateDecision(descriptor.id, request.target.gateId);
   if (declaration?.boundEvidencePath !== undefined) {
@@ -1864,7 +1917,11 @@ function verifyGateEvidenceCurrent(
       const value = checkpoint === undefined ? undefined : valueAtPath(checkpoint.output.value, declaration.boundEvidencePath!);
       return value === undefined ? [] : [{ nodeId: String(nodeId), value }];
     });
-    if (currentEvidence.length !== 1 || currentEvidence[0]?.value !== submitted) {
+    const retained = currentEvidence[0]?.value;
+    const capturedDigests = new Set((run.input.workbookReferences ?? []).map(bound => sha256Hex(canonicalJsonStringify(bound))));
+    const sameRetainedSource = retained === submitted
+      || (typeof submitted === "string" && typeof retained === "string" && capturedDigests.has(submitted) && capturedDigests.has(retained));
+    if (currentEvidence.length !== 1 || !sameRetainedSource) {
       reject(
         request,
         "invalid-state",

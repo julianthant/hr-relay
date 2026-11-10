@@ -19,7 +19,8 @@ import { DatabaseSync } from "node:sqlite";
 import { Workbook, writeXlsx } from "@shbernal/ts-xlsx";
 import { afterEach, expect, it } from "vitest";
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
-import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
+import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 const databases: DatabaseSync[] = [];

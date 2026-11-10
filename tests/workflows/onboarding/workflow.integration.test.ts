@@ -1,4 +1,5 @@
 import { OnboardingReadWritePlan } from "../../../src/models/workflows/onboarding/read-write-plan.js";
+import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 import { UCPATH_HIRE_PROOF_EXAMPLE } from "../../../src/models/ui/ucpath-hire.js";
 import { I9CreateRemoteRecord } from "../../../src/models/systems/i9/create-remote-record.js";
 import { createOnboardingWriteWorld } from "../../support/helpers/backend/onboarding-write-world.js";
@@ -61,7 +62,7 @@ describe("onboarding workflow", () => {
   });
   it("has workflow-owned task calls, a harness for every timeline checkpoint and exact implementation bindings", () => {
     assert.ok(PUBLIC_WORKFLOWS.includes(registration));
-    assert.deepEqual(descriptor.requiredWorkbookTypeIds, ["onboarding-roster"]);
+    assert.deepEqual(descriptor.requiredWorkbookFields, [...ONBOARDING_ROSTER_FIELDS]);
     const registered = workflowModuleOf("onboarding");
     assert.equal(DESCRIPTORS.find(value => String(value.id) === "onboarding"), registered.descriptor);
     assert.equal(childWorkflowModuleOf("onboarding", "i9-lookup").descriptor.id, "i9-lookup");

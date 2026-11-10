@@ -10,7 +10,7 @@ import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { createHash } from "node:crypto";
-import { WorkbookLibraryEntrySchema } from "../../../../src/models/dashboard/workbook-library.js";
+import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 
 const h = createRunStartDialogHarness();
@@ -19,15 +19,25 @@ const descriptor = i9CheckStartModule.descriptor;
 const plannedOutputs = descriptor.plannedOutputs; assert.ok(plannedOutputs);
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
   steps: projectStartSteps(descriptor), inputRun: { state: "absent", reason: "PDF input" }, uploadRun: descriptor.surfaces.uploadRun,
-  requiredWorkbookTypeIds: descriptor.requiredWorkbookTypeIds };
+  requiredWorkbookFields: descriptor.requiredWorkbookFields, workbookReference: descriptor.workbookReference, referenceSources: [] };
 const reference = WorkbookLibraryEntrySchema.parse({ libraryId: "action-history-file", version: 3, name: "Action History.xlsx", updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
   worksheets: [{ id: "history", name: "Action History" }], metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null },
   type: { id: I9_CHECK_REFERENCE.typeId, name: "Action History", keyFieldId: "eid", fields: [...I9_CHECK_REFERENCE.fields], defaultWorkbookId: "action-history-file" },
   state: { libraryId: "action-history-file", revision: 4, selectedVersionId: "current", removed: false, origin: { kind: "local" },
     versions: ["earlier", "current"].map((id, index) => ({ id, name: id === "earlier" ? "Fall review" : "Current", snapshotId: id,
       version: index + 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" })) } });
+const fields = [...descriptor.requiredWorkbookFields];
+const versionWorkbook = { name: reference.name, libraryId: reference.libraryId, themes: [], hasFormulas: false,
+  sheets: [{ id: 'history', name: 'Action History', width: fields.length, hidden: [],
+    columnBindings: fields.map((fieldId, column) => ({ id: `binding-${column}`, sourceColumn: column, sourceHeader: fieldId, fieldId, basis: 'manual' as const })),
+    rows: [{ id: 'header', cells: fields.map(value => ({ value })) }, { id: 'person', cells: fields.map(value => ({ value: value === 'eid' ? '10800000' : '' })) }] }] };
+const compatibility = projectWorkbookCompatibility([descriptor], [{ libraryId: reference.libraryId, versionId: 'current', origin: { kind: 'local' }, removed: false,
+  sheets: [{ id: 'history', name: 'Action History', mappings: fields.map((fieldId, column) => ({ fieldId, column, basis: 'manual' as const })) }] }]);
 function client(served: Partial<DashboardClient>) {
-  return h.stubClient({ workbookCatalog: async () => [reference], workbookTypes: async () => [reference.type], ...served });
+  return h.stubClient({ workbookCatalog: async () => [reference], workbookCompatibility: async () => compatibility,
+    workbookTypes: async () => [reference.type], workbookLibraryVersion: async (_libraryId, versionId) => WorkbookLibraryVersionViewSchema.parse({
+      libraryId: reference.libraryId, version: reference.state.versions.find(version => version.id === versionId), workbook: versionWorkbook,
+    }), ...served });
 }
 function pdf(name: string, contents: string) {
   const bytes = new TextEncoder().encode(contents), file = new File([bytes], name, { type: "application/pdf" });
@@ -62,14 +72,19 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect(dialog.text()).toContain("2 PDFs selected");
   expect(dialog.disabled("Continue")).toBe(false);
   await dialog.press("Continue");
-  await dialog.press("Current Reference version");
-  const version = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-label="Fall review"]'); assert.ok(version);
-  await act(async () => version.click());
+  const choose = async (label: string, optionText: string) => {
+    await dialog.press(label);
+    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(optionText)); assert.ok(option);
+    await act(async () => option.click()); await h.settle();
+  };
+  await choose('Choose a spreadsheet Reference spreadsheet', 'Action History.xlsx');
+  await choose('Choose a version Reference version', 'Fall review');
+  await choose('Choose a worksheet Reference worksheet', 'Action History');
   await dialog.press("Continue");
   expect(plans).toHaveLength(1);
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.submissions).toHaveLength(1);
-  expect(request.workbookReferences).toEqual([{ entry: 1, typeId: I9_CHECK_REFERENCE.typeId, libraryId: reference.libraryId, versionId: "earlier" }]);
+  expect(request.workbookReferences).toEqual([{ entry: 1, libraryId: reference.libraryId, versionId: "earlier", sheetId: 'history', expectedVersion: 3 }]);
   const input = I9CheckStartInput.parse(request.submissions[0]);
   expect(input.documents.map(file => file.fileName)).toEqual(uploads);
   expect(new Set(input.documents.map(file => file.readingId)).size).toBe(2);

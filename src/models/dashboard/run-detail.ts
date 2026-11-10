@@ -992,9 +992,12 @@ export type IdentityGateDetailWire = z.infer<typeof IdentityGateDetailWireSchema
 
 export const WorkbookReferenceRowCandidateWireSchema = z.strictObject({
   sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1),
+  referenceDigest: FingerprintSchema.optional(), workbookVersion: PositiveIntSchema.optional(),
   values: z.array(z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType })).min(1),
 }).refine(candidate => new Set(candidate.values.map(cell => cell.fieldId)).size === candidate.values.length,
-  "reference candidate fields must be unique");
+  "reference candidate fields must be unique")
+  .refine(candidate => (candidate.referenceDigest === undefined) === (candidate.workbookVersion === undefined),
+    "a cross-source candidate names its captured reference and revision together");
 
 export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
   native: NativeRunEventWireSchema,
@@ -1016,7 +1019,7 @@ export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
     || target.key !== choice.key || action.kind !== "command" || action.command !== "resolve-workbook-reference-row"
     || action.expectedVersion !== target.expectedVersion || action.referenceTarget === undefined
     || canonicalJsonStringify(action.referenceTarget) !== canonicalJsonStringify(target)
-    || new Set(candidates.map(candidate => JSON.stringify([candidate.sheetId, candidate.rowId]))).size !== candidates.length) {
+    || new Set(candidates.map(candidate => JSON.stringify([candidate.referenceDigest ?? choice.referenceDigest, candidate.sheetId, candidate.rowId]))).size !== candidates.length) {
     ctx.addIssue({ code: "custom", message: "reference choices must preserve exact captured reference, target and candidate membership" });
   }
 });
@@ -1046,7 +1049,7 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
   for (const operation of section.operations) {
     const { receipt, native, resolution } = operation;
     const key = JSON.stringify([receipt.libraryId, receipt.operationId]);
-    if (ids.has(key) || native.runId !== section.runId || receipt.source.kind !== "run" || receipt.source.runId !== section.runId) {
+    if (ids.has(key) || native.runId !== section.runId || (receipt.source.kind !== "run" && receipt.source.kind !== "run-reference") || receipt.source.runId !== section.runId) {
       ctx.addIssue({ code: "custom", message: "workbook writes must preserve exact run and operation membership" });
     }
     ids.add(key);
