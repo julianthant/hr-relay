@@ -16,7 +16,7 @@ export const ONBOARDING_INPUT_EXAMPLE = {
   email: "hire@example.test", mode: "new-hire", configuredJobEndDate: "06/30/2027",
   roster: { state: "resolved", row: {
     binding: OnboardingReadHirePlan.example.roster,
-    references: { legalName: { firstName: "Fixture", lastName: "Hire", middleName: "" }, livedName: null },
+    references: { legalName: "Fixture Hire", livedName: null },
   } },
 } as const;
 export const OnboardingCanonicalInput = defineCanonicalInput(OnboardingInput, OnboardingCanonicalValueSchema, [ONBOARDING_INPUT_EXAMPLE]);

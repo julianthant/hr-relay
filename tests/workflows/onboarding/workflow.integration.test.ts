@@ -1,5 +1,6 @@
 import { OnboardingReadWritePlan } from "../../../src/models/workflows/onboarding/read-write-plan.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
+import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
 import { UCPATH_HIRE_PROOF_EXAMPLE } from "../../../src/models/ui/ucpath-hire.js";
 import { I9CreateRemoteRecord } from "../../../src/models/systems/i9/create-remote-record.js";
 import { createOnboardingWriteWorld } from "../../support/helpers/backend/onboarding-write-world.js";
@@ -7,7 +8,7 @@ import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js"
 import { DRY_RUN_I9_PROFILE_ID } from "../../../src/models/workflow/dry-run.js";
 import { I9ProfileProofSchema, I9RemoteProofSchema, i9ProfileKey, i9RemoteKey } from "../../../src/models/ui/i9-creation.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { crmStore } from "../../../src/backend/systems/crm/task-registry.js";
@@ -63,6 +64,8 @@ describe("onboarding workflow", () => {
   it("has workflow-owned task calls, a harness for every timeline checkpoint and exact implementation bindings", () => {
     assert.ok(PUBLIC_WORKFLOWS.includes(registration));
     assert.deepEqual(descriptor.requiredWorkbookFields, [...ONBOARDING_ROSTER_FIELDS]);
+    assert.deepEqual(onboardingWorkflow.requiredWorkbookFields, ["email", "fullName", "livedName", "eid", "transactionNumber"]);
+    assert.deepEqual(onboardingWorkflow.workbookReference?.writableFields, ["eid", "transactionNumber"]);
     const registered = workflowModuleOf("onboarding");
     assert.equal(DESCRIPTORS.find(value => String(value.id) === "onboarding"), registered.descriptor);
     assert.equal(childWorkflowModuleOf("onboarding", "i9-lookup").descriptor.id, "i9-lookup");
@@ -305,3 +308,36 @@ for (const fault of [{ submitFailure: new Error("synthetic lost hire response") 
     assert.equal(parked.length, 1); assert.equal(parked[0]?.generation, 1);
   });
 }
+
+describe("onboarding roster names in a real run", () => {
+  const runWorld = createOnboardingRunWorld();
+  afterAll(runWorld.close);
+  afterEach(runWorld.cleanup);
+
+  it("fails an unresolved roster name at the hire plan before the UCPath search or any transaction", async () => {
+    const f = await runWorld.executionFixture(false, { match: "unique", legalName: "Fixture Other" }), root = f.start();
+    const executed = await f.execution.execute(root, new AbortController().signal);
+    assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "failed");
+    assert.deepEqual(f.database.authority.failures.listByRun(root.envelope.runId).map(failure => [failure.code, failure.nodeId]),
+      [["ONBOARDING_NAME_UNRESOLVED", "hire-plan"]]);
+    assert.deepEqual(f.calls.map(call => call.system), ["crm"]);
+    assert.deepEqual(f.database.authority.writeIntents.listByRun(root.envelope.runId), []);
+    assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
+  });
+
+  it("files a resolved roster name and patches only the Employee ID and Transaction Number cells", async () => {
+    const f = await runWorld.executionFixture(false, { match: "unique", legalName: "Hire, Fixture" }), root = f.start();
+    const executed = await f.execution.execute(root, new AbortController().signal);
+    assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done");
+    const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
+    const output = OnboardingResultSchema.parse(result.result.value);
+    assert.equal(output.state, "filed");
+    assert.equal(output.plan.employee.firstName, "Fixture"); assert.equal(output.plan.employee.lastName, "Hire");
+    const operations = f.repository.runOperations(root.envelope.runId);
+    assert.equal(operations.length, 1); assert.equal(operations[0]?.receipt.state, "applied");
+    const change = operations[0]?.operation.change;
+    assert.ok(change?.kind === "patch");
+    assert.deepEqual(Object.keys(change.values).sort(), output.hireWrite.receipt.emplId === null ? ["transactionNumber"] : ["eid", "transactionNumber"]);
+    assert.equal(change.values.transactionNumber, output.hireWrite.receipt.transactionId);
+  });
+});

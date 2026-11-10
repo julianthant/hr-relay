@@ -37,7 +37,7 @@ async function fixture(workflow: AnyWorkflowDescriptor = descriptor) {
     columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index,
       sourceHeader: fieldId, fieldId, basis: "manual" })),
     rows: [{ id: `${id}-header`, cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) },
-      ...rows.map(([rowId, email, name]) => ({ id: rowId, cells: [email, name, "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) }))],
+      ...rows.map(([rowId, email, name]) => ({ id: rowId, cells: [email, `${name} Hire`, null, null, null].map(value => ({ value })) }))],
   });
   const saved = library.create({ name: "Selected roster.xlsx", themes: [], hasFormulas: false,
     sheets: [sheet("people", [["first", first, "First"], ["second", second, "Second"], ["upper", first.toUpperCase(), "Upper"], ["duplicate", first, "Duplicate"]]),
@@ -96,7 +96,7 @@ describe("selected saved Onboarding row start authority", () => {
       assert.equal(input.email, [first, second][index]); assert.equal(input.mode, "rehire");
       assert.equal(input.roster.state, "resolved");
       if (input.roster.state !== "resolved") throw new Error("selected row not resolved");
-      assert.equal(input.roster.row.references.legalName.firstName, ["First", "Second"][index]);
+      assert.equal(input.roster.row.references.legalName, ["First Hire", "Second Hire"][index]);
       const reference = RunWorkbookSelectedRowReferenceSchema.parse(run.input.workbookReferences?.[0].value);
       assert.equal(reference.request.versionId, f.versionId);
       assert.deepEqual(reference.request.keys, [input.email]);
@@ -139,7 +139,7 @@ describe("selected saved Onboarding row start authority", () => {
     const bInput = OnboardingCanonicalValueSchema.parse(b.record.planned[0].input.value);
     assert.ok(aInput.roster.state === "resolved" && bInput.roster.state === "resolved");
     assert.notEqual(aInput.roster.row.binding.referenceDigest, bInput.roster.row.binding.referenceDigest);
-    assert.equal(bInput.roster.row.references.legalName.firstName, "Duplicate");
+    assert.equal(bInput.roster.row.references.legalName, "Duplicate Hire");
     const run = f.start(a.record)[0];
     const forged = RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
       value: { ...aInput, roster: { ...aInput.roster, row: { ...aInput.roster.row,
@@ -171,7 +171,7 @@ describe("selected saved Onboarding row start authority", () => {
 
   it("refuses invalid typed names from the selected saved version", async () => {
     const f = await fixture(), current = f.library.read(f.id), workbook = structuredClone(current.workbook);
-    workbook.sheets[0].rows[1].cells[4].value = "Partial lived name";
+    workbook.sheets[0].rows[1].cells[1].value = null;
     f.library.save(f.id, current.version, workbook);
     const versionId = f.library.libraryVersion(f.id).version.id;
     const { record } = f.plan({ ...f.request(), workbookReferences: [{ ...f.selection(1), versionId }] });
@@ -206,7 +206,7 @@ describe("selected saved Onboarding row start authority", () => {
     assert.deepEqual(run.input.parsed, fresh.record.planned[0].input);
     const input = OnboardingCanonicalValueSchema.parse(run.input.parsed.value);
     assert.ok(input.roster.state === "resolved");
-    assert.equal(input.roster.row.references.legalName.firstName, "Edited master");
+    assert.equal(input.roster.row.references.legalName, "Edited master");
     const reference = RunWorkbookSelectedRowReferenceSchema.parse(run.input.workbookReferences?.[0].value);
     assert.equal(reference.request.versionId, f.library.libraryVersion(f.id).version.id);
     assert.notEqual(reference.request.versionId, f.versionId);
