@@ -54,5 +54,5 @@ export function reviewFieldBlocks(fields: readonly ReviewField[]): readonly (rea
 
 export function reviewFieldPresentation(field: ReviewField): { wide: boolean; multiline: boolean } {
   const multiline = /\b(?:notes|comments|instructions|additional information)\b/iu.test(field.label);
-  return { wide: multiline || /\b(?:street|email|title|citizenship)\b/iu.test(field.label), multiline };
+  return { wide: multiline || /\b(?:street|address|email|title|citizenship)\b/iu.test(field.label), multiline };
 }
