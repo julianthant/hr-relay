@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { MARK_STATES, type MarkState } from "./assistant-mark-model.js";
+import { mockParam } from "../../app/mock-surfaces.js";
 
 function param(name: string): string | null {
-  return typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(name);
+  return mockParam(name);
 }
 
 /** Decisions waiting on the operator (`assistantNeeds=<n>`); a served count is a backend gap. */

@@ -131,6 +131,7 @@ import { useRoute } from "./navigation/route-history-model.js";
 import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
 import {
+import { mockParam } from "./mock-surfaces.js";
 activeTakeover,
 routeForCrossDateSearchResult,
 type AppRouteState
@@ -147,7 +148,7 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 /** Read once at load: the route rewrites the URL after first render. */
-const NOTIFICATION_SCENARIO = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
+const notificationScenario = () => mockParam("notificationsPreview") ?? "normal";
 
 export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const profileClient = useDashboardClient();
@@ -1018,7 +1019,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
-  const notifications = useWorkspaceNotifications(NOTIFICATION_SCENARIO, {
+  const notifications = useWorkspaceNotifications(notificationScenario(), {
     day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: mockRuns,
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),

@@ -1,3 +1,4 @@
+import { mockParam } from "../../app/mock-surfaces.js";
 
 /** Design mock for the assistant plan; read only from the URL (`assistantMock=<frame id>`). People and values are fictional. */
 export const OPERATOR = "Alex Rivera";
@@ -131,7 +132,6 @@ export const ACTIVITY: readonly Row[] = [
 export const ASSISTANT_FRAMES: readonly AssistantFrame[] = frames;
 
 export function assistantFrame(): AssistantFrame | undefined {
-  if (typeof window === "undefined") return undefined;
-  const value = new URLSearchParams(window.location.search).get("assistantMock");
+  const value = mockParam("assistantMock");
   return frames.find(frame => frame.id === value);
 }

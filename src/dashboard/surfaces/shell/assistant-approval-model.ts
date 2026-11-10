@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react";
+import { mockParam } from "../../app/mock-surfaces.js";
 
 /** Settings > General > Permissions > Full access: when on, the composer's approval menu offers Full access. `assistantFullAccess=1` starts it on. */
-let allowed = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("assistantFullAccess") === "1";
+let allowed = mockParam("assistantFullAccess") === "1";
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 

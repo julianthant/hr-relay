@@ -1,6 +1,7 @@
 import type { InboxWiring } from "../../state/inbox-wiring-adapter.js";
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { applyNotificationReads, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { mockParam } from "../../app/mock-surfaces.js";
 
 /** Read marks live with the caller: Settings replaces the rail, and the marks must survive the visit. */
 export type NotificationReads = Readonly<Record<string, boolean>>;
@@ -32,7 +33,7 @@ const unreadCount = (state: NotificationsState) => state.state === "ready" ? sta
 
 export function useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification, onActive, served }: NotificationRailInput): NotificationRailModel {
   const state = useMemo(() => applyNotificationReads(notifications, reads), [notifications, reads]);
-  const [ping, setPing] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("notificationsPreview") === "ping");
+  const [ping, setPing] = useState(() => mockParam("notificationsPreview") === "ping");
   const pingItem = state.state === "ready" ? state.items.find(item => item.destination.kind === "run" && item.title === "Run completed") : undefined;
   const changeOpen = (next: boolean) => { setOpen(next); if (next) setPing(false); };
   if (served !== undefined) return {

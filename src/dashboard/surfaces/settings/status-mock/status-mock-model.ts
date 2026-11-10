@@ -1,6 +1,7 @@
 import type { CommandResultFeedEntry } from "../../shared/actions/actions-model.js";
 import type { BulkBatchOutcome } from "../../../app/commands/bulk-dispatch.js";
 import { BulkRunCommandResponseSchema } from "../../../../rules/commands/commands.js";
+import { MOCK_SURFACES_FLAG } from "../../../app/mock-surfaces.js";
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
 export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "command-unknown", "command-results", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-search", "run-sheets-nopins", "run-sheets-fix", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
@@ -19,7 +20,8 @@ export const STATUS_MOCK_SUBSCRIPTION = {
 } as const;
 
 /** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. The combined mock needs no parameter: without one the design renders as `general-a`. */
-const LOADED_MOCK: StatusMockId | undefined = typeof window === "undefined" ? undefined
+let loadedMock: StatusMockId | undefined | null = null;
+const loadMock = (): StatusMockId | undefined => typeof window === "undefined" || Reflect.get(window, MOCK_SURFACES_FLAG) !== true ? undefined
   : STATUS_MOCK_IDS.find(id => id === new URLSearchParams(window.location.search).get("statusMock")) ?? "general-a";
 /** Mock-only: one Pause all whose response was lost, so the sticky toast and its Priority notification have something to show. */
 export const STATUS_MOCK_UNKNOWN_COMMAND = { inFlightKey: "mock-pause-all", label: "Pause all requested", targets: Array.from({ length: 13 }, (_, index) => ({ runId: `mock-run-${index}`, title: `Run ${index + 1}`, expectedVersion: 1 })) } as const;
@@ -41,7 +43,8 @@ export const STATUS_MOCK_BULK_OUTCOME: BulkBatchOutcome = {
   ] }),
 };
 export function statusMock(): StatusMockId | undefined {
-  return LOADED_MOCK;
+  if (loadedMock === null) loadedMock = loadMock();
+  return loadedMock;
 }
 
 /** Toasts are a title and at most one short line, no buttons. The stack shows the newest and folds the rest behind it; hovering opens it. */
