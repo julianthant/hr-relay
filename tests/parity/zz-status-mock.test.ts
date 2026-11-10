@@ -436,7 +436,7 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await page.getByRole("button", { name: "Separations" }).first().click();
   await page.getByRole("menuitemradio", { name: "All workflows" }).dispatchEvent("click");
   const tip = page.locator(".ds-chart-tip");
-  await page.getByRole("img", { name: /^Wed 23: Done/ }).first().hover();
+  await page.getByRole("img", { name: /^Wed 23: Done/ }).hover();
   await expect(tip).toBeVisible();
   await shot("hover-runs");
   await page.mouse.move(1, 1);
@@ -444,21 +444,27 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await page.getByRole("button", { name: "Show Separations details" }).click();
   await scrollTo(420);
   await shot("workflows-open");
-  // Every other chart: hover a day and check the card stays inside the chart card.
-  for (const [name, day] of [["time", /^Thu 24: Separations/], ["messages", /^Wed 23: Questions/], ["tools", /^Wed 23: Person Lookup/], ["actions", /^Wed 23: Approved/]] as const) {
+  // Every chart: scroll it fully into view, hover a day and check the card stays inside its chart.
+  const hoverChart = async (name: string, figure: string, day: RegExp) => {
+    await page.getByRole("figure", { name: figure }).evaluate(node => node.scrollIntoView({ block: "center" }));
     await page.getByRole("img", { name: day }).hover();
     await expect(tip).toBeVisible();
     const inside = await tip.evaluate(node => { const box = node.getBoundingClientRect(), card = node.closest("figure")!.getBoundingClientRect(); return box.left >= card.left && box.right <= card.right && box.top >= card.top && box.bottom <= card.bottom; });
     expect(inside, `${name} card inside its chart`).toBe(true);
     await shot(`hover-${name}`);
     await page.mouse.move(1, 1);
-  }
-  // The 30d choice swaps the Messages chart to month days and keeps the same card.
-  await page.getByRole("group", { name: "Messages period" }).getByText("30d").click();
-  await page.getByRole("img", { name: /^Sep 23: Questions/ }).hover();
-  await expect(tip).toContainText("Sep 23, 2026");
-  await shot("hover-messages-30d");
-  await page.mouse.move(1, 1);
+  };
+  await hoverChart("time", "Average time per day", /^Thu 24: Separations/);
+  await hoverChart("messages", "Messages per day", /^Wed 23: Questions/);
+  await hoverChart("tools", "Tool calls per day", /^Wed 23: Person Lookup/);
+  await hoverChart("actions", "Proposed actions per day", /^Wed 23: Approved/);
+  // One period control drives every chart: 30d turns each into month days.
+  await scrollTo(0);
+  await page.getByRole("group", { name: "Report period" }).getByText("30d").click();
+  await hoverChart("runs-30d", "Runs per day", /^Sep 23: Done/);
+  await hoverChart("messages-30d", "Messages per day", /^Sep 23: Questions/);
+  await expect(tip).toHaveCount(0);
+  await page.getByRole("group", { name: "Report period" }).getByText("7d").click();
   // Keyboard focus on a day shows the same card; arrow keys move on, Escape hides it.
   await page.getByRole("img", { name: /^Mon 21: Approved/ }).focus();
   await expect(tip).toContainText("Sep 21, 2026");

@@ -89,7 +89,6 @@ export type StatusMockCounts = Readonly<Record<StatusMockOutcomeKey, number>>;
 
 /** Synthetic week; each workflow's per-day [done, failed, needs attention] counts are the one source for the chart, key figures and table. Served today: finished and running totals, per-workflow counts, per-day run totals, one median time, failure counts by reason. The per-day outcome split, per-workflow lines under a row, the failing workflow per reason, per-day times per workflow and the workflow filter are backend gaps. */
 export const STATUS_MOCK_ANALYTICS = {
-  period: "Sep 20 – 26, 2026",
   running: 5,
   typicalTime: "2m 14s",
   workflows: [

@@ -28,7 +28,7 @@ export function KeyFigures({ items, inline = false }: { items: readonly { label:
   return <ul aria-label="Key figures" className={`m-0 flex list-none p-0 ${inline ? "flex-wrap gap-x-6 gap-y-2" : "gap-3"}`}>
     {items.map(item => <li key={item.label} className={`flex gap-3 ${inline ? "" : "min-w-0 flex-1"}`}>
       <span aria-hidden className="w-1 shrink-0 rounded-full" style={{ background: item.color }} />
-      <span className="flex flex-col"><span className="text-[12px] leading-4 text-ui-secondary">{item.label}</span><span className="text-[16px] leading-6 tabular-nums text-ui-primary">{item.count} · {Math.round(item.count / finished * 100)}%</span></span>
+      <span className="flex flex-col"><span className="text-[12px] leading-4 text-ui-primary">{item.label}</span><span className="text-[16px] leading-6 tabular-nums text-ui-primary">{item.count} · {Math.round(item.count / finished * 100)}%</span></span>
     </li>)}
   </ul>;
 }
@@ -41,7 +41,7 @@ function ChartFrame({ label, days, ticks, top, height, header, footer, tip, plot
   const card = useRef<HTMLElement>(null), plotArea = useRef<HTMLDivElement>(null), tipBox = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [current, setCurrent] = useState(0);
-  const stride = days.length > 10 ? 5 : 1;
+  const stride = days.length > 10 ? Math.ceil(days.length / 6) : 1;
   const show = (index: number, cell: HTMLElement) => {
     const outer = card.current?.getBoundingClientRect(), inner = plotArea.current?.getBoundingClientRect(), box = cell.getBoundingClientRect();
     if (outer && inner) setHover({ index, x: box.left + box.width / 2 - outer.left, top: inner.top - outer.top });
