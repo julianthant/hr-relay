@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { createDashboardPoolTestWorld } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { argValue } from "../../../../support/helpers/backend/fake-worker-port.js";
+import { createBrowserRoots, workerProfileDirectory } from "../../../../../src/backend/storage/browser-roots.js";
 
 const { WORKFLOW, WORKER_1, openControlHarness, envelope, settleMicrotasks, view, memberTarget, planWorkers, dashboardLaunch, launchCommands, cleanup } = createDashboardPoolTestWorld();
 
@@ -151,6 +152,24 @@ describe("the composed worker pool through the kernel", () => {
     assert.deepEqual(h.children.map(child => child.sent.map(message => message.kind === "worker-request" ? message.request.type : message.kind)),
       [["close-for-removal", "worker-stop"], ["close-for-removal", "worker-stop"], []]);
     assert.equal(view(h, survivor.workerId).state, "running");
+  });
+
+  it("retains an idle member and its browser root when child closure custody is unproved", async () => {
+    const h = await openControlHarness({ reply: () => ({ state: "done", result: { closed: true } }) });
+    const [member] = await planWorkers(h, 1);
+    const roots = createBrowserRoots(h.admission);
+    const launch = roots.beginLaunch({ profileId: h.admission.profileBinding.profileId, profileRoot: h.profileRoot,
+      profileDirectory: workerProfileDirectory({ profileRoot: h.profileRoot, slotOrdinal: member.ordinal, system: "ucpath" }),
+      credentialFingerprint: null, owner: { kind: "worker", database: h.database, workerId: member.workerId } });
+    launch.closing(); launch.closed();
+    const inventory = roots.inventory();
+    const request = { ...envelope(h), type: "remove-worker", target: memberTarget(h) };
+    const result = await launchCommands(h).submit(request);
+    assert.deepEqual(result, { state: "rejected", commandId: request.commandId, code: "invalid-state", message: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED" });
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(request.commandId)?.result, result);
+    assert.equal(h.database.authority.workerSlots.get(member.workerId)?.retiredAt, null);
+    assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+    assert.deepEqual(roots.inventory(), inventory);
   });
 
   it("settles a browser refresh in flight when its worker exits as an audited WORKER_EXITED rejection", async () => {

@@ -153,20 +153,37 @@ it("removes two idle workers from the same workflow while the first removal is i
 });
 
 it.each([
-  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY" },
-  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE" },
-] as const)("shows the $code catalog summary on the retained Remove card", async ({ status, result, code }) => {
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "direct" },
+  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "direct" },
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED" }, code: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED", via: "direct" },
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "audit" },
+  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "check" },
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "PRIVATE_SERVER_DETAIL" }, code: "COMMAND_REFUSED", via: "direct" },
+] as const)("shows the $code and summary on the retained Remove card via $via", async ({ status, result, code, via }) => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness();
-  h.effect(command => Response.json({ ...result, commandId: command.commandId }, { status }));
+  const recorded = (command: CommandRequest) => ({ state: "recorded", request: command, result: { ...result, commandId: command.commandId } });
+  h.effect(command => {
+    if (via === "direct") return Response.json({ ...result, commandId: command.commandId }, { status });
+    if (via === "audit") h.audit(recorded(command));
+    throw new Error("connection reset");
+  });
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
+    if (via === "check") {
+      h.audit(recorded(h.sent[0]));
+      const check = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Check outcome");
+      assert(check);
+      await act(async () => check.click());
+    }
     const card = document.querySelector("article"); assert(card);
+    assert.ok(card.textContent?.includes(code), card.textContent ?? "");
     assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? "");
+    assert.doesNotMatch(card.textContent ?? "", /PRIVATE_SERVER_DETAIL|Check outcome/u);
     assert.equal(h.sent.length, 1);
     assert.equal(h.gets.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }

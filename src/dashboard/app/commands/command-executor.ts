@@ -154,7 +154,10 @@ export class CommandExecutor {
         : await this.settle(request, checkedCommandResult(request, observed), options);
     } catch (cause) { outcome = uncertain(commandId, cause); }
     if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
-    // An observed rejection is the recorded proof that no effect happened; anything else short of confirmation stays checkable.
+    if (request.type === "remove-worker" && outcome.kind === "conflict" && outcome.feedback.code === "WORKER_TARGET_STALE") {
+      outcome = { ...outcome, kind: "refused" };
+    }
+    // A recorded refusal proves no effect; anything else short of confirmation stays checkable.
     if (outcome.kind !== "confirmed" && outcome.kind !== "refused") outcome = uncertain(commandId, outcome, outcome.reply);
     attempt.state = "settled"; attempt.release?.();
     attempt.outcome = Object.freeze(outcome);
