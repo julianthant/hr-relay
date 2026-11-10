@@ -669,6 +669,12 @@ for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page
     await shot("logs-viewer");
     await page.keyboard.press("Escape");
   }
+  if (wanted("member")) {
+    await open("EID 10480021");
+    await expect(logs.getByRole("button", { name: "Pause EID 10480021" })).toBeVisible();
+    await expect(logs.getByRole("button", { name: "Stop EID 10480021" })).toBeVisible();
+    await shot("logs-member-running");
+  }
   if (wanted("failed")) { await open("EID 10555001"); await shot("logs-failed"); }
   if (wanted("parked")) { await open("EID 10777012"); await shot("logs-parked"); }
   expect(errors).toEqual([]);
