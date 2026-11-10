@@ -10,7 +10,8 @@ import { RunList, RunListRow, RunSection } from "../../../ds/primitives/run-list
 import { TypedInput } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
-import { StatusMockReadiness, StatusMockRosterPicker, statusMockDefaultPicks, statusMockPicksBlocked, type StatusMockPicks } from "../../settings/status-mock/status-mock.js";
+import { StatusMockReadiness, StatusMockRosterPicker } from "../../settings/status-mock/status-mock.js";
+import { statusMockDefaultPicks, statusMockPicksBlocked, type StatusMockPicks } from "../../settings/status-mock/status-mock-picks.js";
 import { statusMock } from "../../settings/status-mock/status-mock-model.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 

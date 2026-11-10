@@ -7,6 +7,8 @@
   --ds-sidebar-width: 312px; /* Settings sidebar and workflow rail: one width, never shrinks */
   --ds-layer-bar: 20; /* Sessions bar < floating assistant < drawer 30 < dialog and scrim 40 < menu 45 < toast 50 < tooltip 60 */
   --ds-layer-assistant: 25;
+  --ds-layer-menu: 45;
+  --ds-layer-tooltip: 60;
   --ds-layer-skip-focus: 1000;
   --ds-layer-toast-viewport: 100;
   --ds-layer-toast-card: 1000;
@@ -2132,6 +2134,9 @@ body[data-demo-theme],
 .ds-search-field[data-empty="true"] .ds-search-clear { display: none; }
 .ds-search-field .ds-search-clear:hover { background: var(--ds-surface-3); color: var(--ds-fg); }
 
+.ds-layer-menu { z-index: var(--ds-layer-menu); }
+.ds-layer-assistant { z-index: var(--ds-layer-assistant); }
+.ds-layer-tooltip { z-index: var(--ds-layer-tooltip); }
 .ds-layer-skip-focus:focus { z-index: var(--ds-layer-skip-focus); }
 .ds-layer-toast-viewport { z-index: var(--ds-layer-toast-viewport); }
 .ds-layer-toast-card { z-index: calc(var(--ds-layer-toast-card) - var(--toast-index)); }

@@ -2,6 +2,7 @@ import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, typ
 import { ChevronDown, Download, LogOut, MoreHorizontal, Search, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
 import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
 import { type Sheet, tagsOf } from './sheets-v2-model.js';
+import { MENU } from './sheets-v2-menu.js';
 
 // soft = secondary (grey fill), line = outline (faint border), plain = ghost; primary is only a dialog's confirming action.
 const VARIANT = { soft: 'secondary', line: 'outline', plain: 'ghost', primary: 'primary', danger: 'danger' } as const;
@@ -19,8 +20,6 @@ export const Picker = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof B
 export const Grey = ({ children, className = '' }: { children: ReactNode; className?: string }) => <span className={`text-[12px] text-ui-muted ${className}`}>{children}</span>;
 // The workflow chip carries the workflow's sidebar icon (category icons where the rail has one, the workflow's own icon otherwise).
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
-/** Every dropdown in the mock: 13px, 28px rows, capped at 280px tall and scrolling after that. */
-export const MENU = 'max-h-[280px] overflow-y-auto';
 export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon size={14} aria-hidden className="shrink-0" /> : null; };
 export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;

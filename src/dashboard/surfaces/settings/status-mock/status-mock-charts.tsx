@@ -9,14 +9,6 @@ interface Tip { title: string; rows: readonly { name: string; value: string; col
 interface Hover { index: number; x: number; top: number }
 
 const sumAt = (series: readonly ChartSeries[], index: number) => series.reduce((total, line) => total + (line.values[index] ?? 0), 0);
-export const clock = (seconds: number) => `${Math.floor(seconds / 60)}m ${String(Math.round(seconds % 60)).padStart(2, "0")}s`;
-/** Four evenly spaced ticks from 0 up to a round top, for counts. */
-export function countScale(max: number) {
-  const raw = Math.max(max, 1) / 3, magnitude = 10 ** Math.floor(Math.log10(raw));
-  const step = ([1, 2, 5, 10].find(factor => factor * magnitude >= raw) ?? 10) * magnitude;
-  return { top: step * 3, ticks: [3, 2, 1, 0].map(k => ({ value: k * step, label: String(k * step) })) };
-}
-
 /** A small label above a big number. */
 export function ChartHeading({ label, value }: { label: string; value: string }) {
   return <div className="mb-4"><p className="m-0 text-[12px] leading-[18px] text-ui-primary">{label}</p><p className="m-0 text-[28px] leading-8 tabular-nums text-ui-primary">{value}</p></div>;

@@ -127,11 +127,11 @@ export const dsLayer = {
   /** sticky table headers, panel toolbars, the row action bar */
   sticky: "z-10",
   /** dropdowns, popovers, context menus: above modal dialogs so one opened inside a dialog is not hidden */
-  menu: "z-[45]",
+  menu: "ds-layer-menu",
   /** the Sessions bar */
   bar: "z-20",
   /** the floating assistant panel */
-  assistant: "z-[25]",
+  assistant: "ds-layer-assistant",
   /** drawers and their scrim */
   drawer: "z-30",
   /** modal dialogs and their scrim */
@@ -139,7 +139,7 @@ export const dsLayer = {
   /** toasts — always above everything, including a modal */
   toast: "z-50",
   /** tooltips — above the Sessions bar and every other card */
-  tooltip: "z-[60]",
+  tooltip: "ds-layer-tooltip",
   skipFocus: "ds-layer-skip-focus",
   toastViewport: "ds-layer-toast-viewport",
   toastCard: "ds-layer-toast-card",

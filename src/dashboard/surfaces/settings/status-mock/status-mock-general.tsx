@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { BodySection, Button, DateInput, FormGroup, PageHeading, ResultRow, SegmentedChoice, Select, Switch } from "../../../ds/ui.js";
 import { AssistantPermissions } from "../general/assistant-permissions.js";
-import { middle } from "../general/settings-storage.js";
+import { middle } from "../general/path-display.js";
 import { setFullAccessAllowed, useFullAccessAllowed } from "../../shell/assistant-approval-model.js";
 
 const DOWNLOADS = "/Users/jordan.lee/Documents/Relay downloads";

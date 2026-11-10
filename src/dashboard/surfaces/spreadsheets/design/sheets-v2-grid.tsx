@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Checkbox, SearchInput, Popover, PopoverContent, PopoverTrigger, Tooltip, useToasts } from '../../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
 import { FIELDS, samplesOf, type Cell, type Dataset, type Field, type FieldKey, type Mapping } from './sheets-v2-model.js';
-import { Grey, MENU, Picker, V2Button } from './sheets-v2-ui.js';
+import { Grey, Picker, V2Button } from './sheets-v2-ui.js';
+import { MENU } from './sheets-v2-menu.js';
 
 type Range = { r0: number; c0: number; r1: number; c1: number };
 type Patch = Partial<Record<FieldKey, string | null>>;
@@ -105,7 +106,7 @@ export function MappingGrid({ dataset, mapping, onMap, worksheets, columnsOpen =
         <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => <th key={header} className="whitespace-nowrap px-2.5 py-1.5 text-left text-[11px] font-medium text-ui-muted">{header}</th>)}</tr></thead>
         <tbody>{view.length === 0 && <tr><td /><td colSpan={Math.max(shown.length, 1)} className="px-2.5 py-2 text-ui-muted">No rows match.</td></tr>}{view.map(({ row, i }, r) => <tr key={i} className="border-t border-ui-stroke"><td className="px-2 py-1 text-right text-[11px] tabular-nums text-ui-muted">{i + 1}</td>
           {shown.map(({ index }, c) => { const cell = row[index], on = inside(r, c); return <td key={c} onMouseDown={event => { setDragging(true); setSelection(event.shiftKey && selection ? { ...selection, r1: r, c1: c } : { r0: r, c0: c, r1: r, c1: c }); }} onMouseEnter={() => { if (dragging) setSelection(current => current && { ...current, r1: r, c1: c }); }}
-            style={on ? { boxShadow: edge(r, c) } : { background: cell.fill, color: cell.fill ? '#1f2937' : undefined }} data-selected={on || undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.bold ? 'font-bold' : ''} ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
+            style={on ? { boxShadow: edge(r, c) } : { background: cell.fill, color: cell.fill ? 'rgb(31 41 55)' : undefined }} data-selected={on || undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.bold ? 'font-bold' : ''} ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
       </table>
     </div>
   </section>;

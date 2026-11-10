@@ -1,9 +1,7 @@
-import { createContext, forwardRef, useContext, type ComponentProps, type ReactNode } from "react";
+import { forwardRef, useContext, type ComponentProps, type ReactNode } from "react";
 import { Button, IconButton, Tooltip } from "../../../ds/ui.js";
+import { LogHeaderCompact } from "./log-header-compact.js";
 import { cn } from "../../../lib/utils.js";
-
-/** True while the Logs header is too narrow for text buttons: they collapse to their icon and show the label as a tooltip. */
-export const LogHeaderCompact = createContext(false);
 
 export const LogActionButton = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof Button>, "icon" | "children"> & { label: string; icon: ReactNode; text?: ReactNode }>(function LogActionButton({ label, text, icon, className, ...props }, ref) {
   const compact = useContext(LogHeaderCompact);

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Tag as TagIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
 import { SearchInput } from '../../../ds/ui.js';
-import { MENU, Picker, WorkflowIcon } from './sheets-v2-ui.js';
+import { Picker, WorkflowIcon } from './sheets-v2-ui.js';
+import { MENU } from './sheets-v2-menu.js';
 
 /** Tag filter: search at the top, workflow tags (with their icons) first, a divider, then the user's tags A-Z. */
 export function TagFilter({ groups, value, onChange }: { groups: { workflows: readonly string[]; tags: readonly string[] }; value: readonly string[]; onChange: (tags: readonly string[]) => void }) {

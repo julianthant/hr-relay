@@ -2,7 +2,8 @@ import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-rea
 import { Fragment, useState, type CSSProperties } from "react";
 import { RunList, RunListRow } from "../../../ds/primitives/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, dsIcon } from "../../../ds/ui.js";
-import { ChartHeading, KeyFigures, LineChart, StackedBars, clock } from "./status-mock-charts.js";
+import { ChartHeading, KeyFigures, LineChart, StackedBars } from "./status-mock-charts.js";
+import { clock } from "./status-mock-chart-scale.js";
 import { ANALYTICS_PERIODS, analyticsDays, periodLabel, wobble, type AnalyticsDay, type AnalyticsPeriod } from "./status-mock-assistant-data.js";
 import { AssistantAnalytics } from "./status-mock-assistant-charts.js";
 import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_OUTCOMES, type StatusMockCounts } from "./status-mock-model.js";

@@ -1,4 +1,5 @@
-import { ChartHeading, KeyFigures, LineChart, StackedBars, countScale } from "./status-mock-charts.js";
+import { ChartHeading, KeyFigures, LineChart, StackedBars } from "./status-mock-charts.js";
+import { countScale } from "./status-mock-chart-scale.js";
 import { BodySection } from "../../../ds/ui.js";
 import { assistantSeries, type AnalyticsDay } from "./status-mock-assistant-data.js";
 

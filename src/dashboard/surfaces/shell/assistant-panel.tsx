@@ -3,7 +3,7 @@ import type { useAssistantController } from "../assistant/assistant-controller-m
 import { useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, X } from "lucide-react";
 import { assistantFrame, ASSISTANT_FRAMES } from "../assistant/assistant-mock-frames.js";
-import { AssistantMockThread } from "./assistant-mock-thread.js";
+import { AssistantMockThread, AssistantReply } from "./assistant-mock-thread.js";
 import type { DashboardClient } from '../../client/index.js';
 import { Button } from '../../ds/ui.js';
 import type { ComposerDraftPort } from './composer-model.js';
@@ -13,9 +13,6 @@ import { assistantActivity, type AssistantTurnPhase } from './assistant-launcher
 import './assistant-panel.css';
 import { type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
-export function AssistantReply({ children }: { children: React.ReactNode }) {
-  return <div className="hub-assistant-line"><div className="hub-message">{children}</div></div>;
-}
 export function AssistantFileChip({ file }: { file: AssistantFile }) {
   return <div className="hub-file-chip"><Paperclip aria-hidden /><span>{file.name}<small>{file.status} spreadsheet</small></span></div>;
 }

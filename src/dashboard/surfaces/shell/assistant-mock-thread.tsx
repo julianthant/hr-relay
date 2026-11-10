@@ -3,7 +3,10 @@ import { Check, ChevronRight, Paperclip } from "lucide-react";
 import { useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { ACTIVITY, type AssistantFrame, type ChatItem, type Row } from "../assistant/assistant-mock-frames.js";
-import { AssistantReply } from "./assistant-panel.js";
+
+export function AssistantReply({ children }: { children: React.ReactNode }) {
+  return <div className="hub-assistant-line"><div className="hub-message">{children}</div></div>;
+}
 
 /** Inline markup for mock replies; see assistant-mock-frames.ts. */
 function Inline({ text }: { text: string }) {

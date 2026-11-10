@@ -52,18 +52,19 @@ import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import {
+commandResultDetail,
 commandResultFeedEntry,
+commandResultTitle,
 type CommandResultFeedEntry,
 } from "../surfaces/shared/actions/actions-model.js";
 import {
 CommandResultFeed,
 ConfirmCommandDialog,
-commandResultDetail,
-commandResultTitle,
 type ActionTarget,
 type PendingCommand,
 } from "../surfaces/shared/actions/actions.js";
-import { CommandRecovery, recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
+import { CommandRecovery } from "../surfaces/shared/actions/command-recovery.js";
+import { recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
@@ -78,10 +79,10 @@ type QueueSortKey,
 import {
 ConfirmBulkCommandDialog,
 BulkCommandFeedback,
-bulkResultNotice,
 PauseAllQuitControls,
 type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
+import { bulkResultNotice } from "../surfaces/queue/queue-toolbar-model.js";
 import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
 import type { QueueHandlers } from "../surfaces/queue/queue.js";
 import { QueuePanel,type QueueFilterScope } from "../surfaces/queue/queue.js";

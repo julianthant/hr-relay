@@ -20,6 +20,8 @@ import { cn } from "../../../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
   bannerPills,
+  commandResultDetail,
+  commandResultTitle,
   type CommandResultFeedEntry,
   intentPill,
   outcomeAction,
@@ -56,8 +58,6 @@ export type DashboardActionHandler = (action: ActionDescriptorWire, target: Acti
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
-export const commandResultTitle = (entry: CommandResultFeedEntry) => `${entry.actionLabel}: ${entry.settlement.reason === "conflict" ? "row changed" : "rejected"}`;
-export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${entry.settlement.message}`;
 
 /** Persistent refusal context: sticky toasts that only notify; each has a Priority notification item that opens the run. */
 export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {

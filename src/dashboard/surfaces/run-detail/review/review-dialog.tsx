@@ -1,8 +1,6 @@
-import { createContext, useRef, type MutableRefObject, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { Dialog, DialogContent } from "../../../ds/ui.js";
-
-/** The review sets this to leave full screen; the dialog spends its first Escape there. */
-export const ReviewEscape = createContext<MutableRefObject<(() => void) | undefined> | undefined>(undefined);
+import { ReviewEscape } from "./review-escape.js";
 
 /** Review records opens over the dashboard: about 1200 × 800, capped to the window with 24px margins. */
 export function ReviewDialog({ open, onOpenChange, subject, children }: { open: boolean; onOpenChange: (open: boolean) => void; subject: string; children: ReactNode }) {

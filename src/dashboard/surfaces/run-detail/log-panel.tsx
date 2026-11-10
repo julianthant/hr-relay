@@ -3,7 +3,8 @@ import { ClipboardCheck, CircleCheck, TriangleAlert } from "lucide-react";
 import { LogFeed, type LogDecisionHandler } from "./logs/log-feed.js";
 import type { LogStep } from "./logs/log-feed-model.js";
 import { LogTimeline } from "./logs/log-timeline.js";
-import { LogActionButton, LogHeaderCompact } from "./logs/log-action-button.js";
+import { LogActionButton } from "./logs/log-action-button.js";
+import { LogHeaderCompact } from "./logs/log-header-compact.js";
 import { runHeaderAction } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";
 

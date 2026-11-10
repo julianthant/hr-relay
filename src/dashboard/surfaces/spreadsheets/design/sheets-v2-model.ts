@@ -100,9 +100,9 @@ export const DATASETS: Readonly<Record<DatasetKey, Dataset>> = {
   hires10: hires(['Employee ID', 'Name', 'Work email', 'Start date', 'Department'], 9, 12),
   hires17: hires(['Emp #', 'Name', 'Work email', 'Start date', 'Department'], 7, 21),
   roster: { headers: ['Employee ID', 'Full name', 'Work email', 'Department', 'Work phone', 'Emergency phone', 'Start date', 'Hourly rate'],
-    rows: Array.from({ length: 28 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: `person${i}@example.org` }, { text: dept[i % 3] }, { text: `555-01${String(i).padStart(2, '0')}` }, { text: i % 4 ? `555-02${String(i).padStart(2, '0')}` : '', fill: i % 4 ? undefined : '#f4cccc' }, { text: date(i) }, { text: `$${(22 + i * 0.5).toFixed(2)}`, align: 'right' }]) },
+    rows: Array.from({ length: 28 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: `person${i}@example.org` }, { text: dept[i % 3] }, { text: `555-01${String(i).padStart(2, '0')}` }, { text: i % 4 ? `555-02${String(i).padStart(2, '0')}` : '', fill: i % 4 ? undefined : 'rgb(244 204 204)' }, { text: date(i) }, { text: `$${(22 + i * 0.5).toFixed(2)}`, align: 'right' }]) },
   i9: { headers: ['EID', 'Employee', 'Notify address', 'Action', 'Action date', 'Completed by'],
-    rows: Array.from({ length: 24 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: `notify${i}@example.org` }, { text: i % 2 ? 'Section 2 done' : 'Reverify', fill: i % 2 ? '#d9ead3' : '#fce5cd' }, { text: date(i) }, { text: 'Example, Reviewer' }]) },
+    rows: Array.from({ length: 24 }, (_, i): Cell[] => [{ text: eid(i) }, { text: person(i) }, { text: `notify${i}@example.org` }, { text: i % 2 ? 'Section 2 done' : 'Reverify', fill: i % 2 ? 'rgb(217 234 211)' : 'rgb(252 229 205)' }, { text: date(i) }, { text: 'Example, Reviewer' }]) },
 };
 export const samplesOf = (dataset: Dataset, header: string): string => { const column = dataset.headers.indexOf(header); return column < 0 ? '' : dataset.rows.map(row => row[column].text).filter(Boolean).slice(0, 2).join(', '); };
 

@@ -1,23 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { BodySection, Tooltip } from '../../../ds/ui.js';
 import { type Sheet, mergeOriginal, stamp } from './sheets-v2-model.js';
 import { DownloadIcon, SheetMenu, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
 export interface RowActions { open: (id: string) => void; version: (id: string) => void; menu: (id: string, action: MenuAction) => void; logs: (sheet: Sheet) => void }
-
-/** Download folds into the ⋯ menu when the list is narrower than this. */
-const NARROW_BELOW = 760;
-export function useNarrow<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const element = ref.current; if (!element) return;
-    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width < NARROW_BELOW));
-    observer.observe(element); return () => observer.disconnect();
-  }, []);
-  return [ref, narrow] as const;
-}
 
 const cols = (narrow: boolean) => `grid items-center gap-x-4 ${narrow ? 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_28px]' : 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_64px]'}`;
 const LINK = 'inline-flex max-w-full items-center gap-1 hover:text-ui-primary hover:underline';

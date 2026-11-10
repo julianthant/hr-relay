@@ -6,7 +6,8 @@ import { sheetsParam, sheetsScenario } from './sheets-v2-mode.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
 import { SheetDetail } from './sheets-v2-detail.js';
 import { ImportDialog } from './sheets-v2-import.js';
-import { SheetTable, useNarrow, type RowActions } from './sheets-v2-list.js';
+import { SheetTable, type RowActions } from './sheets-v2-list.js';
+import { useNarrow } from './sheets-v2-narrow.js';
 import { Grey, V2Button, type MenuAction } from './sheets-v2-ui.js';
 import '../spreadsheet-library.css';
 

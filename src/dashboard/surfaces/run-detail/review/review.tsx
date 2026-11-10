@@ -9,7 +9,7 @@ import { Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Sele
 import { LogSkeleton, LoadingRegion } from "../../shared/loading/loading.js";
 import { cn } from "../../../lib/utils.js";
 import { displayExtractedDate } from "../../../lib/date-format.js";
-import { ReviewEscape } from "./review-dialog.js";
+import { ReviewEscape } from "./review-escape.js";
 import { ocrReviewCards } from "./review-model.js";
 import { reviewFieldBlocks, reviewFieldGroups, reviewFieldPresentation, REVIEW_RELATIONSHIPS, type RecordReviewProps, type ReviewField, type ReviewRecordView, type ReviewSourcePage } from "./review-record-model.js";
 
