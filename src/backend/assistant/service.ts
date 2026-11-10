@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { aggregateAssistantUsage, type AssistantCallUsage } from "../../models/dashboard/assistant-usage.js";
 import { ASSISTANT_M1_READ_RETRY_FAILURES, AssistantM1RespondEnvelopeSchema, AssistantReplySchema, type AssistantAcceptedTurn, type AssistantM1RespondEnvelope } from "../../models/dashboard/assistant.js";
 import type { AssistantM1Acceptance, AssistantM1HistoryRepository } from "../storage/sqlite/assistant-history.js";
-import { resolveAssistantReply, type ServerReplyBinding } from "./replies.js";
+import { assistantSessionPart, resolveAssistantReply, type ServerReplyBinding } from "./replies.js";
 import type { DebugEventSchema } from "../../models/events/timeline.js";
 import { emitFaultWithCauses } from "../logs/debug-events.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
-import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
+import type { RunRecord } from "../../models/run/record.js";
 import { z } from "zod";
 import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, AssistantModelCatalogSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES, type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia,
@@ -15,9 +16,9 @@ import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, Cha
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
 import { AssistantReferenceError, type AssistantReferenceTable, createAssistantReferences, maskOperatorText } from "./references.js";
-import { AssistantAuthorizationError } from "./authorization.js";
+import { AssistantAuthorizationError, type createAssistantSessionAuthorization } from "./authorization.js";
 import { admitAttachment, AssistantAttachmentRefusal, attachmentMediaType } from "./attachments.js";
-import { AssistantToolRefusal, type AssistantPlugin } from "./plugins/plugin.js";
+import { AssistantToolRefusal, type AssistantPlugin, type AssistantSessionTool } from "./plugins/plugin.js";
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/registry.js";
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
 import { AssistantHistoryRefusal, type AssistantHistoryRepository, type AssistantSettlement } from "../storage/sqlite/assistant-history.js";
@@ -248,6 +249,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           let outcome = outcomes.get(key);
           if (outcome === undefined) {
             try {
+              if (tool.kind === "session") return stop("ASSISTANT_INVALID");
               if (tool.kind === "proposal") {
                 const proposal = await tool.propose(parsed, context);
                 assertAuthority();
@@ -356,7 +358,8 @@ export type AssistantService = Pick<ReturnType<typeof createAssistantService>, '
 export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions, "plugins" | "history" | "decideAction" | "debugEvents"> {
   readonly history: () => AssistantM1HistoryRepository;
   readonly debugEvents: NonNullable<AssistantServiceOptions["debugEvents"]>;
-  readonly reads: () => Readonly<{ plugins: readonly AssistantPlugin[];
+  /** Read and session tools only; a session tool needs the session owner. */
+  readonly tools: () => Readonly<{ plugins: readonly AssistantPlugin[]; sessions?: Pick<ReturnType<typeof createAssistantSessionAuthorization>, "start">;
     bindings(table: AssistantReferenceTable, acceptedTurn: AssistantAcceptedTurn): readonly ServerReplyBinding[] | Promise<readonly ServerReplyBinding[]> }>;
 }
 
@@ -365,7 +368,7 @@ class AssistantInferenceFenceError extends ChatGptAccountError {
   constructor(readonly fence: unknown) { super("CHATGPT_ASSISTANT_REFUSED"); this.name = "AssistantInferenceFenceError"; }
 }
 
-/** Prepared read-only replacement; composition and the served wire switch together at C0. */
+/** Prepared read and session replacement; composition and the served wire switch together at C0. */
 export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
   const references = createAssistantReferences(), live = new Map<string, AbortController>();
   const now = () => options.clock.now().toISOString();
@@ -402,6 +405,8 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
     const request = parsed.data, { conversationId, messageId } = request;
     const controller = new AbortController(), signal = AbortSignal.any([requestSignal, controller.signal]);
     const calls: (AssistantCallUsage | undefined)[] = [];
+    /** Set once a session start is attempted; a turn that may have started runs offers no retry. */
+    let effectful = false;
     let accepted: Accepted | undefined;
     let history: AssistantM1HistoryRepository;
     let owner: ReturnType<AssistantM1ServiceOptions["owner"]>;
@@ -470,7 +475,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
         if (stored.usage.state === "pending") throw new AssistantProtocolError("assistant-settled-usage-missing");
         const receipt: AssistantReceipt = { conversationId, messageId, ordinal: stored.ordinal, revision: stored.revision, delivery: stored.delivery };
         if (reason !== undefined) {
-          const canRetry = ASSISTANT_M1_READ_RETRY_FAILURES.some(code => code === reason);
+          const canRetry = !effectful && ASSISTANT_M1_READ_RETRY_FAILURES.some(code => code === reason);
           return { kind: "result", receipt, result: { state: "no-reply", reason, canRetry, turn: { acceptedTurn: stored.acceptedTurn, usage: stored.usage } } };
         }
         const view = history.conversation(conversationId, now()), row = view?.messages.find(message => message.id === reply?.id);
@@ -496,8 +501,8 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       async function runTurn(): Promise<Turn> {
         try {
           assertCurrent();
-          const reads = options.reads();
-          if (reads.plugins.some(plugin => plugin.tools.some(tool => tool.kind !== "read"))) return { reason: "ASSISTANT_UNAVAILABLE" };
+          const reads = options.tools();
+          if (reads.plugins.some(plugin => plugin.tools.some(tool => tool.kind === "session" ? reads.sessions === undefined : tool.kind !== "read"))) return { reason: "ASSISTANT_UNAVAILABLE" };
           let facts: AssistantWorkflowFacts;
           try { facts = options.facts(); } catch (error) { if (closure(error)) throw error; return { reason: "ASSISTANT_CONTEXT_UNAVAILABLE" }; }
           const registry = assistantToolRegistry(reads.plugins);
@@ -523,6 +528,16 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
           if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { reason: "ASSISTANT_ATTACHMENT_TOO_LARGE" };
           if (structureBytes(input) > MAX_HISTORY_BYTES) return { reason: "ASSISTANT_CHAT_FULL" };
           const outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>(), unrecovered = new Map<string, AssistantFailureCode>();
+          const sessionRuns: RunRecord[] = [];
+          const startSession = async (tool: AssistantSessionTool, parameters: JsonValue) => {
+            if (reads.sessions === undefined) throw new AssistantToolRefusal("ASSISTANT_UNAVAILABLE");
+            const request = tool.request(parameters, context);
+            effectful = true;
+            const runs = await reads.sessions.start(acceptance.acceptedTurn, request, "ask", signal, assertAuthority);
+            sessionRuns.push(...runs);
+            return { runs: runs.map(run => table.issue("R", run.envelope.runId, options.runReferenceLabel(run.envelope.runId, run.version), run.envelope.runId, run.version)) };
+          };
+          const workflowLabel = (id: string) => facts.facts.find(entry => entry.id === id)?.label ?? id;
           const context = { signal, references: table, actorId: options.actorId, conversationId, operatorText: masked, assertCurrent: assertAuthority,
             assertRetainedCurrent: () => { assertOwner(); modelCurrent(); if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError(); } };
           for (let step = 0; step < MAX_MODEL_CALLS; step++) {
@@ -544,11 +559,12 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
               const modelText = messages[0].content.map(part => part.text).join("");
               const bindings = await reads.bindings(table, acceptance.acceptedTurn);
               assertAuthority();
-              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings)], assertCurrent: assertAuthority };
+              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings), ...sessionRuns.map(run => assistantSessionPart(run, workflowLabel(run.envelope.workflow)))],
+                assertCurrent: assertAuthority };
             }
             if (toolCalls.length !== 1 || messages.length !== 0) return { reason: "ASSISTANT_INVALID" };
             const call = toolCalls[0], tool = call.namespace === ASSISTANT_TOOL_NAMESPACE ? registry.tools.find(entry => entry.name === call.name) : undefined;
-            if (tool?.kind !== "read" || callIds.has(call.call_id)) return { reason: "ASSISTANT_INVALID" };
+            if ((tool?.kind !== "read" && tool?.kind !== "session") || callIds.has(call.call_id)) return { reason: "ASSISTANT_INVALID" };
             callIds.add(call.call_id);
             const argumentsValue = JsonValueSchema.parse(JSON.parse(call.arguments)), parameters = JsonValueSchema.parse(tool.parameters.parse(argumentsValue));
             if (canonicalJsonStringify(parameters) !== canonicalJsonStringify(argumentsValue)) return { reason: "ASSISTANT_INVALID" };
@@ -556,7 +572,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             let outcome = outcomes.get(key);
             if (outcome === undefined) {
               try {
-                const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(await tool.invoke(parameters, context))));
+                const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(tool.kind === "session" ? await startSession(tool, parameters) : await tool.invoke(parameters, context))));
                 assertAuthority();
                 if (Buffer.byteLength(output) > MAX_TOOL_OUTPUT_BYTES) throw new AssistantToolRefusal("ASSISTANT_LIMIT");
                 outcome = { output };

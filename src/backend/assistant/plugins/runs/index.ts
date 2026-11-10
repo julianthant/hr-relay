@@ -47,7 +47,7 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
   };
   const indexed = (id: string) => deps.search({ q: id, scope: "run", facets: {}, limit: 1 }).results.find(result => result.runId === id);
   return { domain: "runs", tools: [
-    { kind: "read", name: "find_runs",
+    { kind: "read", tier: "read", name: "find_runs",
       description: "List recent runs, newest first, filtered by workflow id, status or day (all nullable). Returns run and person references; use find_people to search by a person's name.",
       parameters: findParameters, output: z.strictObject({ runs: z.array(RunRow), more: z.boolean() }), privacy: [],
       async invoke(value, context) {
@@ -57,7 +57,7 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
         context.assertCurrent();
         return JsonValueSchema.parse({ runs: page.results.map(result => runRow(result, context, workflowLabel)), more: page.totalMatches > page.results.length });
       } },
-    { kind: "read", name: "read_run",
+    { kind: "read", tier: "read", name: "read_run",
       description: "Read one run's status, attempt, review gate, outcome and failure (catalog code and its text). Use it to explain why a run is waiting, failed or finished.",
       parameters: runParameters, output: ReadRun,
       privacy: [{ path: "gate.label", origin: "repository-authored" }, { path: "gate.reason", origin: "repository-authored" },
@@ -75,7 +75,7 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
           failure: failureCode === null ? null : { code: failureCode, text: operatorFailureSentence(failureCode) },
         }));
       } },
-    { kind: "read", name: "read_run_logs",
+    { kind: "read", tier: "read", name: "read_run_logs",
       description: "Read the last steps of one run's Logs timeline in order: label, state and why a skipped step did not run.",
       parameters: logsParameters, output: Logs, privacy: [{ path: "steps[].label", origin: "repository-authored" }],
       async invoke(value, context) {

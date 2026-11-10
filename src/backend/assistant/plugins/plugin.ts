@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AssistantActionProposal, AssistantFailureCode } from "../../../models/dashboard/assistant.js";
+import type { AssistantActionProposal, AssistantFailureCode, AssistantToolTier } from "../../../models/dashboard/assistant.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { AssistantReferenceKind, AssistantReferenceTable } from "../references.js";
 
@@ -19,6 +19,7 @@ export interface AssistantToolContext {
 }
 interface AssistantToolIdentity {
   readonly name: string;
+  readonly tier: AssistantToolTier;
   readonly description: string;
   readonly parameters: z.ZodType;
 }
@@ -38,7 +39,12 @@ export interface AssistantProposalTool extends AssistantToolIdentity {
 export interface AssistantChangeTool extends Omit<AssistantReadTool, "kind"> {
   readonly kind: "change";
 }
-export type AssistantTool = AssistantReadTool | AssistantChangeTool | AssistantProposalTool;
+/** Names one session start; the dispatch owner admits it with the turn's accepted identity. Its output returns to the model. */
+export interface AssistantSessionTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
+  readonly kind: "session";
+  request(argumentsValue: unknown, context: AssistantToolContext): Readonly<{ workflowId: string; entries: readonly string[] }>;
+}
+export type AssistantTool = AssistantReadTool | AssistantChangeTool | AssistantProposalTool | AssistantSessionTool;
 export interface AssistantPlugin {
   readonly domain: string;
   readonly tools: readonly AssistantTool[];

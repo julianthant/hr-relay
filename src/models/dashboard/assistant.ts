@@ -1,5 +1,5 @@
 import { AssistantCallUsageSchema, AssistantTurnUsageSchema } from "./assistant-usage.js";
-import { AssistantCommandAttributionSchema } from "../../rules/commands/commands.js";
+import { AssistantCommandAttributionSchema, StartCommandRequestSchema } from "../../rules/commands/commands.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
 import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
 import { RowRevisionSchema, RunDetailSectionSchema } from "./primitives.js";
@@ -443,6 +443,32 @@ export const AssistantSessionViewSchema = AssistantSessionPartSchema.omit({ kind
 }).refine(view => view.stop === null || !TERMINAL_QUEUE_STATUSES.has(view.state) && view.state !== "cancelling"
   && view.stop.runId === view.runId && view.stop.descriptor.kind === "command" && view.stop.descriptor.expectedVersion === view.rowRevision);
 export type AssistantSessionView = z.infer<typeof AssistantSessionViewSchema>;
+
+/** What an offered tool's dispatch can do; the registry checks it against the tool kind. */
+export const AssistantToolTierSchema = z.enum(["read", "session", "write-local", "leaves-machine"]);
+export type AssistantToolTier = z.infer<typeof AssistantToolTierSchema>;
+/** `full-access` lets a session start a supported dry run without typed yes; live saves always ask. */
+export const AssistantApprovalModeSchema = z.enum(["ask", "full-access"]);
+export type AssistantApprovalMode = z.infer<typeof AssistantApprovalModeSchema>;
+/** One accepted turn's claim on one session start; its command is the only one the claim admits. */
+export const AssistantSessionClaimSchema = z.strictObject({
+  actionId: z.uuid(), acceptedTurn: AssistantAcceptedTurnSchema, approvalMode: AssistantApprovalModeSchema, dryRun: z.boolean(),
+  contractFingerprint: FingerprintSchema, requestDigest: FingerprintSchema, command: StartCommandRequestSchema, claimedAt: IsoInstantSchema,
+}).refine(claim => claim.command.source === "assistant" && (claim.approvalMode === "full-access" || !claim.dryRun)
+  && Date.parse(claim.claimedAt) >= Date.parse(claim.acceptedTurn.acceptedAt) && Date.parse(claim.command.requestedAt) >= Date.parse(claim.acceptedTurn.acceptedAt));
+export type AssistantSessionClaim = z.infer<typeof AssistantSessionClaimSchema>;
+export const AssistantSessionOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("claimed") }),
+  z.strictObject({ state: z.literal("started"), runIds: z.array(RunIdSchema).min(1).max(ASSISTANT_START_ROWS_MAX) }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
+  z.strictObject({ state: z.literal("unknown") }),
+]);
+export type AssistantSessionOutcome = z.infer<typeof AssistantSessionOutcomeSchema>;
+export function assistantSessionAttribution(claim: AssistantSessionClaim): z.infer<typeof AssistantCommandAttributionSchema> {
+  const { acceptedTurn: turn } = AssistantSessionClaimSchema.parse(claim);
+  return AssistantCommandAttributionSchema.parse({ kind: "assistant", requestedBy: claim.command.requestedBy, profileId: turn.profileId,
+    conversationId: turn.conversationId, acceptedMessageId: turn.messageId, binding: { kind: "session", actionId: claim.actionId } });
+}
 
 
 const AssistantUnrecordedPartsSchema = z.union([

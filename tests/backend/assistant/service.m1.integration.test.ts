@@ -6,6 +6,7 @@ import { createAssistantM1Service, type AssistantM1ServiceOptions } from "../../
 import { ChatGptResourceClosureUnprovedError } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { assistantPersonBinding, resolveAssistantReply } from "../../../src/backend/assistant/replies.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
+import { sessionsPlugin } from "../../../src/backend/assistant/plugins/sessions/index.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { AssistantInferenceRequestSchema, AssistantM1MessagePayloadSchema, AssistantM1RespondEnvelopeSchema, AssistantReplyPartsSchema, AssistantReplySchema, type AssistantM1RespondEnvelope } from "../../../src/models/dashboard/assistant.js";
@@ -22,7 +23,7 @@ import { createAssistantReferenceTable } from "../../../src/backend/assistant/re
 
 const usage = { input_tokens: 4, output_tokens: 2, total_tokens: 6 };
 const message = (text: string, tokens: unknown = usage) => completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }], "gpt-6.1-sol", randomUUID(), tokens === null ? undefined : tokens);
-const call = () => completedResponseStream([{ type: "function_call", namespace: "relay", name: "read_fixture", call_id: randomUUID(), arguments: '{"query":"lookup"}', status: "completed" }], "gpt-6.1-sol", randomUUID(), usage);
+const call = (name = "read_fixture", args: unknown = { query: "lookup" }) => completedResponseStream([{ type: "function_call", namespace: "relay", name, call_id: randomUUID(), arguments: JSON.stringify(args), status: "completed" }], "gpt-6.1-sol", randomUUID(), usage);
 const Wire = AssistantInferenceRequestSchema.safeExtend({ store: z.literal(false), stream: z.literal(true), parallel_tool_calls: z.literal(false), include: z.tuple([z.literal("reasoning.encrypted_content")]) });
 type Step = string | ((body: z.infer<typeof Wire>) => string);
 async function world() {
@@ -32,6 +33,7 @@ async function world() {
   account.service.setDebugEvents(writer);
   const script: Step[] = [], bodies: z.infer<typeof Wire>[] = [], tokens = new Set<string>();
   let current = true, profileId = storage.profileId(), personLabel = `Person ${EXECUTOR_EID}`, onPost: (() => void) | undefined, onBindings: (() => void) | undefined;
+  let sessions: AssistantM1Sessions | undefined, sessionTools = false;
   let failLog: Error | undefined, usageAttempts = 0, tools = 0, facts = 0, catalogs = 0, refuseTool = false, historyFault: "read" | "write" | undefined;
   const history = { ...storage.history,
     repeat(...args: Parameters<typeof storage.history.repeat>) { if (historyFault === "read") throw new Error("PRIVATE_HISTORY_CANARY"); return storage.history.repeat(...args); },
@@ -44,7 +46,7 @@ async function world() {
     const step = script.shift(); if (step === undefined) throw new Error("unscripted response");
     return new Response(typeof step === "string" ? step : step(body), { headers: { "content-type": "text/event-stream" } });
   });
-  const tool: AssistantReadTool = { kind: "read", name: "read_fixture", description: "Read the canonical synthetic Lookup row.", parameters: z.strictObject({ query: z.literal("lookup") }),
+  const tool: AssistantReadTool = { kind: "read", tier: "read", name: "read_fixture", description: "Read the canonical synthetic Lookup row.", parameters: z.strictObject({ query: z.literal("lookup") }),
     output: z.strictObject({ person: referenceSchema("P") }), privacy: [{ path: "person", origin: "repository-authored" }],
     async invoke(_input, context) {
       tools++; if (refuseTool) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
@@ -54,7 +56,7 @@ async function world() {
     owner: () => ({ profileId, epoch: storage.epoch() }), assertComposition() { if (profileId !== storage.profileId()) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE"); },
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent() { if (!current) throw new Error("model changed"); } }),
     facts: () => { facts++; return assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")); }, runReferenceLabel: () => "Lookup",
-    reads: () => ({ plugins: [{ domain: "fixture", tools: [tool] }], bindings(table) { onBindings?.(); return [...tokens].map(token => assistantPersonBinding(table, token, row)); } }),
+    tools: () => ({ plugins: [{ domain: "fixture", tools: [tool] }, ...(sessionTools ? [sessionsPlugin()] : [])], ...(sessions === undefined ? {} : { sessions }), bindings(table) { onBindings?.(); return [...tokens].map(token => assistantPersonBinding(table, token, row)); } }),
     debugEvents: { emit(event) { usageAttempts++; if (failLog !== undefined) throw failLog; writer.emit(event); } } };
   let service = createAssistantM1Service(options);
   const create = () => { const id = randomUUID(); assert.equal(service.history({ operation: "create", conversationId: id, title: "Chat" }).state, "saved"); return id; };
@@ -65,13 +67,14 @@ async function world() {
     counts: () => ({ catalogs, posts: bodies.length, tools, facts, usageAttempts }), restart() { service = createAssistantM1Service(options); },
     onPost(hook: () => void) { onPost = hook; }, onBindings(hook: () => void) { onBindings = hook; },
     failHistory(operation: "read" | "write") { historyFault = operation; },
-    changeModel() { current = false; }, changeOwner() { profileId = randomUUID(); }, refuseTool() { refuseTool = true; },
+    changeModel() { current = false; }, offerSessions(owner?: AssistantM1Sessions) { sessionTools = true; sessions = owner; }, changeOwner() { profileId = randomUUID(); }, refuseTool() { refuseTool = true; },
     personLabel(value: string) { personLabel = value; },
     logFailure(error: Error) { failLog = error; }, changeRevision() { row = RunRecordSchema.parse({ ...row, version: row.version + 1 }); },
     foreignInput() { const value = parseCanonicalInputSnapshot(PersonLookupCanonicalInput, row.input.parsed);
       row = RunRecordSchema.parse({ ...row, input: { ...row.input, parsed: { ...row.input.parsed, value: { ...value, emplId: "10000001" } } } }); },
     async close() { storage.database.close(); await account.cleanup(); } };
 }
+type AssistantM1Sessions = NonNullable<ReturnType<AssistantM1ServiceOptions["tools"]>["sessions"]>;
 function result(envelope: AssistantM1RespondEnvelope) { assert.equal(envelope.kind, "result"); if (envelope.kind !== "result") assert.fail(); return envelope.result; }
 it("settles measured serial/deduplicated calls and canonical run-backed parts, then reads repeats without effects", async () => {
   const w = await world(); try {
@@ -259,5 +262,31 @@ it("settles a quota refusal with actual usage after atomically rolling back an u
     assert.equal(refusal.reason, "ASSISTANT_HISTORY_FULL"); assert.equal(refusal.canRetry, false); assert.equal(refusal.turn?.usage.callCount, 1);
     const stored = w.service().conversation(b); assert.ok(stored);
     assert.equal(stored.messages.length, 50); assert.equal(stored.messages.at(-1)?.delivery, "refused"); assert.equal(w.counts().usageAttempts, 1);
+  } finally { await w.close(); }
+});
+
+it("starts a session under the accepted turn in ask mode and appends its server-authored session part", async () => {
+  const w = await world(); try {
+    const input = w.request(), starts: Parameters<AssistantM1Sessions["start"]>[] = [];
+    w.offerSessions({ async start(...args) { starts.push(args); return [w.run()]; } });
+    w.script.push(call("start_session", { workflow: "person-lookup", entries: [String(EXECUTOR_EID)] }), call("start_session", { workflow: "person-lookup", entries: [String(EXECUTOR_EID)] }), message("Started"));
+    const answer = result(await w.send(input)); assert.equal(answer.state, "answered"); if (answer.state !== "answered") assert.fail();
+    assert.equal(starts.length, 1);
+    const [accepted, request, mode] = starts[0] ?? assert.fail();
+    assert.equal(accepted.messageId, input.messageId); assert.deepEqual(request, { workflowId: "person-lookup", entries: [String(EXECUTOR_EID)] }); assert.equal(mode, "ask");
+    const session = answer.reply.parts.at(-1); assert.ok(session?.kind === "session");
+    assert.equal(session.runId, w.run().envelope.runId); assert.equal(session.meta, "queued");
+    assert.equal(JSON.stringify(w.bodies).includes(w.run().envelope.runId), false);
+  } finally { await w.close(); }
+});
+it("offers no retry after a session start was attempted and refuses session tools without their owner before the provider", async () => {
+  const w = await world(); try {
+    w.offerSessions({ start() { return Promise.reject(new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE")); } });
+    w.script.push(call("start_session", { workflow: "person-lookup", entries: [String(EXECUTOR_EID)] }), message("No"));
+    const refusal = result(await w.send()); assert.equal(refusal.state, "no-reply"); if (refusal.state !== "no-reply") assert.fail();
+    assert.equal(refusal.reason, "ASSISTANT_READ_UNAVAILABLE"); assert.equal(refusal.canRetry, false);
+    w.offerSessions(); const posts = w.counts().posts;
+    const unowned = result(await w.send()); assert.equal(unowned.state, "no-reply"); if (unowned.state !== "no-reply") assert.fail();
+    assert.equal(unowned.reason, "ASSISTANT_UNAVAILABLE"); assert.equal(w.counts().posts, posts);
   } finally { await w.close(); }
 });

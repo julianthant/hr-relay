@@ -40,7 +40,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
     return new Response(typeof step === "string" ? step : step(body), { headers: { "Content-Type": "text/event-stream" } });
   });
   const invoked: string[] = [];
-  const echo: AssistantTool = { kind: "read", name: "echo", description: "Echo a value with references expanded.", parameters: Echo, output: EchoOutput,
+  const echo: AssistantTool = { kind: "read", tier: "read", name: "echo", description: "Echo a value with references expanded.", parameters: Echo, output: EchoOutput,
     privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value, context) { invoked.push("echo"); return { value: context.references.expandArgument(Echo.parse(value).value, ["E"]) }; } };
   const plugin: AssistantPlugin = { domain: "test", tools: input.tools ?? [echo] };
@@ -97,7 +97,7 @@ it("runs one tool per response, binds its output to the call and reuses a repeat
 
 it("keeps an unrecovered tool refusal as the turn's typed refusal and continues after recovery", async () => {
   let fail = true;
-  const flaky: AssistantTool = { kind: "read", name: "flaky", description: "Fails once.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const flaky: AssistantTool = { kind: "read", tier: "read", name: "flaky", description: "Fails once.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value) { if (fail) { fail = false; throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE"); } return { value: Echo.parse(value).value }; } };
   const w = await world({ tools: [flaky] });
   try {
@@ -114,7 +114,7 @@ it("keeps an unrecovered tool refusal as the turn's typed refusal and continues 
 
 it("applies refusal bookkeeping to cached outcomes in call order", async () => {
   const reads: string[] = [];
-  const keyed: AssistantTool = { kind: "read", name: "keyed", description: "Fails for bad.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const keyed: AssistantTool = { kind: "read", tier: "read", name: "keyed", description: "Fails for bad.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value) { const { value: key } = Echo.parse(value); reads.push(key); if (key === "bad") throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE"); return { value: key }; } };
   const w = await world({ tools: [keyed] });
   try {
@@ -131,7 +131,7 @@ it("applies refusal bookkeeping to cached outcomes in call order", async () => {
 it("ends the turn with a proposal card and keeps a refused proposal recoverable", async () => {
   const card = ASSISTANT_PAUSE_PROPOSAL;
   let refuse = true;
-  const proposal: AssistantTool = { kind: "proposal", name: "propose", description: "Prepare a card.", parameters: Echo,
+  const proposal: AssistantTool = { kind: "proposal", tier: "leaves-machine", name: "propose", description: "Prepare a card.", parameters: Echo,
     async propose() { if (refuse) { refuse = false; throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED"); } return card; } };
   const w = await world({ tools: [proposal] });
   try {
@@ -161,7 +161,7 @@ it("answers an expired card with its own message and logs each decision refusal 
   } finally { await w.f.cleanup(); }
 });
 it("hands the model an authorization refusal under its own code", async () => {
-  const proposal: AssistantTool = { kind: "proposal", name: "propose", description: "Prepare a card.", parameters: Echo,
+  const proposal: AssistantTool = { kind: "proposal", tier: "leaves-machine", name: "propose", description: "Prepare a card.", parameters: Echo,
     async propose() { throw new AssistantAuthorizationError("assistant-binding-stale", "ASSISTANT_BINDING_STALE"); } };
   const w = await world({ tools: [proposal] });
   try {
@@ -174,7 +174,7 @@ it("hands the model an authorization refusal under its own code", async () => {
 });
 
 it("refuses an expired or foreign reference as stale for the model to recover", async () => {
-  const resolve: AssistantTool = { kind: "read", name: "resolve", description: "Resolve a reference.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const resolve: AssistantTool = { kind: "read", tier: "read", name: "resolve", description: "Resolve a reference.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value, context) { return { value: context.references.resolve(Echo.parse(value).value, ["E"]).target }; } };
   const w = await world({ tools: [resolve] });
   try {
@@ -201,7 +201,7 @@ it("treats an unoffered tool and malformed arguments as terminal protocol failur
 
 it("keeps an unexpected tool failure fatal even after an earlier recoverable refusal", async () => {
   let calls = 0;
-  const broken: AssistantTool = { kind: "read", name: "broken", description: "Refuses, then breaks.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const broken: AssistantTool = { kind: "read", tier: "read", name: "broken", description: "Refuses, then breaks.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke() { calls++; if (calls === 1) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE"); throw new Error("projection defect"); } };
   const w = await world({ tools: [broken] });
   try {
@@ -211,7 +211,7 @@ it("keeps an unexpected tool failure fatal even after an earlier recoverable ref
 });
 
 it("stops at eight model calls and refuses an oversized tool output for recovery", async () => {
-  const big: AssistantTool = { kind: "read", name: "big", description: "Large output.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
+  const big: AssistantTool = { kind: "read", tier: "read", name: "big", description: "Large output.", parameters: Echo, output: EchoOutput, privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value) { return { value: Echo.parse(value).value.repeat(100) }; } };
   const w = await world({ tools: [big] });
   try {
@@ -507,7 +507,7 @@ it("refuses a whole send whose attachment text exceeds the context bound, withou
 
 it("issues the selected run's useful first label with its pin and sends only its token to inference", async () => {
   const id = randomUUID(), version = 3, label = "Person Lookup · EID 10000001 · 2026-11-08T12:00:00Z · attempt 1";
-  const selected: AssistantTool = { kind: "read", name: "selected_reference", description: "Return the selected reference without personal data.",
+  const selected: AssistantTool = { kind: "read", tier: "read", name: "selected_reference", description: "Return the selected reference without personal data.",
     parameters: z.strictObject({ selected: z.literal(true) }), output: z.strictObject({ run: referenceSchema("R") }), privacy: [], async invoke(_value, context) {
       const run = context.references.issue("R", id, "the selected run", id, version);
       assert.equal(context.references.resolve(run, ["R"]).version, version);

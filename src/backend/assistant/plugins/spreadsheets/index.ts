@@ -45,7 +45,7 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
   const inspectParameters = z.strictObject({ file: referenceSchema("A") });
   const InspectOutput = z.strictObject({ file: referenceSchema("A"), worksheets: Worksheets, ...Flags });
   return { domain: "spreadsheets", tools: [{
-    kind: "read", name: "read_spreadsheets",
+    kind: "read", tier: "read", name: "read_spreadsheets",
     description: "Read the Spreadsheets library. view list: workbooks up to limit (sheet null). view open: one workbook's worksheets by position with row, column and hidden-column counts. "
       + "view versions: one workbook's named versions with the numeric revision each points at and which is in use. view types: workbook types with field counts (sheet null). "
       + "Workbook, worksheet, type and version names, headers and cell values stay local; refer to them only by reference.",
@@ -82,7 +82,7 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
         inUse: version.id === entry.state.selectedVersionId })), more: versions.length > limit });
     },
   }, {
-    kind: "read", name: "inspect_attachment",
+    kind: "read", tier: "read", name: "inspect_attachment",
     description: "Read the structure of an attached spreadsheet (.xlsx or .csv): worksheets by position with row, column and hidden-column counts, and whether it has formulas or unsupported content. "
       + "Its names, headers and values stay local. Nothing is saved.",
     parameters: inspectParameters, output: InspectOutput, privacy: [],
