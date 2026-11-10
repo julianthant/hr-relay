@@ -81,7 +81,7 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
       stateRootTrustAnchor: a.profile.workspace, stateRoot: a.stateRoot, authorityPath: a.path,
       backupDirectory: join(a.stateRoot, "backups", "authority"), busyTimeoutMs: 250,
     }, a.clock, boundProfileCredentials(a.profile.admission), a.database);
-    const counts = { observations: 0, reprepared: [] as number[] };
+    const counts = { observations: 0, passesWithPeerCommits: 0, reprepared: [] as number[] };
     let heartbeats = 0;
     let resolveHeartbeat: (() => void) | undefined;
     const firstHeartbeat = new Promise<void>(resolve => { resolveHeartbeat = resolve; });
@@ -132,9 +132,13 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
         async run(check) {
           if (spec.id !== "authority.health") return { check: spec.id, state: "healthy", summary: "Fixture healthy" };
           counts.observations++;
+          const startedAt = a.database.getMeta().authorityGeneration;
           const checking = doctor.run(check);
           if (mode === "during") renew();
-          return checking;
+          const observation = await checking;
+          // A peer process must have committed while this pass read its owner image.
+          if (a.database.getMeta().authorityGeneration > startedAt) counts.passesWithPeerCommits++;
+          return observation;
         },
       })),
     });
@@ -157,6 +161,7 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
       ]).parse((await once(child, "message", { signal: AbortSignal.timeout(20_000) }))[0]);
       if (counted.type === "failed") throw new Error(counted.message);
       assert.ok(counted.count >= 1);
+      assert.ok(counts.passesWithPeerCommits >= 1, "no peer commit landed inside a doctor pass");
     }
     const stored = a.database.authority.runs.get(target.envelope.runId);
     assert.ok(stored);
