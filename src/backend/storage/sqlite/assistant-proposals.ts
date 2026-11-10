@@ -211,6 +211,10 @@ export function createAssistantProposalRepository(ports: Ports) {
         return { result: undefined, changes: 1 };
       });
     },
+    /** Whether `commandId` belongs to a proposal row; the effect hook admits such a command only inside its own claim. */
+    hasRowCommand(commandId: string): boolean {
+      return ports.read(() => database.prepare("SELECT 1 FROM assistant_proposal_rows WHERE command_id=?").get(z.uuid().parse(commandId)) !== undefined);
+    },
     /** Open proposals waiting on this profile's operator in unexpired chats: the served needs-you count. */
     needsYou(now: string): number {
       return ports.read(() => z.object({ count: z.number().int().nonnegative() }).parse(database.prepare(`SELECT COUNT(*) AS count FROM assistant_proposals p

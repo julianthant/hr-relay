@@ -1,0 +1,129 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { it } from "vitest";
+import { createAssistantReferenceTable } from "../../../src/backend/assistant/references.js";
+import { assistantProposalParts, isTypedYes } from "../../../src/backend/assistant/typed-proposals.js";
+import type { AssistantProposalDraft, AssistantToolContext } from "../../../src/backend/assistant/plugins/plugin.js";
+import { AssistantAcceptedTurnSchema, type AssistantReplyPart } from "../../../src/models/dashboard/assistant.js";
+import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { assistantM1HistoryFixture } from "../../support/helpers/assistant-m1-history-fixture.js";
+import { typedProposalFixture } from "../../support/helpers/assistant-typed-proposals.js";
+
+const T = "2026-11-09T12:00:00.000Z";
+const usage = { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 } as const;
+const entries = (n: number) => Array.from({ length: n }, (_, index) => String(10000001 + index));
+
+function world() {
+  const storage = assistantM1HistoryFixture({ now: T, acceptedAt: T }), f = typedProposalFixture(storage, T), chat = storage.create(), table = createAssistantReferenceTable(1);
+  const context = (): AssistantToolContext => ({ signal: new AbortController().signal, references: table, actorId: "local-operator", conversationId: chat, operatorText: "x",
+    assertCurrent() {}, assertRetainedCurrent() {} });
+  const tool = (name: string) => { const found = f.owner.plugin.tools.find(entry => entry.name === name); assert.ok(found?.kind === "typed-proposal"); return found; };
+  const accept = (proposalAnswer: unknown = null) => {
+    const accepted = storage.history.accept({ ...storage.input(chat), proposalAnswer: AssistantAcceptedTurnSchema.shape.proposalAnswer.parse(proposalAnswer) });
+    assert.ok(accepted.state === "accepted"); return accepted;
+  };
+  const settle = (accepted: ReturnType<typeof accept>, parts: AssistantReplyPart[] = [{ kind: "text", runs: [{ kind: "plain", text: "Done" }] }]) => {
+    const id = randomUUID();
+    assert.ok(storage.history.settle(accepted, { delivery: "answered", usage, reply: { id, kind: "answer", parts, modelText: "x" } }, T));
+    return id;
+  };
+  /** A proposing turn: the tool's draft, rendered in the turn's reply and issued against it. */
+  const propose = async (name: string, args: unknown) => {
+    const source = accept(), draft = await tool(name).prepare(args, context()), renderedMessageId = settle(source, assistantProposalParts(draft));
+    return { draft, record: f.owner.issue(draft, { conversationId: chat, renderedMessageId, sourceMessageId: source.acceptedTurn.messageId, revision: storage.revision(chat) }) };
+  };
+  const yes = (record: Awaited<ReturnType<typeof propose>>["record"]) => accept({ proposalId: record.snapshot.id, proposalRevision: record.snapshot.revision,
+    renderedMessageId: record.snapshot.renderedMessageId, renderedDigest: record.snapshot.renderedDigest });
+  const answer = (attempt: ReturnType<typeof accept>, check = () => {}) => f.owner.answer(attempt, new AbortController().signal, check);
+  const states = (id: string) => f.ports.store.read(id)?.rows.map(row => row.result.state);
+  return { storage, f, chat, table, tool, context, accept, settle, propose, yes, answer, states };
+}
+
+it("recognises only the closed typed-yes list, ignoring case, spacing and . , !", () => {
+  for (const text of ["yes", "Yes!", "  YES. ", "yes file it", "Yes, file it.", "approve", "Go ahead!", "do it"]) assert.equal(isTypedYes(text), true, text);
+  for (const text of ["yes, but use the dry run", "yes please", "yes?", "ok", "sure", "no", "y", "do it now", "approved"]) assert.equal(isTypedYes(text), false, text);
+});
+
+it("proposes 1 to 20 rows from per-row fresh plans with the reviewed options and refuses 21 or a repeated entry", async () => {
+  const w = world();
+  for (const n of [1, 20]) {
+    const draft: AssistantProposalDraft = await w.tool("propose_workflow_start").prepare({ workflow: "person-lookup", entries: entries(n), dryRun: false }, w.context());
+    assert.equal(draft.rows.length, n);
+    assert.deepEqual(draft.options, { browserMode: "headless", captureBrowserScreenshots: true, priority: "interactive" });
+    assert.ok(draft.rows.every(row => row.operation.kind === "workflow-start" && row.operation.expected.inputFingerprint === w.f.knobs.inputFingerprint));
+  }
+  await assert.rejects(w.tool("propose_workflow_start").prepare({ workflow: "person-lookup", entries: entries(21), dryRun: false }, w.context()));
+  await assert.rejects(w.tool("propose_workflow_start").prepare({ workflow: "person-lookup", entries: ["10000001", "10000001"], dryRun: false }, w.context()), /ASSISTANT_PROPOSAL_REFUSED/u);
+  await assert.rejects(w.tool("propose_workflow_start").prepare({ workflow: "person-lookup", entries: ["10000001"], dryRun: true }, w.context()), /ASSISTANT_PROPOSAL_REFUSED/u);
+  assert.equal(w.f.submitted.length, 0);
+});
+
+it("runs each reviewed row under its own claim and command after the typed yes, once", async () => {
+  const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(2), dryRun: false });
+  const attempt = w.yes(record), reply = await w.answer(attempt);
+  assert.equal(w.f.submitted.length, 2);
+  assert.deepEqual(w.f.submitted.map(entry => entry.attribution), record.snapshot.rows.map(row => ({ kind: "assistant", requestedBy: "local-operator", profileId: w.storage.profileId(),
+    conversationId: w.chat, acceptedMessageId: attempt.acceptedTurn.messageId, binding: { kind: "proposal", proposalId: record.snapshot.id, rowId: row.id } })));
+  assert.equal(new Set(w.f.submitted.map(entry => entry.command.commandId)).size, 2);
+  assert.deepEqual(w.states(record.snapshot.id), ["applied", "applied"]);
+  assert.deepEqual(reply.parts.map(part => part.kind), ["answered", "session", "session"]);
+  await assert.rejects(w.answer(attempt), /ASSISTANT_PROPOSAL_REFUSED/u);
+  assert.equal(w.f.submitted.length, 2);
+  const [first] = w.f.submitted;
+  assert.ok(first);
+  assert.throws(() => w.f.owner.assertEffect(first.command.commandId, first.command), /custody-unproved/u);
+});
+
+it("refuses a row whose fresh plan no longer matches what was reviewed while the others still run", async () => {
+  const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(3), dryRun: false });
+  let plans = 0;
+  const plan = w.f.ports.plans.plan.bind(w.f.ports.plans);
+  w.f.ports.plans.plan = input => { w.f.knobs.inputFingerprint = ++plans === 2 ? "f".repeat(64) : "e".repeat(64); return plan(input); };
+  const reply = await w.answer(w.yes(record));
+  assert.deepEqual(w.states(record.snapshot.id), ["applied", "refused", "applied"]);
+  assert.equal(w.f.submitted.length, 2);
+  assert.deepEqual(reply.parts.map(part => part.kind), ["answered", "session", "text", "session"]);
+});
+
+it("keeps a row whose submit failed UNKNOWN, never reclaims it and runs the next row", async () => {
+  const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(2), dryRun: false });
+  let calls = 0;
+  w.f.knobs.submit = () => { if (++calls === 1) throw new Error("lost"); return undefined; };
+  await w.answer(w.yes(record));
+  assert.deepEqual(w.states(record.snapshot.id), ["unknown", "applied"]);
+  const [row] = record.snapshot.rows;
+  assert.ok(row);
+  assert.equal(w.f.ports.store.claimRow(record.snapshot.id, row.id, randomUUID()), false);
+});
+
+it("stops issuing commands once the accepted turn is retired", async () => {
+  const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(3), dryRun: false });
+  let retired = false;
+  w.f.knobs.submit = () => { retired = true; return undefined; };
+  await w.answer(w.yes(record), () => { if (retired) throw new Error("assistant-turn-retired"); });
+  assert.deepEqual(w.states(record.snapshot.id), ["applied", "refused", "refused"]);
+  assert.equal(w.f.submitted.length, 1);
+});
+
+it("refuses a changed command at the effect hook and a stale run at yes for run actions", async () => {
+  const w = world(), run = w.f.run(), token = w.table.issue("R", run.envelope.runId, "Lookup", run.envelope.runId, run.version);
+  const { record } = await w.propose("propose_run_action", { run: token, action: "pause" });
+  assert.equal(record.snapshot.options, null);
+  w.f.knobs.submit = command => {
+    assert.throws(() => w.f.owner.assertEffect(command.commandId, CommandRequestSchema.parse({ ...command, requestedAt: "2026-11-09T12:00:01.000Z" })), /binding-mismatch/u);
+    assert.doesNotThrow(() => w.f.owner.assertEffect(randomUUID()));
+    return undefined;
+  };
+  const attempt = w.yes(record);
+  await w.answer(attempt); w.settle(attempt);
+  assert.equal(w.f.submitted[0]?.command.family, "run");
+  assert.deepEqual(w.f.submitted[0]?.command.target, { runId: run.envelope.runId, expectedVersion: run.version });
+  assert.deepEqual(w.states(record.snapshot.id), ["applied"]);
+
+  const { record: later } = await w.propose("propose_run_action", { run: token, action: "cancel" });
+  w.f.ports.runs.read = runId => { const read = w.f.run(); return { state: "present", run: RunRecordSchema.parse({ ...read, envelope: { ...read.envelope, runId }, version: read.version + 1 }), disposition: "live" }; };
+  await w.answer(w.yes(later));
+  assert.deepEqual(w.states(later.snapshot.id), ["refused"]);
+  assert.equal(w.f.submitted.length, 1);
+});

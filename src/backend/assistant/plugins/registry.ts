@@ -31,7 +31,7 @@ export interface AssistantPluginDeps {
 export const ASSISTANT_TOOL_NAMESPACE = "relay";
 const MAX_TOOLS = 16;
 const KIND_TIERS: Readonly<Record<AssistantTool["kind"], readonly AssistantToolTier[]>> = {
-  read: ["read"], session: ["session"], change: ["write-local"], proposal: ["write-local", "leaves-machine"] };
+  read: ["read"], session: ["session"], change: ["write-local"], proposal: ["write-local", "leaves-machine"], "typed-proposal": ["write-local", "leaves-machine"] };
 
 export function createAssistantPlugins(deps: AssistantPluginDeps): readonly AssistantPlugin[] {
   const workflowLabel = (id: string) => deps.facts().facts.find(entry => entry.id === id)?.label ?? id;

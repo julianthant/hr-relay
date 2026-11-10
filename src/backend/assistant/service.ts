@@ -18,7 +18,8 @@ import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/r
 import { AssistantReferenceError, type AssistantReferenceTable, createAssistantReferences, maskOperatorText } from "./references.js";
 import { AssistantAuthorizationError, type createAssistantSessionAuthorization } from "./authorization.js";
 import { admitAttachment, AssistantAttachmentRefusal, attachmentMediaType } from "./attachments.js";
-import { AssistantToolRefusal, type AssistantPlugin, type AssistantSessionTool } from "./plugins/plugin.js";
+import { AssistantToolRefusal, type AssistantPlugin, type AssistantProposalDraft, type AssistantSessionTool, type AssistantTypedProposalTool } from "./plugins/plugin.js";
+import { assistantProposalParts, isTypedYes, type AssistantTypedProposals } from "./typed-proposals.js";
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/registry.js";
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
 import { AssistantHistoryRefusal, type AssistantHistoryRepository, type AssistantSettlement } from "../storage/sqlite/assistant-history.js";
@@ -249,7 +250,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           let outcome = outcomes.get(key);
           if (outcome === undefined) {
             try {
-              if (tool.kind === "session") return stop("ASSISTANT_INVALID");
+              if (tool.kind === "session" || tool.kind === "typed-proposal") return stop("ASSISTANT_INVALID");
               if (tool.kind === "proposal") {
                 const proposal = await tool.propose(parsed, context);
                 assertAuthority();
@@ -359,6 +360,8 @@ export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions,
   readonly history: () => AssistantM1HistoryRepository;
   readonly debugEvents: NonNullable<AssistantServiceOptions["debugEvents"]>;
   /** Read and session tools only; a session tool needs the session owner. */
+  /** The typed-yes proposal owner; its tools come through `tools`. */
+  readonly proposals?: Pick<AssistantTypedProposals, "open" | "supersede" | "issue" | "answer">;
   readonly tools: () => Readonly<{ plugins: readonly AssistantPlugin[]; sessions?: Pick<ReturnType<typeof createAssistantSessionAuthorization>, "start">;
     bindings(table: AssistantReferenceTable, acceptedTurn: AssistantAcceptedTurn): readonly ServerReplyBinding[] | Promise<readonly ServerReplyBinding[]> }>;
 }
@@ -374,7 +377,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
   const now = () => options.clock.now().toISOString();
   type Accepted = Extract<AssistantM1Acceptance, { state: "accepted" }>;
   type Turn = Readonly<{ reason: AssistantFailureCode }> | Readonly<{ uncertain: true }>
-    | Readonly<{ modelText: string; parts: z.infer<typeof AssistantReplySchema>["parts"]; assertCurrent(): void }>;
+    | Readonly<{ modelText: string; parts: z.infer<typeof AssistantReplySchema>["parts"]; assertCurrent(): void; proposal?: AssistantProposalDraft }>;
   const noReply = (reason: AssistantFailureCode): AssistantM1RespondEnvelope => ({ kind: "result", result: { state: "no-reply", reason, canRetry: false, turn: null } });
   const failure = (error: unknown, signal: AbortSignal): AssistantFailureCode => {
     if (error instanceof AssistantInferenceFenceError) return failure(error.fence, signal);
@@ -437,11 +440,15 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       assertCurrent();
       const table = references.table(conversationId, owner, history.nextOrdinal(conversationId, now()));
       const masked = maskOperatorText(request.message, table);
-      const acceptance = history.accept({ ...original(), expectedRevision: request.expectedRevision, modelText: masked, proposalAnswer: null });
+      // Only a typed yes right after the open proposal's rendered reply answers it; anything else goes to the model and supersedes it.
+      const open = options.proposals?.open(conversationId), shown = open?.snapshot;
+      const proposalAnswer = shown !== undefined && isTypedYes(request.message) && history.conversation(conversationId, now())?.messages.at(-1)?.id === shown.renderedMessageId
+        ? { proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId: shown.renderedMessageId, renderedDigest: shown.renderedDigest } : null;
+      const acceptance = history.accept({ ...original(), expectedRevision: request.expectedRevision, modelText: masked, proposalAnswer });
       if (acceptance.state === "repeat") return AssistantM1RespondEnvelopeSchema.parse(repeated(acceptance));
       accepted = acceptance;
       live.set(conversationId, controller);
-      let turn = await runTurn();
+      let turn = proposalAnswer === null ? await runTurn() : await answerTurn(acceptance);
       const usage = aggregateAssistantUsage(calls), attempt = accepted;
       if ("parts" in turn) {
         try {
@@ -470,6 +477,8 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
         if (revision === undefined) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
         settled = true;
         observedRevision = revision;
+        if (reply !== undefined && "parts" in outcome && outcome.proposal !== undefined)
+          options.proposals?.issue(outcome.proposal, { conversationId, renderedMessageId: reply.id, sourceMessageId: messageId, revision });
         const stored = readback();
         if ("uncertain" in outcome) return repeated(stored);
         if (stored.usage.state === "pending") throw new AssistantProtocolError("assistant-settled-usage-missing");
@@ -498,11 +507,22 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       }
       return AssistantM1RespondEnvelopeSchema.parse(envelope);
 
+      /** A typed yes: Relay runs the answered proposal's rows itself; no model call. */
+      async function answerTurn(attempt: Accepted): Promise<Turn> {
+        effectful = true;
+        try {
+          const turnCurrent = () => { signal.throwIfAborted(); assertOwner(); if (!history.sending(attempt, now())) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE"); };
+          if (options.proposals === undefined) return { reason: "ASSISTANT_UNAVAILABLE" };
+          return { ...await options.proposals.answer(attempt, signal, turnCurrent), assertCurrent: turnCurrent };
+        } catch (error) { return { reason: failure(error, signal) }; }
+      }
       async function runTurn(): Promise<Turn> {
         try {
           assertCurrent();
+          if (open !== undefined) options.proposals?.supersede(conversationId);
           const reads = options.tools();
-          if (reads.plugins.some(plugin => plugin.tools.some(tool => tool.kind === "session" ? reads.sessions === undefined : tool.kind !== "read"))) return { reason: "ASSISTANT_UNAVAILABLE" };
+          if (reads.plugins.some(plugin => plugin.tools.some(tool => tool.kind === "session" ? reads.sessions === undefined
+            : tool.kind === "typed-proposal" ? options.proposals === undefined : tool.kind !== "read"))) return { reason: "ASSISTANT_UNAVAILABLE" };
           let facts: AssistantWorkflowFacts;
           try { facts = options.facts(); } catch (error) { if (closure(error)) throw error; return { reason: "ASSISTANT_CONTEXT_UNAVAILABLE" }; }
           const registry = assistantToolRegistry(reads.plugins);
@@ -537,6 +557,12 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             sessionRuns.push(...runs);
             return { runs: runs.map(run => table.issue("R", run.envelope.runId, options.runReferenceLabel(run.envelope.runId, run.version), run.envelope.runId, run.version)) };
           };
+          let proposal: AssistantProposalDraft | undefined;
+          const propose = async (tool: AssistantTypedProposalTool, parameters: JsonValue) => {
+            if (proposal !== undefined) throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED");
+            proposal = await tool.prepare(parameters, context);
+            return { status: "awaiting-yes", count: proposal.rows.length };
+          };
           const workflowLabel = (id: string) => facts.facts.find(entry => entry.id === id)?.label ?? id;
           const context = { signal, references: table, actorId: options.actorId, conversationId, operatorText: masked, assertCurrent: assertAuthority,
             assertRetainedCurrent: () => { assertOwner(); modelCurrent(); if (!options.account.revalidateAuthority(authority)) throw new AssistantModelChangedError(); } };
@@ -559,12 +585,12 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
               const modelText = messages[0].content.map(part => part.text).join("");
               const bindings = await reads.bindings(table, acceptance.acceptedTurn);
               assertAuthority();
-              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings), ...sessionRuns.map(run => assistantSessionPart(run, workflowLabel(run.envelope.workflow)))],
-                assertCurrent: assertAuthority };
+              return { modelText, parts: [...resolveAssistantReply(modelText, table, bindings), ...sessionRuns.map(run => assistantSessionPart(run, workflowLabel(run.envelope.workflow))),
+                ...(proposal === undefined ? [] : assistantProposalParts(proposal))], assertCurrent: assertAuthority, ...(proposal === undefined ? {} : { proposal }) };
             }
             if (toolCalls.length !== 1 || messages.length !== 0) return { reason: "ASSISTANT_INVALID" };
             const call = toolCalls[0], tool = call.namespace === ASSISTANT_TOOL_NAMESPACE ? registry.tools.find(entry => entry.name === call.name) : undefined;
-            if ((tool?.kind !== "read" && tool?.kind !== "session") || callIds.has(call.call_id)) return { reason: "ASSISTANT_INVALID" };
+            if ((tool?.kind !== "read" && tool?.kind !== "session" && tool?.kind !== "typed-proposal") || callIds.has(call.call_id)) return { reason: "ASSISTANT_INVALID" };
             callIds.add(call.call_id);
             const argumentsValue = JsonValueSchema.parse(JSON.parse(call.arguments)), parameters = JsonValueSchema.parse(tool.parameters.parse(argumentsValue));
             if (canonicalJsonStringify(parameters) !== canonicalJsonStringify(argumentsValue)) return { reason: "ASSISTANT_INVALID" };
@@ -572,7 +598,8 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             let outcome = outcomes.get(key);
             if (outcome === undefined) {
               try {
-                const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(tool.kind === "session" ? await startSession(tool, parameters) : await tool.invoke(parameters, context))));
+                const output = canonicalJsonStringify(JsonValueSchema.parse(tool.output.parse(tool.kind === "session" ? await startSession(tool, parameters)
+                  : tool.kind === "typed-proposal" ? await propose(tool, parameters) : await tool.invoke(parameters, context))));
                 assertAuthority();
                 if (Buffer.byteLength(output) > MAX_TOOL_OUTPUT_BYTES) throw new AssistantToolRefusal("ASSISTANT_LIMIT");
                 outcome = { output };

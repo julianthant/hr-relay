@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AssistantActionProposal, AssistantFailureCode, AssistantToolTier } from "../../../models/dashboard/assistant.js";
+import type { AssistantActionProposal, AssistantFailureCode, AssistantM2ProposalOptions, AssistantM2ProposalRow, AssistantToolTier } from "../../../models/dashboard/assistant.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { AssistantReferenceKind, AssistantReferenceTable } from "../references.js";
 
@@ -44,7 +44,14 @@ export interface AssistantSessionTool extends Omit<AssistantReadTool, "kind" | "
   readonly kind: "session";
   request(argumentsValue: unknown, context: AssistantToolContext): Readonly<{ workflowId: string; entries: readonly string[] }>;
 }
-export type AssistantTool = AssistantReadTool | AssistantChangeTool | AssistantProposalTool | AssistantSessionTool;
+/** What one typed-yes proposal will do, from fresh plans; Relay renders it and only the operator's typed yes runs it. */
+export type AssistantProposalDraft = Readonly<{ label: string; dryRun: boolean; options: AssistantM2ProposalOptions | null; rows: readonly Omit<AssistantM2ProposalRow, "id" | "ordinal">[] }>;
+/** Prepares one typed-yes proposal; its output (status and row count) returns to the model and the turn continues. */
+export interface AssistantTypedProposalTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
+  readonly kind: "typed-proposal";
+  prepare(argumentsValue: unknown, context: AssistantToolContext): Promise<AssistantProposalDraft>;
+}
+export type AssistantTool = AssistantReadTool | AssistantChangeTool | AssistantProposalTool | AssistantSessionTool | AssistantTypedProposalTool;
 export interface AssistantPlugin {
   readonly domain: string;
   readonly tools: readonly AssistantTool[];

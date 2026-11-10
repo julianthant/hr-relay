@@ -481,7 +481,7 @@ export const AssistantM2ProposalOptionsSchema = StartPlanRequestSchema.pick({ br
 export type AssistantM2ProposalOptions = z.infer<typeof AssistantM2ProposalOptionsSchema>;
 const AssistantM2ProposalShape = z.strictObject({
   id: z.uuid(), profileId: z.uuid(), conversationId: z.uuid(), revision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema,
-  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), options: AssistantM2ProposalOptionsSchema, createdAt: IsoInstantSchema,
+  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), options: AssistantM2ProposalOptionsSchema.nullable(), createdAt: IsoInstantSchema,
   rows: z.array(AssistantM2ProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
 });
 /** Digest of everything the operator saw, in order; yes binds to it. */
@@ -491,7 +491,7 @@ export function assistantM2ProposalDigest(snapshot: Omit<z.input<typeof Assistan
 }
 /** The exact proposal the operator reviewed; it has no own timeout, only its conversation's retention. */
 export const AssistantM2ProposalSnapshotSchema = AssistantM2ProposalShape.refine(snapshot => snapshot.rows.every((row, index) => row.ordinal === index + 1
-  && row.operation.kind === snapshot.rows[0]?.operation.kind) && new Set(snapshot.rows.map(row => row.id)).size === snapshot.rows.length
+  && row.operation.kind === snapshot.rows[0]?.operation.kind) && (snapshot.options === null) === (snapshot.rows[0]?.operation.kind === "run-action") && new Set(snapshot.rows.map(row => row.id)).size === snapshot.rows.length
   && snapshot.renderedDigest === assistantM2ProposalDigest(snapshot), "assistant-proposal-snapshot-invalid");
 export type AssistantM2ProposalSnapshot = z.infer<typeof AssistantM2ProposalSnapshotSchema>;
 /** A row's own result; UNKNOWN is terminal and never reclaimed. */
