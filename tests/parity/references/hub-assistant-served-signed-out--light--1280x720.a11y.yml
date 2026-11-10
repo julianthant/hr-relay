@@ -8,14 +8,14 @@
 
 - region "Relay assistant":
   - button "Action proof" [disabled]
-  - button "Chats" [disabled]
+  - button "History" [disabled]
   - button "New chat"
   - button "Close assistant" [disabled]
   - log "Assistant conversation":
     - strong: How can I help?
     - text: Ask about a record or describe what you want to do.
   - status:
-    - text: Reconnect ChatGPT to use the assistant.
+    - text: Reconnect the ChatGPT account before using the assistant.
     - button "Sign in"
   - group "Message composer":
     - text: Message Relay
@@ -24,6 +24,6 @@
     - group "Message controls":
       - button "Add files" [disabled]
       - button "Ask before every action" [disabled]
-      - 'button "Model: Model unavailable" [disabled]': Model unavailable
+      - 'button "Model: Model unavailable, Effort unavailable effort" [disabled]': Model unavailable Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]
