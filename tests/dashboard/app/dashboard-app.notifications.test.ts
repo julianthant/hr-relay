@@ -61,7 +61,7 @@ async function mount(missing = false, mixed = false) {
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
   await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
-  const targetButton = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open log"); assert(targetButton);
+  const targetButton = document.querySelector<HTMLButtonElement>("button.notification-item"); assert(targetButton);
   await act(async () => { targetButton.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   return { host, reads, sources };
@@ -194,7 +194,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(mockProductSources()) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
-  const open = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open log"); assert(open);
+  const open = host.querySelector<HTMLButtonElement>("button.notification-item"); assert(open);
   await act(async () => { open.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   assert.equal(new URLSearchParams(location.search).get("day"), FIXTURE_DAY_WIRE.day);
   assert.equal(writes, 1); assert.deepEqual(days, ["2026-08-02", FIXTURE_DAY_WIRE.day]);
