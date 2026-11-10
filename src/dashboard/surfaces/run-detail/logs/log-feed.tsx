@@ -18,8 +18,7 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
     <dl className={cn("m-0", (entry.title !== undefined || entry.result !== undefined) && "px-3")}>
       {entry.fields.map(field => {
         const Icon = field.kind === "fill" ? PencilLine : field.kind === "compute" ? Cpu : Eye;
-        return <div key={field.id} data-log-field={field.kind} className="grid min-w-0 grid-cols-[var(--spacing-log-time)_1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] border-b border-ui-stroke py-2.5 last:border-b-0">
-          <time className="self-start pt-0.5 font-data text-caption tabular-nums text-ui-muted max-[1100px]:hidden @max-[448px]:hidden">{field.time}</time>
+        return <div key={field.id} data-log-field={field.kind} className="grid min-w-0 grid-cols-[1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] border-b border-ui-stroke py-2.5 last:border-b-0">
           <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", field.kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
           <dt className="min-w-0 text-body font-medium">{field.label}</dt>
           <FieldValueCell value={field.value} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", field.kind === "fill" ? "text-ui-info font-medium" : field.unread ? "text-ui-danger/75" : "text-ui-secondary")} />
@@ -30,16 +29,15 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
   </div>;
   if (entry.kind === "click") return <div>
     <div className="flex items-center gap-3">
-      <time className="w-log-time shrink-0 font-data text-caption tabular-nums text-ui-muted max-[1100px]:hidden">{entry.time}</time>
       <span className="inline-flex min-w-0 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-2.5 py-1.5 text-body font-medium"><MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" />{entry.label}</span>
     </div>
   </div>;
-  return <><LogNote entry={entry} timeInStep={timeInStep} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</>;
+  return <><LogNote entry={entry} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</>;
 }
-function LogNote({ entry, timeInStep }: { entry: Extract<LogEntry, { kind: "note" }>; timeInStep: boolean }) {
+function LogNote({ entry }: { entry: Extract<LogEntry, { kind: "note" }> }) {
   const target = useRef<HTMLParagraphElement>(null);
   useEffect(() => { if (entry.announce) target.current?.focus(); }, [entry.id, entry.announce]);
-  return <div className={cn("grid items-baseline gap-3 py-1 text-body", timeInStep ? "grid-cols-[1rem_minmax(0,1fr)]" : "grid-cols-[var(--spacing-log-time)_1rem_minmax(0,1fr)]", entry.tone === "positive" ? "text-ui-positive" : entry.tone === "danger" ? "text-ui-danger" : entry.tone === "info" ? "text-ui-info" : "text-ui-secondary")}>{!timeInStep && <time className="font-data text-caption tabular-nums text-ui-muted">{entry.time}</time>}<Info aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-muted" /><p ref={target} tabIndex={entry.announce ? -1 : undefined} className="m-0 min-w-0 rounded-sm text-balance [overflow-wrap:break-word] focus-visible:outline-2 focus-visible:outline-ui-info">{entry.message}</p></div>;
+  return <div className={cn("grid grid-cols-[1rem_minmax(0,1fr)] items-baseline gap-3 py-1 text-body", entry.tone === "positive" ? "text-ui-positive" : entry.tone === "danger" ? "text-ui-danger" : entry.tone === "info" ? "text-ui-info" : "text-ui-secondary")}><Info aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-muted" /><p ref={target} tabIndex={entry.announce ? -1 : undefined} className="m-0 min-w-0 rounded-sm text-balance [overflow-wrap:break-word] focus-visible:outline-2 focus-visible:outline-ui-info">{entry.message}</p></div>;
 }
 
 /** At narrow widths the value truncates on one line; the shared tooltip then shows the whole value. */

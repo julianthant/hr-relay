@@ -36,8 +36,6 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
     heading.current?.focus({ preventScroll: true });
   }, [focusContext, filterKey, selection.page]);
   const result = useMemo(() => browse ?? (report.runs ? activityDrilldown(report.runs, selection) : { state: 'unavailable' as const, reason: 'Run details are unavailable for this report.' }), [browse, report.runs, selection]);
-  const context = useMemo(() => result.state === 'loaded' && result.run ? { workflow: result.run.workflowLabel, displayId: result.run.displayId, attempt: result.run.attempt, reviewPending: result.run.status === 'waiting',
-    timing: { text: activityDuration(result.run.seconds) } } : undefined, [result]);
   const title = activityDrilldownTitle(selection, result.state === 'loaded' ? result.workflowLabel : undefined);
   const steps = result.state === "loaded" ? result.run?.steps : undefined;
   const timeline = result.state === "loaded" ? result.run?.timeline : undefined;
@@ -47,8 +45,7 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
     <h2 ref={heading} tabIndex={-1} className={`mb-1 mt-0 w-fit rounded-sm text-section ${dsFocus} ${result.state === 'loaded' && result.run ? 'sr-only' : ''}`}>{result.state === 'loaded' && result.run ? `${result.run.subject} logs` : title}</h2>
     {missing ? show && <LoadingRegion label="Loading Analytics runs"><SettingsRowsSkeleton rows={3} presentation="result" /></LoadingRegion> : result.state === 'unavailable' || result.run && (result.run.steps === undefined || result.run.timeline === undefined) ? <p role="alert" className="text-body text-ui-secondary">{result.state === 'unavailable' ? result.reason : 'Run details are unavailable for this report.'}</p> : result.run && steps !== undefined && timeline !== undefined ?
       <div className="mt-3 flex h-[calc(var(--ds-space-base)*72)] min-w-0 flex-col"><LogPanel key={result.run.id} title={result.run.subject}
-        status={<RunStatus run={result.run} />} steps={steps} timeline={timeline}
-        context={context} /></div>
+        steps={steps} timeline={timeline} /></div>
       : <>
         <p className="mb-3 mt-0 text-caption text-ui-muted" role="status">{result.totalMatches}{selection.query?.trim() ? ` of ${result.total}` : ''} {selection.metric === 'timed' ? `completed ${result.total === 1 ? 'run' : 'runs'} with recorded duration` : result.total === 1 ? 'run' : 'runs'}</p>
         <div role="group" aria-label="Run filters" className="mb-3 flex min-w-0 items-center gap-3">

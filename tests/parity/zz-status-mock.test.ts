@@ -643,3 +643,44 @@ for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, as
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// Logs cards: identity review, held and failure cards, image viewer, batch member Logs.
+const LOGS_OUT = process.env.LOGS_CARDS_OUT ?? OUT;
+const LOGS_ONLY = process.env.LOGS_CARDS_ONLY?.split(",");
+const LOGS_HEIGHT = Number(process.env.LOGS_CARDS_HEIGHT ?? 1100);
+for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: LOGS_HEIGHT });
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
+  const logs = page.locator(".dashboard-log-column");
+  const shot = async (name: string) => { await settle(page); await page.screenshot({ path: join(LOGS_OUT, `${name}-${theme}-${WIDTH}.png`) }); };
+  const wanted = (name: string) => LOGS_ONLY === undefined || LOGS_ONLY.includes(name);
+  await page.getByRole("button", { name: "Person Lookup" }).first().click();
+  const queue = page.locator(".dashboard-queue-column");
+  const open = async (name: string | RegExp) => { await queue.getByText(name).first().click(); await page.waitForTimeout(400); };
+  if (wanted("identity")) { await open("Waiting on identity review"); await shot("logs-identity"); }
+  if (wanted("held")) { await open("EID 10333015"); await shot("logs-held"); }
+  if (wanted("viewer")) {
+    await open("EID 10333015");
+    await logs.getByRole("button", { name: /Enlarge screenshot/ }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await shot("logs-viewer");
+    await page.keyboard.press("Escape");
+  }
+  if (wanted("member")) {
+    await open("EID 10480021");
+    await expect(logs.getByRole("button", { name: "Pause EID 10480021" })).toBeVisible();
+    await expect(logs.getByRole("button", { name: "Stop EID 10480021" })).toBeVisible();
+    await shot("logs-member-running");
+    await logs.getByRole("button", { name: "Stop EID 10480021" }).click();
+    await expect(page.getByRole("alertdialog").or(page.getByRole("dialog"))).toBeVisible();
+    await shot("logs-member-stop");
+    await page.keyboard.press("Escape");
+  }
+  if (wanted("failed")) { await open("EID 10555001"); await shot("logs-failed"); }
+  if (wanted("parked")) { await open("EID 10777012"); await shot("logs-parked"); }
+  expect(errors).toEqual([]);
+});

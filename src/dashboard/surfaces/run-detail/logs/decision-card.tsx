@@ -35,7 +35,7 @@ export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", c
     {actions}
   </form>;
   return <form aria-label={title} onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-ui-stroke bg-ui-panel p-4">
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <h4 className={cn("m-0 text-heading", tone === "danger" && "text-ui-danger")}>{title}</h4>
       {context && <p className="m-0 text-body text-ui-secondary">{context}</p>}
     </div>

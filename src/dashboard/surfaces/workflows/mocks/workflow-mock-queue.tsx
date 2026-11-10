@@ -4,15 +4,12 @@ import { LogFooterButton } from "../../run-detail/logs/log-action-button.js";
 import { ConfirmDialog, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
-import { queueRunHeader } from "../../run-detail/run-header-model.js";
-import { mockApprovalError, mockFailedStepKey, mockNeedsReview, mockQueueStatus, mockReviewRun, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
+import { mockApprovalError, mockFailedStepKey, mockNeedsReview, mockReviewRun, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
-import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
+import { mockQueueId, mockQueueOutcomes, mockQueueSurfaces } from "./workflow-queue-model.js";
 import { renameMockRun, useMockRunNames } from "./mock-run-names.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
 import { queueItemKey, type QueueSortKey, type QueueSurfaceWire } from "../../queue/queue-model.js";
-import { StatusBadge } from "../../shared/status/status.js";
-import { dsStatusOf } from "../../shared/status/status-model.js";
 import { mockReviewProps, reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
 import { reviewSourcePages } from "./workflow-review-source-model.js";
 import { RecordReview } from "../../run-detail/review/review.js";
@@ -83,11 +80,10 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   </div>;
 }
 
-export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange, nowIso, anchorIso }: {
+export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange }: {
   run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onRetry: () => void; onApprove: () => void;
   onChange: (records: readonly ReviewRecord[]) => void; onDiscard: () => void; onRestore: () => void; onSelect: (id: string) => void;
   reviewOpen?: boolean; onReviewOpenChange?: (open: boolean) => void;
-  nowIso: string; anchorIso: string;
 }) {
   const [localReviewOpen, setLocalReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
@@ -104,7 +100,6 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); };
   }, [recordsVisible]);
   const { workflowId, draft } = reviewRun;
-  const surface = useMemo(() => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : runs.find(parent => parent.id === run.parentId)), [run, runs, anchorIso]);
   const sourcePages = useMemo(() => {
     if (!hasRecords) return {};
     const originals = seedReviewRecords({ workflowId, draft });
@@ -139,8 +134,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
   const reviewContent = useMemo(() => recordsVisible ? <ReviewDialog open onOpenChange={setRecordsVisible} subject={run.subject}>
     <RecordReview key={reviewRun.id} {...mockReviewProps({ approvalError: mockApprovalError(reviewRun), run: reviewRun, sourcePages, onChange, onApprove: mockNeedsReview(reviewRun) ? onApprove : undefined, onDiscard: mockNeedsReview(reviewRun) || reviewRun.workflowId === "ocr" && !reviewRun.parentId && !reviewRun.discarded ? onDiscard : undefined, onRestore })} />
   </ReviewDialog> : undefined, [recordsVisible, run, reviewRun, sourcePages, onChange, onApprove, onDiscard, onRestore, setRecordsVisible]);
-  return <><LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
+  return <><LogPanel title={run.subject} steps={steps} timeline={timeline}
       onReview={hasRecords ? openRecords : undefined} onDecision={decide}
-      status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={toolbar} footerActions={footerActions} />{reviewContent}</>;
 }
