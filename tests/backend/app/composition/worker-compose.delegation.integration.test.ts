@@ -1,3 +1,5 @@
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -111,8 +113,7 @@ it("executes two real children and a nested child with one actual home process a
     const kernel = createCommandKernel({ authority: database, lifecycle, clock: systemClock, ids: { uuid: randomUUID },
       appVersion: "0.1.0", descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
       intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
-      workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused,
-        reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+      workerRuntime: { pool: unusedWorkerPool(unused) } });
     const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock: systemClock,
       ids: { uuid: randomUUID }, planTtlMs: 600_000, configFingerprint: active.configFingerprint,
       configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
@@ -124,6 +125,7 @@ it("executes two real children and a nested child with one actual home process a
     rootRunId = singleAppliedRunId(kernel.execute({ commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
       requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
       target: { workflowId: childExecutionRoot.descriptor.id, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints }));
+    database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, childExecutionRoot.descriptor.id, 1, systemClock.now().toISOString()));
   } finally { database.close(); }
 
   const actualDoctor = await vi.importActual<typeof storageDoctor>("../../../../src/backend/storage/sqlite/storage-doctor.js");
@@ -164,11 +166,8 @@ it("executes two real children and a nested child with one actual home process a
   try {
     const custody = retained.readProfileResourceCustody();
     assert.equal(custody.slots.length, 1);
-    assert.equal(custody.leases.length, 1);
     assert.equal(custody.slots[0]?.workflow, childExecutionRoot.descriptor.id);
     assert.equal(custody.slots[0]?.workerId, report.workerId);
-    assert.equal(custody.leases[0]?.processId, process.pid);
-    assert.equal(custody.leases[0]?.lifecycle.state, "stopped");
     assert.equal(custody.runs.length, 4);
     assert.ok(custody.runs.every(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"));
     const root = retained.authority.runs.get(rootRunId);
@@ -186,7 +185,6 @@ it("executes two real children and a nested child with one actual home process a
       assert.equal(value.configFingerprint, run.envelope.configFingerprint);
       assert.equal(value.configSnapshotId, run.envelope.configSnapshotId);
     }
-    assert.equal(custody.browsers.length, 0);
     assert.equal(custody.writeIntents.length, 0);
   } finally { retained.close(); }
 });

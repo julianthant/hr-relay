@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
@@ -15,7 +16,7 @@ it("refuses stale reviewed plans atomically, freshly confirms current settings a
     const kernel = createCommandKernel({ lifecycle: f.service, appVersion: "0.1.0", configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, descriptors,
       writeResolution: { recheck: () => { throw new Error("unused write"); }, resolveAbsent: () => { throw new Error("unused write"); } },
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
     const planner = createStartPlanService({ authority: f.database, authorityRead: f.database, descriptors,
       clock: f.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, configFingerprint: f.snapshot.fingerprint,

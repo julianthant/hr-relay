@@ -12,8 +12,8 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGR
 import { convertPersonPreferencesRow, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/person-preferences-migration.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { readAppSettings, migratePersonPreferences } from "../../../../src/backend/storage/sqlite/settings-storage.js";
-import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
+import { applyAuthorityMigrationsAfter, inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../src/models/config/person-preferences.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -50,9 +50,7 @@ function fixture() {
   return database;
 }
 function convert(database: DatabaseSync) {
-  const migration = SQLITE_MIGRATIONS.find(row => row.version === 16); assert.ok(migration);
-  for (const [index, statement] of migration.statements.entries()) { database.exec(statement); if (index === 2) migratePersonPreferences(database); }
-  for (const next of SQLITE_MIGRATIONS.filter(row => row.version > 16)) for (const statement of next.statements) database.exec(statement);
+  applyAuthorityMigrationsAfter(database, 15, { now: "2026-08-20T16:00:00.000Z", captureFile: () => { throw new Error("artifact-unexpected"); } });
   database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
   database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
 }
@@ -70,7 +68,9 @@ it("converts accepted snapshots and exact initialization links without changing 
     database.exec("BEGIN EXCLUSIVE"); convert(database); database.exec("COMMIT");
     assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const after = readAppSettings(database); assert.ok(after);
-    assert.deepEqual(database.prepare("SELECT * FROM runs ORDER BY id").all(), before[4].rows);
+    // The build-id step deletes the pre-build queued run through its cancel door.
+    assert.deepEqual(database.prepare("SELECT * FROM runs").all(), []);
+    assert.deepEqual(database.prepare("SELECT run_id, cleanup_state FROM deleted_runs").all().map(row => ({ ...row })), before[4].rows.map(row => ({ run_id: row.id, cleanup_state: "pending" })));
     assert.equal(after.initialization.configSnapshotId, CONFIG_SNAPSHOT.configSnapshotId);
     assert.equal(after.initialization.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
     assert.equal(after.initialization.commandId, z.object({ initialization: z.object({ commandId: z.string() }) }).parse(JSON.parse(String(before[1].rows[0].payload_json))).initialization.commandId);

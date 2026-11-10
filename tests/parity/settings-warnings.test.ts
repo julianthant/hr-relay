@@ -12,7 +12,9 @@ async function sectionWarning(page: Page, title: string, groupName: string) {
   if (groupName === "App data") {
     const group = page.getByRole("group", { name: "App data", exact: true });
     await expect(group).toContainText(title);
-    await expect(group.getByRole("button", { name: "Try again", exact: true })).toBeEnabled();
+    const retries = group.getByRole("button", { name: "Try again", exact: true });
+    await expect(retries).toHaveCount(2);
+    for (const retry of await retries.all()) await expect(retry).toBeEnabled();
     const row = await warning.evaluate(node => { const el = node.closest(".hub-settings-row"); if (!el) throw new Error("app-data-warning-row-missing"); const style = getComputedStyle(el); return { padding: parseFloat(style.paddingInlineStart), minimum: parseFloat(style.getPropertyValue("--ds-space-cozy")) }; });
     expect(row.padding).toBeGreaterThanOrEqual(row.minimum);
     return;

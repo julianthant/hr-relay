@@ -9,8 +9,7 @@ import { NOW, UUID_1, UUID_6, WRITE_INTENT_ATTEMPTING } from "../../../support/f
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 const empty: ReturnType<AuthorityDatabase["readProfileResourceCustody"]> = {
-  authorityGeneration: 0, upgrades: [], slots: [], reservations: [], verificationProfiles: [],
-  leases: [], controls: [], browsers: [], runs: [], writeIntents: [], duoLeases: [],
+  authorityGeneration: 0, upgrades: [], slots: [], runs: [], writeIntents: [], duoLeases: [],
   exclusiveSessionLeases: [], pendingArtifacts: [], artifactReferences: [], configSnapshots: [],
 };
 const queued = RunRecordSchema.parse(QUEUED_RUN);

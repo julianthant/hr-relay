@@ -172,7 +172,7 @@ it("attempts command drainage even when worker drainage fails", async () => {
     const rejected = assert.rejects(operation, CommandBrowserError);
     await started.promise;
     const activity = composeProfileActivity({ admission: w.f.admission, database: w.context.database, clock,
-      commandActivities: new Set([w.manager]), supervisor: { memberEvidence: () => undefined, drainOwnedChildren: async () => { throw workerFailure; } },
+      commandActivities: new Set([w.manager]), supervisor: { snapshot: () => [], stopAll: async () => { throw workerFailure; } },
       lifecycle: { read: () => { throw new Error("no runs"); }, transition: () => { throw new Error("no runs"); }, pause: () => { throw new Error("no runs"); } } });
     activity.requestCancellation(w.profileId);
     await assert.rejects(activity.awaitCancellation(), error => error instanceof AggregateError && error.errors.includes(workerFailure));

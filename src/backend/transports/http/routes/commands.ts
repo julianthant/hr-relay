@@ -29,6 +29,12 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
   });
 
 
+  // Outside /api/v1/commands/: a read must not cross the mutation ingress guard.
+  app.get("/api/v1/worker-commands/:commandId", c => {
+    if (deps.workerCommandResult === undefined) throw new Error("worker-command-result-unavailable");
+    return c.json(deps.workerCommandResult(c.req.param("commandId")));
+  });
+
   app.post("/api/v1/commands/bulk", async (c) => {
     const body: unknown = await c.req.json();
     const command = BulkRunCommandRequestSchema.safeParse(body);

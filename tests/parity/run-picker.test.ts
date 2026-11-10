@@ -31,7 +31,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await expect(picker.getByRole("heading")).toHaveText(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
     await expect(picker.locator("button span").filter({ hasText: /^pl$|^sp$/u })).toHaveCount(0);
     const originalDialog = await dialog.elementHandle(), originalPicker = await picker.elementHandle();
-    for (const label of ["Onboarding", "Work-Study", "Oath Signature", "Kronos Pay Rule", "Onboarding", "Oath Upload", "Emergency Contact", "Person Lookup"]) {
+    for (const label of ["Onboarding", "Work-Study", "Oath Signature", "Kronos Pay Rule", "Onboarding", "Oath Upload", "Person Lookup"]) {
       const choice = picker.getByRole("button", { name: label, exact: true });
       await choice.scrollIntoViewIfNeeded();
       const scroll = await picker.locator(".workflow-rail-groups").evaluate(element => element.scrollTop);

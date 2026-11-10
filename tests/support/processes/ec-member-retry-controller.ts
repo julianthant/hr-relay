@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../helpers/backend/unused-worker-pool.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -170,8 +171,7 @@ if (serialized === undefined) {
       const before = canonicalJsonStringify({ runs: database.authority.runs.listChildren(info.parentId), intents: database.authority.writeIntents.listByRun(replacement.envelope.runId) });
       const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0", descriptors: { resolve },
         configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-        writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused,
-          refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+        writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: unusedWorkerPool(unused) } });
       assert.equal(kernel.execute(info.request).state, "already-applied");
       if (boundary === "commit") {
         const recovered = database.authority.runs.get(replacement.envelope.runId); assert.ok(recovered);

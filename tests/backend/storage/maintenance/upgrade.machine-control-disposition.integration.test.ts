@@ -10,7 +10,7 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { authenticateDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { CanonicalCredentialHeadSchema } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
@@ -413,15 +413,14 @@ it("holds a missing real predecessor key without replacing source bytes or gener
   } finally { maintenance?.release(); await f.close(); }
 });
 
-for (const released of [false, true]) it(`holds ${released ? "released" : "live"} old-process artifacts without deleting their evidence`, async () => {
+it("holds old-process artifacts without deleting their evidence", async () => {
   const f = await priorFormatFixture();
-  const lock = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid });
-  if (released) lock.release();
+  plantOldBuildArtifact(f.processLockRoot);
   const before = storageTree(f.workspace);
   try {
     assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(storageTree(f.workspace), before);
-  } finally { lock.release(); await f.close(); }
+  } finally { await f.close(); }
 });
 
 for (const change of ["bytes", "same-byte-inode"] as const) it(`holds the actual stopped converter stage after ${change} substitution and preserves exact backups`, async () => {

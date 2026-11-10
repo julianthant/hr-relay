@@ -13,7 +13,6 @@ const CURRENT_TABLES = [
   "assistant_grants",
   "assistant_model_preference",
   "auth_leases",
-  "browser_sessions",
   "command_audits",
   "commands",
   "database_states",
@@ -50,8 +49,6 @@ const CURRENT_TABLES = [
   "workbook_library_state",
   "workbook_operations",
   "workbook_types",
-  "worker_controls",
-  "worker_leases",
   "worker_pools",
   "worker_slots",
   "write_attempts",
@@ -63,7 +60,7 @@ it("fresh native authority has the exact current physical inventory", async () =
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try {
       const actual = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name));
-      assert.equal(CURRENT_TABLES.length, 49);
+      assert.equal(CURRENT_TABLES.length, 46);
       assert.deepEqual(actual, CURRENT_TABLES);
       assert.deepEqual(AUTHORITY_TABLE_REGISTRY.map(row => row.name).sort(), CURRENT_TABLES);
       assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);

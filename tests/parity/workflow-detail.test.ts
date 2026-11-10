@@ -60,7 +60,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const concurrentBox = await page.getByRole("tooltip").boundingBox(); expect(concurrentBox!.y).toBeGreaterThanOrEqual(0); expect(concurrentBox!.y + concurrentBox!.height).toBeLessThanOrEqual(height);
 
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click(); await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click(); await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await expectRunningPill(rail.getByRole("button", { name: "Emergency Contact", exact: true }), 0);

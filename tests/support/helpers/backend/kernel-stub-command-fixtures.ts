@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { RunRecordService, type RunRecordServiceDependencies } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
 import { createBoundProfileFixture } from "../admission-fixture.js";
@@ -32,10 +33,7 @@ export function createKernelStubCommandFixtures(input: {
 }) {
   let commandSequence = 0;
   const unrelated = (): never => { throw new Error("unrelated kernel effect reached"); };
-  const workerRuntime: CommandKernelDependencies["workerRuntime"] = { pool: {
-    planPoolWorkerCount: unrelated, spawnPoolWorker: unrelated,
-    refreshPoolBrowser: unrelated, reopenPoolBrowser: unrelated, stopPoolWorker: unrelated, pausePoolWorker: unrelated, resumePoolWorker: unrelated,
-  } };
+  const workerRuntime: CommandKernelDependencies["workerRuntime"] = { pool: unusedWorkerPool(unrelated) };
   const writeResolution: CommandKernelDependencies["writeResolution"] = { recheck: unrelated, resolveAbsent: unrelated };
 
   function nextCommandId(): string {

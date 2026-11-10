@@ -48,9 +48,3 @@
       - text: Evidence Screenshots and downloads kept as evidence.
       - textbox "Evidence path": ~/Library/Application Support/Relay/people/am/artifacts
       - button "Copy evidence path"
-    - heading "Backup and restore" [level=2]
-    - group "Backup and restore":
-      - text: Back up Last backup Oct 30, 2026 at 9:12 PM
-      - button "Back up now"
-      - text: Restore Stop all runs before restoring.
-      - button "Restore…"

@@ -11,11 +11,12 @@ import { DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { type PredecessorRunRecord } from "../../../models/run/record.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, WORKER_CUSTODY_SCHEMA_VERSION } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { predecessorRunRecordFromRow, runRecordFromRow } from "./run-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
 import { commandFromRow } from "./command-record-row.js";
+import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunRow } from "./worker-custody-predecessor.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DeletionFilesSchema, deletedRunFromRow, type DeletionFileSchema } from "./deleted-run-row.js";
 
@@ -56,7 +57,12 @@ function isSettledCascadeTerminalization(database:DatabaseSync,command:ReturnTyp
 export function prepareNativeRunDeletion(database: DatabaseSync, run: PredecessorRunRecord, request: RunDeleteInput,
   captureFile: (ref: ArtifactRef) => Omit<FileEvidence,"disposition">, phase: "execution" | "preflight" = "execution",
   schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version) {
-  const readRun = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? predecessorRunRecordFromRow : runRecordFromRow;
+  const strictRun = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? predecessorRunRecordFromRow : runRecordFromRow;
+  // Below the custody schema, worker lifetimes and worker history are read only through the predecessor reader.
+  const predecessorCustody = schemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
+  const readRun = predecessorCustody ? (raw: unknown) => strictRun(predecessorCustodyRunRow(raw)) : strictRun;
+  const readCommand = predecessorCustody ? predecessorCommandFromRow : commandFromRow;
+  const isHistory = (raw: unknown) => predecessorCustody && isPredecessorWorkerHistory(raw);
   const runId = run.envelope.runId;
   const cascade = new Set<string>(request.cascadeRunIds);
   if (!cascade.has(runId)) throw new Error("run-deletion-cascade-owner-missing");
@@ -81,7 +87,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   }
   const commandRaw = database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
   if (commandRaw === undefined) throw new Error("run-deletion-command-missing");
-  const command = commandFromRow(commandRaw);
+  const command = readCommand(commandRaw);
   const history = "kind" in command && command.kind === "run-lifecycle" && command.operation === "clear-history";
   if (request.origin !== (history ? "storage" : "queue")) throw new Error("run-deletion-command-origin-mismatch");
   if (history) {
@@ -103,7 +109,8 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   for (const table of ["run_results","run_receipts","run_checkpoints","diagnostic_snapshots","write_intents","write_attempts","commands","command_audits","artifacts"] as const) {
     for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
       if (table === "commands") {
-        const command=commandFromRow(raw);
+        if (isHistory(raw)) { assertPredecessorWorkerHistory(raw); retained.push(JSON.parse(z.object({request_json:z.string()}).parse(raw).request_json)); continue; }
+        const command=readCommand(raw);
         if(!isSettledCascadeTerminalization(database,command,raw,cascade))retained.push(command);
         continue;
       }
@@ -111,7 +118,8 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
         const {command_id}=z.object({command_id:z.string()}).parse(raw);
         const owner=database.prepare("SELECT * FROM commands WHERE id=?").get(command_id);
         if(owner===undefined)throw new Error("run-deletion-audit-command-missing");
-        const command=commandFromRow(owner);
+        if (isHistory(owner)) { assertPredecessorWorkerHistory(owner, raw); retained.push(JSON.parse(z.object({payload_json:z.string()}).parse(raw).payload_json)); continue; }
+        const command=readCommand(owner);
         const audit=nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
         if(canonicalJsonStringify(z.object({request:z.unknown()}).parse(audit).request)!==canonicalJsonStringify(command))throw new Error("run-deletion-audit-command-mismatch");
         if(!isSettledCascadeTerminalization(database,command,owner,cascade))retained.push(audit);

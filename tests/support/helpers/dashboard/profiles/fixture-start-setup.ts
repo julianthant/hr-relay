@@ -52,6 +52,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
           : module.descriptor.surfaces.inputRun === undefined ? {} : { inputRun: module.descriptor.surfaces.inputRun }),
         ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
 
+        ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
         spreadsheetIntake: "intake" in module && module.intake !== undefined, requiredWorkbookTypeIds: [...module.descriptor.requiredWorkbookTypeIds],
       },
     })),

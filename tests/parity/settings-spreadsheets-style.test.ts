@@ -32,7 +32,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await create.focus(); await page.keyboard.press('Enter');
       const dialog = page.getByRole('dialog', { name: 'Create spreadsheet type', exact: true });
       await expect(dialog.getByRole('textbox', { name: 'Type name', exact: true })).toBeFocused();
-      await expect(dialog.getByRole('button', { name: 'Save type', exact: true })).toBeDisabled();
+      await expect(dialog.getByRole('button', { name: 'Save type', exact: true })).toBeEnabled();
       await page.keyboard.press('Escape'); await expect(create).toBeFocused();
       const edit = surface.getByRole('button', { name: 'Edit Roster', exact: true });
       await edit.focus(); await page.keyboard.press('Space');

@@ -62,7 +62,7 @@ SQLite cannot atomically commit an action in another website. If a click's resul
 
 ## Restart safety includes workers and configuration
 
-Workers renew the exact run claim on a cadence. Losing the claim aborts execution. Worker leases, pool membership, and browser ownership carry identities and generations so replacing a process does not silently inherit an earlier process's authority. [Worker loop](../src/backend/runtime/workers/worker-loop.ts), [worker slots](../src/backend/storage/sqlite/worker-slots.ts), [process locks](../src/backend/storage/sqlite/runtime-process-locks.ts).
+Workers renew the exact run claim on a cadence. Losing the claim aborts execution. Worker leases, pool membership, and browser ownership carry identities and generations so replacing a process does not silently inherit an earlier process's authority. [Worker loop](../src/backend/runtime/workers/worker-loop.ts), [worker slots](../src/backend/storage/sqlite/worker-slots.ts).
 
 Ordinary startup accepts the current database schema, version 6 at this pin. An explicit stopped upgrade validates the old authority, obtains and verifies a backup, then applies the migration. Backup verification checks bytes, checksum, source identity, and database contents. Startup does not replace an incompatible database with an empty one. [Schema](../src/backend/storage/sqlite/migrations.ts), [boot state](../src/backend/storage/sqlite/authority-boot.ts), [upgrade](../src/backend/storage/maintenance/upgrade.ts), [backup verification](../src/backend/storage/sqlite/backup-service.ts).
 

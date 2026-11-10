@@ -9,12 +9,12 @@ import { UcpathStageTermination } from "../../../../../src/models/systems/ucpath
 import { UcpathTerminationTargetSchema } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { UcpathTransactionFindingsReadSchema } from "../../../../../src/models/ui/ucpath-transaction-findings.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
-import { WorkerEffectAcknowledgementSchema, type WorkerControlRecord } from "../../../../../src/models/run/worker-control.js";
+import type { CommandAuditRecord } from "../../../../../src/rules/commands/commands.js";
 import { defineCanonicalInput } from "../../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../../src/models/workflow/presentation.js";
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { deriveStableUuid } from "../../../../../src/rules/identity/identifiers.js";
-import { ParkedWriteCheckResultSchema, ParkedWriteCheckTargetSchema } from "../../../../../src/rules/commands/commands.js";
+import { ParkedWriteCheckAcknowledgementSchema, ParkedWriteCheckResultSchema, ParkedWriteCheckTargetSchema } from "../../../../../src/rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
@@ -66,27 +66,26 @@ function fixture() {
     bindingProof, bindingProofDigest: deriveWriteBindingProofDigest(bindingProof) });
   assert.equal(intent.status, "parked");
   const scope = { installationId: uuidOf(10), profileId: uuidOf(11) };
-  const checkTarget = ParkedWriteCheckTargetSchema.parse({ ...scope, workerId: "findings-worker-1", expectedVersion: 1,
-    membershipRevision: 1, processId: 1234, startedAt: NOW, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
+  const checkTarget = ParkedWriteCheckTargetSchema.parse({ ...scope, workerId: "findings-worker-1", lifetimeId: uuidOf(15), expectedVersion: 1,
     runId: run.envelope.runId, runVersion: run.version, workflowId: descriptor.id, itemId: run.envelope.itemId,
     runAttempt: 1, traceId: run.envelope.traceId, nodeId: "file-termination", writeIntentId: intent.writeIntentId,
     intentVersion: intent.version, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
     bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
-  const ack = WorkerEffectAcknowledgementSchema.parse({ kind: "parked-write-check",
+  const ack = ParkedWriteCheckAcknowledgementSchema.parse({
     result: ParkedWriteCheckResultSchema.parse({ commandId: uuidOf(12), requestedBy: "local-operator", target: checkTarget,
       observedAt: NOW, held: true, provenance: "system-probe", state: "unknown", code: "PARKED_CHECK_UNKNOWN",
       probeTaskId: UcpathReadTransactionFindings.id, evidenceDigest: "0".repeat(64) }),
     evidence: { schemaHash: deriveSchemaHash(UcpathReadTransactionFindings.output, "output"), value: scanOf() },
     findingsIdentity: { activityId: uuidOf(13), descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
       claimGeneration: 1, implFingerprint: taskImplFingerprint(UcpathReadTransactionFindings) } });
-  assert.ok(ack.kind === "parked-write-check" && ack.findingsIdentity);
+  assert.ok(ack.findingsIdentity);
   const activity = { activityId: uuidOf(13), operation: "parked-write-check", runId: run.envelope.runId, workflow: descriptor.id,
     attempt: 1, traceId: run.envelope.traceId, nodeId: "file-termination", writeIntentId: intent.writeIntentId,
     generation: 1, writeAttemptId: intent.currentAttemptId, openedAt: NOW };
   const events = new Map<string, unknown>([[uuidOf(13), { payload: { kind: "recovery-activity-started", ...activity } }],
     [deriveStableUuid("recovery-activity-ended", uuidOf(13)), { payload: { kind: "recovery-activity-ended", ...activity, endedAt: NOW } }]]);
-  const record = { commandId: ack.result.commandId, request: { type: "check-parked-write", source: "run-detail", requestedBy: "local-operator", target: ack.result.target },
-    phase: { state: "succeeded", acknowledgement: ack } };
+  const record = { request: { commandId: ack.result.commandId, type: "check-parked-write", source: "run-detail", requestedBy: "local-operator", target: ack.result.target },
+    parkedWriteCheck: ack };
   const deps = { authorityIdentity: scope, canonical: { descriptors: { resolve: () => descriptor }, database: { authority: {
     runCheckpoints: { latest: () => undefined }, timelineEvents: { get: (id: string) => events.get(id) }, gateResults: { get: () => undefined },
   } } } } as unknown as RunDetailQueryDeps;
@@ -95,7 +94,7 @@ function fixture() {
   seal();
   return { ack, record, deps, run, intent, events, seal };
 }
-function read(f: ReturnType<typeof fixture>) { return retainedUcpathFindings(f.deps, f.run, f.intent, f.record as unknown as WorkerControlRecord); }
+function read(f: ReturnType<typeof fixture>) { return retainedUcpathFindings(f.deps, f.run, f.intent, f.record as unknown as CommandAuditRecord); }
 function refuses(read: () => unknown) {
   assert.throws(read, (error: unknown) => error instanceof LogIdentityRefusedError && error.code === "LOGS_IDENTITY_REFUSED");
 }
