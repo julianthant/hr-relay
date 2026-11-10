@@ -3,7 +3,8 @@ import { localDatePart } from "../../../rules/time/clock.js";
 import type { RunExistence } from "../../../models/config/authority.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
-import { NotificationTargetSchema, type NotificationRecord, type NotificationTarget } from "../../../models/notifications/notifications.js";
+import type { NotificationRecord } from "../../../models/notifications/notifications.js";
+import { NotificationTargetSchema, type NotificationTarget } from "../../../models/notifications/notification-target.js";
 
 export function createNotificationTargetQuery(deps: {
   get(id: string): NotificationRecord | undefined;

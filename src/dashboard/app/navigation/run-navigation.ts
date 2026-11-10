@@ -1,5 +1,5 @@
 import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
-import type { NotificationTarget } from "../../../models/notifications/notifications.js";
+import type { NotificationTarget } from "../../../models/notifications/notification-target.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { DashboardClient } from "../../client/index.js";
 import { routeWithoutTakeovers, type AppRouteState } from "./url-state.js";

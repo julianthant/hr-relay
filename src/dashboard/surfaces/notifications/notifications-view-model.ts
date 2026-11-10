@@ -1,4 +1,4 @@
-import type { NotificationTarget } from "../../../models/notifications/notifications.js";
+import type { NotificationTarget } from "../../../models/notifications/notification-target.js";
 
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";

@@ -10,7 +10,7 @@ import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.j
 import { FingerprintSchema, RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../../src/rules/identity/ids.js";
 import { RowRevisionSchema } from "../../../../src/models/dashboard/primitives.js";
-import type { NotificationTarget } from "../../../../src/models/notifications/notifications.js";
+import type { NotificationTarget } from "../../../../src/models/notifications/notification-target.js";
 
 const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
 const row = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === runId)!;

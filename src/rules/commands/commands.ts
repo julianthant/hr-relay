@@ -426,6 +426,7 @@ export const CommandRejectionCodeSchema = z.enum([
   "active-version-blockers",
     /* The arm is schema-recognized but its owning milestone has not activated it; this result is computed with ZERO authority side effects. */
   "capability-unavailable",
+  "bulk-child-errored",
 ]);
 
 export const RunWorkerStartupFailureSchema = z.strictObject({

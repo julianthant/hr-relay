@@ -22,6 +22,7 @@ import {
   TaskIdSchema,
   LocalDateSchema,
   NotificationIdSchema,
+  CommandIdSchema,
   PositiveIntSchema,
   ProjectionCursorSchema,
   RunIdSchema,
@@ -614,7 +615,7 @@ const StandardNotificationWireSchema = z.strictObject({
   channel: z.enum(["ping", "inbox"]),
   count: PositiveIntSchema,
   publicationId: FingerprintSchema,
-  trigger: NotificationTriggerSchema.exclude(["backfill-gap"]),
+  trigger: NotificationTriggerSchema.exclude(["backfill-gap", "command"]),
   readState: z.enum(["read", "unread"]),
   notificationId: NotificationIdSchema,
   actorId: ActorIdSchema,
@@ -628,6 +629,32 @@ const StandardNotificationWireSchema = z.strictObject({
   context: NotificationDisplayContextSchema,
   sourceEvent: NotificationSourceEventWireSchema.optional(),
   link: NotificationLinkWireSchema.optional(),
+});
+
+/** A stored command notice: Priority while unread and not snoozed; recovery is an error, a refused command or incomplete batch a warning. */
+const CommandNotificationWireSchema = z.strictObject({
+  kind: z.literal("command"),
+  channel: z.literal("ping"),
+  count: PositiveIntSchema,
+  publicationId: FingerprintSchema,
+  readState: z.enum(["read", "unread"]),
+  notificationId: NotificationIdSchema,
+  actorId: ActorIdSchema,
+  severity: z.enum(["warning", "error"]),
+  title: z.string().min(1),
+  summary: z.string().min(1).max(1_000),
+  state: z.enum(["unread", "read", "snoozed"]),
+  snoozedUntil: IsoInstantSchema.optional(),
+  occurredAt: IsoInstantSchema,
+  revision: RowRevisionSchema,
+  context: NotificationDisplayContextSchema,
+  sourceEvent: NotificationSourceEventWireSchema.optional(),
+  priority: z.boolean(),
+  link: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("recovery"), commandId: CommandIdSchema }),
+    z.strictObject({ kind: z.literal("command-result"), commandId: CommandIdSchema }),
+    z.strictObject({ kind: z.literal("bulk-result"), bulkCommandId: CommandIdSchema }),
+  ]),
 });
 
 const BackfillGapNotificationWireSchema = z.strictObject({
@@ -646,9 +673,10 @@ const BackfillGapNotificationWireSchema = z.strictObject({
 
 export const NotificationWireSchema = z.discriminatedUnion("kind", [
   StandardNotificationWireSchema,
+  CommandNotificationWireSchema,
   BackfillGapNotificationWireSchema,
 ]).superRefine((row, context) => {
-  if (row.kind === "notification" && (row.state === "snoozed") !== (row.snoozedUntil !== undefined)) {
+  if (row.kind !== "backfill-gap" && (row.state === "snoozed") !== (row.snoozedUntil !== undefined)) {
     context.addIssue({ code: "custom", path: ["snoozedUntil"], message: "snoozed state requires its server expiry hint" });
   }
 });

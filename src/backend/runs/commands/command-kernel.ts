@@ -28,6 +28,7 @@ import { admitProtectedInput,protectedSubjectDisplay } from "../start/protected-
 import { planRunRecovery } from "../start/recovery-plan.js";
 import type { CommandApplication } from "./command-application.js";
 import { CommandRefusal } from "./command-refusal.js";
+import type { NotificationInbox } from "../notifications/inbox.js";
 export type { CommandApplication } from "./command-application.js";
 
 import { createHash } from "node:crypto";
@@ -282,6 +283,7 @@ export interface CommandKernelDependencies {
   readonly workflowSources?: Readonly<Record<string, "mock" | "served" | "hidden">>;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
+  readonly commandNotices?: Pick<NotificationInbox, "record">;
 
 
 }
@@ -2403,7 +2405,7 @@ function replay(
       `command ${request.commandId} is journaled but has no recorded outcome; refusing to guess what it did`,
     );
   }
-  if (request.family === "worker-browser" && audit.result.state === "rejected") return audit.result;
+  if (audit.result.state === "rejected" || audit.result.state === "conflict" || audit.result.state === "confirmation-required") return audit.result;
   if (request.family === "ocr-review" || request.family === "gate" && request.payload.ocrApproval !== undefined) {
     if (dependencies.lifecycle === undefined) throw new OcrReviewRefusedError();
     const review = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
@@ -2415,7 +2417,7 @@ function replay(
   }
   if (audit.result.state !== "applied") {
     throw new Error(
-      `command ${request.commandId} recorded outcome ${audit.result.state}; only applied commands are journaled`,
+      `command ${request.commandId} recorded outcome ${audit.result.state}; only applied or refused commands are journaled`,
     );
   }
   if (request.family === "start") {
@@ -2609,7 +2611,8 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       let rollback: (() => void) | undefined;
       let commit: (() => void) | undefined;
       try {
-        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
+        // The journal row commits before the effect: a thrown effect leaves it admitted, and its exact retry resumes the effect.
+        const replayed = dependencies.authority.withAuthorityTransaction((repositories) => {
           preferenceCurrent?.();
           if (request.family === "assistant-model-preference" && (request.requestedBy !== "local-operator"
             || request.source.startsWith("assistant") || dependencies.authorityProfileId !== request.target.profileId
@@ -2617,13 +2620,16 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             reject(request, "invalid-state", "assistant-preference-operator-only");
           }
           repositories.commands.assertIdentity(request, parentCommandId);
+          repositories.commands.insert(request, parentCommandId);
+          if (repositories.commandAudits.findByCommand(request.commandId) === undefined) return undefined;
+          if (request.family === "assistant-model-preference") repositories.assistantModelPreference.get();
+          return replay(dependencies, repositories, request, IsoInstantSchema.parse(dependencies.clock.now().toISOString()));
+        });
+        if (replayed !== undefined) return replayed;
+        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
+          preferenceCurrent?.();
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           const journalRequest = request;
-          const journal = repositories.commands.insert(journalRequest, parentCommandId);
-          if (journal.state === "existing") {
-            if (request.family === "assistant-model-preference") repositories.assistantModelPreference.get();
-            return replay(dependencies, repositories, request, now);
-          }
           const auditId = dependencies.ids.uuid();
           const application = request.family === "ocr-review" || request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel" || request.type === "resume")
             ? withCanonicalRunCommandScope(repositories, request,
@@ -2673,12 +2679,37 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
           state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
         });
-        if (error instanceof PreflightAdmissionRefusal) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message });
-        if (error instanceof CommandRefusal) return error.result;
-        if (error instanceof OcrReviewRefusedError) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
-          code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text });
+        const refusal = error instanceof PreflightAdmissionRefusal ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message })
+          : error instanceof CommandRefusal ? error.result
+          : error instanceof OcrReviewRefusedError ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+            code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text })
+          : undefined;
+        try {
+          settleUnsettled(request, refusal ?? (parentCommandId === undefined ? undefined
+            : CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "bulk-child-errored", message: ERROR_CATALOG.BULK_CHILD_ERRORED.text })),
+          parentCommandId);
+        } catch (settlementError) {
+          throw new AggregateError([error, settlementError], `command ${request.commandId} failed and its outcome could not be recorded`, { cause: settlementError });
+        }
+        if (refusal !== undefined) return refusal;
         throw error;
       }
+  };
+  /** An admitted command settles with its typed refusal, or stays admitted with a recovery notice when its outcome is unknown. */
+  const settleUnsettled = (request: CommandRequest, result: CommandResult | undefined, parentCommandId: string | undefined): void => {
+    dependencies.authority.withAuthorityTransaction((repositories) => {
+      const journaled = repositories.commands.get(request.commandId);
+      if (journaled === undefined || canonicalJsonStringify(journaled) !== canonicalJsonStringify(request)
+        || repositories.commandAudits.findByCommand(request.commandId) !== undefined) return;
+      if (result !== undefined) repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result,
+        completedAt: IsoInstantSchema.parse(dependencies.clock.now().toISOString()), versionChanges: [], affectedDependencyIds: [] });
+      // A bulk child is reported in its batch notice; notification commands correct themselves on the next read.
+      if (parentCommandId !== undefined || request.family === "notification" || dependencies.commandNotices === undefined) return;
+      if (result === undefined) dependencies.commandNotices.record({ kind: "command-unknown", commandId: request.commandId });
+      else if (result.state === "rejected" || result.state === "conflict") {
+        dependencies.commandNotices.record({ kind: "command-refused", commandId: request.commandId, outcome: result.state });
+      }
+    });
   };
   return Object.freeze({
     assistantAvailability: availability,

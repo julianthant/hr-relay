@@ -158,6 +158,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    commandNotices: notificationInbox,
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
     readableDescriptors: { resolve: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor },
     workbookRows: createRunWorkbookService({ database, clock }),
@@ -211,6 +212,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   const commands = createDashboardCommandService({
+    commandNotices: notificationInbox,
     quitAccepted: applicationLifecycle.quitAccepted,
     kernel,
     projection,
