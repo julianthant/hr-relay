@@ -10,8 +10,9 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 3 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -46,9 +47,7 @@
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "CRM Doc Download"
-      - listitem:
-        - button "SharePoint Download"
+        - button "Onboarding Documents"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
@@ -97,37 +96,6 @@
     - button "Show full layout fingerprint"
     - button "Validate"
     - button "Start runs" [disabled]
-- region "Assistant panel":
-  - region "Relay assistant":
-    - button "Update Alex Rivera work email"
-    - button "Chats"
-    - button "New chat"
-    - button "Close assistant"
-    - log "Assistant conversation":
-      - text: Update Alex Rivera’s work email. I found the record. Review the change before I save it.
-      - article "Save to UCPath":
-        - heading "Save to UCPath" [level=3]
-        - term: Person
-        - definition: Alex Rivera
-        - term: Work email
-        - definition:
-          - strong: alex.rivera@example.edu
-        - text: Ready to save
-        - button "Not now"
-        - button "Approve"
-      - status: ChatGPT is unavailable. Open Settings to review your account.
-    - group "Message composer":
-      - text: Message Relay
-      - textbox "Message Relay" [disabled]:
-        - /placeholder: Ask Relay…
-      - group "Message controls":
-        - button "Add files" [disabled]
-        - button "Ask before every action" [disabled]
-        - 'button "Model: GPT-6.1 Sol" [disabled]': GPT-6.1 Sol
-        - 'button "Thinking effort: Medium" [disabled]': Medium
-        - button "Voice input" [disabled]
-        - button "Send message" [disabled]
-- button "Assistant" [expanded]
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -135,4 +103,5 @@
     - button "Add workers"
     - button "Settings"
     - button "Log out"
+    - button "Assistant": Ask
 - region "Notifications"

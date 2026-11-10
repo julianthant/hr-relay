@@ -10,7 +10,7 @@ import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { FIXTURE_DAY_WIRE } from './helpers/fixture-queue.js';
 import { startRunRerunServer } from './helpers/run-rerun-server.js';
-import { gotoAppState } from './helpers/app-driver.js';
+import { gotoAppState, installServedSurfaces } from './helpers/app-driver.js';
 import { absentProbeEvidence } from '../support/fixtures/write-sequencer-fixtures.js';
 import { CommandRequestSchema } from '../../src/rules/commands/commands.js';
 
@@ -28,6 +28,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     ] } : row) } });
     let parityBodyFailure: { error: unknown } | undefined;
   try {
+      await installServedSurfaces(page);
       const writes: string[] = [], errors: string[] = [];
       const commands: unknown[] = [];
       page.on('request', request => {
