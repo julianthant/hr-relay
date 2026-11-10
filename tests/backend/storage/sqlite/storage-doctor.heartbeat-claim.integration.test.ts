@@ -38,14 +38,15 @@ function emitQueued(database: AuthorityDatabase, clock: Clock, run: RunRecord) {
   });
 }
 
-type HeartbeatMode = "interval" | "during" | "process" | "twelve";
+type HeartbeatMode = "interval" | "during" | "process" | "twelve" | "work";
 
 async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
   const world = createWorkerDirectiveTestWorld();
   let timer: ReturnType<typeof setInterval> | undefined;
   let child: ChildProcess | undefined;
   try {
-    const h = await world.loopHarness(mode === "process" ? { sharedMachine: true } : {});
+    const otherProcess = mode === "process" || mode === "work";
+    const h = await world.loopHarness(otherProcess ? { sharedMachine: true } : {});
     const a = h.authority;
     const runtimeConfig = selectRunRuntime(a.database.authority);
     const peerCount = mode === "twelve" ? 12 : 1;
@@ -87,7 +88,7 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
     const first = peers[0];
     assert.ok(first);
     const renew = () => { first.renew(); heartbeats += 1; resolveHeartbeat?.(); };
-    if (mode === "process") {
+    if (otherProcess) {
       child = fork(fileURLToPath(new URL("../../../support/helpers/owner-image-heartbeat-peer.ts", import.meta.url)),
         [String(a.profile.lifetime.port)],
         { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "inherit", "inherit", "ipc"] });
@@ -102,6 +103,7 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
       peerProcess.send({
         workspace: a.profile.workspace, profileId: a.profile.admission.profileBinding.profileId, path: a.path,
         now: a.clock.now().toISOString(), runId: first.runId, workerId: first.workerId, claimGeneration: first.claimGeneration,
+        ...(mode === "work" ? { work: true } : {}),
       });
       const ready = z.union([
         z.strictObject({ type: z.literal("ready") }),
@@ -191,4 +193,8 @@ it("applies a claim while another process renews a peer claim for the whole clai
 
 it("applies a claim while twelve peer heartbeats land inside the doctor reads", async () => {
   await claimWhilePeerHeartbeats("twelve");
+});
+
+it("applies a claim while another process advances a peer run for the whole claim", async () => {
+  await claimWhilePeerHeartbeats("work");
 });
