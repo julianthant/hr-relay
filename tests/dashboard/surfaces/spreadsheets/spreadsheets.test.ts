@@ -5,7 +5,7 @@ import { createRoot,type Root } from 'react-dom/client';
 import { afterEach,beforeEach,it,vi } from 'vitest';
 import { ViewNavigationContext,type ViewRoute } from '../../../../src/dashboard/app/navigation/view-route-model.js';
 import { createDashboardClient,type DashboardClient } from '../../../../src/dashboard/client/index.js';
-import { ToastProvider } from '../../../../src/dashboard/ds/ui.js';
+import { ToastProvider, TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { DashboardClientProvider } from '../../../../src/dashboard/state/client-context.js';
 import { useSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 import { SettingsPage } from '../../../../src/dashboard/surfaces/settings/settings.js';
@@ -80,7 +80,7 @@ async function page(client: DashboardClient, initialView: ViewRoute = {}) {
     const [route, setRoute] = useState(view); const [draft, setDraft] = useState(latest);
     return createElement(DashboardClientProvider, { client, children: createElement(ViewNavigationContext.Provider, { value: { view: route, start: false, setStart() {}, update(patch) { view = { ...view, ...patch }; setRoute(view); } }, children: shown ? createElement(SpreadsheetsSettings, { workbook: draft.book, workbookDirty: draft.dirty, onWorkbook(book, dirty) { latest = { book, dirty }; setDraft(latest); } }) : null }) });
   }
-  const mount = async () => { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root?.render(createElement(ToastProvider, { children: createElement(Harness) }))); };
+  const mount = async () => { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, { children: createElement(Harness) })))); };
   await mount();
   return { latest: () => latest, view: () => view, async remountChild() { await act(async () => toggleChild(false)); await act(async () => toggleChild(true)); }, async remount() { await act(async () => root?.unmount()); document.body.replaceChildren(); latest = { book: null, dirty: false }; await mount(); } };
 }
@@ -224,7 +224,7 @@ async function settingsPage(client: DashboardClient) {
       }) : null) }) }) });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(Harness) })));
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, { children: createElement(Harness) }))));
   return {
     adapter: () => adapter,
     async discardAndExit() {
@@ -278,10 +278,10 @@ it('edits a 31-column type, required fields and membership through the mounted d
     fields: columns.map(column => column.id), fieldLabels: Object.fromEntries(columns.map(column => [column.id, column.name])) };
   let saved: WorkbookType | undefined;
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
     open: true, onOpenChange: () => undefined, type, returnFocus: createRef<HTMLButtonElement>(),
     onSave: async value => { saved = value; return { state: 'confirmed' }; },
-  }))));
+  })))));
   assert.equal(document.querySelectorAll('input[aria-label^="Column "]').length, 31);
   const first = document.querySelector<HTMLInputElement>('input[aria-label="Column 1 name"]'); assert(first);
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(first, 'Renamed column'); first.dispatchEvent(new Event('input', { bubbles: true })); });
@@ -296,10 +296,10 @@ it.each(['Employee ID', 'UCPath Empl ID'])('keeps the existing EID when imported
   const imported = { ...workbook, sheets: workbook.sheets.map(sheet => ({ ...sheet, rows: [{ ...sheet.rows[0], cells: [{ value: header }, { value: 'Notes' }, { value: 'Other' }] }, ...sheet.rows.slice(1)] })) };
   let saved: WorkbookType | undefined;
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
     open: true, onOpenChange: () => undefined, workbook: imported, returnFocus: createRef<HTMLButtonElement>(),
     onSave: async value => { saved = value; return { state: 'confirmed' }; },
-  }))));
+  })))));
   const input = (label: string) => { const node = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`); assert(node); return node; };
   const fill = async (node: HTMLInputElement, value: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(node, value); node.dispatchEvent(new Event('input', { bubbles: true })); });
   const columnNames = () => [...document.querySelectorAll<HTMLInputElement>('input[aria-label^="Column "]')].map(node => node.value);
@@ -339,10 +339,10 @@ it('reopens a pending type on Check result with its name locked', async () => {
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   const type = { id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null };
   let checks = 0;
-  await act(async () => root?.render(createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
     open: true, onOpenChange: () => undefined, type, returnFocus: createRef<HTMLButtonElement>(), pending: true,
     onSave: async value => { assert.deepEqual(value, type); checks++; return { state: 'confirmed' }; },
-  }))));
+  })))));
   const name = document.querySelector<HTMLInputElement>('input[name="spreadsheet-type-name"]');
   assert.equal(name?.disabled, true); assert.match(document.body.textContent, /not yet confirmed/);
   await vi.waitFor(() => assert.equal(document.activeElement, button('Check result')));

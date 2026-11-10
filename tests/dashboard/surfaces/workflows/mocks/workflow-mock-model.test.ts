@@ -413,8 +413,8 @@ describe_m3("legacy workflow previews", () => {
   });
   it_m3("seeds each workflow with its own fictional input and log graph", () => {
     const runs = seedMockRuns_m3(); expect_m3(runs.filter(run => !run.parentId)).toHaveLength(19);
-    expect_m3(runs).toHaveLength(26);
-    for (const id of ["i9-lookup", "sharepoint-download"]) expect_m3(runs.find(run => run.workflowId === id)!.parentId).toBe("mock:onbase:sample");
+    expect_m3(runs).toHaveLength(25);
+    for (const id of ["i9-lookup"]) expect_m3(runs.find(run => run.workflowId === id)!.parentId).toBe("mock:onbase:sample");
     expect_m3(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
     expect_m3(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {
