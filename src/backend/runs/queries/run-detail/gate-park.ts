@@ -1,3 +1,4 @@
+import { publicWriteTarget } from "../../commands/write-command-target.js";
 import { readRunCheckpoint } from "../../../storage/sqlite/run-continuation.js";
 import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
 import { retainedUcpathFindings } from "./ucpath-findings.js";
@@ -260,8 +261,8 @@ function parkedWriteActions(
   authority: RunRecord,
   intent: Extract<WriteIntentRecord, { status: "parked" }>,
 ): unknown[] {
-  const writeTarget = { writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
-    writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest };
+  const writeTarget = publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+    writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
   return [
     {
       key: "recheck-write",
@@ -607,7 +608,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
         writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
       try {
         requireParkedWriteCheckTarget(repositories, target, deps.canonical?.descriptors.resolve(authority.envelope.workflow));
-        check = { state: "available", target };
+        check = { state: "available", target: publicWriteTarget(target) };
       } catch (error) { if (!(error instanceof WorkerControlRefusal)) throw error; }
     }
   }
@@ -623,7 +624,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && request.target.runVersion === authority.version && request.target.intentVersion === intent.version);
   const lastCheck = latest?.parkedWriteCheck?.result;
   const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check));
-  return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck }),
+  return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck: { ...lastCheck, target: publicWriteTarget(lastCheck.target) } }),
     ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent, latest) } : {}),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
       eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
@@ -689,8 +690,8 @@ function parkedWriteActionsWithCheck(
       key: "check-parked-write", label: "Check again", detail: "Read UCPath while keeping this write parked.",
       intent: "warning", icon: "resolve", placement: ["review"], kind: "command", command: "check-parked-write",
       expectedVersion: authority.version, checkTarget: check.target,
-      writeTarget: { writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
-        bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest },
+      writeTarget: publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
+        bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest }),
       confirm: { title: "Read UCPath transaction findings", body: "Read the transaction list and details. The write stays parked; Relay submits nothing and does not authorize a retry.",
         confirmLabel: "Check again", tone: "neutral" },
     }])];

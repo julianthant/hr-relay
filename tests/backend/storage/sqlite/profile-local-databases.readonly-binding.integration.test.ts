@@ -63,7 +63,7 @@ it("refuses a source sidecar change during the shared binding read", async () =>
       assert.equal(error.errors[0], observed[0]); assert.equal(error.errors[1], observed[1]);
       assert.equal(error.cause, observed[0]); assert.notEqual(observed[0], observed[1]);
       for (const failure of error.errors) {
-        assert.ok(failure instanceof Error); assert.equal(failure.constructor, Error);
+        assert.ok(failure instanceof Error); assert.equal(failure.constructor, readonlySnapshots.AuthoritySourceChangedError);
         assert.equal(failure.message, "authority-readonly-source-changed");
       }
       return true;
