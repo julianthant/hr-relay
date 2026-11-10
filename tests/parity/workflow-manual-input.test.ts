@@ -31,11 +31,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
       await dialog.getByRole("textbox", { name: "Employee IDs", exact: true }).fill("10000022");
       await advance(dialog);
-      await dialog.getByRole("switch", { name: "Customize steps", exact: true }).check();
+      await setSwitchChecked(dialog.getByRole("switch", { name: "Customize steps", exact: true }), true);
       await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run", exact: true }), false);
       await advance(dialog);
       const read = dialog.getByRole("switch", { name: "Include Verify onboarding and oath date", exact: true });
-      await expect(read).toBeEnabled(); await read.uncheck();
+      await expect(read).toBeEnabled(); await setSwitchChecked(read, false);
       const form = dialog.getByRole("switch", { name: "Sign oath (required)", exact: true });
       await expect(form).toBeDisabled(); await expect(form).toBeChecked();
       await expect(startRun(dialog)).toBeDisabled();
@@ -60,8 +60,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("button", { name: "Start run", exact: true }).click();
       await dialog.locator('input[type="file"]').setInputFiles(pdf);
       await advance(dialog);
-      await dialog.getByRole("switch", { name: "Extract with OCR", exact: true }).uncheck();
-      await dialog.getByRole("switch", { name: "Customize steps", exact: true }).check();
+      await setSwitchChecked(dialog.getByRole("switch", { name: "Extract with OCR", exact: true }), false);
+      await setSwitchChecked(dialog.getByRole("switch", { name: "Customize steps", exact: true }), true);
       await advance(dialog);
       for (const name of ["Attach oath PDF", "File HR ticket"]) {
         await expect(dialog.getByRole("switch", { name: `${name} (required)`, exact: true })).toBeDisabled();
@@ -97,7 +97,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("button", { name: "Start run", exact: true }).click();
       await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: "manual-i9.pdf" });
       await advance(dialog);
-      await dialog.getByRole("switch", { name: "Extract with OCR", exact: true }).uncheck();
+      await setSwitchChecked(dialog.getByRole("switch", { name: "Extract with OCR", exact: true }), false);
       await startRun(dialog).click();
       await expect(review).toBeVisible();
       await expect(review.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("");

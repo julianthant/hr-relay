@@ -23,9 +23,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
-    await expect(picker.getByRole("button")).toHaveCount(14);
+    await expect(picker.getByRole("button")).toHaveCount(13);
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
-    await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toHaveCount(0);
     await expect(picker.getByRole("heading")).toHaveText(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
     await expect(picker.locator("button span").filter({ hasText: /^pl$|^sp$/u })).toHaveCount(0);
     const originalDialog = await dialog.elementHandle(), originalPicker = await picker.elementHandle();
@@ -79,7 +79,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
         await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("OCR");
         await expect(dialog.locator('input[type="file"]')).toHaveCount(1);
       } else {
-        await expect(picker.getByRole("button", { name: label, exact: true })).toBeDisabled();
+        await expect(picker.getByRole("button", { name: label, exact: true })).toHaveCount(0);
         await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
       }
       await page.keyboard.press("Escape");

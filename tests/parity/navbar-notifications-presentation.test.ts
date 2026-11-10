@@ -269,7 +269,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(ping).toContainText("EID 10101010");
 
       await captureSemanticEvidence(page, info, `notification-ping-${size}`);
-      await expect(ping).toHaveAccessibleName("Dismiss notification");
+      await expect(ping).toHaveAttribute("aria-label", "Dismiss notification");
       await page.getByRole("button", { name: /^Notifications/u }).click();
       await expect(ping).toHaveCount(0);
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });

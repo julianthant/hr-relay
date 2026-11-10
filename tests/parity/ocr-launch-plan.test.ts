@@ -1,4 +1,5 @@
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 
 import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
@@ -49,7 +50,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(steps).not.toContainText("Wait for OCR approval");
         const reading = steps.getByRole("switch", { name: "Include Read emergency contact", exact: true });
         await expect(reading).toBeEnabled(); await expect(reading).toBeChecked();
-        await reading.setChecked(extraction);
+        await setSwitchChecked(reading, extraction);
         await expect(steps.getByRole("switch", { name: "Include Read existing contacts", exact: true })).toBeEnabled();
         await expect(steps.getByRole("switch", { name: "Fill emergency contact (required)", exact: true })).toBeDisabled();
         await expect(steps.getByRole("switch", { name: "Save emergency contact (required)", exact: true })).toBeDisabled();
@@ -76,7 +77,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
           await info.attach(`${reviewName}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
           info.annotations.push({ type: `a11y-attachment-sha256:${reviewName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
-          for (const [label, value] of [["Employee ID", "10000022"], ["First name", "Sam"], ["Last name", "Rivera"], ["Contact name", "Alex Rivera"], ["Cell phone", "2025550101"]]) await review.getByRole("textbox", { name: label, exact: true }).fill(value);
+          for (const [label, value] of [["Employee ID", "10000022"], ["Employee name", "Sam Rivera"], ["Contact name", "Alex Rivera"], ["Cell phone", "2025550101"]]) await (label === "Contact name" ? review.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true }) : label === "Cell phone" ? review.getByRole("group", { name: "Employee", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true }) : review.getByRole("textbox", { name: label, exact: true })).fill(value);
           await review.getByRole("button", { name: "Approve records", exact: true }).click();
           await expect(page.getByText("Records approved", { exact: true })).toBeVisible();
           await expect(page.getByText("1 record released to the parent workflow.", { exact: true })).toBeVisible();

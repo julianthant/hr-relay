@@ -53,7 +53,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const records = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
         await expect(records).toBeVisible();
         await expect(records.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue(extraction ? "10000001" : "");
-        await expect(records.getByRole("textbox", { name: "Contact name", exact: true })).toBeVisible();
+        await expect(records.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true })).toBeVisible();
         await expect(records.getByRole("textbox", { name: "Date signed", exact: true })).toHaveCount(0);
         await expect(records.getByRole("textbox", { name: "Notes", exact: true })).toHaveCount(0);
         await expect(records.getByRole("button", { name: "Approve records", exact: true })).toHaveCount(1);
@@ -64,7 +64,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await employeeId.fill("10000001");
           await expect(records).not.toContainText("Employee ID must start with 10 and contain eight digits.");
           await expect(records).not.toContainText("not confirmed by a UCPath lookup");
-          await records.getByRole("textbox", { name: "Contact name", exact: true }).fill("Alex Rivera");
+          await records.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true }).fill("Alex Rivera");
           await records.getByRole("button", { name: "Discard", exact: true }).click();
           await expect(page.getByText("Review discarded", { exact: true })).toBeVisible();
           const toastEvents = await page.evaluate(() => {
@@ -77,7 +77,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(heading).toBeFocused();
           await heading.press(width === 1024 ? "Control+z" : "Meta+z");
           await expect(page.getByText("Review restored", { exact: true })).toBeVisible();
-          await expect(records.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Alex Rivera");
+          await expect(records.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Alex Rivera");
           const a11y = await records.ariaSnapshot();
 
           await info.attach(`${name}.a11y.yml`, { body: a11y, contentType: "text/yaml" });

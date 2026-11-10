@@ -102,7 +102,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const deletion = page.getByRole("dialog", { name: "Delete single-oath.pdf?", exact: true });
       await deletion.getByRole("button", { name: "Cancel", exact: true }).click(); await expect(single).toBeVisible();
       await expect(single.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
-      await single.getByRole("button", { name: "Delete", exact: true }).click(); await deletion.getByRole("button", { name: "Delete", exact: true }).click();
+      await single.getByRole("button", { name: "Delete", exact: true }).click(); await deletion.getByRole("button", { name: "Delete run", exact: true }).click();
       await expect(single).toHaveCount(0); await expect(queue.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
       await rail.getByRole("button", { name: "I-9 Lookup", exact: true }).click();
       const lookupRetry = queue.getByRole("button", { name: "Retry", exact: true });

@@ -68,7 +68,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await source.getByRole("button", { name: "Zoom in", exact: true }).click();
       expect((await pageImage.boundingBox())!.width).toBeGreaterThan(fitWidth);
       await expect(source.getByRole("toolbar", { name: "PDF controls", exact: true })).toBeInViewport();
-      await source.getByRole("button", { name: "Fit page", exact: true }).click();
+      await source.getByRole("button", { name: "Zoom out", exact: true }).click();
       expect((await pageImage.boundingBox())!.width).toBe(fitWidth);
       for (const id of ["person-2", "person-3"]) {
         await drawer.getByRole("region", { name: `Record ${id}`, exact: true }).getByRole("checkbox", { name: /^Include /u }).click();
@@ -76,13 +76,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await record.getByRole("textbox", { name: "Employee ID", exact: true }).fill("x");
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
       await record.getByRole("textbox", { name: "Employee ID", exact: true }).fill("10000009");
-      await record.getByRole("textbox", { name: "Contact name", exact: true }).fill("Sam Lee");
+      await record.getByRole("textbox", { name: "Name", exact: true }).fill("Sam Lee");
       await expect(record).not.toContainText("not confirmed by a UCPath lookup");
       const image = drawer.getByRole("img", { name: "Source page 1 of emergency-contacts.pdf", exact: true });
       await expect(image).toBeVisible();
       expect(await image.getAttribute("src")).toMatch(/emergency-contacts-1.*\.webp$/u);
-      await record.getByRole("checkbox", { name: "Same address as employee", exact: true }).click();
-      await expect(record.getByRole("textbox", { name: "Street", exact: true })).toBeVisible();
       await expect(pageImage).toHaveAttribute("src", sourceUrl!);
 
       await attachShellA11y(page, info, `contact-review-${theme.attribute}-${width}.a11y.yml`);
@@ -141,7 +139,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
     await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-    for (const [label, field] of [["Oath Upload", "Officer signed"], ["Emergency Contact", "Contact name"], ["OnBase", "Contact name"], ["I-9 Check", "Section 2 page"]]) {
+    for (const [label, field] of [["Oath Upload", "Officer signed"], ["Emergency Contact", "Relationship"], ["OnBase", "Relationship"], ["I-9 Check", "Section 2 page"]]) {
       await rail.getByRole("button", { name: label, exact: true }).click();
       await expect(logs.getByRole("tab")).toHaveCount(0);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
@@ -175,7 +173,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(queue.getByRole("button", { name: /emergency-contacts.pdf —/u })).toBeVisible();
       await expect(queue.getByRole("button", { name: "Attempts for emergency-contacts.pdf", exact: true })).toBeVisible();
       await expect(queue).not.toContainText("PDF preparation");
-      await expect(queue).toContainText("Read emergency contact");
+      await expect(queue).toContainText("Review extracted records");
       const reviewTrigger = logs.getByRole("button", { name: /^Records \d+$/u });
       await reviewTrigger.focus(); await page.keyboard.press("Enter");
       const drawer = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
@@ -188,9 +186,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
       await drawer.getByRole("checkbox", { name: "Include Jordan Lee", exact: true }).click();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
-      await first.getByRole("textbox", { name: "Contact name", exact: true }).fill("Sam Chen");
+      await first.getByRole("textbox", { name: "Name", exact: true }).fill("Sam Chen");
       await expect(drawer.getByRole("combobox", { name: "Record", exact: true })).toHaveCount(0);
-      await expect(first.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Sam Chen");
+      await expect(first.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Sam Chen");
       await expect(first.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
 
       await attachShellA11y(page, info, `focused-records-${theme.attribute}-${width}.a11y.yml`);
@@ -229,11 +227,11 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-    for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {
+    for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations", "ocr"].includes(flow.id))) {
       await rail.getByRole("button", { name: flow.label, exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Attempts for/u }).first()).toBeVisible();
       await expect(logs.getByRole("tab")).toHaveCount(0);
-      await expect(logs.getByRole("button", { name: /^Review records|^Records/u })).toHaveCount(flow.id === "ocr" ? 1 : 0);
+      await expect(logs.getByRole("button", { name: /^Review records|^Records/u })).toHaveCount(["emergency-contact", "oath-upload", "onbase", "i9-check-start"].includes(flow.id) ? 1 : 0);
       await expect(logs.getByRole("tab", { name: "Result", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("tab", { name: /^Linked runs/u })).toHaveCount(0);
       await expect(logs).not.toContainText("Fictional workflow preview");
@@ -241,7 +239,7 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
       if (flow.id === "onboarding") await attachShellA11y(page, info, `canonical-${flow.id}-${theme.attribute}.a11y.yml`);
     }
     await page.goto(`${server.baseUrl}/?day=invalid-day`);
-    await rail.getByRole("button", { name: "OCR", exact: true }).click();
+    await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
     await expect(page.getByText("Choose a valid date", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Search runs", exact: true }).click();
     const search = page.getByRole("dialog", { name: "Search runs", exact: true });

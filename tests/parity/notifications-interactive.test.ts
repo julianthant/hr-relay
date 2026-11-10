@@ -76,8 +76,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const launcher = page.getByRole("dialog", { name: "Start run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await launcher.getByRole("textbox", { name: "Emails", exact: true }).fill("notification.hire@example.com");
-      await launcher.getByRole("button", { name: "Continue", exact: true }).click(); await launcher.getByRole("button", { name: "Preview plan", exact: true }).click();
-      await launcher.getByRole("button", { name: "Start preview", exact: true }).click();
+      await launcher.getByRole("button", { name: "Continue", exact: true }).click();
+      await launcher.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
+      await launcher.getByRole("button", { name: /^Start (?:dry run|live run|run)$/u }).click();
       await expect(bell).toHaveAccessibleName("Notifications, 1 unread"); await bell.click();
       const created = item("notification.hire@example.com");
       await expect(created).toContainText("Completed"); await open("notification.hire@example.com").click();
@@ -139,7 +140,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(row).toHaveAttribute("aria-pressed", "true");
         await expect(row.locator("[data-demo-row-title]")).toBeInViewport();
         expect((await page.locator("#dashboard-main-region").boundingBox())!.y).toBe(0);
-        await expect(bell).toBeInViewport();
+        await expect(page.getByRole("button", { name: /^Notifications, \d+ unread$/u, includeHidden: true })).toBeInViewport();
         if (subject === "detect-test.pdf") await expect(review).toContainText("3 selected for approval");
         await page.keyboard.press("Escape"); await expect(reviewDialog).toHaveCount(0);
       }

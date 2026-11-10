@@ -47,7 +47,7 @@ function versionView(id: string) {
 
 /** Synthetic HTTP authority for rendered launcher checks; never opens an authority store. */
 async function startWorkbookRowsFixture(page: Page) {
-  const profile = { bootstrap, descriptorHash: bootstrap.descriptorHash, day: DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [{ day: FIXTURE_DAY, count: 0 }], workflowCounts: [], statusCounts: [], workerOperations: [], workerCards: [], workerPools: [], workerAuthority: { state: 'present', members: [] }, notifications: [] }) };
+  const profile = { bootstrap, descriptorHash: bootstrap.descriptorHash, day: DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [{ day: FIXTURE_DAY, count: 0 }], workflowCounts: [], statusCounts: [], workerCards: [], workerPools: [], workerAuthority: { state: 'present', members: [] }, notifications: [] }) };
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, profile });
   const plans: StartPlanRequest[] = [], commands: ReturnType<typeof StartCommandRequestSchema.parse>[] = [], commandBodies: string[] = [];
   let currentCatalog = structuredClone(catalog), rows: ReturnType<typeof QueueSurfaceWireSchema.parse>[] = [];

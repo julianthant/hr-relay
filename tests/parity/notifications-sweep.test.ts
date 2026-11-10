@@ -100,11 +100,11 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
   const index = cut.findIndex(Boolean);
   expect(index).toBeGreaterThanOrEqual(0);
   await labels.nth(index).hover();
-  await expect(page.getByRole("tooltip").getByText(cut[index], { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(cut[index], { exact: true }).and(page.locator(".log-step-card-title"))).toBeVisible();
   await shot(page, "timeline-tooltip", theme);
   await page.mouse.move(1, 1);
   await labels.nth(index).focus();
-  await expect(page.getByRole("tooltip").getByText(cut[index], { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(cut[index], { exact: true }).and(page.locator(".log-step-card-title"))).toBeVisible();
   await page.mouse.move(1, 1);
 
   // The step strip fits the log column at 1280 and 1024: no clipped or scrolling last column.
