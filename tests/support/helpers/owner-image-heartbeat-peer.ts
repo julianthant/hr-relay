@@ -63,7 +63,8 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
         requireLifecycleApplied(lifecycle.renewClaim({ commandId: randomUUID(), runId: request.runId, claim }));
       }
       count += 1;
-      await new Promise<void>(resolve => { setImmediate(resolve); });
+      // A short gap keeps the claimer's write lock reachable; back-to-back commits starve it with SQLITE_BUSY.
+      await new Promise<void>(resolve => { setTimeout(resolve, 2); });
     }
     try { database.close(); admission.release(); machine.release(); }
     catch (error) {
