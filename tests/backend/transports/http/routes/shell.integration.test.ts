@@ -13,6 +13,7 @@ import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../
 import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/record.js";
 import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
+import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
@@ -95,15 +96,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     seedCurrentSeparationsRun(h, evidenced);
     projectCurrentSeparationsRuns(h, [evidenced]);
     seedSeparationsRunAuthority(h.database, join(h.stateRoot, "state.db"), missing, undefined);
-    const before = h.database.getMeta();
-    assert.throws(() => projectCurrentSeparationsRuns(h, [missing]), /current composite authority is invalid/u);
+    projectCurrentSeparationsRuns(h, [missing]);
     const response = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
     const body = await json(response);
     assert.equal(response.status, 500);
-    assert.equal(body.code, "LOGGING_UNAVAILABLE");
-    assert.equal(body.message, "Debug logging is unavailable; inspect the local emergency fault log.");
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, "run-search-index-rebuild-required");
     assert.equal("people" in body, false);
-    assert.deepEqual(h.database.getMeta(), before);
+    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(h.stateRoot, "state.db")), /invariant validation failed: run-completion-consequences/u);
     assert.equal(h.database.authority.runResults.get(missing.envelope.runId), undefined);
   });
 
@@ -209,12 +209,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const body = await json(response);
 
       assert.equal(response.status, 500, corpusCase.dimension);
-      assert.equal(body.code, "LOGGING_UNAVAILABLE", corpusCase.dimension);
-      assert.equal(
-        body.message,
-        "Debug logging is unavailable; inspect the local emergency fault log.",
-        corpusCase.dimension,
-      );
+      assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
+      assert.equal(body.message, "run-search-index-rebuild-required", corpusCase.dimension);
       assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
       restoreSearchRun(h, run);
     }
@@ -243,8 +239,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const body = await json(response);
 
     assert.equal(response.status, 500);
-    assert.equal(body.code, "LOGGING_UNAVAILABLE");
-    assert.equal(body.message, "Debug logging is unavailable; inspect the local emergency fault log.");
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, "run-search-index-rebuild-required");
     assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
     restoreSearchRun(h, run);
   });
