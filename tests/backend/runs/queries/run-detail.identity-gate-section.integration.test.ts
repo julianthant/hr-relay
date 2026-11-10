@@ -7,6 +7,7 @@ import {
 availableSections,
 buildRunDetail,
 buildRunSection,
+resolveIdentityGateAnswer,
 type RunDetailQueryDeps,
 } from "../../../../src/backend/runs/queries/run-detail.js";
 import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
@@ -18,8 +19,9 @@ checkpointLookupKey,
 RunCheckpointRecordSchema,
 type RunCheckpointRecord,
 } from "../../../../src/models/workflow/checkpoint.js";
+import { IDENTITY_REVIEW_TEXT } from "../../../../src/backend/runs/decisions/decision-catalog.js";
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { IdentityGateAnswerRequestSchema, type CommandRequest, type IdentityGateAnswerRequest } from "../../../../src/rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
 import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { VerifyIdentityApprovalOutputSchema } from "../../../../src/models/workflows/separations/verify-identity-approval.js";
@@ -36,7 +38,7 @@ import {
 FIXTURE_IDENTITY_GATE,
 FIXTURE_IDENTITY_GATE_NAME_MISMATCH,
 } from "../../../support/fixtures/dashboard/fixture-day.js";
-import { fixtureIdentityGateActions } from "../../../support/fixtures/dashboard/fixture-gate.js";
+import { FIXTURE_GATE_CHECKED_EID } from "../../../support/fixtures/dashboard/fixture-gate.js";
 import {
 makeWorld,
 queuedEventOf,
@@ -83,23 +85,29 @@ const GATE_NODES = [{
 
 function packetOf(overrides: Readonly<{
   differentName?: boolean;
+  searchEid?: string;
+  eid?: string;
+  documentName?: string;
+  ucpathName?: string;
   source?: "name-resolved" | "document-eid";
 }> = {}): IdentityEvidencePacket {
   const source = overrides.source ?? "name-resolved";
+  const eid = overrides.eid ?? EID;
+  const ucpathName = overrides.ucpathName ?? "Hernandez, Jose Santos";
   const rows = [deriveJobRowFromCells([
     "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
   ], 0)];
   return buildIdentityEvidencePacket({
     documentNumber: "4510",
-    documentName: overrides.differentName === true ? "Hernandez, Maria" : "Hernandez, Jose Santos",
-    documentEidText: source === "document-eid" ? EID : "the separation document carried no EID",
+    documentName: overrides.documentName ?? (overrides.differentName === true ? "Hernandez, Maria" : "Hernandez, Jose Santos"),
+    documentEidText: source === "document-eid" ? eid : "the separation document carried no EID",
     emplIdSource: source,
     documentEidConflicts: false,
     jobSummary: {
       pageStateId: "ucpath.person-org.detail-ready",
-      emplId: EID as never,
-      displayedName: "Hernandez, Jose Santos",
+      emplId: eid as never,
+      displayedName: ucpathName,
       jobRows: rows,
       rowCount: rows.length,
       renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
@@ -108,15 +116,15 @@ function packetOf(overrides: Readonly<{
     nameSelection: {
       status: "resolved",
       selected: {
-        emplId: EID as never,
-        name: overrides.differentName === true ? "Hernandez, Maria" : "Hernandez, Jose Santos",
+        emplId: (overrides.searchEid ?? eid) as never,
+        name: overrides.differentName === true ? "Hernandez, Maria" : ucpathName,
         department: "Housing Dining Hospitality",
         jobTitle: "STDT 3",
         employeeStatus: "active",
         hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
 hdh: true,
       },
-      candidateEids: [EID as never],
+      candidateEids: [(overrides.searchEid ?? eid) as never],
     },
     plan: noSeparationWritePlan("this fixture composes no separation write plan"),
   });
@@ -243,8 +251,44 @@ function gateSection(w: DashboardWorld, deps = depsOf(w)) {
   return response.payload;
 }
 
+function available(payload: ReturnType<typeof gateSection>) {
+  if (payload.state !== "available") throw new Error("gate unavailable");
+  return payload;
+}
+
+type ServedGate = ReturnType<typeof available>["value"];
+
+function optionRefOf(value: ServedGate, index = 0): string {
+  const ref = value.options[index]?.ref;
+  if (ref === undefined) throw new Error(`served gate has no option ${String(index)}`);
+  return ref;
+}
+
+function answerOf(value: ServedGate, payload: IdentityGateAnswerRequest["payload"], overrides: Readonly<{ expectedVersion?: number }> = {}): IdentityGateAnswerRequest {
+  return IdentityGateAnswerRequestSchema.parse({
+    commandId: uuidOf(31),
+    family: "gate",
+    type: "answer-identity-gate",
+    requestedBy: "local-operator",
+    requestedAt: NOW,
+    source: "run-detail",
+    target: { runId: value.runId, gateId: "identity-approval", expectedVersion: overrides.expectedVersion ?? value.expectedVersion },
+    payload,
+  });
+}
+
+function accepted(resolution: ReturnType<typeof resolveIdentityGateAnswer>): CommandRequest {
+  if (resolution.state !== "accepted") throw new Error(`answer refused: ${resolution.code} ${resolution.message}`);
+  return resolution.request;
+}
+
+function resolvedValue(command: CommandRequest) {
+  assert.ok(command.family === "gate" && command.type === "resolve-gate");
+  return IdentityApprovalResultSchema.parse(command.payload.result.value);
+}
+
 describe("the identity-gate run-detail section (ref write-safety §14.4)", () => {
-  it("serves the opened gate's native event identity without deriving it from the park time", async () => {
+  it("serves the opened gate's native event order without deriving it from the park time", async () => {
     const w = await world(); seed(w);
     const run = w.authority.getRun(RUN_ID); assert.ok(run);
     putCheckpoint(w, checkpointOf(packetOf()));
@@ -260,8 +304,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     } });
     assert.equal(section.state, "available");
     if (section.state !== "available") throw new Error("gate unavailable");
-    assert.deepEqual(section.value.native, { eventId: record.eventId, order: record.cursor, runId: RUN_ID,
-      attempt: 1, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, nodeId: "identity-approval" });
+    assert.equal(section.value.order, record.cursor);
   });
 
   it("advertises the section for a parked-gate run and for no other lifecycle", async () => {
@@ -280,7 +323,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     ).includes("identity-gate"));
   });
 
-  it("serves the packet authority stored, with the digest an approval must carry", async () => {
+  it("serves the review authority stored as display text, with the refs an answer must carry", async () => {
     const w = await world();
     seed(w);
     const packet = packetOf();
@@ -291,13 +334,16 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     if (payload.state !== "available") throw new Error("unreachable");
     const { value } = payload;
     assert.equal(value.runId, RUN_ID);
-    assert.equal(value.gateId, "identity-approval");
-    assert.equal(value.resumeAt, "approval");
     assert.equal(value.expectedVersion, 4);
-    assert.deepEqual(value.packet, packet);
-    assert.equal(value.evidenceDigest, deriveIdentityEvidenceDigest(packet));
+    assert.equal(value.label, "Identity Approval");
+    assert.equal(value.parkedAt, NOW);
+    assert.match(value.gateRef, /^[0-9a-f-]{36}$/u);
+    assert.equal(value.reason, IDENTITY_REVIEW_TEXT.reason.eid);
+    assert.deepEqual(value.comparisons.map(({ label }) => label), packet.comparisons.map(({ field }) => IDENTITY_REVIEW_TEXT.label[field]));
+    assert.deepEqual(value.comparisons.map(({ agrees }) => agrees), packet.comparisons.map(({ agrees }) => agrees));
+    assert.deepEqual(value.options.map(({ displayName, maskedEid, origin }) => ({ displayName, maskedEid, origin })),
+      [{ displayName: packet.ucpathName, maskedEid: "••••3507", origin: IDENTITY_REVIEW_TEXT.origin["name-resolved"] }]);
     assert.equal(packet.approvalShape, "type-the-eid");
-    assert.equal(value.packet.approvalShape, "type-the-eid");
     assert.equal(value.approvalShape, "one-click");
     assert.equal(value.actions[0]?.label, "Approve this person");
     const approve = value.actions[0];
@@ -317,56 +363,29 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     const payload = gateSection(w);
     assert.equal(payload.state, "available");
     if (payload.state !== "available") throw new Error("gate unavailable");
-    assert.deepEqual(payload.value.packet, packet);
-    assert.equal(payload.value.evidenceDigest, evidenceDigest);
     assert.equal(payload.value.approvalShape, "one-click");
+    const answered = accepted(resolveIdentityGateAnswer(depsOf(w), answerOf(payload.value, { decision: "approved", gateRef: payload.value.gateRef, optionRef: optionRefOf(payload.value) }), undefined));
+    assert.equal(resolvedValue(answered).evidenceDigest, evidenceDigest);
     assert.deepEqual(VerifyIdentityApprovalOutputSchema.parse(JSON.parse(JSON.stringify(storedOutput))), storedOutput);
     assert.equal(storedOutput.approved.authority, "operator-approval");
     assert.equal(storedOutput.approved.evidenceDigest, evidenceDigest);
     assert.equal(deriveIdentityEvidenceDigest(packet), evidenceDigest);
   });
 
-  it("publishes the exact gate-result schema hash the kernel will demand", async () => {
+  it("resolves an approval to the exact gate-result schema hash the kernel will demand", async () => {
     const w = await world();
     seed(w);
-    putCheckpoint(w, checkpointOf(packetOf()));
-    const payload = gateSection(w);
-    if (payload.state !== "available") throw new Error("unreachable");
-    assert.equal(payload.value.resultSchemaHash, RESULT_SCHEMA_HASH);
+    const packet = packetOf();
+    putCheckpoint(w, checkpointOf(packet));
+    const { value } = available(gateSection(w));
 
-
-    const command = CommandRequestSchema.parse({
-      commandId: uuidOf(31),
-      family: "gate",
-      type: "resolve-gate",
-      requestedBy: "local-operator",
-      requestedAt: NOW,
-      source: "run-detail",
-      target: {
-        runId: payload.value.runId,
-        gateId: payload.value.gateId,
-        expectedVersion: payload.value.expectedVersion,
-      },
-      payload: {
-        result: {
-          schemaHash: payload.value.resultSchemaHash,
-          value: {
-            decision: "approved",
-            eid: payload.value.options[0]?.eid,
-            chosenFrom: payload.value.options[0]?.chosenFrom,
-            evidenceDigest: payload.value.evidenceDigest,
-          },
-        },
-      },
-    });
+    const command = accepted(resolveIdentityGateAnswer(depsOf(w),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) }), undefined));
     assert.equal(command.type, "resolve-gate");
+    assert.equal(command.family === "gate" ? command.payload.result.schemaHash : undefined, RESULT_SCHEMA_HASH);
+    assert.deepEqual(command.target, { runId: RUN_ID, gateId: "identity-approval", expectedVersion: 4 });
     // The value the kernel will parse through the descriptor's gate schema.
-    assert.deepEqual(
-      IdentityApprovalResultSchema.parse(
-        command.family === "gate" ? command.payload.result.value : undefined,
-      ).decision,
-      "approved",
-    );
+    assert.deepEqual(resolvedValue(command), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
   });
 
   it("labels every option with the choice the post-gate node will verify", async () => {
@@ -374,52 +393,62 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     seed(w);
     const packet = packetOf({ differentName: true });
     putCheckpoint(w, checkpointOf(packet));
-    const payload = gateSection(w);
-    if (payload.state !== "available") throw new Error("unreachable");
+    const { value } = available(gateSection(w));
     assert.deepEqual(
-      payload.value.options.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })),
-      [{ eid: EID, chosenFrom: "checked" }],
+      value.options.map(({ displayName, maskedEid }) => ({ displayName, maskedEid })),
+      [{ displayName: packet.ucpathName, maskedEid: "••••3507" }],
     );
+    assert.deepEqual(resolvedValue(accepted(resolveIdentityGateAnswer(depsOf(w),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) }), undefined))),
+    { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
     // One candidate is a confirm even when the names differ; the confirm turns destructive instead.
-    assert.equal(payload.value.approvalShape, "one-click");
+    assert.equal(value.approvalShape, "one-click");
     assert.deepEqual(
-      payload.value.actions.map((action) => action.kind === "command" ? action.resolution : undefined),
+      value.actions.map((action) => action.kind === "command" ? action.resolution : undefined),
       ["approved", "rejected"],
     );
-    const approve = payload.value.actions[0];
+    const approve = value.actions[0];
     assert.equal(approve?.kind === "command" ? approve.confirm?.tone : undefined, "destructive");
-    // D1: one candidate is approve or reject, both the served gate actions, with the declared arm text and reason.
-    assert.equal(payload.value.rejectReason, "Rejected in Logs");
-    assert.deepEqual(payload.value.decision?.options.map(({ id, label, send, recommended }) => [id, label, send, recommended]), [
+    // D1: one candidate is approve or reject, both the served gate actions, with the declared arm text; the reason is the declared one.
+    const rejected = resolvedValue(accepted(resolveIdentityGateAnswer(depsOf(w), answerOf(value, { decision: "rejected", gateRef: value.gateRef }), undefined)));
+    assert.deepEqual(rejected, { decision: "rejected", reason: "Rejected in Logs", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
+    assert.deepEqual(value.decision?.options.map(({ id, label, send, recommended }) => [id, label, send, recommended]), [
       ["approve", "Approve match", { via: "action", actionKey: "resolve-gate-approved" }, true],
       ["reject", "Reject match", { via: "action", actionKey: "resolve-gate-rejected" }, undefined],
     ]);
-    assert.deepEqual(payload.value.decision?.options.map(({ confirm }) => confirm), [approve?.kind === "command" ? approve.confirm : undefined, undefined]);
+    assert.deepEqual(value.decision?.options.map(({ confirm }) => confirm), [approve?.kind === "command" ? approve.confirm : undefined, undefined]);
   });
 
 
   it("pins the parity fixture's gate descriptors and option labels to this query's", async () => {
     for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_NAME_MISMATCH]) {
       const w = await world();
-      seed(w);
-      putCheckpoint(w, checkpointOf(fixture.packet));
+      seed(w, { version: fixture.expectedVersion });
+      // The fixture serves no packet; rebuild the one its builder composes from the served name rows and checked Employee ID.
+      const names = fixture.comparisons.find(({ label }) => label === IDENTITY_REVIEW_TEXT.label.name);
+      assert.ok(names);
+      putCheckpoint(w, checkpointOf(packetOf({ eid: FIXTURE_GATE_CHECKED_EID, documentName: names.request, ucpathName: names.ucpath })));
       const payload = gateSection(w);
       if (payload.state !== "available") throw new Error("unreachable");
 
-      assert.deepEqual(payload.value.options, fixture.options);
+      assert.equal(payload.value.label, fixture.label);
+      assert.equal(payload.value.expectedVersion, fixture.expectedVersion);
+      assert.equal(payload.value.reason, fixture.reason);
+      assert.deepEqual(payload.value.comparisons.map(({ label, agrees }) => ({ label, agrees })), fixture.comparisons.map(({ label, agrees }) => ({ label, agrees })));
+      assert.deepEqual(payload.value.options.map(({ displayName, maskedEid, origin }) => ({ displayName, maskedEid, origin })),
+        fixture.options.map(({ displayName, maskedEid, origin }) => ({ displayName, maskedEid, origin })));
       assert.equal(payload.value.approvalShape, fixture.approvalShape);
       const decision = payload.value.decision;
       if (fixture.approvalShape === "choose-a-candidate") {
-        // D2: the pick table rows are the served options with their own `chosenFrom`; a typed EID must name one of them.
+        // D2: the pick table rows are the served options, keyed by their opaque refs; a typed EID is matched on the server.
         assert.equal(decision?.type, "pick-person");
         const confirm = decision?.options.find(({ id }) => id === "confirm");
         const table = confirm?.input?.kind === "candidate" ? confirm.input.table : undefined;
-        assert.deepEqual(table?.rows.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })), fixture.options.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })));
-        // The column shows the last 4; the full EID stays on the row for the typed match.
-        assert.deepEqual(table?.rows.map(row => row.cells.find(({ columnId }) => columnId === "eid")?.value), fixture.options.map(({ eid }) => `••••${eid.slice(-4)}`));
+        assert.deepEqual(table?.rows.map(({ id }) => id), payload.value.options.map(({ ref }) => ref));
+        assert.deepEqual(table?.rows.map(row => row.cells.find(({ columnId }) => columnId === "eid")?.value), payload.value.options.map(({ maskedEid }) => maskedEid));
         const approve = payload.value.actions.find(action => action.kind === "command" && action.resolution === "approved");
         assert.deepEqual(confirm?.confirm, approve?.kind === "command" ? approve.confirm : undefined);
-        assert.deepEqual(table?.typed, { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$" });
+        assert.deepEqual(table?.typed, { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$", serverMatched: true });
         const cancelKey = w.projection.queueSurface(RUN_ID)?.actions.find(action => action.kind === "command" && action.command === "cancel")?.key;
         assert.deepEqual(decision?.options.find(({ id }) => id === "cancel-run")?.send, cancelKey === undefined ? undefined : { via: "row-action", actionKey: cancelKey });
       } else {
@@ -427,20 +456,18 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       }
       assert.deepEqual(
         JSON.parse(JSON.stringify(payload.value.actions)) as unknown,
-        JSON.parse(JSON.stringify(
-          fixtureIdentityGateActions(fixture.packet, payload.value.expectedVersion),
-        )) as unknown,
+        JSON.parse(JSON.stringify(fixture.actions)) as unknown,
       );
     }
   });
 
-  it("answers `missing` with a reason rather than a half panel", async () => {
+  it("answers `missing` with the one closed sentence rather than a half panel", async () => {
     // (a) no registered descriptor at all.
     const noDescriptor = await world();
     seed(noDescriptor);
     const a = gateSection(noDescriptor, depsOf(noDescriptor, null));
     assert.equal(a.state, "missing");
-    assert.match(a.state === "missing" ? a.reason : "", /has no registered descriptor/);
+    assert.equal(a.state === "missing" ? a.reason : "", IDENTITY_REVIEW_TEXT.unavailable);
 
     // The packet endpoint cannot fall back to its coarse item-latest reader if
     // the canonical checkpoint and timeline authority are unavailable.
@@ -449,7 +476,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     putCheckpoint(noCanonical, checkpointOf(packetOf()));
     const noAuthority = gateSection(noCanonical, depsOf(noCanonical, GATE_NODES, false));
     assert.equal(noAuthority.state, "missing");
-    assert.match(noAuthority.state === "missing" ? noAuthority.reason : "", /cannot verify checkpoint identity without canonical authority/);
+    assert.equal(noAuthority.state === "missing" ? noAuthority.reason : "", IDENTITY_REVIEW_TEXT.unavailable);
 
     // (b) the build declares no such gate.
     const wrongGate = await world();
@@ -458,14 +485,14 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       ...GATE_NODES[0], nodeId: "some-other-gate",
     }]));
     assert.equal(b.state, "missing");
-    assert.match(b.state === "missing" ? b.reason : "", /declares no gate "identity-approval"/);
+    assert.equal(b.state === "missing" ? b.reason : "", IDENTITY_REVIEW_TEXT.unavailable);
 
     // (c) the gate exists and its evidence node stored nothing.
     const noPacket = await world();
     seed(noPacket);
     const c = gateSection(noPacket);
     assert.equal(c.state, "missing");
-    assert.match(c.state === "missing" ? c.reason : "", /0 of them hold an identity decision packet/);
+    assert.equal(c.state === "missing" ? c.reason : "", IDENTITY_REVIEW_TEXT.unavailable);
 
     // A separately stored checkpoint without its timeline link is not enough
     // to authorize a packet, and the fixture keeps that event independent.
@@ -475,7 +502,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     checkpointEvents.get(noEvent)?.delete(stored.eventId);
     const missingLink = gateSection(noEvent);
     assert.equal(missingLink.state, "missing");
-    assert.match(missingLink.state === "missing" ? missingLink.reason : "", /0 of them hold an identity decision packet/);
+    assert.equal(missingLink.state === "missing" ? missingLink.reason : "", IDENTITY_REVIEW_TEXT.unavailable);
 
 
     const changedBinding = await world();
@@ -487,7 +514,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     putCheckpoint(changedBinding, altered);
     const d = gateSection(changedBinding);
     assert.equal(d.state, "missing");
-    assert.match(d.state === "missing" ? d.reason : "", /0 of them hold an identity decision packet/);
+    assert.equal(d.state === "missing" ? d.reason : "", IDENTITY_REVIEW_TEXT.unavailable);
   });
 
   it("refuses to serve a historical supplied-EID park as a current operator decision", async () => {
@@ -496,10 +523,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     putCheckpoint(w, checkpointOf(packetOf({ source: "document-eid" })));
     const payload = gateSection(w);
     assert.equal(payload.state, "missing");
-    assert.match(
-      payload.state === "missing" ? payload.reason : "",
-      /requires an operator decision only for a name-resolved or operator-entered EID/u,
-    );
+    assert.equal(payload.state === "missing" ? payload.reason : "", IDENTITY_REVIEW_TEXT.unavailable);
   });
 
   it("refuses to serve the section for a run that is not parked on a gate", async () => {
@@ -509,5 +533,114 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       () => buildRunSection(depsOf(w), RUN_ID, "identity-gate"),
       /section identity-gate is not available/,
     );
+  });
+});
+
+const SEARCH_EID = "10555123";
+
+async function chooseWorld() {
+  const w = await world();
+  seed(w);
+  const packet = packetOf({ searchEid: SEARCH_EID });
+  putCheckpoint(w, checkpointOf(packet));
+  const { value } = available(gateSection(w));
+  assert.equal(value.options.length, 2);
+  return { w, packet, value, digest: deriveIdentityEvidenceDigest(packet) };
+}
+
+describe("the served identity review keeps evidence off the wire", () => {
+  it("serves no full Employee ID, digest, node id, packet or comparison note", async () => {
+    for (const packet of [packetOf(), packetOf({ searchEid: SEARCH_EID, differentName: true })]) {
+      const w = await world();
+      seed(w);
+      putCheckpoint(w, checkpointOf(packet));
+      const { value } = available(gateSection(w));
+      const wire = JSON.stringify(value);
+      assert.doesNotMatch(wire, /(?<![0-9a-f])10\d{6}(?![0-9a-f])/u);
+      for (const eid of packet.approvableEids) assert.ok(!wire.includes(String(eid)), `full EID ${String(eid)} is served`);
+      assert.doesNotMatch(wire, /[0-9a-f]{64}/u);
+      assert.ok(!wire.includes(deriveIdentityEvidenceDigest(packet)));
+      assert.ok(!wire.includes('"gateId"'));
+      assert.ok(!wire.includes("identity-approval"));
+      assert.ok(!wire.includes('"packet"'));
+      for (const { note } of packet.comparisons) assert.ok(note.length === 0 || !wire.includes(note), `note ${note} is served`);
+      for (const fragment of ["(S1", "T00"]) assert.ok(!wire.includes(fragment), `${fragment} is served`);
+    }
+  });
+});
+
+describe("resolving an identity answer", () => {
+  it("refuses a stale gate ref, a stale version and an unknown option ref", async () => {
+    const { w, value } = await chooseWorld();
+    const optionRef = optionRefOf(value);
+    const refusals = [
+      answerOf(value, { decision: "approved", gateRef: uuidOf(77), optionRef }),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef }, { expectedVersion: value.expectedVersion + 1 }),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: uuidOf(78) }),
+      answerOf(value, { decision: "rejected", gateRef: uuidOf(77) }),
+    ];
+    for (const answer of refusals) {
+      const resolution = resolveIdentityGateAnswer(depsOf(w), answer, undefined);
+      assert.equal(resolution.state, "refused");
+      assert.equal(resolution.state === "refused" ? resolution.code : undefined, "invalid-state");
+    }
+  });
+
+  it("resolves a pick by option ref to that candidate's eid and provenance", async () => {
+    const { w, packet, value, digest } = await chooseWorld();
+    assert.equal(value.approvalShape, "choose-a-candidate");
+    const byMask = (masked: string): string => value.options.find(option => option.maskedEid === masked)?.ref ?? "";
+    const checked = resolvedValue(accepted(resolveIdentityGateAnswer(depsOf(w),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: byMask("••••3507") }), undefined)));
+    assert.deepEqual(checked, { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: digest });
+    const searched = accepted(resolveIdentityGateAnswer(depsOf(w),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: byMask("••••5123") }), undefined));
+    assert.deepEqual(resolvedValue(searched), { decision: "approved", eid: SEARCH_EID, chosenFrom: "name-search", evidenceDigest: digest });
+    assert.equal(searched.family === "gate" ? searched.payload.result.schemaHash : undefined, RESULT_SCHEMA_HASH);
+    assert.equal(digest, deriveIdentityEvidenceDigest(packet));
+  });
+
+  it("resolves a typed Employee ID only when it names a found candidate", async () => {
+    const { w, value, digest } = await chooseWorld();
+    const typed = (typedEid: string) => resolveIdentityGateAnswer(depsOf(w),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, typedEid }), undefined);
+    assert.deepEqual(resolvedValue(accepted(typed(SEARCH_EID))), { decision: "approved", eid: SEARCH_EID, chosenFrom: "name-search", evidenceDigest: digest });
+    assert.deepEqual(resolvedValue(accepted(typed(EID))), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: digest });
+    const stranger = typed("10000000");
+    assert.equal(stranger.state, "refused");
+    assert.equal(stranger.state === "refused" ? stranger.code : undefined, "invalid-state");
+  });
+
+  it("resolves a one-click approval and a rejection to canonical resolve-gate commands", async () => {
+    const w = await world();
+    seed(w);
+    const packet = packetOf();
+    putCheckpoint(w, checkpointOf(packet));
+    const { value } = available(gateSection(w));
+    const digest = deriveIdentityEvidenceDigest(packet);
+    const approved = accepted(resolveIdentityGateAnswer(depsOf(w),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) }), undefined));
+    assert.deepEqual(resolvedValue(approved), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: digest });
+    const rejected = accepted(resolveIdentityGateAnswer(depsOf(w), answerOf(value, { decision: "rejected", gateRef: value.gateRef }), undefined));
+    assert.deepEqual(resolvedValue(rejected), { decision: "rejected", reason: "Rejected in Logs", evidenceDigest: digest });
+    for (const command of [approved, rejected]) {
+      assert.equal(command.family === "gate" ? command.payload.result.schemaHash : undefined, RESULT_SCHEMA_HASH);
+      assert.equal(command.commandId, uuidOf(31));
+    }
+  });
+
+  it("replays the journaled command unchanged and refuses a different answer under the same command id", async () => {
+    const { w, value } = await chooseWorld();
+    const answer = answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value, 0) });
+    const journaled = accepted(resolveIdentityGateAnswer(depsOf(w), answer, undefined));
+    const replay = resolveIdentityGateAnswer(depsOf(w), answer, journaled);
+    assert.equal(replay.state, "accepted");
+    assert.deepEqual(replay.state === "accepted" ? replay.request : undefined, journaled);
+    const different = resolveIdentityGateAnswer(depsOf(w),
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value, 1) }), journaled);
+    assert.equal(different.state, "refused");
+    assert.equal(different.state === "refused" ? different.code : undefined, "command-divergent");
+    const flipped = resolveIdentityGateAnswer(depsOf(w), answerOf(value, { decision: "rejected", gateRef: value.gateRef }), journaled);
+    assert.equal(flipped.state === "refused" ? flipped.code : undefined, "command-divergent");
   });
 });

@@ -1,17 +1,15 @@
-import { identityGateDecision } from "../../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { IDENTITY_REVIEW_TEXT } from "../../../../../src/backend/runs/decisions/decision-catalog.js";
+import { identityReviewReason, identityReviewWire } from "../identity-review-wire.js";
+import { IDENTITY_REVIEW_TEXT } from "../../../../../src/backend/runs/decisions/decision-catalog.js";
 import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/actions.js";
-import { IdentityGateDetailWireSchema, type IdentityGateDetailWire } from "../../../../../src/models/dashboard/run-detail.js";
-import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
-import { IdentityApprovalResultSchema } from "../../../../../src/rules/separations/identity-approval.js";
-import { buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../../../src/rules/separations/identity-evidence.js";
+import type { IdentityGateDetailWire } from "../../../../../src/models/dashboard/run-detail.js";
+import { buildIdentityEvidencePacket } from "../../../../../src/rules/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../../src/rules/separations/write-plan.js";
 import { deriveJobRowFromCells } from "../../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 
 export function createFixtureGateSetup() {
   const FIXTURE_GATE_CHECKED_EID = "10688204";
-
-  const FIXTURE_GATE_RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 
   function packetOf(input: Readonly<{ documentName: string; observedAt: string }>): IdentityEvidencePacket {
     const rows = [deriveJobRowFromCells([
@@ -52,35 +50,16 @@ hdh: false,
     });
   }
 
-  function optionsOf(packet: IdentityEvidencePacket): unknown[] {
-    const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
-    return packet.approvableEids.map((eid) => ({
-      eid: String(eid),
-      chosenFrom: String(eid) === String(packet.emplId)
-        ? "checked"
-        : String(eid) === String(nameSearchEid) ? "name-search" : "manual",
-      displayName: String(eid) === String(packet.emplId)
-        ? packet.ucpathName
-        : String(eid) === String(nameSearchEid) && packet.nameSearch.status === "resolved"
-          ? packet.nameSearch.candidate.name
-          : `EID ${String(eid)}`,
-      origin: String(eid) === String(packet.emplId)
-        ? `the EID this run checked (${packet.emplIdSource})`
-        : String(eid) === String(nameSearchEid)
-          ? `a UCPath search on the document's name "${packet.documentName}" resolved this person`
-          : `a UCPath search on the document's name "${packet.documentName}" listed this EID among its candidates`,
-    }));
-  }
-
   function fixtureIdentityGateActions(
     packet: IdentityEvidencePacket,
     expectedVersion: number,
   ): unknown[] {
     const disagreements = packet.comparisons.filter(({ agrees }) => !agrees);
+    const first = disagreements[0];
     return [
       {
         key: "resolve-gate-approved",
-        label: packet.approvableEids.length === 1 ? "Approve this person" : "Approve the chosen EID",
+        label: packet.approvableEids.length === 1 ? "Approve this person" : "Approve the chosen person",
         detail: packet.approvableEids.length > 1
           ? "Choose which candidate the separation document means."
           : "Confirm the one candidate the separation document means.",
@@ -93,12 +72,9 @@ hdh: false,
         resolution: "approved",
         confirm: {
           title: "Approve this identity",
-          body: disagreements.length === 0
-            ? `Every compared field agreed for ${packet.documentName} on separation document `
-              + `${packet.documentNumber}. Approving binds the rest of this separation to this person.`
-            : `${String(disagreements.length)} field(s) DISAGREE: ${
-              disagreements.map(({ field }) => field).join(", ")
-            }. Approving files the rest of this separation against this person anyway.`,
+          body: first === undefined
+            ? IDENTITY_REVIEW_TEXT.confirm.agreed
+            : `${IDENTITY_REVIEW_TEXT.reason[first.field === "eid" ? "eid" : first.field]} ${IDENTITY_REVIEW_TEXT.confirm.disagreed}`,
           confirmLabel: "Approve",
           tone: disagreements.length === 0 ? "neutral" : "destructive",
         },
@@ -120,35 +96,25 @@ hdh: false,
 
   function buildFixtureIdentityGate(input: Readonly<{
     runId: string;
-    gateId: string;
     label: string;
     parkedAt: string;
-    resumeAt: string;
+    /** the log cursor of the gate.opened timeline event */
+    order: number;
     expectedVersion: number;
     observedAt: string;
     /** the document's own spelling of the name — what decides the ceremony */
     documentName: string;
   }>): IdentityGateDetailWire {
     const packet = packetOf({ documentName: input.documentName, observedAt: input.observedAt });
-    const options = IdentityGateDetailWireSchema.shape.options.parse(optionsOf(packet));
-    const actions = ActionDescriptorWireSchema.array().parse(fixtureIdentityGateActions(packet, input.expectedVersion));
-    return IdentityGateDetailWireSchema.parse({
+    return identityReviewWire(packet, {
       runId: input.runId,
-      gateId: input.gateId,
       label: input.label,
       parkedAt: input.parkedAt,
-      resumeAt: input.resumeAt,
       expectedVersion: input.expectedVersion,
-      resultSchemaHash: FIXTURE_GATE_RESULT_SCHEMA_HASH,
-      evidenceDigest: deriveIdentityEvidenceDigest(packet),
-      packet,
-      options,
-      approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
-      actions,
-      rejectReason: "Rejected in Logs",
-      decision: identityGateDecision(options, actions, [], undefined, { documentName: input.documentName }),
+      order: input.order,
+      actions: ActionDescriptorWireSchema.array().parse(fixtureIdentityGateActions(packet, input.expectedVersion)),
     });
   }
 
-  return { FIXTURE_GATE_CHECKED_EID, FIXTURE_GATE_RESULT_SCHEMA_HASH, fixtureIdentityGateActions, buildFixtureIdentityGate };
+  return { FIXTURE_GATE_CHECKED_EID, fixtureIdentityGateActions, buildFixtureIdentityGate };
 }

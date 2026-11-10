@@ -16,31 +16,25 @@ at: typeof FixtureIdentityTypes.at;
 uuidOf: typeof FixtureIdentityTypes.uuidOf;
 FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
 }) {
-  const GATE_NODE_ID = "identity-approval";
-
   const FIXTURE_IDENTITY_GATE = { ...buildFixtureIdentityGate({
     runId: FIXTURE_IDS.openGateRun,
-    gateId: GATE_NODE_ID,
     label: "Identity Approval",
     parkedAt: at(49),
-    resumeAt: "approval",
+    order: 4,
     expectedVersion: 5,
     observedAt: at(48),
     documentName: "Morrow, Bea",
-  }), native: { eventId: uuidOf(9501), order: 4, runId: FIXTURE_IDS.openGateRun, attempt: 1,
-    traceId: traceOf(5), spanPath: `${traceOf(5)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
+  }) };
 
   const FIXTURE_IDENTITY_GATE_NAME_MISMATCH = { ...buildFixtureIdentityGate({
     runId: FIXTURE_IDS.gateNameMismatchRun,
-    gateId: GATE_NODE_ID,
     label: "Identity Approval",
     parkedAt: at(24),
-    resumeAt: "approval",
+    order: 4,
     expectedVersion: 44,
     observedAt: at(23),
     documentName: "Okonkwo, Adaeze",
-  }), native: { eventId: uuidOf(13401), order: 4, runId: FIXTURE_IDS.gateNameMismatchRun, attempt: 1,
-    traceId: traceOf(44), spanPath: `${traceOf(44)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
+  }) };
 
   const PARKED_WRITE_INTENT_ID = uuidOf(906);
 
