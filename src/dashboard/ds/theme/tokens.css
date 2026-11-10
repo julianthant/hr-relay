@@ -1052,10 +1052,22 @@ body[data-demo-theme="light"] {
 
 /* Two-way switch: track a clear step above the card, thumb a step above the track, unselected label in the secondary text colour (AA on the track). */
 /* On-state fill of the toggle switch. */
-:root, [data-demo-theme="light"] { --ds-switch-on: var(--ui-info); }
-[data-demo-theme="dark"] { --ds-switch-on: #3b82f6; }
-.ds-segment { --ds-segment-track: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas)); --ds-segment-thumb: #fff; }
-[data-demo-theme="dark"] .ds-segment { --ds-segment-track: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-panel)); --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 26%, var(--ui-panel)); }
+:root, [data-demo-theme="light"] {
+  --ds-switch-on: var(--ui-info);
+  --ds-settings-section-gap: 48px;
+  --ds-settings-card-gap: 40px;
+}
+[data-demo-theme="dark"] {
+  --ds-switch-on: #3b82f6;
+}
+.ds-segment {
+  --ds-segment-track: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas));
+  --ds-segment-thumb: #fff;
+}
+[data-demo-theme="dark"] .ds-segment {
+  --ds-segment-track: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-panel));
+  --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 26%, var(--ui-panel));
+}
 /* Small table headings are 11px. */
 th.ds-text-caps {
   font-size: var(--ds-text-meta);

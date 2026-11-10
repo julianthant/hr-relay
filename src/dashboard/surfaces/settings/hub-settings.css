@@ -1,4 +1,3 @@
-.settings-takeover { --ds-settings-section-gap:48px;--ds-settings-card-gap:40px; }
 .dashboard-shell .settings-takeover > nav.settings-panel-nav { width:var(--ds-sidebar-width);flex-shrink:0;padding:24px 14px;gap:0;background:var(--ui-canvas); }
 .settings-nav-header { padding:0 9px 0 8px;min-height:30px;height:30px;margin-bottom:15px; }
 .settings-nav-header h2 { font-size:18px;font-weight:600; }
