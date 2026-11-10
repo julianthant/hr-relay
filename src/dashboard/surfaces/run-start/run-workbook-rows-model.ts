@@ -5,7 +5,8 @@ import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../models/failures/
 import { DashboardClientError, schemaError } from "../../client/errors.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { WorkbookLibraryVersion } from "../../../models/dashboard/workbook-library.js";
-import type { EditableWorkbookWire, WorkbookType } from "../../../models/dashboard/workbooks.js";
+import { workbookFieldCoverage } from "../../../models/dashboard/workbook-library.js";
+import type { EditableWorkbookWire } from "../../../models/dashboard/workbooks.js";
 import type { InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { previewRunInput, type RunInputPreview } from "./run-start-model.js";
 
@@ -21,7 +22,7 @@ export type WorkbookRowChoice = WorkbookRowCoordinate & {
 };
 
 export const WORKBOOK_ROW_UNAVAILABLE_TEXT = {
-  "key-field-missing": "The spreadsheet type has no lookup key.",
+  "key-field-missing": "This workflow has no lookup key.",
   "key-binding-missing": "The lookup key column is not mapped.",
   "key-binding-ambiguous": "The lookup key column has an ambiguous mapping.",
   "key-missing": "This row has no lookup key.",
@@ -29,13 +30,14 @@ export const WORKBOOK_ROW_UNAVAILABLE_TEXT = {
   "key-blank": "The lookup key is blank.",
 } satisfies Record<Extract<WorkbookRowChoice["key"], { state: "unavailable" }>["reason"], string>;
 
-export function workbookRowChoices(workbook: EditableWorkbookWire, type: WorkbookType): readonly WorkbookRowChoice[] {
-  return workbook.sheets.flatMap(sheet => {
-    const columns = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === type.keyFieldId && type.keyFieldId !== null ? [index] : []) ?? [];
+export function workbookRowChoices(workbook: EditableWorkbookWire, keyFieldId: string, selectedSheetId: string): readonly WorkbookRowChoice[] {
+  const selected = workbook.sheets.find(sheet => sheet.id === selectedSheetId);
+  if (selected === undefined) throw new Error(`RUN_WORKBOOK_SHEET_UNAVAILABLE: ${selectedSheetId}`);
+  return [selected].flatMap(sheet => {
+    const columns = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === keyFieldId ? [index] : []) ?? [];
     const headerRows = sheet.headerRow ?? 1;
     return sheet.rows.slice(headerRows).map((row, index): WorkbookRowChoice => {
       const coordinate = { sheetId: sheet.id, rowId: row.id, sourceLabel: `${sheet.name} · Row ${row.sourceRow ?? headerRows + index + 1}` };
-      if (type.keyFieldId === null) return { ...coordinate, key: { state: "unavailable", reason: "key-field-missing" } };
       if (columns.length === 0) return { ...coordinate, key: { state: "unavailable", reason: "key-binding-missing" } };
       if (columns.length > 1) return { ...coordinate, key: { state: "unavailable", reason: "key-binding-ambiguous" } };
       const value = row.cells[columns[0]]?.value;
@@ -89,18 +91,18 @@ export function previewWorkbookRows(surface: InputRunSurface, choices: readonly 
 
 
 export function useWorkbookRows(client: Pick<DashboardClient, "workbookLibraryVersion">, identity: string, authority: object,
-  enabled: boolean, ready: boolean, libraryId: string, version: WorkbookLibraryVersion | undefined, type: WorkbookType | undefined) {
-  const token = useMemo(() => ({ client, identity, authority, enabled, ready, libraryId, version, type }), [client, identity, authority, enabled, ready, libraryId, version, type]);
+  enabled: boolean, ready: boolean, libraryId: string, version: WorkbookLibraryVersion | undefined, keyFieldId: string | undefined, selectedSheetId: string | undefined) {
+  const token = useMemo(() => ({ client, identity, authority, enabled, ready, libraryId, version, keyFieldId, selectedSheetId }), [client, identity, authority, enabled, ready, libraryId, version, keyFieldId, selectedSheetId]);
   const [loaded, setLoaded] = useState<{ token: object; state: "loading" | "ready" | "error"; choices: readonly WorkbookRowChoice[]; error: string | null }>();
   useEffect(() => {
-    if (!enabled || !ready || version === undefined || type === undefined) return;
+    if (!enabled || !ready || version === undefined || keyFieldId === undefined || selectedSheetId === undefined) return;
     let current = true;
     const controller = new AbortController();
     setLoaded(previous => ({ token, state: "loading", choices: previous?.choices ?? [], error: null }));
     void readWithDeadline(() => client.workbookLibraryVersion(libraryId, version.id), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(view => {
       if (!current) return;
       if (view.libraryId !== libraryId || canonicalJsonStringify(view.version) !== canonicalJsonStringify(version)) throw schemaError("Saved spreadsheet version", "named version identity mismatch");
-      setLoaded({ token, state: "ready", choices: workbookRowChoices(view.workbook, type), error: null });
+      setLoaded({ token, state: "ready", choices: workbookRowChoices(view.workbook, keyFieldId, selectedSheetId), error: null });
     }).catch((error: unknown) => {
       const code = ErrorCatalogCodeSchema.safeParse(error instanceof DashboardClientError && error.kind === "http" ? error.code : undefined);
       const publicCode = error instanceof DashboardClientError && (error.kind === "schema" || error.kind === "protocol")
@@ -108,7 +110,34 @@ export function useWorkbookRows(client: Pick<DashboardClient, "workbookLibraryVe
       if (current) setLoaded(previous => ({ token, state: "error", choices: previous?.choices ?? [], error: ERROR_CATALOG[publicCode].text }));
     });
     return () => { current = false; controller.abort(); };
-  }, [client, token, enabled, ready, libraryId, version, type]);
+  }, [client, token, enabled, ready, libraryId, version, keyFieldId, selectedSheetId]);
   const state = !enabled ? "idle" : !ready ? "stale" : loaded?.token !== token ? "loading" : loaded.state;
   return { authority: token, state, choices: loaded?.choices ?? [], error: state === "error" ? loaded?.error ?? null : null };
+}
+
+export function useWorkbookVersionSources(client: Pick<DashboardClient, "workbookLibraryVersion">, authority: object,
+  libraryId: string | undefined, version: WorkbookLibraryVersion | undefined, currentVersionId: string | undefined,
+  requiredFields: readonly string[], currentSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string; sheetName: string }>[]) {
+  const historical = libraryId !== undefined && version !== undefined && version.id !== currentVersionId;
+  const token = useMemo(() => ({ client, authority, libraryId, version, requiredFields }), [client, authority, libraryId, version, requiredFields]);
+  const [loaded, setLoaded] = useState<{ token: object; sources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string; sheetName: string }>[]; error: string | null }>();
+  useEffect(() => {
+    if (!historical || libraryId === undefined || version === undefined) return;
+    const controller = new AbortController();
+    let current = true;
+    void readWithDeadline(() => client.workbookLibraryVersion(libraryId, version.id), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(view => {
+      if (!current) return;
+      if (view.libraryId !== libraryId || canonicalJsonStringify(view.version) !== canonicalJsonStringify(version))
+        throw schemaError("Saved spreadsheet version", "named version identity mismatch");
+      const sources = view.workbook.sheets.flatMap(sheet => workbookFieldCoverage(requiredFields,
+        (sheet.columnBindings ?? []).flatMap(binding => binding.fieldId !== null && binding.basis !== "unmapped" ? [binding.fieldId] : [])).status === "compatible"
+        ? [{ libraryId, versionId: version.id, sheetId: sheet.id, sheetName: sheet.name }] : []);
+      setLoaded({ token, sources, error: null });
+    }).catch(() => { if (current) setLoaded({ token, sources: [], error: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); });
+    return () => { current = false; controller.abort(); };
+  }, [client, token, historical, libraryId, version, requiredFields]);
+  if (!historical) return { state: "ready" as const, sources: currentSources.filter(source => source.libraryId === libraryId), error: null };
+  return loaded?.token !== token ? { state: "loading" as const, sources: [], error: null } : loaded.error !== null
+    ? { state: "error" as const, sources: [], error: loaded.error }
+    : { state: "ready" as const, sources: loaded.sources, error: null };
 }

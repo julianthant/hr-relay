@@ -69,7 +69,7 @@ export const retainedOcrStore = defineWorkflowStore("ocr", {
 });
 const policy = { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } as const;
 const definition = defineWorkflow({
-  id: "ocr", requiredWorkbookTypeIds: [], version: 1, code: "oc", label: "OCR", icon: "FileScan", category: "documents",
+  id: "ocr", requiredWorkbookFields: [], version: 1, code: "oc", label: "OCR", icon: "FileScan", category: "documents",
   summary: "Reads every original page, groups records and retains identity lookup outcomes for review.",
   input: retainedInput, canonicalInput: defineCanonicalInput(retainedInput,
     retainedInput.extend({ approval: retainedInput.shape.approval.removeDefault() }), [retainedInput.parse({ ...OCR_INPUT_EXAMPLE, roster: null })]),

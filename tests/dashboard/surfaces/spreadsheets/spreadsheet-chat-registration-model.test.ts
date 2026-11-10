@@ -7,6 +7,7 @@ import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsh
 import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { exportSheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
 import type { WorkbookLibraryQueries } from '../../../../src/dashboard/client/queries/workbook-library-queries.js';
+import { WorkbookCompatibilitySchema } from '../../../../src/models/dashboard/workbook-library.js';
 vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ exportSheetInWorker: vi.fn(async () => 'Name,ID\r\nAlex,10000001'), exportSpreadsheetInWorker: vi.fn(async () => new ArrayBuffer(4)) }));
 beforeEach(() => vi.clearAllMocks());
 function world() {
@@ -20,7 +21,7 @@ function world() {
     workbookCreate: vi.fn(async (workbook: unknown) => { const saved = record(workbook, 1); versions.push(saved); return saved; }),
     workbookSave: vi.fn(async (_id: string, expected: number, workbook: unknown) => { assert.equal(expected, versions.at(-1)?.version); const saved = record(workbook, expected + 1); versions.push(saved); return saved; }),
     workbookRevision: vi.fn(async (_id: string, version: number) => { const saved = versions.find(record => record.version === version); if (!saved) throw new Error('WORKBOOK_REVISION_UNAVAILABLE'); return saved; }),
-    workbookHistory: vi.fn(async () => []), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(),
+    workbookHistory: vi.fn(async () => []), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [] })), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(),
   } satisfies WorkbookLibraryQueries;
   const adapter = createSpreadsheetWiringAdapter(client), port = createSpreadsheetChatRegistrationPort(adapter);
   return { versions, client, adapter, port };

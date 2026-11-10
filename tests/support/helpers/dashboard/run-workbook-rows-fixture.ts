@@ -4,7 +4,7 @@ import { PARITY_DIST_DIR } from '../../../parity/helpers/bundle.js';
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PLAN } from '../../../parity/helpers/fixture-start.js';
 import { uuidOf, traceOf, FIXTURE_DAY } from '../../../parity/helpers/fixture-identity.js';
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from '../../../../src/models/dashboard/bootstrap.js';
-import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema } from '../../../../src/models/dashboard/workbook-library.js';
+import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, projectWorkbookCompatibility } from '../../../../src/models/dashboard/workbook-library.js';
 import { WorkbookTypeSchema } from '../../../../src/models/dashboard/workbooks.js';
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from '../../../../src/models/dashboard/start-plan.js';
 import { DashboardStreamEnvelopeSchema } from '../../../../src/models/dashboard/subscription.js';
@@ -53,6 +53,13 @@ async function startWorkbookRowsFixture(page: Page) {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, profile });
   const plans: StartPlanRequest[] = [], commands: ReturnType<typeof StartCommandRequestSchema.parse>[] = [], commandBodies: string[] = [];
   let currentCatalog = structuredClone(catalog), rows: ReturnType<typeof QueueSurfaceWireSchema.parse>[] = [];
+  const compatibility = () => projectWorkbookCompatibility([{ id: workflow.id, label: workflow.label,
+    requiredWorkbookFields: workflow.start.requiredWorkbookFields, workbookReference: workflow.start.workbookReference }],
+    currentCatalog.map(entry => ({ libraryId: entry.libraryId, versionId: entry.state.selectedVersionId,
+      origin: entry.state.origin, removed: entry.state.removed,
+      sheets: versionView(entry.state.selectedVersionId).workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name,
+        mappings: sheet.columnBindings?.flatMap((binding, column) => binding.fieldId !== null && binding.basis !== 'unmapped'
+          ? [{ fieldId: binding.fieldId, column, basis: binding.basis }] : []) ?? [] })) })));
   let plan: ReturnType<typeof StartPlanWireSchema.parse> | undefined;
   let loseResponse = false, delayedVersion = false, delayedCatalog = false;
   let releaseVersion: (() => void) | undefined, releaseCatalog: (() => void) | undefined;
@@ -70,6 +77,7 @@ async function startWorkbookRowsFixture(page: Page) {
       if (delayedCatalog) { delayedCatalog = false; await new Promise<void>(resolve => { releaseCatalog = resolve; }); }
       return json(route, WorkbookLibraryCatalogSchema.parse(currentCatalog));
     }
+    if (path === '/api/v1/workbooks/compatibility') return json(route, compatibility());
     if (path === '/api/v1/workbooks/types') return json(route, [type]);
     if (path === '/api/v1/workbooks/list') return json(route, []);
     if (path.startsWith(`/api/v1/workbooks/${libraryId}/versions/`)) {

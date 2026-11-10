@@ -29,6 +29,10 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await page.goto(`${hubServer.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
       const library = page.getByRole('table', { name: 'Your spreadsheets', exact: true });
       await expect(library.getByRole('button', { name: 'Open Student applicants.xlsx', exact: true })).toBeVisible();
+      await library.getByRole('checkbox', { name: 'Select Student applicants.xlsx', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Merge', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Remove', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Clear', exact: true }).click();
       await capturePresentationReference(page, info, 'library');
       const versions = page.getByRole('button', { name: 'Versions of Student applicants.xlsx', exact: true });
       await versions.click();
