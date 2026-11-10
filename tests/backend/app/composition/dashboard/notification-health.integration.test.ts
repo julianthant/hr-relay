@@ -63,6 +63,31 @@ describe("canonical notification producers", () => {
       expect(inspect).toHaveBeenCalledTimes(3);
     } finally { inspect.mockRestore(); other.close(); await f.close(); }
   });
+  it("inspects again after a peer connection commits right after the observer's own health write", async () => {
+    const f = await fixture();
+    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const other = new DatabaseSync(f.path);
+    try {
+      const observe = createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox: f.inbox, read: () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock }) });
+      await observe();
+      expect(inspect).toHaveBeenCalledTimes(1);
+      const transaction = f.db.withAuthorityTransaction.bind(f.db);
+      let peerCommitted = false;
+      const spy = vi.spyOn(f.db, "withAuthorityTransaction").mockImplementation((work: Parameters<typeof transaction>[0]) => {
+        const result = transaction(work);
+        if (!peerCommitted) { peerCommitted = true; other.exec("CREATE TABLE peer_probe(x); DROP TABLE peer_probe"); }
+        return result;
+      });
+      f.clock.advanceWall(60_000);
+      await observe();
+      expect(peerCommitted).toBe(true);
+      expect(inspect).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+      f.clock.advanceWall(60_000);
+      await observe();
+      expect(inspect).toHaveBeenCalledTimes(2);
+    } finally { inspect.mockRestore(); other.close(); await f.close(); }
+  });
   it("inspects again after an owner write lands while backup verification is suspended", async () => {
     const f = await fixture();
     const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");

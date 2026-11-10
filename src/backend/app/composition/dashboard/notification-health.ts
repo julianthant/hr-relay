@@ -14,12 +14,14 @@ export interface NotificationHealthReading { freeBytes: number; walBytes: number
 type ChangeKey = ReturnType<AuthorityDatabase["changeKey"]>;
 const inspected = new WeakMap<AuthorityDatabase, { key: ChangeKey; integrityFailed: boolean }>();
 const sameKey = (a: ChangeKey, b: ChangeKey) => a.authorityGeneration === b.authorityGeneration && a.dataVersion === b.dataVersion && a.totalChanges === b.totalChanges;
-/** Runs a synchronous write this observer owns; the remembered key follows it only when nothing else had moved it. */
+/** Runs a synchronous write this observer owns; the remembered key follows it only when nothing else moved it before or during the write. */
 function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
   const before = database.changeKey();
   const result = write();
   const entry = inspected.get(database);
-  if (entry !== undefined && sameKey(entry.key, before)) inspected.set(database, { key: database.changeKey(), integrityFailed: entry.integrityFailed });
+  const after = database.changeKey();
+  // A changed dataVersion means another connection committed, which this observer does not own.
+  if (entry !== undefined && sameKey(entry.key, before) && after.dataVersion === before.dataVersion) inspected.set(database, { key: after, integrityFailed: entry.integrityFailed });
   return result;
 }
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */
