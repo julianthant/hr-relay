@@ -178,7 +178,6 @@ export async function runPreloginRehearsal(options: { readonly workspace?: strin
     } finally {
       write(`TIMING startup-stores ms=${String(Math.round(systemClock.monotonicMs() - started))}`);
     }
-    // shortcut: repair, settings-upgrade and crash-recovery holds are not logged, so only profile-startup-* boot rows are visible; upgrade when those holds log an area and reason.
     for (const hold of readStartupHolds(workspace, bootAt)) {
       result = 1;
       write(`HELD area=${hold.area} reason=${hold.reason} code=${hold.code}`);
