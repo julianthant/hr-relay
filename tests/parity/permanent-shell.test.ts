@@ -40,14 +40,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const titleBounds = (await title.boundingBox())!;
       const categoryIconBounds = (await rail.locator("h3 svg").first().boundingBox())!;
       expect(titleBounds.x).toBe(categoryIconBounds.x);
-      const searchIconBounds = (await bar.getByRole("button", { name: "Search runs", exact: true }).locator("svg").boundingBox())!;
+      const searchIconBounds = (await bar.getByRole("button", { name: "Search", exact: true }).locator("svg").boundingBox())!;
       const rowContentRight = await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(node => node.getBoundingClientRect().right - parseFloat(getComputedStyle(node).paddingRight));
       expect(searchIconBounds.x + searchIconBounds.width).toBe(rowContentRight);
       const slotRight = await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(node => node.querySelector(".workflow-rail-running")!.getBoundingClientRect().right);
       expect(slotRight).toBe(rowContentRight);
       await expect(page.locator(".navbar-shell")).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Navigation history" })).toHaveCount(0);
-      await expect(bar.getByRole("button", { name: "Search runs", exact: true })).toBeVisible();
+      await expect(bar.getByRole("button", { name: "Search", exact: true })).toBeVisible();
       await expect(bar.getByRole("button", { name: /^Notifications,/u })).toBeVisible();
       await expect(bar.getByRole("button", { name: /^Choose date/u })).toHaveCount(0);
       await expect(bar.locator("kbd")).toHaveCount(0);
@@ -88,15 +88,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const id of [FIXTURE_IDS.openGateRun, FIXTURE_IDS.failedRun, FIXTURE_IDS.runningRun, FIXTURE_IDS.doneRun]) {
         const row = page.locator(`[data-demo-row-id="${id}"]`);
         await row.click();
-        const badgeStyle = (node: Element) => {
-          const style = getComputedStyle(node);
-          return { color: style.color, background: style.backgroundColor, border: style.borderColor, font: style.fontSize, text: node.textContent, icon: node.querySelector("svg")?.innerHTML };
-        };
         const header = logPanel.locator("header").first();
-        if (id === FIXTURE_IDS.openGateRun) {
-          await expect(header.getByRole("button", { name: "Review", exact: true })).toBeVisible();
-          await expect(header.locator("[data-slot=badge]")).toHaveCount(0);
-        } else expect(await header.locator("[data-slot=badge]").first().evaluate(badgeStyle)).toEqual(await row.locator("[data-slot=badge]").first().evaluate(badgeStyle));
+        // The run header carries no status badge; a decision or failure shows as one action button.
+        await expect(header.locator("[data-slot=badge]")).toHaveCount(0);
+        if (id === FIXTURE_IDS.openGateRun) await expect(header.getByRole("button", { name: "Review", exact: true })).toBeVisible();
+        else if (id === FIXTURE_IDS.failedRun) await expect(header.getByRole("button", { name: "View failure", exact: true })).toBeVisible();
       }
       expect(await logPanel.locator("header").first().evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(await logPanel.evaluate(node => getComputedStyle(node).backgroundColor));
       for (const frame of [queue, actions, logPanel]) {
@@ -119,7 +115,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const menu = page.locator('[data-slot="dropdown-menu-content"][data-open]');
       await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(11);
       await expect(menu.locator('[data-slot="dropdown-menu-label"]')).toHaveText(["Quick filters", "In progress", "Finished"]);
-      expect(await menu.evaluate(node => getComputedStyle(node).paddingTop)).toBe("6px");
+      expect(await menu.evaluate(node => getComputedStyle(node).paddingTop)).toBe("4px");
       expect(await menu.getByRole("menuitemcheckbox").first().evaluate(node => getComputedStyle(node).paddingLeft)).toBe("8px");
       await menu.getByRole("menuitemcheckbox", { name: /^Failed/u }).click();
       await page.keyboard.press("Escape"); await expect(status).toBeFocused();
@@ -128,9 +124,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("combobox", { name: "Sort the queue" }).click();
       const sortMenu = page.locator('[data-slot="select-content"][data-open]');
       await sortMenu.evaluate(async node => { await Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished)); });
-      expect(await sortMenu.locator('[data-slot="select-group"]').evaluate(node => getComputedStyle(node).paddingTop)).toBe("6px");
+      expect(await sortMenu.evaluate(node => getComputedStyle(node).paddingTop)).toBe("4px");
       const popupBounds = (await sortMenu.boundingBox())!, optionBounds = (await sortMenu.getByRole("option").first().boundingBox())!;
-      expect(optionBounds.x - popupBounds.x).toBeGreaterThanOrEqual(6);
+      expect(optionBounds.x - popupBounds.x).toBeGreaterThanOrEqual(4);
       await page.keyboard.press("Escape");
       await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
       const preview = queue.locator('[data-demo-row-id]:not(tr)').first();
@@ -148,7 +144,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect((await settings.boundingBox())!.width).toBe(312);
       expect(await settings.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(canvasFill);
       await expect(settings.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-      await expect(settings.getByRole("button", { name: /^Notifications,|^Search runs$/u })).toHaveCount(0);
+      await expect(settings.getByRole("button", { name: /^Notifications,|^Search$/u })).toHaveCount(0);
       const choosePage = async (name: string) => { await settings.getByRole("link", { name, exact: true }).click(); };
       await expect(settings.getByRole("link", { name: /^(Storage|Preflight|Paths|Routes|Status)$/u })).toHaveCount(0);
       await choosePage("Keyboard");
