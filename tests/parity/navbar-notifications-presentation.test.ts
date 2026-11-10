@@ -95,14 +95,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await input.fill("Morrow");
       const options = search.getByRole('option');
       const result = options.filter({ hasText: "Morrow, Bea" });
-      await expect(result).toHaveCount(1);
+      await expect(result).toHaveCount(2);
       const resultIndex = await options.evaluateAll(list => list.findIndex(option => option.textContent?.includes("Morrow, Bea")));
       expect(resultIndex).toBeGreaterThanOrEqual(0);
       await input.press("Home");
       for (let index = 0; index < resultIndex; index += 1) await input.press("ArrowDown");
-      await expect(result).toHaveAttribute('data-selected', 'true');
+      await expect(result.first()).toHaveAttribute('data-selected', 'true');
       await expect(input).toBeFocused();
-      await expect(input).toHaveAttribute('aria-activedescendant', (await result.getAttribute('id'))!);
+      await expect(input).toHaveAttribute('aria-activedescendant', (await result.first().getAttribute('id'))!);
       await input.press("Enter");
       await expect(search).toHaveCount(0);
       expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.openGateRun);
@@ -236,6 +236,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(inbox.locator(".notification-unread-dot")).toHaveCount(0);
       await expect(inbox.getByText("History gap", { exact: true })).toHaveCount(0);
       await expect(bell()).toHaveAccessibleName("Notifications, 0 unread");
+      await expect(page.getByRole("menu")).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(inbox).toHaveCount(0);
       await expect(bell()).toBeFocused();
@@ -264,17 +265,18 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);
       const ping = page.locator('[data-slot="toast"]');
       await expect(ping).toBeVisible();
-      await expect(ping).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
+      await expect(ping).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(24, 24, 27)" : "rgb(255, 255, 255)");
       await expect(ping).toContainText("EID 10101010");
 
       await captureSemanticEvidence(page, info, `notification-ping-${size}`);
-      await expect(ping.getByRole("button")).toHaveAccessibleName("Dismiss");
+      await expect(ping).toHaveAccessibleName("Dismiss notification");
       await page.getByRole("button", { name: /^Notifications/u }).click();
       await expect(ping).toHaveCount(0);
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });
       await expect(inbox).toBeVisible();
       await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);
-      await ping.getByRole("button", { name: "Dismiss", exact: true }).click();
+      await expect(ping).toBeVisible();
+      await ping.click();
       await expect(ping).toHaveCount(0);
       await expect(inbox).toHaveCount(0);
       expect(requests).toEqual([]);

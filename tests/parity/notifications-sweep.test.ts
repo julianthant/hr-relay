@@ -91,7 +91,8 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
   await shot(page, "review", theme);
   await inventory(page, "review", theme, "[aria-label='OCR records']");
   await buttons(page, "review", theme, "[aria-label='OCR records']");
-  await page.getByRole("button", { name: /^Records \d+$/ }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: /^Review records/ })).toHaveCount(0);
   // A truncated timeline label shows its full step name in the shared tooltip on hover and on focus.
   const labels = page.getByRole("navigation", { name: "Run timeline" }).locator("button");
   const cut = await labels.evaluateAll(buttons => buttons.map(button => { const text = button.querySelector("span.truncate"); return text !== null && text.scrollWidth > text.clientWidth ? button.getAttribute("aria-label")?.split(" · ")[0] ?? "" : ""; }));

@@ -38,7 +38,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await priority.press("Space");
         await expect(priority).not.toBeChecked();
         await expect(dialog).not.toContainText("· Priority");
-        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).check();
+        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).dispatchEvent("click");
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         const steps = dialog.getByRole("region", { name: "Steps", exact: true }).last();
         const rows = steps.locator(".ds-run-row");

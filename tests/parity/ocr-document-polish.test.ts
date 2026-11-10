@@ -95,7 +95,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
       await expect(rerun).toBeVisible();
       await rerun.getByRole("button", { name: "Continue", exact: true }).click();
-      await expect(rerun.getByRole("list", { name: "Selected PDFs", exact: true })).toContainText("single-oath.pdf");
+      await expect(rerun.getByRole("region", { name: "PDF documents", exact: true })).toContainText("single-oath.pdf");
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(single.getByRole("button", { name: "Retry", exact: true })).toBeFocused();
       await single.getByRole("button", { name: "Delete", exact: true }).click();
@@ -110,7 +110,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(rerun).toBeVisible();
       await expect(rerun).toContainText("OnBase · Workflow preview");
       await rerun.getByRole("button", { name: "Continue", exact: true }).click();
-      await expect(rerun.getByRole("list", { name: "Selected PDFs", exact: true })).toContainText("detect-test.pdf");
+      await expect(rerun.getByRole("region", { name: "PDF documents", exact: true })).toContainText("detect-test.pdf");
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(lookupRetry).toBeFocused();
       await page.getByRole("button", { name: "Start run", exact: true }).click();

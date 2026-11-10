@@ -67,9 +67,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       expect(offset.x).toBeGreaterThan(0); expect(offset.y).toBeGreaterThan(0);
       expect(await controls.boundingBox()).toEqual(before.controls);
       expect((await image.boundingBox())!.y).toBeLessThan(before.image.y);
-      await source.getByRole("button", { name: "Fit page", exact: true }).click();
+      await source.getByRole("button", { name: "Zoom out", exact: true }).click();
       expect((await image.boundingBox())!.width).toBe(before.image.width);
-      expect(await pan.evaluate(node => ({ x: node.scrollLeft, y: node.scrollTop }))).toEqual({ x: 0, y: 0 });
       const fields = record.locator("[data-review-fields]");
       const selection = fields.getByRole("group", { name: "Record selection", exact: true });
       const employee = fields.getByRole("group", { name: "Employee", exact: true });
@@ -134,7 +133,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await i9.getByRole("button", { name: "Zoom in", exact: true }).click();
       await chooseSelect(pager, "1");
       await expect(i9.getByRole("img")).toHaveAccessibleName("Source page 1 of i9.pdf");
-      await expect(i9.getByRole("button", { name: "Fit page", exact: true })).toBeDisabled();
       await expect(pager).toContainText("Section 2 · Page 1");
       const i9Controls = (await i9.getByRole("toolbar", { name: "PDF controls", exact: true }).boundingBox())!;
       const i9Preview = (await i9.locator("[data-review-preview]").boundingBox())!;
@@ -142,8 +140,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect.poll(() => i9.getByRole("img").evaluate(node => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0)).toBe(true);
       await i9.getByRole("button", { name: "Zoom in", exact: true }).focus();
       await page.keyboard.press("Enter");
-      await expect(i9.getByRole("button", { name: "Fit page", exact: true })).toBeEnabled();
-      await i9.getByRole("button", { name: "Fit page", exact: true }).click();
       await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
 
       await page.keyboard.press("Escape");

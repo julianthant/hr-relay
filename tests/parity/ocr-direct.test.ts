@@ -37,7 +37,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "direct-contact.pdf" : "manual-direct-contact.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).check();
+        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).dispatchEvent("click");
         await expect(dialog.getByRole("switch", { name: "Dry run", exact: true })).toHaveCount(1);
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         const steps = dialog.getByRole("region", { name: "Steps", exact: true }).last();

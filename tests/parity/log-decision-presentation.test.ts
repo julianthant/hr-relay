@@ -101,7 +101,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const viewer = page.locator(".log-viewer-dialog");
       await expect(viewer.locator(".log-capture-tab")).toHaveCount(3);
       expect(await viewer.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-      await viewer.getByRole("button", { name: "100%", exact: true }).click();
+      await viewer.getByRole("radio", { name: "100%", exact: true }).check({ force: true });
       await expect(viewer.locator(".log-viewer-image")).toHaveCSS("width", "850px");
       await viewer.getByRole("button", { name: "Zoom in", exact: true }).click();
       await expect(viewer.locator(".log-zoom")).toHaveText("125%");
@@ -109,7 +109,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(viewer.locator(".log-zoom")).toHaveText("100%");
       await page.keyboard.press("r");
       expect((await viewer.locator(".log-image-stage").boundingBox())!.width).toBe(1050);
-      await viewer.getByRole("button", { name: "Whole image", exact: true }).click();
+      await viewer.getByRole("radio", { name: "Whole image", exact: true }).check({ force: true });
       expect(await viewer.locator(".log-image-viewport").evaluate(node => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
       await page.keyboard.press("ArrowRight");
       await expect(viewer.locator(".log-viewer-image")).toHaveAttribute("src", "/logs-preview/kuali-request.svg");

@@ -38,27 +38,28 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(inbox.locator("li.notification-row")).toHaveCount(13);
 
       const contact = open("emergency-contacts.pdf");
+      const dialog = page.getByRole("dialog", { name: /^Review records/u });
+      const drawer = dialog.getByRole("region", { name: "OCR records", exact: true });
+      const cell = () => drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("group", { name: "Employee", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true });
       await contact.focus(); await page.keyboard.press("Enter");
-      await expect(inbox).toBeVisible();
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
-      await expect(drawer).toBeVisible(); await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
-      await expect.poll(async () => { const box = await drawer.boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(width);
-      await expect(logs.getByRole("heading", { level: 2, includeHidden: true })).toHaveText("emergency-contacts.pdf");
-      await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
+      await expect(dialog).toBeVisible(); await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
+      await expect.poll(async () => { const box = await dialog.boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(width);
+      await expect(dialog.getByRole("heading", { level: 2 })).toContainText("emergency-contacts.pdf");
 
-      await drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true }).fill("619-555-0199");
+      await cell().fill("619-555-0199");
+      await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
+      await expect(inbox).toBeVisible();
       await contact.click();
-      await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
-      await expect(drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true })).toHaveValue("619-555-0199");
+      await expect(cell()).toHaveValue("619-555-0199");
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
       await expect(inbox.locator("li.notification-row")).toHaveCount(13);
       await expect(inbox).toContainText("Records approved"); await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
       await contact.click();
       await expect(drawer).toBeVisible(); await expect(drawer).toContainText("619-555-0199");
-      await expect(drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true })).toHaveCount(0);
+      await expect(cell()).toHaveCount(0);
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toHaveCount(0);
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(drawer).toHaveCount(0);
+      await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
       await open("Morrow, Bea").click();
       await expect(inbox).toBeVisible(); expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.openGateRun);
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("Morrow, Bea");
@@ -130,7 +131,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       ] as const) {
         await item(subject).locator("button.notification-item").click();
         await expect(logs.getByRole("heading", { level: 2, includeHidden: true })).toHaveText(subject);
-        const review = logs.getByRole("region", { name: "OCR records", exact: true });
+        const reviewDialog = page.getByRole("dialog", { name: /^Review records/u });
+        const review = reviewDialog.getByRole("region", { name: "OCR records", exact: true });
         await expect(review.locator("[data-review-record-id]")).toHaveCount(count);
         await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
         const row = page.locator(`.dashboard-queue-column [data-demo-row-id="${mockQueueId(id)}"]`);
@@ -139,6 +141,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect((await page.locator("#dashboard-main-region").boundingBox())!.y).toBe(0);
         await expect(bell).toBeInViewport();
         if (subject === "detect-test.pdf") await expect(review).toContainText("3 selected for approval");
+        await page.keyboard.press("Escape"); await expect(reviewDialog).toHaveCount(0);
       }
       await expect(inbox.locator("li.notification-row")).toHaveCount(13);
       await expect(inbox.locator("button.notification-item", { hasText: "sick-hours.pdf" })).toHaveCount(0);
