@@ -147,7 +147,8 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 /** Read once at load: the route rewrites the URL after first render. */
-const notificationScenario = () => mockParam("notificationsPreview") ?? "normal";
+let loadedNotificationScenario: string | undefined;
+const notificationScenario = () => loadedNotificationScenario ??= mockParam("notificationsPreview") ?? "normal";
 
 export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const profileClient = useDashboardClient();

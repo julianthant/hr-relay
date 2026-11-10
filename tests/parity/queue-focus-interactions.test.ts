@@ -47,7 +47,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole('button', { name: /^Workflow Panel/ })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: 'Workflows', exact: true })).toBeVisible();
       const bounds = await Promise.all([start, status, sort].map(control => control.boundingBox()));
-      expect(bounds.every(bound => bound?.height === 32)).toBe(true);
+      expect(bounds.every(bound => bound?.height === 28)).toBe(true);
       expect(bounds[0]!.x + bounds[0]!.width).toBeLessThan(bounds[1]!.x);
       expect(bounds[1]!.x + bounds[1]!.width).toBeLessThan(bounds[2]!.x);
       await expect(bar.getByRole('button', { name: /^(Select|Done|Clear)$/ })).toHaveCount(0);

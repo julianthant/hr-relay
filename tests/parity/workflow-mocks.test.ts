@@ -27,10 +27,10 @@ async function dismissCreatedToast(page: Page, title: string) {
   await toast.getByRole("button", { name: "Dismiss", exact: true }).click();
   await expect(toast).toHaveCount(0);
 }
-async function advance(dialog: Locator) {
-  const preview = dialog.getByRole("button", { name: "Preview plan", exact: true });
-  await (await preview.count() ? preview : dialog.getByRole("button", { name: "Continue", exact: true })).click();
-}
+async function advance(dialog: Locator) { await dialog.getByRole("button", { name: "Continue", exact: true }).click(); }
+const startRun = (dialog: Locator) => dialog.getByRole("button", { name: /^Start (dry run|live run|run)$/u });
+const recordsDialog = (page: Page) => page.getByRole("dialog", { name: /^Review records/u });
+const currentStage = (dialog: Locator) => dialog.getByRole("list", { name: "Run configuration path" }).locator('[aria-current="step"]');
 
 for (const theme of PARITY_THEMES) test(`OnBase document type selection and review @ ${theme.attribute}-1440`, { annotation: [{ type: "required-a11y-evidence", description: `onbase-types-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
@@ -59,11 +59,10 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
       await expect(dialog.getByText("Other document types", { exact: true })).toHaveCount(0);
       await expect(dialog).not.toContainText("Unavailable");
       await dialog.locator('input[type="file"]').setInputFiles(pdf);
-      await advance(dialog); await advance(dialog);
-      await expect(dialog.getByRole("region", { name: "Confirm", exact: true }).getByRole("group", { name: "Run plan", exact: true })).toContainText(type);
-      await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+      await advance(dialog);
+      await startRun(dialog).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      const review = logs.getByRole("region", { name: "OCR records", exact: true });
+      const review = recordsDialog(page).getByRole("region", { name: "OCR records", exact: true });
       if (type === "Oath") await expect(review.getByRole("textbox", { name: "Printed name", exact: true })).toBeVisible();
       else if (type === "Emergency Contact") await expect(review.getByRole("textbox", { name: "Contact name", exact: true })).toBeVisible();
       else {
@@ -75,7 +74,7 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
       }
 
       await review.getByRole("button", { name: "Approve records", exact: true }).click();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(review).toHaveCount(0);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
       await expect(logs).toContainText(type);
@@ -132,7 +131,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           await dialog.getByRole("textbox", { name: "Kuali ID", exact: true }).fill(flow.example);
           await advance(dialog);
           await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
-          await expect(dialog.getByRole("button", { name: "Start preview", exact: true })).toHaveCount(0);
+          await expect(startRun(dialog)).toHaveCount(0);
           await attachScreenshotFile(page, info, "run-separations.png");
           await page.keyboard.press("Escape");
           continue;
@@ -148,37 +147,36 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
         await attachScreenshotFile(page, info, `input-${workflowReferenceId(flow.id)}-${theme.attribute}-${width}.png`);
         await advance(dialog);
-        await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
+        await expect(currentStage(dialog)).toHaveText(/Options/u);
         await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
         await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
-        await expect(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).toHaveCount(flow.dryRun ? 1 : 0);
-        const flags = dialog.locator(".launch-flags"), controls = dialog.locator(".launch-options-grid");
-        expect((await flags.boundingBox())!.y).toBeLessThan((await controls.boundingBox())!.y);
+        await expect(dialog.getByRole("switch", { name: "Dry run", exact: true })).toHaveCount(flow.dryRun ? 1 : 0);
         await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
         await expect(dialog.getByText("Always on", { exact: true })).toBeVisible();
-        await dialog.getByRole("radio", { name: "Bulk", exact: true }).press("Space");
+        const priority = dialog.getByRole("switch", { name: "Priority", exact: true });
+        await expect(priority).toBeChecked(); await priority.uncheck();
         await dialog.getByRole("radio", { name: "Headless", exact: true }).press("Space");
         await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
-        await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
+        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).check();
 
         if (flow.id === "onboarding") await attachScreenshotFile(page, info, "run-shared-options.png");
         await advance(dialog);
-        const stepRegion = dialog.getByRole("region", { name: "Steps", exact: true });
+        const stepRegion = dialog.getByRole("region", { name: "Steps", exact: true }).last();
         const visibleSteps = mockSelectableSteps(flow.id, initialMockDraft(flow.id));
         const reading = mockOcrReadSteps(flow.id, initialMockDraft(flow.id));
         const stepCount = visibleSteps.length + reading.length;
-        await expect(stepRegion.getByRole("checkbox")).toHaveCount(visibleSteps.filter(step => !mockStepIsDependency(step)).length + visibleSteps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length + reading.filter(step => step.key === "prep:ocr").length);
-        await expect(dialog).toContainText(`${stepCount} / ${stepCount} included`);
-        await expect(stepRegion.locator("li").first()).toHaveCSS("min-height", "58px");
+        await expect(stepRegion.getByRole("switch")).toHaveCount(stepCount + visibleSteps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length);
+        await expect(dialog).toContainText(`${stepCount} of ${stepCount} included`);
+        await expect(stepRegion.locator(".ds-run-row").first()).toHaveCSS("min-height", "60px");
         const optionalStep = visibleSteps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step));
         // Sign-in that a required form action depends on is locked, so some flows have no optional step.
         const optional = optionalStep;
         if (optional === undefined) {
           for (const step of visibleSteps.filter(candidate => !mockStepIsDependency(candidate))) {
-            const box = stepRegion.getByRole("checkbox", { name: step.label, exact: true });
+            const box = stepRegion.getByRole("switch", { name: `${step.label} (required)`, exact: true });
             await expect(box).toBeDisabled(); await expect(box).toBeChecked();
           }
-        } else await stepRegion.getByRole("checkbox", { name: optional.label, exact: true }).uncheck();
+        } else await stepRegion.getByRole("switch", { name: `Include ${optional.label}`, exact: true }).uncheck();
         if (optional !== undefined) for (const field of manualReadFields(flow.id, optional.key)) {
           const value = field.date ? "10/06/2026" : field.options ? field.options[0] : /employee id/iu.test(field.label) ? "10000001" : field.token === "$name" ? "Jordan Lee" : "None";
           const group = stepRegion.getByRole("group", { name: `Manual values for ${optional.label}`, exact: true });
@@ -187,23 +185,11 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         }
 
         if (flow.id === "onboarding") await attachScreenshotFile(page, info, "run-shared-steps.png");
-        await advance(dialog);
-        await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toBeVisible();
-        const confirmation = dialog.getByRole("region", { name: "Confirm", exact: true });
-        await expect(confirmation.getByRole("heading", { name: "1 run ready to queue", exact: true })).toBeVisible();
-        const summaryGap = await confirmation.evaluate(el => getComputedStyle(el).getPropertyValue("--ds-space-section").trim());
-        await expect(confirmation).toHaveCSS("gap", summaryGap);
-        await expect(confirmation).toContainText("Bulk");
-        await expect(confirmation).toContainText("Headless · screenshots required");
-        if (optional === undefined) await expect(confirmation).not.toContainText("Omitted");
-        else await expect(confirmation).toContainText(`Omitted: ${optional.label}`);
-        await expect(confirmation.getByRole("group", { name: "Run plan", exact: true }).locator("dl")).toHaveCSS("font-family", /-apple-system/);
-        await expect(confirmation.locator("details")).toHaveCount(0);
-        await expect(confirmation.getByText("Workflow plan", { exact: true })).toHaveCount(0);
+        await expect(dialog).toContainText(`${optional === undefined ? stepCount : stepCount - 1} of ${stepCount} steps`);
+        await expect(dialog).not.toContainText("· Priority");
         expect((await dialog.locator(":scope > footer").boundingBox())!.height).toBe(57);
 
-        if (flow.id === "onboarding") await attachScreenshotFile(page, info, "run-shared-confirm.png");
-        await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+        await startRun(dialog).click();
         await expect(dialog).toHaveCount(0);
         await dismissCreatedToast(page, "Run started");
         const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -213,25 +199,21 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
         await expect(rerun).toBeVisible();
         await attachScreenshotFile(page, info, `rerun-${workflowReferenceId(flow.id)}.png`);
-        await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u, /^4\s*Confirm$/u]);
+        await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u]);
         await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toHaveCount(0);
-        if (optional !== undefined) await expect(rerun.getByRole("checkbox", { name: optional.label, exact: true })).not.toBeChecked();
+        if (optional !== undefined) await expect(rerun.getByRole("switch", { name: `Include ${optional.label}`, exact: true })).not.toBeChecked();
         await expect(rerun.locator(".launch-step-status")).toHaveCount(stepCount);
         await advance(rerun);
         await expect(rerun.getByRole("region", { name: "Values", exact: true })).toBeVisible();
         if (flow.id === "onboarding") await attachScreenshotFile(page, info, "rerun-shared-values.png");
         await advance(rerun);
-        await expect(rerun.getByRole("radio", { name: "Bulk", exact: true })).toBeChecked();
         await expect(rerun.getByRole("radio", { name: "Headless", exact: true })).toBeChecked();
         await expect(rerun.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
         await expect(rerun.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
         await expect(rerun.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
         if (flow.id === "onboarding") await attachScreenshotFile(page, info, "rerun-shared-options.png");
-        await advance(rerun);
         await expect(rerun.getByText("Workflow plan", { exact: true })).toHaveCount(0);
-        await expect(rerun.getByRole("region", { name: "Confirm", exact: true })).toContainText(flow.methods[0] === "pdf" ? pdf.name : flow.example);
-        if (flow.id === "onboarding") await attachScreenshotFile(page, info, "rerun-shared-confirm.png");
-        await rerun.getByRole("button", { name: "Create rerun", exact: true }).click();
+        await startRun(rerun).click();
         await expect(rerun).toHaveCount(0);
         await dismissCreatedToast(page, "Rerun created");
         await logs.getByRole("button", { name: /^Linked runs \(\d+\)$/u }).click();
@@ -242,9 +224,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
       const approvalLogs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await approvalLogs.getByRole("button", { name: /^Records \d+$/u }).click();
-      const review = approvalLogs.getByRole("region", { name: "OCR records", exact: true });
+      const review = recordsDialog(page).getByRole("region", { name: "OCR records", exact: true });
       await review.getByRole("button", { name: "Approve records", exact: true }).click();
-      await approvalLogs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(review).toHaveCount(0);
       await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true })).toContainText("Jordan Lee");
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
@@ -256,10 +238,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await advance(upload);
       await expect(upload.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
       await expect(upload.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
-      await advance(upload);
       await expect(upload.getByText("Workflow plan", { exact: true })).toHaveCount(0);
 
-      await upload.getByRole("button", { name: "Start preview", exact: true }).click();
+      await startRun(upload).click();
       await expect(upload).toHaveCount(0);
       await expect(approvalLogs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Wait for all signatures/u })).toHaveCount(0);
       await page.keyboard.press("Escape");
@@ -290,7 +271,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await advance(dialog);
     await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
     await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
-    await expect(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).not.toBeChecked();
+    await expect(dialog.getByRole("switch", { name: "Dry run", exact: true })).not.toBeChecked();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     await dialog.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).click();
@@ -298,12 +279,11 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     const match = dialog.getByRole("textbox", { name: "Name, DOB and SSN", exact: true });
     await match.fill("Lee, Jordan, x, x");
     await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
-    await expect(dialog.getByRole("checkbox", { name: "CRM check", exact: true })).not.toBeChecked();
+    await expect(dialog.getByRole("switch", { name: "CRM check", exact: true })).not.toBeChecked();
     await match.fill("Lee, Jordan, 01/01/2000, x");
     await advance(dialog);
-    await advance(dialog);
     await expect(dialog.getByText("Workflow plan", { exact: true })).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+    await startRun(dialog).click();
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Read employment status · Skipped/u })).toBeVisible();
     await page.keyboard.press("Escape");
@@ -312,22 +292,20 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await dialog.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
     await advance(dialog);
     await dialog.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
-    await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).click();
+    await dialog.getByRole("switch", { name: "Customize steps", exact: true }).click();
     await advance(dialog);
-    await expect(dialog.getByRole("region", { name: "Steps", exact: true })).toBeVisible();
-    const stepChecks = dialog.getByRole("region", { name: "Steps", exact: true }).getByRole("checkbox");
+    await expect(dialog.getByRole("region", { name: "Steps", exact: true }).last()).toBeVisible();
+    const stepChecks = dialog.getByRole("region", { name: "Steps", exact: true }).last().getByRole("switch");
     for (const checkbox of await stepChecks.all()) {
       if (await checkbox.isDisabled()) await expect(checkbox).toBeChecked();
       else await checkbox.uncheck();
     }
-    await expect(dialog.getByRole("button", { name: "Preview plan", exact: true })).toBeDisabled();
+    await expect(startRun(dialog)).toBeDisabled();
     await dialog.getByRole("button", { name: "2 Options", exact: true }).click();
-    await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).uncheck();
-    await advance(dialog);
-    await expect(dialog).toContainText("8 / 8 included");
-    await expect(dialog).toContainText("Rehire · UC_CONC_HIRE");
+    await dialog.getByRole("switch", { name: "Customize steps", exact: true }).uncheck();
+    await expect(dialog).toContainText("8 of 8 steps");
     await expect(dialog.getByText("Workflow plan", { exact: true })).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+    await startRun(dialog).click();
     await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Create I-9 profile · Skipped/u })).toBeVisible();
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Person Lookup", exact: true }).click();

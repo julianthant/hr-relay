@@ -23,7 +23,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const start = page.getByRole("button", { name: "Start run", exact: true });
       await start.click();
       const run = page.getByRole("dialog", { name: "Start run", exact: true });
-      const input = run.getByRole("textbox", { name: "Employee IDs", exact: true });
+      const input = run.getByRole("textbox", { name: /^Employee IDs/u });
       await expect(input).toBeFocused();
       await expect(run).toHaveCSS("opacity", "1");
       const bounds = (await run.boundingBox())!;
@@ -40,8 +40,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect((await run.locator(":scope > footer").boundingBox())!.height).toBe(57);
       expect((await run.locator(".launch-workflow-rail").boundingBox())!.width).toBe(190);
       expect((await run.locator(".launch-stagebar").boundingBox())!.height).toBe(54);
-      expect((await run.locator('[data-slot="search-field-group"]').boundingBox())!.height).toBe(32);
-      expect((await input.boundingBox())!.height).toBe(88);
+      expect((await run.locator('[data-slot="search-field-group"]').boundingBox())!.height).toBe(36);
+      expect((await input.boundingBox())!.height).toBe(98);
       await expect(run.locator(":scope > header h2")).toHaveCSS("font-size", "16px");
       await expect(run.locator(".launch-stagebar > li").nth(1)).toHaveCSS("padding", "0px");
       await input.fill("10873698");

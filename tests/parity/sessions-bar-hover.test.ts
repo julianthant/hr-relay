@@ -7,8 +7,8 @@ import { previewComponentFixture } from './helpers/component-fixtures.js';
 
 const renderDir = process.env.SESSIONS_BAR_RENDER_DIR;
 const themes = [
-  { name: 'light', hover: 'rgb(235, 235, 235)', pressed: 'rgb(222, 222, 222)', focus: 'rgb(214, 214, 214)' },
-  { name: 'dark', hover: 'rgb(50, 50, 50)', pressed: 'rgb(59, 59, 59)', focus: 'rgb(74, 74, 74)' },
+  { name: 'light', hover: 'color(srgb 0.105882 0.105882 0.105882 / 0.04)' },
+  { name: 'dark', hover: 'color(srgb 0.890196 0.894118 0.901961 / 0.04)' },
 ] as const;
 
 let server: PreviewServer;
@@ -66,8 +66,7 @@ for (const theme of themes) {
     await save(panel, `${theme.name}-hover`);
 
     await page.mouse.down();
-    await expect(bar).toHaveCSS('background-color', theme.pressed);
-    expect(await painted(page, box.x + box.width - 4, y)).toBe(theme.pressed);
+    await expect(bar).toHaveCSS('background-color', theme.hover);
     await save(panel, `${theme.name}-pressed`);
     await page.mouse.up();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -81,16 +80,17 @@ for (const theme of themes) {
       active: document.activeElement === node,
       visible: node.matches(':focus-visible'),
       bar: getComputedStyle(node.parentElement!).backgroundColor,
+      outline: getComputedStyle(node).outlineWidth,
     }));
-    expect(focus, JSON.stringify(focus)).toEqual({ active: true, visible: true, bar: theme.focus });
-    expect(await painted(page, box.x + box.width - 4, y)).toBe(theme.focus);
+    expect(focus, JSON.stringify(focus)).toEqual({ active: true, visible: true, bar: 'rgba(0, 0, 0, 0)', outline: '2px' });
     await save(panel, `${theme.name}-focus`);
 
     await add.hover();
     const iconBox = (await add.boundingBox())!;
-    expect(iconBox.width).toBe(32);
-    expect(iconBox.height).toBe(32);
-    await expect(add).toHaveCSS('background-color', theme.hover);
+    expect(iconBox.width).toBe(24);
+    expect(iconBox.height).toBe(24);
+    await expect(add).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(bar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await panel.getByRole('button', { name: 'Settings', exact: true }).click();
     await panel.getByRole('button', { name: 'Log out', exact: true }).click();

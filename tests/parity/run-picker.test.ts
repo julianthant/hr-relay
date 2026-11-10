@@ -19,11 +19,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-    await expect(rail.getByRole("button")).toHaveCount(15);
+    await expect(rail.getByRole("button")).toHaveCount(14);
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
-    await expect(picker.getByRole("button")).toHaveCount(15);
+    await expect(picker.getByRole("button")).toHaveCount(14);
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
     await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toBeDisabled();
     await expect(picker.getByRole("heading")).toHaveText(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
@@ -39,7 +39,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
       expect(await dialog.evaluate((element, original) => element === original, originalDialog)).toBe(true);
       expect(await picker.evaluate((element, original) => element === original, originalPicker)).toBe(true);
     }
-    await expect(dialog.getByRole("textbox", { name: "Employee IDs", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("textbox", { name: /^Employee IDs/u })).toBeVisible();
     const search = dialog.getByRole("searchbox", { name: "Filter workflows", exact: true });
     await search.fill("oath");
     await expect(picker.getByRole("button")).toHaveCount(2);

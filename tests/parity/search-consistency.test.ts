@@ -11,13 +11,13 @@ async function expectSearchCorners(page: Page) {
   expect(await groups.count()).toBeGreaterThan(0);
   for (const group of await groups.all()) {
     for (const corner of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
-      await expect(group).toHaveCSS(`border-${corner}-radius`, await group.evaluate(node => node.closest(".settings-nav-search") ? "8px" : "12px"));
+      await expect(group).toHaveCSS(`border-${corner}-radius`, "9999px");
     }
   }
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Shared square search fields @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
+  test(`Shared pill search fields @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -25,14 +25,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
-      for (const section of ["keyboard", "routes", "spreadsheets"]) {
+      for (const section of ["keyboard", "spreadsheets"]) {
         await page.goto(`${server.baseUrl}/?settings=${section}&day=${FIXTURE_DAY}`);
         await expect(page.getByRole("searchbox", { name: "Search settings", exact: true })).toBeVisible();
         await expect(page.locator('.ds-search-field [data-slot="search-field-group"]:visible')).toHaveCount(2);
         if (section === 'spreadsheets') {
           await expect(page.getByRole('searchbox', { name: 'Find a spreadsheet', exact: true })).toHaveCount(0);
           await expect(page.getByRole('searchbox', { name: 'Search spreadsheets', exact: true })).toHaveCount(1);
-          await expect(page.getByRole('table', { name: 'Your spreadsheets', exact: true })).toBeVisible();
+          await expect(page.getByRole('region', { name: 'Spreadsheets', exact: true })).toBeVisible();
         }
         await expectSearchCorners(page);
         await assertThemeApplied(page, theme);
@@ -63,7 +63,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expectSearchCorners(page);
       expect((await dialog.boundingBox())!.width).toBe(880);
       expect((await dialog.boundingBox())!.height).toBe(628);
-      await expect(dialog.locator('[data-slot="search-field-group"]')).toHaveCSS("height", "32px");
+      await expect(dialog.locator('[data-slot="search-field-group"]')).toHaveCSS("height", "36px");
       await page.keyboard.press("Escape");
       await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Morrow, Bea — review/u }).click();
       await expect(page.getByRole("searchbox", { name: "Search logs", exact: true })).toBeVisible();
