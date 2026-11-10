@@ -58,5 +58,5 @@
 .hub-history-bar { display:flex;flex:none;align-items:center;gap:8px;padding:4px 16px 8px; }
 .hub-history-bar > :first-child { flex:1;min-width:0; }
 .hub-history-bar .ds-search-field--sidebar [data-slot="search-field-group"] { height:32px;min-height:32px;max-height:32px;border:1px solid color-mix(in srgb,var(--ds-fg) 3.5%,transparent); }
-.hub-history-bar .ds-segment { flex:none; }
+.hub-history-bar .ds-segment { flex:none;height:32px; }
 .hub-history-bar .ds-segment > label > span { padding-inline:12px; }

@@ -518,10 +518,7 @@ test("account, subscription and general interactions", async ({ page }) => {
   await expect(nav.getByRole("link", { name: "Storage" })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "Preflight" })).toHaveCount(0);
   for (const name of ["5-hour limit", "Weekly limit"]) await expect(page.getByRole("progressbar", { name: `${name} left` })).toBeVisible();
-  const full = page.getByRole("switch", { name: "Full access" });
-  await expect(full).not.toBeChecked();
-  await full.dispatchEvent("click");
-  await expect(full).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await expect(page.getByText("Not connected")).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveCount(0);
@@ -529,7 +526,10 @@ test("account, subscription and general interactions", async ({ page }) => {
   await expect(page.getByRole("group", { name: "General", exact: true })).toBeVisible();
   for (const name of ["Downloads", "Job end date", "Theme", "Animations", "Browser window"]) await expect(page.getByRole("group", { name: "General", exact: true }).getByText(name, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Run without a browser window")).toHaveCount(0);
-  await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
+  const full = page.getByRole("switch", { name: "Full access" });
+  await expect(full).not.toBeChecked();
+  await full.dispatchEvent("click");
+  await expect(full).toBeChecked();
   await expect(page.getByRole("button", { name: "Change", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
