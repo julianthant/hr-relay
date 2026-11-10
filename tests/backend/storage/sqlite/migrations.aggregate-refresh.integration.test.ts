@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { backup, DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { afterEach, beforeEach, it } from "vitest";
+import { afterAll, afterEach, beforeEach, it } from "vitest";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { SQLITE_MIGRATIONS, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { updateRunRecord } from "../../../../src/backend/storage/sqlite/run-record-row.js";
@@ -14,6 +14,7 @@ const world = createEmergencyContactRetryWorld();
 let fixture: Awaited<ReturnType<typeof world.fixture>>;
 beforeEach(async () => { fixture = await world.fixture(); });
 afterEach(world.cleanup);
+afterAll(world.releaseTemplates);
 
 for (const failed of [false, true]) it(`upgrades populated schema 20 with a ${failed ? "failed" : "done"} settlement without editing payloads or admitting forged completion removal`, async () => {
   const f = fixture;
