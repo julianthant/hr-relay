@@ -1,5 +1,5 @@
 import * as profileCredentials from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileFixtureSet, profileFixtureStorageAdmission, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, installationAdmission, profileFixtureStorageAdmission, releaseAdmissionFixture, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -18,6 +18,7 @@ import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-fau
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import type { TimelineAppend } from "../../../../src/models/events/timeline.js";
 import { RunIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -130,13 +131,16 @@ describe("explain run", () => {
   });
 
   it("refuses a missing profile selection before reading credentials or opening authority", async () => {
-    await seeded();
-    const profile = heldProfiles.at(-1); assert.ok(profile);
-    const registry = profile.machine.readProfileRegistry();
-    vi.spyOn(profile.machine, "readProfileRegistry").mockReturnValue({ ...registry, activeProfileId: null });
-    const credentials = vi.spyOn(profileCredentials, "createCredentialStore");
-    assert.throws(() => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["run", EXIT_RUN_ID] }), /profile-session-stale/u);
-    assert.equal(credentials.mock.calls.length, 0);
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-explain-unselected-"))); roots.push(root);
+    const lifetime = await RuntimeLifetimeLock.acquire(0);
+    try {
+      const machine = installationAdmission(root, lifetime);
+      assert.equal(machine.readProfileRegistry().activeProfileId, null);
+      const credentials = vi.spyOn(profileCredentials, "createCredentialStore");
+      assert.throws(() => composeExplainRuntime({ admission: machine, isolation: rebuildRuntimeIsolation, args: ["run", EXIT_RUN_ID] }), /profile-session-stale/u);
+      assert.equal(credentials.mock.calls.length, 0);
+      assert.equal(readdirSync(machine.stateRoot).includes("profiles"), false);
+    } finally { releaseAdmissionFixture(root); await lifetime.close(); }
   });
 
   it("resolves either identity form to the same explanation", async () => {
