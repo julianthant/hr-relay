@@ -1,5 +1,4 @@
 import { expect } from "@playwright/test";
-import { randomUUID } from "node:crypto";
 import { test } from "./helpers/fixtures.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
