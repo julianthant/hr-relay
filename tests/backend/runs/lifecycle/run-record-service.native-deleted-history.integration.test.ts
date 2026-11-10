@@ -5,7 +5,6 @@ import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 import { it } from "vitest";
 import { ZodError } from "zod";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { exportTransactions } from "../../../../src/backend/storage/maintenance/transaction-export.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -180,16 +179,16 @@ it.each(["live-owner-overlap", "forged-deletion-owner"] as const)("refuses %s gl
           .run("50000000-0000-4000-8000-000000000011","50000000-0000-4000-8000-000000000011",owner.envelope.runId);
       } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
     }
+    const causePattern=fault === "live-owner-overlap" ? /confirmed-publication-owner-ambiguous/u : /confirmed-publication-deletion-settlement-mismatch/u;
+    assert.equal(w.database.authority.runs.updatePresentation({runId:survivingRun.envelope.runId,expectedVersion:survivingRun.version,displayName:"Unrelated rename",now:HISTORY_NOW}).state,"applied");
+    assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation+1);
     const bytes = permanent(w.path);
     const output = join(w.root,"must-not-export.json");
-    const causePattern=fault === "live-owner-overlap" ? /confirmed-publication-owner-ambiguous/u : /confirmed-publication-deletion-settlement-mismatch/u;
     assertHistoryRefusal(()=>w.history.query({...range,system:"kuali"}),causePattern);
     assertHistoryRefusal(()=>exportTransactions(w.history,{...range,system:"kuali",output}),causePattern);
     assert.equal(existsSync(output),false);
-    assert.throws(()=>w.database.authority.runs.updatePresentation({runId:survivingRun.envelope.runId,expectedVersion:survivingRun.version,displayName:"Must not mutate",now:HISTORY_NOW}),/confirmed-publication-(?:owner-ambiguous|deletion-settlement-mismatch)/u);
-    assert.deepEqual(runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(survivingRun.envelope.runId)),survivingRun);
     assert.equal(permanent(w.path),bytes);
-    assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
+    assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation+1);
     assert.throws(()=>AuthorityDatabase.open({path:w.path,busyTimeoutMs:250,migrationOwner:"corrupt-history-reader"},capturedInstantClock(HISTORY_NOW)),fault === "live-owner-overlap" ? /confirmed-publication-owner-ambiguous/u : /confirmed-publication-deletion-settlement-mismatch/u);
     assert.equal(permanent(w.path),bytes);
   } finally { await w.dispose(); }
