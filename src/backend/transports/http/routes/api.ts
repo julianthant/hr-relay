@@ -79,6 +79,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/ocr/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/workbooks", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/types", operatorMutationIngressGuard);
+  app.use("/api/v1/workbooks/import", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/operations", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/library-actions", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/sync", operatorMutationIngressGuard);
@@ -122,7 +123,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerNotificationRoutes(app, deps);
   registerSettingsPreflightRoutes(app, { clock: deps.bootstrap.clock, preflight: deps.preflight });
   registerSettingsRoutes(app, deps);
-  registerChatGptAccountRoutes(app, { ...deps, debugEvents });
+  registerChatGptAccountRoutes(app, { ...deps, debugEvents, clock: deps.bootstrap.clock });
   registerAssistantRoutes(app, deps.assistant);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);

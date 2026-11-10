@@ -36,6 +36,7 @@ function report(overrides: Record<string, unknown> = {}): ActivityReportWire {
       registration: { state: "registered", code: "sp", label: "Separations", categoryId: "employment" },
       runs: 2,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+      needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
       failed: 0,
       cancelled: 0,
       partial: 0,

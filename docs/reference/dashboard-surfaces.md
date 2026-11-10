@@ -550,8 +550,13 @@ Lost completion delivery retains those listeners and the original deadline even 
 already shows connected. Successful completion replay reads the current account, and the browser
 revalidates it after delivery before publishing account state. Sign-out in progress is unavailable;
 an original typed closure refusal remains refused regardless of the current account.
-Account reads renew eligible ChatGPT access tokens before returning Settings state, including after
-restart. A renewable access-token expiry therefore keeps the connection; temporary renewal failures
+Account GET reads return `{account, connection, usage}`. On demand, the account service reads the
+bounded authenticated models catalog and retains its explicit success or failure for five minutes;
+account authority changes invalidate that observation. It shares concurrent reads, checks admission
+and resource closure even on a cache hit, and cancels the shared check after its last reader leaves.
+No startup, timer, sign-in or inference operation performs this status check. Usage reflects local
+plan authority; its reset time remains unknown. Eligible access tokens renew during the check,
+including after restart. A renewable access-token expiry therefore keeps the connection; temporary renewal failures
 remain unavailable, and terminal refresh denial requires sign-in again.
 
 ### Editable fields, Credentials, and Paths

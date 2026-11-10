@@ -1,3 +1,4 @@
+import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
 
 export function createActivityReportFixtures() {
@@ -44,6 +45,7 @@ export function createActivityReportFixtures() {
       },
       runs: 3,
       completion: { readBack: 1, warnings: 0, warningsUnknown: 0 },
+      needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 1, unmeasuredRuns: 0, meanMs: { state: "present", value: 12000 } },
       failed: 1, cancelled: 0, partial: 0, open: 1,
     }],
     categories: [{
@@ -57,7 +59,7 @@ export function createActivityReportFixtures() {
     ],
     outcomes: [{ outcome: "done", runs: 1 }, { outcome: "failed", runs: 1 }],
     failures: [{
-      code: "SESSION_LOST", runs: 1, transient: 1, sample: ["22222222-2222-4222-8222-222222222222"],
+      code: "SESSION_LOST", sentence: operatorFailureSentence("SESSION_LOST"), workflowId: "retired-workflow", registration: { state: "unregistered", reason: "workflow registration is unavailable" }, runs: 1, transient: 1, sample: ["22222222-2222-4222-8222-222222222222"],
     }],
     durations: {
       measuredRuns: 2,

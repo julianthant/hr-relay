@@ -1,3 +1,4 @@
+import { chatGptStatusFixture } from "../support/helpers/chatgpt-status-fixture.js";
 import { expect, type Page } from '@playwright/test';
 import { test } from './helpers/fixtures.js';
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../src/models/dashboard/assistant.js';
@@ -25,7 +26,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
     page.on('request', request => { if (request.method() !== 'GET') writes.push(new URL(request.url()).pathname); });
     try {
       await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", true); }, theme);
-      await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' } }));
+      await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: chatGptStatusFixture({ state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' }) }));
       await page.route('**/api/v1/workbooks**', async route => {
         const request = route.request(), path = new URL(request.url()).pathname;
         const response = await h.app.request(`http://localhost${path}`, { method: request.method(), headers: { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' }, ...(request.postData() ? { body: request.postData()! } : {}) });
@@ -150,7 +151,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     try {
       await page.addInitScript(value => Reflect.set(window, "relayParityTheme", value), theme);
-      await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' } }));
+      await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: chatGptStatusFixture({ state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' }) }));
       await page.route('**/api/v1/workbooks**', async route => {
         const request = route.request(), path = new URL(request.url()).pathname;
         const response = await h.app.request(`http://localhost${path}`, { method: request.method(), headers: { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' }, ...(request.postData() ? { body: request.postData()! } : {}) });
@@ -227,7 +228,7 @@ test('HUB served product uses typed answers and refusals without sample executio
   page.on('request', request => { if (request.method() !== 'GET') writes.push(new URL(request.url()).pathname); });
   try {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' } }));
+    await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: chatGptStatusFixture({ state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' }) }));
     let reply = 0;
     await page.route('**/api/v1/assistant/respond', route => {
       const index = reply++;

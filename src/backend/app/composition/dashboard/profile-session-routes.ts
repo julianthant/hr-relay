@@ -12,6 +12,7 @@ CancelProfileOnboardingRequestSchema,
 CompleteProfileOnboardingRequestSchema, ReopenProfileOnboardingBrowserRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
 ProfileLoginRequestSchema,
+ProfileFirstRunCheckSchema,
 ProfileOnboardingStateSchema,
 ProfileSignUpRequestSchema,
 PublicProfileStateSchema,
@@ -85,7 +86,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
   let selection: Selection | undefined;
   let onboardingSelection: { sessionId: string; token: string; operationId: string; profileId: string } | undefined;
-  let completedDraft: { operationId: string; sessionId: string } | undefined;
+  let completedDraft: { operationId: string; sessionId: string; profileId: string; epoch: number;
+    response: { status: ReturnType<typeof publicFailure>["status"] | 200; body: PublicProfileState }; activeSessionId?: string } | undefined;
   let pending: { sessionId: string; operationId: string; profileId: string; epoch: number; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
   const retainedCustodyFailures: unknown[] = [];
@@ -169,7 +171,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
   app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
-  const mountActive = async (result: ActiveProfileSession): Promise<PublicProfileState> => {
+  const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
+    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
+    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
     guarded.use("*", async (c, next) => {
       try { current(c.req.raw); } catch (error) {
@@ -186,11 +190,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
-    const runtime = await composeDashboardRuntime({ ...input, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
+    const runtime = await composeDashboardRuntime({ ...input, onInitialPreflight, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
       applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
-    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
-    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };
   const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
@@ -282,22 +284,41 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   });
   app.post("/api/v1/profile/onboarding/complete", async c => {
     const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json());
-    const completedSelection = selection;
-    if (completedSelection !== undefined && completedDraft?.operationId === request.operationId && cookieOf(c.req.raw, onboardingCookieName) === completedDraft.sessionId) {
-      c.header("set-cookie", `${cookieName}=${completedSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-      return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: completedSelection.profileId, epoch: completedSelection.epoch,
-        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === completedSelection.profileId)?.duoState }));
+    const completed = completedDraft;
+    if (completed?.operationId === request.operationId && cookieOf(c.req.raw, onboardingCookieName) === completed.sessionId) {
+      const registry = machine.readProfileRegistry();
+      if (transitioning || registry.activeProfileId !== completed.profileId || registry.sessionGeneration !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      if (completed.response.body.state === "active") {
+        if (selection === undefined || selection.sessionId !== completed.activeSessionId || selection.profileId !== completed.profileId || selection.epoch !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        profileRuntime.assertCurrent(selection.token);
+        c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+      }
+      return c.json(completed.response.body, completed.response.status);
     }
     const draft = currentOnboarding(c.req.raw, request.operationId);
     transitioning = true;
     try {
       const active = await profileRuntime.session.completeOnboarding(draft.token, request.operationId);
       onboardingSelection = undefined;
-      const result = await mountActive(active);
-      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId };
-      if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-      c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-      return c.json(result);
+      let initialReport: Parameters<NonNullable<DashboardComposeInput["onInitialPreflight"]>>[0] | undefined;
+      const firstRunCheck = () => ProfileFirstRunCheckSchema.parse({ scope: "local-startup", profileId: active.profileId, epoch: active.epoch,
+        ...(initialReport === undefined ? { state: "unavailable", code: "PROFILE_FIRST_RUN_CHECK_UNAVAILABLE" }
+          : { state: initialReport.results.some(result => result.status === "fail") ? "failed" : "passed", report: initialReport }) });
+      const response = await mountActive(active, report => { initialReport = report; input.onInitialPreflight?.(report); }).then(result =>
+        ({ status: 200 as const, body: PublicProfileStateSchema.parse({ ...result, firstRunCheck: firstRunCheck() }) }), (error: unknown) => {
+        if (!(error instanceof Error)) throw error;
+        const failure = publicFailure(error);
+        return { status: failure.status, body: PublicProfileStateSchema.parse({ ...failure.body, firstRunCheck: firstRunCheck() }) };
+      });
+      let activeSessionId: string | undefined;
+      if (response.body.state === "active") {
+        if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        activeSessionId = selection.sessionId;
+        c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+      }
+      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId, profileId: active.profileId, epoch: active.epoch,
+        response, ...(activeSessionId === undefined ? {} : { activeSessionId }) };
+      return c.json(response.body, response.status);
     } finally { transitioning = false; }
   });
   const endSession = async (c: Context, deleting: boolean) => {

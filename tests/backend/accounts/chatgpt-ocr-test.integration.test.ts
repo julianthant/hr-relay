@@ -33,7 +33,7 @@ it("Test OCR dispatches exactly one transient fixed synthetic page and exposes o
         } } });
       assert.equal(admitted.admitted, true); if (!admitted.admitted) throw new Error("fixture admission failed"); return admitted.extraction;
     } });
-    const app: DashboardApp = new Hono(); registerChatGptAccountRoutes(app, { chatGptAccount: f.service, chatGptOcrTest: service });
+    const app: DashboardApp = new Hono(); registerChatGptAccountRoutes(app, { clock: f.clock, chatGptAccount: f.service, chatGptOcrTest: service });
     const url = "http://127.0.0.1/api/v1/settings/chatgpt-account/test-ocr";
     assert.equal((await app.request(url, { method: "POST", body: "{}" })).status, 403); assert.equal(calls, 0);
     const headers = { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" };
