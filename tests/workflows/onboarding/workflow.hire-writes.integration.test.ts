@@ -38,7 +38,7 @@ describe("public onboarding write execution", () => {
     assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
     assert.equal(h.hire.events.at(-1), "probe:hire");
     const master = h.library.read(h.id); assert.ok(master);
-    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, "900001", "T009000001", "Pending"]);
+    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, "T009000001"]);
     assert.equal(h.repository.runOperations(root.envelope.runId).length, 1);
     assert.equal(h.repository.list().length, 1);
   });
@@ -57,7 +57,7 @@ describe("public onboarding write execution", () => {
     const output = OnboardingResultSchema.parse(stored.result.value); assert.deepEqual(output.i9, { state: "not-required" });
     assert.equal(output.hireWrite.receipt.emplId, person.emplId);
     const master = h.library.read(h.id); assert.ok(master);
-    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [person.emplId, null, "T009000001", "Pending"]);
+    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [person.emplId, "T009000001"]);
   });
 
   it("fills the full public preview with labelled samples and no intents, receipts or master writes", async () => {
@@ -88,7 +88,7 @@ describe("public onboarding write execution", () => {
         .some(checkpoint => containsDryRunSample(checkpoint.output.value)), false);
       assert.equal(h.database.authority.evidenceReceipts.findByRun(run.envelope.runId), undefined);
     }
-    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, null, null, null]);
+    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, null]);
   });
 
   it("previews a reviewed concurrent hire with an authenticated empty I-9 delegation and no effects", async () => {
@@ -110,7 +110,7 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(h.i9.events, []); assert.equal(h.hire.events.includes("commit:hire"), false);
     assert.deepEqual(h.hire.rows, []); assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
     assert.equal(h.database.authority.evidenceReceipts.findByRun(root.envelope.runId), undefined);
-    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, null, null, null]);
+    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, null]);
   });
 
   it("refuses a chosen EID absent from the independent match before creating any effect", async () => {
@@ -125,14 +125,14 @@ describe("public onboarding write execution", () => {
   it("retains operator-owned master edits as a resolve-required receipt without overwriting them", async () => {
     const h = await world.executionFixture(false, { match: "unique" }), root = h.start();
     await h.rawExecution.execute(root, signal());
-    h.edit(workbook => { workbook.sheets[0].rows[1].cells[8].value = "900007"; });
+    h.edit(workbook => { workbook.sheets[0].rows[1].cells[4].value = "T009000007"; });
     assert.equal(h.approve(root, { decision: "new-hire" }).state, "applied");
     terminal(await h.rawExecution.execute(root, signal()));
     const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
     const output = OnboardingResultSchema.parse(stored.result.value);
     assert.equal(output.state, "master-review-required");
     assert.ok(output.rosterAccess.state === "recorded" && output.rosterAccess.receiptState === "resolve-required");
-    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, "900007", null, null]);
+    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, "T009000007"]);
     assert.equal(h.repository.runOperations(root.envelope.runId).length, 1);
   });
 

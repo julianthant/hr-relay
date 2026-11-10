@@ -1,7 +1,8 @@
 import type { z } from "zod";
 import { RunWorkbookReferenceSchema, parseRunWorkbookReference } from "../../models/dashboard/workbooks.js";
 import { type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
-import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_NAME_FIELDS, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterReadOutputSchema,
+import { collapseWhitespace } from "../../models/fields/cell-coercion.js";
+import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterReadOutputSchema,
   OnboardingRosterReferenceBindingSchema, OnboardingRosterSnapshotRowSchema } from "../../models/workflows/onboarding/roster.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { sha256Hex } from "../validation/sha256.js";
@@ -12,13 +13,13 @@ type Match = Reference["snapshot"]["rows"][number]["matches"][number];
 export function onboardingRosterRow(binding: z.input<typeof OnboardingRosterReferenceBindingSchema>, match: Match) {
   const values = match.values;
   if (values.email !== binding.rowKey.email) throw new Error("onboarding-roster-key-mismatch");
-  const lived = ONBOARDING_ROSTER_NAME_FIELDS.slice(4).map(field => values[field]);
+  const legal = values.fullName, lived = values.livedName;
+  const livedName = typeof lived === "string" ? collapseWhitespace(lived) : lived;
   return OnboardingRosterSnapshotRowSchema.parse({
     binding: { ...binding, sheetId: match.sheetId, rowId: match.rowId },
     references: {
-      legalName: { firstName: values.firstName, lastName: values.lastName, middleName: values.middleName },
-      livedName: lived.every(value => value === null) ? null
-        : { firstName: values["roster.livedFirstName"], lastName: values["roster.livedLastName"], middleName: values["roster.livedMiddleName"] },
+      legalName: typeof legal === "string" ? collapseWhitespace(legal) : legal,
+      livedName: livedName === null || livedName === "" ? null : livedName,
     },
   });
 }

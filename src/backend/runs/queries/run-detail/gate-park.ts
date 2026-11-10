@@ -17,6 +17,7 @@ import {
 } from "../../../../models/write-safety/protected-input.js";
 import { deriveIdentityEvidenceDigest } from "../../../../rules/separations/identity-evidence.js";
 import type { z } from "zod";
+import { HirePlanSchema } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import { SearchPersonMatchOutputSchema } from "../../../../models/systems/ucpath/search-person-match.js";
 import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../../models/workflows/onboarding/read-write-plan.js";
 import { MatchIdentityOutputSchema } from "../../../../models/workflows/separations/match-identity.js";
@@ -126,11 +127,17 @@ function settledGateWire(
 function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string): RunDecisionWire | undefined {
   const arms = findGateDecision(authority.envelope.workflow, gateId)?.arms;
   if (gateId !== ONBOARDING_WRITE_REVIEW_GATE || arms === undefined) return undefined;
-  const match = hireReviewMatch(deps, authority);
-  return match === undefined ? undefined : hireReviewDecision(match, arms, gateId, authority.version);
+  const match = hireReviewCheckpoint(deps, authority, "ucpath-source", SearchPersonMatchOutputSchema);
+  const plan = hireReviewCheckpoint(deps, authority, "hire-plan", HirePlanSchema);
+  return match === undefined || plan === undefined ? undefined : hireReviewDecision(match, plan.employee, arms, gateId, authority.version);
 }
 
-export function hireReviewDecision(match: z.infer<typeof SearchPersonMatchOutputSchema>,
+type HireNames = Pick<z.infer<typeof HirePlanSchema>["employee"], "firstName" | "middleName" | "lastName"
+  | "preferredFirstName" | "preferredMiddleName" | "preferredLastName">;
+const nameParts = (first: string, middle: string, last: string) => `first ${first}, ${middle === "" ? "no middle name" : `middle ${middle}`}, last ${last}`;
+
+/** The split legal and preferred names are served before approval because the hire writes them. */
+export function hireReviewDecision(match: z.infer<typeof SearchPersonMatchOutputSchema>, names: HireNames,
   arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string, expectedVersion: number): RunDecisionWire | undefined {
   const confirmed = match.confirmed.filter(person => match.hits.some(hit => hit.emplId === person.emplId && hit.name === person.name)
     && !match.dropped.some(hit => hit.emplId === person.emplId));
@@ -147,20 +154,22 @@ export function hireReviewDecision(match: z.infer<typeof SearchPersonMatchOutput
     } } }];
     return [];
   });
-  return served.length === 0 ? undefined : projectDecision("review-before-write", served);
+  const context = `Legal name: ${nameParts(names.firstName, names.middleName, names.lastName)}. `
+    + `Preferred name: ${nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName)}.`;
+  return served.length === 0 ? undefined : projectDecision("review-before-write", served, { context });
 }
 
-/** The run's `ucpath-source` match checkpoint, or undefined when it cannot be read for this run's bound descriptor. */
-function hireReviewMatch(deps: RunDetailQueryDeps, authority: RunRecord): z.infer<typeof SearchPersonMatchOutputSchema> | undefined {
+/** The run's own checkpoint for `nodeId`, or undefined when it cannot be read for this run's bound descriptor. */
+function hireReviewCheckpoint<S extends z.ZodType>(deps: RunDetailQueryDeps, authority: RunRecord, nodeId: string, schema: S): z.infer<S> | undefined {
   const canonical = deps.canonical;
   if (canonical === undefined) return undefined;
   const { envelope } = authority;
-  const stored = readRunCheckpoint(canonical.database.authority, envelope, "ucpath-source", true);
+  const stored = readRunCheckpoint(canonical.database.authority, envelope, nodeId, true);
   if (stored === undefined || stored.workflowId !== envelope.workflow || stored.itemId !== envelope.itemId
     || stored.attempt > envelope.attempt || stored.descriptorVersion !== envelope.descriptorVersion
     || stored.contractFingerprint !== envelope.contractFingerprint
-    || stored.output.schemaHash !== deriveSchemaHash(SearchPersonMatchOutputSchema, "output")) return undefined;
-  const parsed = SearchPersonMatchOutputSchema.safeParse(stored.output.value);
+    || stored.output.schemaHash !== deriveSchemaHash(schema, "output")) return undefined;
+  const parsed = schema.safeParse(stored.output.value);
   return parsed.success ? parsed.data : undefined;
 }
 

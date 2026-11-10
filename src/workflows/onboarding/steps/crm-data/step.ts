@@ -49,7 +49,7 @@ export const onboardingCrmDataDefinition = defineStep({
   nodePurposes: [
     { nodeId: ONBOARDING_ROSTER_GATE_ID, purpose: "Hold missing or duplicate exact-key roster matches for a revalidated worksheet and row choice." },
     { nodeId: "crm-source", purpose: "Read the exact email-bound CRM hire record through the existing driver task." },
-    { nodeId: "hire-plan", purpose: "Validate hire values using legal and lived names from the captured run-start roster snapshot." },
+    { nodeId: "hire-plan", purpose: "Validate hire values and split the roster legal and lived names against the CRM record." },
   ],
   proof: {
     id: "onboarding-crm-data", order: 15,

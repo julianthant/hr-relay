@@ -23,6 +23,13 @@ describe('typed spreadsheet field contract', () => {
     assert.equal(suggestSpreadsheetField('Unknown', ['T123', 'T456']).fieldId, 'transactionNumber');
     for (const samples of [['123456'], ['student@example.com'], [''], ['10000001', '123']]) assert.equal(suggestSpreadsheetField('Unknown', samples).fieldId, null);
   });
+  it('maps the real Onboarding roster columns, including the misspelt transaction column only by its T-number samples', () => {
+    for (const [header, fieldId] of [['Legal Name', 'fullName'], ['Lived Name', 'livedName'], ['UCPath ID', 'eid'], ['Transaction #', 'transactionNumber']]) {
+      assert.deepEqual(suggestSpreadsheetField(header, []), { fieldId, basis: 'header' }, header);
+    }
+    assert.deepEqual(suggestSpreadsheetField('Transacton #', ['T009000001', ' T009000002 ', '']), { fieldId: 'transactionNumber', basis: 'values' });
+    assert.deepEqual(suggestSpreadsheetField('Transacton #', []), { fieldId: null, basis: 'unmapped' });
+  });
   it('validates identifier shapes, contact details, dates and statuses while allowing missing future values', () => {
     const cases: readonly [string, string, boolean][] = [
       ['eid', '10000001', true], ['eid', '10-000-001', true], ['eid', '11000001', false], ['eid', '1000001', false], ['eid', '10abcdef', false],

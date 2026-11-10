@@ -2,13 +2,21 @@ import { z } from "zod";
 import { ArtifactRefSchema, ArtifactRelativePathSchema, CollectionArtifactOutputSchema, NamedArtifactFileNameSchema } from "../../artifacts/artifacts.js";
 import { CrmRetainedDocumentSchema, CrmDocumentIdentitySchema } from "../../systems/crm/documents.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
-import { OnboardingRosterSnapshotRowSchema } from "../onboarding/roster.js";
+
+export const CRM_DOCUMENT_ROSTER_FIELDS = ["email", "firstName", "lastName", "middleName",
+  "roster.livedFirstName", "roster.livedLastName", "roster.livedMiddleName"] as const;
+
+const namePart = z.string().min(1).refine(value => value.trim() === value);
+const CrmRosterPersonNameSchema = z.strictObject({
+  firstName: namePart, lastName: namePart, middleName: z.string().refine(value => value.trim() === value),
+});
+export const CrmRosterNamesSchema = z.strictObject({ legalName: CrmRosterPersonNameSchema, livedName: CrmRosterPersonNameSchema.nullable() });
 
 export const CrmWorksheetPersonSchema = z.strictObject({
   identity: CrmDocumentIdentitySchema,
   reference: z.strictObject({
     referenceDigest: FingerprintSchema, worksheetId: z.string().min(1), worksheetName: NamedArtifactFileNameSchema, rowId: z.string().min(1),
-    names: OnboardingRosterSnapshotRowSchema.shape.references }),
+    names: CrmRosterNamesSchema }),
   documents: CrmRetainedDocumentSchema.array().min(1),
 });
 export type CrmWorksheetPerson = z.infer<typeof CrmWorksheetPersonSchema>;

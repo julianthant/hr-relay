@@ -21,7 +21,7 @@ export const OnboardingReadHirePlan = defineTaskContract({
     crm: CrmHireDataSchema, roster: OnboardingRosterSnapshotRowSchema,
     postalCodeOverride: OnboardingPostalCodeSchema.optional(),
     configuredJobEndDate: UsDateSchema.optional(),
-  }), output: HirePlanSchema, errorCodes: ["ONBOARDING_DATA_INVALID"],
+  }), output: HirePlanSchema, errorCodes: ["ONBOARDING_DATA_INVALID", "ONBOARDING_NAME_UNRESOLVED"],
   subject: { kind: "none", reason: "pure validation over the email-bound CRM extraction, run-start roster snapshot and retained run configuration" },
   freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
   provenance: { default: "derived" }, scenarios: [],

@@ -50,7 +50,7 @@ export function createOnboardingRunWorld() {
   const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
   const fixtureProfiles = createProfileFixtureSet();
   const world = createCommandKernelTestWorld(fixtureProfiles.create);
-  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; general?: boolean } = {}) {
+  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; general?: boolean; legalName?: string; livedName?: string } = {}) {
     const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
       assert.ok(publication);
       createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -65,9 +65,9 @@ export function createOnboardingRunWorld() {
         columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index,
           sourceHeader: fieldId, fieldId, basis: "manual" })),
         rows: [{ id: `${id}-header`, cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) },
-          { id: `${id}-person`, cells: [email, "Fixture", "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) },
+          { id: `${id}-person`, cells: [email, options.legalName ?? "Fixture Hire", options.livedName ?? null, null, null].map(value => ({ value })) },
           ...(match === "duplicate" && id === "people" ? [{ id: "people-second",
-            cells: [email, "Second", "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) }] : [])] };
+            cells: [email, "Second Hire", null, null, null].map(value => ({ value })) }] : [])] };
     }
     const saved = library.create({ name: "Synthetic.xlsx", themes: [], hasFormulas: false,
       sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", "other@example.test")] });
@@ -144,7 +144,7 @@ export function createOnboardingRunWorld() {
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
-    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other";
+    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string;
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;
@@ -222,8 +222,7 @@ export function createOnboardingRunWorld() {
         if (fault !== "legal-name" && fault !== "lived-name") return gate;
         const selected = OnboardingRosterChoiceSchema.parse(gate.result.value);
         const row = { ...selected.row, references: { ...selected.row.references,
-          ...(fault === "legal-name" ? { legalName: { ...selected.row.references.legalName, firstName: "Injected" } }
-            : { livedName: { firstName: "Injected", lastName: "Hire", middleName: "" } }) } };
+          ...(fault === "legal-name" ? { legalName: "Injected Hire" } : { livedName: "Injected Hire" }) } };
         const result = { ...gate.result, value: { ...selected, row } };
         return { ...gate, result, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(result)) };
       };
