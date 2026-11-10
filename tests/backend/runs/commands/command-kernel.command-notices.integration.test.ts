@@ -67,7 +67,7 @@ async function noticedWorld(wrap?: RepositoryWrap): Promise<{ harness: Harness; 
   const inbox = createNotificationInbox({
     authority: harness.database,
     clock: harness.clock,
-    ids: sequentialIdFactory("n"),
+    ids: sequentialIdFactory("1"),
     actorId: "local-operator",
   });
   inboxRef.current = inbox;
@@ -151,7 +151,7 @@ describe("command notices", () => {
       inbox = createNotificationInbox({
         authority: harness.database,
         clock: harness.clock,
-        ids: sequentialIdFactory("n"),
+        ids: sequentialIdFactory("1"),
         actorId: "local-operator",
       });
       const queued = harness.start(harness.proposal());
@@ -213,16 +213,23 @@ describe("command notices", () => {
 
   it("leaves a thrown effect admitted with one recovery notice, then applies once when the dependency works", async () => {
     const gate = { fail: false };
-    const failingRead: RepositoryWrap = (repositories) => ({
-      ...repositories,
-      runs: {
-        ...repositories.runs,
-        get: (runId: string) => {
-          if (gate.fail) throw new Error("injected run dependency failure");
-          return repositories.runs.get(runId);
+    const wrappedReads = new WeakMap<AuthorityRepositories, AuthorityRepositories>();
+    const failingRead: RepositoryWrap = (repositories) => {
+      const cached = wrappedReads.get(repositories);
+      if (cached !== undefined) return cached;
+      const wrapped: AuthorityRepositories = {
+        ...repositories,
+        runs: {
+          ...repositories.runs,
+          get: (runId: string) => {
+            if (gate.fail) throw new Error("injected run dependency failure");
+            return repositories.runs.get(runId);
+          },
         },
-      },
-    });
+      };
+      wrappedReads.set(repositories, wrapped);
+      return wrapped;
+    };
     const { harness, inbox, path } = await noticedWorld(failingRead);
     const runId = startRun(harness, EMPLOYEE_ID);
     const version = runVersion(harness, runId);
