@@ -319,7 +319,8 @@ type IdentityGateFacts = Readonly<{
 function identityGateRef(runId: string, gateId: string, version: number, evidenceDigest: string): string {
   return deriveStableUuid("identity-gate-ref", canonicalJsonStringify([runId, gateId, version, evidenceDigest]));
 }
-const identityOptionRef = (gateRef: string, eid: string): string => deriveStableUuid("identity-gate-option", canonicalJsonStringify([gateRef, eid]));
+/** Keyed by the unserved evidence digest: a served ref plus the served last four digits must not recover the Employee ID. */
+const identityOptionRef = (evidenceDigest: string, eid: string): string => deriveStableUuid("identity-gate-option", canonicalJsonStringify([evidenceDigest, eid]));
 const maskedEid = (eid: string): string => `••••${directIdentifierDisplay(eid.slice(-4))}`;
 
 function readIdentityGate(
@@ -417,7 +418,7 @@ function readIdentityGate(
   const gateRef = identityGateRef(runId, gate.nodeId, authority.version, evidenceDigest);
   const { origin, value: text } = IDENTITY_REVIEW_TEXT;
   const options: IdentityOption[] = packet.approvableEids.map((eid) => ({
-    ref: identityOptionRef(gateRef, eid),
+    ref: identityOptionRef(evidenceDigest, eid),
     eid,
     chosenFrom: eid === packet.emplId ? "checked" : eid === nameSearchEid ? "name-search" : "manual",
     displayName: eid === packet.emplId
@@ -617,7 +618,7 @@ function journaledAnswerMatches(journaled: Extract<CommandRequest, { family: "ga
   if (gateRef !== answer.payload.gateRef) return false;
   const { payload } = answer;
   if (parsed.data.decision === "rejected" || payload.decision === "rejected") return true;
-  return "optionRef" in payload ? identityOptionRef(gateRef, parsed.data.eid) === payload.optionRef : parsed.data.eid === payload.typedEid;
+  return "optionRef" in payload ? identityOptionRef(parsed.data.evidenceDigest, parsed.data.eid) === payload.optionRef : parsed.data.eid === payload.typedEid;
 }
 
 function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord): unknown {

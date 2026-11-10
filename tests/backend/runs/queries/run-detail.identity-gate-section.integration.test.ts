@@ -23,6 +23,7 @@ import { IDENTITY_REVIEW_TEXT } from "../../../../src/backend/runs/decisions/dec
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { IdentityGateAnswerRequestSchema, type CommandRequest, type IdentityGateAnswerRequest } from "../../../../src/rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { VerifyIdentityApprovalOutputSchema } from "../../../../src/models/workflows/separations/verify-identity-approval.js";
 import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
@@ -565,6 +566,17 @@ describe("the served identity review keeps evidence off the wire", () => {
       assert.ok(!wire.includes('"packet"'));
       for (const { note } of packet.comparisons) assert.ok(note.length === 0 || !wire.includes(note), `note ${note} is served`);
       for (const fragment of ["(S1", "T00"]) assert.ok(!wire.includes(fragment), `${fragment} is served`);
+    }
+  });
+
+  it("serves option refs that the served gate ref and masked last four digits cannot reverse to an Employee ID", async () => {
+    const { packet, value } = await chooseWorld();
+    for (const eid of packet.approvableEids.map(String)) {
+      const option = value.options.find(candidate => candidate.maskedEid === `••••${eid.slice(-4)}`);
+      assert.ok(option !== undefined);
+      assert.notEqual(option.ref, deriveStableUuid("identity-gate-option", canonicalJsonStringify([value.gateRef, eid])));
+      assert.ok(value.decision?.options.every(decision => decision.input?.kind !== "candidate"
+        || decision.input.table.rows.every(row => row.id !== deriveStableUuid("identity-gate-option", canonicalJsonStringify([value.gateRef, eid])))));
     }
   });
 });
