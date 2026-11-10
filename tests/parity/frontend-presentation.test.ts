@@ -284,7 +284,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("tooltip")).toContainText("Waiting");
       await page.mouse.move(0, 0);
       await defaultReview.getByRole("button", { name: "Confirm", exact: true }).click();
-      await expect(surface).toContainText("Answered: Approve match");
+      await expect(surface).toContainText("Match approved");
       await expect(selectedTimeline.getByRole("button", { name: /^Cross Verification.*Completed.*9s/u })).toBeVisible();
       await expect(selectedTimeline.getByRole("button", { name: /^Active Status.*In progress/u })).toBeVisible();
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.parkedRun}"]`).click();
@@ -298,7 +298,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "Find the Kuali action", exact: true })).toBeFocused();
       await selectedTimeline.getByRole("button", { name: /^File termination/u }).click();
       await expect(defaultParked).toBeInViewport();
-      await expect(surface).not.toContainText("Answered: Approve match");
+      await expect(surface).not.toContainText("Match approved");
       await setLogScenario("separation");
       await expect(surface.getByRole("heading", { name: "Alex Morgan", exact: true })).toBeVisible();
       await expect(surface.locator("header").first().locator(":scope > span.text-caption")).toHaveCount(0);

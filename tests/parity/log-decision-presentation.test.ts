@@ -52,7 +52,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(confirm).toBeDisabled();
       await transaction.fill("T00042871");
       await confirm.click();
-      await expect(surface).toContainText("Answered: Saved in UCPath");
+      await expect(surface).toContainText("Transaction confirmed · T00042871");
       await expect(parked.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
 
       await chooseScenario( "review-candidates");
@@ -63,7 +63,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await pick.getByRole("textbox", { name: "Enter employee ID", exact: true }).fill("10000077");
       await expect(pick.getByRole("radio", { name: "Morgan, Alex", exact: true })).toHaveAttribute("aria-checked", "false");
       await pick.getByRole("button", { name: "Confirm", exact: true }).click();
-      await expect(surface).toContainText("Answered: Morgan, Alexis");
+      await expect(surface).toContainText("Match confirmed · 10000077");
 
       await chooseScenario( "review-fields");
       const date = surface.getByRole("group", { name: "Confirm the last day worked", exact: true });
@@ -81,7 +81,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await page.keyboard.type(value);
       }
       await enter.click();
-      await expect(surface).toContainText("Answered: Enter date");
+      await expect(surface).toContainText("Resolved");
 
       await chooseScenario( "failure-prepared");
       const failure = surface.getByRole("group", { name: "File termination", exact: true });
