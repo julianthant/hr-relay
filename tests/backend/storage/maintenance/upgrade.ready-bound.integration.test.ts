@@ -720,7 +720,7 @@ it.each(workbookFormats.flatMap(format => (['run', 'terminal-run', 'plan', 'cons
     assert.deepEqual(result, { state: 'upgraded', fromSchemaVersion: 24, toSchemaVersion: 25, credentials: 'unchanged' });
     const after = rawEight(f.path, 25);
     for (const [table, rows] of Object.entries(before)) {
-      if (table === 'database_states') assert.deepEqual(after[table], rows.map(row => ({ ...row, schema_version: 25 })));
+      if (table === 'database_states') assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 25 })));
       else if (table === 'database_upgrades') assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -729,18 +729,18 @@ it.each(workbookFormats.flatMap(format => (['run', 'terminal-run', 'plan', 'cons
     assert.ok(settled && typeof settled.payload_json === 'string');
     const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(settled.payload_json));
     assert.ok(record.phase === 'settled');
-    const restore = f.acquireRestore();
-    try {
-      const stopped = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
-      try {
-        const backup = verifyStoppedBackupManifestAtPath(stopped, record.backup.manifestPath);
-        assert.equal(backup.manifest.schemaVersion, 24);
-      } finally { stopped.release(); }
-    } finally { restore.release(); }
-    const fresh = f.machine.admitProfile(f.claim);
+    const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+    assert.equal(manifests.length, 1);
+    const manifestName = manifests[0];
+    assert.ok(manifestName);
+    const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifestName), "utf8")));
+    assert.equal(manifest.schemaVersion, 24);
+    assert.equal(manifest.sha256, digest(join(f.stateRoot, "backups", "authority", manifest.backupFileName)));
+    assert.deepEqual(rawEight(join(f.stateRoot, "backups", "authority", manifest.backupFileName), 24), before);
+    const fresh = f.machine.admitProfile(f.binding.profileId);
     try {
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: 'selection-upgrade-readback' }, systemClock,
-        undefined, undefined, undefined, boundProfileCredentials(fresh));
+        undefined, undefined, undefined, createCredentialStore({ admission: fresh, stateRoot: f.stateRoot }));
       try { assert.equal(database.authority.workbooks.lastUsed('person-lookup'), undefined); }
       finally { database.close(); }
     } finally { fresh.release(); }
