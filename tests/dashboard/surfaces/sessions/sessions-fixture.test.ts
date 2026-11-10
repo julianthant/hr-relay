@@ -92,7 +92,7 @@ describe_m0("frontend timeline and sessions", () => {
 {
 
 
-const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
+const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
 const catalog = buildWorkflowCatalog_m1(served);
 
 describe_m1("frontend workflow catalog", () => {

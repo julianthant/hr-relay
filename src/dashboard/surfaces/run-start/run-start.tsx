@@ -1,4 +1,5 @@
-import { useWorkbookRows, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT, type WorkbookRowChoice } from "./run-workbook-rows-model.js";
+import { useWorkbookRows, useWorkbookVersionSources, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT, type WorkbookRowChoice } from "./run-workbook-rows-model.js";
+import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
 import { RequiredCaptureStatus } from "../run-detail/logs/log-screenshots.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
@@ -135,7 +136,9 @@ export interface RunStartWorkflow {
   /** Retained served intake capability. Spreadsheet registration lives in
  * Settings and is not a Run input method. */
   readonly spreadsheetIntake: boolean;
-  readonly requiredWorkbookTypeIds: readonly string[];
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: Readonly<{ id: string; keyFieldId: string; mode: "keys" | "all"; writableFields: readonly string[] }>;
+  readonly referenceSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string; sheetName: string }>[];
 }
 
 function isStartable(workflow: RunStartWorkflow): boolean {
@@ -322,14 +325,26 @@ export function RunStartDialog({
   useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
   const [selectedWorkbookRows, setSelectedWorkbookRows] = useState<{ authority: object; choices: readonly WorkbookRowChoice[] }>();
-  const [referenceSelections, setReferenceSelections] = useState<Record<string, { libraryId: string; versionId: string }>>({});
-  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && workflow.requiredWorkbookTypeIds.length > 0), null, true);
-  const requiredTypes = useMemo(() => workflows.find(workflow => workflow.workflowId === workflowId)?.requiredWorkbookTypeIds ?? [], [workflows, workflowId]);
-  const selectedReferences = Object.fromEntries(requiredTypes.map(typeId => {
-    const current = referenceSelections[typeId];
-    const entry = library.catalog.find(entry => entry.type.id === typeId && entry.state.origin.kind === 'local' && entry.libraryId === (current?.libraryId ?? library.types.find(type => type.id === typeId)?.defaultWorkbookId));
-    return [typeId, { libraryId: current?.libraryId ?? entry?.libraryId ?? '', versionId: current?.versionId ?? entry?.state.selectedVersionId ?? '' }];
-  }));
+  const [referenceSelections, setReferenceSelections] = useState<Record<string, { libraryId: string; versionId: string; sheetId: string }>>({});
+  const [referenceDrafts, setReferenceDrafts] = useState<Record<string, { libraryId: string; versionId?: string }>>({});
+  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && workflow.workbookReference !== undefined), null, true);
+  const selectedWorkflow = workflows.find(workflow => workflow.workflowId === workflowId);
+  const workbookReference = selectedWorkflow?.workbookReference;
+  const requiredTypes = useMemo(() => workbookReference === undefined ? [] : [workbookReference.id], [workbookReference]);
+  const selectedReferences = referenceSelections;
+  const referenceId = workbookReference?.id;
+  const selectedDraft = referenceId === undefined ? undefined : referenceDrafts[referenceId];
+  const selectedLibrary = library.catalog.find(entry => entry.libraryId === selectedDraft?.libraryId && entry.state.origin.kind === 'local' && !entry.state.removed);
+  const selectedVersion = selectedLibrary?.state.versions.find(version => version.id === selectedDraft?.versionId);
+  const sourceProjection = library.compatibility?.workflows.find(entry => entry.workflowId === workflowId);
+  if (library.compatibility !== undefined && workbookReference !== undefined && sourceProjection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${workflowId}`);
+  if (sourceProjection !== undefined && selectedWorkflow !== undefined && (canonicalJsonStringify(sourceProjection.requiredWorkbookFields) !== canonicalJsonStringify(selectedWorkflow.requiredWorkbookFields)
+    || canonicalJsonStringify(sourceProjection.workbookReference ?? null) !== canonicalJsonStringify(workbookReference ?? null)))
+    throw new Error(`WORKBOOK_COMPATIBILITY_DECLARATION_MISMATCH: ${workflowId}`);
+  const referenceSources = sourceProjection?.sources ?? [];
+  const versionSources = useWorkbookVersionSources(client, commandBinding?.authority.epoch ?? client,
+    selectedLibrary?.libraryId, selectedVersion, selectedLibrary?.state.selectedVersionId,
+    selectedWorkflow?.requiredWorkbookFields ?? [], referenceSources);
   const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
   const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
@@ -460,12 +475,13 @@ export function RunStartDialog({
   }, [typedDeclaration, typedDraft, workflow, selectedStepKeys]);
   const rowCapability = !isRerun && inputRun.state === "present" ? inputRun.surface.workbookRows : undefined;
   const rowReference = rowCapability === undefined ? undefined : selectedReferences[rowCapability.typeId];
-  const rowLibrary = library.catalog.find(entry => entry.libraryId === rowReference?.libraryId && entry.type.id === rowCapability?.typeId && entry.state.origin.kind === "local" && !entry.state.removed);
+  const rowLibrary = library.catalog.find(entry => entry.libraryId === rowReference?.libraryId && entry.state.origin.kind === "local" && !entry.state.removed);
   const rowVersion = rowLibrary?.state.versions.find(version => version.id === rowReference?.versionId);
-  const rowReadReady = !library.catalogLoading && !library.catalogRefreshing && !library.catalogError && rowLibrary !== undefined && rowVersion !== undefined;
+  const rowReadReady = !library.catalogLoading && !library.catalogRefreshing && !library.catalogError && rowLibrary !== undefined && rowVersion !== undefined
+    && versionSources.state === 'ready' && versionSources.sources.some(source => source.libraryId === rowReference?.libraryId && source.versionId === rowReference?.versionId && source.sheetId === rowReference?.sheetId);
   const rowIdentity = canonicalJsonStringify([actorId, workflowId, workflow?.version ?? null, inputRun, rowReference ?? null, rowLibrary?.state.revision ?? null]);
   const workbookRows = useWorkbookRows(client, rowIdentity, commandBinding?.authority.epoch ?? client, open && rowCapability !== undefined,
-    rowReadReady, rowReference?.libraryId ?? "", rowVersion, rowLibrary?.type);
+    rowReadReady, rowReference?.libraryId ?? "", rowVersion, workbookReference?.keyFieldId, rowReference?.sheetId);
   const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.authority === workbookRows.authority;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
@@ -492,7 +508,7 @@ export function RunStartDialog({
     },
   ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
   const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
-  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, startRequestFingerprint({
+  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -544,7 +560,7 @@ export function RunStartDialog({
     if (preview.problem !== null || (!isRerun && preview.entries.length === 0)) return;
     if (isRerun && (snapshot === null || preview.entries.length > 1)) return;
     if (declaredInput && preview.submissions.length !== 1 && isRerun) return;
-    if (requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || library.catalogError)) { setError('Reference data is unavailable. Refresh it before planning.'); return; }
+    if (requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || library.catalogError || library.compatibility === undefined || versionSources.state !== 'ready')) { setError('Reference data is unavailable. Refresh it before planning.'); return; }
     const dispatchedFor = requestFingerprint;
     const instance = launchInstance.current;
     setBusy(true);
@@ -568,6 +584,7 @@ export function RunStartDialog({
         captureBrowserScreenshots,
         priority,
         ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
+          versionSources.sources, (workbookReference?.writableFields.length ?? 0) > 0,
           rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] }) } : {}),
         ...(customizeSteps || declaredInput ? { selectedStepKeys } : {}),
         // Send omission facts only after every declared form parses.
@@ -587,7 +604,7 @@ export function RunStartDialog({
     } finally {
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility, versionSources, workbookReference, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
@@ -804,15 +821,35 @@ export function RunStartDialog({
   const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
 
   const referenceControls = (types: readonly string[]) => types.length === 0 ? undefined : <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : library.catalogError ? <Banner tone="danger" title="Reference data unavailable">{library.catalogError}<Button onClick={() => void library.adapter.refreshCatalog()}>Refresh</Button></Banner> : types.map(typeId => {
-                    const selection = selectedReferences[typeId];
-                    const entries = library.catalog.filter(entry => entry.type.id === typeId && entry.state.origin.kind === 'local' && !entry.state.removed);
-                    const entry = entries.find(entry => entry.libraryId === selection.libraryId);
-                    const files = [{ value: '', label: 'Choose a spreadsheet' }, ...entries.map(entry => ({ value: entry.libraryId, label: entry.name }))];
-                    if (selection.libraryId && !entry) files.push({ value: selection.libraryId, label: 'Selected spreadsheet unavailable' });
-                    const versions: { value: string; label: string; description?: string }[] = entry?.state.versions.map(version => ({ value: version.id, label: version.name, description: version.id === entry.state.selectedVersionId ? 'In use' : undefined })) ?? [{ value: '', label: 'Choose a spreadsheet first' }];
-                    if (selection.versionId && !versions.some(version => version.value === selection.versionId)) versions.push({ value: selection.versionId, label: 'Selected version unavailable' });
-                    return <div key={typeId} className="launch-options-grid"><Field orientation="horizontal" label="Look up people in" description={`Required type: ${library.types.find(type => type.id === typeId)?.name ?? typeId}`}><ChoicePicker label="Reference spreadsheet" value={selection.libraryId} onChange={libraryId => { const entry = entries.find(entry => entry.libraryId === libraryId); setReferenceSelections(current => ({ ...current, [typeId]: { libraryId, versionId: entry?.state.selectedVersionId ?? '' } })); }} options={files} /></Field><Field orientation="horizontal" label="Version" description="The version in use is selected by default."><ChoicePicker label="Reference version" value={selection.versionId} onChange={versionId => setReferenceSelections(current => ({ ...current, [typeId]: { ...selection, versionId } }))} options={versions} /></Field></div>;
-                  })}</>;
+    const selection = selectedReferences[typeId];
+    const draft = referenceDrafts[typeId];
+    const chosenLibrary = library.catalog.find(entry => entry.libraryId === draft?.libraryId && entry.state.origin.kind === 'local' && !entry.state.removed);
+    const chosenVersion = chosenLibrary?.state.versions.find(version => version.id === draft?.versionId);
+    const files = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed);
+    const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
+    const chosenSheet = selection?.sheetId ?? '';
+    const selectedSheetOptions = chosenSheet && !sheetOptions.some(source => source.sheetId === chosenSheet)
+      ? [...sheetOptions.map(source => ({ value: source.sheetId, label: source.sheetName })), { value: chosenSheet, label: 'Previous worksheet unavailable; choose again' }]
+      : sheetOptions.map(source => ({ value: source.sheetId, label: source.sheetName }));
+    return <div key={typeId} className="launch-options-grid"><Field orientation="horizontal" label="Look up people in" description={`Required fields: ${selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label).join(', ') ?? ''}`}>
+      <ChoicePicker label="Reference spreadsheet" value={chosenLibrary?.libraryId ?? ''} disabled={library.catalogRefreshing || library.compatibility === undefined} onChange={value => {
+        setReferenceDrafts(current => value ? { ...current, [typeId]: { libraryId: value } } : Object.fromEntries(Object.entries(current).filter(([key]) => key !== typeId)));
+        setReferenceSelections(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== typeId)));
+      }} options={[{ value: '', label: 'Choose a spreadsheet' }, ...files.map(entry => ({ value: entry.libraryId, label: entry.name }))]} />
+      {chosenLibrary && <ChoicePicker label="Reference version" value={chosenVersion?.id ?? ''} disabled={library.catalogRefreshing || library.compatibility === undefined} onChange={value => {
+        setReferenceDrafts(current => ({ ...current, [typeId]: { libraryId: chosenLibrary.libraryId, ...(value ? { versionId: value } : {}) } }));
+        setReferenceSelections(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== typeId)));
+      }} options={[{ value: '', label: 'Choose a version' }, ...chosenLibrary.state.versions.map(version => ({ value: version.id, label: `${version.name}${version.id === chosenLibrary.state.selectedVersionId ? ' · Current' : ''}` }))]} />}
+      {chosenVersion && <ChoicePicker label="Reference worksheet" value={chosenSheet} disabled={library.catalogRefreshing || library.compatibility === undefined || versionSources.state !== 'ready'} onChange={value => {
+        const source = sheetOptions.find(candidate => candidate.sheetId === value);
+        setReferenceSelections(current => source === undefined ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== typeId))
+          : { ...current, [typeId]: { libraryId: source.libraryId, versionId: source.versionId, sheetId: source.sheetId } });
+      }} options={[{ value: '', label: versionSources.state === 'loading' ? 'Loading worksheets…' : 'Choose a worksheet' }, ...selectedSheetOptions]} />}
+      {chosenVersion && versionSources.state === 'error' && <p role="alert">{versionSources.error}</p>}
+      {chosenVersion && versionSources.state === 'ready' && sheetOptions.length === 0 && <p role="status">No worksheets in this version have all required fields.</p>}
+      {selection && !files.some(entry => entry.libraryId === selection.libraryId) && <p role="alert">Previous source unavailable; choose again.</p>}
+    </Field></div>;
+  })}</>;
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
@@ -1029,7 +1066,7 @@ export function RunStartDialog({
                       ...(isRerun && snapshot ? [{ key: "Source", value: rerunSource?.traceId ?? snapshot.source.runId }] : []),
                       { key: "Steps", value: `${selectedStepKeys.length} / ${workflow?.steps.length ?? 0} included${omissionRows.length ? ` · Omitted: ${omissionRows.map(row => row.label).join(", ")}` : ""}` },
                       ...omissionRows.map(row => ({ key: row.form.fields.every(field => field.kind === "us-date") ? "Entered dates" : row.label, value: stepOmissionFactsSummary(row) })),
-                      ...plan.planned.flatMap(planned => (planned.workbookReferences ?? []).map(reference => ({ key: `Reference · ${reference.type.name}`, value: `${library.catalog.find(entry => entry.libraryId === reference.libraryId)?.name ?? reference.libraryId} · ${reference.versionName ?? `Revision ${reference.version}`}` }))),
+                      ...plan.planned.flatMap(planned => (planned.workbookReferences ?? []).map(reference => ({ key: `Reference · ${reference.type.name}`, value: `${library.catalog.find(entry => entry.libraryId === reference.libraryId)?.name ?? 'Spreadsheet unavailable'} · ${reference.versionName ?? `Revision ${reference.version}`}` }))),
                       { key: "Queue", value: plan.priority === "interactive" ? "Interactive" : "Bulk" },
                       { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots required` },
                       { key: "Dry run", value: plan.dryRun ? "On" : "Off" },

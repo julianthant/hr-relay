@@ -1,13 +1,13 @@
 import { expect, it } from 'vitest';
 import { WorkbookTypeSchema } from '../../../../src/models/dashboard/workbooks.js';
 import { spreadsheetTypeColumn, spreadsheetTypeColumns, spreadsheetTypeError, spreadsheetTypeHeaders } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-type-model.js';
-import { spreadsheetField } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js';
+import { spreadsheetField } from '../../../../src/models/fields/workbook-fields.js';
 import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 
 it('authors 31 named columns with stable identities and required fields', () => {
   const columns = Array.from({ length: 31 }, (_, index) => spreadsheetTypeColumn(`Synthetic field ${index + 1}`));
   expect(spreadsheetTypeError('Onboarding roster', columns)).toBeUndefined();
-  expect(spreadsheetField(columns[0].id).type).toBe('text');
+  expect(() => spreadsheetField(columns[0].id)).toThrow(/SPREADSHEET_FIELD_NOT_FOUND/u);
   const type = WorkbookTypeSchema.parse({ id: 'synthetic', name: 'Onboarding roster', keyFieldId: null, defaultWorkbookId: null,
     fields: columns.map(column => column.id), fieldLabels: Object.fromEntries(columns.map(column => [column.id, column.name])), requiredFields: [columns[0].id] });
   expect(spreadsheetTypeColumns(type)).toEqual(columns.map((column, index) => ({ ...column, required: index === 0 })));

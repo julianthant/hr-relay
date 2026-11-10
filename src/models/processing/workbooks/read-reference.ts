@@ -25,7 +25,10 @@ function referenceRecord(reference: z.input<typeof referenceShape>) {
     matches: row.matches.map(match => ({ ...match, values: Object.fromEntries(match.values.map(cell => [cell.fieldId, cell.value])) })),
   })) } };
 }
-export const WorkbookReferenceReadSchema = z.strictObject({ state: z.literal("read"), referenceDigest: FingerprintSchema, reference: retainedReference });
+const readSource = z.strictObject({ referenceDigest: FingerprintSchema, reference: referenceShape });
+export const WorkbookReferenceReadSchema = z.strictObject({
+  state: z.literal("read"), referenceDigest: FingerprintSchema, reference: retainedReference, sources: readSource.array(),
+});
 export const WorkbookReferenceReadResponseSchema = z.discriminatedUnion("state", [WorkbookReferenceReadSchema, WorkbookRefusalSchema]);
 
 export function encodeWorkbookReference(referenceValue: z.input<typeof RunWorkbookNamedReferenceSchema>) {
@@ -52,5 +55,12 @@ export const ReadWorkbookReference = defineTaskContract({
       type: { id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "fixture-library" },
       rows: [{ key: "fixture@example.test", state: "matched", matches: [{ sheetId: "fixture-sheet", rowId: "fixture-row", values: [{ fieldId: "email", value: "fixture@example.test" }] }] }],
     },
-  } },
+  }, sources: [{ referenceDigest: "a".repeat(64), reference: {
+    request: { typeId: "onboarding-roster", libraryId: "fixture-library", versionId: "fixture-version", keys: ["fixture@example.test"], fields: ["email"] },
+    snapshot: { libraryId: "fixture-library", version: 1, versionId: "fixture-version", versionName: "Selected version",
+      worksheets: [{ sheetId: "fixture-sheet", name: "July 6" }],
+      type: { id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "fixture-library" },
+      rows: [{ key: "fixture@example.test", state: "matched", matches: [{ sheetId: "fixture-sheet", rowId: "fixture-row", values: [{ fieldId: "email", value: "fixture@example.test" }] }] }],
+    },
+  } }] },
 });
