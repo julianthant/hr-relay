@@ -1,4 +1,3 @@
-import { moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
@@ -18,7 +17,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await moveAssistantLauncherAboveFooter(page);
       const bell = page.getByRole("button", { name: /^Notifications, \d+ unread$/u });
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true, includeHidden: true });
@@ -95,7 +93,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await moveAssistantLauncherAboveFooter(page);
       const bell = page.getByRole("button", { name: /^Notifications, \d+ unread$/u });
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true, includeHidden: true });

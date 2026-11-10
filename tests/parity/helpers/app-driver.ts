@@ -94,15 +94,6 @@ export function rowOf(page: Page, runId: string) {
   return page.locator(`[data-demo-row-id='${runId}']`);
 }
 
-export async function moveAssistantLauncherAboveFooter(page: Page): Promise<void> {
-  const launcher = page.getByRole("button", { name: "Assistant", exact: true });
-  const before = await launcher.boundingBox();
-  if (!before) throw new Error("Assistant launcher is unavailable");
-  await launcher.focus();
-  for (let step = 0; step < 4; step++) await launcher.press("Alt+ArrowUp");
-  await expect.poll(async () => (await launcher.boundingBox())?.y).toBe(before.y - 64);
-}
-
 /** A rail row shows its running count as a pill (empty slot at 0) and describes it as "N running". */
 export async function expectRunningPill(row: Locator, running: number): Promise<void> {
   await expect(row.locator(".workflow-rail-running")).toHaveText(running > 0 ? String(running) : "");
