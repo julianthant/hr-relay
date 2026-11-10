@@ -3,41 +3,177 @@ import { OcrReviewRecordSchema } from "../../../../src/models/ocr/review-record.
 import { OcrApprovedSnapshotSchema } from "../../../../src/models/ocr/review.js";
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import type { SpanEmitter } from "../../../../src/backend/logs/span-emitter.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { TestClock } from "../../../../src/rules/time/clock.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import { backup, DatabaseSync } from "node:sqlite";
+import { z } from "zod";
 import type { RunRecord } from "../../../../src/models/run/record.js";
+import { isLiveWorker } from "../../../../src/models/run/worker.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDeterministicContactPersistence } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME, UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
 import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
 import { approvedEmergencyContact, contactEffect } from "../../../../src/rules/ucpath/emergency-contact.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeWorkflowModule, compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineWorkflowStore } from "../../../../src/workflow-kit/task-registry.js";
 import { readEmergencyContactResultTask } from "../../../../src/workflows/emergency-contact/tasks/read-result.js";
 import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emergency-contact-member/workflow.js";
 import fixture from "../../fixtures/ui/ucpath/emergency-contact.fixture.json" with { type: "json" };
+import type { BoundProfileStorageFixture } from "../admission-fixture.js";
+import { registerBoundFixtureWorker, registerBoundProfile, unregisterBoundProfile } from "../synthetic-database-admission.js";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
 
 export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
+const facts = ["Example, Avery", "Example, Blake"].map((employeeName, index) => ({ employeeName, contactName: `Original Contact ${String(index)}`, correctedContactName: `Released Contact ${String(index)}` }));
+const SqliteTableSchema = z.object({ name: z.string(), sql: z.string().nullable() });
+const SqliteColumnSchema = z.object({ name: z.string(), type: z.string() });
+
+type RetryOptions = Readonly<{ failures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }>;
+type ContactSeed = Readonly<{ emplId: string; persisted: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>; submissions: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>[] }>;
+type MemberStageSeed = Readonly<{
+  ticks: number; approvedReadFailed: boolean; failuresRemaining: number; failAfterSave: boolean;
+  snapshotReads: number; recordReads: number; wall: string; monotonic: number; contacts: readonly ContactSeed[];
+}>;
+type MemberStageTemplate = Readonly<{ workspace: string; profileId: string; dbRelative: string; seed: MemberStageSeed }>;
+
+function quoteIdent(name: string) {
+  return `"${name.replaceAll("\"", "\"\"")}"`;
+}
+
+function replaceBytes(bytes: Buffer, from: string, to: string) {
+  const needle = Buffer.from(from), next = Buffer.from(to), chunks: Buffer[] = [];
+  let start = 0, index = bytes.indexOf(needle);
+  if (index === -1) return bytes;
+  while (index !== -1) {
+    chunks.push(bytes.subarray(start, index), next);
+    start = index + needle.length;
+    index = bytes.indexOf(needle, start);
+  }
+  chunks.push(bytes.subarray(start));
+  return Buffer.concat(chunks);
+}
+
+// shortcut: prefix rewrite of text files plus sqlite text, upgrade if a copied profile stores this path in a blob or fingerprint
+function retargetWorkspace(root: string, from: string, to: string, dbRelative: string) {
+  const databasePath = join(root, dbRelative);
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop(); assert.ok(current);
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile() && path !== databasePath && !path.endsWith("-wal") && !path.endsWith("-shm")) {
+        const bytes = readFileSync(path), replaced = replaceBytes(bytes, from, to);
+        if (replaced !== bytes) writeFileSync(path, replaced);
+      }
+    }
+  }
+  const database = new DatabaseSync(databasePath);
+  try {
+    for (const table of database.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all().map(row => SqliteTableSchema.parse(row))) {
+      if (table.sql?.includes("VIRTUAL") === true) continue;
+      for (const column of database.prepare(`PRAGMA table_info(${quoteIdent(table.name)})`).all().map(row => SqliteColumnSchema.parse(row))) {
+        const affinity = column.type.toUpperCase();
+        if (affinity.includes("INT") || affinity.includes("REAL") || affinity.includes("FLOA") || affinity.includes("DOUB") || affinity.includes("BLOB")) continue;
+        if (database.prepare(`SELECT 1 AS hit FROM ${quoteIdent(table.name)} WHERE instr(${quoteIdent(column.name)}, ?) > 0 LIMIT 1`).get(from) === undefined) continue;
+        database.prepare(`UPDATE ${quoteIdent(table.name)} SET ${quoteIdent(column.name)} = replace(${quoteIdent(column.name)}, ?, ?) WHERE instr(${quoteIdent(column.name)}, ?) > 0`).run(from, to, from);
+      }
+    }
+  } finally { database.close(); }
+}
+
+function resetProcessLocks(workspace: string) {
+  const locks = join(workspace, rebuildRuntimeIsolation.processLockRoot);
+  rmSync(locks, { recursive: true, force: true });
+  mkdirSync(locks, { recursive: true, mode: 0o700 });
+}
+
+async function copyWorkspace(template: MemberStageTemplate): Promise<BoundProfileStorageFixture> {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-ec-copy-")));
+  let lifetime: Awaited<ReturnType<typeof RuntimeLifetimeLock.acquire>> | undefined;
+  let machine: ReturnType<typeof acquireEntrypointAdmission> | undefined;
+  let admission: ReturnType<ReturnType<typeof acquireEntrypointAdmission>["admitProfile"]> | undefined;
+  let registered = false;
+  try {
+    cpSync(template.workspace, workspace, { recursive: true });
+    resetProcessLocks(workspace);
+    retargetWorkspace(workspace, template.workspace, workspace, template.dbRelative);
+    lifetime = await RuntimeLifetimeLock.acquire(0);
+    machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+    admission = machine.admitProfile(template.profileId);
+    assert.equal(join(admission.stateRoot, "state.db"), join(workspace, template.dbRelative));
+    registerBoundProfile(admission, machine);
+    registered = true;
+  } catch (error) {
+    const failures = [error];
+    if (registered && admission !== undefined) try { unregisterBoundProfile(admission); } catch (cleanup) { failures.push(cleanup); }
+    if (admission !== undefined) try { admission.release(); } catch (cleanup) { failures.push(cleanup); }
+    if (machine !== undefined) try { machine.release(); } catch (cleanup) { failures.push(cleanup); }
+    if (lifetime !== undefined) try { await lifetime.close(); } catch (cleanup) { failures.push(cleanup); }
+    try { rmSync(workspace, { recursive: true, force: true }); } catch (cleanup) { failures.push(cleanup); }
+    throw failures.length === 1 ? error : new AggregateError(failures, "copied profile admission failed");
+  }
+  assert.ok(lifetime !== undefined && machine !== undefined && admission !== undefined);
+  const openedLifetime = lifetime, openedMachine = machine, openedAdmission = admission;
+  let closed = false;
+  return { workspace, get machine() { return openedMachine; }, get admission() { return openedAdmission; }, stateRoot: openedAdmission.stateRoot, path: join(openedAdmission.stateRoot, "state.db"),
+    async close() {
+      if (closed) return;
+      closed = true;
+      unregisterBoundProfile(openedAdmission); openedAdmission.release(); openedMachine.release(); await openedLifetime.close();
+      rmSync(workspace, { recursive: true, force: true });
+    } };
+}
+
+function adoptWorkers(database: AuthorityDatabase, path: string, clock: TestClock) {
+  const workflows = new Set<string>();
+  const walk = (run: RunRecord) => {
+    workflows.add(run.envelope.workflow);
+    for (const child of database.authority.runs.listChildren(run.envelope.runId)) walk(child);
+  };
+  for (const root of database.authority.runs.listByWorkflow("emergency-contact")) walk(root);
+  for (const workflow of workflows) {
+    for (const slot of database.authority.workerSlots.list(workflow)) {
+      if (slot.retiredAt !== null) continue;
+      const lease = database.authority.workerLeases.get(slot.workerId);
+      if (lease === undefined || !isLiveWorker(lease)) continue;
+      registerBoundFixtureWorker({ database, path, workerId: slot.workerId, generation: lease.leaseGeneration, processId: lease.processId, clock });
+    }
+  }
+}
+
+function templateKey(options: RetryOptions) {
+  return JSON.stringify({ failures: options.failures ?? 1, failApprovedRecordOnce: options.failApprovedRecordOnce === true, secondMemberAlreadyPresent: options.secondMemberAlreadyPresent === true });
+}
+
 export function createEmergencyContactRetryWorld() {
   const world = createOcrReviewWorld();
-  return { cleanup: world.cleanup, async fixture(options: Readonly<{ failures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }> = {}) {
-    const control = { failuresRemaining: options.failures ?? 1, unknownAfterSave: false, failAfterSave: options.secondMemberAlreadyPresent === true, failAccounting: false, changeApprovedSnapshot: false, snapshotReads: 0, changeApprovedRecord: false, recordReads: 0 };
+  const templates = new Map<string, MemberStageTemplate>();
+  const adopted: (() => Promise<void>)[] = [];
+  function pieces(options: RetryOptions, seed?: MemberStageSeed) {
+    const control = { failuresRemaining: seed?.failuresRemaining ?? options.failures ?? 1, unknownAfterSave: false, failAfterSave: seed?.failAfterSave ?? options.secondMemberAlreadyPresent === true, failAccounting: false, changeApprovedSnapshot: false, snapshotReads: seed?.snapshotReads ?? 0, changeApprovedRecord: false, recordReads: seed?.recordReads ?? 0 };
     const hooks: { onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void; onTransactionSettled?: () => void } = {};
-    const accountingStore = defineWorkflowStore("emergency-contact", { readResult: defineTask(readEmergencyContactResultTask.contract, {
-      sessions: [], async run(args) {
-        if (control.failAccounting) return args.ctx.fail("OCR_REVIEW_REFUSED", "Synthetic parent accounting failure.");
-        return readEmergencyContactResultTask.impl.run(args);
-      },
-    }) });
-    const facts = ["Example, Avery", "Example, Blake"].map((employeeName, index) => ({ employeeName, contactName: `Original Contact ${String(index)}`, correctedContactName: `Released Contact ${String(index)}` }));
-    let ticks = Date.parse(fixture.page.observedAt);
+    let ticks = seed?.ticks ?? Date.parse(fixture.page.observedAt);
+    const now = () => new Date(++ticks).toISOString();
     const persistence = new Map<string, ReturnType<typeof createDeterministicContactPersistence>>();
+    for (const contact of seed?.contacts ?? []) {
+      const backend = createDeterministicContactPersistence(contact.persisted, now);
+      for (const submission of contact.submissions) backend.submissions.push(UcpathContactPageSnapshotSchema.parse(submission));
+      persistence.set(contact.emplId, backend);
+    }
     const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
       const base = createDeterministicUcpathPersonOrgDriver();
       let activeEid: string | undefined;
@@ -47,7 +183,7 @@ export function createEmergencyContactRetryWorld() {
         activeEid = input.emplId;
         let backend = persistence.get(input.emplId);
         if (backend === undefined) {
-          backend = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...fixture.page, displayedEid: input.emplId, displayedName: input.expectedName }), () => new Date(++ticks).toISOString());
+          backend = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...fixture.page, displayedEid: input.emplId, displayedName: input.expectedName }), now);
           persistence.set(input.emplId, backend);
         }
         const session = backend.session();
@@ -80,7 +216,7 @@ export function createEmergencyContactRetryWorld() {
       };
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const member = composeWorkflowModule(contactSaveMember, taskStoreRegistry.stores);
-    let approvedReadFailed = false;
+    let approvedReadFailed = seed?.approvedReadFailed === true;
     const approvedReader = (context: Parameters<typeof createApprovedOcrRecordReader>[0]): ReturnType<typeof createApprovedOcrRecordReader> => {
       const reader = createApprovedOcrRecordReader(context);
       return { ...reader, readRecord: query => {
@@ -98,16 +234,26 @@ export function createEmergencyContactRetryWorld() {
           selectedRecordIds: snapshot.selectedRecordIds.slice(0, 1), records: snapshot.records.slice(0, 1) }) : snapshot;
       } };
     };
-    const f = await world.fixture({ coordinator: true, member, approvedStore: accountingStore,
-      approvedReader, onSpan: event => hooks.onSpan?.(event),
+    const accountingStore = defineWorkflowStore("emergency-contact", { readResult: defineTask(readEmergencyContactResultTask.contract, {
+      sessions: [], async run(args) {
+        if (control.failAccounting) return args.ctx.fail("OCR_REVIEW_REFUSED", "Synthetic parent accounting failure.");
+        return readEmergencyContactResultTask.impl.run(args);
+      },
+    }) });
+    return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed };
+  }
+  async function build(options: RetryOptions) {
+    const live = pieces({ ...options, onFencedSave: undefined });
+    const f = await world.fixture({ coordinator: true, member: live.member, approvedStore: live.accountingStore,
+      approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
       onTransactionSettled: run => {
-        hooks.onTransactionSettled?.();
-        if (control.failAfterSave && (options.secondMemberAlreadyPresent !== true
+        live.hooks.onTransactionSettled?.();
+        if (live.control.failAfterSave && (options.secondMemberAlreadyPresent !== true
           || EmergencyContactMemberInputSchema.parse(run.input.parsed.value).record.assertedEid === "10800001")) {
-          control.failAfterSave = false; throw new Error("fixture-local-failure-after-transaction-settlement");
+          live.control.failAfterSave = false; throw new Error("fixture-local-failure-after-transaction-settlement");
         }
-    }, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, sessions, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
-    assert.equal(persistence.size, 0);
+    }, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, sessions: live.sessions, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
+    assert.equal(live.persistence.size, 0);
     for (let index = 0; index < facts.length; index++) {
       const command = f.command("correct-ocr-record", index + 1, index);
       assert.equal(f.canonical.kernel.execute({ ...command, payload: { ...command.payload, assertedEid: String(10800000 + index) } }).state, "applied");
@@ -121,16 +267,89 @@ export function createEmergencyContactRetryWorld() {
       rows[0] = { ...rows[0], primary: false };
       rows[1] = { rowIndex: 1, name: desired.name, relationship: desired.relationship, primary: true, phone: desired.phone ?? "",
         sameAddressAsEmployee: false, address: desired.address.kind === "explicit" ? desired.address.fields : null };
-      persistence.set(input.emplId, createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...fixture.page,
-        displayedEid: input.emplId, displayedName: input.expectedName, rows }), () => new Date(++ticks).toISOString()));
+      live.persistence.set(input.emplId, createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...fixture.page,
+        displayedEid: input.emplId, displayedName: input.expectedName, rows }), live.now));
     }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
+    return { ...f, live };
+  }
+  function present(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>) {
     const current = (runId = f.parentRun.envelope.runId) => { const run = f.database.authority.runs.get(runId); assert.ok(run); return run; };
     const command = (type: "retry" | "pause" | "resume", run: RunRecord) => ({ commandId: randomUUID(), family: "run" as const,
       type, source: "run-detail" as const, requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const children = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member");
-    return { ...f, facts, persistence, control, hooks, approvedReader, current, runCommand: command, children };
+    return { ...f, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
+  }
+  async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
+    const source = built.harness.authority.profile.workspace;
+    const dbRelative = relative(source, built.path);
+    assert.equal(dbRelative.startsWith(".."), false);
+    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-ec-template-")));
+    try {
+      cpSync(source, workspace, { recursive: true });
+      resetProcessLocks(workspace);
+      const destination = join(workspace, dbRelative);
+      rmSync(destination, { force: true }); rmSync(`${destination}-wal`, { force: true }); rmSync(`${destination}-shm`, { force: true });
+      const database = new DatabaseSync(built.path, { timeout: 5_000 });
+      try { await backup(database, destination); } finally { database.close(); }
+      retargetWorkspace(workspace, source, workspace, dbRelative);
+    } catch (error) {
+      try { rmSync(workspace, { recursive: true, force: true }); } catch (cleanup) { throw new AggregateError([error, cleanup], "member-stage template capture failed"); }
+      throw error;
+    }
+    const { live } = built;
+    return { workspace, profileId: built.admission.profileBinding.profileId, dbRelative, seed: {
+      ticks: live.tickCount(), approvedReadFailed: live.approvedReadFailed(), failuresRemaining: live.control.failuresRemaining, failAfterSave: live.control.failAfterSave,
+      snapshotReads: live.control.snapshotReads, recordReads: live.control.recordReads, wall: built.clock.now().toISOString(), monotonic: built.clock.monotonicMs(),
+      contacts: [...live.persistence.entries()].map(([emplId, backend]) => ({ emplId, persisted: backend.snapshot(), submissions: backend.submissions.map(submission => UcpathContactPageSnapshotSchema.parse(submission)) })),
+    } };
+  }
+  async function reopen(template: MemberStageTemplate, options: RetryOptions) {
+    const profile = await copyWorkspace(template);
+    const adoptedWorld = createOcrReviewWorld(async () => profile);
+    const close = () => adoptedWorld.cleanup();
+    adopted.push(close);
+    try {
+      const live = pieces(options, template.seed);
+      const f = await adoptedWorld.fixture({ adoptExisting: true, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+        approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
+        onTransactionSettled: run => {
+          live.hooks.onTransactionSettled?.();
+          if (live.control.failAfterSave && (options.secondMemberAlreadyPresent !== true
+            || EmergencyContactMemberInputSchema.parse(run.input.parsed.value).record.assertedEid === "10800001")) {
+            live.control.failAfterSave = false; throw new Error("fixture-local-failure-after-transaction-settlement");
+          }
+        }, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, sessions: live.sessions, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
+      f.clock.setWall(new Date(template.seed.wall));
+      f.clock.advanceMonotonic(template.seed.monotonic - f.clock.monotonicMs());
+      adoptWorkers(f.database, f.path, f.clock);
+      return present(f, live);
+    } catch (error) {
+      const index = adopted.lastIndexOf(close);
+      if (index >= 0) adopted.splice(index, 1);
+      const failures = [error];
+      try { await close(); } catch (cleanup) { failures.push(cleanup); }
+      try { await profile.close(); } catch (cleanup) { failures.push(cleanup); }
+      throw failures.length === 1 ? error : new AggregateError(failures, "copied member-stage reopen failed");
+    }
+  }
+  return { async cleanup() {
+    const failures: unknown[] = [];
+    try { await world.cleanup(); } catch (error) { failures.push(error); }
+    for (const close of adopted.splice(0)) {
+      try { await close(); } catch (error) { failures.push(error); }
+    }
+    if (failures.length !== 0) throw new AggregateError(failures, "executor-fixture-closure-unproved");
+  }, async fixture(options: RetryOptions = {}) {
+    const key = templateKey(options);
+    let template = templates.get(key);
+    if (template === undefined) {
+      const built = await build(options);
+      template = await capture(built);
+      templates.set(key, template);
+    }
+    return reopen(template, options);
   } };
 }

@@ -67,9 +67,9 @@ export interface AuthorityHarness<Profile extends BoundProfileStorageFixture = A
 
 const retainedAuthorityHarnessOwners = new Set<object>();
 
-export function openAuthorityHarness<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>): Promise<AuthorityHarness<Profile>>;
+export function openAuthorityHarness<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>, options?: { readonly existing?: boolean }): Promise<AuthorityHarness<Profile>>;
 export function openAuthorityHarness(): Promise<AuthorityHarness>;
-export async function openAuthorityHarness(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture): Promise<AuthorityHarness<BoundProfileStorageFixture>> {
+export async function openAuthorityHarness(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture, options: { readonly existing?: boolean } = {}): Promise<AuthorityHarness<BoundProfileStorageFixture>> {
   const held: { fixture?: BoundProfileStorageFixture; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
   retainedAuthorityHarnessOwners.add(held);
   try {
@@ -80,7 +80,8 @@ export async function openAuthorityHarness(profileFixture: () => Promise<BoundPr
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   ); held.database = database;
-  const config = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  const config = options.existing === true ? database.authority.runtimeConfig.get() : database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  assert.ok(config);
   assert.equal(config.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
   assert.equal(config.configFingerprint, QUEUED_RUN.envelope.configFingerprint);
   let closeAttempted = false, closeFailure: Error | undefined;

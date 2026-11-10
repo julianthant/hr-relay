@@ -64,8 +64,9 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
     stores?: RunExecutorDependencies["stores"];
     descriptor?: AnyWorkflowDescriptor;
     screenshotCapture?: Parameters<typeof sessionManagerFor>[5];
+    existingProfile?: boolean;
   }> = {}): Promise<ExecutorHarness<Profile>> {
-    const authority = await openAuthorityHarness(profileFixture);
+    const authority = await openAuthorityHarness(profileFixture, { existing: options.existingProfile === true });
     authorityHarnesses.set(authority.database, authority);
     const sessions = options.sessions ?? happySessionHarness();
     const manager = await sessionManagerFor(sessions, authority.clock, undefined, undefined, duoCeremonyGatesOver(authority.database, authority.clock), options.screenshotCapture);
