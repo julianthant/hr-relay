@@ -34,7 +34,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   idleCountdowns?: Readonly<Record<string, IdleSessionCountdown>>;
   operations?: Readonly<Record<string, SessionPreviewOperation>>; onCheck?: (id: string) => void;
   workflows: readonly { id: string; label: string }[];
-  account?: { settingsOpen: boolean; onSettings: () => void; onLogout: () => void };
+  account?: { onSettings: () => void; onLogout: () => void };
 }) {
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -89,7 +89,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   return <div className="session-footer ui-theme-scope font-ui text-ui-primary"><section ref={dockRef} aria-label="Session Panel" className="session-dock ui-theme-scope font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     <div className="session-bar" aria-label="Session actions" role="group" onClick={event => { const target = event.target as Element; if (event.currentTarget.contains(target) && !target.closest(".session-bar-end")) onOpenChange(!open); }}>
       {toggle}<span className="session-bar-end">{addControl}{account && <>
-        <Tooltip side="top" content="Settings"><IconButton id={SETTINGS_GEAR_ID} variant="ghost" size="sm" label="Settings" title="" aria-pressed={account.settingsOpen} onClick={account.onSettings} icon={<Settings aria-hidden className="size-4" />} /></Tooltip>
+        <Tooltip side="top" content="Settings"><IconButton id={SETTINGS_GEAR_ID} variant="ghost" size="sm" label="Settings" title="" onClick={account.onSettings} icon={<Settings aria-hidden className="size-4" />} /></Tooltip>
         <Tooltip side="top" content="Log out"><IconButton className="hub-logout" variant="ghost" size="sm" label="Log out" title="" onClick={account.onLogout} icon={<LogOut aria-hidden className="size-4" />} /></Tooltip>
       </>}<AssistantLauncher /></span>
     </div>

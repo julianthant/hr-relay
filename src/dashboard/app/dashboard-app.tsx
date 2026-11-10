@@ -834,7 +834,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }
       dispatchCommand(action, target, { source });
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun, unresolvedRunAction, commandScope],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun, openMockLaunch, unresolvedRunAction, commandScope],
   );
 
   const confirmLogDecision = useCallback<RunWiringConfirm>((pending, onConfirmed) => setPendingCommand({ ...pending, scope: commandScope, onConfirmed }), [commandScope]);
@@ -935,10 +935,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const takeover = activeTakeover(route);
 
   const closeTakeoverTo = useTakeoverCloseFocus(takeover, setRoute);
-
-  const returnToDashboard = useCallback((): void => {
-    leaveSettings(() => setRoute(routeWithoutTakeovers(route)));
-  }, [route, setRoute, leaveSettings]);
 
   /** Settings navigation creates history so Back returns to the previous view. */
   const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
@@ -1321,14 +1317,17 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
         else void onProfileLogout();
       })} />
-      <SessionPanel
-        source={workflowComposition.sessions ?? "served"}
-        binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
-        catalog={workflowCatalog}
-        open={sessionsOpen}
-        onOpenChange={setSessionsOpen}
-        account={{ settingsOpen, onSettings: () => settingsOpen ? returnToDashboard() : openSettings(), onLogout: () => setLogoutOpen(true) }}
-      />
+      {/* The Sessions bar and its Ask control belong to the workflow workspace: every Settings page hides them. */}
+      {!settingsOpen && (
+        <SessionPanel
+          source={workflowComposition.sessions ?? "served"}
+          binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
+          catalog={workflowCatalog}
+          open={sessionsOpen}
+          onOpenChange={setSessionsOpen}
+          account={{ onSettings: () => openSettings(), onLogout: () => setLogoutOpen(true) }}
+        />
+      )}
 
       <RunLaunchHost
         controller={launch}

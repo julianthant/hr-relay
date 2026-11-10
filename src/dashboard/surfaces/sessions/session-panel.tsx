@@ -6,7 +6,7 @@ import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewComma
 import { sessionsFromDay, sessionsUnavailable, type SessionsViewState } from "./sessions-view-model.js";
 import { useToasts } from "../../ds/ui.js";
 
-export function SessionPanel({ catalog, open, onOpenChange, source = "served", binding, account }: { catalog: readonly WorkflowCatalogEntry[]; open: boolean; onOpenChange: (open: boolean) => void; source?: "served" | "mock"; binding?: SessionCommandBinding; account?: { settingsOpen: boolean; onSettings: () => void; onLogout: () => void } }) {
+export function SessionPanel({ catalog, open, onOpenChange, source = "served", binding, account }: { catalog: readonly WorkflowCatalogEntry[]; open: boolean; onOpenChange: (open: boolean) => void; source?: "served" | "mock"; binding?: SessionCommandBinding; account?: { onSettings: () => void; onLogout: () => void } }) {
   const { toast } = useToasts();
   const fixture = useMemo(() => source === "mock" ? sessionsSample(typeof window === "undefined" ? "active" : new URLSearchParams(window.location.search).get("sessionsPreview") ?? "active") : undefined, [source]);
   const initial = useMemo((): SessionsViewState => source === "mock" ? fixture! : binding?.dayState.day.state === "loaded"
