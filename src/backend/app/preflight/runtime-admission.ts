@@ -59,7 +59,7 @@ export function composeRuntimePreflight(input: Readonly<{
         backendPort: input.isolation.backendPort, frontendPort: input.isolation.frontendPort,
         clock,
         authorityHealth: new AuthorityHealthPreflightRunner(runtimeAdmission, { stateRootTrustAnchor: dirname(stateRoot), stateRoot,
-          authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock, input.credentials),
+          authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock, input.credentials, database),
       },
     });
   };

@@ -3000,6 +3000,16 @@ export class AuthorityDatabase implements Disposable {
     return AuthorityDatabase.sourceDatabaseIdentity(this.#admission.authorityBackupExpectedSource());
   }
 
+  /** This connection's committed state for its own doctor pass, bound to the file identity it opened; no other connection's commit can fail or change it. */
+  serializeCommittedImage(): { readonly identity: DirectoryIdentity; readonly image: Uint8Array } | undefined {
+    this.#assertOpen();
+    // Inside a transaction serialize() would include uncommitted writes.
+    if (this.#database.isTransaction) throw new Error("authority-image-inside-transaction");
+    if (this.#openedFileIdentity === undefined) return undefined;
+    // shortcut: holds the whole image in memory once; move to a chunked owner backup if state.db reaches hundreds of MB.
+    return Object.freeze({ identity: this.#openedFileIdentity, image: this.#database.serialize() });
+  }
+
   async onlineBackupTo(destinationPath: string): Promise<number> {
     this.#assertOpen();
     assertMaintenanceCustodyAvailable("backup");

@@ -25,7 +25,7 @@ import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-c
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { verifyBackupManifestAtPath } from "./backup-service.js";
-import { isAuthoritySourceChanged } from "./readonly-authority-snapshot.js";
+import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
 BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
@@ -783,8 +783,12 @@ function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: strin
   }
 }
 
-export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore): Promise<StorageDoctorReport> {
-  try { return await inspectAuthorityStorage(admission, input, clock, credentials); }
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore, owner?: AuthorityImageOwner): Promise<StorageDoctorReport> {
+  try {
+    const authorityPath = resolve(StorageDoctorOptionsSchema.parse(input).authorityPath);
+    // The process holding the authority open reads one image of it per pass, so concurrent writers such as peer heartbeats cannot invalidate the pass.
+    return await withActiveAuthorityObservation(authorityPath, owner, () => inspectAuthorityStorage(admission, input, clock, credentials));
+  }
   catch (error) {
     // A live write during any snapshot copy or read is a changed observation; real damage still reports unhealthy.
     if (isAuthoritySourceChanged(error)) throw new StorageDoctorObservationChangedError({ cause: error });

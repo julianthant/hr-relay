@@ -9,8 +9,10 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
-import { existsSync, statSync, lstatSync, mkdtempSync, realpathSync, rmSync, type BigIntStats } from "node:fs";
+import { existsSync, statSync, lstatSync, mkdtempSync, realpathSync, rmSync, writeFileSync, type BigIntStats } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { fileStatus, sameDirectory, type DirectoryIdentity } from "../file-identity.js";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -107,6 +109,23 @@ try {
 }
 `;
 
+/** The process that holds the active authority open; its doctor pass reads one image of that connection instead of copying the live files. */
+export interface AuthorityImageOwner {
+  serializeCommittedImage(): { readonly identity: DirectoryIdentity; readonly image: Uint8Array } | undefined;
+}
+
+type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void }>;
+type ActiveObservation = { readonly statePath: string; owner: AuthorityImageOwner | undefined; snapshot?: ReadonlySnapshot };
+const activeObservation = new AsyncLocalStorage<ActiveObservation>();
+
+/** With an owner, every read of this active authority file in body uses one owner image disposed when body ends; every other path keeps guarded, freshness-checked copies. */
+export async function withActiveAuthorityObservation<T>(statePath: string, owner: AuthorityImageOwner | undefined, body: () => Promise<T>): Promise<T> {
+  if (owner === undefined) return body();
+  const scope: ActiveObservation = { statePath: existsSync(statePath) ? realpathSync(statePath) : resolve(statePath), owner };
+  try { return await activeObservation.run(scope, body); }
+  finally { scope.snapshot?.dispose(); }
+}
+
 function snapshotMarker(sourcePath: string): string {
   return ["", "-wal", "-shm", "-journal"].map(suffix => {
     const stats = inspect(`${sourcePath}${suffix}`);
@@ -115,10 +134,18 @@ function snapshotMarker(sourcePath: string): string {
 }
 
 export function createReadonlyAuthoritySnapshot(sourcePath: string) {
+  const scope = activeObservation.getStore();
+  if (scope?.owner !== undefined && existsSync(sourcePath) && realpathSync(sourcePath) === scope.statePath) {
+    scope.snapshot ??= copyReadonlyAuthoritySnapshot(sourcePath, scope.owner);
+    // The scope owns the image and disposes it when its pass ends.
+    if (scope.snapshot !== undefined) return Object.freeze({ path: scope.snapshot.path, assertUnchanged: scope.snapshot.assertUnchanged, dispose() {} });
+    // The file at the path is not the one the owner opened: judge it by today's guarded copy.
+    scope.owner = undefined;
+  }
   const proof = outermostOperationProof();
   const marker = snapshotMarker(sourcePath);
   const key = `readonly-snapshot:${sourcePath}`;
-  const cached = proof?.slots.get(key) as { marker: string; snapshot: ReturnType<typeof copyReadonlyAuthoritySnapshot> } | undefined;
+  const cached = proof?.slots.get(key) as { marker: string; snapshot: ReadonlySnapshot } | undefined;
   if (cached?.marker === marker) {
     cached.snapshot.assertUnchanged();
     return Object.freeze({ path: cached.snapshot.path, assertUnchanged: cached.snapshot.assertUnchanged, dispose() { if (!proof?.active) cached.snapshot.dispose(); } });
@@ -130,7 +157,9 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
   return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() { if (!proof.active) snapshot.dispose(); } });
 }
 
-function copyReadonlyAuthoritySnapshot(sourcePath: string) {
+function copyReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot;
+function copyReadonlyAuthoritySnapshot(sourcePath: string, owner: AuthorityImageOwner): ReadonlySnapshot | undefined;
+function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImageOwner): ReadonlySnapshot | undefined {
   const directory = process.platform === "win32"
     ? join(realpathSync(tmpdir()), `relay-readonly-authority-${randomUUID()}`)
     : mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
@@ -139,6 +168,7 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
   let disposed = false;
   let disposalFailure: AuthoritySourceClosureUnprovedError | undefined;
+  let ownerImage = false;
   const dispose = () => {
     if (disposalFailure !== undefined) throw disposalFailure;
     if (disposed) return;
@@ -149,6 +179,8 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
   const assertUnchanged = () => {
     if (disposalFailure !== undefined) throw disposalFailure;
     if (disposed) throw new Error("authority-readonly-snapshot-closed");
+    // An owner image is the observation itself; later source changes do not make it stale.
+    if (ownerImage) return;
     for (const source of sources) {
       const current = inspect(source.path);
       if ((current === undefined) !== (source.stats === undefined)
@@ -168,6 +200,19 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
         continue;
       }
       if (suffix === "-journal" && source.stats.size > 0n) throw new Error("authority-readonly-source-journal-unsettled");
+    }
+    if (owner !== undefined) {
+      const fileIdentity = () => { const file = fileStatus(sourcePath); return { device: file.dev, inode: file.ino }; };
+      let image: ReturnType<AuthorityImageOwner["serializeCommittedImage"]>;
+      try {
+        const before = fileIdentity();
+        image = owner.serializeCommittedImage();
+        if (image !== undefined && !(sameDirectory(before, image.identity) && sameDirectory(fileIdentity(), image.identity))) image = undefined;
+        if (image !== undefined) writeFileSync(path, image.image, { flag: "wx", mode: 0o600 });
+      } catch (error) { throw new Error("authority-readonly-snapshot-copy-failed", { cause: error }); }
+      if (image === undefined) { dispose(); return undefined; }
+      ownerImage = true;
+      return snapshot;
     }
     const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("snapshot") + copySnapshotScript : copySnapshotScript, path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
