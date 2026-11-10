@@ -6,8 +6,10 @@ import type { WorkerPreflightRefusal } from "../../../models/preflight/preflight
 import type { RuntimePreflight } from "./runtime-admission.js";
 
 export function workerPreflightRefusal(error: unknown, runId?: RunRecord["envelope"]["runId"]): WorkerPreflightRefusal | undefined {
-  const code = error instanceof PreflightObservationChangedError ? "PREFLIGHT_OBSERVATION_CHANGED"
-    : error instanceof PreflightAdmissionRefusal && error.reason === "blocked" ? "PREFLIGHT_BLOCKED" : undefined;
+  const code = error instanceof PreflightObservationChangedError || (error instanceof PreflightAdmissionRefusal && error.reason === "stale")
+    ? "PREFLIGHT_OBSERVATION_CHANGED"
+    : error instanceof PreflightAdmissionRefusal && (error.reason === "blocked" || error.reason === "unavailable" || error.reason === "scope-mismatch")
+      ? "PREFLIGHT_BLOCKED" : undefined;
   return code === undefined ? undefined : { state: "preflight-refused", code, ...(runId === undefined ? {} : { runId }) };
 }
 
@@ -15,7 +17,7 @@ class PreparationRequired extends Error {
   constructor(readonly scope: PreflightAdmissionScope, readonly run: RunRecord) { super("Selected run needs preflight preparation."); }
 }
 const CLAIM_ATTEMPTS = 4;
-/** Selection and assertion are atomic. A thrown preparation request rolls back before the claim write. An authority write during preparation re-prepares within the attempt bound. */
+/** Selection and assertion are atomic. A thrown preparation request rolls back before the claim write. Preparations stop at the attempt bound; a preparation that succeeds still claims. */
 export async function claimWithPreflight(input: Readonly<{
   preflight: RuntimePreflight; signal: AbortSignal;
   prepareRun(run: RunRecord, signal: AbortSignal): Promise<void>;
@@ -23,7 +25,7 @@ export async function claimWithPreflight(input: Readonly<{
   onObservationChanged?(attempt: number): void;
 }>): Promise<RunMutationOutcome | WorkerPreflightRefusal> {
   let prepared: Readonly<{ runId: string; version: number }> | undefined;
-  for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt <= CLAIM_ATTEMPTS; attempt += 1) {
     if (input.signal.aborted) throw input.signal.reason;
     let selected: RunRecord | undefined;
     try {
@@ -44,6 +46,7 @@ export async function claimWithPreflight(input: Readonly<{
         if (refusal !== undefined) return refusal;
         throw error;
       }
+      if (attempt === CLAIM_ATTEMPTS) return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
       try {
         await input.preflight.admission.prepare(error.scope, input.signal);
         input.preflight.admission.assertReady(error.scope);
@@ -59,7 +62,7 @@ export async function claimWithPreflight(input: Readonly<{
       }
     }
   }
-  throw new PreflightAdmissionRefusal("stale", "Queued selection changed during preflight; retry the worker command.");
+  return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED" };
 }
 
 export function preflightSessionFactory(factory: WorkerBrowserSessionFactory, preflight: RuntimePreflight, scope: PreflightAdmissionScope): WorkerBrowserSessionFactory {
