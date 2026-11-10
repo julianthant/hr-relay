@@ -3,7 +3,7 @@ import { CommandRequestSchema } from "../../../rules/commands/commands.js";
 import type { DashboardClient } from "../../client/index.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
+import type { CommandRequest, CommandResult, BulkRunCommandOutcome, DashboardCommandRequest } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import { isTerminalQueueStatus } from "../../../models/dashboard/projection.js";
 import type { CommandReadbackVerification } from "./command-executor.js";
@@ -12,7 +12,6 @@ import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id
  * §3.4), for the confirm-first flow the app root mounts. */
 import { systemClock } from "../../../rules/time/clock.js";
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
-import { directIdentifierDisplay } from "../../../rules/redaction/redaction.js";
 import type { ActionTarget } from "../../surfaces/shared/actions/actions.js";
 import {
   identityCeremonyFor,
@@ -66,6 +65,8 @@ export interface CommandContext {
   readonly source: "queue" | "run-detail";
   /** the gate section the run advertised, when one is open */
   readonly gate?: IdentityGatePayload | undefined;
+  /** the open gate's node, from the run detail; the identity review itself serves no node ids */
+  readonly gateId?: string | undefined;
   readonly parkedWrite?: ParkedWriteDetailWire | undefined;
   readonly childRetry?: RunDetailWire["childRetry"];
   readonly batchMemberRetry?: QueueSurfaceWire;
@@ -84,30 +85,27 @@ export interface CommandContext {
   readonly requestedAt?: string | undefined;
 }
 
-/** The identity gate's answer: the operator's decision, wearing the server's
- * facts. */
+/** The identity gate's answer: the operator's decision, naming the served refs; the server resolves them. */
 function composeGateResult(
   action: CommandAction,
   gate: IdentityGatePayload | undefined,
   answer: IdentityGateAnswer | undefined,
+  gateId: string | undefined,
   envelope: CommandEnvelopeFields,
 ): ComposedCommand {
   if (gate === undefined || gate.state !== "available") {
     return {
       state: "refused",
       reason: gate === undefined
-        ? "this run served no identity-gate section, so there is no packet to answer"
+        ? "this run served no identity-gate section, so there is no review to answer"
         : `the identity-gate section is ${gate.state}: ${"reason" in gate ? gate.reason : gate.message}`,
     };
   }
+  if (gateId === undefined) return { state: "refused", reason: "the run detail names no open gate to answer" };
   const served = gate.value;
-  if (action.resolution === "rejected") {
-    const reason = served.rejectReason;
-    if (reason === undefined) return { state: "refused", reason: `the served rejection ${action.key} carries no recorded reason` };
-    return { state: "ready", request: { ...envelope, family: "gate", type: "resolve-gate",
-      target: { runId: served.runId, gateId: served.gateId, expectedVersion: action.expectedVersion },
-      payload: { result: { schemaHash: served.resultSchemaHash, value: { decision: "rejected", reason, evidenceDigest: served.evidenceDigest } } } } };
-  }
+  const request = (payload: unknown) => ({ state: "ready" as const, request: { ...envelope, family: "gate", type: "answer-identity-gate",
+    target: { runId: served.runId, gateId, expectedVersion: action.expectedVersion }, payload } });
+  if (action.resolution === "rejected") return request({ decision: "rejected", gateRef: served.gateRef });
   if (action.resolution !== "approved") {
     return {
       state: "refused",
@@ -120,7 +118,7 @@ function composeGateResult(
   // The ONE ceremony whose answer is a served fact: the server said one click,
   // and named exactly one candidate. Everything else waits for a human.
   const decided: IdentityGateAnswer | undefined = answer
-    ?? (ceremony.kind === "confirm" ? { decision: "approved", eid: ceremony.option.eid } : undefined);
+    ?? (ceremony.kind === "confirm" ? { decision: "approved", optionRef: ceremony.option.ref } : undefined);
   if (decided === undefined) {
     return {
       state: "refused",
@@ -129,38 +127,14 @@ function composeGateResult(
     };
   }
 
-  const problem = identityDraftProblem(ceremony, decided.eid);
+  const problem = identityDraftProblem(ceremony, decided);
   if (problem !== undefined) return { state: "refused", reason: problem };
-
-  const option = optionFor(served.options, decided.eid);
-  if (option === undefined) {
-    return {
-      state: "refused",
-      reason: `EID ${directIdentifierDisplay(decided.eid)} is not among the candidates `
-        + "this packet served, so there is no `chosenFrom` label to record it under",
-    };
+  if ("optionRef" in decided && optionFor(served.options, decided.optionRef) === undefined) {
+    return { state: "refused", reason: "the picked candidate is not one this review served" };
   }
-  const value = {
-    decision: "approved",
-    eid: option.eid,
-    chosenFrom: option.chosenFrom,
-    evidenceDigest: served.evidenceDigest,
-  };
-
-  return {
-    state: "ready",
-    request: {
-      ...envelope,
-      family: "gate",
-      type: "resolve-gate",
-      target: {
-        runId: served.runId,
-        gateId: served.gateId,
-        expectedVersion: action.expectedVersion,
-      },
-      payload: { result: { schemaHash: served.resultSchemaHash, value } },
-    },
-  };
+  return request("optionRef" in decided
+    ? { decision: "approved", gateRef: served.gateRef, optionRef: decided.optionRef }
+    : { decision: "approved", gateRef: served.gateRef, typedEid: decided.typedEid });
 }
 
 /** Refuse unknown served verbs by name; never turn new commands into silent no-ops. */
@@ -256,7 +230,7 @@ export function composeCommandRequest(
       };
     }
     case "resolve-gate":
-      return composeGateResult(action, context.gate, context.gateAnswer, envelope);
+      return composeGateResult(action, context.gate, context.gateAnswer, context.gateId, envelope);
     case "check-parked-write": {
       const write = context.parkedWrite;
       const served = write?.actions.find(candidate => candidate.key === action.key);
@@ -298,7 +272,7 @@ export { composeStopWorkerCommand, composePlanWorkerCountCommand, composeSpawnWo
 export async function verifyShellCommandEffect(
   client: DashboardClient,
   day: string,
-  request: CommandRequest,
+  request: DashboardCommandRequest,
   reply: CommandResult | BulkRunCommandOutcome,
 ): Promise<CommandReadbackVerification> {
   const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
@@ -440,7 +414,7 @@ export async function verifyShellCommandEffect(
   }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);
-    const value = request.payload.result.value;
+    const value = request.type === "answer-identity-gate" ? request.payload : request.payload.result.value;
     const decision = typeof value === "object" && value !== null && "decision" in value ? value.decision : undefined;
     return detail.rowRevision > request.target.expectedVersion && detail.gate.state === "resolved"
       && detail.gate.nodeId !== undefined && String(detail.gate.nodeId) === String(request.target.gateId) && detail.gate.resolvedBy === request.requestedBy

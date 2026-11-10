@@ -1,6 +1,6 @@
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StartCommandRequestSchema, CommandIdentityConflictError, type CommandRequest, type BulkRunCommandOutcome, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import { StartCommandRequestSchema, CommandIdentityConflictError, type DashboardCommandRequest, type BulkRunCommandOutcome, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
 import { workerStartupToast } from "../../app/commands/worker-startup-toast.js";
@@ -167,7 +167,7 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     },
     submit(input: unknown, binding: DashboardCommandBinding, plan?: LaunchVerificationPlan, publish?: (outcome: CommandOutcome) => void) {
       const command = StartCommandRequestSchema.parse(input);
-      const options = { scope: binding.scope, readback: async (request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
+      const options = { scope: binding.scope, readback: async (request: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
         if (request.family !== "start" || !("state" in reply)) return { state: "mismatch" as const, evidence: reply };
         return verifyRunLaunchReadback(client, request, reply, plan);
       }, ...(publish === undefined ? {} : { publish }) };

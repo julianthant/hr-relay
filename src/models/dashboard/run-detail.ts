@@ -43,8 +43,6 @@ import {
   WriteIntentIdSchema,
 } from "../../rules/identity/ids.js";
 import { UnscopedCommitReasonIdSchema } from "../write-safety/unscoped-commit.js";
-import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
-import { IdentityEvidencePacketSchema } from "../../rules/separations/identity-evidence.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
@@ -922,60 +920,43 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   }
 });
 
-/** The identity-approval gate section: the whole server side of the approval UI — a command arm plus wire state ONLY. */
+/** The identity review: display text and opaque refs only; the evidence packet, digests and node ids stay server-side. */
 export const IdentityGateOptionWireSchema = z.strictObject({
-  eid: z.string().regex(/^\d{8}$/),
-  /** The label a `resolve-gate` payload must carry for this EID. */
-  chosenFrom: z.enum(["checked", "name-search", "manual"]),
-  /** The name UCPath displayed for this EID, when the packet carried one. */
+  /** Opaque; an `answer-identity-gate` command names the candidate by this ref. */
+  ref: z.uuid(),
   displayName: z.string().min(1),
-  /** Why this EID is on the list, in the operator's terms. */
+  maskedEid: z.string().regex(/^••••\d{4}$/u),
+  /** Why this person is on the list, as a closed sentence. */
   origin: z.string().min(1),
 });
 
 export const IdentityGateDetailWireSchema = z.strictObject({
-  native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
-  gateId: NodeIdSchema,
+  /** Opaque; binds an answer to this gate's exact evidence. */
+  gateRef: z.uuid(),
   label: z.string().min(1),
   parkedAt: IsoInstantSchema,
-  /** The node the run resumes at once the gate resolves. */
-  resumeAt: NodeIdSchema,
-  /** The run version a `resolve-gate` command must CAS against. */
+  /** The run version an answer must CAS against. */
   expectedVersion: z.number().int().positive(),
-  /** The descriptor's exact gate-result schema hash the kernel will require. */
-  resultSchemaHash: FingerprintSchema,
-  /** The digest an approval or rejection must carry (ref write-safety ). */
-  evidenceDigest: FingerprintSchema,
-  packet: IdentityEvidencePacketSchema,
+  /** The log position of the gate's opening, when the run recorded it. */
+  order: z.number().int().nonnegative().optional(),
+  /** Why Relay asks, as a closed sentence. */
+  reason: z.string().min(1),
+  /** The Request and UCPath table: display labels and display-safe values. */
+  comparisons: z.array(z.strictObject({ label: z.string().min(1), request: z.string().min(1), ucpath: z.string().min(1), agrees: z.boolean() })).min(1),
   options: z.array(IdentityGateOptionWireSchema).min(1),
     /* The SERVER decides how much ceremony the decision costs, so a surface cannot quietly turn a risky approval into one click. */
   approvalShape: z.enum(["one-click", "choose-a-candidate"]),
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
-  /** The reason a served rejection records; the gate's declared arm owns it. */
-  rejectReason: z.string().min(1).optional(),
   decision: RunDecisionWireSchema.optional(),
 }).superRefine((gate, context) => {
   refineDecisionActions(gate.decision, gate.actions, context, ["decision"]);
-  if ((gate.rejectReason !== undefined) !== gate.actions.some(action => action.kind === "command" && action.resolution === "rejected")) {
-    context.addIssue({ code: "custom", path: ["rejectReason"], message: "a served rejection and its recorded reason come together" });
-  }
   if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {
     context.addIssue({ code: "custom", path: ["approvalShape"], message: "presentation must match the shown candidate count" });
   }
-  const eids = gate.options.map(({ eid }) => eid);
-  if (new Set(eids).size !== eids.length) {
-    context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by EID" });
-  }
-  for (const [index, option] of gate.options.entries()) {
-    if (!gate.packet.approvableEids.map(String).includes(option.eid)) {
-      context.addIssue({
-        code: "custom",
-        path: ["options", index, "eid"],
-        message: `option ${directIdentifierDisplay(option.eid)} is not one the packet showed`,
-      });
-    }
+  if (new Set(gate.options.map(({ ref }) => ref)).size !== gate.options.length) {
+    context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by ref" });
   }
   const targeted = gate.actions.filter((action) => action.kind === "command"
     && action.command === "resolve-gate"
