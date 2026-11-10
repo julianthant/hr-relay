@@ -1214,9 +1214,24 @@ export class RunQueueProjection {
     const views = this.#deps.authority.workerMembers?.();
     if (slots === undefined || views === undefined) return undefined;
     const active = slots.filter(slot => slot.workflow === workflowId && slot.retiredAt === null);
-    const exited = active.some(slot => views.some(view => view.member.workerId === slot.workerId && view.state === "exited"));
-    const live = active.some(slot => views.some(view => view.member.workerId === slot.workerId && view.state !== "exited"));
-    return exited && !live ? QUEUE_NOT_STARTING_NO_WORKER : undefined;
+    const viewOf = (workerId: string) => views.find(view => view.member.workerId === workerId);
+    const live = active.filter(slot => {
+      const view = viewOf(slot.workerId);
+      return view !== undefined && view.state !== "exited";
+    });
+    if (live.length === 0) {
+      const exited = active.some(slot => viewOf(slot.workerId)?.state === "exited");
+      return exited ? QUEUE_NOT_STARTING_NO_WORKER : undefined;
+    }
+    const ordered = [...live].sort((left, right) => left.workerId < right.workerId ? -1 : left.workerId > right.workerId ? 1 : 0);
+    const refusals = ordered.flatMap(slot => {
+      const refusal = viewOf(slot.workerId)?.activity?.refusal;
+      return refusal === undefined ? [] : [refusal];
+    });
+    if (refusals.length !== ordered.length) return undefined;
+    const refusal = refusals[0];
+    if (refusal === undefined) return undefined;
+    return { code: refusal.code, summary: refusal.summary ?? operatorFailureSentence(refusal.code) };
   }
 
   #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[], context: QueueReadContext): SurfaceFold {

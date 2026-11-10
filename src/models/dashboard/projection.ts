@@ -2,6 +2,7 @@ import { QueueParentSchema } from "./queue-parent.js";
 import { DelegatedRecordRefSchema } from "../workflow/delegated-record.js";
 import { RunOutcomeSchema, RunPauseSchema } from "../run/record.js";
 import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
+import { PreflightRefusalCodeSchema } from "../preflight/preflight-contract.js";
 import { z } from "zod";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
@@ -176,10 +177,16 @@ export const QUEUE_NOT_STARTING_NO_WORKER = Object.freeze({
   code: "NO_WORKER",
   summary: "No worker is running for this workflow.",
 } as const);
-export const QueueNotStartingWireSchema = z.strictObject({
-  code: z.literal(QUEUE_NOT_STARTING_NO_WORKER.code),
-  summary: z.literal(QUEUE_NOT_STARTING_NO_WORKER.summary),
-});
+export const QueueNotStartingWireSchema = z.union([
+  z.strictObject({
+    code: z.literal(QUEUE_NOT_STARTING_NO_WORKER.code),
+    summary: z.literal(QUEUE_NOT_STARTING_NO_WORKER.summary),
+  }),
+  z.strictObject({
+    code: PreflightRefusalCodeSchema,
+    summary: z.string().min(1).max(4096),
+  }),
+]);
 
 const QueueBaseFields = {
   runId: RunIdSchema,
@@ -484,6 +491,12 @@ export const WorkerCardWireSchema = z.strictObject({
   /** Failed cards only: the exited member's sessions as last observed. */
   lastBrowsers: z.array(WorkerBrowserWireSchema).optional(),
   waitingActivity: z.enum(["acquiring", "authenticating", "closing"]).optional(),
+  /** Present while this idle worker waits out a preflight refusal. */
+  refusal: z.strictObject({
+    code: PreflightRefusalCodeSchema,
+    summary: z.string().min(1).max(4096),
+    retryAt: IsoInstantSchema,
+  }).optional(),
   interrupt: StepInterruptWireSchema.optional(),
   lastRun: WorkerLastRunWireSchema.optional(),
   /** Whether the current or last run's steps can be shown; the steps themselves stay on its queue row. */
@@ -502,6 +515,9 @@ export const WorkerCardWireSchema = z.strictObject({
   }
   if (card.waitingActivity !== undefined && card.state !== "waiting") {
     context.addIssue({ code: "custom", path: ["waitingActivity"], message: "only a waiting worker card carries waitingActivity" });
+  }
+  if (card.refusal !== undefined && card.state !== "idle") {
+    context.addIssue({ code: "custom", path: ["refusal"], message: "only an idle worker card carries a refusal" });
   }
   const terminal = card.state === "failed";
   const exited = terminal && card.stopReason !== "not-started";

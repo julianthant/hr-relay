@@ -45,6 +45,19 @@ describe("the worker card from the pool member and its slot", () => {
     for (const [view, state] of cases) assert.equal(card({ view, resolveRun: () => running }).state, state);
   });
 
+  it("serves a preflight refusal on an idle card and clears it once the worker claims", () => {
+    const refusal = { code: "PREFLIGHT_BLOCKED" as const, summary: "Readiness checks blocked this worker.", retryAt: STARTED };
+    const refused = card({ view: memberView({ activity: { state: "idle", refusal } }) });
+    assert.equal(refused.state, "idle");
+    assert.deepEqual(refused.refusal, refusal);
+    assert.equal(card({ view: memberView({ activity: { state: "busy", runId: RUN } }), resolveRun: () => running }).refusal, undefined);
+    assert.equal(card({ view: memberView({ activity: { state: "idle" } }) }).refusal, undefined);
+    const catalog = card({ view: memberView({ activity: { state: "idle", refusal: { code: "PREFLIGHT_TIMEOUT", retryAt: STARTED } } }) });
+    assert.equal(catalog.refusal?.code, "PREFLIGHT_TIMEOUT");
+    assert.equal(catalog.refusal?.summary, "A readiness check took too long. Check again.");
+    assert.equal(catalog.refusal?.retryAt, STARTED);
+  });
+
   it("serves the member, its directive from the slot and the in-memory fence beside the running run", () => {
     const value = card({ view: memberView({ version: 3, activity: { state: "busy", runId: RUN } }), slot: { ...slot, paused: true },
       foldRevision: 12, resolveRun: () => running });
