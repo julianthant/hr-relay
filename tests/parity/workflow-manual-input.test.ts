@@ -110,9 +110,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await chooseSelect(review.getByRole("combobox", { name: "Section 1 page", exact: true }), "2");
       await chooseSelect(review.getByRole("combobox", { name: "Section 2 page", exact: true }), "1");
       await expect(review.getByRole("img")).toHaveAccessibleName("Source page 2 of manual-i9.pdf");
-      await review.getByRole("button", { name: "Add record", exact: true }).click();
-      await expect(review.getByRole("region", { name: "Source PDF", exact: true })).toHaveCount(2);
-      await expect(review.getByRole("img")).toHaveCount(2);
+      await expect(review.getByRole("button", { name: "Add record", exact: true })).toHaveCount(0);
+      await expect(review.getByRole("region", { name: "Source PDF", exact: true })).toHaveCount(1);
+      await expect(review.getByRole("img")).toHaveCount(1);
       await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
       expect(errors).toEqual([]); expect(writes).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
