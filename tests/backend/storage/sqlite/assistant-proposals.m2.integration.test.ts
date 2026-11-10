@@ -40,7 +40,7 @@ function world() {
   /** The operator's answer: a genuine accepted message bound to `shown`. */
   const answer = (shown: AssistantM2ProposalSnapshot, overrides: Partial<Bound> = {}) => {
     const accepted = accept(shown.conversationId, { ...bound(shown), ...overrides });
-    return { ...bound(shown), ...overrides, answerMessageId: accepted.acceptedTurn.messageId, accepted };
+    return { ...bound(shown), ...overrides, answerMessageId: accepted.acceptedTurn.messageId, accepted, attempt: accepted, now: T };
   };
   const finish = (accepted: ReturnType<typeof accept>) => { reply(accepted); };
   return { storage, chat, proposals, snapshot, accept, reply, answer, bound, finish };
@@ -81,20 +81,21 @@ it("issues one open proposal per chat, answers only the exact shown snapshot onc
 it("answers only with the live accepted message right after the rendered reply, in the same chat and bound to that proposal", () => {
   const w = world(), shown = w.snapshot();
   w.proposals.issue(shown);
-  const claim = (answerMessageId: string) => w.proposals.claimAnswer({ ...w.bound(shown), answerMessageId });
-  assert.equal(claim(randomUUID()), false, "nonexistent message");
-  assert.equal(claim(shown.renderedMessageId), false, "a reply is not an accepted operator message");
-  const other = w.storage.create(), foreign = w.accept(other, w.bound(shown));
-  assert.equal(claim(foreign.acceptedTurn.messageId), false, "another chat's accepted message");
   const unbound = w.accept();
-  assert.equal(claim(unbound.acceptedTurn.messageId), false, "an accepted message that answered nothing");
+  const claim = (attempt: typeof unbound, messageId = attempt.acceptedTurn.messageId) => w.proposals.claimAnswer({ ...w.bound(shown),
+    attempt: { ...attempt, acceptedTurn: AssistantAcceptedTurnSchema.parse({ ...attempt.acceptedTurn, messageId }) }, now: T });
+  assert.equal(claim(unbound, randomUUID()), false, "nonexistent message");
+  assert.equal(claim(unbound, shown.renderedMessageId), false, "a reply is not an accepted operator message");
+  assert.equal(claim(unbound), false, "an accepted message that answered nothing");
   w.finish(unbound);
+  const other = w.storage.create(), foreign = w.accept(other, w.bound(shown));
+  assert.equal(claim(foreign), false, "another chat's accepted message");
   assert.equal(w.proposals.read(shown.id)?.lifecycle.state, "open");
 
   const later = w.snapshot(); w.proposals.issue(later);
   const localId = randomUUID();
   w.storage.history.apply({ operation: "local", conversationId: w.chat, expectedRevision: w.storage.revision(w.chat), messageId: localId, text: "Note" }, T);
-  assert.equal(claim(localId), false, "an unrecorded local message");
+  assert.equal(claim(unbound, localId), false, "an unrecorded local message");
   const intervened = w.answer(later);
   assert.equal(w.proposals.claimAnswer(intervened), false, "a message between the rendered reply and the answer");
   w.finish(intervened.accepted);
@@ -102,6 +103,19 @@ it("answers only with the live accepted message right after the rendered reply, 
   const settled = w.snapshot(); w.proposals.issue(settled);
   const finished = w.answer(settled); w.finish(finished.accepted);
   assert.equal(w.proposals.claimAnswer(finished), false, "an answer no longer sending");
+});
+
+it("claims an answer only through the live accepted attempt: a changed epoch, a restarted owner or an expired chat leaves the proposal open", () => {
+  for (const fault of ["epoch", "restart", "expiry"] as const) {
+    const w = world(), shown = w.snapshot();
+    w.proposals.issue(shown);
+    const yes = w.answer(shown);
+    if (fault === "epoch") w.storage.changeEpoch();
+    const owner = fault === "restart" ? w.storage.proposals(w.storage.restart()) : w.proposals;
+    assert.equal(owner.claimAnswer({ ...yes, now: fault === "expiry" ? "2027-01-01T00:00:00.000Z" : T }), false, fault);
+    assert.deepEqual(w.proposals.read(shown.id)?.lifecycle, { state: "open" });
+    assert.throws(() => w.proposals.claimRow(shown.id, shown.rows[0]?.id ?? "", randomUUID()), /not-answered/u);
+  }
 });
 
 it("issues only a snapshot rendered in its chat's latest reply to its source message", () => {

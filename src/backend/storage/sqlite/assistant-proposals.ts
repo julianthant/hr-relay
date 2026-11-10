@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ASSISTANT_START_ROWS_MAX, AssistantM2ProposalRecordSchema, AssistantM2ProposalSnapshotSchema, AssistantM2RowResultSchema, AssistantSessionClaimSchema, AssistantSessionOutcomeSchema,
   type AssistantM2ProposalRecord, type AssistantM2ProposalSnapshot } from "../../../models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { assistantM1MessageFromRow } from "./assistant-history.js";
+import { assistantM1MessageFromRow, type AssistantM1Attempt, type AssistantM1HistoryRepository } from "./assistant-history.js";
 
 /** Candidate migration (renumbered when staging merges); installed only by the stopped activation owner. */
 export const ASSISTANT_M2_PROPOSAL_STATEMENTS = Object.freeze([
@@ -51,6 +51,8 @@ interface Ports {
   profileId(): string;
   read<T>(work: () => T): T;
   mutate<T>(table: Table, work: () => Readonly<{ result: T; changes: number }>): T;
+  /** The M1 owner's live accepted-attempt check (retained attempt, epoch, conversation lifetime). */
+  readonly accepted: Pick<AssistantM1HistoryRepository, "sending">;
 }
 const ProposalRowSchema = z.strictObject({ id: z.uuid(), conversation_id: z.uuid(), revision: z.number(), rendered_message_id: z.uuid(), rendered_digest: z.string(),
   state: z.string(), answer_message_id: z.string().nullable(), snapshot_json: z.string(), created_at: z.string() });
@@ -161,16 +163,19 @@ export function createAssistantProposalRepository(ports: Ports) {
         return raw === undefined ? undefined : record(raw);
       });
     },
-    /** Moves the exact reviewed open proposal to answered once, by the live accepted message right after its rendered reply; false otherwise. */
-    claimAnswer(input: Readonly<{ proposalId: string; proposalRevision: number; renderedMessageId: string; renderedDigest: string; answerMessageId: string }>): boolean {
+    /** Moves the exact reviewed open proposal to answered once, by the live accepted attempt right after its rendered reply; false otherwise. */
+    claimAnswer(input: Readonly<{ proposalId: string; proposalRevision: number; renderedMessageId: string; renderedDigest: string; attempt: AssistantM1Attempt; now: string }>): boolean {
+      const answerMessageId = input.attempt.acceptedTurn.messageId;
       return ports.mutate("assistant_proposals", () => {
-        const shown = find(input.proposalId), answer = shown === undefined ? undefined : answeredBy(shown.snapshot, z.uuid().parse(input.answerMessageId));
+        const shown = find(input.proposalId), answer = shown === undefined ? undefined : answeredBy(shown.snapshot, answerMessageId);
         const rendered = shown === undefined ? undefined : message(shown.snapshot.renderedMessageId);
-        if (shown === undefined || answer === undefined || rendered === undefined || answer.delivery !== "sending" || answer.ordinal !== rendered.ordinal + 1) return { result: false, changes: 0 };
+        if (shown === undefined || answer === undefined || rendered === undefined || answer.ordinal !== rendered.ordinal + 1
+          || canonicalJsonStringify(answer.payload.recording.kind === "accepted-turn" ? answer.payload.recording.acceptedTurn : null) !== canonicalJsonStringify(input.attempt.acceptedTurn)
+          || !ports.accepted.sending(input.attempt, input.now)) return { result: false, changes: 0 };
         owned(shown.snapshot.conversationId);
         const updated = database.prepare(`UPDATE assistant_proposals SET state='answered',answer_message_id=?
           WHERE id=? AND state='open' AND revision=? AND rendered_message_id=? AND rendered_digest=?`)
-          .run(z.uuid().parse(input.answerMessageId), z.uuid().parse(input.proposalId), input.proposalRevision, z.uuid().parse(input.renderedMessageId), input.renderedDigest);
+          .run(answerMessageId, z.uuid().parse(input.proposalId), input.proposalRevision, z.uuid().parse(input.renderedMessageId), input.renderedDigest);
         return { result: updated.changes === 1, changes: Number(updated.changes) };
       });
     },

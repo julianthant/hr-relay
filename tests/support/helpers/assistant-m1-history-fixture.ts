@@ -37,10 +37,12 @@ export function assistantM1HistoryFixture(config: Readonly<{ now: string; accept
     read: work => { if (depth > 0) return work(); database.exec("BEGIN"); try { const result = work(); database.exec("COMMIT"); return result; } catch (error) { database.exec("ROLLBACK"); throw error; } },
     mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) };
   const history = createAssistantM1HistoryRepository(ports);
-  /** Applies the candidate M2 statements over this populated M1 database and opens the prepared proposal owner. */
-  const proposals = () => {
-    for (const statement of ASSISTANT_M2_PROPOSAL_STATEMENTS) database.exec(statement);
-    return createAssistantProposalRepository({ database, profileId: () => profileId, read: work => ports.read(work),
+  let m2 = false;
+  /** Applies the candidate M2 statements once over this populated M1 database and opens the prepared proposal owner over `accepted`. */
+  const proposals = (accepted: Pick<typeof history, "sending"> = history) => {
+    if (!m2) for (const statement of ASSISTANT_M2_PROPOSAL_STATEMENTS) database.exec(statement);
+    m2 = true;
+    return createAssistantProposalRepository({ database, profileId: () => profileId, read: work => ports.read(work), accepted,
       mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) });
   };
   assert.deepEqual(database.prepare("SELECT name,sql FROM sqlite_schema ORDER BY name").all(), schemaBefore, "prepared construction never changes schema");
