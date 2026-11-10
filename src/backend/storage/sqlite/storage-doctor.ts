@@ -532,7 +532,9 @@ function reconcileSpanAuthority(
     if (snapshot.authorityGeneration > corpus.authorityGeneration) {
       throw new StorageDoctorObservationChangedError({ cause: { initial: authorityIdentityOf(corpus), final: authorityIdentityOf(snapshot) } });
     }
-    throw new Error("timeline and run authority identities disagree without a forward generation change");
+    return { reconciliation: SpanAuthorityReconciliationSchema.parse({ state: "unavailable",
+      cause: { code: "span-authority-unavailable", summary: "timeline and run authority changed between read snapshots; inspect again" },
+    }) };
   }
   if (corpus.state === "missing" && snapshot.malformedRecords.length === 0
     && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {
