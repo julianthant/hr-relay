@@ -88,5 +88,6 @@ export function assertSourceClosuresProved(failures: ReadonlySet<unknown>): void
 export function retainUnprovedSourceOwners(error: unknown, owners: RetainedSourceOwners): void {
   for (const closure of sourceClosures(error)) {
     retainedSourceClosures.set(closure, [...(retainedSourceClosures.get(closure) ?? []), owners]);
+    if (owners.snapshot !== undefined) retainedSnapshots.add(owners.snapshot);
   }
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { dirname, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
+import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -9,6 +10,7 @@ import { createCredentialStore } from "../../../src/backend/storage/configuratio
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { withActiveAuthorityObservation, withAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 
 function isDatabaseClose(value: unknown): value is DatabaseSync["close"] {
@@ -22,6 +24,8 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
   const workspace = z.string().min(1).parse(process.argv[3]);
   const profileId = z.string().min(1).parse(process.argv[4]);
   const path = z.string().min(1).parse(process.argv[5]);
+  // reader: one pinned read; doctor: a full owner doctor pass whose first image reader fails to close.
+  const mode = z.enum(["reader", "doctor"]).parse(process.argv[6] ?? "reader");
   if (process.send === undefined) throw new Error("owner-image close retention requires ipc");
   const send = process.send.bind(process);
   try {
@@ -48,17 +52,26 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
     };
     let failure: unknown;
     try {
-      await withActiveAuthorityObservation(path, database, async () => {
-        withAuthorityDatabaseReadOnly(admission, path, () => 1);
-      });
+      if (mode === "doctor") {
+        const stateRoot = dirname(path);
+        await doctorAuthorityStorage(admission, { stateRootTrustAnchor: workspace, stateRoot, authorityPath: path,
+          backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 250 }, systemClock, credentials, database);
+      } else {
+        await withActiveAuthorityObservation(path, database, async () => {
+          withAuthorityDatabaseReadOnly(admission, path, () => 1);
+        });
+      }
     } catch (error) { failure = error; }
     finally { DatabaseSync.prototype.close = close; }
-    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
-    assert.equal(hasUnprovedSourceClosure(failure), true);
+    // The doctor may fold the reader failure into its report; the retained reader and refused admission must hold either way.
+    if (mode === "reader" || failure !== undefined) {
+      assert.ok(failure instanceof AuthoritySourceClosureUnprovedError || hasUnprovedSourceClosure(failure), String(failure));
+    }
     const reader = owner.database;
     assert.ok(reader);
     assert.equal(reader.prepare("SELECT 1 AS live").get()?.live, 1);
     assert.ok(directory);
+    assert.equal(existsSync(join(directory, "authority.sqlite")), true);
     let releaseFailure: unknown;
     try { admission.release(); } catch (error) { releaseFailure = error; }
     assert.equal(hasUnprovedSourceClosure(releaseFailure), true);

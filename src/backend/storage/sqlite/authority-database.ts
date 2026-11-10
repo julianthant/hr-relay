@@ -1785,11 +1785,15 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     try {
       if (transactionOpen) database.exec("ROLLBACK");
     } finally {
-      try { database.close(); } finally {
-        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
-      }
+      closeSnapshotReader(database, snapshotCopy);
     }
   }
+}
+
+/** A reader that fails to close keeps its snapshot files with the retained owner. */
+function closeSnapshotReader(database: DatabaseSync, snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot>): void {
+  try { database.close(); } catch (error) { throw retainAuthoritySourceClosure([error], { snapshot, database }); }
+  try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); }
 }
 
 type AuthorityReadIdentitySnapshot = Readonly<{
@@ -1856,9 +1860,7 @@ function inspectAuthorityReadIdentityReadOnly(
     try {
       if (transactionOpen) database.exec("ROLLBACK");
     } finally {
-      try { database.close(); } finally {
-        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
-      }
+      closeSnapshotReader(database, snapshotCopy);
     }
   }
 }
@@ -1983,9 +1985,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
     return Object.freeze(snapshot);
   } finally {
     try { if (transactionOpen) database.exec("ROLLBACK"); } finally {
-      try { database.close(); } finally {
-        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
-      }
+      closeSnapshotReader(database, snapshotCopy);
     }
   }
 }

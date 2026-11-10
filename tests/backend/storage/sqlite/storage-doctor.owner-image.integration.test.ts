@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import childProcesses from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { openSync, readSync, writeSync, closeSync, statSync, copyFileSync, renameSync } from "node:fs";
+import fs, { openSync, readSync, writeSync, closeSync, statSync, copyFileSync, renameSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it, vi } from "vitest";
 import { z } from "zod";
@@ -151,14 +151,21 @@ it("still reports an unhealthy authority when a live page is corrupt", async () 
   }
 });
 
-const BINDING_SQL = "FROM database_states WHERE id=1";
+const BINDING_SQL = "SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1";
 
-function duringBindingRead(f: Fixture, effect: () => void) {
-  const state = { fired: false };
+/** Runs effect once, inside the active-authority binding read: the binding SELECT on the owner image, not on a backup copy or the live connection. */
+function duringBindingRead(effect: () => void) {
+  const state = { fired: false, imageDirectory: undefined as string | undefined };
+  const actualWrite = fs.writeFileSync;
+  vi.spyOn(fs, "writeFileSync").mockImplementation((file, data, options) => {
+    if (typeof file === "string" && SNAPSHOT_DIRECTORY.test(file) && state.imageDirectory === undefined) state.imageDirectory = dirname(file);
+    actualWrite(file, data, options);
+  });
+  syncBuiltinESMExports();
   // eslint-disable-next-line @typescript-eslint/unbound-method
   const prepare = DatabaseSync.prototype.prepare;
   vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function prepareDuringBinding(this: DatabaseSync, ...args: Parameters<DatabaseSync["prepare"]>) {
-    if (!state.fired && String(args[0]).includes(BINDING_SQL) && SNAPSHOT_DIRECTORY.test(this.location() ?? "")) {
+    if (!state.fired && args[0] === BINDING_SQL && state.imageDirectory !== undefined && dirname(this.location() ?? "") === state.imageDirectory) {
       state.fired = true;
       effect();
     }
@@ -172,7 +179,7 @@ it("keeps a verified backup restore-eligible when a checkpoint lands during the 
   const service = new AuthorityBackupService(f.admission, f.database, { directory: f.options.backupDirectory }, systemClock);
   const taken = await service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
   assert.ok(taken.manifests[0]);
-  const race = duringBindingRead(f, () => {
+  const race = duringBindingRead(() => {
     journalWrite(f);
     const live = new DatabaseSync(f.options.authorityPath);
     try { live.exec("PRAGMA busy_timeout=2000; PRAGMA wal_checkpoint(TRUNCATE)"); } finally { live.close(); }
@@ -184,13 +191,13 @@ it("keeps a verified backup restore-eligible when a checkpoint lands during the 
   assert.equal(candidate.restoreEligibility.state, "eligible");
 });
 
-it("refuses a verified backup when another database is renamed onto the path during the binding read", async () => {
+it("rejects the pass as changed when another database is renamed onto the path during the binding read", async () => {
   const f = await fixture();
   const service = new AuthorityBackupService(f.admission, f.database, { directory: f.options.backupDirectory }, systemClock);
   const taken = await service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
   assert.ok(taken.manifests[0]);
   const replacement = `${f.options.authorityPath}.replacement`;
-  const race = duringBindingRead(f, () => {
+  const race = duringBindingRead(() => {
     copyFileSync(f.options.authorityPath, replacement);
     renameSync(replacement, f.options.authorityPath);
   });

@@ -476,10 +476,10 @@ it("removes the owner image directory when the scope exits and a later proof rea
   }
 });
 
-it("keeps the owner image and refuses admission when a pinned reader's close fails", async () => {
+for (const mode of ["reader", "doctor"] as const) it(`keeps the owner image and refuses admission when a pinned ${mode} close fails`, async () => {
   const fixture = await createBoundProfileFixture({ sharedMachine: true });
   const child = childProcesses.fork(fileURLToPath(new URL("../../support/helpers/owner-image-close-retention.ts", import.meta.url)),
-    [String(fixture.lifetime.port), fixture.workspace, fixture.admission.profileBinding.profileId, fixture.path],
+    [String(fixture.lifetime.port), fixture.workspace, fixture.admission.profileBinding.profileId, fixture.path, mode],
     { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "inherit", "inherit", "ipc"] });
   let directory: string | undefined;
   const proved = once(child, "message", { signal: AbortSignal.timeout(20_000) });
