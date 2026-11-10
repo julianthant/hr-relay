@@ -70,6 +70,8 @@
 .log-failed-field > strong { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
 .log-failed-field > span:first-child { color: var(--ui-secondary); }
 .log-failed-field > strong { font-weight: 400; color: var(--ui-primary); }
+[data-answered="done"] .log-failed-field > span:first-child { color: var(--ui-positive); }
+[data-answered="rejected"] .log-failed-field > span:first-child { color: var(--ui-danger); }
 .log-failed-field > span:last-child { margin-left: auto; color: var(--ui-secondary); }
 [data-decision-state="held"] .log-failed-field > span:last-child, [data-decision-state="parked"] .log-failed-field > span:last-child, [data-decision-state="unconfirmed"] .log-failed-field > span:last-child { color: var(--ui-warning); }
 [data-decision-state] .log-capture-group:not(.log-capture-group--browsers) { grid-template-columns: minmax(0, 1fr); max-width: none; margin-top: 0; }

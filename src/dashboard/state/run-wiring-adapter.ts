@@ -354,7 +354,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const ceremony = identityCeremonyFor(gate);
       order.set(gate.gateId, requireNative(gate.native).order); node.set(gate.gateId, requireNative(gate.native).nodeId);
       steps.push({ id: gate.gateId, time: fmtActionClock(gate.parkedAt), title: plainStepLabel(gate.label),
-        entries: [{ kind: "decision", id: gate.gateId, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail, gate) && gate.decision !== undefined ? gate.decision.title : plainStepLabel(gate.label), state: "review",
+        entries: [{ kind: "decision", id: gate.gateId, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail, gate) && gate.decision !== undefined ? gate.decision.title : plainStepLabel(gate.label), state: "review", answerNoun: "Match",
           ...identityGateDisplay(gate.packet),
           ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.eid)}`,
             outcome: chosenFromLabel(ceremony.option.chosenFrom) } } : {}),

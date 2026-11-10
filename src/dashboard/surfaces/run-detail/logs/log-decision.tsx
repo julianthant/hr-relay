@@ -7,7 +7,7 @@ import { cn } from "../../../lib/utils.js";
 import type { DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import { fmtActionClock } from "../../shared/status/format.js";
 import { DecisionCard, DecisionChoice } from "./decision-card.js";
-import { choiceOptions, decisionAnswerValid, LOG_DECISION_STATUS, recommendedOption, TYPED_ROW, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
+import { answeredOutcome, choiceOptions, decisionAnswerValid, LOG_DECISION_STATUS, recommendedOption, TYPED_ROW, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
 import { PickTable } from "./pick-table.js";
 import "./log-presentation.css";
@@ -34,8 +34,21 @@ function Compare({ rows }: { rows: NonNullable<LogDecision["comparison"]> }) {
   </table></div>;
 }
 
-const answeredLine = (answer: NonNullable<LogDecision["answered"]>) => ({ choice: answer.label, time: fmtActionClock(answer.at),
-  by: answer.actor.kind === "person" ? answer.actor.name : `assistant on behalf of ${answer.actor.onBehalfOf.name}` });
+const answeredLine = (decision: LogDecision & { answered: NonNullable<LogDecision["answered"]> }) => ({ ...answeredOutcome(decision), time: fmtActionClock(decision.answered.at).slice(0, 5),
+  by: decision.answered.actor.kind === "person" ? decision.answered.actor.name : `assistant on behalf of ${decision.answered.actor.onBehalfOf.name}` });
+
+// The served context line names what is asked; without one, the write outcome is the caution, or the footer note on a failure.
+const decisionContext = (decision: LogDecision, served?: RunDecisionWire) => served?.context ?? ([decision.message, decision.caution ?? (decision.state === "failed" ? decision.footer : undefined)].filter(Boolean).join(" ") || undefined);
+
+/** The card content shared by the open and the answered decision; an answered identity strip reads Approved or Rejected. */
+function DecisionBody({ decision, fieldLabel }: { decision: LogDecision; fieldLabel?: string }) {
+  return <>
+    {decision.attemptedAction && <p className="log-attempted">While trying to <strong>{decision.attemptedAction}</strong></p>}
+    {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}
+    {decision.field && <div className="log-failed-field"><span>{fieldLabel ?? decision.field.label}</span><strong>{decision.field.value}</strong><span>{decision.field.outcome}</span></div>}
+    {decision.comparison && <Compare rows={decision.comparison} />}
+  </>;
+}
 
 /** One served decision as a DecisionCard: its options, hints, recommended option and inputs all come from the wire. */
 function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: LogDecision; served: RunDecisionWire; onAnswer?: DecisionAnswerHandler; onCancel?: () => void }) {
@@ -47,17 +60,13 @@ function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: Lo
   const disabled = onAnswer === undefined;
   const pick = option?.input?.kind === "candidate";
   const named = choices.length === 1 && option !== undefined && (option.input === undefined || option.input.kind === "text" || option.input.kind === "date");
-  // The served context line names what is asked; without one, the write outcome is the caution, or the footer note on a failure.
-  const context = served.context ?? ([decision.message, decision.caution ?? (decision.state === "failed" ? decision.footer : undefined)].filter(Boolean).join(" ") || undefined);
+  const context = decisionContext(decision, served);
   return <div className="flex min-w-0 flex-col gap-3" data-decision-state={decision.state}>
     {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
     <DecisionCard title={decision.title} context={context} tone={decision.state === "failed" ? "danger" : undefined} inline={pick}
       confirmLabel={named ? option.label : "Confirm"} confirmDisabled={disabled || option === undefined || !decisionAnswerValid(option, answer)}
       onConfirm={() => { if (option !== undefined && decisionAnswerValid(option, answer)) onAnswer?.(option, answer); }} onCancel={onCancel}>
-      {decision.attemptedAction && <p className="log-attempted">While trying to <strong>{decision.attemptedAction}</strong></p>}
-      {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}
-      {decision.field && <div className="log-failed-field"><span>{decision.field.label}</span><strong>{decision.field.value}</strong><span>{decision.field.outcome}</span></div>}
-      {decision.comparison && <Compare rows={decision.comparison} />}
+      <DecisionBody decision={decision} />
       {choices.length > 1 && option !== undefined && served.choiceLabel !== undefined && <DecisionChoice label={served.choiceLabel} value={option.id} disabled={disabled} onChange={setSelected}
         options={choices.map(candidate => ({ value: candidate.id, label: candidate.label, hint: candidate.hint }))} />}
       {option !== undefined && <OptionInput option={option} answer={answer} disabled={disabled} setAnswer={next => setAnswers({ ...answers, [option.id]: next })} />}
@@ -66,7 +75,16 @@ function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: Lo
 }
 
 export function LogDecisionBlock({ decision, onAnswer, onCancel }: { decision: LogDecision; onAnswer?: DecisionAnswerHandler; onCancel?: () => void }) {
-  if (decision.answered) return <DecisionCard title={decision.title} answered={answeredLine(decision.answered)} />;
+  if (decision.answered) {
+    const line = answeredLine({ ...decision, answered: decision.answered });
+    const fieldLabel = decision.field?.label === "Approving employee" ? (line.kind === "rejected" ? "Rejected" : "Approved") : undefined;
+    return <div className="flex min-w-0 flex-col gap-3" data-decision-state={decision.state} data-answered={line.kind}>
+      {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
+      <DecisionCard title={decision.title} context={decisionContext(decision, decision.served)} tone={decision.state === "failed" ? "danger" : undefined} answered={line}>
+        <DecisionBody decision={decision} fieldLabel={fieldLabel} />
+      </DecisionCard>
+    </div>;
+  }
   // A new served revision resets the operator's selection.
   if (decision.served) return <ServedDecision key={JSON.stringify(decision.served)} decision={decision} served={decision.served} onAnswer={onAnswer} onCancel={onCancel} />;
   const status = LOG_DECISION_STATUS[decision.state];

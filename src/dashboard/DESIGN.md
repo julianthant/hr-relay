@@ -166,7 +166,7 @@ Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-ca
 
 - Anatomy, in order: title (what happened, `text-heading`), one context line, the control, then Confirm (primary) and Cancel run (secondary, which cancels the run). Enter confirms; Escape only closes an open dropdown and never cancels.
 - The control: a short choice list is a narrow dropdown (`w-80`, not full width) whose options each carry a one-line hint, with the recommended option preselected (read-back failed: Check again). A typed value is a labelled input. The primary reads Confirm when the control holds the answer; a card without a control names its action (Retry step, Resume, Recover, Approve match).
-- Answered, the card collapses to one line that stays in the log: "Answered: <choice> · <time> · by <person>" or "by assistant on behalf of <person>".
+- Answered, the card stays in place with all its content (title, reason, While trying to, Last completed, value strip). Only the action row (buttons, Next step select) becomes one line: glyph, outcome in primary, then "<HH:MM> · <person>" in grey (or "assistant on behalf of <person>"). Outcomes: `Retried` (retry glyph) for Retry and other retry actions, `Run cancelled` (muted ban glyph) for Cancel run, `Match approved` (green check) or `Match rejected` (red X) for the identity review, `Resolved` for Resolve, and for a typed answer the confirmed value, `Transaction confirmed · T00000000` (green check). The identity strip label becomes `Approved` (green) or `Rejected` (red). No `Answered:` prefix, no option name, and no focus ring on an answered entry. Held and parked cards follow the same rule.
 - The card never carries assistant suggestions or "use for all" choices. The recommended option is preselected, the assistant talks in its own panel, and a batch of the same fix goes through the assistant's Proposal card, which names each person.
 - Picking one of several records has no card box. The step's own page card that lists them ("Search results") switches to mode Pick:
   - The icon column becomes the selection mark (an empty circle; a checked circle in the info colour when chosen), and the chosen row takes the selected surface.
@@ -261,7 +261,7 @@ Everything in the panel is conversation: sentences and bullets. Links are blue (
 ### Decisions in Logs
 
 - The Logs `DecisionCard` has no assistant suggestion. What the assistant thinks about a decision lives in its panel.
-- The assistant answers a decision only when Relay confirms the evidence the decision declares. The check is its own step in that log ("Checked by the assistant for <person> · read only"), and the card collapses to "Answered: <choice> · <time> · by assistant on behalf of <person>".
+- The assistant answers a decision only when Relay confirms the evidence the decision declares. The check is its own step in that log ("Checked by the assistant for <person> · read only"), and the card keeps its content with the outcome line "<outcome> · <time> · assistant on behalf of <person>".
 
 ### History
 

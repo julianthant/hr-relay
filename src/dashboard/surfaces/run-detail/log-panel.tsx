@@ -32,7 +32,7 @@ function LogHeader({ title, children }: { title: string; children: ReactNode }) 
 /** The production log layout accepts presentation data and has no transport dependency. */
 export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, footerActions }: {
   onDecision?: LogDecisionHandler;
-  onCancelRun?: () => void;
+  onCancelRun?: (entryId: string) => void;
   onReview?: () => void;
   title: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; toolbar?: ReactNode; initialStepId?: string;
   footerActions?: ReactNode; navigation?: ReactNode; content?: ReactNode; afterStep?: (id: string) => ReactNode;

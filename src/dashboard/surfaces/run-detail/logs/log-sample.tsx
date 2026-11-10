@@ -122,25 +122,23 @@ function PreviewLogSample({ selection, onAction }: { selection?: LogSelection; o
   const steps = edited?.basis === basis ? edited.steps : scenario.steps;
   const timeline = edited?.basis === basis ? edited.timeline : scenario.timeline;
   // A fixture has no server: answering records a preview answer on the decision, and the lookup preview continues past its approval.
+  const answerSteps = (current: typeof edited, id: string, optionId: string, label: string, answeredInput?: string) => (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.map(entry => entry.id !== id || entry.kind !== "decision" ? entry
+    : { ...entry, decision: { ...withoutServed(entry.decision), ...(answeredInput ? { answeredInput } : {}), answered: { optionId, label, at: PREVIEW_ANSWERED_AT, actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
   const decide: LogDecisionHandler = (id, option, answer) => {
     const label = answeredRow(option, answer)?.name ?? option.label;
     setEdited(current => {
-      const nextSteps = (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.map(entry => entry.id !== id || entry.kind !== "decision" ? entry
-        : { ...entry, decision: { ...withoutServed(entry.decision), answered: { optionId: option.id, label, at: PREVIEW_ANSWERED_AT, actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
+      const nextSteps = answerSteps(current, id, option.id, label, option.input?.kind === "text" ? answer.text?.trim() : undefined);
       if (scenarioId === "preview" && option.id === "approve-lookup-match" && !nextSteps.some(step => step.id === "lookup-job")) {
         nextSteps.push({ id: "lookup-job", time: "09:40:20", title: "Read employment record", system: "UCPath", entries: [{ kind: "note", id: "lookup-job-started", time: "09:40:20", message: `Reading the employment record for ${preview?.subject}.`, tone: "info" }] });
       }
       return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, option.id) : scenario.timeline, steps: nextSteps };
     });
   };
-  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : previewCancel} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
+  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : id => setEdited(current => ({ basis, timeline: current?.basis === basis ? current.timeline : scenario.timeline, steps: answerSteps(current, id, "cancel-run", "Cancel run") }))} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
 }
 
 /** A fixture has no clock; the preview answer carries a fixed instant. */
 const PREVIEW_ANSWERED_AT = IsoInstantSchema.parse("2026-08-03T16:41:05.000Z");
-
-/** A fixture has no run to cancel; the button shows and does nothing. */
-const previewCancel = () => undefined;
 
 const withoutServed = ({ served: _served, ...rest }: LogDecision): LogDecision => rest;
 

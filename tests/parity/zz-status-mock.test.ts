@@ -731,5 +731,55 @@ for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page
   }
   if (wanted("failed")) { await open("EID 10555001"); await shot("logs-failed"); }
   if (wanted("parked")) { await open("EID 10777012"); await shot("logs-parked"); }
+  // Answered cards keep their content; the actions become one outcome line.
+  const fresh = async (row: string) => {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
+    await page.getByRole("button", { name: "Person Lookup" }).first().click();
+    await open(row);
+  };
+  const outcome = logs.locator("p[data-answered]");
+  if (wanted("identity-approved")) {
+    await fresh("Waiting on identity review");
+    await logs.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(outcome).toContainText(/^Match approved · \d\d:\d\d · Alex Rivera$/u);
+    await expect(logs.locator(".log-failed-field")).toContainText("Approved");
+    await shot("logs-identity-approved");
+  }
+  if (wanted("identity-rejected")) {
+    await fresh("Waiting on identity review");
+    await logs.getByRole("button", { name: /Next step/ }).click();
+    await page.getByRole("menuitemradio", { name: "Reject match" }).click();
+    await logs.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(outcome).toContainText(/^Match rejected · /u);
+    await expect(logs.locator(".log-failed-field")).toContainText("Rejected");
+    await shot("logs-identity-rejected");
+  }
+  if (wanted("identity-cancelled")) {
+    await fresh("Waiting on identity review");
+    await logs.getByRole("button", { name: "Cancel run" }).click();
+    await expect(outcome).toContainText(/^Run cancelled · /u);
+    await shot("logs-identity-cancelled");
+  }
+  if (wanted("failed-retried")) {
+    await fresh("EID 10555001");
+    await logs.getByRole("button", { name: "Retry search" }).click();
+    await expect(outcome).toContainText(/^Retried · /u);
+    await shot("logs-failed-retried");
+  }
+  if (wanted("failed-cancelled")) {
+    await fresh("EID 10555001");
+    await logs.getByRole("button", { name: "Cancel run" }).click();
+    await expect(outcome).toContainText(/^Run cancelled · /u);
+    await shot("logs-failed-cancelled");
+  }
+  if (wanted("parked-confirmed")) {
+    await fresh("EID 10777012");
+    await logs.getByRole("button", { name: /Answer$/ }).click();
+    await page.getByRole("menuitemradio", { name: "Saved in UCPath" }).click();
+    await logs.getByLabel("Transaction number").fill("T00000417");
+    await logs.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(outcome).toContainText(/^Transaction confirmed · T00000417 · /u);
+    await shot("logs-parked-confirmed");
+  }
   expect(errors).toEqual([]);
 });
