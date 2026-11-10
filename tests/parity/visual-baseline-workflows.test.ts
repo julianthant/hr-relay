@@ -45,7 +45,7 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
     await attachPresentationReference(page, info, `workflow-queue-logs-${workflowReferenceId(flow.id)}.png`);
     if (["oath-signature", "oath-upload", "emergency-contact", "i9-check-start", "onbase"].includes(flow.id)) {
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
+      await expect(page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
       await attachPresentationReference(page, info, `workflow-records-${workflowReferenceId(flow.id)}.png`);
     }
   }

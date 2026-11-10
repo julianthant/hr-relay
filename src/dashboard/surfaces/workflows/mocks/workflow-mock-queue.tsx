@@ -16,6 +16,7 @@ import { dsStatusOf } from "../../shared/status/status-model.js";
 import { mockReviewProps, reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
 import { reviewSourcePages } from "./workflow-review-source-model.js";
 import { RecordReview } from "../../run-detail/review/review.js";
+import { ReviewDialog } from "../../run-detail/review/review-dialog.js";
 import { documentSourcePages } from "./workflow-document-model.js";
 import { mockDeletionCopy, mockDeletionIds } from "./workflow-mock-model.js";
 
@@ -113,7 +114,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
       return [record.id, documentSourcePages(draft, original) ?? reviewSourcePages(original)];
     }));
   }, [hasRecords, workflowId, draft, reviewRun]);
-  const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(reviewRun === run ? run : { ...run, records: reviewRun.records });
+  const { steps, timeline } = mockRunLog(reviewRun === run ? run : { ...run, records: reviewRun.records });
   const linked = useMemo(() => runs.filter(item => item.id !== run.ocrRunId && (item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.ocrRunId === run.id)), [runs, run]);
   const openRecords = useCallback(() => setRecordsVisible(true), [setRecordsVisible]);
   const decide = useCallback((_id: string, option: { id: string }) => { if (option.id === "retry-step") onRetry(); }, [onRetry]);
@@ -132,15 +133,14 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
         </Popover>}
       </span>, [run, linked, linksOpen, setLinksOpen, onSelect, onRetry]);
   const footerActions = useMemo(() => <>
-        {hasRecords && <LogFooterButton ref={recordsButton} label={`Records ${reviewRecords(reviewRun).length}`} count={reviewRecords(reviewRun).length} pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)} />}
+        {hasRecords && <LogFooterButton ref={recordsButton} label={`Records ${reviewRecords(reviewRun).length}`} count={reviewRecords(reviewRun).length} pressed={recordsVisible} icon={<ListChecks aria-hidden className="size-4" />} onClick={openRecords} />}
         {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <LogFooterButton label="Rerun" icon={<RotateCw aria-hidden className="size-4" />} onClick={onRerun} />}
-      </>, [hasRecords, recordsVisible, recordsButton, run, reviewRun, setRecordsVisible, onRerun]);
-  const reviewContent = useMemo(() => recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
+      </>, [hasRecords, recordsVisible, recordsButton, run, reviewRun, openRecords, onRerun]);
+  const reviewContent = useMemo(() => recordsVisible ? <ReviewDialog open onOpenChange={setRecordsVisible} subject={run.subject}>
     <RecordReview key={reviewRun.id} {...mockReviewProps({ approvalError: mockApprovalError(reviewRun), run: reviewRun, sourcePages, onChange, onApprove: mockNeedsReview(reviewRun) ? onApprove : undefined, onDiscard: mockNeedsReview(reviewRun) || reviewRun.workflowId === "ocr" && !reviewRun.parentId && !reviewRun.discarded ? onDiscard : undefined, onRestore })} />
-  </div> : undefined, [recordsVisible, run, reviewRun, sourcePages, onChange, onApprove, onDiscard, onRestore]);
-  return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
+  </ReviewDialog> : undefined, [recordsVisible, run, reviewRun, sourcePages, onChange, onApprove, onDiscard, onRestore, setRecordsVisible]);
+  return <><LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
       onReview={hasRecords ? openRecords : undefined} onDecision={decide}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
-      toolbar={toolbar} footerActions={footerActions}
-      content={reviewContent} />;
+      toolbar={toolbar} footerActions={footerActions} />{reviewContent}</>;
 }

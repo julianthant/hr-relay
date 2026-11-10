@@ -69,7 +69,7 @@ describe("complete workflow presentation mocks", () => {
         expect(markup).toContain(field.label);
         expect(editReviewRecord(record, field.key, field.kind === "boolean" ? "false" : "changed").fields).toContainEqual(expect.objectContaining({ key: field.key, value: field.kind === "boolean" ? "false" : "changed" }));
       }
-      if (record.kind === "contact") for (const key of ["employeeName", "employeeHomePhone", "employeeStreet", "personalEmail", "street", "homePhone", "workPhone"]) expect(markup).toContain(`name="${key}"`);
+      if (record.kind === "contact") for (const key of ["employeeName", "dateCompleted", "homeAddress", "employeeCellPhone", "employeeHomePhone", "address", "cellPhone", "homePhone", "workPhone"]) expect(markup).toContain(`name="${key}"`);
       if (record.kind === "verify") for (const key of ["serviceDate", "oathDate", "i9Status", "i9Signer"]) expect(record.fields.map(field => field.key)).not.toContain(key);
       if (record.kind === "i9") for (const key of ["middleInitial", "dateOfBirth", "ssn", "hireDate"]) expect(markup).toContain(`name="${key}"`);
     }

@@ -187,6 +187,17 @@ Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-ca
 - Buttons are standard size: Confirm, then Cancel run. Cancel run is secondary, never ghost text.
 - No left rails, tinted bands, status pills inside the step, icon plus bold title plus grey subtitle, or helper paragraphs.
 
+### Review records
+
+Review records is a dialog, not a Logs view: every entry (Logs header Review, the queue card Review, the notification item, the Logs footer Records button) opens it over the dashboard and the Logs panel stays as it was behind the scrim.
+
+- Size about 1200 × 800, capped to the window with 24px margins (1280 × 720 gives 1200 × 672).
+- Header: `Review records` and the run name in grey; the standard 28px close. Escape and close keep the edits as a draft.
+- Body keeps the record cards: page viewer left (page label, zoom out, zoom in, full screen as 28px icon buttons), record list and form right. Full screen makes the page viewer fill the dialog body (record column and footer hidden), the icon becomes Minimize with the tooltip "Exit full screen", and the page opens fit to the viewer. Escape leaves full screen first; a second Escape closes the dialog and keeps the draft.
+- Footer: `N selected for approval` left; `Discard` and `Approve records` (primary) right. There is no Add record: new records come from running another session.
+- Emergency Contact records show only what the workflow needs. Employee: Employee ID, Employee name, Date completed, Home address, Cell phone, Home phone. Emergency contact: Name, Relationship, Address, Cell phone, Home phone, Work phone.
+- Built by `ReviewDialog` in `run-detail/review/review-dialog.tsx` over the ds `Dialog`; no ds change.
+
 ### Status signals
 
 Each state keeps its own badge in the queue row and the run header, its own word in the step's time column, and its own timeline bar. Waiting uses one colour everywhere: the warning colour of the queue's Needs you band, the hatched timeline bar and the time column. Waiting, failed and parked runs sit under Needs you.

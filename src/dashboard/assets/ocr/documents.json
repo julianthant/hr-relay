@@ -531,18 +531,6 @@
             "section": "Employee"
           },
           {
-            "key": "firstName",
-            "label": "First name",
-            "value": "Jordan",
-            "section": "Employee"
-          },
-          {
-            "key": "lastName",
-            "label": "Last name",
-            "value": "Lee",
-            "section": "Employee"
-          },
-          {
             "key": "employeeName",
             "label": "Employee name",
             "value": "Jordan Lee",
@@ -556,92 +544,26 @@
             "kind": "date"
           },
           {
-            "key": "pid",
-            "label": "PID",
-            "value": "A00000001",
-            "section": "Employee"
-          },
-          {
-            "key": "jobTitle",
-            "label": "Job title",
-            "value": "Student Assistant",
-            "section": "Employee"
-          },
-          {
-            "key": "workLocation",
-            "label": "Work location",
-            "value": "Campus Services",
-            "section": "Employee"
-          },
-          {
-            "key": "mailCode",
-            "label": "Mail code",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "supervisor",
-            "label": "Supervisor",
-            "value": "Alex Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "workEmail",
-            "label": "Work email",
-            "value": "jordan.lee@example.com",
-            "section": "Employee"
-          },
-          {
-            "key": "personalEmail",
-            "label": "Personal email",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "employeeHomePhone",
-            "label": "Employee home phone",
-            "value": "",
+            "key": "homeAddress",
+            "label": "Home address",
+            "value": "100 Example Street, San Diego, CA 92101",
             "section": "Employee"
           },
           {
             "key": "employeeCellPhone",
-            "label": "Employee cell phone",
+            "label": "Cell phone",
             "value": "(202) 555-0101",
             "section": "Employee"
           },
           {
-            "key": "employeeStreet",
-            "label": "Employee street",
-            "value": "100 Example Street",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCity",
-            "label": "Employee city",
-            "value": "San Diego",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeState",
-            "label": "Employee state",
-            "value": "CA",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeZip",
-            "label": "Employee ZIP",
-            "value": "92101",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCountry",
-            "label": "Employee country",
-            "value": "USA",
-            "section": "Employee address"
+            "key": "employeeHomePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Employee"
           },
           {
             "key": "contactName",
-            "label": "Contact name",
+            "label": "Name",
             "value": "Alex Lee",
             "section": "Emergency contact"
           },
@@ -653,18 +575,10 @@
             "kind": "relationship"
           },
           {
-            "key": "primary",
-            "label": "Primary contact",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
-          },
-          {
-            "key": "sameAddress",
-            "label": "Same address as employee",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
+            "key": "address",
+            "label": "Address",
+            "value": "100 Example Street, San Diego, CA 92101",
+            "section": "Emergency contact"
           },
           {
             "key": "cellPhone",
@@ -682,36 +596,6 @@
             "key": "workPhone",
             "label": "Work phone",
             "value": "",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "street",
-            "label": "Street",
-            "value": "100 Example Street",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "city",
-            "label": "City",
-            "value": "San Diego",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "state",
-            "label": "State",
-            "value": "CA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "zip",
-            "label": "ZIP",
-            "value": "92101",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "country",
-            "label": "Country",
-            "value": "USA",
             "section": "Emergency contact"
           }
         ],
@@ -731,18 +615,6 @@
             "section": "Employee"
           },
           {
-            "key": "firstName",
-            "label": "First name",
-            "value": "Casey",
-            "section": "Employee"
-          },
-          {
-            "key": "lastName",
-            "label": "Last name",
-            "value": "Rivera",
-            "section": "Employee"
-          },
-          {
             "key": "employeeName",
             "label": "Employee name",
             "value": "Casey Rivera",
@@ -756,92 +628,26 @@
             "kind": "date"
           },
           {
-            "key": "pid",
-            "label": "PID",
-            "value": "A00000002",
-            "section": "Employee"
-          },
-          {
-            "key": "jobTitle",
-            "label": "Job title",
-            "value": "Student Assistant",
-            "section": "Employee"
-          },
-          {
-            "key": "workLocation",
-            "label": "Work location",
-            "value": "Campus Services",
-            "section": "Employee"
-          },
-          {
-            "key": "mailCode",
-            "label": "Mail code",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "supervisor",
-            "label": "Supervisor",
-            "value": "Alex Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "workEmail",
-            "label": "Work email",
-            "value": "casey.rivera@example.com",
-            "section": "Employee"
-          },
-          {
-            "key": "personalEmail",
-            "label": "Personal email",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "employeeHomePhone",
-            "label": "Employee home phone",
-            "value": "",
+            "key": "homeAddress",
+            "label": "Home address",
+            "value": "100 Example Street, San Diego, CA 92101",
             "section": "Employee"
           },
           {
             "key": "employeeCellPhone",
-            "label": "Employee cell phone",
+            "label": "Cell phone",
             "value": "(202) 555-0101",
             "section": "Employee"
           },
           {
-            "key": "employeeStreet",
-            "label": "Employee street",
-            "value": "100 Example Street",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCity",
-            "label": "Employee city",
-            "value": "San Diego",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeState",
-            "label": "Employee state",
-            "value": "CA",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeZip",
-            "label": "Employee ZIP",
-            "value": "92101",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCountry",
-            "label": "Employee country",
-            "value": "USA",
-            "section": "Employee address"
+            "key": "employeeHomePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Employee"
           },
           {
             "key": "contactName",
-            "label": "Contact name",
+            "label": "Name",
             "value": "Alex Rivera",
             "section": "Emergency contact"
           },
@@ -853,18 +659,10 @@
             "kind": "relationship"
           },
           {
-            "key": "primary",
-            "label": "Primary contact",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
-          },
-          {
-            "key": "sameAddress",
-            "label": "Same address as employee",
-            "value": "false",
-            "section": "Emergency contact",
-            "kind": "boolean"
+            "key": "address",
+            "label": "Address",
+            "value": "100 Example Street, San Diego, CA 92101",
+            "section": "Emergency contact"
           },
           {
             "key": "cellPhone",
@@ -882,36 +680,6 @@
             "key": "workPhone",
             "label": "Work phone",
             "value": "",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "street",
-            "label": "Street",
-            "value": "100 Example Street",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "city",
-            "label": "City",
-            "value": "San Diego",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "state",
-            "label": "State",
-            "value": "CA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "zip",
-            "label": "ZIP",
-            "value": "92101",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "country",
-            "label": "Country",
-            "value": "USA",
             "section": "Emergency contact"
           }
         ],
@@ -931,18 +699,6 @@
             "section": "Employee"
           },
           {
-            "key": "firstName",
-            "label": "First name",
-            "value": "Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "lastName",
-            "label": "Last name",
-            "value": "Chen",
-            "section": "Employee"
-          },
-          {
             "key": "employeeName",
             "label": "Employee name",
             "value": "Morgan Chen",
@@ -956,92 +712,26 @@
             "kind": "date"
           },
           {
-            "key": "pid",
-            "label": "PID",
-            "value": "A00000003",
-            "section": "Employee"
-          },
-          {
-            "key": "jobTitle",
-            "label": "Job title",
-            "value": "Student Assistant",
-            "section": "Employee"
-          },
-          {
-            "key": "workLocation",
-            "label": "Work location",
-            "value": "Campus Services",
-            "section": "Employee"
-          },
-          {
-            "key": "mailCode",
-            "label": "Mail code",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "supervisor",
-            "label": "Supervisor",
-            "value": "Alex Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "workEmail",
-            "label": "Work email",
-            "value": "morgan.chen@example.com",
-            "section": "Employee"
-          },
-          {
-            "key": "personalEmail",
-            "label": "Personal email",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "employeeHomePhone",
-            "label": "Employee home phone",
-            "value": "",
+            "key": "homeAddress",
+            "label": "Home address",
+            "value": "100 Example Street, San Diego, CA 92101",
             "section": "Employee"
           },
           {
             "key": "employeeCellPhone",
-            "label": "Employee cell phone",
+            "label": "Cell phone",
             "value": "(202) 555-0101",
             "section": "Employee"
           },
           {
-            "key": "employeeStreet",
-            "label": "Employee street",
-            "value": "100 Example Street",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCity",
-            "label": "Employee city",
-            "value": "San Diego",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeState",
-            "label": "Employee state",
-            "value": "CA",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeZip",
-            "label": "Employee ZIP",
-            "value": "92101",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCountry",
-            "label": "Employee country",
-            "value": "USA",
-            "section": "Employee address"
+            "key": "employeeHomePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Employee"
           },
           {
             "key": "contactName",
-            "label": "Contact name",
+            "label": "Name",
             "value": "Alex Chen",
             "section": "Emergency contact"
           },
@@ -1053,18 +743,10 @@
             "kind": "relationship"
           },
           {
-            "key": "primary",
-            "label": "Primary contact",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
-          },
-          {
-            "key": "sameAddress",
-            "label": "Same address as employee",
-            "value": "false",
-            "section": "Emergency contact",
-            "kind": "boolean"
+            "key": "address",
+            "label": "Address",
+            "value": "100 Example Street, San Diego, CA 92101",
+            "section": "Emergency contact"
           },
           {
             "key": "cellPhone",
@@ -1082,36 +764,6 @@
             "key": "workPhone",
             "label": "Work phone",
             "value": "",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "street",
-            "label": "Street",
-            "value": "100 Example Street",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "city",
-            "label": "City",
-            "value": "San Diego",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "state",
-            "label": "State",
-            "value": "CA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "zip",
-            "label": "ZIP",
-            "value": "92101",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "country",
-            "label": "Country",
-            "value": "USA",
             "section": "Emergency contact"
           }
         ],
@@ -2070,18 +1722,6 @@
             "section": "Employee"
           },
           {
-            "key": "firstName",
-            "label": "First name",
-            "value": "Jordan",
-            "section": "Employee"
-          },
-          {
-            "key": "lastName",
-            "label": "Last name",
-            "value": "Lee",
-            "section": "Employee"
-          },
-          {
             "key": "employeeName",
             "label": "Employee name",
             "value": "Jordan Lee",
@@ -2095,92 +1735,26 @@
             "kind": "date"
           },
           {
-            "key": "pid",
-            "label": "PID",
-            "value": "A00000001",
-            "section": "Employee"
-          },
-          {
-            "key": "jobTitle",
-            "label": "Job title",
-            "value": "Student Assistant",
-            "section": "Employee"
-          },
-          {
-            "key": "workLocation",
-            "label": "Work location",
-            "value": "Campus Services",
-            "section": "Employee"
-          },
-          {
-            "key": "mailCode",
-            "label": "Mail code",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "supervisor",
-            "label": "Supervisor",
-            "value": "Alex Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "workEmail",
-            "label": "Work email",
-            "value": "jordan.lee@example.com",
-            "section": "Employee"
-          },
-          {
-            "key": "personalEmail",
-            "label": "Personal email",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "employeeHomePhone",
-            "label": "Employee home phone",
-            "value": "",
+            "key": "homeAddress",
+            "label": "Home address",
+            "value": "100 Example Street, San Diego, CA 92101",
             "section": "Employee"
           },
           {
             "key": "employeeCellPhone",
-            "label": "Employee cell phone",
+            "label": "Cell phone",
             "value": "(202) 555-0101",
             "section": "Employee"
           },
           {
-            "key": "employeeStreet",
-            "label": "Employee street",
-            "value": "100 Example Street",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCity",
-            "label": "Employee city",
-            "value": "San Diego",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeState",
-            "label": "Employee state",
-            "value": "CA",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeZip",
-            "label": "Employee ZIP",
-            "value": "92101",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCountry",
-            "label": "Employee country",
-            "value": "USA",
-            "section": "Employee address"
+            "key": "employeeHomePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Employee"
           },
           {
             "key": "contactName",
-            "label": "Contact name",
+            "label": "Name",
             "value": "Alex Lee",
             "section": "Emergency contact"
           },
@@ -2192,18 +1766,10 @@
             "kind": "relationship"
           },
           {
-            "key": "primary",
-            "label": "Primary contact",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
-          },
-          {
-            "key": "sameAddress",
-            "label": "Same address as employee",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
+            "key": "address",
+            "label": "Address",
+            "value": "100 Example Street, San Diego, CA 92101",
+            "section": "Emergency contact"
           },
           {
             "key": "cellPhone",
@@ -2221,36 +1787,6 @@
             "key": "workPhone",
             "label": "Work phone",
             "value": "",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "street",
-            "label": "Street",
-            "value": "100 Example Street",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "city",
-            "label": "City",
-            "value": "San Diego",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "state",
-            "label": "State",
-            "value": "CA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "zip",
-            "label": "ZIP",
-            "value": "92101",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "country",
-            "label": "Country",
-            "value": "USA",
             "section": "Emergency contact"
           }
         ],
@@ -2271,18 +1807,6 @@
             "section": "Employee"
           },
           {
-            "key": "firstName",
-            "label": "First name",
-            "value": "Casey",
-            "section": "Employee"
-          },
-          {
-            "key": "lastName",
-            "label": "Last name",
-            "value": "Rivera",
-            "section": "Employee"
-          },
-          {
             "key": "employeeName",
             "label": "Employee name",
             "value": "Casey Rivera",
@@ -2296,92 +1820,26 @@
             "kind": "date"
           },
           {
-            "key": "pid",
-            "label": "PID",
-            "value": "A00000002",
-            "section": "Employee"
-          },
-          {
-            "key": "jobTitle",
-            "label": "Job title",
-            "value": "Student Assistant",
-            "section": "Employee"
-          },
-          {
-            "key": "workLocation",
-            "label": "Work location",
-            "value": "Campus Services",
-            "section": "Employee"
-          },
-          {
-            "key": "mailCode",
-            "label": "Mail code",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "supervisor",
-            "label": "Supervisor",
-            "value": "Alex Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "workEmail",
-            "label": "Work email",
-            "value": "casey.rivera@example.com",
-            "section": "Employee"
-          },
-          {
-            "key": "personalEmail",
-            "label": "Personal email",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "employeeHomePhone",
-            "label": "Employee home phone",
-            "value": "",
+            "key": "homeAddress",
+            "label": "Home address",
+            "value": "100 Example Street, San Diego, CA 92101",
             "section": "Employee"
           },
           {
             "key": "employeeCellPhone",
-            "label": "Employee cell phone",
+            "label": "Cell phone",
             "value": "(202) 555-0101",
             "section": "Employee"
           },
           {
-            "key": "employeeStreet",
-            "label": "Employee street",
-            "value": "100 Example Street",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCity",
-            "label": "Employee city",
-            "value": "San Diego",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeState",
-            "label": "Employee state",
-            "value": "CA",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeZip",
-            "label": "Employee ZIP",
-            "value": "92101",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCountry",
-            "label": "Employee country",
-            "value": "USA",
-            "section": "Employee address"
+            "key": "employeeHomePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Employee"
           },
           {
             "key": "contactName",
-            "label": "Contact name",
+            "label": "Name",
             "value": "Alex Rivera",
             "section": "Emergency contact"
           },
@@ -2393,18 +1851,10 @@
             "kind": "relationship"
           },
           {
-            "key": "primary",
-            "label": "Primary contact",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
-          },
-          {
-            "key": "sameAddress",
-            "label": "Same address as employee",
-            "value": "false",
-            "section": "Emergency contact",
-            "kind": "boolean"
+            "key": "address",
+            "label": "Address",
+            "value": "100 Example Street, San Diego, CA 92101",
+            "section": "Emergency contact"
           },
           {
             "key": "cellPhone",
@@ -2422,36 +1872,6 @@
             "key": "workPhone",
             "label": "Work phone",
             "value": "",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "street",
-            "label": "Street",
-            "value": "100 Example Street",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "city",
-            "label": "City",
-            "value": "San Diego",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "state",
-            "label": "State",
-            "value": "CA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "zip",
-            "label": "ZIP",
-            "value": "92101",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "country",
-            "label": "Country",
-            "value": "USA",
             "section": "Emergency contact"
           }
         ],
@@ -2474,18 +1894,6 @@
             "section": "Employee"
           },
           {
-            "key": "firstName",
-            "label": "First name",
-            "value": "Taylor",
-            "section": "Employee"
-          },
-          {
-            "key": "lastName",
-            "label": "Last name",
-            "value": "Nguyen",
-            "section": "Employee"
-          },
-          {
             "key": "employeeName",
             "label": "Employee name",
             "value": "Taylor Nguyen",
@@ -2499,92 +1907,26 @@
             "kind": "date"
           },
           {
-            "key": "pid",
-            "label": "PID",
-            "value": "A00000004",
-            "section": "Employee"
-          },
-          {
-            "key": "jobTitle",
-            "label": "Job title",
-            "value": "Student Assistant",
-            "section": "Employee"
-          },
-          {
-            "key": "workLocation",
-            "label": "Work location",
-            "value": "Campus Services",
-            "section": "Employee"
-          },
-          {
-            "key": "mailCode",
-            "label": "Mail code",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "supervisor",
-            "label": "Supervisor",
-            "value": "Alex Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "workEmail",
-            "label": "Work email",
-            "value": "taylor.nguyen@example.com",
-            "section": "Employee"
-          },
-          {
-            "key": "personalEmail",
-            "label": "Personal email",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "employeeHomePhone",
-            "label": "Employee home phone",
-            "value": "",
+            "key": "homeAddress",
+            "label": "Home address",
+            "value": "100 Example Street, San Diego, CA 92101",
             "section": "Employee"
           },
           {
             "key": "employeeCellPhone",
-            "label": "Employee cell phone",
+            "label": "Cell phone",
             "value": "(202) 555-0101",
             "section": "Employee"
           },
           {
-            "key": "employeeStreet",
-            "label": "Employee street",
-            "value": "100 Example Street",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCity",
-            "label": "Employee city",
-            "value": "San Diego",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeState",
-            "label": "Employee state",
-            "value": "CA",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeZip",
-            "label": "Employee ZIP",
-            "value": "92101",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCountry",
-            "label": "Employee country",
-            "value": "USA",
-            "section": "Employee address"
+            "key": "employeeHomePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Employee"
           },
           {
             "key": "contactName",
-            "label": "Contact name",
+            "label": "Name",
             "value": "Alex Nguyen",
             "section": "Emergency contact"
           },
@@ -2596,18 +1938,10 @@
             "kind": "relationship"
           },
           {
-            "key": "primary",
-            "label": "Primary contact",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
-          },
-          {
-            "key": "sameAddress",
-            "label": "Same address as employee",
-            "value": "false",
-            "section": "Emergency contact",
-            "kind": "boolean"
+            "key": "address",
+            "label": "Address",
+            "value": "100 Example Street, San Diego, CA 92101",
+            "section": "Emergency contact"
           },
           {
             "key": "cellPhone",
@@ -2625,36 +1959,6 @@
             "key": "workPhone",
             "label": "Work phone",
             "value": "",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "street",
-            "label": "Street",
-            "value": "100 Example Street",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "city",
-            "label": "City",
-            "value": "San Diego",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "state",
-            "label": "State",
-            "value": "CA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "zip",
-            "label": "ZIP",
-            "value": "92101",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "country",
-            "label": "Country",
-            "value": "USA",
             "section": "Emergency contact"
           }
         ],
@@ -2675,18 +1979,6 @@
             "section": "Employee"
           },
           {
-            "key": "firstName",
-            "label": "First name",
-            "value": "Riley",
-            "section": "Employee"
-          },
-          {
-            "key": "lastName",
-            "label": "Last name",
-            "value": "Park",
-            "section": "Employee"
-          },
-          {
             "key": "employeeName",
             "label": "Employee name",
             "value": "Riley Park",
@@ -2700,92 +1992,26 @@
             "kind": "date"
           },
           {
-            "key": "pid",
-            "label": "PID",
-            "value": "A00000006",
-            "section": "Employee"
-          },
-          {
-            "key": "jobTitle",
-            "label": "Job title",
-            "value": "Student Assistant",
-            "section": "Employee"
-          },
-          {
-            "key": "workLocation",
-            "label": "Work location",
-            "value": "Campus Services",
-            "section": "Employee"
-          },
-          {
-            "key": "mailCode",
-            "label": "Mail code",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "supervisor",
-            "label": "Supervisor",
-            "value": "Alex Morgan",
-            "section": "Employee"
-          },
-          {
-            "key": "workEmail",
-            "label": "Work email",
-            "value": "riley.park@example.com",
-            "section": "Employee"
-          },
-          {
-            "key": "personalEmail",
-            "label": "Personal email",
-            "value": "",
-            "section": "Employee"
-          },
-          {
-            "key": "employeeHomePhone",
-            "label": "Employee home phone",
-            "value": "",
+            "key": "homeAddress",
+            "label": "Home address",
+            "value": "100 Example Street, San Diego, CA 92101",
             "section": "Employee"
           },
           {
             "key": "employeeCellPhone",
-            "label": "Employee cell phone",
+            "label": "Cell phone",
             "value": "(202) 555-0101",
             "section": "Employee"
           },
           {
-            "key": "employeeStreet",
-            "label": "Employee street",
-            "value": "100 Example Street",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCity",
-            "label": "Employee city",
-            "value": "San Diego",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeState",
-            "label": "Employee state",
-            "value": "CA",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeZip",
-            "label": "Employee ZIP",
-            "value": "92101",
-            "section": "Employee address"
-          },
-          {
-            "key": "employeeCountry",
-            "label": "Employee country",
-            "value": "USA",
-            "section": "Employee address"
+            "key": "employeeHomePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Employee"
           },
           {
             "key": "contactName",
-            "label": "Contact name",
+            "label": "Name",
             "value": "Alex Park",
             "section": "Emergency contact"
           },
@@ -2797,18 +2023,10 @@
             "kind": "relationship"
           },
           {
-            "key": "primary",
-            "label": "Primary contact",
-            "value": "true",
-            "section": "Emergency contact",
-            "kind": "boolean"
-          },
-          {
-            "key": "sameAddress",
-            "label": "Same address as employee",
-            "value": "false",
-            "section": "Emergency contact",
-            "kind": "boolean"
+            "key": "address",
+            "label": "Address",
+            "value": "100 Example Street, San Diego, CA 92101",
+            "section": "Emergency contact"
           },
           {
             "key": "cellPhone",
@@ -2826,36 +2044,6 @@
             "key": "workPhone",
             "label": "Work phone",
             "value": "",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "street",
-            "label": "Street",
-            "value": "100 Example Street",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "city",
-            "label": "City",
-            "value": "San Diego",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "state",
-            "label": "State",
-            "value": "CA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "zip",
-            "label": "ZIP",
-            "value": "92101",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "country",
-            "label": "Country",
-            "value": "USA",
             "section": "Emergency contact"
           }
         ],

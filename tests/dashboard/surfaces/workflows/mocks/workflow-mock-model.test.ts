@@ -259,7 +259,7 @@ describe_m2("manual OCR and reading inputs", () => {
     expect_m2(mockApprovalError_m2(source)).toMatch(/differs/u);
     expect_m2(() => approveMockRun_m2(runs, source.id)).toThrow(/differs/u);
     let record = reviewRecords_m2(source)[0];
-    for (const [key, value] of [["employeeId", "10000022"], ["firstName", "Sam"], ["lastName", "Rivera"]]) record = editReviewRecord_m2(record, key, value);
+    for (const [key, value] of [["employeeId", "10000022"], ["employeeName", "Sam Rivera"]]) record = editReviewRecord_m2(record, key, value);
     const approved = approveMockRun_m2(updateMockReview_m2(runs, source.id, [record]), source.id);
     const person = approved.find(run => run.role === "person")!;
     expect_m2(person.draft.selectedSteps).toEqual(["fill-form", "save"]);
@@ -520,7 +520,7 @@ describe_m4("source-backed workflow operation detail", () => {
   });
   it_m4("preserves extracted identity history and passes edited contact data to a separate person run", () => {
     const runs = create("emergency-contact"), ocr = runs[1], original = reviewRecords_m4(ocr)[0];
-    const changed = editReviewRecord_m4(editReviewRecord_m4(editReviewRecord_m4(original, "employeeId", "10000009"), "contactName", "Sam Lee"), "sameAddress", "false");
+    const changed = editReviewRecord_m4(editReviewRecord_m4(editReviewRecord_m4(original, "employeeId", "10000009"), "contactName", "Sam Lee"), "address", "1 Other Road, Irvine, CA 92602");
     const edited = updateMockReview_m4(runs, ocr.id, [changed]), history = fields(edited[1]);
     expect_m4(history).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Employee ID", value: "10000001" })]));
     const child = approveMockRun_m4(edited, ocr.id).find(run => run.role === "person")!;
@@ -626,7 +626,7 @@ describe_m6("OCR source comparison and corrected handoff", () => {
     const record = reviewRecords_m6(preparation()[1])[0];
     const additional = { ...record, fields: [...record.fields, { key: "newKey", label: "Additional field", value: "", section: "Other" }] };
     expect_m6(reviewFieldGroups_m6(additional).flatMap(group => group.fields)).toEqual(additional.fields);
-    expect_m6(reviewFieldGroups_m6(additional).map(group => group.title)).toEqual(["Employee", "Employee address", "Emergency contact", "Other"]);
+    expect_m6(reviewFieldGroups_m6(additional).map(group => group.title)).toEqual(["Employee", "Emergency contact", "Other"]);
     for (const response of [...OCR_DOCUMENT_FIXTURES_m6.flatMap(document => document.records), additional]) {
       const displayed = reviewFieldGroups_m6(response).flatMap(group => reviewFieldBlocks_m6(group.fields).flat());
       expect_m6(displayed).toEqual(response.fields);
