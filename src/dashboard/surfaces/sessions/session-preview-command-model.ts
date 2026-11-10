@@ -1,7 +1,7 @@
 import type { DashboardClient } from '../../client/index.js';
 import type { DashboardDayState } from '../../state/use-dashboard-day.js';
 import type { DashboardDayWire } from '../../../models/dashboard/projection.js';
-import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from '../../../rules/commands/commands.js';
+import { CommandRequestSchema, CommandResultSchema, type CommandRequest, type DashboardCommandRequest } from '../../../rules/commands/commands.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptions, type CommandOutcome } from '../../app/commands/command-executor.js';
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
@@ -40,7 +40,7 @@ const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.st
 const commandFeedback = (code: "COMMAND_REFUSED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_READBACK_MISMATCH" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "DASHBOARD_AUTHORITY_REPLACED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 /** A worker command is confirmed once the served day shows its effect; the member fence makes each effect observable. */
-export function sessionCommandEffect(day: DashboardDayWire, request: CommandRequest): boolean {
+export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCommandRequest): boolean {
   if (request.family !== "worker-browser" || day.workerAuthority.state !== "present") return false;
   if (request.type === "plan-worker-count") {
     const pool = day.workerPools.find(pool => pool.workflowId === request.target.workflowId);
