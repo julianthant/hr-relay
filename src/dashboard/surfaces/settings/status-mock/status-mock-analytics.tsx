@@ -2,13 +2,12 @@ import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-rea
 import { Fragment, useState, type CSSProperties } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, dsIcon } from "../../../ds/ui.js";
-import { KeyFigures, RunsPerDayChart, TimeLines } from "./status-mock-charts.js";
+import { ChartHeading, KeyFigures, LineChart, StackedBars, clock } from "./status-mock-charts.js";
+import { analyticsDays } from "./status-mock-assistant-data.js";
 import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_OUTCOMES, type StatusMockCounts } from "./status-mock-model.js";
 
 const PERIODS = [{ value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }] as const;
 const CUSTOM = ["Choose dates…", "This month", "Last month", "Year to date"] as const;
-const LINE_COLORS = ["var(--ui-info)", "#8b74f0", "var(--ui-secondary)"] as const;
-const CARD = "rounded-[var(--ds-row-radius)] border border-ui-stroke bg-[var(--ds-card-bg)] px-[var(--ds-row-pad-x)]";
 const NUMBER = "!text-right tabular-nums";
 
 const sum = (rows: readonly StatusMockCounts[]): StatusMockCounts => ({ done: rows.reduce((n, r) => n + r.done, 0), failed: rows.reduce((n, r) => n + r.failed, 0), attention: rows.reduce((n, r) => n + r.attention, 0) });
@@ -24,9 +23,13 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
   const shown = data.workflows.filter(row => workflow === "all" || row.id === workflow);
   const rows = shown.map(row => ({ ...row, ...sum(row.byDay.map(counts)) }));
   const totals = sum(rows);
-  const days = data.dayLabels.map((label, index) => ({ label, ...sum(shown.map(row => counts(row.byDay[index] ?? [])))}));
+  const days = analyticsDays(7).map((day, index) => ({ ...day, ...sum(shown.map(row => counts(row.byDay[index] ?? []))) }));
+  const outcomes = STATUS_MOCK_OUTCOMES.map(outcome => ({ id: outcome.key, label: outcome.label, color: outcome.color, values: days.map(day => day[outcome.key]) }));
+  const timeDays = analyticsDays(7);
+  const timeSeries = rows.map(row => ({ id: row.id, label: row.label, color: `var(--chart-${data.workflows.findIndex(item => item.id === row.id) + 1})`, values: row.seconds }));
+  const top = Math.ceil(Math.max(...timeSeries.flatMap(line => line.values)) / 60) * 60;
   const toggle = (id: string) => setOpen(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
-  const figures = <KeyFigures totals={totals} inline={variant === "b"} />;
+  const figures = <KeyFigures items={outcomes.map(line => ({ label: line.label, color: line.color, count: line.values.reduce((n, value) => n + value, 0) }))} inline={variant === "b"} />;
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     <PageHeading title="Analytics" description="How your workflows are going." />
     <div className="ds-toolbar-row flex flex-wrap items-center gap-2">
@@ -48,13 +51,11 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
     </div>
     <div className="ds-body-stack mt-2">
       <BodySection title="Runs" description={`${finished(totals)} finished runs${workflow === "all" ? ` · ${data.running} still running` : ""}`}>
-        <div className={`${CARD} py-4`}>
-          <div className="mb-4 flex items-center justify-between gap-3"><span className="text-[13px] leading-[18px]">{data.period}</span>
+        <StackedBars label="Runs per day" days={days} series={outcomes} unit={["run", "runs"]} height={variant === "b" ? 176 : 160}
+          header={<><div className="mb-4 flex items-center justify-between gap-3"><span className="text-[13px] leading-[18px]">{data.period}</span>
             <span className="flex items-center gap-1"><IconButton size="xs" label="Previous period" icon={<ChevronLeft aria-hidden className={dsIcon.md} />} /><IconButton size="xs" label="Next period" icon={<ChevronRight aria-hidden className={dsIcon.md} />} /></span></div>
-          {variant === "b" && <div className="mb-5">{figures}</div>}
-          <RunsPerDayChart days={days} height={variant === "b" ? 176 : 160} />
-          {variant === "a" && <div className="mt-4">{figures}</div>}
-        </div>
+            {variant === "b" && <div className="mb-5">{figures}</div>}</>}
+          footer={variant === "a" ? <div className="mt-4">{figures}</div> : undefined} />
       </BodySection>
       <BodySection title="Workflows" description="Open a row to see what went wrong.">
         <div className="ds-table-list-frame ds-usage-table"><table aria-label="Workflows">
@@ -83,10 +84,9 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
         </table></div>
       </BodySection>
       <BodySection title="Time" description="How long finished runs take.">
-        <div className={`${CARD} py-4`}>
-          <p className="m-0 mb-5 flex items-baseline gap-2"><span className="text-[28px] font-normal leading-9 tabular-nums">{rows.length === 1 ? rows[0]?.time : data.typicalTime}</span><span className="text-[13px] text-ui-muted">typical</span></p>
-          <TimeLines days={data.dayLabels} series={rows.map(row => ({ id: row.id, label: row.label, color: LINE_COLORS[data.workflows.findIndex(item => item.id === row.id)] ?? LINE_COLORS[2], seconds: row.seconds }))} />
-        </div>
+        <LineChart label="Average time per day" days={timeDays} series={timeSeries} ticks={[top, top / 2, 0].map(value => ({ value, label: value === 0 ? "0" : `${value / 60}m` }))} top={top} format={clock}
+          summary={index => `${clock(timeSeries.reduce((n, line) => n + (line.values[index] ?? 0), 0) / timeSeries.length)} average`}
+          header={<ChartHeading label="Average time" value={rows.length === 1 ? rows[0]?.time ?? data.typicalTime : data.typicalTime} />} />
       </BodySection>
       <BodySection title="Why runs failed" description="Failed runs in this period.">
         <RunList label="Why runs failed">{data.reasons.map(reason => <RunListRow key={reason.label} title={reason.label} description={reason.workflow}><span className="text-[13px] tabular-nums">{reason.runs}</span></RunListRow>)}</RunList>
