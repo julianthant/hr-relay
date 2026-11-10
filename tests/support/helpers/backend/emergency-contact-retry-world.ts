@@ -339,7 +339,15 @@ export function createEmergencyContactRetryWorld() {
       throw failures.length === 1 ? error : new AggregateError(failures, "copied member-stage reopen failed");
     }
   }
-  return { async cleanup() {
+  const releaseTemplates = () => {
+    for (const template of templates.values()) rmSync(template.workspace, { recursive: true, force: true });
+    templates.clear();
+  };
+  process.on("exit", releaseTemplates);
+  return { releaseTemplates, async releaseSources() {
+    releaseTemplates();
+    await world.cleanup();
+  }, cleanup: async () => {
     const failures: unknown[] = [];
     try { await world.cleanup(); } catch (error) { failures.push(error); }
     for (const close of adopted.splice(0)) {
