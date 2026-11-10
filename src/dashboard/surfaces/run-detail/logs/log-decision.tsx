@@ -19,7 +19,7 @@ function OptionInput({ option, answer, setAnswer, disabled }: { option: Decision
   const input = option.input;
   if (input === undefined) return null;
   switch (input.kind) {
-    case "text": return <Field label={input.label} className="w-64"><Input value={answer.text ?? ""} disabled={disabled} placeholder={input.placeholder} onChange={event => setAnswer({ text: event.target.value })} /></Field>;
+    case "text": return <Field label={input.label} className="w-64 max-w-full"><Input value={answer.text ?? ""} disabled={disabled} placeholder={input.placeholder} onChange={event => setAnswer({ text: event.target.value })} /></Field>;
     case "date": return <DateInput label={input.label} value={answer.date ?? ""} disabled={disabled} onChange={date => setAnswer({ date })} />;
     case "candidate": return <PickTable table={input.table} disabled={disabled} chosen={answer.typed !== undefined ? TYPED_ROW : answer.candidate} text={answer.typed ?? ""}
       onChoose={id => setAnswer(id === TYPED_ROW ? { typed: answer.typed ?? "" } : { candidate: id })} onText={typed => setAnswer({ typed })} />;
@@ -27,10 +27,10 @@ function OptionInput({ option, answer, setAnswer, disabled }: { option: Decision
 }
 
 function Compare({ rows }: { rows: NonNullable<LogDecision["comparison"]> }) {
-  return <div className="overflow-hidden rounded-lg border border-[var(--ds-soft-border)] bg-[var(--ds-picker-bg)]"><table aria-label="Request and UCPath values" className="w-full border-collapse text-left text-body">
+  return <div className="overflow-hidden rounded-lg border border-[var(--ds-soft-border)] bg-[var(--ds-picker-bg)]"><table aria-label="Request and UCPath values" role="table" className="log-compare w-full border-collapse text-left text-body">
     <thead><tr className="text-caption text-ui-muted"><th className="px-3 py-2 font-normal"><span className="sr-only">Field</span></th><th className="px-3 py-2 font-normal">Request</th><th className="px-3 py-2 text-right font-normal">UCPath</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.label} className="border-t border-[var(--ds-soft-border)]"><th scope="row" className="px-3 py-2.5 text-left font-medium">{row.label}</th><td className="px-3 py-2.5 tabular-nums text-ui-secondary">{row.expected}</td>
-      <td className={cn("px-3 py-2.5 text-right tabular-nums", row.expected === row.observed ? "text-ui-secondary" : "font-semibold text-ui-warning")}>{row.observed}{row.expected !== row.observed && <span className="sr-only"> (differs)</span>}</td></tr>)}</tbody>
+    <tbody>{rows.map(row => <tr key={row.label} className="border-t border-[var(--ds-soft-border)]"><th scope="row" className="px-3 py-2.5 text-left font-medium">{row.label}</th><td data-label="Request" className="px-3 py-2.5 tabular-nums text-ui-secondary">{row.expected}</td>
+      <td data-label="UCPath" className={cn("px-3 py-2.5 text-right tabular-nums", row.expected === row.observed ? "text-ui-secondary" : "font-semibold text-ui-warning")}>{row.observed}{row.expected !== row.observed && <span className="sr-only"> (differs)</span>}</td></tr>)}</tbody>
   </table></div>;
 }
 

@@ -1,5 +1,4 @@
 import { expect, type Page } from "@playwright/test";
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -238,8 +237,8 @@ test("run dialog keys", async ({ page }) => {
   await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
   await box.fill("10555001");
   await box.press("Shift+Enter");
-  await box.pressSequentially("10555002");
-  await expect(box).toHaveValue("10555001\n10555002");
+  await box.pressSequentially("10000002");
+  await expect(box).toHaveValue("10555001\n10000002");
   await expect(dialog.getByText("Enter to continue")).toBeVisible();
   await box.press("Enter");
   await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
@@ -674,6 +673,10 @@ for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page
     await expect(logs.getByRole("button", { name: "Pause EID 10480021" })).toBeVisible();
     await expect(logs.getByRole("button", { name: "Stop EID 10480021" })).toBeVisible();
     await shot("logs-member-running");
+    await logs.getByRole("button", { name: "Stop EID 10480021" }).click();
+    await expect(page.getByRole("alertdialog").or(page.getByRole("dialog"))).toBeVisible();
+    await shot("logs-member-stop");
+    await page.keyboard.press("Escape");
   }
   if (wanted("failed")) { await open("EID 10555001"); await shot("logs-failed"); }
   if (wanted("parked")) { await open("EID 10777012"); await shot("logs-parked"); }
