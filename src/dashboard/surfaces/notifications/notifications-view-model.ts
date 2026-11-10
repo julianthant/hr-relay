@@ -1,4 +1,4 @@
-import type { NotificationTarget } from "../../../models/notifications/notifications.js";
+import type { NotificationTarget } from "../../../models/notifications/notification-target.js";
 
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
@@ -6,9 +6,9 @@ export type NotificationKind = "storage" | "chatgpt" | "run" | "command";
 export type NotificationDestination = NotificationTarget
   | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
   | Readonly<{ kind: "settings"; section: "subscription" }>
-  | Readonly<{ kind: "recovery"; key: string }>
-  | Readonly<{ kind: "command-result"; id: string }>
-  | Readonly<{ kind: "bulk-result" }>
+  | Readonly<{ kind: "local-recovery"; key: string }>
+  | Readonly<{ kind: "local-command-result"; id: string }>
+  | Readonly<{ kind: "local-bulk-result" }>
   | Readonly<{ kind: "none" }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;

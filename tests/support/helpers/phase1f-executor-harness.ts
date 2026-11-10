@@ -67,9 +67,9 @@ export interface AuthorityHarness<Profile extends BoundProfileStorageFixture = A
 
 const retainedAuthorityHarnessOwners = new Set<object>();
 
-export function openAuthorityHarness<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>): Promise<AuthorityHarness<Profile>>;
+export function openAuthorityHarness<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>, busyTimeoutMs?: number): Promise<AuthorityHarness<Profile>>;
 export function openAuthorityHarness(): Promise<AuthorityHarness>;
-export async function openAuthorityHarness(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture): Promise<AuthorityHarness<BoundProfileStorageFixture>> {
+export async function openAuthorityHarness(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture, busyTimeoutMs = 250): Promise<AuthorityHarness<BoundProfileStorageFixture>> {
   const held: { fixture?: BoundProfileStorageFixture; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
   retainedAuthorityHarnessOwners.add(held);
   try {
@@ -77,7 +77,7 @@ export async function openAuthorityHarness(profileFixture: () => Promise<BoundPr
   const fixture = await profileFixture(); held.fixture = fixture;
   const root = fixture.stateRoot, path = fixture.path;
   let database = AuthorityDatabase.open(
-    { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path, busyTimeoutMs, migrationOwner: "unit-test" },
     clock,
   ); held.database = database;
   const config = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);

@@ -60,7 +60,7 @@ import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
 import { file as layoutFile,hash as layoutHash } from "../../storage/maintenance/existing-data-backup-files.js";
 import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
-import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
+import { bindErrorOrigin,serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 
 
@@ -113,7 +113,7 @@ function causedByUnresolvedWrites(error: unknown): boolean {
 
 const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
 
-/** Error text can carry input, so only a leading kebab-case token from the cause chain reaches the boot log. */
+/** Error text can carry input, so the boot log gets a leading kebab-case token plus closed cause rows (class, code, SQLite result code, frames). */
 function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
   let reason = "unnamed-cause";
   for (let cause: unknown = refusal.cause; cause instanceof Error; cause = cause.cause) {
@@ -122,7 +122,13 @@ function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, 
   }
   // The refusal is already held for the person; a boot log that cannot be written must not turn it into a boot failure.
   try {
-    appendEmergencyFault({ stateRoot, build: buildVersion(), code: refusal.code, error: new Error(reason), now: clock.now(), area, reason });
+    const build = buildVersion(), now = clock.now();
+    appendEmergencyFault({ stateRoot, build, code: refusal.code, error: new Error(reason), now, area, reason });
+    for (const cause of serializeErrorCauses(refusal.cause)) {
+      const diagnostic = new Error(cause.name);
+      diagnostic.stack = cause.stack;
+      appendEmergencyFault({ stateRoot, build, code: cause.code, error: diagnostic, now, area, reason: cause.reason });
+    }
   } catch { /* best effort */ }
 }
 
@@ -282,12 +288,12 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
   lifetime.assertHeld();
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) return;
   const held = heldPeopleFor(lifetime);
-  const hold = (profileId: string, error: unknown): void => {
+  const hold = (profileId: string, error: unknown, area: "profile-startup-inspection" | "profile-startup-upgrade" | "profile-startup-readback"): void => {
     if (machineWideStartupFailure(error)) throw error;
     if (held.has(profileId)) return;
     const refusal = new RegisteredPersonUpgradeRefusedError(error);
     held.set(profileId, refusal);
-    logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), refusal, "profile-startup-upgrade", clock);
+    logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), refusal, area, clock);
   };
   try {
     const profiles = await withStoppedMachineStorage(workspace, lifetime, async machine => {
@@ -295,7 +301,7 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
       return machine.readStartupProfileIds().flatMap(profileId => {
         let inspection: ReturnType<typeof AuthorityDatabase.inspectRegisteredPersonAtStartup> | undefined;
         try { inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId); }
-        catch (error) { hold(profileId, error); }
+        catch (error) { hold(profileId, error, "profile-startup-inspection"); }
         if (inspection === undefined) return [];
         return inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !inspection.requiresContinuation ? [] : [profileId];
       });
@@ -307,12 +313,14 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
           const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock);
           if ((report.state !== "upgraded" && report.state !== "already-upgraded") || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
         });
+      } catch (error) { hold(profileId, error, "profile-startup-upgrade"); continue; }
+      try {
         await withStoppedMachineStorage(workspace, lifetime, async machine => {
           const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
           if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || inspection.requiresContinuation) throw new Error("profile-startup-readback-unproved");
         });
         held.delete(profileId);
-      } catch (error) { hold(profileId, error); }
+      } catch (error) { hold(profileId, error, "profile-startup-readback"); }
     }
   } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
 }
@@ -1352,6 +1360,7 @@ function rebuildStagedProjections(
         authority: {
           queueParents: envelopes => staged.authority.dependencies.parents(envelopes),
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
+          command: (commandId) => staged.authority.commands.get(commandId),
           latestNotificationSource: (notificationId) => staged.authority.notificationPublications.latest(notificationId),
           listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => staged.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
           listCheckpoints: (workflowId, itemId) => staged.authority.runCheckpoints.listByItem(workflowId, itemId),

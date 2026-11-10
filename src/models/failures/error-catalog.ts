@@ -559,6 +559,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The worker changed since this view was loaded. Refresh and try again.",
     EmptyParametersSchema,
   ),
+  WORKER_PAUSE_SETTLING: catalogEntry(
+    "This worker is still pausing its run. Resolve any unknown write in Logs before resuming the worker.",
+    EmptyParametersSchema,
+  ),
   WORKER_BUSY: catalogEntry(
     "The worker is busy with a run or another control. Try again when it is idle.",
     EmptyParametersSchema,
@@ -986,8 +990,16 @@ export const ERROR_CATALOG = Object.freeze({
     "This command does more than its assistant classification says. No action was taken.",
     EmptyParametersSchema,
   ),
+  PREFLIGHT_BLOCKED: catalogEntry(
+    "Readiness checks blocked this worker. Check Settings readiness; the queued run will wait until its prerequisites are available.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_OBSERVATION_CHANGED: catalogEntry(
     "Storage changed before the next run could be claimed. Re-check readiness; use Sessions for any queued run instead of starting it again.",
+    EmptyParametersSchema,
+  ),
+  BULK_CHILD_ERRORED: catalogEntry(
+    "Relay hit an error on this item and stopped the batch here. Nothing changed for this item.",
     EmptyParametersSchema,
   ),
   RUN_QUEUED_WORKER_UNAVAILABLE: catalogEntry(

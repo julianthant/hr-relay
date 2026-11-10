@@ -131,6 +131,7 @@ import { useRoute } from "./navigation/route-history-model.js";
 import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
 import { mockParam } from "./mock-surfaces.js";
+import { assistantNeeds } from "../surfaces/shell/assistant-launcher-model.js";
 import {
 activeTakeover,
 routeForCrossDateSearchResult,
@@ -1024,10 +1025,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const shownRecovery: readonly CommandRecoveryEntry[] = statusMock() === "command-unknown" ? [...recoveryEntries, STATUS_MOCK_UNKNOWN_COMMAND] : recoveryEntries;
   const commandNotices: readonly NotificationItem[] = [
     ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
-      detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "recovery", key: entry.inFlightKey } })),
+      detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "local-recovery", key: entry.inFlightKey } })),
     ...commandResults.map((entry): NotificationItem => ({ id: `command-result:${entry.id}`, kind: "command", priority: true, title: commandResultTitle(entry), subject: "", workflow: "",
       detail: commandResultDetail(entry), tone: entry.settlement.reason === "conflict" ? "warning" : "danger", age: entry.clock, read: false,
-      action: entry.settlement.reason === "conflict" ? "Refresh row" : "Open run", destination: { kind: "command-result", id: entry.id } })),
+      action: entry.settlement.reason === "conflict" ? "Refresh row" : "Open run", destination: { kind: "local-command-result", id: entry.id } })),
     ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
   ];
   const railNotifications = withCommandNotices(notifications, commandNotices);
@@ -1042,15 +1043,17 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       return true;
     },
     readAll: async () => { setNoticeRead(previous => new Set([...previous, ...localNoticeIds])); await inbox.readAll(); } } : undefined;
+  const servedNeedsYou = railInbox?.state.state === "ready" ? railInbox.state.items.filter(item => !item.read && item.priority === true).length : 0;
+  useEffect(() => { assistantNeeds.report(servedNeedsYou); }, [servedNeedsYou]);
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
-    if (destination.kind === "recovery") { setPendingRecovery(destination.key); opened(); return; }
-    if (destination.kind === "bulk-result") { setBulkReview(true); opened(); return; }
-    if (destination.kind === "command-result") {
+    if (destination.kind === "local-recovery") { setPendingRecovery(destination.key); opened(); return; }
+    if (destination.kind === "local-bulk-result") { setBulkReview(true); opened(); return; }
+    if (destination.kind === "local-command-result") {
       const entry = commandResults.find(result => result.id === destination.id);
       setCommandResults(previous => previous.filter(result => result.id !== destination.id));
       if (entry !== undefined) selectRun(entry.targetRunId);

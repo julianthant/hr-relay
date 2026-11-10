@@ -402,6 +402,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
+  "WORKER_PAUSE_SETTLING",
   "OCR_REVIEW_REFUSED",
   "RUN_CONTINUATION_REFUSED",
   "invalid-state",
@@ -426,6 +427,7 @@ export const CommandRejectionCodeSchema = z.enum([
   "active-version-blockers",
     /* The arm is schema-recognized but its owning milestone has not activated it; this result is computed with ZERO authority side effects. */
   "capability-unavailable",
+  "bulk-child-errored",
 ]);
 
 export const RunWorkerStartupFailureSchema = z.strictObject({

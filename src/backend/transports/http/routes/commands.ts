@@ -1,3 +1,4 @@
+import { CommandRefusal } from "../../../runs/commands/command-refusal.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { createOperatorCommandIngress } from "../../../runs/commands/operator-command-ingress.js";
 import { assertRequestActor } from "../request-identity.js";
@@ -18,11 +19,14 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     const command = CommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     const result = await operatorCommands.submit(body, async (accepted) => {
-      // Prepare async intake before entering the synchronous authority transaction.
-      await deps.intake.prepare(accepted);
-      // Pool controls and start-triggered worker capacity await durable process
-      // evidence; every authority transition still uses the same kernel.
-      return deps.commands.submit(accepted);
+      try {
+        const resolved = deps.resolveWriteCommand(accepted);
+        await deps.intake.prepare(resolved);
+        return await deps.commands.submit(resolved);
+      } catch (error) {
+        if (error instanceof CommandRefusal) return error.result;
+        throw error;
+      }
     });
     const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;
     return c.json(result, status);

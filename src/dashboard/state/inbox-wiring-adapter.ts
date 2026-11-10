@@ -4,7 +4,8 @@ import type { DashboardClient } from "../client/index.js";
 import type { DsToast } from "../ds/ui.js";
 import { NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
 import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
-import type { NotificationTarget, NotificationCollectionTarget } from "../../models/notifications/notifications.js";
+import type { NotificationCollectionTarget } from "../../models/notifications/notifications.js";
+import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
 import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
@@ -21,6 +22,9 @@ const policies = {
   "storage-degraded": { trigger: "storage", tone: "warning", detail: "Review Storage in Settings before starting more work." },
   "verified-done": { trigger: "verified-done", tone: "positive", detail: "Completed with the required verification evidence." },
   "backfill-gap": { trigger: "backfill-gap", tone: "warning", detail: "Notification history is incomplete. Reconcile the affected work." },
+  "command-refused": { trigger: "command", tone: "warning", detail: "Relay did not do this, so nothing changed." },
+  "command-unknown": { trigger: "command", tone: "danger", detail: "Relay could not confirm whether this finished. Open it to check before trying again." },
+  "bulk-incomplete": { trigger: "command", tone: "warning", detail: "Some items in this batch were not done. Open it to see each one." },
 } as const satisfies Readonly<Record<NotificationTriggerEvent["kind"], { trigger: string; tone: NotificationItem["tone"]; detail: string }>>;
 
 export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_HISTORY_INCOMPLETE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_RECEIPT_MISSING" | "NOTIFICATION_CONTEXT_UNAVAILABLE" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
@@ -28,10 +32,18 @@ export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURC
 export function notificationPolicy(row: NotificationWire) {
   const source = row.sourceEvent;
   const policy = source?.state === "available" ? Object.entries(policies).find(([kind]) => kind === source.kind)?.[1] : undefined;
-  return policy?.trigger === (row.kind === "backfill-gap" ? "backfill-gap" : row.trigger) ? policy : undefined;
+  const trigger = row.kind === "backfill-gap" ? "backfill-gap" : row.kind === "command" ? "command" : row.trigger;
+  return policy?.trigger === trigger ? policy : undefined;
 }
 
 export function notificationTargetMatches(row: NotificationWire, target: NotificationTarget): boolean {
+  if (row.kind === "command") {
+    const link = row.link;
+    if (target.kind === "recovery" && link.kind === "recovery") return link.commandId === target.commandId;
+    if (target.kind === "command-result" && (link.kind === "command-result" || link.kind === "recovery")) return link.commandId === target.commandId;
+    if (target.kind === "bulk-result" && link.kind === "bulk-result") return link.bulkCommandId === target.bulkCommandId;
+    return false;
+  }
   if (row.kind !== "notification") return false;
   const link = row.link;
   if (target.kind === "storage") return link?.kind === "storage";
@@ -40,26 +52,28 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   return false;
 }
 
-function notificationItem(row: Extract<NotificationWire, { kind: "notification" }>, nowIso: string): NotificationItem {
+function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
   const context = row.context;
+  const command = row.kind === "command";
   const tone = policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info");
-  return { id: row.notificationId, title: row.title, tone, ...(row.link?.kind === "storage" ? {} : { kind: "run" as const }),
-      // The wire has no priority or resolved flag; error and warning notices count as still needing the operator.
-      priority: tone === "danger" || tone === "warning",
+  return { id: row.notificationId, title: row.title, tone,
+      kind: command ? "command" as const : row.link?.kind === "storage" ? "storage" as const : "run" as const,
+      // Notices the server marks as commands carry their own priority; error and warning notices still need the operator.
+      priority: command ? row.priority : tone === "danger" || tone === "warning",
       subject: context.state === "available" ? context.subject : inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE"),
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
-      detail: row.sourceEvent?.state === "available" && row.sourceEvent.kind === "run-failed" && row.summary !== undefined
+      detail: command ? row.summary : row.sourceEvent?.state === "available" && row.sourceEvent.kind === "run-failed" && row.summary !== undefined
         ? row.summary
         : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
-      read: row.readState === "read", action: row.link?.kind === "storage" ? "Open Storage" : "Open log",
+      read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "Open Storage" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
 }
 
-export function inboxProjection(rows: readonly NotificationWire[], nowIso: string): { state: NotificationsState; notice: string } {
+export function inboxProjection(rows: readonly NotificationWire[], nowIso: string): { state: NotificationsState; notice: string; needsYou: number } {
   const notices = new Set<string>();
   const items: NotificationItem[] = [];
   for (const row of rows) {
@@ -68,7 +82,8 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
     if (policy === undefined) notices.add(inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"));
     items.push(notificationItem(row, nowIso));
   }
-  return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" ") };
+  const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
+  return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" "), needsYou };
 }
 
 export interface InboxWiring {

@@ -7,6 +7,7 @@ import type { IntakeService } from "../../../runs/commands/intake-service.js";
 export interface CommandsRouteDeps {
   readonly clock: import("../../../../rules/time/clock.js").Clock;
   readonly commands: DashboardCommandService;
+  readonly resolveWriteCommand: (request: CommandRequest) => CommandRequest;
   readonly commandJournal: { get(commandId: string): CommandRequest | undefined };
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;

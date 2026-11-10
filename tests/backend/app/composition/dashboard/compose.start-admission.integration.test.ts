@@ -4,10 +4,8 @@ import { randomUUID } from "node:crypto";
 import { it } from "vitest";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
-import { WireErrorSchema } from "../../../../../src/models/dashboard/primitives.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
-import { PreflightObservationChangedError } from "../../../../../src/rules/preflight/preflight-admission.js";
 
 
 for (const input of [
@@ -37,16 +35,16 @@ for (const input of [
 for (const input of [
   { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false },
   { workflowId: "separations", submissions: [{ documentNumber: "4510" }], dryRun: true },
-]) it(`reports a real changed doctor observation while planning ${input.workflowId} before enqueue or browser effects`, async () => {
+]) it(`plans ${input.workflowId} while the owner writes the authority during its doctor pass`, async () => {
   const f = await fixture(true);
   try {
     const control = await f.post("start-plans", input);
     assert.equal(control.status, 200); assert.deepEqual(StartPlanWireSchema.parse(await control.json()).refused, []);
     f.armDoctorRace();
     const response = await f.post("start-plans", input);
-    assert.equal(response.status, 409);
-    assert.equal(WireErrorSchema.parse(await response.json()).code, "PREFLIGHT_OBSERVATION_CHANGED");
-    assert.equal(f.detectorErrors.length, 1); assert.ok(f.detectorErrors[0] instanceof PreflightObservationChangedError);
+    assert.equal(response.status, 200); assert.deepEqual(StartPlanWireSchema.parse(await response.json()).refused, []);
+    assert.deepEqual(f.detectorErrors, []);
+    assert.equal(f.context.database.authority.notifications.listByActor("local-operator").length > 0, true, "the race write must land");
     assert.deepEqual(f.context.database.authority.runs.listByWorkflow(input.workflowId), []); assert.equal(f.spawns(), 0);
   } finally { await f.close(); }
 });
@@ -54,7 +52,7 @@ for (const input of [
 for (const input of [
   { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false },
   { workflowId: "separations", submissions: [{ documentNumber: "4510" }], dryRun: true },
-]) it(`truthfully confirms the queued ${input.workflowId} run when its real doctor race refuses worker startup`, async () => {
+]) it(`starts the queued ${input.workflowId} worker while the owner writes the authority during its doctor pass`, async () => {
   const f = await fixture(true);
   try {
     const planned = await f.post("start-plans", input); assert.equal(planned.status, 200);
@@ -64,17 +62,19 @@ for (const input of [
     const response = await f.post("commands", command); assert.equal(response.status, 200);
     const result = CommandResultSchema.parse(await response.json()); assert.equal(result.state, "applied");
     if (result.state !== "applied") throw new Error("the enqueue committed before worker admission");
+    // Preflight passes and startup reaches the fixture spawner, which refuses every spawn.
+    assert.deepEqual(f.detectorErrors, []); assert.equal(f.spawns(), 1);
+    assert.equal(f.context.database.authority.notifications.listByActor("local-operator").length > 0, true, "the race write must land");
     assert.equal(result.workerStartup?.state, "refused"); assert.equal(result.workerStartup?.code, "RUN_QUEUED_WORKER_UNAVAILABLE");
-    assert.equal(f.detectorErrors.length, 1); assert.ok(f.detectorErrors[0] instanceof PreflightObservationChangedError);
     const runs = f.context.database.authority.runs.listByWorkflow(input.workflowId);
-    assert.equal(runs.length, 1); assert.equal(runs[0]?.lifecycle.state, "queued"); assert.equal(f.spawns(), 0);
+    assert.equal(runs.length, 1); assert.equal(runs[0]?.lifecycle.state, "queued");
     assert.ok(result.affectedTargets.some(target => target.family === "run" && target.runId === runs[0]?.envelope.runId));
     const replay = CommandResultSchema.parse(await (await f.post("commands", command)).json());
     assert.equal(replay.state, "already-applied");
     if (replay.state !== "already-applied") throw new Error("an exact replay must retain the original enqueue");
-    // A replay tries to start a worker again; the still-racing doctor refuses it the same way.
-    assert.equal(replay.workerStartup?.state, "refused");
-    assert.equal(f.detectorErrors.length, 2, JSON.stringify({ workerStartup: replay.workerStartup, spawns: f.spawns() })); assert.equal(f.spawns(), 0);
+    // A replay asks for worker capacity again; it reaches the refusing spawner a second time.
+    assert.equal(replay.workerStartup?.state, "refused"); assert.equal(replay.workerStartup?.code, "RUN_QUEUED_WORKER_UNAVAILABLE");
+    assert.deepEqual(f.detectorErrors, []); assert.equal(f.spawns(), 2);
     assert.deepEqual(f.context.database.authority.runs.listByWorkflow(input.workflowId), runs);
   } finally {
     await f.close();

@@ -42,6 +42,7 @@ for (const scenario of [{ action: "complete", withCause: true, unknownFirst: tru
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: { ...synthetic,
         browserState() { return recovered ? { state: "open", generation } : recoveryFailed ? { state: "failed", generation, code: "DUO_SETUP_FILES_BUSY" } : { state: "closed", generation }; },
         async start(...args) { if (firstAttempt) { firstAttempt = false; await args[2](new ProfileOnboardingDuoProviderError("unknown", "worker")); } else await synthetic.start(...args); },
+        async stop() {},
         async closeBrowser() { closes++; return recovered ? { state: "closed" } : { state: "uncertain", ...(scenario.withCause ? { cause: primary } : {}) }; },
         async recoverBrowser(owner, expected) {
           owner.assertCurrent(); assert.equal(expected, generation); reopens++;
@@ -226,6 +227,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const onboardingDuo: ProfileOnboardingDuoProvider = {
       async showBrowser(owner) { owner.assertCurrent(); },
       async openPortal(owner) { owner.assertCurrent(); },
+      async stop() {},
       async closeBrowser() { return { state: "closed" }; },
       async start(attempt, bind, _reportFailure) {
         assert.equal(providerActive, false); providerActive = true;

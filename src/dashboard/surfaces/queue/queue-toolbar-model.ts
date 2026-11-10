@@ -27,5 +27,5 @@ export function bulkSummary(outcome: BulkBatchOutcome) {
 /** The Priority notification item that opens the per-run review. */
 export function bulkResultNotice(outcome: BulkBatchOutcome): NotificationItem {
   const { title, tone, detail } = bulkSummary(outcome);
-  return { id: "bulk-result", kind: "command", priority: true, title, subject: "", workflow: "", detail: detail ?? "", tone, age: "Just now", read: false, action: "Review", destination: { kind: "bulk-result" } };
+  return { id: "bulk-result", kind: "command", priority: true, title, subject: "", workflow: "", detail: detail ?? "", tone, age: "Just now", read: false, action: "Review", destination: { kind: "local-bulk-result" } };
 }

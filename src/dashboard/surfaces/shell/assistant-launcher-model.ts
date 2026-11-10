@@ -6,16 +6,23 @@ function param(name: string): string | null {
   return mockParam(name);
 }
 
-/** Decisions waiting on the operator (`assistantNeeds=<n>`); a served count is a backend gap. */
-export function assistantNeedsYou(): number {
-  const value = Number(param("assistantNeeds"));
-  return Number.isSafeInteger(value) && value > 0 ? value : 0;
-}
-
 let opened: boolean | undefined;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const emit = () => { for (const listener of listeners) listener(); };
+
+/** Decisions waiting on the operator: the served inbox's unread priority count, or `assistantNeeds=<n>` in the design frames. */
+let servedNeeds = 0;
+export const assistantNeeds = {
+  report(count: number) { if (count !== servedNeeds) { servedNeeds = count; emit(); } },
+  get(): number {
+    const value = Number(param("assistantNeeds"));
+    return Number.isSafeInteger(value) && value > 0 ? value : servedNeeds;
+  },
+};
+export function useAssistantNeedsYou(): number {
+  return useSyncExternalStore(subscribe, () => assistantNeeds.get(), () => 0);
+}
 
 /** The panel's open state, shared by the shell panel and whichever launcher is on screen. `assistantOpen=0|1` overrides the first value. */
 export const assistantOpen = {
@@ -53,5 +60,6 @@ export const assistantActivity = {
 export function useAssistantMarkState(): MarkState {
   const live = useSyncExternalStore(subscribe, assistantActivity.get, () => undefined);
   const pinned = MARK_STATES.find(state => state === param("assistantMark"));
-  return pinned ?? live ?? (assistantNeedsYou() > 0 ? "needs-you" : "idle");
+  const needs = useAssistantNeedsYou();
+  return pinned ?? live ?? (needs > 0 ? "needs-you" : "idle");
 }

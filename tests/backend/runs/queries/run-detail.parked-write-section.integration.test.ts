@@ -1,3 +1,4 @@
+import { publicWriteTarget, resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
@@ -283,7 +284,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       // The run version, because that is what both resolutions CAS against.
       assert.equal(action.expectedVersion, 4);
       assert.deepEqual(action.writeTarget, { writeIntentId: INTENT_ID, intentGeneration: 1,
-        writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST,
+        writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: publicWriteTarget({ writeIntentId: INTENT_ID, intentGeneration: 1, writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST }).occurrenceKeyDigest,
         bindingProofDigest: parkedIntentOf().bindingProofDigest });
       // Neither may be one click: a found write resumes the run, and absence authorizes a resubmit.
       assert.ok(action.confirm !== undefined);
@@ -321,7 +322,10 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(command.target.expectedVersion, 4);
     assert.equal(command.target.writeAttemptId, ATTEMPT_ID);
     assert.equal(command.target.bindingProofDigest, parkedIntentOf().bindingProofDigest);
-    assert.equal(command.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
+    assert.notEqual(command.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
+    const native = resolveWriteCommandTarget(command, { commands: { get: () => undefined }, writeIntents: { get: () => parkedIntentOf() } });
+    assert.ok(native.family === "run" && native.type === "recheck-write");
+    assert.equal(native.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
   });
 
   it("does not advertise or serve the section for a run that is not parked", async () => {
@@ -388,16 +392,16 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       for (const action of payload.actions) {
         assert.equal(action.kind, "command");
         if (action.kind !== "command") throw new Error("unreachable");
-        assert.deepEqual(action.writeTarget, { writeIntentId: intent.writeIntentId,
+        assert.deepEqual(action.writeTarget, publicWriteTarget({ writeIntentId: intent.writeIntentId,
           intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
-          occurrenceKeyDigest: intent.idempotencyKeyDigest, bindingProofDigest: intent.bindingProofDigest });
+          occurrenceKeyDigest: intent.idempotencyKeyDigest, bindingProofDigest: intent.bindingProofDigest }));
       }
       return (
       JSON.parse(
         JSON.stringify(payload.actions)
           .replaceAll(payload.writeIntentId, "<intent>")
           .replaceAll(intent.currentAttemptId, "<attempt>")
-          .replaceAll(intent.idempotencyKeyDigest, "<occurrence>")
+          .replaceAll(publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId, occurrenceKeyDigest: intent.idempotencyKeyDigest }).occurrenceKeyDigest, "<occurrence>")
           .replaceAll(intent.bindingProofDigest, "<binding>")
           // Compare adapter shapes at their own row versions; pinning one version would confuse fixtures with schema.
           .replaceAll(/"expectedVersion":\d+/gu, '"expectedVersion":0'),
@@ -475,8 +479,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
           name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: uuidOf(24) }] } } }));
       const payload = parkedSection(w);
       const digest = deriveIdempotencyKeyDigest("kuali", KEY);
-      // The kernel fences typed resolutions on the exact occurrence digest, so only those command targets carry it.
-      const served = JSON.stringify(payload).replaceAll(`"occurrenceKeyDigest":"${digest}"`, "");
+      const served = JSON.stringify(payload);
       for (const secret of ["3170001", KEY, digest, digest.slice(0, 12)]) assert.ok(!served.includes(secret), secret);
       assert.equal(payload.idempotencyKeyDigest, "withheld-protected-input");
       assert.equal(payload.decision?.context, "Kuali accepted the save, but Relay could not read its status. Check the separation document in Kuali.");
