@@ -7,7 +7,7 @@ import { createActivityPopulationService, ActivityPopulationError } from "../../
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
-import { runRecordOf, uuidOf, failureRecordOf, cleanReceiptOf, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { runRecordOf, uuidOf, traceOf, failureRecordOf, cleanReceiptOf, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { RunResultRecordSchema, deriveRunResultDigest, deriveTerminalDependencyDigest, createRunTerminalEvidenceResult, deriveTerminalFailureDigest } from "../../../../src/models/run/result.js";
@@ -20,6 +20,8 @@ import { createTransactionHistory } from "../../../../src/backend/storage/sqlite
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { queryActivitySummaries } from "../../../../src/backend/runs/queries/activity-summaries.js";
+import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js";
 
 const range = { from: "2026-10-01", to: "2026-10-01" };
 const at = "2026-10-01T12:00:00.000Z";
@@ -39,12 +41,13 @@ async function fixture() {
     let state = search.rebuild({ restart: true, limit: 500 }, database.getMeta().authorityGeneration, at);
     while (state.state === "building") state = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, at);
   };
-  const add = (seed: number, options: Omit<Parameters<typeof runRecordOf>[0], "seed" | "enqueuedAt"> = {}, failureCode = "FIXTURE_FAILURE") => {
+  const add = (seed: number, options: Omit<Parameters<typeof runRecordOf>[0], "seed"> = {}, failureCode = "FIXTURE_FAILURE") => {
     const lifecycle = options.lifecycle;
+    const requestedEnqueue = options.enqueuedAt;
     const missingTiming = lifecycle !== undefined && typeof lifecycle === "object" && lifecycle !== null && "endedAt" in lifecycle && typeof lifecycle.endedAt === "string" && lifecycle.endedAt < at;
     const isCancelled = lifecycle !== undefined && typeof lifecycle === "object" && lifecycle !== null && "outcome" in lifecycle && lifecycle.outcome === "cancelled";
     const source = runRecordOf({ seed, enqueuedAt: missingTiming ? "2026-10-01T11:00:00.000Z" : at, dryRun: true, displayName: `Person ${seed}`, ...options, ...(isCancelled ? { lifecycle: { state: "queued" } } : {}) });
-    let record = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, enqueuedAt: at } });
+    let record = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, enqueuedAt: requestedEnqueue ?? at } });
     let result;
     let failure;
     if (record.lifecycle.state === "terminal" && record.lifecycle.outcome === "done") {
@@ -130,6 +133,46 @@ describe("selected Analytics population", () => {
     expect(f.service.readSelected(range, selected.snapshot.token, { metric: "failed", page: 0 }).browse?.rows.map(row => row.runId)).toEqual([uuidOf(10)]);
     const browse = f.service.readSelected(range, selected.snapshot.token, { metric: "timed", page: 0 }).browse;
     expect(browse?.rows.map(row => row.runId)).toEqual([uuidOf(1), uuidOf(2)]);
+  });
+
+  it("serves a failed step, a mixed-outcome day and the median duration", async () => {
+    const f = await fixture();
+    const searching = personLookupDescriptor.timeline.find(category => category.label === "Search for person");
+    const nodeId = searching?.nodes[0]?.id;
+    expect(nodeId).toBeTruthy();
+    if (nodeId === undefined) throw new Error("person lookup search step has no node");
+    const day2 = "2026-10-02T12:00:00.000Z";
+    f.add(43, { lifecycle: done(1000) });
+    const failure = failureRecordOf({ seed: 40, code: "SESSION_LOST" });
+    const failed = f.add(40, { lifecycle: { state: "terminal", outcome: "failed", endedAt: new Date(Date.parse(at) + 4000).toISOString(), failureId: failure.failureId } }, "SESSION_LOST");
+    f.add(42, { lifecycle: { state: "parked-gate", gateId: "operator-review", parkedAt: at, resumeAt: nodeId } });
+    f.add(41, { enqueuedAt: day2, lifecycle: { state: "terminal", outcome: "done", endedAt: new Date(Date.parse(day2) + 3000).toISOString() } });
+    f.add(44, { enqueuedAt: day2, lifecycle: { state: "terminal", outcome: "done", endedAt: new Date(Date.parse(day2) + 9000).toISOString() } });
+    f.publish();
+    const spanPath = `${traceOf(40)}/${nodeId}#1.1`;
+    const startedAt = new Date(Date.parse(at) + 1000).toISOString();
+    const endedAt = new Date(Date.parse(at) + 4000).toISOString();
+    const span = { workflow: "person-lookup", pid: 1, runId: failed.envelope.runId, attempt: 1, traceId: failed.envelope.traceId, spanPath };
+    for (const [seed, event] of [[9100, { t: "span.started", kind: "task", name: "SESSION_LOST", ts: startedAt, ...span }], [9101, { t: "span.ended", kind: "task", outcome: "failed", ts: endedAt, ...span }]] as const) {
+      f.database.authority.timelineEvents.append(TimelineAppendSchema.parse({
+        schemaVersion: 1, eventId: uuidOf(seed), workflow: "person-lookup", scope: { kind: "run", runId: failed.envelope.runId },
+        occurredAt: event.ts, recordedAt: event.ts, retentionDate: "2026-10-01", source: { kind: "native" },
+        payload: { kind: "span", event },
+      }));
+    }
+    const report = queryActivitySummaries(f.database, { from: "2026-10-01", to: "2026-10-02", generatedAt: at }, {
+      descriptors: { resolve: workflow => workflow === "person-lookup" ? personLookupDescriptor : undefined },
+      ledger: { foldActivityRange: () => ({ systems: [] }) },
+      timeZone: "UTC",
+    });
+    expect(report.outcomeSplit).toEqual({ done: 3, failed: 1, attention: 1 });
+    expect(report.days).toEqual([
+      { day: "2026-10-01", runs: 3, outcomes: { done: 1, failed: 1, attention: 1 }, typicalTime: { measuredRuns: 2, medianMs: { state: "present", value: 1000 } } },
+      { day: "2026-10-02", runs: 2, outcomes: { done: 2, failed: 0, attention: 0 }, typicalTime: { measuredRuns: 2, medianMs: { state: "present", value: 3000 } } },
+    ]);
+    expect(report.typicalMedian).toEqual({ measuredRuns: 4, medianMs: { state: "present", value: 3000 } });
+    expect(report.durations.medianMs).toEqual({ state: "present", value: 3000 });
+    expect(report.workflows.map(row => row.failedAt)).toEqual([[{ state: "known", nodeId, title: "Search for person", runs: 1 }]]);
   });
 
   it("keeps failure codes distinct per workflow with catalog prose and registered or absent labels", async () => {

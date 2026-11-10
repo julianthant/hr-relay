@@ -4,6 +4,7 @@ import {
   BrowserSystemIdSchema,
   ErrorCodeSchema,
   IsoInstantSchema,
+  NodeIdSchema,
   RunIdSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
@@ -21,10 +22,91 @@ export const ActivityOutcomeSchema = z.enum([
   "done", "failed", "cancelled", "partial", "superseded", "discarded", "interrupted",
 ]);
 
+/** Lower median of terminal durations. Absent uses the same sentence as `durations.medianMs`. */
+export const ACTIVITY_MEDIAN_ABSENT_REASON = "no terminal run in range carries both a start and an end instant";
+
+export function activityMedian(samples: readonly number[]): {
+  measuredRuns: number;
+  medianMs: { state: "present"; value: number } | { state: "absent"; reason: string };
+} {
+  if (samples.length === 0) return { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } };
+  const sorted = [...samples].sort((left, right) => left - right);
+  const value = sorted[Math.floor((sorted.length - 1) / 2)];
+  if (value === undefined || !Number.isInteger(value) || value < 0) throw new Error("activity-median-invalid");
+  return { measuredRuns: samples.length, medianMs: { state: "present", value } };
+}
+
+/**
+ * Analytics outcome for one queue status.
+ * `done` and `failed` are those statuses.
+ * `attention` is a run waiting on the operator or ended partial or unknown:
+ * `awaiting-approval` (parked gate), `partial`, and `blocked` except a still-queued run waiting on a child.
+ * A blocked parked write is waiting on the operator. A blocked terminal run is interrupted, which has no done, failed, or cancelled settlement.
+ * `queued`, `running`, `cancelling`, and `cancelled` (cancelled, discarded, superseded) stay outside the split.
+ */
+export function activityOutcomeClass(status: z.infer<typeof QueueStatusSchema>, lifecycleState: string): "done" | "failed" | "attention" | undefined {
+  switch (status) {
+    case "done": return "done";
+    case "failed": return "failed";
+    case "awaiting-approval":
+    case "partial": return "attention";
+    case "blocked": return lifecycleState === "queued" ? undefined : "attention";
+    default: return undefined;
+  }
+}
+
+export const ActivityOutcomeSplitSchema = z.strictObject({
+  done: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  attention: z.number().int().nonnegative(),
+});
+export type ActivityOutcomeSplit = z.infer<typeof ActivityOutcomeSplitSchema>;
+
+export const ActivityMedianDurationSchema = z.strictObject({
+  measuredRuns: z.number().int().nonnegative(),
+  medianMs: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.number().int().nonnegative() }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
+}).superRefine((timing, context) => {
+  if ((timing.measuredRuns === 0) !== (timing.medianMs.state === "absent")) {
+    context.addIssue({ code: "custom", path: ["medianMs"], message: "a median duration requires measured runs" });
+  }
+});
+export type ActivityMedianDuration = z.infer<typeof ActivityMedianDurationSchema>;
+
+/** The step a run failed at. `nodeId` is only the key; `title` is the Logs panel step title. */
+export const ActivityFailureStepSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("known"),
+    nodeId: NodeIdSchema,
+    title: z.string().min(1),
+    runs: z.number().int().positive(),
+  }).superRefine((step, context) => {
+    if (step.title === step.nodeId || ErrorCodeSchema.safeParse(step.title).success) {
+      context.addIssue({ code: "custom", path: ["title"], message: "a failure step title is the readable step name, never its node id or an error code" });
+    }
+  }),
+  z.strictObject({
+    state: z.literal("unavailable"),
+    reason: z.string().min(1),
+    runs: z.number().int().positive(),
+  }),
+]);
+export type ActivityFailureStep = z.infer<typeof ActivityFailureStepSchema>;
+
 export const ActivityDayTotalSchema = z.strictObject({
   day: z.iso.date(),
   runs: z.number().int().nonnegative(),
+  outcomes: ActivityOutcomeSplitSchema,
+  typicalTime: ActivityMedianDurationSchema,
+}).superRefine((day, context) => {
+  const covered = day.outcomes.done + day.outcomes.failed + day.outcomes.attention;
+  if (covered > day.runs) {
+    context.addIssue({ code: "custom", path: ["outcomes"], message: `day ${day.day} outcome split covers ${String(covered)} runs but the day counts ${String(day.runs)}` });
+  }
 });
+export type ActivityDayTotal = z.infer<typeof ActivityDayTotalSchema>;
 
 const CategoryIdSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
 
@@ -93,7 +175,7 @@ export const ActivityTypicalTimeSchema = z.strictObject({
     context.addIssue({ code: "custom", path: ["meanMs"], message: "a successful-root mean requires measured runs" });
 });
 
-/** One workflow's status cross-tab and successful-root timing. */
+/** One workflow's status cross-tab, outcome split, failure steps, and timing. */
 export const ActivityWorkflowTotalSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   registration: ActivityWorkflowRegistrationSchema,
@@ -102,6 +184,11 @@ export const ActivityWorkflowTotalSchema = z.strictObject({
   failed: z.number().int().nonnegative(),
   needsAttention: z.number().int().nonnegative(),
   typicalTime: ActivityTypicalTimeSchema,
+  /** Median duration of this workflow's measured terminal runs in the selected period. */
+  typicalMedian: ActivityMedianDurationSchema,
+  outcomes: ActivityOutcomeSplitSchema,
+  days: z.array(ActivityDayTotalSchema),
+  failedAt: z.array(ActivityFailureStepSchema),
   cancelled: z.number().int().nonnegative(),
   partial: z.number().int().nonnegative(),
   /** every non-terminal status — what this workflow still has open in range */
@@ -111,6 +198,38 @@ export const ActivityWorkflowTotalSchema = z.strictObject({
     context.addIssue({ code: "custom", path: ["needsAttention"], message: "needs attention must equal failed runs" });
   if (workflow.typicalTime.measuredRuns + workflow.typicalTime.unmeasuredRuns > workflow.completion.readBack + workflow.completion.warnings + workflow.completion.warningsUnknown)
     context.addIssue({ code: "custom", path: ["typicalTime"], message: "successful-root timing cannot exceed completed runs" });
+  const covered = workflow.outcomes.done + workflow.outcomes.failed + workflow.outcomes.attention;
+  if (covered > workflow.runs) {
+    context.addIssue({ code: "custom", path: ["outcomes"], message: `workflow ${workflow.workflowId} outcome split covers ${String(covered)} runs but counts ${String(workflow.runs)}` });
+  }
+  const failedAt = workflow.failedAt.reduce((total, step) => total + step.runs, 0);
+  if (failedAt !== workflow.failed) {
+    context.addIssue({ code: "custom", path: ["failedAt"], message: `workflow ${workflow.workflowId} failure steps count ${String(failedAt)} runs but ${String(workflow.failed)} failed` });
+  }
+  const seen = new Set<string>();
+  let dayRuns = 0;
+  let dayMeasured = 0;
+  const dayOutcomes = { done: 0, failed: 0, attention: 0 };
+  for (const day of workflow.days) {
+    if (seen.has(day.day)) {
+      context.addIssue({ code: "custom", path: ["days"], message: `workflow ${workflow.workflowId} repeats ${day.day}` });
+    }
+    seen.add(day.day);
+    dayRuns += day.runs;
+    dayMeasured += day.typicalTime.measuredRuns;
+    dayOutcomes.done += day.outcomes.done;
+    dayOutcomes.failed += day.outcomes.failed;
+    dayOutcomes.attention += day.outcomes.attention;
+  }
+  if (dayRuns !== workflow.runs) {
+    context.addIssue({ code: "custom", path: ["days"], message: `workflow ${workflow.workflowId} days count ${String(dayRuns)} runs but the row counts ${String(workflow.runs)}` });
+  }
+  if (dayMeasured !== workflow.typicalMedian.measuredRuns) {
+    context.addIssue({ code: "custom", path: ["typicalMedian"], message: `workflow ${workflow.workflowId} day medians cover ${String(dayMeasured)} runs but the row median covers ${String(workflow.typicalMedian.measuredRuns)}` });
+  }
+  if (dayOutcomes.done !== workflow.outcomes.done || dayOutcomes.failed !== workflow.outcomes.failed || dayOutcomes.attention !== workflow.outcomes.attention) {
+    context.addIssue({ code: "custom", path: ["days"], message: `workflow ${workflow.workflowId} days do not sum to its outcome split` });
+  }
 });
 export type ActivityWorkflowTotal = z.infer<typeof ActivityWorkflowTotalSchema>;
 
@@ -197,6 +316,10 @@ export const ActivityReportWireSchema = z.strictObject({
   people: ActivityPeopleTotalSchema,
     /* The whole-report split of the `done` status, summed in the same pass, so the headline tile and the per-workflow table read ONE number. */
   completion: ActivityCompletionSchema,
+  /** Done, failed, and attention for the selected period. Cancelled and still-open runs stay outside it. */
+  outcomeSplit: ActivityOutcomeSplitSchema,
+  /** Median duration of every measured terminal run in the selected period. Same samples as `durations.medianMs`. */
+  typicalMedian: ActivityMedianDurationSchema,
   days: z.array(ActivityDayTotalSchema),
   /** New summary-backed report series; absent only on legacy in-memory projection compatibility paths. */
   volume: ActivityVolumeSchema.optional(),
@@ -380,6 +503,57 @@ export const ActivityReportWireSchema = z.strictObject({
   for (const day of report.days) {
     if (day.day < report.from || day.day > report.to) {
       context.addIssue({ code: "custom", path: ["days"], message: `day ${day.day} falls outside the reported range` });
+    }
+  }
+
+  const sameMedian = (
+    left: ActivityMedianDuration["medianMs"],
+    right: ActivityMedianDuration["medianMs"],
+  ): boolean => left.state === right.state && (left.state === "absent" ? right.state === "absent" && left.reason === right.reason : right.state === "present" && left.value === right.value);
+  if (report.typicalMedian.measuredRuns !== report.durations.measuredRuns || !sameMedian(report.typicalMedian.medianMs, report.durations.medianMs)) {
+    context.addIssue({ code: "custom", path: ["typicalMedian"], message: "the period median must describe the same terminal durations as durations.medianMs" });
+  }
+  const splitOf = (rows: readonly ActivityOutcomeSplit[]) => rows.reduce((total, row) => ({
+    done: total.done + row.done, failed: total.failed + row.failed, attention: total.attention + row.attention,
+  }), { done: 0, failed: 0, attention: 0 });
+  const sameSplit = (left: ActivityOutcomeSplit, right: ActivityOutcomeSplit): boolean =>
+    left.done === right.done && left.failed === right.failed && left.attention === right.attention;
+  const workflowSplit = splitOf(report.workflows.map(workflow => workflow.outcomes));
+  const daySplit = splitOf(report.days.map(day => day.outcomes));
+  if (!sameSplit(workflowSplit, report.outcomeSplit) || !sameSplit(daySplit, report.outcomeSplit)) {
+    context.addIssue({ code: "custom", path: ["outcomeSplit"], message: "the period outcome split must equal the workflow rows and the days" });
+  }
+  const dayRuns = report.days.reduce((total, day) => total + day.runs, 0);
+  if (dayRuns !== report.totalRuns) {
+    context.addIssue({ code: "custom", path: ["days"], message: `days count ${String(dayRuns)} runs but the report counts ${String(report.totalRuns)}` });
+  }
+  const dayMeasured = report.days.reduce((total, day) => total + day.typicalTime.measuredRuns, 0);
+  const workflowMeasured = report.workflows.reduce((total, workflow) => total + workflow.typicalMedian.measuredRuns, 0);
+  if (dayMeasured !== report.typicalMedian.measuredRuns || workflowMeasured !== report.typicalMedian.measuredRuns) {
+    context.addIssue({ code: "custom", path: ["typicalMedian"], message: "day and workflow medians must cover the period's measured terminal runs" });
+  }
+  const fromWorkflows = new Map<string, { runs: number; done: number; failed: number; attention: number; measured: number }>();
+  for (const workflow of report.workflows) {
+    for (const day of workflow.days) {
+      const bucket = fromWorkflows.get(day.day) ?? { runs: 0, done: 0, failed: 0, attention: 0, measured: 0 };
+      bucket.runs += day.runs;
+      bucket.done += day.outcomes.done;
+      bucket.failed += day.outcomes.failed;
+      bucket.attention += day.outcomes.attention;
+      bucket.measured += day.typicalTime.measuredRuns;
+      fromWorkflows.set(day.day, bucket);
+    }
+  }
+  for (const day of report.days) {
+    const actual = fromWorkflows.get(day.day);
+    if (actual === undefined || actual.runs !== day.runs || actual.measured !== day.typicalTime.measuredRuns
+      || actual.done !== day.outcomes.done || actual.failed !== day.outcomes.failed || actual.attention !== day.outcomes.attention) {
+      context.addIssue({ code: "custom", path: ["days"], message: `day ${day.day} does not match the workflow rows for that day` });
+    }
+  }
+  for (const day of fromWorkflows.keys()) {
+    if (!report.days.some(entry => entry.day === day)) {
+      context.addIssue({ code: "custom", path: ["workflows"], message: `workflow rows include ${day}, which the report days omit` });
     }
   }
 });

@@ -25,16 +25,21 @@ function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ sta
   const count = (status: string) => population.filter(row => row.status === status).length;
   const terminal = population.filter(row => row.terminal);
   const measured = terminal.flatMap(row => row.durationMs === null ? [] : [row.durationMs]).sort((a, b) => a - b);
+  const medianMs = measured.length ? { state: "present" as const, value: measured[Math.floor(measured.length / 2)] } : { state: "absent" as const, reason: "No measurement" };
+  const typicalMedian = { measuredRuns: measured.length, medianMs };
+  const outcomes = { done: count("done"), failed: count("failed"), attention: count("partial") + count("awaiting-approval") + count("blocked") };
+  const failedAt = count("failed") === 0 ? [] : [{ state: "unavailable" as const, reason: "the failed run has no task span that records the step where it failed", runs: count("failed") }];
+  const dayTotal = population.length === 0 ? [] : [{ day: "2026-08-03", runs: population.length, outcomes, typicalTime: typicalMedian }];
   const timing = population.filter(row => row.status === "done" && row.parentRunId === null);
   const timed = timing.flatMap(row => row.durationMs === null ? [] : [row.durationMs]);
   const skeleton = buildActivityVolumeBoundarySkeleton(empty, "UTC");
   const report = { ...empty, totalRuns: population.length, terminalRuns: terminal.length, inFlightRuns: population.length - terminal.length,
-    completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, days: population.length ? [{ day: "2026-08-03", runs: population.length }] : [],
-    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), needsAttention: count("failed"), typicalTime: { measure: "successful-root-run-mean", measuredRuns: timed.length, unmeasuredRuns: timing.length - timed.length, meanMs: timed.length ? { state: "present", value: timed.reduce((sum, n) => sum + n, 0) / timed.length } : { state: "absent", reason: "No successful root measurement" } }, cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
+    completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, outcomeSplit: outcomes, typicalMedian, days: dayTotal,
+    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), needsAttention: count("failed"), typicalTime: { measure: "successful-root-run-mean", measuredRuns: timed.length, unmeasuredRuns: timing.length - timed.length, meanMs: timed.length ? { state: "present", value: timed.reduce((sum, n) => sum + n, 0) / timed.length } : { state: "absent", reason: "No successful root measurement" } }, typicalMedian, outcomes, days: dayTotal, failedAt, cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
     categories: population.length ? [{ category: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length }] : [],
     statuses: [...new Set(population.map(row => row.status))].map(status => ({ status, runs: count(status), sample: ["done", "failed", "cancelled", "partial"].includes(status) ? [] : population.filter(row => row.status === status).slice(0, 5).map(row => row.runId) })),
     outcomes: [...new Set(terminal.map(row => row.status))].map(outcome => ({ outcome, runs: count(outcome) })),
-    durations: { measuredRuns: measured.length, unmeasuredRuns: terminal.length - measured.length, medianMs: measured.length ? { state: "present", value: measured[Math.floor(measured.length / 2)] } : { state: "absent", reason: "No measurement" }, longestMs: measured.length ? { state: "present", value: measured.at(-1), runId: terminal.find(row => row.durationMs === measured.at(-1))!.runId } : { state: "absent", reason: "No measurement" }, totalMs: measured.reduce((sum, n) => sum + n, 0) },
+    durations: { measuredRuns: measured.length, unmeasuredRuns: terminal.length - measured.length, medianMs, longestMs: measured.length ? { state: "present", value: measured.at(-1), runId: terminal.find(row => row.durationMs === measured.at(-1))!.runId } : { state: "absent", reason: "No measurement" }, totalMs: measured.reduce((sum, n) => sum + n, 0) },
     ledger: { systems: [{ system: "ucpath", entries: 3, prod: 2, test: 1 }] },
     volume: { state: "complete", ...skeleton, coveredRuns: population.length, buckets: skeleton.buckets.map(bucket => ({ ...bucket, runs: bucket.start.slice(0, 10) === "2026-08-03" ? population.length : 0 })) } };
   const identity = { from: report.from, to: report.to, generatedAt: report.generatedAt, expiresAt: "2026-08-07T12:15:00.000Z", sourceIdentity: "a".repeat(64), authorityGeneration: 1, reportDigest: sha256Hex(canonicalJsonStringify(report)) };
@@ -75,7 +80,11 @@ it("combines failure codes across workflows for the global most common failure",
   const workflow = base.report.workflows[0]; assert.ok(workflow);
   const { snapshot: reportSnapshot, ...baseReport } = base.report;
   const report = { ...baseReport,
-    workflows: buckets.map(bucket => ({ ...workflow, workflowId: bucket.workflowId, runs: bucket.runs, failed: bucket.runs, needsAttention: bucket.runs })),
+    workflows: buckets.map(bucket => ({ ...workflow, workflowId: bucket.workflowId, runs: bucket.runs, failed: bucket.runs, needsAttention: bucket.runs,
+      outcomes: { done: 0, failed: bucket.runs, attention: 0 },
+      days: [{ day: "2026-08-03", runs: bucket.runs, outcomes: { done: 0, failed: bucket.runs, attention: 0 }, typicalTime: workflow.typicalMedian }],
+      failedAt: [{ state: "unavailable" as const, reason: "the failed run has no task span that records the step where it failed", runs: bucket.runs }],
+    })),
     failures: buckets.map(bucket => ({ ...bucket, sentence: `Synthetic failure ${bucket.code}`, registration: workflow.registration, transient: 0, sample: base.population.filter(row => row.workflowId === bucket.workflowId).map(row => row.runId) })) };
   const successfulTiming = buckets.map(bucket => ({ workflowId: bucket.workflowId, totalMs: null, measured: 0, unmeasured: 0 }));
   const reportDigest = sha256Hex(canonicalJsonStringify(report));

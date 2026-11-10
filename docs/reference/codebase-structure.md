@@ -42,7 +42,7 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/models/run/display-name.ts` owns the browser-safe run display-name schema; command and run records share that leaf.
 
-`src/backend/runs/queries/activity-timing.ts` owns successful-root timing shared by the Analytics summary and population producers.
+`src/backend/runs/queries/activity-timing.ts` owns successful-root timing shared by the Analytics summary and population producers. `src/backend/runs/queries/activity-analytics.ts` owns the outcome split, failure-step counts and median duration those producers add to the same report.
 
 `src/backend/runs/queries/storage.ts` owns the composition-scoped verified backup observation and compact bootstrap projection; `src/backend/storage/sqlite/storage-doctor.ts` owns backup verification.
 

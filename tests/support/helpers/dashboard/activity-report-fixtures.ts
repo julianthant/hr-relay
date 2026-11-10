@@ -1,5 +1,8 @@
 import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
-import { ActivityReportWireSchema, type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
+import { ACTIVITY_MEDIAN_ABSENT_REASON, ActivityReportWireSchema, type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
+
+const NO_FAILED_STEP = "the failed run has no task span that records the step where it failed";
+const ABSENT_MEDIAN = { measuredRuns: 0, medianMs: { state: "absent" as const, reason: ACTIVITY_MEDIAN_ABSENT_REASON } };
 
 export function createActivityReportFixtures() {
   const EMPTY: ActivityReportWire = ActivityReportWireSchema.parse({
@@ -12,6 +15,8 @@ export function createActivityReportFixtures() {
     inFlightRuns: 0,
     people: { state: "present", distinct: 0, evidenceRows: 0 },
     completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+    outcomeSplit: { done: 0, failed: 0, attention: 0 },
+    typicalMedian: ABSENT_MEDIAN,
     days: [],
     workflows: [],
     categories: [],
@@ -35,7 +40,13 @@ export function createActivityReportFixtures() {
     inFlightRuns: 1,
     people: { state: "present", distinct: 2, evidenceRows: 3 },
     completion: { readBack: 1, warnings: 0, warningsUnknown: 0 },
-    days: [{ day: "2026-08-03", runs: 3 }],
+    outcomeSplit: { done: 1, failed: 1, attention: 0 },
+    typicalMedian: { measuredRuns: 2, medianMs: { state: "present", value: 12_000 } },
+    days: [{
+      day: "2026-08-03", runs: 3,
+      outcomes: { done: 1, failed: 1, attention: 0 },
+      typicalTime: { measuredRuns: 2, medianMs: { state: "present", value: 12_000 } },
+    }],
     workflows: [{
       workflowId: "retired-workflow",
       registration: {
@@ -46,6 +57,14 @@ export function createActivityReportFixtures() {
       runs: 3,
       completion: { readBack: 1, warnings: 0, warningsUnknown: 0 },
       needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 1, unmeasuredRuns: 0, meanMs: { state: "present", value: 12000 } },
+      typicalMedian: { measuredRuns: 2, medianMs: { state: "present", value: 12_000 } },
+      outcomes: { done: 1, failed: 1, attention: 0 },
+      days: [{
+        day: "2026-08-03", runs: 3,
+        outcomes: { done: 1, failed: 1, attention: 0 },
+        typicalTime: { measuredRuns: 2, medianMs: { state: "present", value: 12_000 } },
+      }],
+      failedAt: [{ state: "unavailable", reason: NO_FAILED_STEP, runs: 1 }],
       failed: 1, cancelled: 0, partial: 0, open: 1,
     }],
     categories: [{
