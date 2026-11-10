@@ -158,10 +158,10 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   await expect(page.getByRole("searchbox", { name: "Search chats" })).toBeVisible();
   expect(await headerFill()).toEqual(chat);
   await page.screenshot({ path: join(OUT, `panel-history-chats-${theme}.png`) });
-  // The search is the 32px pill; the Chats/Activity toggle stays 28px and centres on it.
+  // The search pill and the Chats/Activity toggle are both 32px.
   const bar = await page.evaluate(() => { const field = document.querySelector<HTMLElement>(".hub-history-bar [data-slot=search-field-group]")!.getBoundingClientRect(), toggle = document.querySelector<HTMLElement>(".hub-history-bar .ds-segment")!.getBoundingClientRect(); return { field: field.height, toggle: toggle.height, centres: Math.abs((field.top + field.bottom) / 2 - (toggle.top + toggle.bottom) / 2) }; });
   expect(bar.field).toBe(32);
-  expect(bar.toggle).toBe(28);
+  expect(bar.toggle).toBe(32);
   expect(bar.centres).toBeLessThanOrEqual(0.5);
   // Row actions appear on row hover or focus only, 24px with 6px corners.
   const rowIcon = page.locator(".hub-chat-row").nth(1).getByRole("button", { name: /Rename|Delete/u }).first();
