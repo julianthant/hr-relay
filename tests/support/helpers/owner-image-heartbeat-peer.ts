@@ -51,6 +51,8 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
     const timeline = envelope === undefined ? undefined : createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
     send({ type: "ready" });
     while (!stopped) {
+      // A frozen clock would make repeated renewals no-op writes.
+      clock.advanceWall(1);
       if (envelope !== undefined && timeline !== undefined) {
         requireLifecycleApplied(lifecycle.renewClaim({ commandId: randomUUID(), runId: request.runId, claim }));
         const spanPath = `${envelope.traceId}/owner-image-work#${String(count + 1)}`;
@@ -58,7 +60,7 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
         timeline.emit({ ...identity, t: "span.started", kind: "task", parentSpanPath: envelope.traceId, name: "owner-image-work" });
         timeline.emit({ ...identity, t: "span.ended", kind: "task", parentSpanPath: envelope.traceId, outcome: "done" });
       } else {
-        lifecycle.renewClaim({ commandId: randomUUID(), runId: request.runId, claim });
+        requireLifecycleApplied(lifecycle.renewClaim({ commandId: randomUUID(), runId: request.runId, claim }));
       }
       count += 1;
       await new Promise<void>(resolve => { setImmediate(resolve); });
