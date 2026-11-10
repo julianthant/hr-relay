@@ -32,14 +32,14 @@ function Text({ text }: { text: string }) {
     : <p key={index} className="m-0"><Inline text={block} /></p>)}</AssistantReply>;
 }
 
-/** History · Activity rows: hairline separators, no box or header; each row opens its log. */
-function Rows({ rows }: { rows: readonly Row[] }) {
-  return <div className="flex flex-col">{rows.map((row, index) => <div key={row.primary + index} className={cn("flex min-w-0 cursor-pointer items-start gap-3 py-2.5 text-body", index > 0 && "border-t border-ui-stroke")}>
+/** History · Activity rows: hairline separators, no box or header; a row opens its log behind the panel. */
+function Rows({ rows, onOpen }: { rows: readonly Row[]; onOpen: () => void }) {
+  return <div className="flex flex-col">{rows.map((row, index) => <button key={row.primary + index} type="button" onClick={onOpen} className={cn("flex w-full min-w-0 cursor-pointer items-start gap-3 border-0 bg-transparent py-2.5 text-left text-body text-inherit", index > 0 && "border-t border-solid border-ui-stroke")}>
     <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-medium">{row.primary}</span>
       {row.secondary && <span className="truncate text-caption text-ui-muted" title={row.secondary}>{row.secondary}</span>}</span>
     {row.value && <span className="shrink-0 tabular-nums text-ui-secondary">{row.value}</span>}
     <ChevronRight aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-muted" />
-  </div>)}</div>;
+  </button>)}</div>;
 }
 
 function Item({ item }: { item: ChatItem }) {
@@ -53,8 +53,9 @@ function Item({ item }: { item: ChatItem }) {
 }
 
 /** Today's assistant actions for the History view's Activity tab. */
-export function AssistantMockActivity() {
-  return <Rows rows={ACTIVITY} />;
+export function AssistantMockActivity({ query, onOpen }: { query: string; onOpen: () => void }) {
+  const needle = query.trim().toLowerCase(), rows = ACTIVITY.filter(row => `${row.primary} ${row.secondary ?? ""}`.toLowerCase().includes(needle));
+  return rows.length === 0 ? <div className="hub-empty">No matching activity.</div> : <Rows rows={rows} onOpen={onOpen} />;
 }
 
 export function AssistantMockThread({ frame }: { frame: AssistantFrame }) {

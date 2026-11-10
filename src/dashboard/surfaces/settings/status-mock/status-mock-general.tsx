@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { BodySection, Button, DateInput, FormGroup, PageHeading, ResultRow, SegmentedChoice, Select, Switch } from "../../../ds/ui.js";
 import { middle } from "../general/settings-storage.js";
+import { setFullAccessAllowed, useFullAccessAllowed } from "../../shell/assistant-approval-model.js";
 
 const DOWNLOADS = "/Users/jordan.lee/Documents/Relay downloads";
 
@@ -31,6 +32,7 @@ export function StatusMockGeneral() {
   const [needsYou, setNeedsYou] = useState(true);
   const [failures, setFailures] = useState(true);
   const [sound, setSound] = useState("Default");
+  const fullAccess = useFullAccessAllowed();
   return <section className="settings-compact-page">
     <PageHeading title="General" />
     <Section title="General">
@@ -50,6 +52,9 @@ export function StatusMockGeneral() {
       <Toggle label="Needs you" description="Alert when a run is waiting for you." on={needsYou} onChange={setNeedsYou} />
       <Toggle label="Failures" description="Alert when a run fails." on={failures} onChange={setFailures} />
       <Pick label="Notification sound" description="Sound for finished runs, failures and runs that need you." value={sound} options={["Default", "None"]} onChange={setSound} />
+    </Section>
+    <Section title="Assistant">
+      <Toggle label="Allow full access" description="Add Full access to the assistant's approval menu so Relay acts without asking each time." on={fullAccess} onChange={setFullAccessAllowed} />
     </Section>
   </section>;
 }

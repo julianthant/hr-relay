@@ -1,17 +1,14 @@
-#hub-panel-assistant .hub-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--ui-secondary);flex:none}
-#hub-panel-assistant .hub-icon:hover,#hub-panel-assistant .hub-plain:hover{background:var(--ds-surface-3);color:var(--ui-primary)}
-#hub-panel-assistant .hub-icon svg{width:16px;height:16px}
+#hub-panel-assistant .hub-plain:hover{background:var(--ds-surface-3);color:var(--ui-primary)}
 #hub-panel-assistant .hub-btn{min-height:28px;padding:0 12px;border:1px solid var(--ds-soft-border);border-radius:8px;background:var(--ds-picker-bg);font-size:13px;font-weight:400;white-space:nowrap}
 #hub-panel-assistant .hub-btn:hover{background:var(--ds-picker-bg-hover)}
 #hub-panel-assistant .hub-btn.primary{background:var(--hub-primary);color:var(--hub-primary-ink);border-color:var(--hub-primary)}
 #hub-panel-assistant .hub-btn.danger{background:var(--ui-danger);color:var(--ui-panel)}
 #hub-panel-assistant .hub-plain{border:0;background:transparent;border-radius:8px;text-align:left}
 #hub-panel-assistant .hub-icon:active,#hub-panel-assistant .hub-btn:active{transform:translateY(1px)}
-#hub-panel-assistant{left:auto;right:32px;bottom:132px;width:420px;max-width:calc(100vw - 32px);height:min(700px,calc(100dvh - 180px));max-height:calc(100dvh - 70px);border-radius:8px;display:flex;flex-direction:column;overflow:visible;z-index:50}
-#hub-panel-assistant>.hub-panel-header{padding:10px 12px;min-height:52px;align-items:center;border-bottom:1px solid var(--ui-stroke);gap:8px}
+#hub-panel-assistant{display:flex;flex-direction:column;overflow:visible}
 #hub-panel-assistant>.hub-panel-header>span:first-child{display:none}
 #hub-panel-assistant .hub-panel-title{min-width:0;font-size:14px;line-height:20px;display:flex;overflow:hidden}
-#hub-panel-assistant>.hub-panel-content{padding:0;gap:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;border-radius:0 0 12px 12px}
+#hub-panel-assistant>.hub-panel-content{padding:0;gap:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 #hub-panel-assistant .hub-chat-title{display:inline-flex;width:fit-content;max-width:100%;font-weight:500;padding:0 3px;min-height:22px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hub-panel-assistant .hub-header-actions{display:flex;gap:2px;flex:none}
 #hub-panel-assistant .hub-transcript{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 16px;scrollbar-width:thin;display:flex;flex-direction:column;gap:20px;font-size:13px;line-height:1.65}
@@ -65,7 +62,6 @@
 #hub-panel-assistant .hub-demo-row svg{width:12px;height:12px}
 .hub-assistant-panel{position:relative;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);border:1px solid var(--ui-stroke);font:12px/1.5 var(--font-sans)}
 #hub-panel-assistant.hub-assistant-panel{left:auto;right:auto;bottom:auto;height:100%;max-height:none;max-width:100%}
-#hub-panel-assistant>.hub-panel-header{display:flex}
 #hub-panel-assistant .hub-panel-title{flex:1;font-weight:500}
 #hub-panel-assistant :is(button,a):focus-visible{background:var(--hub-focus-fill)!important;color:var(--hub-focus-ink)!important;outline:none;box-shadow:none}
 #hub-panel-assistant button:disabled{cursor:default;opacity:.45}
@@ -103,7 +99,6 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 #hub-panel-assistant[data-source=served] .hub-message{white-space:pre-line}
 #hub-panel-assistant .hub-sent-file{display:flex;align-items:center;gap:6px;margin-top:8px;padding:4px 8px;border:1px solid var(--ui-stroke);border-radius:999px;width:fit-content;max-width:100%;font-size:11px;color:var(--ui-secondary);overflow-wrap:anywhere}
 #hub-panel-assistant .hub-sent-file svg{width:12px;height:12px;flex:none}
-#hub-panel-assistant>.hub-panel-header{background:var(--ui-table);border-radius:8px 8px 0 0}
 #hub-panel-assistant .hub-assistant-line .hub-message{background:transparent;padding:0;max-width:100%;flex:1;min-width:0}
 #hub-panel-assistant .hub-assistant-strip{display:flex;align-items:center;gap:10px;margin:0 12px;padding:8px 10px;border:1px solid var(--ui-stroke);border-radius:10px;font-size:12px;line-height:18px;color:var(--ui-secondary)}
 #hub-panel-assistant .hub-assistant-strip>span{flex:1;min-width:0;overflow-wrap:anywhere}

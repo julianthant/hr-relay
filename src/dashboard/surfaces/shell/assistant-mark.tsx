@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import "./assistant-mark.css";
 
 import type { MarkDirection, MarkState } from "./assistant-mark-model.js";
@@ -7,7 +8,9 @@ import type { MarkDirection, MarkState } from "./assistant-mark-model.js";
  * (thinking, working, needs you) or one settle (done). Error is always still.
  */
 export function AssistantMark({ direction, state = "idle", size = 16, label }: { direction: MarkDirection; state?: MarkState; size?: number; label?: string }) {
-  return <svg className="assistant-mark" data-direction={direction} data-state={state} width={size} height={size} viewBox="0 0 24 24" fill="none"
+  const svg = useRef<SVGSVGElement>(null);
+  useIdleOrbit(svg, direction === "orbit" && state === "idle");
+  return <svg ref={svg} className="assistant-mark" data-direction={direction} data-state={state} width={size} height={size} viewBox="0 0 24 24" fill="none"
     role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
     {direction === "relay" ? <Relay /> : direction === "nodes" ? <Nodes /> : <Orbit />}
   </svg>;
@@ -47,4 +50,25 @@ function Orbit() {
     <circle className="mark-core" cx="12" cy="12" r="3.6" />
     <g className="mark-spin"><circle className="mark-satellite" cx="17.8" cy="6.2" r="2.1" /></g>
   </>;
+}
+
+const IDLE_DEGREES_PER_SECOND = 45, HOVER_DEGREES_PER_SECOND = 260;
+
+/** The Orbit satellite circles slowly at idle and speeds up smoothly while the pointer is over its button; it stays still under reduced motion. */
+function useIdleOrbit(svg: React.RefObject<SVGSVGElement | null>, active: boolean) {
+  useEffect(() => {
+    const element = svg.current, satellite = element?.querySelector<SVGGElement>(".mark-spin");
+    if (!active || !element || !satellite || window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off") return;
+    const host = element.closest("button") ?? element;
+    let angle = 0, speed = IDLE_DEGREES_PER_SECOND, target = IDLE_DEGREES_PER_SECOND, last = performance.now(), frame = 0;
+    const tick = (now: number) => {
+      const seconds = (now - last) / 1000; last = now;
+      speed += (target - speed) * Math.min(1, seconds * 6); angle = (angle + speed * seconds) % 360;
+      satellite.style.transform = `rotate(${angle.toFixed(1)}deg)`; frame = requestAnimationFrame(tick);
+    };
+    const faster = () => { target = HOVER_DEGREES_PER_SECOND; }, slower = () => { target = IDLE_DEGREES_PER_SECOND; };
+    host.addEventListener("pointerenter", faster); host.addEventListener("pointerleave", slower);
+    frame = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(frame); host.removeEventListener("pointerenter", faster); host.removeEventListener("pointerleave", slower); satellite.style.transform = ""; };
+  }, [svg, active]);
 }
