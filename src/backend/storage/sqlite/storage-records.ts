@@ -26,7 +26,7 @@ import { NotificationRecordSchema } from "../../../models/notifications/notifica
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { RunResultRecordSchema } from "../../../models/run/result.js";
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
-import { WorkbookLibraryStateSchema, WorkbookLibraryActionRecordSchema, WorkbookLibrarySnapshotSchema } from "../../../models/dashboard/workbook-library.js";
+import { WorkflowWorkbookSelectionRecordSchema, WorkbookLibraryStateSchema, WorkbookLibraryActionRecordSchema, WorkbookLibrarySnapshotSchema } from "../../../models/dashboard/workbook-library.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import { DiagnosticAttachmentSchema, DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
@@ -80,6 +80,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   diagnostic_files: DiagnosticAttachmentStorageRecordSchema,
   dryrun_results: DryRunScenarioResultSchema,
   run_search: RunSearchIndexRecordSchema,
+  workflow_workbook_selections: WorkflowWorkbookSelectionRecordSchema,
   workbook_creations: SavedWorkbookSchema,
   workbook_types: WorkbookTypeSchema,
   workbook_operations: WorkbookOperationSchema,

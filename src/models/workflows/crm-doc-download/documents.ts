@@ -1,23 +1,29 @@
 import { z } from "zod";
 import { ArtifactRefSchema, ArtifactRelativePathSchema, CollectionArtifactOutputSchema, NamedArtifactFileNameSchema } from "../../artifacts/artifacts.js";
 import { CrmRetainedDocumentSchema, CrmDocumentIdentitySchema } from "../../systems/crm/documents.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { OnboardingRosterSnapshotRowSchema } from "../onboarding/roster.js";
 
 export const CrmWorksheetPersonSchema = z.strictObject({
   identity: CrmDocumentIdentitySchema,
-  reference: z.strictObject({ worksheetId: z.string().min(1), worksheetName: NamedArtifactFileNameSchema, rowId: z.string().min(1),
+  reference: z.strictObject({
+    referenceDigest: FingerprintSchema, worksheetId: z.string().min(1), worksheetName: NamedArtifactFileNameSchema, rowId: z.string().min(1),
     names: OnboardingRosterSnapshotRowSchema.shape.references }),
   documents: CrmRetainedDocumentSchema.array().min(1),
 });
 export type CrmWorksheetPerson = z.infer<typeof CrmWorksheetPersonSchema>;
 
+const worksheetArchivePath = (worksheetName: string) => `${worksheetName}/${worksheetName}.zip`;
+
 export const CrmWorksheetArchiveSchema = z.strictObject({
-  relativePath: ArtifactRelativePathSchema, artifact: ArtifactRefSchema,
+  relativePath: ArtifactRelativePathSchema, artifact: ArtifactRefSchema, referenceDigest: FingerprintSchema,
   worksheetId: z.string().min(1), worksheetName: NamedArtifactFileNameSchema,
   people: z.array(z.strictObject({ identity: CrmDocumentIdentitySchema, rowId: z.string().min(1),
     folderName: NamedArtifactFileNameSchema, documentCount: z.number().int().positive() })).min(1),
 }).refine(worksheet => worksheet.artifact.mediaType === "application/zip"
-  && worksheet.relativePath === `${worksheet.worksheetName}/${worksheet.worksheetName}.zip`, "worksheet archive must retain its exact destination");
+  && (worksheet.relativePath === worksheetArchivePath(worksheet.worksheetName)
+    || worksheet.relativePath === `${worksheet.referenceDigest}/${worksheetArchivePath(worksheet.worksheetName)}`),
+  "worksheet archive must retain its exact destination");
 
 export const CrmDocumentArchivesSchema = z.strictObject({
   collection: CollectionArtifactOutputSchema, worksheets: CrmWorksheetArchiveSchema.array().min(1),

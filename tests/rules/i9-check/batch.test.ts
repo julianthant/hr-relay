@@ -13,6 +13,10 @@ import { operatorOcrFields, operatorOcrRecordId, OcrApprovedSnapshotSchema } fro
 import { OcrOperatorPagesSchema } from "../../../src/models/ocr/review-record.js";
 import { SubmittedRecordSchema } from "../../../src/models/ocr/extraction.js";
 
+function retainedRead<T>(reference: T) {
+  const referenceDigest = FingerprintSchema.parse("a".repeat(64));
+  return { state: "read" as const, referenceDigest, reference, sources: [{ referenceDigest, reference }] };
+}
 function fixture() {
   const first = i9ApprovedSource(1, [{ eid: "10000001", kind: "i9-section1", dob: "01/15/2000" }, { eid: "10000001", kind: "i9-section2", hireDate: "06/01/2020" }]);
   const second = i9ApprovedSource(2, [{ eid: "10000002", firstName: "Blair", kind: "i9-section2", hireDate: "06/01/2020" }]);
@@ -63,7 +67,7 @@ it("groups sections from multiple PDFs into one person each while retaining sour
   expect(f.people.people[0].person).toMatchObject({ name: "Example, Avery", dob: "2000-01-15", hireDate: "2020-06-01", useMatch: true, sourcePages: [1, 2] });
   expect(f.people.people[0].sources.map(source => source.sourcePage)).toEqual([1, 2]);
   expect(f.people.people[1].person.useMatch).toBe(false);
-  const prepared = i9CheckPersonRequests({ request: f.request, people: f.people, reference: { state: "read", referenceDigest: FingerprintSchema.parse("a".repeat(64)), reference: reference(f) } });
+  const prepared = i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead(reference(f)) });
   expect(prepared.children.map(child => child.roster.rows[0])).toEqual([
     { eid: "10000001", ppsEid: "000012345", separationDate: "2024-01-01", action: "TER" },
     { eid: "10000002", ppsEid: "000012345", separationDate: "2024-01-01", action: "TER" },
@@ -89,25 +93,25 @@ it("merges the same approved person across PDFs and refuses contradictory identi
 });
 it("rejects roster membership, malformed dates and missing fields rather than inventing retention facts", () => {
   const f = fixture(), facts = reference(f);
-  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: { state: "read", referenceDigest: FingerprintSchema.parse("a".repeat(64)), reference: { ...facts, snapshot: { ...facts.snapshot, rows: facts.snapshot.rows.toReversed() } } } })).toThrow("i9-check-reference-membership-mismatch");
+  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows: facts.snapshot.rows.toReversed() } }) })).toThrow("i9-check-reference-membership-mismatch");
   for (const field of ["eid", "ppsEid", "separationDate", "roster.action"]) {
     const rows = facts.snapshot.rows.map(row => ({ ...row, matches: row.matches.map(match => ({ ...match, values: match.values.filter(cell => cell.fieldId !== field) })) }));
-    expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: { state: "read", referenceDigest: FingerprintSchema.parse("a".repeat(64)), reference: { ...facts, snapshot: { ...facts.snapshot, rows } } } })).toThrow("i9-check-reference-field-unavailable");
+    expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows } }) })).toThrow("i9-check-reference-field-unavailable");
   }
   const rows = facts.snapshot.rows.map(row => ({ ...row, matches: row.matches.map(match => ({ ...match, values: match.values.map(cell => cell.fieldId === "separationDate" ? { ...cell, value: "invalid" } : cell) })) }));
-  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: { state: "read", referenceDigest: FingerprintSchema.parse("a".repeat(64)), reference: { ...facts, snapshot: { ...facts.snapshot, rows } } } })).toThrow("i9-check-roster-date-invalid");
+  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows } }) })).toThrow("i9-check-roster-date-invalid");
 });
 it("accepts exact numeric spreadsheet IDs while preserving text IDs and refusing fractional IDs", () => {
   const f = fixture(), facts = reference(f);
   const numeric = (pps: number) => ({ ...facts, snapshot: { ...facts.snapshot, rows: facts.snapshot.rows.map(row => ({ ...row, matches: row.matches.map(match => ({ ...match,
     values: match.values.map(cell => cell.fieldId === "eid" ? { ...cell, value: Number(row.key) } : cell.fieldId === "ppsEid" ? { ...cell, value: pps } : cell),
   })) })) } });
-  expect(i9CheckPersonRequests({ request: f.request, people: f.people, reference: { state: "read", referenceDigest: FingerprintSchema.parse("a".repeat(64)), reference: numeric(12345) } })
+  expect(i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead(numeric(12345)) })
     .children.map(child => child.roster.rows[0].ppsEid)).toEqual(["12345", "12345"]);
-  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: { state: "read", referenceDigest: FingerprintSchema.parse("a".repeat(64)), reference: numeric(12345.5) } })).toThrow();
+  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead(numeric(12345.5)) })).toThrow();
 });
 it("accounts for every person child and refuses failed, foreign, reordered or mismatched employee outcomes", () => {
-  const f = fixture(), prepared = i9CheckPersonRequests({ request: f.request, people: f.people, reference: { state: "read", referenceDigest: FingerprintSchema.parse("a".repeat(64)), reference: reference(f) } });
+  const f = fixture(), prepared = i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead(reference(f)) });
   const outcomes = prepared.children.map((child, index) => ({ state: "done", itemId: deriveItemId("i9-check", i9CheckMatchKey(child)),
     runId: `00000000-0000-4000-8000-${String(index + 900).padStart(12, "0")}`,
     output: i9RetentionRow({ input: child, initial: { status: "found", eid: prepared.people[index].eid, name: child.person.name } }),

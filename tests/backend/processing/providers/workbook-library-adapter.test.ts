@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing/providers/workbook-library-adapter.js";
 import type { WorkbookLibraryRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-error.js";
 import { ReadWorkbookReference, WorkbookReferenceReadResponseSchema } from "../../../../src/models/processing/workbooks/read-reference.js";
 import { ReadI9CheckRequests } from "../../../../src/models/workflows/i9-check-start/read-requests.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const forbidden = (): never => { throw new Error("Unexpected live workbook or write access"); };
-const repository: WorkbookLibraryRepository = { create: forbidden, read: forbidden, revision: forbidden, list: forbidden, save: forbidden,
+const repository: WorkbookLibraryRepository = { lastUsed: forbidden, rememberLastUsed: forbidden, create: forbidden, read: forbidden, revision: forbidden, list: forbidden, save: forbidden,
   history: forbidden, creation: forbidden, versions: forbidden, types: forbidden, putType: forbidden, metadata: forbidden,
   enqueue: forbidden, drain: forbidden, operation: forbidden, journal: forbidden, snapshot: forbidden, runOperations: forbidden, catalog: forbidden, libraryState: forbidden, libraryVersion: forbidden,
   libraryActionRecord: forbidden, libraryAction: forbidden };
@@ -23,7 +23,9 @@ const options = { signal: new AbortController().signal, deadlineMonotonicMs: Inf
 it("workbooks/read-reference — reads through the captured-run port without giving the caller a library or version selector", async () => {
   const calls: unknown[] = [];
   const adapter = createWorkbookLibraryAdapter({ repository, clock, runId, references: { runId, write: forbidden,
-    read: input => { calls.push(input); return ReadWorkbookReference.output.parse({ state: "read", referenceDigest: "a".repeat(64), reference: ReadI9CheckRequests.example.reference }); } } });
+    read: input => { calls.push(input); const reference = ReadI9CheckRequests.example.reference; return ReadWorkbookReference.output.parse({
+      state: "read", referenceDigest: "a".repeat(64), reference, sources: [{ referenceDigest: "a".repeat(64), reference }],
+    }); } } });
   const response = await adapter.invoke(request, options);
   assert.equal(response.response.state, "produced");
   if (response.response.state !== "produced") assert.fail("Captured version read refused");

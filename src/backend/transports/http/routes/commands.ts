@@ -1,5 +1,5 @@
 import { CommandRefusal } from "../../../runs/commands/command-refusal.js";
-import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../../rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, DashboardCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { createOperatorCommandIngress } from "../../../runs/commands/operator-command-ingress.js";
 import { assertRequestActor } from "../request-identity.js";
 
@@ -12,11 +12,12 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     journal: deps.commandJournal,
     protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     bulkAcceptances: deps.bulkCommandAcceptances,
+    resolveIdentityGateAnswer: deps.resolveIdentityGateAnswer,
   });
 
   app.post("/api/v1/commands", async (c) => {
     const body: unknown = await c.req.json();
-    const command = CommandRequestSchema.safeParse(body);
+    const command = DashboardCommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     const result = await operatorCommands.submit(body, async (accepted) => {
       try {
