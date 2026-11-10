@@ -80,6 +80,11 @@ function ownCode(error: Error): string {
   return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,127}$/u.test(code) ? code : "INTERNAL_FAILURE";
 }
 
+function sqliteReason(error: Error): { reason?: string } {
+  const errcode: unknown = "errcode" in error ? error.errcode : undefined;
+  return Number.isSafeInteger(errcode) ? { reason: `sqlite-errcode-${String(errcode)}` } : {};
+}
+
 function constructorName(error: Error): string {
   const prototype: unknown = Object.getPrototypeOf(error);
   const constructor: unknown = typeof prototype === "object" && prototype !== null ? Reflect.get(prototype, "constructor") : undefined;
@@ -98,8 +103,8 @@ export function serializeErrorCauses(error: unknown): readonly ErrorCause[] {
     seen.add(cause);
     if (!(cause instanceof Error)) { causes.push({ ...row("unknown-cause"), stack: ORIGINS["unknown-cause"].name }); continue; }
     const selection = originOf(cause);
-    // An unbound error keeps its constructor name and a well-formed code; its message never passes.
-    const origin = selection === "unknown-error" ? { ...row(selection), name: constructorName(cause), code: ownCode(cause) } : row(selection);
+    // An unbound error keeps its constructor name, a well-formed code and an integer SQLite result code; its message never passes.
+    const origin = selection === "unknown-error" ? { ...row(selection), name: constructorName(cause), code: ownCode(cause), ...sqliteReason(cause) } : row(selection);
     causes.push({ ...origin, stack: [origin.name, ...frames(cause)].join("\n") });
     pending.push(cause.cause);
     if (cause instanceof AggregateError) pending.push(...(cause.errors as readonly unknown[]));
