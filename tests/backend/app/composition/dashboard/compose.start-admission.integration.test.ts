@@ -71,7 +71,10 @@ for (const input of [
     assert.ok(result.affectedTargets.some(target => target.family === "run" && target.runId === runs[0]?.envelope.runId));
     const replay = CommandResultSchema.parse(await (await f.post("commands", command)).json());
     assert.equal(replay.state, "already-applied");
-    assert.deepEqual(f.detectorErrors, []);
+    if (replay.state !== "already-applied") throw new Error("an exact replay must retain the original enqueue");
+    // A replay asks for worker capacity again; it reaches the refusing spawner a second time.
+    assert.equal(replay.workerStartup?.state, "refused"); assert.equal(replay.workerStartup?.code, "RUN_QUEUED_WORKER_UNAVAILABLE");
+    assert.deepEqual(f.detectorErrors, []); assert.equal(f.spawns(), 2);
     assert.deepEqual(f.context.database.authority.runs.listByWorkflow(input.workflowId), runs);
   } finally {
     await f.close();
