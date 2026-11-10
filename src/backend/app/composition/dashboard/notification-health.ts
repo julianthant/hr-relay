@@ -11,13 +11,20 @@ import type { RunRecordService } from "../../../runs/lifecycle/run-record-servic
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
+const inspected = new WeakMap<AuthorityDatabase, { key: string; integrityFailed: boolean }>();
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */
 export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;
   const filesystem = statfsSync(stateRoot, { bigint: true });
   const wal = join(stateRoot, "state.db-wal");
-  let integrityFailed = false;
-  try { AuthorityDatabase.inspectExistingReadOnly(input.admission, join(stateRoot, "state.db")); } catch { integrityFailed = true; }
+  const opening = JSON.stringify(input.database.changeKey());
+  const prior = inspected.get(input.database);
+  let integrityFailed: boolean;
+  if (prior !== undefined && prior.key === opening) integrityFailed = prior.integrityFailed;
+  else {
+    integrityFailed = false;
+    try { AuthorityDatabase.inspectExistingReadOnly(input.admission, join(stateRoot, "state.db")); } catch { integrityFailed = true; }
+  }
   let backupFailed = false;
   const backupRoot = join(stateRoot, "backups", "authority");
   if (existsSync(backupRoot)) {
@@ -27,6 +34,8 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
     }
   }
   const leaseExpired = listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000);
+  // The live-run page cache writes on this connection, so remember the key those writes leave behind.
+  inspected.set(input.database, { key: JSON.stringify(input.database.changeKey()), integrityFailed });
   return { freeBytes: Number(filesystem.bavail * filesystem.bsize), walBytes: existsSync(wal) ? statSync(wal).size : 0, integrityFailed, backupFailed, leaseExpired };
 }
 

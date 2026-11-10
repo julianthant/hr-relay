@@ -3,8 +3,9 @@ import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
 
@@ -25,6 +26,20 @@ describe("canonical notification producers", () => {
       writeFileSync(join(directory, "corrupt.manifest.json"), "not a manifest");
       expect((await read()).backupFailed).toBe(true);
     } finally { await f.close(); }
+  });
+
+  it("inspects the store once while its change key is unchanged and again after a write", async () => {
+    const f = await fixture();
+    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    try {
+      const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      await read();
+      await read();
+      expect(inspect).toHaveBeenCalledTimes(1);
+      f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
+      await read();
+      expect(inspect).toHaveBeenCalledTimes(2);
+    } finally { inspect.mockRestore(); await f.close(); }
   });
   it("observes a claimed run's heartbeat expiry strictly after sixty seconds", async () => {
     const f = await fixture();

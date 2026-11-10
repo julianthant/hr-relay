@@ -3288,6 +3288,13 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  /** Generation, other connections' commits, and this connection's commits. Reads nothing else. */
+  changeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
+    this.#assertOpen();
+    const totalChanges = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
+    return Object.freeze({ authorityGeneration: this.getMeta().authorityGeneration, dataVersion: readIntPragma(this.#database, "data_version"), totalChanges });
+  }
+
   readApplicationActivity() {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
@@ -6265,17 +6272,16 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`CREATE TEMP TABLE IF NOT EXISTS canonical_run_page(position INTEGER PRIMARY KEY,run_id TEXT NOT NULL UNIQUE);
           CREATE TEMP TABLE IF NOT EXISTS canonical_run_page_state(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL,
             data_version INTEGER NOT NULL,source_changes INTEGER NOT NULL,workflow TEXT);`);
-        const generation = this.getMeta().authorityGeneration;
-        const dataVersion = readIntPragma(this.#database, "data_version");
-        const changes = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
+        const key = this.changeKey();
         const state = z.strictObject({ generation: z.number().int(), data_version: z.number().int(), source_changes: z.number().int(),
           workflow: z.string().nullable() }).optional().parse(this.#database.prepare("SELECT generation,data_version,source_changes,workflow FROM canonical_run_page_state WHERE id=1").get());
-        if (state?.generation !== generation || state.data_version !== dataVersion || state.source_changes !== changes || state.workflow !== (workflow ?? null)) {
+        if (state?.generation !== key.authorityGeneration || state.data_version !== key.dataVersion || state.source_changes !== key.totalChanges || state.workflow !== (workflow ?? null)) {
           this.#database.exec("DELETE FROM canonical_run_page; DELETE FROM canonical_run_page_state");
           this.#database.prepare(`INSERT INTO canonical_run_page SELECT row_number() OVER (
             ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id),id FROM runs ${workflow === undefined ? "" : "WHERE workflow=?"}`)
             .run(...(workflow === undefined ? [] : [workflow]));
-          this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(generation,dataVersion,workflow ?? null);
+          // The temp-table writes advance total_changes, so the stored count is one past this statement.
+          this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(key.authorityGeneration, key.dataVersion, workflow ?? null);
         }
         return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));

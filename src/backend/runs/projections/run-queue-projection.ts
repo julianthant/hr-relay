@@ -168,6 +168,8 @@ export interface RunQueueProjectionDeps {
     heldDuoSystems?(workerId: string): readonly string[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
+    /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
+    changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }>;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -314,6 +316,7 @@ export class RunQueueProjection {
 
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
+  #storedCanonical: { key: string; runs: readonly RunRecord[]; pools: readonly { workflowId: string; desiredWorkers: number; version: number; plannedBy: WorkerPoolRecord["plannedBy"]; plannedAt: string }[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -815,16 +818,21 @@ export class RunQueueProjection {
   }
 
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
-  #captureSharedAuthorityFingerprint(canonicalRuns = listCanonicalRuns(this.#deps.reader, "live")): string {
-    const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
+  #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
+    const key = this.#deps.authority.changeKey?.();
+    const keyText = key === undefined ? undefined : `${key.authorityGeneration}:${key.dataVersion}:${key.totalChanges}`;
+    const stored = canonicalRuns === undefined && keyText !== undefined && this.#storedCanonical?.key === keyText ? this.#storedCanonical : undefined;
+    const source = stored?.runs ?? canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
+    const pools = stored?.pools ?? this.#deps.authority.listWorkerPools().map((pool) => ({
       workflowId: pool.workflow,
       desiredWorkers: pool.desiredWorkers,
       version: pool.version,
       plannedBy: pool.plannedBy,
       plannedAt: pool.plannedAt,
     }));
-    const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-    const runs = canonicalRuns.map((run) => ({
+    const batches = stored?.batches ?? this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    if (stored === undefined && canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, runs: source, pools, batches };
+    const runs = source.map((run) => ({
       envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
       sessionId: run.sessionId, appVersion: run.appVersion,
       lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
