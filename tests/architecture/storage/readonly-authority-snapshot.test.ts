@@ -223,7 +223,9 @@ it("captures at least 50 owner images while another process commits paired updat
   const directory = mkdtempSync(join(realpathSync(tmpdir()), "owner-image-pair-"));
   const path = join(directory, "state.db");
   const owner = new DatabaseSync(path);
+  owner.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=2000; CREATE TABLE a(g INTEGER); CREATE TABLE b(g INTEGER); INSERT INTO a VALUES(0); INSERT INTO b VALUES(0)");
   const writer = childProcesses.spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", `
+    import { writeSync } from "node:fs";
     import { DatabaseSync } from "node:sqlite";
     const db = new DatabaseSync(process.argv[1]);
     db.exec("PRAGMA busy_timeout=2000");
@@ -232,25 +234,46 @@ it("captures at least 50 owner images while another process commits paired updat
     process.stdin.resume();
     let n = 0;
     while (!stop) {
-      db.exec("BEGIN IMMEDIATE; UPDATE a SET g=g+1; UPDATE b SET g=g+1; COMMIT");
-      n += 1;
+      try {
+        db.exec("BEGIN IMMEDIATE; UPDATE a SET g=g+1; UPDATE b SET g=g+1; COMMIT");
+        n += 1;
+        writeSync(1, String(n) + String.fromCharCode(10));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (!/busy|locked/i.test(message)) throw error;
+      }
       await new Promise(resolve => setImmediate(resolve));
     }
     db.close();
-    process.stdout.write(String(n));
   `, path], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
-  let stdout = "";
+  let pending = "";
+  let commits = 0;
   writer.stdout?.setEncoding("utf8");
-  writer.stdout?.on("data", chunk => { stdout += chunk; });
+  writer.stdout?.on("data", chunk => {
+    pending += chunk;
+    const lines = pending.split("\n");
+    pending = lines.pop() ?? "";
+    for (const line of lines) {
+      const value = Number(line);
+      if (Number.isInteger(value)) commits = value;
+    }
+  });
   let stderr = "";
   writer.stderr?.setEncoding("utf8");
   writer.stderr?.on("data", chunk => { stderr += chunk; });
+  const waitForCommits = async (atLeast: number) => {
+    const deadline = Date.now() + 20_000;
+    while (commits < atLeast) {
+      if (writer.exitCode !== null) throw new Error(`paired writer exited ${String(writer.exitCode)} at ${String(commits)} commits: ${stderr}`);
+      if (Date.now() > deadline) throw new Error(`paired writer stalled at ${String(commits)} commits: ${stderr}`);
+      await new Promise(resolve => { setTimeout(resolve, 20); });
+    }
+  };
   try {
-    owner.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=2000; CREATE TABLE a(g INTEGER); CREATE TABLE b(g INTEGER); INSERT INTO a VALUES(0); INSERT INTO b VALUES(0)");
     const stats = fileStatus(path);
     const imageOwner = { serializeCommittedImage: () => owner.isTransaction ? (() => { throw new Error("authority-image-inside-transaction"); })()
       : { identity: { device: stats.dev, inode: stats.ino }, image: owner.serialize() } };
-    await new Promise(resolve => setImmediate(resolve));
+    await waitForCommits(1);
     let last = -1;
     const captures = 50;
     for (let index = 0; index < captures; index += 1) {
@@ -262,6 +285,7 @@ it("captures at least 50 owner images while another process commits paired updat
         assert.ok(pair.a >= last);
         last = pair.a;
       });
+      await waitForCommits(index + 2);
     }
     writer.stdin?.end();
     const exitCode = await new Promise<number | null>((resolve, reject) => {
@@ -269,7 +293,6 @@ it("captures at least 50 owner images while another process commits paired updat
       writer.once("exit", code => resolve(code));
     });
     assert.equal(exitCode, 0, stderr);
-    const commits = Number(stdout);
     assert.ok(commits > captures, `writer commits ${String(commits)} did not exceed ${String(captures)} captures`);
   } finally {
     if (writer.exitCode === null) writer.kill();
