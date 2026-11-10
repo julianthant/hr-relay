@@ -298,7 +298,7 @@ export function createEmergencyContactRetryWorld() {
       try { await backup(database, destination); } finally { database.close(); }
       retargetWorkspace(workspace, source, workspace, dbRelative);
     } catch (error) {
-      try { rmSync(workspace, { recursive: true, force: true }); } catch (cleanup) { throw new AggregateError([error, cleanup], "member-stage template capture failed"); }
+      try { rmSync(workspace, { recursive: true, force: true }); } catch (cleanup) { throw new AggregateError([error, cleanup], "member-stage template capture failed", { cause: cleanup }); }
       throw error;
     }
     const { live } = built;
