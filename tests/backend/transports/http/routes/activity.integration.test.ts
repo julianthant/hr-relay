@@ -6,7 +6,7 @@ import { activityReportCsv } from "../../../../../src/backend/runs/queries/activ
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema } from "../../../../../src/models/dashboard/activity-population.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
-import { activityReportCaveats } from "../../../../../src/models/dashboard/activity.js";
+import { ACTIVITY_MEDIAN_ABSENT_REASON, activityReportCaveats } from "../../../../../src/models/dashboard/activity.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
@@ -44,13 +44,22 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // route cannot hand back a total the dashboard would disagree with.
     const day = await json(await h.app.request(`/api/v1/dashboard?day=${DAY}`));
     assert.equal(report.totalRuns, (day.queueSurfaces as unknown[]).length);
-    assert.deepEqual(report.days, [{ day: DAY, runs: 1 }]);
+    const absentMedian = { measuredRuns: 0, medianMs: { state: "absent" as const, reason: ACTIVITY_MEDIAN_ABSENT_REASON } };
+    const noOutcomes = { done: 0, failed: 0, attention: 0 };
+    const openDay = { day: DAY, runs: 1, outcomes: noOutcomes, typicalTime: absentMedian };
+    assert.deepEqual(report.outcomeSplit, noOutcomes);
+    assert.deepEqual(report.typicalMedian, absentMedian);
+    assert.deepEqual(report.days, [openDay]);
     assert.deepEqual(report.workflows, [{
       workflowId: "fixture-graph",
       registration: { state: "registered", label: "Fixture Graph", code: "fx", categoryId: "operations" },
       runs: 1,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
       needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
+      typicalMedian: absentMedian,
+      outcomes: noOutcomes,
+      days: [openDay],
+      failedAt: [],
       failed: 0, cancelled: 0, partial: 0, open: 1,
     }]);
     assert.equal(report.terminalRuns, 0);
