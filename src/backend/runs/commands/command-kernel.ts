@@ -2568,6 +2568,13 @@ export function executeSettingsCommand(
   }
 }
 
+/** An exact journaled command with no audit: admitted, and its effect resumes on an exact retry. */
+export function isAdmittedUnsettled(repositories: AuthorityRepositories, request: CommandRequest): boolean {
+  const journaled = repositories.commands.get(request.commandId);
+  return journaled !== undefined && canonicalJsonStringify(journaled) === canonicalJsonStringify(request)
+    && repositories.commandAudits.findByCommand(request.commandId) === undefined;
+}
+
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
   const availability = () => commandAssistantAvailability((family, action) => {
     if (family === "assistant-model-preference" || family === "application" || family === "run" && action === "recover-run") return false;
@@ -2705,9 +2712,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   /** An admitted command settles with its typed refusal, or stays admitted with a recovery notice when its outcome is unknown. */
   const settleUnsettled = (request: CommandRequest, result: CommandResult | undefined, parentCommandId: string | undefined): void => {
     dependencies.authority.withAuthorityTransaction((repositories) => {
-      const journaled = repositories.commands.get(request.commandId);
-      if (journaled === undefined || canonicalJsonStringify(journaled) !== canonicalJsonStringify(request)
-        || repositories.commandAudits.findByCommand(request.commandId) !== undefined) return;
+      if (!isAdmittedUnsettled(repositories, request)) return;
       if (result !== undefined) repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result,
         completedAt: IsoInstantSchema.parse(dependencies.clock.now().toISOString()), versionChanges: [], affectedDependencyIds: [] });
       // A bulk child is reported in its batch notice; notification commands correct themselves on the next read.

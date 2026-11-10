@@ -5,10 +5,9 @@ import { CsvError } from "csv-parse/sync";
 import { InvalidInputError, InvalidSpreadsheetError } from "read-excel-file/node";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { IntakeProjectionResolver } from "./command-kernel.js";
+import { isAdmittedUnsettled, type IntakeProjectionResolver } from "./command-kernel.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { CommandRequestSchema } from "../../../rules/commands/commands.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deriveItemId, type IdFactory } from "../../../rules/identity/identifiers.js";
 import {
   ItemIdSchema,
@@ -361,11 +360,8 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
 
       if (!parsed.success || parsed.data.family !== "intake") return;
       // Settled or divergent commands are resolved by kernel identity/replay before source reads; an admitted one resumes and needs its grid.
-      if (dependencies.authority.withAuthorityTransaction(repositories => {
-        const journaled = repositories.commands.get(parsed.data.commandId);
-        return journaled !== undefined && (canonicalJsonStringify(journaled) !== canonicalJsonStringify(parsed.data)
-          || repositories.commandAudits.findByCommand(parsed.data.commandId) !== undefined);
-      })) return;
+      if (dependencies.authority.withAuthorityTransaction(repositories => repositories.commands.get(parsed.data.commandId) !== undefined
+        && !isAdmittedUnsettled(repositories, parsed.data))) return;
       const session = dependencies.authorityRead.getIntakeSession(parsed.data.target.intakeSessionId);
       if (session === undefined) return;
       const selection = parsed.data.type === "inspect-intake"
