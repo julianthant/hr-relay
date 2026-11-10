@@ -4,7 +4,9 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -109,6 +111,10 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
     } else {
       if (state !== "recovery-refusal") assert.deepEqual(readFileSync(f.path), startBytes);
       await assertHeld(f.workspace, f.lifetime, clock, "fixture@ucsd.edu", held[state]);
+      const boot = readLocalDebugLog(join(f.workspace, rebuildRuntimeIsolation.stateRoot));
+      assert.equal(boot.state, "present");
+      const areas = boot.records.flatMap(record => record.payload.kind === "debug" ? [record.payload.event.area] : []);
+      assert.equal(areas.includes(state === "recovery-refusal" ? "profile-startup-crash-recovery" : "profile-startup-repair"), true);
     }
     assert.deepEqual(readFileSync(protectedPath), protectedBytes); assert.equal(transport.mock.calls.length, 0);
   } finally { transport.mockRestore(); restore.mockRestore(); database.close(); await f.close(); }

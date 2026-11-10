@@ -27,6 +27,7 @@ beforeEach(async () => {
     vi.importActual<typeof accounts>("../../../../../src/backend/accounts/chatgpt-account-service.js"),
   ]);
   vi.mocked(dashboardRunners.createDashboardPreflightRunners).mockReset().mockImplementation(originalRunners.createDashboardPreflightRunners);
+  vi.mocked(dashboardRunners.createDashboardPreflight).mockReset().mockImplementation(originalRunners.createDashboardPreflight);
   vi.mocked(httpServer.startDashboardHttpServer).mockReset().mockImplementation(originalHttp.startDashboardHttpServer);
   vi.mocked(accounts.createChatGptAccountService).mockReset().mockImplementation(originalAccounts.createChatGptAccountService);
 });
@@ -67,15 +68,20 @@ it("serves the original local startup report at Finish and replays it without ch
   } finally { await runtime?.stop(); vi.restoreAllMocks(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-it("a refused dashboard start after Finish keeps the published profile signed in and resumes it without a password", async () => {
+it("a failed first-run check after Finish mounts the published profile and resumes it without a password", async () => {
   const f = await fixture();
   const actual = await vi.importActual<typeof dashboardRunners>("../../../../../src/backend/app/preflight/dashboard-runners.js");
-  let refuse = true, probes = 0;
+  let probes = 0;
   const reports: Parameters<NonNullable<DashboardComposeInput["onInitialPreflight"]>>[0][] = [];
-  const spy = vi.spyOn(dashboardRunners, "createDashboardPreflightRunners").mockImplementation(input => {
-    const composed = actual.createDashboardPreflightRunners(input);
-    return { ...composed, runners: composed.runners.map(runner => runner.check !== "ports.available" ? runner : { ...runner,
-      async run(context) { probes++; return refuse ? { check: runner.check, state: "unhealthy" as const, summary: "fixture frontend owner refused", impact: "fixture start refused" } : runner.run(context); } }) };
+  const spy = vi.spyOn(dashboardRunners, "createDashboardPreflight").mockImplementation(input => {
+    const composed = actual.createDashboardPreflight(input);
+    const ports = composed.runners.runners.find(runner => runner.check === "ports.available");
+    if (ports === undefined) throw new Error("ports runner missing");
+    ports.run = async () => {
+      probes++;
+      return { check: ports.check, state: "unhealthy" as const, summary: "fixture frontend owner refused", impact: "fixture start refused" };
+    };
+    return composed;
   });
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
@@ -85,26 +91,26 @@ it("a refused dashboard start after Finish keeps the published profile signed in
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const { post, cookie, finish, draft } = await readyPublicSignUp(base);
     const failed = await finish();
-    assert.equal(failed.status, 500);
+    assert.equal(failed.status, 200);
     const body = PublicProfileStateSchema.parse(await failed.json()), registry = f.machine.readProfileRegistry();
-    assert.deepEqual(body, { state: "error", code: "INTERNAL_FAILURE", firstRunCheck: { scope: "local-startup", profileId: draft.profileId,
-      epoch: registry.sessionGeneration, state: "failed", report: reports[0] } });
+    assert.equal(body.state, "active");
+    if (body.state !== "active") throw new Error("mounted profile required");
+    assert.deepEqual(body.firstRunCheck, { scope: "local-startup", profileId: draft.profileId, epoch: body.epoch, state: "failed", report: reports[0] });
     assert.equal(reports[0]?.results.some(result => result.status === "fail" && result.check === "ports.available"), true);
     assert.ok(registry.profiles[0]?.registration.onboardingCompletion);
-    const replay = await finish(); assert.equal(replay.status, 500); assert.deepEqual(await replay.json(), body);
-    assert.equal(probes, 1); assert.equal(reports.length, 1); assert.equal(replay.headers.get("set-cookie"), null);
+    const replay = await finish(); assert.equal(replay.status, 200); assert.deepEqual(await replay.json(), body);
+    assert.equal(probes, 1); assert.equal(reports.length, 1); assert.match(replay.headers.get("set-cookie") ?? "", /relay-profile-session=/u);
     const state = await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } });
     assert.equal(state.status, 200);
     assert.deepEqual(PublicProfileStateSchema.parse(await state.json()), { state: "signed-out", signUpRequired: false, resumable: true });
-    refuse = false;
     const login = await post("/api/v1/profile/resume", {});
     const resumed = PublicProfileStateSchema.parse(await login.json()); assert.equal(resumed.state, "active");
     if (resumed.state !== "active") throw new Error("resumed profile required");
     assert.equal(resumed.profileId, draft.profileId);
-    assert.equal(resumed.epoch, registry.sessionGeneration + 1);
+    assert.equal(resumed.epoch, body.epoch);
     const afterResume = await finish();
-    assert.deepEqual(await afterResume.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
-    assert.equal(probes, 2); assert.equal(reports.length, 2);
+    assert.deepEqual(await afterResume.json(), body);
+    assert.equal(probes, 1); assert.equal(reports.length, 1);
     const session = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(session);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie: session, origin: base } })).status, 200);
     const registryPath = join(f.machine.stateRoot, "machine", "profiles.json"), registration = f.machine.readProfileRegistry().profiles[0]?.registration;
@@ -123,10 +129,12 @@ for (const phase of ["before-report", "after-report"] as const) it(`retains an u
   let probes = 0;
   if (phase === "before-report") {
     const actual = await vi.importActual<typeof dashboardRunners>("../../../../../src/backend/app/preflight/dashboard-runners.js");
-    vi.spyOn(dashboardRunners, "createDashboardPreflightRunners").mockImplementation(input => {
-      const composed = actual.createDashboardPreflightRunners(input);
-      return { ...composed, runners: composed.runners.map(runner => runner.check !== "ports.available" ? runner : { ...runner,
-        async run() { probes++; throw new Error("fixture local check could not complete"); } }) };
+    vi.spyOn(dashboardRunners, "createDashboardPreflight").mockImplementation(input => {
+      const composed = actual.createDashboardPreflight(input);
+      const ports = composed.runners.runners.find(runner => runner.check === "ports.available");
+      if (ports === undefined) throw new Error("ports runner missing");
+      ports.run = async () => { probes++; throw new Error("fixture local check could not complete"); };
+      return composed;
     });
   } else {
     const actual = await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js");
@@ -143,12 +151,20 @@ for (const phase of ["before-report", "after-report"] as const) it(`retains an u
       onInitialPreflight: report => { reports.push(report); } });
     const ready = await readyPublicSignUp(`http://127.0.0.1:${runtime.port}`), response = await ready.finish();
     const body = PublicProfileStateSchema.parse(await response.json());
-    assert.deepEqual(body, { state: phase === "before-report" ? "error" : "refused", code: phase === "before-report" ? "INTERNAL_FAILURE" : "PROFILE_AUTHORITY_UNAVAILABLE",
-      firstRunCheck: { scope: "local-startup", profileId: ready.draft.profileId, epoch: f.machine.readProfileRegistry().sessionGeneration,
-        ...(phase === "before-report" ? { state: "unavailable", code: "PROFILE_FIRST_RUN_CHECK_UNAVAILABLE" } : { state: "passed", report: reports[0] }) } });
-    assert.equal(response.status, phase === "before-report" ? 500 : 409);
-    assert.equal(response.headers.get("set-cookie"), null);
-    assert.equal(reports.length, phase === "before-report" ? 0 : 1);
+    if (phase === "before-report") {
+      assert.equal(response.status, 200);
+      assert.equal(body.state, "active");
+      if (body.state !== "active" || body.firstRunCheck?.state !== "failed") throw new Error("failed first-run check required");
+      assert.equal(body.firstRunCheck.report.results.some(result => result.check === "ports.available" && result.status === "fail" && result.summary === "check did not complete (error)"), true);
+      assert.ok(response.headers.get("set-cookie"));
+      assert.equal(reports.length, 1);
+    } else {
+      assert.deepEqual(body, { state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE",
+        firstRunCheck: { scope: "local-startup", profileId: ready.draft.profileId, epoch: f.machine.readProfileRegistry().sessionGeneration, state: "passed", report: reports[0] } });
+      assert.equal(response.status, 409);
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(reports.length, 1);
+    }
     const replay = await ready.finish(); assert.equal(replay.status, response.status); assert.deepEqual(await replay.json(), body); assert.equal(probes, 1);
   } finally { await runtime?.stop(); vi.restoreAllMocks(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });

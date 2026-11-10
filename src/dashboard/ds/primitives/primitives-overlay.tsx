@@ -18,7 +18,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { dsElev, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
-import { IconButton } from "./primitives-core.js";
+import { Button, IconButton } from "./primitives-core.js";
 import { FloatingSurface } from "./primitives-layout.js";
 
 /** Floating surfaces: Dialog, Drawer, Popover, Tooltip, Toast. */
@@ -716,6 +716,7 @@ export interface DsToast {
   duration?: number;
   /** stays until its owner dismisses it or the operator closes it */
   sticky?: boolean;
+  action?: { label: string; onClick: () => void };
 }
 
 interface ToastContextValue {
@@ -740,6 +741,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     toast: input => {
       const id = `toast-${++nextId.current}`;
       manager.add({ id, title: input.title, description: input.description,
+        ...(input.action === undefined ? {} : { actionProps: { children: input.action.label, onClick: input.action.onClick } }),
         type: input.tone === "danger" ? "error" : input.tone,
         timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 0 : 3000),
       });
@@ -769,11 +771,16 @@ function ToastViewport() {
   const { toasts } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
-    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success") && "pointer-events-none")}>
-      <BaseToastContent><BaseToastIcon type={item.type} />
-        <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
-        <BaseToastClose disabled={inert} className={!inert && item.type === "success" ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
-      </BaseToastContent>
-    </BaseToast>)}
+    {toasts.map(item => {
+      const action = item.actionProps;
+      return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success") && "pointer-events-none")}>
+        <BaseToastContent><BaseToastIcon type={item.type} />
+          <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription />
+            {action !== undefined && <Button size="sm" variant="secondary" onClick={action.onClick}>{action.children}</Button>}
+          </div>
+          <BaseToastClose disabled={inert} className={!inert && item.type === "success" ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
+        </BaseToastContent>
+      </BaseToast>;
+    })}
   </BaseToastViewport>;
 }

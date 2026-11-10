@@ -137,6 +137,7 @@ export const ERROR_CATALOG = Object.freeze({
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),
+  DATABASE_WRITER_UNAVAILABLE: catalogEntry("Relay’s saved data was busy for too long. Nothing was written. Try again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("Browser closure could not be verified. No file replacement or credential erasure has started.", EmptyParametersSchema),
   DUO_SETUP_OPEN_FAILED: catalogEntry("Relay could not start the setup browser. Select Reopen to try again.", EmptyParametersSchema),
@@ -689,6 +690,14 @@ export const ERROR_CATALOG = Object.freeze({
   PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
   PROFILE_SESSION_LOG_UNAVAILABLE: catalogEntry("Relay could not record session transition evidence. The transition could not finish.", EmptyParametersSchema),
   PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
+  DASHBOARD_FRONTEND_NOT_OWNED: catalogEntry(
+    "This Relay page was not started by the running Relay. Close it and start Relay again with npm run dashboard.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_RUNTIME_START_FAILED: catalogEntry(
+    "You are signed in, but Relay could not open the dashboard. Nothing was changed. Close Relay and start it again.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SESSION_STALE: catalogEntry(
     "This sign-in is no longer active. Sign in again.",
     EmptyParametersSchema,
