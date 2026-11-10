@@ -12,6 +12,7 @@ type QueueRowIdentity,
 } from "../../../../src/dashboard/surfaces/activity/activity-model.js";
 import { buildActivityVolumeBoundarySkeleton } from "../../../../src/models/dashboard/activity-volume.js";
 import {
+ACTIVITY_MEDIAN_ABSENT_REASON,
 ActivityReportWireSchema,
 type ActivityReportWire,
 } from "../../../../src/models/dashboard/activity.js";
@@ -30,13 +31,25 @@ function report(overrides: Record<string, unknown> = {}): ActivityReportWire {
     inFlightRuns: 2,
     people: { state: "present", distinct: 1, evidenceRows: 2 },
     completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
-    days: [{ day: "2026-09-08", runs: 1 }, { day: "2026-09-09", runs: 1 }],
+    outcomeSplit: { done: 0, failed: 0, attention: 0 },
+    typicalMedian: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+    days: ["2026-09-08", "2026-09-09"].map(day => ({
+      day, runs: 1, outcomes: { done: 0, failed: 0, attention: 0 },
+      typicalTime: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+    })),
     workflows: [{
       workflowId: "separations",
       registration: { state: "registered", code: "sp", label: "Separations", categoryId: "employment" },
       runs: 2,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
       needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
+      typicalMedian: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+      outcomes: { done: 0, failed: 0, attention: 0 },
+      days: ["2026-09-08", "2026-09-09"].map(day => ({
+        day, runs: 1, outcomes: { done: 0, failed: 0, attention: 0 },
+        typicalTime: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+      })),
+      failedAt: [],
       failed: 0,
       cancelled: 0,
       partial: 0,
