@@ -2610,6 +2610,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       if (request.family === "settings") return executeSettingsCommand(dependencies, request);
       let rollback: (() => void) | undefined;
       let commit: (() => void) | undefined;
+      let admitted = false;
       try {
         // The journal row commits before the effect: a thrown effect leaves it admitted, and its exact retry resumes the effect.
         const replayed = dependencies.authority.withAuthorityTransaction((repositories) => {
@@ -2626,7 +2627,8 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           return replay(dependencies, repositories, request, IsoInstantSchema.parse(dependencies.clock.now().toISOString()));
         });
         if (replayed !== undefined) return replayed;
-        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
+        admitted = true;
+        const result =dependencies.authority.withAuthorityTransaction((repositories) => {
           preferenceCurrent?.();
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           const journalRequest = request;
@@ -2684,6 +2686,11 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           : error instanceof OcrReviewRefusedError ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
             code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text })
           : undefined;
+        // A failure during admission or replay leaves no row of this call to settle.
+        if (!admitted) {
+          if (refusal !== undefined) return refusal;
+          throw error;
+        }
         try {
           settleUnsettled(request, refusal ?? (parentCommandId === undefined ? undefined
             : CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "bulk-child-errored", message: ERROR_CATALOG.BULK_CHILD_ERRORED.text })),
