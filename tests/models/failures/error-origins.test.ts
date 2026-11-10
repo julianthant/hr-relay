@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { bindErrorOrigin, clientCauseRowAccepted, serializeErrorCauses } from "../../../src/models/failures/error-origins.js";
+import { bindErrorOrigin, clientCauseRowAccepted, serializeErrorCauses, serializeTokenedErrorCauses } from "../../../src/models/failures/error-origins.js";
 import { PreflightObservationChangedError } from "../../../src/rules/preflight/preflight-admission.js";
 import { WorkerControlRefusal } from "../../../src/models/run/worker-control.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
@@ -96,6 +96,14 @@ describe("closed error origins", () => {
       { ...row, message: row.name, stack: `${row.name}\n    at assets/../secret.js:1:2` },
       { ...row, message: row.name, stack: `${row.name}: PRIVATE_CANARY` },
     ]) assert.equal(clientCauseRowAccepted({ message: claim.message, code: claim.code, reason: claim.reason, stack: claim.stack }), false);
+  });
+
+  it("keeps each cause's own leading kebab token and none of its message", () => {
+    const primary = new Error("primary-token: private detail a");
+    const startup = new AggregateError([primary, new Error("cleanup-token: private detail b"), new Error("Plain private sentence")], "startup failed", { cause: primary });
+    const rows = serializeTokenedErrorCauses(new Error("Operator sentence", { cause: startup }));
+    assert.deepEqual(rows.map(row => row.token), [undefined, undefined, "primary-token", "cleanup-token", undefined]);
+    assert.doesNotMatch(JSON.stringify(rows), PRIVATE);
   });
 
   it("refuses a second binding for one constructor", () => {

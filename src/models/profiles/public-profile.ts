@@ -87,7 +87,7 @@ export const PublicProfileStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema, firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
 ]).superRefine((value, context) => {
   if (value.state !== "active" || value.firstRunCheck === undefined) return;
-  if (value.firstRunCheck.state !== "passed" || value.firstRunCheck.profileId !== value.profileId || value.firstRunCheck.epoch !== value.epoch) {
+  if (value.firstRunCheck.state === "unavailable" || value.firstRunCheck.profileId !== value.profileId || value.firstRunCheck.epoch !== value.epoch) {
     context.addIssue({ code: "custom", path: ["firstRunCheck"], message: "profile-first-run-check-active-identity-invalid" });
   }
 });
