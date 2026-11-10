@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, it, vi } from "vitest";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
@@ -18,6 +18,7 @@ beforeEach(async context => {
   fixture = await world.fixture({ secondMemberAlreadyPresent: context.task.name.startsWith("refuses direct Recover of already-present") });
 });
 afterEach(world.cleanup);
+afterAll(world.releaseTemplates);
 const signal = () => new AbortController().signal;
 const saves = (f: Fixture) => ["10800000", "10800001"].map(eid => {
   const backend = f.persistence.get(eid); assert.ok(backend); return backend.submissions.length;
