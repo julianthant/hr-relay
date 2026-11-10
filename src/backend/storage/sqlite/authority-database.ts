@@ -149,6 +149,14 @@ export class AuthorityFormatUnsupportedError extends Error {
 }
 bindErrorOrigin(AuthorityFormatUnsupportedError, error => error.code === "STORAGE_PROFILE_NEWER_VERSION" ? "profile-newer" : "profile-format-unsupported");
 
+export class AuthorityWriterBusyError extends Error {
+  readonly code = "DATABASE_WRITER_UNAVAILABLE";
+  constructor(options: ErrorOptions) {
+    super("authority-writer-busy: database is locked", options);
+    this.name = "AuthorityWriterBusyError";
+  }
+}
+
 export const AuthorityDatabaseOpenModeSchema = z.enum([
   "read-write",
   "storage-backup-read-only-no-migrate",
@@ -4433,7 +4441,9 @@ export class AuthorityDatabase implements Disposable {
     return this.#clock.now().toISOString();
   }
 
+  /** Whole-store validation never runs under the write lock. */
   #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
+    if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return;
     const observed = readIntPragma(this.#database, "data_version");
     if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
     this.#validatedExternalDataVersion = undefined;
@@ -4478,14 +4488,18 @@ export class AuthorityDatabase implements Disposable {
       }
       this.#admitMutation();
       const witnesses = new Map(outermostOperationProof()?.witnesses);
+      if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("mutation", searchValidation); });
       this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-      this.#database.exec("BEGIN IMMEDIATE");
+      try { this.#database.exec("BEGIN IMMEDIATE"); }
+      catch (error) {
+        if (error instanceof Error && "errcode" in error && error.errcode === 5) throw new AuthorityWriterBusyError({ cause: error });
+        throw error;
+      }
       this.#transactionDepth = 1;
       this.#transactionMode = mode;
       this.#authorityDirty = false;
       let result: Result;
       try {
-        this.#validateExternalQuerySources("mutation", searchValidation);
         const search = createRunSearchIndex(this.#database);
         const priorSearch = search.publication();
         if (this.#logoutBatch !== undefined) {
@@ -6366,6 +6380,7 @@ export class AuthorityDatabase implements Disposable {
         return this.#authorityWrite("runs", () => {
           const run = this.#readRunRow(request.runId);
           if (run === undefined) throw new Error("run-deletion-owner-missing");
+          for (const { id } of this.#database.prepare("SELECT id FROM write_intents WHERE run_id=?").all(request.runId)) assertConfirmationPublication(this.#database, String(id));
           const prepared = prepareNativeRunDeletion(this.#database,run,request,ref => inspectArtifactDeletionFile(this.#admission,ref));
           const record = executeNativeRunDeletion(this.#database,prepared,step => this.#lifecycleHooks?.afterDeleteStep?.({runId:request.runId,step}));
           return {result:record,changes:1 + record.removed.reduce((sum,entry) => sum + entry.rows,0)};
