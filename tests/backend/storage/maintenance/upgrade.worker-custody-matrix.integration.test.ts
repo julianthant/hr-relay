@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash,randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -25,6 +25,7 @@ import type { RunRecord } from "../../../../src/models/run/record.js";
 import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { deriveEvidenceReceiptId } from "../../../../src/models/trust/evidence-identity.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { lifecycleCommandId } from "../../../../src/rules/commands/lifecycle-command-id.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
@@ -49,6 +50,24 @@ const hostFacts = { primaryDisplay: null };
 const CHANGED_TABLES = new Set(["runs", "deleted_runs", "run_failures", "run_batches", "database_upgrades", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts",
   "run_checkpoints", "run_delegations", "delegation_dependencies", "run_requests", "worker_slots", "notifications", "write_intents", "write_attempts",
   "artifact_outbox", "database_states"]);
+
+/** The table order every schema 18-23 build hashed into a backup manifest's authorityContentFingerprint; a predecessor store must still match it. */
+const PRE_CUSTODY_FINGERPRINT_TABLES = ["assistant_model_preference", "database_states", "database_upgrades", "settings_snapshots", "commands", "command_audits", "settings",
+  "assistant_grants", "assistant_chats", "assistant_actions", "run_batches", "deleted_runs", "runs", "run_requests", "run_delegations", "delegation_dependencies", "run_checkpoints",
+  "gate_results", "run_results", "run_failures", "run_receipts", "write_intents", "write_attempts", "worker_pools", "worker_slots", "worker_leases", "worker_controls",
+  "browser_sessions", "auth_leases", "exclusive_session_leases", "ocr_review_revisions", "ocr_source_uploads", "ocr_approved_snapshots", "notifications", "notification_states",
+  "artifacts", "timeline_events", "diagnostic_snapshots", "diagnostic_files", "dryrun_results", "run_search", "workbook_creations", "workbook_types", "workbook_operations",
+  "workbook_library", "workbook_library_history", "workbook_library_state", "workbook_library_actions", "workbook_library_snapshots"];
+const PRE_CUSTODY_ROW_ORDER: Record<string, string> = { run_results: "id", deleted_runs: "run_id", run_search: "run_id", worker_pools: "workflow",
+  workbook_library_history: "workbook_id,version,name", workbook_operations: "sequence", worker_controls: "command_id", auth_leases: "credential_key", timeline_events: "cursor" };
+function preCustodyFingerprint(raw: DatabaseSync): string {
+  const hash = createHash("sha256");
+  for (const table of PRE_CUSTODY_FINGERPRINT_TABLES) {
+    hash.update(canonicalJsonStringify(table));
+    for (const row of raw.prepare(`SELECT * FROM ${table} ORDER BY ${PRE_CUSTODY_ROW_ORDER[table] ?? "id"}`).iterate()) hash.update(canonicalJsonStringify(row));
+  }
+  return hash.digest("hex");
+}
 
 /**
  * A real delegation tree on the current schema, then returned to schema 20-22: a cancelled member recovered from a worker crash
@@ -160,7 +179,10 @@ async function predecessorStore(version: SourceVersion, variant: Variant) {
     if (version === 20) restoreSchema20CompletionFixture(raw);
     else raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);
     raw.exec("COMMIT");
-    assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version);
+    const inspection = inspectNativeAuthority(raw, version);
+    assert.equal(inspection.schemaVersion, version);
+    // Backups this store's own build wrote must keep verifying after the custody build arrives.
+    assert.equal(inspection.authorityContentFingerprint, preCustodyFingerprint(raw));
   } finally { raw.close(); }
   return { profile, path, stateRoot, profileId, closure, keptRunId: kept.envelope.runId, childId, previousDigest, childDigest };
 }

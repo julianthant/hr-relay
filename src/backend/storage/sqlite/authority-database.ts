@@ -2,7 +2,7 @@ import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
 import { evidenceSchemaSourceDigest, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
-import { artifactReferencesIn, containsDeletionArtifactReference } from "./artifact-references.js";
+import { artifactReferencesIn, deletionArtifactReferenceMatcher } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
@@ -2015,8 +2015,9 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
           references.set(file.ref.sha256, file.ref);
         }
       }
+      const retainedBy = new Map<string, ArtifactRef>(retainedCandidates.map(ref => [ref.sha256, ref])), retainedIn = deletionArtifactReferenceMatcher(retainedCandidates);
       const visit = (value: unknown): void => {
-        for (const ref of retainedCandidates) if (containsDeletionArtifactReference(value, ref)) references.set(ref.sha256, ref);
+        for (const digest of retainedIn(value)) { const ref = retainedBy.get(digest); if (ref !== undefined) references.set(digest, ref); }
         for (const ref of artifactReferencesIn(value)) references.set(ref.sha256, ref);
       };
       for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
@@ -3854,15 +3855,16 @@ export class AuthorityDatabase implements Disposable {
       });
       const pending = deletions.filter(deletion => deletion.cleanupState === "pending");
       if (pending.length > 0) validateAuthorityRecordSchemas(this.#database);
+      const removals = pending.flatMap(deletion => deletion.files.filter(file => file.disposition === "remove").map(file => file.ref));
+      const referenced = new Set<string>(), referencesIn = deletionArtifactReferenceMatcher(removals);
+      if (removals.length > 0) for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
+        for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
+          for (const value of deletionArtifactValues(this.#database, table, row)) for (const digest of referencesIn(value)) referenced.add(digest);
+        }
+      }
       for (const deletion of pending) {
         for (const file of deletion.files.filter(file=>file.disposition === "remove")) {
-          for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
-            for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
-              for (const value of deletionArtifactValues(this.#database, table, row)) {
-                if (containsDeletionArtifactReference(value, file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
-              }
-            }
-          }
+          if (referenced.has(file.ref.sha256)) throw new Error("run-deletion-cleanup-file-still-referenced");
           removeArtifactDeletionFile(this.#admission,file);
           this.#lifecycleHooks?.afterDeletionFileRemoved?.({runId:deletion.receipt.runId,digest:file.ref.sha256});
         }

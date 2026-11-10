@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, WORKER_CUSTODY_DROPPED_TABLES, WORKER_CUSTODY_SCHEMA_VERSION, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
@@ -92,6 +92,12 @@ const count = (database: DatabaseSync, sql: string) => Number(database.prepare(s
 const triggers = (database: DatabaseSync) => database.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' ORDER BY name").all();
 const dump = (database: DatabaseSync) => ["runs", "commands", "command_audits", "worker_slots", "worker_leases", "write_intents", "deleted_runs"]
   .map(table => database.prepare(`SELECT * FROM ${table}`).all());
+
+it("keeps the dropped worker tables at their original place so pre-custody backup fingerprints still verify", () => {
+  const predecessor = migrationTableNames(WORKER_CUSTODY_SCHEMA_VERSION - 1), slots = predecessor.indexOf("worker_slots");
+  assert.deepEqual(predecessor.slice(slots + 1, slots + 1 + WORKER_CUSTODY_DROPPED_TABLES.length), [...WORKER_CUSTODY_DROPPED_TABLES]);
+  assert.deepEqual(predecessor.filter(table => !(WORKER_CUSTODY_DROPPED_TABLES as readonly string[]).includes(table)), [...migrationTableNames(WORKER_CUSTODY_SCHEMA_VERSION)]);
+});
 
 it("deletes the worker-lifetime closure and worker history and keeps unrelated runs byte-identical", () => {
   const database = store();
