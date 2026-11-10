@@ -239,7 +239,7 @@ describe("cross-date search authority read", () => {
     }
   });
 
-  it("admits genuine peer commits and refuses raw corruption masked by generation changes or another mutation", async () => {
+  it("admits genuine peer commits and keeps refusing raw corruption on reads and open across unrelated writes and generation changes", async () => {
     const profile = await profileFixtures.create();
     const path = profile.path, clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-peer-test" }, clock);
@@ -248,30 +248,39 @@ describe("cross-date search authority read", () => {
     try {
       const first = insertMeasuredSearchRun(database, { authorityPath: path, seed: 91 });
       const second = insertMeasuredSearchRun(database, { authorityPath: path, seed: 92 });
-      const search = () => database.authority.runs.search({ q: "", scope: "run", facets: {}, limit: 10 });
-      assert.equal(search().totalMatches, 2);
+      const search = (on: AuthorityDatabase | undefined = database) => on?.authority.runs.search({ q: "", scope: "run", facets: {}, limit: 10 });
+      assert.equal(search()?.totalMatches, 2);
       peer = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-genuine-peer" }, clock);
-      const advance = () => {
-        const current = peer?.authority.runs.get(first.envelope.runId);
-        assert.ok(current);
-        return peer?.authority.runs.advanceRevision({ runId: current.envelope.runId, expectedVersion: current.version, now: clock.now().toISOString() });
+      const advance = (on: AuthorityDatabase | undefined, runId: string) => {
+        const current = z.object({ version: z.number() }).parse(raw.prepare("SELECT version FROM runs WHERE id=?").get(runId));
+        return on?.authority.runs.advanceRevision({ runId, expectedVersion: current.version, now: clock.now().toISOString() });
       };
-      assert.equal(advance()?.state, "applied");
-      assert.equal(search().rows.find(row => row.record.envelope.runId === first.envelope.runId)?.record.version, first.version + 1);
-      const ownBefore = database.getMeta(), beforeRows = raw.prepare("SELECT * FROM runs ORDER BY id").all();
+      assert.equal(advance(peer, first.envelope.runId)?.state, "applied");
+      assert.equal(search()?.rows.find(row => row.record.envelope.runId === first.envelope.runId)?.record.version, first.version + 1);
+      const rowError = /run row workflow does not match its whole-record JSON/u;
+      const refusesSearch = () => {
+        for (const on of [database, peer]) assert.throws(() => search(on), (error: unknown) => error instanceof Error && /run-search-index-rebuild-required/u.test(error.message)
+          && error.cause instanceof Error && rowError.test(error.cause.message));
+      };
       corruptRunSource(raw, "UPDATE runs SET workflow=? WHERE id=?", "person-lookup", second.envelope.runId);
-      const corrupted = raw.prepare("SELECT * FROM runs ORDER BY id").all();
-      assert.throws(advance, /authority table runs failed native record validation: run row workflow does not match its whole-record JSON/u);
-      assert.throws(() => database.authority.runs.advanceRevision({ runId: first.envelope.runId,
-        expectedVersion: first.version + 1, now: clock.now().toISOString() }), /authority table runs failed native record validation: run row workflow does not match its whole-record JSON/u);
-      assert.deepEqual(raw.prepare("SELECT * FROM runs ORDER BY id").all(), corrupted);
-      assert.deepEqual(database.getMeta(), ownBefore, "refused peer and own mutations cannot launder the changed source");
+      const corrupted = z.object({ version: z.number() }).parse(raw.prepare("SELECT version FROM runs WHERE id=?").get(second.envelope.runId));
+      refusesSearch();
+      assert.equal(advance(peer, first.envelope.runId)?.state, "applied");
+      assert.equal(advance(database, first.envelope.runId)?.state, "applied");
+      refusesSearch();
+      for (const on of [database, peer]) {
+        assert.throws(() => advance(on, second.envelope.runId), rowError);
+        assert.throws(() => on.authority.runs.get(second.envelope.runId), rowError);
+      }
+      assert.equal(z.object({ version: z.number() }).parse(raw.prepare("SELECT version FROM runs WHERE id=?").get(second.envelope.runId)).version, corrupted.version);
+      assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(path), rowError);
+      const ownBefore = database.getMeta();
       raw.exec("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=search_generation+1");
       assert.throws(() => database.authority.runs.search({ q: "NONMATCH", scope: "run", facets: { workflow: "separations" }, limit: 1 }), /run-search-index-rebuild-required/);
       corruptRunSource(raw, "UPDATE runs SET workflow=? WHERE id=?", second.envelope.workflow, second.envelope.runId);
       raw.prepare("UPDATE database_states SET authority_generation=?,search_generation=?").run(ownBefore.authorityGeneration, ownBefore.authorityGeneration);
-      assert.deepEqual(raw.prepare("SELECT * FROM runs ORDER BY id").all(), beforeRows);
-      assert.equal(search().totalMatches, 2);
+      assert.equal(search()?.totalMatches, 2);
+      assert.equal(search(peer)?.totalMatches, 2);
     } finally { peer?.close(); raw.close(); database.close(); await profile.close(); }
   });
 
