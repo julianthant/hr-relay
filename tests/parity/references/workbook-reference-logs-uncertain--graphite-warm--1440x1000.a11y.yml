@@ -60,6 +60,9 @@
       - listitem:
         - button "Old Kronos Reports"
 - main:
+  - region "Commands awaiting recovery":
+    - text: Command outcome unknown. Review the original request to recover its result.
+    - button "Review resolve-workbook-reference-row (1 run)"
   - heading "Onboarding queue" [level=1]
   - region "Queue":
     - text: Needs you 1
