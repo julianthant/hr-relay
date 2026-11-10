@@ -128,6 +128,21 @@ function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, 
   } catch { /* best effort */ }
 }
 
+function hasStringCode(refusal: Error): refusal is Error & { code: string } {
+  return "code" in refusal && typeof refusal.code === "string";
+}
+
+function codedHeldRefusal(refusal: unknown): (Error & { code: string }) | undefined {
+  if (!(refusal instanceof Error)) return undefined;
+  return hasStringCode(refusal) ? refusal : new RegisteredPersonUpgradeRefusedError(refusal);
+}
+
+function logHeldPerson(workspace: string, refusal: unknown, area: string, clock: Clock): void {
+  const coded = codedHeldRefusal(refusal);
+  if (coded === undefined) return;
+  logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), coded, area, clock);
+}
+
 function logDrainRefusal(stateRoot: string, reason: () => string, clock: Clock): void {
   try {
     const token = reason();
@@ -339,8 +354,10 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
         try { await repairRegisteredPerson(workspace, lifetime, profileId, clock, error); held.delete(profileId); }
         catch (repair) {
           if (machineWideStartupFailure(repair)) throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair });
-          held.set(profileId, repair instanceof AuthorityFormatUnsupportedError || repair instanceof StartupProjectionRepairError ? repair
-            : new AutomaticPersonRepairRefusedError(new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair })));
+          const refusal = repair instanceof AuthorityFormatUnsupportedError || repair instanceof StartupProjectionRepairError ? repair
+            : new AutomaticPersonRepairRefusedError(new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair }));
+          held.set(profileId, refusal);
+          logHeldPerson(workspace, refusal, "profile-startup-repair", clock);
         }
       }
     }
@@ -407,6 +424,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
           } catch (error) {
             if (hasUnprovedSourceClosure(error)) throw error;
             held.set(profileId, error);
+            logHeldPerson(workspace, error, "profile-startup-settings-upgrade", clock);
           }
         }
       });
@@ -426,6 +444,7 @@ export async function initializeRegisteredPersonStores(workspace: string, lifeti
     catch (error) {
       if (machineWideStartupFailure(error)) throw error;
       heldPeopleFor(lifetime).set(profileId, error);
+      logHeldPerson(workspace, error, "profile-startup-crash-recovery", clock);
     }
   }
   const held = heldPeopleFor(lifetime);
