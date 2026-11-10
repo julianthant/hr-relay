@@ -1,3 +1,4 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
@@ -390,6 +391,7 @@ export async function harness(options: {
       search,
       activityReport: (from, to, token) => activity.readSelected(from, to, token),
     }),
+    resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
     commandJournal: options.commandJournal?.(database.authority.commands)
       ?? database.authority.commands,
     bulkCommandAcceptances: {

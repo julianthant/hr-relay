@@ -241,6 +241,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/profile-onboarding-abort-worker.ts` | Owned-controller canonical abort crash-prefix cases in `backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts` |
 
 | `processes/command-custody-worker.ts` | Isolated command browser launch/close and stale Duo-release custody proofs, launched only by `backend/runtime/browser/command-browser.integration.test.ts` |
+| `processes/owner-image-close-retention.ts` | Owner-image reader close failures (pinned reader and full owner doctor pass) keep the image and refuse admission release, launched only by `architecture/storage/readonly-authority-snapshot.test.ts` |
+| `processes/owner-image-heartbeat-peer.ts` | Separate-process worker heartbeat peer that commits during a claim's doctor pass, launched only by `backend/storage/sqlite/storage-doctor.heartbeat-claim.integration.test.ts` |
 
 ## File fixtures
 
