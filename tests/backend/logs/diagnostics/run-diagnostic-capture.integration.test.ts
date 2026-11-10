@@ -252,10 +252,10 @@ describe("the failure and its bundle land together", () => {
     };
 
     database.authority.runs.enqueue(personLookupQueuedRun());
-    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: authority.path,
+    const { workerId } = testAdmittedWorker(database, clock, { path: authority.path,
       workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: WORKFLOW_ID,
+      workflow: WORKFLOW_ID,
       workerId: workerId,
       now: clock.now().toISOString(),
     });
@@ -353,10 +353,10 @@ describe("the failure and its bundle land together", () => {
       diagnostics: createRunDiagnosticCapture({ service }),
     };
     database.authority.runs.enqueue(personLookupQueuedRun({ startAt: "not-a-node" }));
-    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: authority.path,
+    const { workerId } = testAdmittedWorker(database, clock, { path: authority.path,
       workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: WORKFLOW_ID,
+      workflow: WORKFLOW_ID,
       workerId: workerId,
       now: clock.now().toISOString(),
     });

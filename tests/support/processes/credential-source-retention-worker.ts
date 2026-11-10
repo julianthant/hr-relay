@@ -57,12 +57,13 @@ function caught(work: () => unknown): unknown {
   try { work(); } catch (error) { return error; }
   assert.fail("expected retained source failure");
 }
-async function assertRetained(admission: RuntimeAdmissionType, machine: RuntimeAdmissionType, owner: { assertHeld(): void; close(): Promise<void>; assertRuntimeAvailable(): void }, failure: unknown, source: unknown, stateRoot: string) {
+async function assertRetained(admission: RuntimeAdmissionType, machine: RuntimeAdmissionType, owner: { assertHeld(): void; close?: () => Promise<void>; assertRuntimeAvailable(): void }, failure: unknown, source: unknown, stateRoot: string) {
   assert.equal(hasUnprovedSourceClosure(failure), true);
   for (let attempt = 0; attempt < 2; attempt++) {
     assert.equal(hasUnprovedSourceClosure(caught(() => admission.release())), true);
     assert.equal(hasUnprovedSourceClosure(caught(() => machine.release())), true);
-    await assert.rejects(owner.close(), error => hasUnprovedSourceClosure(error) && contains(error, source));
+    // The worker lifetime has no close: the OS releases it at process exit.
+    if (owner.close !== undefined) await assert.rejects(owner.close(), error => hasUnprovedSourceClosure(error) && contains(error, source));
   }
   owner.assertHeld(); assert.throws(() => owner.assertRuntimeAvailable(), error => hasUnprovedSourceClosure(error));
   assert.equal(fs.existsSync(stateRoot), true);
@@ -223,7 +224,6 @@ async function runWorkerNativeOpening() {
   assert.equal(native.prepare("SELECT 1 AS value").get()?.value, 1);
   assert.deepEqual(fs.readFileSync(f.path), before);
   assert.deepEqual(native.prepare("SELECT * FROM worker_slots").all(), []);
-  assert.deepEqual(native.prepare("SELECT * FROM worker_leases").all(), []);
   issued.assertLive();
   await assertRetained(issued, f.machine, f.lifetime, failure, source, f.stateRoot);
   assert.equal(native.prepare("SELECT 1 AS value").get()?.value, 1);
@@ -442,7 +442,6 @@ async function runLogout(): Promise<void> {
       credentials: createCredentialStore({ admission, stateRoot: admission.stateRoot }), clock: wall, hostFacts: { primaryDisplay: null } });
     const database = context.database;
     const worker = testAdmittedWorker(database, wall, { path, workflow: personLookupDescriptor.id, poolIndex: 1, browserSystems: [] });
-    assert.equal(worker.lease.processId, process.pid);
     const activeConfig = database.authority.runtimeConfig.get(); assert.ok(activeConfig);
     const runtimeConfig = { generation: activeConfig.generation, settingsRevision: activeConfig.settingsRevision,
       settingsFingerprint: activeConfig.settingsFingerprint, configFingerprint: activeConfig.configFingerprint };
@@ -456,7 +455,7 @@ async function runLogout(): Promise<void> {
       configFingerprint: activeConfig.configFingerprint, configSnapshotId: activeConfig.configSnapshotId, resolvedInstance: RunEnvelopeSchema.parse(QUEUED_RUN.envelope).resolvedInstance,
       priority: "bulk", shape: "single", dryRun: true, input: QUEUED_RUN.input, runtimeConfig }));
     const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: randomUUID(), workflow: personLookupDescriptor.id,
-      workerId: worker.workerId, workerLifetime: worker.workerLifetime, runtimeConfig }));
+      workerId: worker.workerId, runtimeConfig }));
     assert.equal(claimed.envelope.runId, created.envelope.runId);
     const claim = { workerId: worker.workerId, claimGeneration: claimed.claimGeneration };
     requireLifecycleApplied(lifecycle.workerTransition({ commandId: randomUUID(), runId: claimed.envelope.runId, claim,
@@ -488,7 +487,7 @@ async function runLogout(): Promise<void> {
       const valueId = randomUUID();
       if (collisionOperationId !== undefined) {
         const { lifecycleCommandId } = await import("../../../src/rules/identity/identifiers.js");
-        collisionCommandId = lifecycleCommandId("logout-crash", { operationId: collisionOperationId, runId: run.envelope.runId, version: run.version, workerLifetime: worker.workerLifetime });
+        collisionCommandId = lifecycleCommandId("logout-crash", { operationId: collisionOperationId, runId: run.envelope.runId, version: run.version });
       }
       installPredecessorProfileCredentials(captureProfileCredentialFixture(admission), "Old Fixture Signer", valueId, collisionCommandId);
       fs.writeFileSync(join(workspace, `.logout-predecessor-${nonce}.json`), JSON.stringify({ valueId, collisionCommandId }), { mode: 0o600, flag: "wx" });
@@ -502,7 +501,7 @@ async function runLogout(): Promise<void> {
     if (collisionOperationId !== undefined) assert.equal(operation.operationId, collisionOperationId);
     fs.writeFileSync(join(workspace, `.logout-source-${nonce}.json`), JSON.stringify({ nonce, operationId: operation.operationId,
       runId: run.envelope.runId, workerId: worker.workerId, processId: process.pid, intent, epoch: active.epoch,
-      version: run.version, claimGeneration: run.claimGeneration, workerLifetime: worker.workerLifetime, member: workerPoolMember(worker.member) }), { mode: 0o600, flag: "wx", flush: true });
+      version: run.version, claimGeneration: run.claimGeneration, member: workerPoolMember(worker.member) }), { mode: 0o600, flag: "wx", flush: true });
     process.kill(process.pid, "SIGKILL"); throw new Error("source crash did not terminate child");
   }
   const predecessor = fs.existsSync(join(workspace, `.logout-predecessor-${nonce}.json`));
@@ -581,7 +580,7 @@ async function runLogout(): Promise<void> {
         assert.equal(next.sessionGeneration, operation.sessionGeneration); assert.deepEqual(next.source, operation.source); assert.equal(next.at, operation.at);
         assert.equal(next.phase, operation.phase);
         if (next.settlement === undefined) return;
-        assert.deepEqual(next.settlement.requests, captured.requests); assert.deepEqual(next.settlement.workers, captured.workers);
+        assert.deepEqual(next.settlement.requests, captured.requests);
         assert.equal(next.settlement.stoppedAt, captured.stoppedAt); assert.equal(next.settlement.processId, captured.processId);
         assert.equal(next.settlement.before, captured.before);
         if (captured.after !== undefined) assert.equal(next.settlement.after, captured.after);
@@ -618,17 +617,16 @@ async function runLogout(): Promise<void> {
     const { inspectNativeAuthority } = await import("../../../src/backend/storage/sqlite/authority-database.js");
     const source = z.object({ nonce: z.uuid(), operationId: z.uuid(), runId: z.uuid(), workerId: z.string(), processId: z.number().int().positive(),
       epoch: z.number().int().nonnegative(), version: z.number().int().positive(), claimGeneration: z.number().int().positive(),
-      workerLifetime: CanonicalCrashRecoveryRequestSchema.shape.workerLifetime, member: WorkerPoolMemberSchema })
+      member: WorkerPoolMemberSchema })
       .parse(JSON.parse(fs.readFileSync(join(workspace, `.logout-source-${nonce}.json`), "utf8")));
     assert.equal(source.nonce, nonce); assert.equal(source.operationId, receipt.operationId);
     assert.equal(registry.sessionGeneration, source.epoch + 1);
     assert.equal(settled.phase, "done"); assert.ok(settled.after);
     const request = CanonicalCrashRecoveryRequestSchema.parse({
-      commandId: lifecycleCommandId("logout-crash", { operationId: source.operationId, runId: source.runId, version: source.version, workerLifetime: source.workerLifetime }),
+      commandId: lifecycleCommandId("logout-crash", { operationId: source.operationId, runId: source.runId, version: source.version }),
       runId: source.runId, expectedVersion: source.version, claim: { workerId: source.workerId, claimGeneration: source.claimGeneration },
-      workerLifetime: source.workerLifetime, now: settled.stoppedAt });
+      now: settled.stoppedAt });
     assert.deepEqual(settled.requests, [request]);
-    assert.deepEqual(settled.workers, [{ member: source.member, processId: source.processId, leaseGeneration: source.workerLifetime.leaseGeneration }]);
     if (predecessor) {
       await runtime.close(); machine.release();
       await initializeRegisteredPersonStores(workspace, controller, { primaryDisplay: null }, wall);
@@ -658,11 +656,8 @@ async function runLogout(): Promise<void> {
       assert.equal(run.lifecycle.failureId, failureId);
       assert.equal(database.authority.failures.get(failureId)?.code, "RUN_INTERRUPTED_BY_CRASH");
       assert.ok(database.authority.runResults.get(source.runId));
-      const slot = database.authority.workerSlots.get(source.workerId), lease = database.authority.workerLeases.get(source.workerId); assert.ok(slot && lease);
-      assert.deepEqual(workerPoolMember(slot), source.member); assert.equal(lease.processId, source.processId);
-      assert.equal(lease.leaseGeneration, source.workerLifetime.leaseGeneration);
-      assert.equal(lease.lifecycle.state, "stopped"); if (lease.lifecycle.state !== "stopped") throw new Error("logout recovery did not stop source worker");
-      assert.equal(lease.lifecycle.reason, "crashed"); assert.equal(lease.lifecycle.stoppedAt, settled.stoppedAt);
+      const slot = database.authority.workerSlots.get(source.workerId); assert.ok(slot);
+      assert.deepEqual(workerPoolMember(slot), source.member);
       const eventId = lifecycleCommandId("timeline-lifecycle", request.commandId), event = database.authority.timelineEvents.get(eventId); assert.ok(event);
       assert.equal(event.occurredAt, settled.stoppedAt); assert.equal(event.recordedAt, settled.stoppedAt);
       assert.equal(event.payload.kind, "span"); if (event.payload.kind !== "span") throw new Error("logout recovery event is not a run span");
@@ -674,7 +669,6 @@ async function runLogout(): Promise<void> {
         assert.equal(inspectNativeAuthority(native).authorityContentFingerprint, settled.after);
         assert.deepEqual(native.prepare("SELECT id FROM runs ORDER BY id").all().map(row => row.id), [source.runId]);
         assert.deepEqual(native.prepare("SELECT id FROM worker_slots ORDER BY id").all().map(row => row.id), [source.workerId]);
-        assert.deepEqual(native.prepare("SELECT id FROM worker_leases ORDER BY id").all().map(row => row.id), [source.workerId]);
         assert.deepEqual(native.prepare("SELECT id FROM commands WHERE family='run-lifecycle' AND json_extract(request_json,'$.operation')='recover-crash' AND json_extract(request_json,'$.request.runId')=? ORDER BY id").all(source.runId).map(row => row.id), [request.commandId]);
         assert.deepEqual(native.prepare("SELECT id FROM command_audits WHERE command_id=? ORDER BY id").all(request.commandId).map(row => row.id), [request.commandId]);
         assert.deepEqual(native.prepare("SELECT id FROM run_failures WHERE run_id=? ORDER BY id").all(source.runId).map(row => row.id), [failureId]);
@@ -730,7 +724,7 @@ async function runLogout(): Promise<void> {
     if (operation.settlement === undefined) return;
     assert.equal(operation.phase, "cancelling"); currentPhase = operation.settlement.phase;
     if (cold) {
-      assert.equal(operation.settlement.requests.length, 1); assert.equal(operation.settlement.workers.length, 1);
+      assert.equal(operation.settlement.requests.length, 1);
       if (currentPhase === "commit-intent") assert.notEqual(operation.settlement.before, operation.settlement.after);
     }
   };
@@ -820,7 +814,7 @@ async function runLogout(): Promise<void> {
     const { testProcessImport } = await import("../compiled-process.js");
     const { scaledMs } = await import("../time-scale.js");
     const { credentialKeychainTestEnvironment } = await import("../helpers/credential-keychain-fake.js");
-    const { acquireRuntimeProcessLock } = await import("../../../src/backend/storage/sqlite/runtime-process-locks.js");
+    const { plantOldBuildArtifact } = await import("../helpers/storage/old-build-artifact.js");
     const child = fork(import.meta.filename, [String(controller.port), workspace, profileId, "logout-exit-only", nonce], {
       execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const closed = once(child, "close");
@@ -829,8 +823,7 @@ async function runLogout(): Promise<void> {
     try {
       const ready = await Promise.race([once(child, "message", { signal: AbortSignal.timeout(scaledMs(15_000)) }), closed.then(() => { throw new Error("logout nested child closed before birth proof"); })]);
       assert.deepEqual(ready[0], { scenario: "logout-exit-only", assertionsComplete: true }); assert.ok(child.pid);
-      acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: child.pid,
-        admission: { kind: "unbound-worker", authorityPath: path } }, wall);
+      plantOldBuildArtifact(join(workspace, rebuildRuntimeIsolation.processLockRoot), "workers");
       if (scenario === "logout-exited-process") { assert.equal(child.kill("SIGTERM"), true); assert.deepEqual(await closed, [null, "SIGTERM"]); }
       else liveProcess = { child, closed, diagnostics };
     } finally {
@@ -953,7 +946,6 @@ async function runLogout(): Promise<void> {
     const facts = AuthorityDatabase.readProfileMaintenanceInventory(owner);
     assert.deepEqual(facts.writeIntents.find(intent => "runId" in intent && intent.runId === source.runId), source.intent);
     assert.equal(facts.runs.find(run => run.envelope.runId === source.runId)?.lifecycle.state, "parked-write");
-    assert.equal(facts.leases.find(lease => lease.workerId === source.workerId)?.lifecycle.state, "stopped");
     const operationBytes = fs.readFileSync(operationPath());
     assert.equal(runtime.session.resumeLogout(operation.operationId).state, "cancelling");
     assert.deepEqual(AuthorityDatabase.readProfileMaintenanceInventory(owner), facts);

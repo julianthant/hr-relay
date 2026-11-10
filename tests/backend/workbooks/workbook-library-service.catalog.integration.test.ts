@@ -19,7 +19,7 @@ afterEach(() => databases.splice(0).forEach(database => database.close()));
 function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: Pick<Parameters<typeof createWorkbookLibraryService>[0], 'resultRun'> = {}) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(sql);
-  const selectionTable = SQLITE_MIGRATIONS.find(migration => migration.version === 24)?.statements
+  const selectionTable = SQLITE_MIGRATIONS.find(migration => migration.version === 25)?.statements
     .find(statement => statement.startsWith('CREATE TABLE workflow_workbook_selections'));
   if (selectionTable === undefined) throw new Error('current workbook selections migration unavailable');
   database.exec(selectionTable);

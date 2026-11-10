@@ -52,7 +52,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("button", { name: /^(Back|Forward)$/u })).toHaveCount(0);
       await expect(bar).not.toContainText("RRSS HR");
       await expect(bar.locator("svg.lucide-shield-check")).toHaveCount(0);
-      const railWidth = Math.max(208, Math.min(264, width / 4 - 96));
+      const railWidth = Math.max(176, Math.min(232, width / 4 - 128));
       expect((await bar.boundingBox())!.width).toBe(railWidth);
       expect((await bar.locator(".workspace-rail-header").boundingBox())!.height).toBe(64);
       for (const label of ["Notifications, 3 unread", "Search runs"]) {
@@ -111,7 +111,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await input.fill("not in the sample");
       await expect(search).toContainText("No runs match your search.");
       await input.fill("");
-      await expect(search.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().length);
+      await expect(search.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().filter(run => run.workflowId !== "ocr").length);
       const options = search.getByRole('option');
       await input.press('End');
       await expect(options.last()).toHaveAttribute('aria-selected', 'true');
@@ -134,7 +134,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await search.getByRole('button', { name: 'Clear search', exact: true }).click();
       await expect(input).toHaveValue('');
       await expect(input).toBeFocused();
-      await expect(search.getByRole('option')).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().length);
+      await expect(search.getByRole('option')).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().filter(run => run.workflowId !== "ocr").length);
       await page.keyboard.press('Escape');
       await expect(trigger).toBeFocused();
       const date = page.locator(".dashboard-log-date").getByRole("button", { name: /^Choose date/u });
@@ -196,7 +196,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(bell()).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeHidden();
       const bounds = (await inbox.boundingBox())!;
-      expect(bounds.width).toBe(Math.max(208, Math.min(264, width / 4 - 96)) - 1);
+      expect(bounds.width).toBe(Math.max(176, Math.min(232, width / 4 - 128)) - 1);
       expect(bounds.y).toBeGreaterThanOrEqual(0);
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(width === 1024 ? 720 : 1000);
       await expect(inbox.getByRole("button", { name: /Snooze|Enable/u })).toHaveCount(0);
@@ -286,11 +286,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(ping).toContainText("EID 10101010");
 
       await captureSemanticEvidence(page, info, `notification-ping-${size}`);
+      await ping.locator('[data-slot="toast-close"]').hover();
       await expect(ping.getByRole("button")).toHaveAccessibleName("Dismiss");
       await page.getByRole("button", { name: /^Notifications/u }).click();
       await expect(ping).toHaveCount(0);
       await expect(page.locator(".notification-rail")).toBeVisible();
       await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);
+      await ping.locator('[data-slot="toast-close"]').hover();
       await ping.getByRole("button", { name: "Dismiss", exact: true }).click();
       await expect(ping).toHaveCount(0);
       await expect(page.locator(".notification-rail")).toHaveCount(0);

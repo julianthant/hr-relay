@@ -11,7 +11,6 @@ import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js"
 import { type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
 import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type SavedWorkbook } from "../../../models/dashboard/workbooks.js";
 import { WorkbookOperationRecordSchema } from "../../../models/dashboard/workbooks.js";
-import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { IsoInstantSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 const serializeSavedWorkbook = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
 
@@ -87,6 +86,13 @@ export const WORKBOOK_LIBRARY_CATALOG_MIGRATION = Object.freeze({ statements: [
 ] });
 
 const RowSchema = z.object({ id: z.string(), version: z.number().int().positive(), created_at: z.string(), saved_at: z.string(), payload_json: z.string() });
+function selectionFromRow(value: unknown) {
+  const row = z.object({ workflow_id: z.string(), revision: z.number(), accepted_command_id: z.string(), used_at: z.string(), payload_json: z.string() }).parse(value);
+  const record = WorkflowWorkbookSelectionRecordSchema.parse(JSON.parse(row.payload_json));
+  const columns = { workflow_id: record.workflowId, revision: record.revision, accepted_command_id: record.acceptedCommandId, used_at: record.usedAt };
+  for (const [column, expected] of Object.entries(columns)) if (row[column as keyof typeof columns] !== expected) throw new Error(`workflow_workbook_selections-row-${column}-mismatch`);
+  return record;
+}
 function fromRow(value: unknown): SavedWorkbook {
   try {
     const row = RowSchema.parse(value), record = decodeSavedWorkbook(JSON.parse(row.payload_json));
@@ -115,7 +121,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   const lastUsed = (workflowId: string) => stored(() => {
     const id = WorkflowIdSchema.parse(workflowId);
     const row = database.prepare('SELECT * FROM workflow_workbook_selections WHERE workflow_id=?').get(id);
-    return row === undefined ? undefined : WorkflowWorkbookSelectionRecordSchema.parse(nativeOrdinaryRecordFromRow('workflow_workbook_selections', row));
+    return row === undefined ? undefined : selectionFromRow(row);
   });
   const current = (id: string) => {
     const row = database.prepare('SELECT * FROM workbook_library WHERE id=?').get(id);

@@ -75,7 +75,7 @@ it(`continues a captured V1 browser journal at cold stopped startup after ${boun
     assert.equal(await stopped.upgradeBrowserRoots(probe, systemClock), "upgraded");
     stopped.release(); stopped = undefined;
     const currentMachine = RuntimeAdmission.acquireMachine(workspace, "exclusive", lifetime);
-    try { assert.deepEqual(currentMachine.readProfileRegistry().profiles, []); assert.equal(BrowserRootsSchema.parse(read(browsers)).schemaVersion, 2); }
+    try { assert.deepEqual(currentMachine.readProfileRegistry().profiles, []); assert.equal(BrowserRootsSchema.parse(read(browsers)).schemaVersion, 3); }
     finally { currentMachine.release(); }
   } finally { fault.mockRestore(); syncBuiltinESMExports(); stopped?.release(); await lifetime.close(); rmSync(workspace, { recursive: true, force: true }); }
 });

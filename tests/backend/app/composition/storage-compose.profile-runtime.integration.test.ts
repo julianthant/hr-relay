@@ -110,7 +110,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
       profileId: active.profileId, sessionEpoch: active.epoch, displayName: "Synthetic Middle Operator", initials: "SMO",
     });
     runtime.beginSupervisorConstruction(active.token);
-    runtime.bindSupervisor(active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined });
+    runtime.bindSupervisor(active.token, { snapshot: () => [], stopAll: async () => [] });
     const epoch = machine.readProfileRegistry().sessionGeneration;
     const relogin = runtime.session.signIn({ email: fields.email, password: fields.password, at: clock.now().toISOString() });
     assert.equal(relogin.state, "refused");

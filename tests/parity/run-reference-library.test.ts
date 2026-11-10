@@ -6,6 +6,7 @@ import { harness, disposeHttpRouteHarness } from '../support/helpers/backend/htt
 import { unexpectedWorkbookSync } from '../support/helpers/backend/workbook-sync.js';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { FIXTURE_BOOTSTRAP } from './helpers/fixture-bootstrap.js';
+import { assertMonotonicFrozen, installFrozenMonotonic } from './helpers/app-driver.js';
 import { FIXTURE_DAY_WIRE } from './helpers/fixture-queue.js';
 import { capturePresentationReference } from './helpers/presentation-reference.js';
 import { attachShellA11y } from './helpers/shell-proof.js';
@@ -89,6 +90,8 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
         await route.fulfill({ status: response.status, contentType: 'application/json', body });
       });
       await page.addInitScript(value => Reflect.set(window, 'relayParityTheme', value), theme);
+      // The queue behind the dialog shows live elapsed times from the monotonic clock; freeze it so captures do not depend on test speed.
+      await installFrozenMonotonic(page);
       await page.setViewportSize({ width, height: 1000 }); await page.goto(`${server.baseUrl}/?fixture=hub-integration`);
       await page.getByRole('button', { name: 'Start a run', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Start a run', exact: true });
@@ -105,6 +108,7 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await page.getByRole('menuitemradio', { name: 'People', exact: true }).click();
       await expect(dialog.locator(':scope > header')).toBeInViewport({ ratio: 1 });
       expect(await dialog.evaluate(node => node.scrollTop)).toBe(0);
+      await assertMonotonicFrozen(page);
       await capturePresentationReference(page, info, 'options', hash);
       await dialog.getByRole('button', { name: 'Preview plan', exact: true }).click();
       await expect(dialog.getByRole('heading', { name: 'Plan', exact: true })).toBeInViewport({ ratio: 1 });

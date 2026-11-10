@@ -58,8 +58,7 @@ async function buildBulkFixture() {
   assert.equal(completed.run.envelope.runId, f.run.envelope.runId);
   assert.equal(completed.outcome.state, "done");
   const owner = testWorkerLifetime(f.database, f.parentRun.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
-  const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.parentRun.envelope.workflow, workerId: owner.workerId, workerLifetime: owner.workerLifetime,
-    runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+  const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.parentRun.envelope.workflow, workerId: owner.workerId, runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   assert.ok(claimed.state === "applied" && "run" in claimed);
   assert.equal(claimed.run.envelope.runId, f.parentRun.envelope.runId);
   const claim = { workerId: owner.workerId, claimGeneration: claimed.run.claimGeneration };

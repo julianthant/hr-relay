@@ -43,14 +43,8 @@ export function reconcileStoppedLogout(database: AuthorityDatabase, operation: L
     appendRecoveryNotification(database.authority, run.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH",
       { runId: request.runId, version: request.expectedVersion }, settlement.stoppedAt, request.runId);
   }
-  for (const worker of settlement.workers) {
-    const slot = database.authority.workerSlots.get(worker.member.workerId), lease = database.authority.workerLeases.get(worker.member.workerId);
-    if (slot === undefined || lease === undefined || lease.processId !== worker.processId || lease.leaseGeneration !== worker.leaseGeneration
-      || slot.workerId !== worker.member.workerId || slot.workflow !== worker.member.workflowId
-      || slot.ordinal !== worker.member.ordinal || slot.poolIndex !== worker.member.poolIndex || slot.membershipRevision !== worker.member.membershipRevision) throw new Error("profile-logout-exit-source-changed");
-    for (const released of database.settleInterruptedWorker(lifetime, worker.member.workerId, worker.leaseGeneration, settlement.stoppedAt)) {
-      appendRecoveryNotification(database.authority, "RUN_CRASH_RESOURCES_RELEASED", released, settlement.stoppedAt);
-    }
+  for (const released of database.releaseHeldSessionLeases(lifetime, settlement.stoppedAt)) {
+    appendRecoveryNotification(database.authority, "RUN_CRASH_RESOURCES_RELEASED", released, settlement.stoppedAt);
   }
 }
 
@@ -65,14 +59,13 @@ export function reconcileStoppedStartupCrash(input: RecoveryInput): void {
   reconcileInterruptedRuns(input, input.lock, undefined, true);
 }
 
-export function reconcileExitedWorker(input: RecoveryInput & {
-  workerId: string; leaseGeneration: number;
-}): void {
-  reconcileInterruptedRuns(input, input.lock, { workerId: input.workerId, leaseGeneration: input.leaseGeneration });
+/** Settles one exited worker process: its claimed runs park or fail, and the Duo and exclusive-session leases it held are released. */
+export function reconcileExitedWorker(input: RecoveryInput & { workerId: string }): void {
+  reconcileInterruptedRuns(input, input.lock, input.workerId);
 }
 
 function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLock,
-  worker?: Readonly<{ workerId: string; leaseGeneration: number }>, stopped = false): void {
+  workerId?: string, stopped = false): void {
   const { machine, admission, database, lifecycle, clock } = input;
   const notify = (code: CleanupCode, identity: unknown, runId?: string) => appendRecoveryNotification(database.authority, code, identity, clock.now().toISOString(), runId);
 
@@ -87,14 +80,12 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
       for (const run of facts.runs) {
         const claim = runClaim(run);
         if (claim !== undefined) {
-          if (worker !== undefined && claim.workerId !== worker.workerId) continue;
-          const identity = database.crashRunRecoveryIdentity(run.envelope.runId);
-          if (worker !== undefined && identity.workerLifetime.leaseGeneration !== worker.leaseGeneration) throw new Error("worker-exit-lifetime-changed");
-          const result = requireLifecycleApplied(lifecycle.recoverCrash({ commandId: lifecycleCommandId("startup-crash", { runId: run.envelope.runId, version: run.version, ...identity }),
+          if (workerId !== undefined && claim.workerId !== workerId) continue;
+          const result = requireLifecycleApplied(lifecycle.recoverCrash({ commandId: lifecycleCommandId("startup-crash", { runId: run.envelope.runId, version: run.version, claim }),
             runId: run.envelope.runId, expectedVersion: run.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
-            ...identity, now: clock.now().toISOString() }, lock));
+            now: clock.now().toISOString() }, lock));
           notify(result.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH", { runId: run.envelope.runId, version: run.version }, run.envelope.runId);
-        } else if (worker === undefined && run.lifecycle.state === "queued" && run.pause === undefined && run.claimGeneration === 0
+        } else if (workerId === undefined && run.lifecycle.state === "queued" && run.pause === undefined && run.claimGeneration === 0
           && localDatePart(new Date(run.envelope.enqueuedAt)) < clock.todayLocal()) {
           database.assertPristineQueuedRun(run.envelope.runId, run.version);
           requireLifecycleApplied(lifecycle.transition({ commandId: lifecycleCommandId("startup-stale-queue", { runId: run.envelope.runId, version: run.version }),
@@ -103,25 +94,10 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
           notify("RUN_STALE_QUEUE_CANCELLED", run.envelope.runId, run.envelope.runId);
         }
       }
-      if (worker === undefined) for (const slot of facts.slots) {
-        if (slot.retiredAt !== null) continue;
-        const hold = database.authority.workerSlots.verification(slot.workerId);
-        if (hold === undefined) continue;
-        const pool = database.authority.workerPools.get(slot.workflow);
-        if (pool === undefined) throw new Error("worker-verification-pool-unavailable");
-        const retired = database.retireVerificationWorker({ ...admission.profileBinding, commandId: lifecycleCommandId("startup-verification", {
-          workerId: slot.workerId, revision: slot.membershipRevision, reservation: hold.command.commandId }),
-          grantCommandId: hold.command.commandId, workerId: slot.workerId, expectedRevision: slot.membershipRevision,
-          expectedPoolVersion: pool.version, now: clock.now().toISOString(), cleanup: "interrupted" }, lock);
-        for (const released of retired.released) notify("RUN_CRASH_RESOURCES_RELEASED", released);
-      }
-      for (const lease of facts.leases) {
-        if (worker !== undefined && lease.workerId !== worker.workerId) continue;
-        for (const released of database.settleInterruptedWorker(lock, lease.workerId,
-          worker?.leaseGeneration ?? lease.leaseGeneration, clock.now().toISOString())) {
-          notify("RUN_CRASH_RESOURCES_RELEASED", released);
-        }
-      }
+      // Holding the port proves no earlier holder lives, so a boot releases every held lease.
+      const released = workerId === undefined ? database.releaseHeldSessionLeases(lock, clock.now().toISOString())
+        : database.settleInterruptedWorker(lock, workerId, clock.now().toISOString());
+      for (const lease of released) notify("RUN_CRASH_RESOURCES_RELEASED", lease);
     });
   } catch (cause) {
     if (cause instanceof AuthoritySourceClosureUnprovedError) throw cause;

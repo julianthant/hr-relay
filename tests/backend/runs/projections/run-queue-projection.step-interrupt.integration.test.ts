@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
-import { claimEventOf, DAY, declareProjectionWorker, instantOffsetOf, uuidOf, workerLeaseOf,
+import { claimEventOf, DAY, declareProjectionWorker, instantOffsetOf, uuidOf, workerMemberOf,
   type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import { RunPauseSchema } from "../../../../src/models/run/record.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -24,8 +23,12 @@ function setWritesInFlight(w: DashboardWorld, runIds: readonly string[]): void {
 
 function claimed(w: DashboardWorld, seed: number, patch: Record<string, unknown> = {}): void {
   queuedEventOf(w, { seed, descriptor: personLookupDescriptor, claimGeneration: 1, version: 2,
-    lifecycle: { state: "running", ...CLAIM, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } } });
+    lifecycle: { state: "running", ...CLAIM } });
   claimEventOf(w, seed);
+  patchRun(w, seed, patch);
+}
+
+function patchRun(w: DashboardWorld, seed: number, patch: Record<string, unknown>): void {
   const run = w.authority.getRun(uuidOf(seed));
   assert.ok(run);
   w.authority.put({ ...run, ...patch });
@@ -34,20 +37,7 @@ function claimed(w: DashboardWorld, seed: number, patch: Record<string, unknown>
 
 function busyWorker(w: DashboardWorld): void {
   declareProjectionWorker(w.authority, workerId, 1);
-  w.authority.putWorkerLease(workerLeaseOf({ workerId,
-    lifecycle: { state: "busy", startedAt: at, heartbeatAt: instantOffsetOf(0, 2_000), runId: uuidOf(1) } }));
-}
-
-function pendingStop(w: DashboardWorld): void {
-  const commandId = uuidOf(91), member = { workflowId: "person-lookup", workerId, ordinal: 1, poolIndex: 1, membershipRevision: 1 };
-  const basis = { leaseGeneration: 1, controlRevision: 1 };
-  const control = WorkerControlRecordSchema.parse({ commandId, scope: "worker-pool:person-lookup", executorId: uuidOf(92),
-    admittedAt: at, expiresAt: instantOffsetOf(0, 180_000), basisVersion: 1, phase: { state: "admitted" },
-    request: { commandId, family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: at,
-      target: { workerId, membershipRevision: 1, expectedVersion: 1, controlBasis: basis } },
-    reset: { commandId, member, lifetime: { leaseGeneration: 1, processId: 4242, startedAt: at }, basis, reservedControlRevision: 2,
-      work: { kind: "current", cascade: [], current: { state: "claimed", runId: uuidOf(1), version: 2, attempt: 1, workerId, claimGeneration: 1 } } } });
-  w.authority.workerControls = () => [control];
+  w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId, activity: { state: "busy", runId: uuidOf(1) } }));
 }
 
 const rowOf = (w: DashboardWorld, seed: number) => w.projection.queueSurface(uuidOf(seed));
@@ -98,12 +88,12 @@ describe("served step interrupt", () => {
     assert.deepEqual(cardOf(w)?.interrupt, { action: "pause", step: "finish-write" });
   });
 
-  it("serves a busy worker card a stop interrupt while a stop-worker operation is pending", async () => {
+  it("serves a busy worker card a stop interrupt while the Reset's Cancel is pending", async () => {
     const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
     busyWorker(w);
     claimed(w, 1);
     assert.equal(cardOf(w)?.interrupt, undefined);
-    pendingStop(w);
+    patchRun(w, 1, { cancelRequested: true });
     assert.equal(cardOf(w)?.interrupt?.action, "stop");
     assert.equal(cardOf(w)?.interrupt?.step, "cancel");
     setWritesInFlight(w, [uuidOf(1)]);
@@ -113,7 +103,7 @@ describe("served step interrupt", () => {
   it("serves an idle worker card no interrupt", async () => {
     const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
     declareProjectionWorker(w.authority, workerId, 1);
-    w.authority.putWorkerLease(workerLeaseOf({ workerId }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId }));
     assert.equal(cardOf(w)?.interrupt, undefined);
   });
 });

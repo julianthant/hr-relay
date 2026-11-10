@@ -176,7 +176,7 @@ field membership and discriminated states. The client checks identity as well as
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
 | Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
-| Commands | `commands/shared-commands.ts` | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk` |
+| Commands | `commands/shared-commands.ts`, `index.ts` (`workerCommandResult`) | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk`; read-only `GET /api/v1/worker-commands/:commandId` |
 | Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>` |
 
 `FrontendBootstrapWire` carries actor, server clock, descriptor/config identity, workflows,
@@ -206,6 +206,13 @@ If a later review revision supersedes an uncertain correction, that result still
 original historical effect. The executor settles that command; the editor retains its draft as a
 conflict until explicit local discard reveals the current review. Missing or mismatched original
 command evidence remains uncertain and cannot enable discard or another dispatch.
+
+Read-only `/api/v1/worker-commands/:commandId` returns a local-operator worker command's journaled
+request and audited result, or `unavailable` when no audit exists, without dispatching it again.
+The Sessions panel reads it right after a worker control's reply is lost, on each later served day
+and on Check outcome. A recorded rejection settles the attempt as refused, releases its lock and
+toasts once. A recorded success still needs exact served readback. A command with no audit, or one
+whose recorded request differs, stays uncertain.
 
 The review projection supplies edit availability and the current approval-gate target. The shared
 Records renderer receives canonical form fields, raw local drafts, native inclusion state and source

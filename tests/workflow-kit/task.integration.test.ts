@@ -11,7 +11,7 @@ import { defineBrowserStore, defineTaskStoreRegistry } from "../../src/workflow-
 import { defineTask } from "../../src/workflow-kit/task.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../src/workflow-kit/validation/scenario-execution.js";
 import { RUN_ID, sequentialIdFactory, WORKFLOW_ID } from "../support/fixtures/phase1f-run-fixtures.js";
-import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -77,7 +77,7 @@ describe("failure, retry, and resume", () => {
     database.authority.runs.enqueue(personLookupQueuedRun());
     const claimMember1 = database.authority.workerSlots.get(slot.workerId);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: slot.workerId, now });
+    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };
     const outcome = await executeClaimedRun(deps, { run: claimed.run, claim, signal: SIGNAL });

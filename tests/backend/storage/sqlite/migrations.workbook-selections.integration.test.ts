@@ -31,7 +31,7 @@ function fixture(version = 23) {
 }
 function upgrade(f: ReturnType<typeof fixture>) {
   f.transaction(() => {
-    const migration = SQLITE_MIGRATIONS.find(migration => migration.version === 24);
+    const migration = SQLITE_MIGRATIONS.find(migration => migration.version === 25);
     if (!migration) throw new Error('selection migration missing');
     for (const statement of migration.statements) f.database.exec(statement);
   });
@@ -45,15 +45,17 @@ function source(f: ReturnType<typeof fixture>, id = 'library') {
         { id: 'person', cells: [{ value: '10000001' }, { value: new Date(at), numFmt: 'yyyy-mm-dd', background: '#f0f0f0' }] }] }] } }));
 }
 function rows(f: ReturnType<typeof fixture>) {
-  return Object.fromEntries(migrationTableNames(23).map(table => [table, f.database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+  const present = new Set(f.database.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
+  return Object.fromEntries(migrationTableNames(23).filter(table => present.has(table)).map(table => [table, f.database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
 }
 function selection() {
   return { workflowId: 'person-lookup', acceptedCommandId: randomUUID(), usedAt: at,
     sources: [{ libraryId: 'library', sheetId: 'people' }, { libraryId: 'other', sheetId: 'people' }] };
 }
 
-it('adds an empty selection authority at 24 and preserves prior mappings, metadata journals, revisions and completed merge evidence exactly', () => {
-  const f = fixture(), fresh = fixture(24);
+it('adds an empty selection authority at 25 and preserves prior mappings, metadata journals, revisions and completed merge evidence exactly', () => {
+  const f = fixture(), fresh = fixture();
+  upgrade(fresh);
   try {
     const first = source(f), other = source(f, 'other');
     f.repository.putType({ id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null });
@@ -85,8 +87,8 @@ it('adds an empty selection authority at 24 and preserves prior mappings, metada
     expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
     expect(f.repository.lastUsed('person-lookup')).toBeUndefined();
     expect(f.database.prepare('SELECT * FROM workflow_workbook_selections').all()).toEqual([]);
-    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(24);
-    expect(migrationTableNames(24).filter(table => !migrationTableNames(23).includes(table))).toEqual(['workflow_workbook_selections']);
+    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(25);
+    expect(migrationTableNames(25).filter(table => !migrationTableNames(24).includes(table))).toEqual(['workflow_workbook_selections']);
     expect(tableClassification('workflow_workbook_selections')).toBe('authority');
     expect(auditMigrationTableCoverage()).toEqual([]);
     const layout = (database: DatabaseSync) => database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
@@ -96,7 +98,7 @@ it('adds an empty selection authority at 24 and preserves prior mappings, metada
 });
 
 it('persists ordered unique source identities with strict idempotence, revisions and conflicts, retaining stale selections', () => {
-  const f = fixture(24);
+  const f = fixture(25);
   try {
     source(f);
     const value = selection(), before = f.changes();
@@ -116,7 +118,7 @@ it('persists ordered unique source identities with strict idempotence, revisions
     f.repository.libraryAction('library', { operationId: 'remove', expectedRevision: 1, expectedVersion: 1, change: { kind: 'remove' } }, at);
     f.database.exec('DELETE FROM runs; DELETE FROM deleted_runs');
     expect(f.repository.lastUsed(value.workflowId)).toEqual(retained);
-    const other = fixture(24);
+    const other = fixture(25);
     try { expect(other.repository.lastUsed(value.workflowId)).toBeUndefined(); } finally { other.database.close(); }
     for (const invalid of [{ ...value, sources: [] }, { ...value, sources: [value.sources[0], value.sources[0]] },
       { ...value, sources: [{ ...value.sources[0], versionId: 'original' }] }, { ...value, profileId: randomUUID() }]) {
@@ -127,7 +129,7 @@ it('persists ordered unique source identities with strict idempotence, revisions
 });
 
 it.each(['workflow_id', 'revision', 'accepted_command_id', 'used_at', 'payload_json'] as const)('refuses selection scalar/payload corruption in %s', column => {
-  const f = fixture(24);
+  const f = fixture(25);
   try {
     const record = f.repository.rememberLastUsed(selection());
     const row = f.database.prepare('SELECT * FROM workflow_workbook_selections').get();
@@ -169,7 +171,7 @@ it('binds the pending-operation guard to the plan digest while retaining histori
   const fingerprint = '1'.repeat(64);
   expect(deriveAuthorityUpgradePlanDigest(7, fingerprint, 8)).toBe('61f8506ea8223f57ea6e272847da8cf4eb384f9b1a0de118932f277eda9d71d6');
   expect(deriveAuthorityUpgradePlanDigest(7, fingerprint, 23)).not.toBe(deriveAuthorityUpgradePlanDigest(7, fingerprint));
-  expect(deriveAuthorityUpgradePlanDigest(23, fingerprint)).toBe(deriveAuthorityUpgradePlanDigest(23, fingerprint, 24));
+  expect(deriveAuthorityUpgradePlanDigest(24, fingerprint)).toBe(deriveAuthorityUpgradePlanDigest(24, fingerprint, 25));
 });
 
 function capturedPatch() {
@@ -187,7 +189,7 @@ function capturedSource(f: ReturnType<typeof fixture>, extra: Record<string, unk
 }
 
 it('applies captured write authority to a General workbook and replays its historical revision and receipt without type ownership', () => {
-  const f = fixture(24);
+  const f = fixture(25);
   try {
     capturedSource(f);
     const operation = capturedPatch();
@@ -212,7 +214,7 @@ it('applies captured write authority to a General workbook and replays its histo
 
 it.each(['read-field', 'foreign-sheet', 'missing-version', 'missing-selection', 'missing-cas', 'selection-cas', 'empty-values', 'duplicate-fields', 'missing-key', 'outside-required', 'extra-authority', 'add', 'operator'] as const)(
   'refuses invalid captured authority before journal effects: %s', fault => {
-  const f = fixture(24);
+  const f = fixture(25);
   try {
     capturedSource(f);
     const operation = capturedPatch();
@@ -237,7 +239,7 @@ it.each(['read-field', 'foreign-sheet', 'missing-version', 'missing-selection', 
 });
 
 it.each(['stale', 'prefilled', 'formula', 'unsupported'] as const)('retains captured write safety refusal for %s', fault => {
-  const f = fixture(24);
+  const f = fixture(25);
   try {
     capturedSource(f, fault === 'formula' ? { hasFormulas: true } : fault === 'unsupported' ? { unsupportedMetadata: true } : {}, fault === 'prefilled' ? '10000002' : null);
     const operation = capturedPatch();
@@ -259,7 +261,7 @@ it('retains the exact JSON and digest of a predecessor workbook operation', () =
 });
 
 it('requires resolution to retain the complete captured source authority and digest', () => {
-  const f = fixture(24);
+  const f = fixture(25);
   try {
     capturedSource(f);
     const operation = capturedPatch();

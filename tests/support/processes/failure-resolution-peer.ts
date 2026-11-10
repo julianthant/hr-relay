@@ -21,11 +21,12 @@ const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 5000, 
 let closing: Promise<void> | undefined;
 const close = (): Promise<void> => closing ??= (async () => {
   database.close(); admission.release(); machine.release();
-  await lifetime.close();
   if (process.connected) {
     if (process.disconnect === undefined) throw new Error("diagnostic peer parent channel disappeared");
     process.disconnect();
   }
+  // A worker never closes its lifetime listener; exiting releases it.
+  process.exit();
 })();
 parentStop.signal.addEventListener("abort", () => {
   process.exitCode = 1;

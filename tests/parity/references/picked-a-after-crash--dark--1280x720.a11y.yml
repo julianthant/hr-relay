@@ -1,7 +1,7 @@
 # picked-a-after-crash--dark--1280x720
 # adapter: fixture
 # fixture: picked-dashboard-a
-# descriptorHash: ab758fc761b1f705ae10c541197ec5250898da197195c52e06fed64c7bd9bdeb
+# descriptorHash: 5902cae11b4a5f7d95e142b7366b807886e3f75ab5b1de56ef7806d2109fd0c6
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: dark  variant: default
 # capturedAt: 2026-08-03
@@ -10,7 +10,7 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
-  - button "Notifications, 2 unread"
+  - button "Notifications, 1 unread"
   - button "Search runs"
   - navigation "Workflows":
     - heading "Search" [level=3]
@@ -32,9 +32,9 @@
       - listitem:
         - button "Emergency Contact"
       - listitem:
-        - button "Oath Signature": Oath Signature 1
+        - button "Oath Signature"
       - listitem:
-        - button "Oath Upload": Oath Upload 1
+        - button "Oath Upload"
     - heading "Work Study" [level=3]
     - list:
       - listitem:
@@ -54,7 +54,7 @@
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1
+        - button "OnBase"
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:
@@ -62,7 +62,7 @@
 - main:
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
-    - text: "Finished today 1 Today: 0 completed 1 failed"
+    - text: Needs you 1
     - button "Battistessa, Johnnie — failed" [pressed]:
       - text: Battistessa, Johnnie Failed Relay closed during Searching. Rerun continues after authenticated completed steps. 9:52 AM
       - button "Attempts for Battistessa, Johnnie": "#1"

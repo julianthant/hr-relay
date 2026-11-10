@@ -24,9 +24,6 @@ import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admissio
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createBrowserRoots } from "../../../../../src/backend/storage/browser-roots.js";
 import { readFixedLayoutIntent } from "../../../../../src/backend/storage/maintenance/fixed-layout.js";
-import { WorkerBrowserObservationSchema } from "../../../../../src/models/run/worker-control.js";
-import { isLiveWorker } from "../../../../../src/models/run/worker.js";
-import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/backend/storage/sqlite/migrations.js";
@@ -91,8 +88,18 @@ function post(port: number) {
   }, body: JSON.stringify(login) });
 }
 function rows(path: string, version: number) {
-  return withReadonlyAuthoritySnapshot(path, database => Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides")
-    .map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
+  return withReadonlyAuthoritySnapshot(path, database => {
+    const present = new Set(database.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && present.has(table))
+      .map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+  });
+}
+
+/** The worker custody migration drops these tables and rebuilds `worker_slots`; its own tests prove that conversion. */
+const DROPPED_WORKER_TABLES = new Set(["worker_controls", "browser_sessions", "worker_leases"]);
+function custodyConverted(table: string, after: Readonly<Record<string, unknown>>): boolean {
+  if (DROPPED_WORKER_TABLES.has(table)) assert.equal(after[table], undefined);
+  return DROPPED_WORKER_TABLES.has(table) || table === "worker_slots";
 }
 
 it.each([8, 9, 10, 11, 12, 13] as const)("automatically upgrades registered schema %s before the first HTTP listener or sign-in", async sourceVersion => {
@@ -110,6 +117,7 @@ it.each([8, 9, 10, 11, 12, 13] as const)("automatically upgrades registered sche
     assert.equal(starts, 0); assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const after = rows(profile.path, sourceVersion);
     for (const [table, previous] of Object.entries(before)) {
+      if (custodyConverted(table, after)) continue;
       if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
@@ -378,22 +386,17 @@ function historicalTen(path: string): void {
 }
 
 for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] as const) it(
-  `${mode === "unknown" ? "refuses upgrade with" : "tombstones"} ${mode} work and keeps held durable leases intact (fixed layout: ${move})`, async () => {
+  `${mode === "unknown" ? "refuses upgrade with" : "tombstones"} ${mode} work (fixed layout: ${move})`, async () => {
     const world = createRunRecordServiceTestWorld(), f = await world.interruptedFixture({ nativePaths: move });
     const profileId = f.admission.profileBinding.profileId, workspace = f.machine.readInstallationContext()?.workspace; assert.ok(workspace);
     const intent = mode === "unknown" ? world.parkedWriteIntent(f.database, f.run, { writeIntentId: randomUUID(), code: "unknown", message: "Unresolved external write" }) : undefined;
-    const heldWorker = f.database.authority.workerLeases.get(CANONICAL_WORKER_ID); assert.ok(heldWorker && isLiveWorker(heldWorker));
     if (move) {
       const custody = f.database.readProfileResourceCustody(), active = f.database.authority.runtimeConfig.get(); assert.ok(active);
       const snapshot = custody.configSnapshots.find(row => row.configSnapshotId === active.configSnapshotId); assert.ok(snapshot);
-      const worker = heldWorker;
       const profileRoot = snapshot.config.paths.browserProfileRoot, profileDirectory = join(profileRoot, "w1", "ucpath");
       const launch = createBrowserRoots(f.admission).beginLaunch({ profileId, profileRoot, profileDirectory, credentialFingerprint: "b".repeat(64),
         owner: { kind: "worker", database: f.database, workerId: CANONICAL_WORKER_ID } });
       mkdirSync(profileDirectory, { recursive: true, mode: 0o700 }); launch.opened();
-      f.database.authority.workerControls.observe({ workerId: CANONICAL_WORKER_ID, leaseGeneration: worker.leaseGeneration, sessionId: randomUUID(), system: "ucpath",
-        configFingerprint: snapshot.fingerprint, signInFingerprint: "b".repeat(64), browserMode: "headless", profileDirectory,
-        acceptDownloads: false, exclusive: true, health: "unknown", observedAt: f.clock.now().toISOString(), openedAt: f.clock.now().toISOString(), profileRevision: 1 });
     }
     const credentialKey = "ac".repeat(32);
     assert.equal(f.database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId: CANONICAL_WORKER_ID, system: "ucpath", now: f.clock.now().toISOString(), ttlMs: 60_000 }).state, "acquired");
@@ -403,7 +406,6 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
     try {
       await f.closeController(); historicalTen(path);
       const before = rows(path, 10);
-      assert.ok(before.worker_leases?.some(row => row.worker_id === CANONICAL_WORKER_ID && row.state === heldWorker.lifecycle.state));
       const held = lifetime = await RuntimeLifetimeLock.acquire(0);
       const upgrade = (async () => {
         if (target !== undefined) {
@@ -426,17 +428,8 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
       assert.deepEqual(after.runs ?? [], []);
       assert.deepEqual((after.deleted_runs ?? []).map(row => [row.run_id, row.cleanup_state]), [[f.run.envelope.runId, "pending"]]);
       for (const [table, previous] of Object.entries(before)) {
+        if (custodyConverted(table, after)) continue;
         if (["runs", "deleted_runs", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts", "run_failures", "run_checkpoints"].includes(table)) continue;
-        if (move && table === "browser_sessions") {
-          const plan = readFixedLayoutIntent(currentWorkspace)?.profiles.find(row => row.profileId === profileId); assert.ok(plan);
-          assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => {
-            const browser = WorkerBrowserObservationSchema.parse(JSON.parse(String(row.payload_json)));
-            const binding = plan.browserSnapshots.find(entry => entry.sourceFingerprint === browser.configFingerprint); assert.ok(binding && browser.profileDirectory);
-            return { ...row, auth_fingerprint: binding.snapshot.fingerprint, payload_json: canonicalJsonStringify({ ...browser,
-              profileDirectory: join(binding.snapshot.config.paths.browserProfileRoot, "w1", "ucpath"), configFingerprint: binding.snapshot.fingerprint }) };
-          }));
-          continue;
-        }
         if (move && ["database_states", "settings", "run_search"].includes(table)) continue;
         if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
         else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
@@ -448,7 +441,6 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
       database = AuthorityDatabase.open(admission, { path: currentPath, migrationOwner: "startup-upgrade-recovery", busyTimeoutMs: 250 }, f.clock,
         undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
       assert.equal(database.authority.runs.get(f.run.envelope.runId), undefined);
-      assert.equal(database.authority.workerLeases.get(CANONICAL_WORKER_ID)?.lifecycle.state, "stopped");
     } finally { database?.close(); admission?.release(); machine?.release(); await lifetime?.close(); await world.cleanup(); if (target !== undefined) rmSync(target, { recursive: true, force: true }); }
   },
 );
@@ -466,6 +458,7 @@ it("upgrades a pending sign-up database before onboarding recovery without publi
     assert.deepEqual(readFileSync(operationPath), operation);
     const after = rows(f.path, 10);
     for (const [table, previous] of Object.entries(before)) {
+      if (custodyConverted(table, after)) continue;
       if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
@@ -508,7 +501,7 @@ for (const [phase, move] of [["prepared", false], ["commit-intent", false], ["do
       const fingerprint = withReadonlyAuthoritySnapshot(f.path, database => inspectOpenDatabase(database, 10).authorityContentFingerprint);
       const operation = LogoutOperationSchema.parse({ ...old, settlement: { phase, stoppedAt: old.at, processId: process.pid,
         before: phase === "done" ? "a".repeat(64) : fingerprint,
-        ...(phase === "prepared" ? {} : { after: phase === "done" ? fingerprint : "b".repeat(64) }), requests: [], workers: [] } });
+        ...(phase === "prepared" ? {} : { after: phase === "done" ? fingerprint : "b".repeat(64) }), requests: [] } });
       f.machine.publishProfileOperation(operation);
       session.close(); sourceAdmission.release(); await f.closeController();
       await lifetime.close(); lifetime = await RuntimeLifetimeLock.acquire(0);
@@ -522,7 +515,7 @@ for (const [phase, move] of [["prepared", false], ["commit-intent", false], ["do
       const { settlement: previousSettlement, ...previousIdentity } = operation, { settlement, ...identity } = next;
       assert.deepEqual(identity, previousIdentity); assert.ok(previousSettlement && settlement);
       const current = withReadonlyAuthoritySnapshot(f.path, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint);
-      assert.deepEqual(settlement.requests, previousSettlement.requests); assert.deepEqual(settlement.workers, previousSettlement.workers);
+      assert.deepEqual(settlement.requests, previousSettlement.requests);
       assert.equal(settlement.phase, phase === "done" ? "done" : "prepared");
       assert.equal(phase === "done" ? settlement.after : settlement.before, current);
       assert.equal(readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, 1);

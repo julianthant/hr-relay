@@ -1,6 +1,7 @@
 import type { DashboardCommandService } from "../../../runs/commands/command-service.js";
 import type { BulkCommandAcceptanceAuthority } from "../../../runs/commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../../rules/commands/commands.js";
+import type { createWorkerCommandResultQuery } from "../../../runs/queries/worker-command-result.js";
 import type { IntakeService } from "../../../runs/commands/intake-service.js";
 
 export interface CommandsRouteDeps {
@@ -10,4 +11,5 @@ export interface CommandsRouteDeps {
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;
   readonly intake: Pick<IntakeService, "prepare">;
+  readonly workerCommandResult?: ReturnType<typeof createWorkerCommandResultQuery>;
 }

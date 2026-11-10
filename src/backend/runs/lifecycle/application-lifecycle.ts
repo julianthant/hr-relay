@@ -23,9 +23,7 @@ export function createApplicationLifecycle(input: Readonly<{
     const admission = input.database.authority.runs.admission();
     const blocked = active.some(run => run.lifecycle.state === "parked-write")
       || facts.writeIntents.some(intent => !["committed", "observed-present"].includes(intent.status));
-    const busy = active.length > 0 || facts.leases.some(lease => lease.lifecycle.state !== "stopped")
-      || facts.browsers.some(browser => browser.health !== "closed") || facts.duoLeases.some(lease => lease.state === "held")
-      || facts.controls.some(control => control.auditedAt === undefined) || facts.pendingArtifacts.length > 0;
+    const busy = active.length > 0 || facts.duoLeases.some(lease => lease.state === "held") || facts.pendingArtifacts.length > 0;
     const runtime = input.database.authority.runtimeConfig.get();
     if (runtime === undefined) throw new ApplicationAdmissionRefusedError("application-runtime-unavailable");
     return ApplicationLifecycleSchema.parse({ runtimeGeneration: runtime.generation,

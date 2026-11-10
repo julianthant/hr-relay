@@ -11,11 +11,7 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH as PROTECTED_SETTINGS_SCHEMA_HASH, StoppedProtectedSettingsApplyInputSchema as ProtectedSettingsApplyInputSchema, StoppedProtectedStoreRecordSchema as ProtectedStoreRecordSchema } from "../../../../src/backend/storage/configuration/protected-settings-upgrade.js";
-import { WorkerSlotRecordSchema } from "../../../../src/models/run/worker-slot.js";
 import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
-import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
-import { WorkerBrowserObservationSchema, WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
-import { createWorkerControlRepository } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { CommandAuditRecordSchema, WorkerBrowserCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveProfileNames } from "../../../../src/models/profiles/profile.js";
@@ -42,7 +38,7 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
   const artifact = options.neverInitialized ? join(artifactRoot, `${"a".repeat(64)}.artifact`)
     : retainedHistoricalData({ databasePath, profileRoot: stateRoot }, options.unknownWrite, 6);
   if (options.neverInitialized) writeFileSync(artifact, "unreferenced managed artifact", { mode: 0o600 });
-  let browser: ReturnType<typeof WorkerBrowserObservationSchema.parse> | undefined;
+  let browser: Readonly<Record<string, unknown>> | undefined;
   if (options.closedBrowser) {
     const native = new DatabaseSync(databasePath);
     try {
@@ -50,27 +46,29 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
       const pool = WorkerPoolRecordSchema.parse({ workflow: "person-lookup", desiredWorkers: options.unretiredWorker ? 1 : 0,
         version: options.unretiredWorker ? 1 : 2, plannedBy: "local-operator", plannedAt: at, createdAt: at, updatedAt: at });
       native.prepare("INSERT INTO worker_pools VALUES(?,?,?,?,?,?)").run(pool.workflow, pool.desiredWorkers, pool.version, canonicalJsonStringify(pool), at, at);
-      const origin = WorkerSlotRecordSchema.parse({ workerId: "person-lookup-worker-1", workflow: "person-lookup", ordinal: 1, poolIndex: 1,
-        membershipRevision: 1, phase: "failed", retiredAt: null, retirementCommandId: null, reservationCommandId: null, createdAt: at, updatedAt: at });
+      // Rows in the schema-6 worker tables are written as that schema stored them.
+      const origin = { workerId: "person-lookup-worker-1", workflow: "person-lookup", ordinal: 1, poolIndex: 1,
+        membershipRevision: 1, phase: "failed", retiredAt: null as string | null, retirementCommandId: null as string | null, reservationCommandId: null, createdAt: at, updatedAt: at };
       const retirement = options.unretiredWorker ? undefined : WorkerBrowserCommandRequestSchema.parse({ commandId: randomUUID(),
         requestedAt: at, requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
         target: { workflowId: "person-lookup", expectedVersion: 1 }, payload: { desiredWorkers: 0 } });
       if (retirement !== undefined) insertNativeCommand(native, retirement);
-      const slot = retirement === undefined ? origin : WorkerSlotRecordSchema.parse({ ...origin,
-        membershipRevision: 2, retiredAt: at, retirementCommandId: retirement.commandId });
+      const slot = retirement === undefined ? origin : { ...origin, membershipRevision: 2, retiredAt: at, retirementCommandId: retirement.commandId };
       native.prepare("INSERT INTO worker_slots VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(slot.workerId, slot.workflow, slot.ordinal, slot.membershipRevision,
         slot.phase, slot.retiredAt, slot.retirementCommandId, slot.reservationCommandId, canonicalJsonStringify(slot), at, at);
-      const lease = WorkerLeaseRecordSchema.parse({ workerId: slot.workerId, workflow: slot.workflow, browserSystems: ["ucpath"], processId: 2147483647,
+      const lease = { workerId: slot.workerId, workflow: slot.workflow, browserSystems: ["ucpath"], processId: 2147483647,
         leaseGeneration: 1, controlRevision: 1, control: { directive: "stop", requestedAt: at, requestedBy: "local-operator" },
         lifecycle: options.nonterminalWorker ? { state: "stopping", startedAt: at, heartbeatAt: at }
-          : { state: "stopped", startedAt: at, stoppedAt: at, reason: "shutdown" }, version: 1, createdAt: at, updatedAt: at });
+          : { state: "stopped", startedAt: at, stoppedAt: at, reason: "shutdown" }, version: 1, createdAt: at, updatedAt: at };
       native.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId, lease.workerId, lease.workflow, 1, 1, lease.lifecycle.state, "stop",
-        lease.lifecycle.state === "stopping" ? lease.lifecycle.heartbeatAt : null, 1, canonicalJsonStringify(lease), at, at);
-      browser = WorkerBrowserObservationSchema.parse({ workerId: slot.workerId, leaseGeneration: 1, sessionId: randomUUID(), system: "ucpath",
+        options.nonterminalWorker ? at : null, 1, canonicalJsonStringify(lease), at, at);
+      const observed = { workerId: slot.workerId, leaseGeneration: 1, sessionId: randomUUID(), system: "ucpath",
         configFingerprint: config?.fingerprint, signInFingerprint: "a".repeat(64), browserMode: "headless", profileDirectory: join(stateRoot, "browsers", "w1", "ucpath"),
-        acceptDownloads: true, exclusive: true, health: "closed", observedAt: at, openedAt: at, profileRevision: 1 });
-      const controls = createWorkerControlRepository({ database: native, mutate: (_table, work) => work().result });
-      controls.observe(browser);
+        acceptDownloads: true, exclusive: true, health: "closed", observedAt: at, openedAt: at, profileRevision: 1 };
+      native.prepare(`INSERT INTO browser_sessions(id,worker_id,lease_generation,system,state,auth_fingerprint,presentation,profile_revision,payload_json,opened_at,observed_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(observed.sessionId, observed.workerId, 1, observed.system, observed.health, observed.configFingerprint ?? null,
+        observed.browserMode, 1, canonicalJsonStringify(observed), at, at);
+      browser = observed;
       if (retirement !== undefined) {
         const application = { result: { state: "applied", commandId: retirement.commandId, affectedTargets: [{ family: "worker-pool", workflowId: "person-lookup" }] },
           versionChanges: [], affectedDependencyIds: [] };
@@ -78,11 +76,11 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
         settleNativeCommand(native, audit);
         native.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,NULL,?,?)")
           .run(audit.auditId, retirement.commandId, canonicalJsonStringify(audit), at);
-        const retired = WorkerControlRecordSchema.parse({ commandId: retirement.commandId, request: retirement, scope: "worker-pool:person-lookup", executorId: randomUUID(),
+        const retired = { commandId: retirement.commandId, request: retirement, scope: "worker-pool:person-lookup", executorId: randomUUID(),
           admittedAt: at, expiresAt: at, basisVersion: 1, auditedAt: at,
           roster: { selected: [], excess: [origin], beforeVersion: 1, admittedVersion: 1, afterVersion: 2 },
           phase: { state: "succeeded", startedAt: at, completedAt: at, application, acknowledgement: { kind: "plan", workerIds: [],
-            retirements: [{ workerId: slot.workerId, membershipRevision: 1, checkedAt: at, processStopped: true, browsersClosed: true, exclusive: true }] } } });
+            retirements: [{ workerId: slot.workerId, membershipRevision: 1, checkedAt: at, processStopped: true, browsersClosed: true, exclusive: true }] } } };
         native.prepare("INSERT INTO worker_controls(command_id,scope,worker_id,phase,audited_at,payload_json,created_at) VALUES (?,?,NULL,'succeeded',?,?,?)")
           .run(retirement.commandId, retired.scope, at, canonicalJsonStringify(retired), at);
       }

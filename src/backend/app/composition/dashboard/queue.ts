@@ -1,5 +1,5 @@
 import { batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
-import type { WorkerLeaseRecord } from "../../../../models/run/worker.js";
+import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
 import {
@@ -11,7 +11,7 @@ import { hostedOcrRun, readQueueRecordMembers } from "../../../runs/queries/ocr-
 import { readOcrReviewAuthority } from "../../../runs/lifecycle/ocr-review-authority.js";
 import { workflowQueueCapabilities } from "../../registries/workflow-registry.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; ownsWorker?: (lease: WorkerLeaseRecord) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
+export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[]; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   return createRunQueueProjection({
     timeline: database.authority.timelineEvents,
@@ -40,13 +40,8 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerSlots: () => database.authority.workerSlots.list(),
       listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
-      workerOwnerAlive: lease => input.ownsWorker?.(lease) === true,
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
-      workerBrowsers: workerId => database.authority.workerControls.browsers(workerId),
+      ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
       heldDuoSystems: workerId => database.heldDuoSystems(workerId),
-      workerControls: () => database.authority.workerControls.list(),
-      ownsWorker: lease => input.ownsWorker?.(lease) === true,
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),

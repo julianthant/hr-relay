@@ -1,4 +1,4 @@
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../models/config/authority.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import { PredecessorRunRecordSchema } from "../../../models/run/record.js";
 import { runSettlementContext } from "./run-settlement-row.js";
 import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
@@ -38,7 +38,6 @@ const fields = {
   write_intents: {id:"writeIntentId",system:"system",idempotency_key:"idempotencyKey",idempotency_key_digest:"idempotencyKeyDigest",status:"status",generation:"generation",run_id:"runId",created_at:"createdAt",updated_at:"updatedAt"},
   write_attempts: {id:"writeAttemptId",intent_id:"writeIntentId",generation:"generation",run_id:"runId",created_at:"recordedAt"},
   worker_pools: {workflow:"workflow",desired_workers:"desiredWorkers",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
-  worker_leases: {id:"workerId",worker_id:"workerId",workflow:"workflow",lease_generation:"leaseGeneration",control_revision:"controlRevision",state:"lifecycle.state",directive:"control.directive",heartbeat_at:"lifecycle.heartbeatAt",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
   auth_leases: {credential_key:"credentialKey",generation:"generation",holder_worker_id:"holder.workerId",holder_system:"holder.system",state:"state",expires_at:"expiresAt",version:"version",updated_at:"updatedAt"},
   notifications: {id:"notificationId",actor_id:"actorId",dedupe_fingerprint:"dedupeFingerprint",status:"status",seen_count:"count",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
   notification_states: {id:"concern",updated_at:"observedAt"},

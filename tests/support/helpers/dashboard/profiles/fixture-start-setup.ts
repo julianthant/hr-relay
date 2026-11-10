@@ -55,6 +55,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
           ? { inputRun: mockLookupStart.inputRun, summary: mockLookupStart.summary }
           : module.descriptor.surfaces.inputRun === undefined ? {} : { inputRun: module.descriptor.surfaces.inputRun }),
 
+        ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
         spreadsheetIntake: "intake" in module && module.intake !== undefined, requiredWorkbookFields: [...module.descriptor.requiredWorkbookFields],
         ...(module.descriptor.workbookReference === undefined ? {} : { workbookReference: module.descriptor.workbookReference }),
       },

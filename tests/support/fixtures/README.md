@@ -204,8 +204,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/write-fence-fixture.ts` | claimed write-fence setup and caller-supplied corrupt SQLite seeding |
 | `helpers/trust/trust-wire-fixtures.ts` | trust wire fixtures |
 | `processes/run-record-race-worker.ts` | run record race worker |
-| `processes/runtime-lock-contender.ts` | runtime lock contender |
-| `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
 | `processes/verification-reservation-owner.ts` | standalone verification reservation crash fixture |
 | `processes/worker-stub-cli.ts` | worker stub cli |
@@ -230,7 +228,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/dashboard/identity-ceremony-fixtures.ts` | identity ceremony fixtures |
 | `helpers/dashboard/static-assets.ts` | static asset fixture serving for both BFF profiles |
 | `helpers/backend/run-claim-fixtures.ts` | run claim fixtures |
-| `helpers/backend/worker-lease-fixtures.ts` | worker lease fixtures |
 | `helpers/backend/separation-start-fixtures.ts` | separation start fixtures |
 
 | `helpers/dashboard/client-day-fixtures.ts` | client day fixtures |
@@ -240,7 +237,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/ucpath-pending-row-fixtures.ts` | Keiichiro pending rows and deterministic driver transaction rows |
 | `helpers/storage/admission-child-fixtures.ts` | admission child fixtures |
 | `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |
-| `helpers/backend/worker-supervision-world.ts` | worker supervision world |
 | `helpers/backend/command-kernel-harness.ts` | command kernel harness |
 
 | `processes/profile-onboarding-abort-worker.ts` | Owned-controller canonical abort crash-prefix cases in `backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts` |
@@ -265,5 +261,5 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/person-lookup-start-fixtures.ts` | createPersonLookupStartFixtures shared fixtures |
 | `helpers/backend/person-lookup-provenance-checkpoint.ts` | createPersonLookupProvenanceCheckpoint shared fixtures |
 | `helpers/storage/confirmed-retention-fixtures.ts` | openConfirmedRetentionDatabase shared fixtures |
-| `helpers/storage/first-install-custody-fixtures.ts` | createFirstInstallCustodyFixture shared fixtures |
+| `helpers/storage/old-build-artifact.ts` | plantOldBuildArtifact old-build lock-root record |
 | `helpers/backend/person-lookup-receipt-database.ts` | openPersonLookupReceiptDatabase shared fixtures |

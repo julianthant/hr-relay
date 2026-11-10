@@ -36,17 +36,20 @@ const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_START_PICKER_BO
 function versionView(id: string) {
   const version = versions.find(value => value.id === id);
   if (version === undefined) throw new Error(`unknown fixture version ${id}`);
-  const data = id === 'roster-4' ? [] : [...ROW_EMAILS.map((email, index) => ({ id: ROW_IDS[index], cells: [email, 'Person', `Example ${index + 1}`, '', null, null, null].map(value => ({ value })) })),
-    { id: 'blank', cells: ['', 'Missing', 'Key', '', null, null, null].map(value => ({ value })) }];
+  const cells = (email: string, firstName: string, lastName: string) => ONBOARDING_ROSTER_FIELDS.map(field => ({
+    value: field === 'email' ? email : field === 'firstName' ? firstName : field === 'lastName' ? lastName : field === 'middleName' ? '' : null,
+  }));
+  const data = id === 'roster-4' ? [] : [...ROW_EMAILS.map((email, index) => ({ id: ROW_IDS[index], cells: cells(email, 'Person', `Example ${index + 1}`) })),
+    { id: 'blank', cells: cells('', 'Missing', 'Key') }];
   return WorkbookLibraryVersionViewSchema.parse({ libraryId, version, workbook: { libraryId, name: 'Onboarding.xlsx', hasFormulas: false, themes: [],
-    sheets: [{ id: 'people', name: id === 'roster-3' ? 'New people' : 'People', width: 7, hidden: [], headerRow: 1,
+    sheets: [{ id: 'people', name: id === 'roster-3' ? 'New people' : 'People', width: ONBOARDING_ROSTER_FIELDS.length, hidden: [], headerRow: 1,
       columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: 'manual' })),
       rows: [{ id: 'header', cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) }, ...data] }] } });
 }
 
 /** Synthetic HTTP authority for rendered launcher checks; never opens an authority store. */
 async function startWorkbookRowsFixture(page: Page) {
-  const profile = { bootstrap, descriptorHash: bootstrap.descriptorHash, day: DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [{ day: FIXTURE_DAY, count: 0 }], workflowCounts: [], statusCounts: [], workerOperations: [], workerCards: [], workerPools: [], workerAuthority: { state: 'present', members: [] }, notifications: [] }) };
+  const profile = { bootstrap, descriptorHash: bootstrap.descriptorHash, day: DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [{ day: FIXTURE_DAY, count: 0 }], workflowCounts: [], statusCounts: [], workerCards: [], workerPools: [], workerAuthority: { state: 'present', members: [] }, notifications: [] }) };
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, profile });
   const plans: StartPlanRequest[] = [], commands: ReturnType<typeof StartCommandRequestSchema.parse>[] = [], commandBodies: string[] = [];
   let currentCatalog = structuredClone(catalog), rows: ReturnType<typeof QueueSurfaceWireSchema.parse>[] = [];
@@ -112,7 +115,7 @@ async function startWorkbookRowsFixture(page: Page) {
           traceId: traceOf(9700 + index), runNumber: { state: 'present', value: index + 1 }, workflowId: workflow.id, descriptorVersion: workflow.start.version, descriptorHash: command.payload.descriptorFingerprint,
           configFingerprint: command.payload.configFingerprint, actorId: command.requestedBy, title: entry.title, dryRun: plan!.dryRun,
           subtitle: { state: 'present', value: entry.subtitle }, pipeline: workflow.start.steps.map(step => ({ id: step.key, label: step.label, state: 'pending' })),
-          lineage: { state: 'root' }, containment: 'root', rowRevision: 1,
+          parent: null, rowRevision: 1,
           session: { state: 'present', itemScope: workflow.id === 'person-lookup' ? 'session' : 'workflow', sessionId: uuidOf(9900), presentation: { layout: 'items', groupInQueue: false, version: 1, startedAt: seed.startedAt },
             origin: { kind: 'start-plan', startPlanId: command.target.startPlanId, actorId: command.requestedBy } } }));
       }

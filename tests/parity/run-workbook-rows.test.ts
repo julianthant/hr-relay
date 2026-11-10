@@ -38,14 +38,18 @@ function evidenceId(title: string, state: string) {
 async function evidence(page: Page, info: TestInfo, state: string) {
   const id = evidenceId(info.title, state);
   await page.evaluate(() => document.fonts.ready);
-  await info.attach(`${id}.png`, { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+  const path = info.outputPath(`${id}.png`);
+  await page.screenshot({ path, animations: 'disabled' });
+  await info.attach(`${id}.png`, { path, contentType: 'image/png' });
   await attachShellA11y(page, info, `${id}.a11y.yml`);
 }
 async function review(page: Page, fixture: WorkbookRowsFixture, dialog: Locator, info: TestInfo, capture: boolean, mode: 'new-hire' | 'rehire' = 'new-hire') {
   expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0); expect(fixture.plans).toHaveLength(0);
   if (capture) await evidence(page, info, 'selected-input');
   await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(dialog.getByRole('switch', { name: 'Dry run Fill and check every step without submitting.', exact: true })).toHaveCount(0);
+  const dryRun = dialog.getByRole('switch', { name: 'Dry run Fill and check every step without submitting.', exact: true });
+  await expect(dryRun).toBeEnabled();
+  await expect(dryRun).not.toBeChecked();
   if (capture) await evidence(page, info, 'selected-options');
   expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0);
   await dialog.getByRole('button', { name: 'Preview plan', exact: true }).click();

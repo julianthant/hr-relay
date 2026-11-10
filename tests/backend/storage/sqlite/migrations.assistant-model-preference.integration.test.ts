@@ -33,7 +33,8 @@ describe("assistant model preference additive schema", () => {
     assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 8), historical);
     assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint), historical);
     assert.equal(deriveAuthorityUpgradePlanDigest(8, fingerprint), deriveAuthorityUpgradePlanDigest(8, fingerprint, CURRENT_AUTHORITY_SCHEMA_VERSION));
-    assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 24), deriveAuthorityUpgradePlanDigest(7, fingerprint));
+    assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, CURRENT_AUTHORITY_SCHEMA_VERSION), deriveAuthorityUpgradePlanDigest(7, fingerprint));
+    assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint, 22), deriveAuthorityUpgradePlanDigest(7, fingerprint));
     assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint, 18), deriveAuthorityUpgradePlanDigest(7, fingerprint));
   });
 

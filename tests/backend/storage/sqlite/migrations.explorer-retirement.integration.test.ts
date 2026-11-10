@@ -105,7 +105,7 @@ it.each(["CREATE TABLE unexpected_table (id TEXT)", "ALTER TABLE explorer_overri
 it("admits only the current schema for ordinary inspection", () => {
   const database = inspectionDatabase(CURRENT_AUTHORITY_SCHEMA_VERSION);
   try {
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 50);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 47);
     assert.deepEqual(inspectNormalAuthority(database), inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION));
   }
   finally { database.close(); }

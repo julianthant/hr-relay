@@ -25,7 +25,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           const intro = (await library.locator(".hub-sheets-intro").boundingBox())!;
           expect(intro.y - title.y - title.height).toBe(4);
           await expect(library.locator(".hub-sheets-intro")).toHaveCSS("margin-bottom", "30px");
-          await expect(library.getByRole("heading", { level: 2 })).toHaveText(["Spreadsheet types"]);
+          await expect(library.getByRole("heading", { level: 2 })).toHaveText(["Your spreadsheets", "Workflow outputs", "Spreadsheet types"]);
           continue;
         }
         const heading = page.locator(".ds-page-heading").first();
