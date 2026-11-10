@@ -1015,10 +1015,9 @@ body[data-demo-theme="light"] {
 .ds-tooltip:not(:has(.ds-tooltip-key)) { padding-right: 12px; }
 /* Card variant: the Analytics chart card (256px, 12px corners, faint edge, soft shadow) for rich content such as the timeline step hover. */
 .ds-tooltip.ds-tooltip--card { display: block; height: auto; width: 256px; max-width: calc(100vw - 16px); padding: 0; border-radius: 12px; white-space: normal;
-  --ds-tooltip-card-bg: var(--ui-field); --ds-tooltip-card-edge: var(--ui-stroke);
-  background: var(--ds-tooltip-card-bg); box-shadow: 0 0 0 1px var(--ds-tooltip-card-edge), 0 8px 24px rgb(0 0 0 / 0.16); }
-[data-demo-theme="dark"] .ds-tooltip--card { --ds-tooltip-card-bg: color-mix(in srgb, var(--ui-primary) 4.5%, var(--ds-card-bg, var(--ui-panel))); --ds-tooltip-card-edge: color-mix(in srgb, var(--ui-primary) 7%, var(--ds-tooltip-card-bg));
-  box-shadow: 0 0 0 1px var(--ds-tooltip-card-edge), 0 8px 24px rgb(0 0 0 / 0.45); }
+  background: var(--ui-field); box-shadow: 0 0 0 1px var(--ui-stroke), 0 8px 24px rgb(0 0 0 / 0.16); }
+[data-demo-theme="dark"] .ds-tooltip--card { background: color-mix(in srgb, var(--ui-primary) 4.5%, var(--ds-card-bg, var(--ui-panel)));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-primary) 7%, color-mix(in srgb, var(--ui-primary) 4.5%, var(--ds-card-bg, var(--ui-panel)))), 0 8px 24px rgb(0 0 0 / 0.45); }
 .ds-tooltip-key { display: inline-flex; align-items: center; height: 20px; min-width: 20px; justify-content: center; padding: 0 6px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--ui-primary); background: color-mix(in srgb, var(--ds-fg) 20%, transparent); }
 .ds-menu-item {
   position: relative; display: flex; min-height: var(--ds-menu-item-h); align-items: center; gap: 8px; box-sizing: border-box;
