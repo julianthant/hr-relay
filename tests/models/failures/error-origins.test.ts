@@ -37,7 +37,7 @@ describe("closed error origins", () => {
   it("grants no row from runtime names, codes or subclasses, and names an unbound error by its constructor", () => {
     const spoofed = Object.assign(new Error("PRIVATE_CANARY"), { name: "RuntimeCustodyUncertainError", code: "RUNTIME_CUSTODY_UNCERTAIN", reason: "custody-unproved" });
     class Derived extends PreflightObservationChangedError {}
-    const rows = [spoofed, new Derived(), new WorkerControlRefusal("worker-removal-child-close-unproved-PRIVATE_CANARY")]
+    const rows = [spoofed, new Derived(), new WorkerControlRefusal("worker-execution-lost-PRIVATE_CANARY")]
       .map(error => { const [cause] = serializeErrorCauses(error); return { name: cause?.name, code: cause?.code, reason: cause?.reason }; });
     assert.deepEqual(rows, [
       { name: "Error", code: "RUNTIME_CUSTODY_UNCERTAIN", reason: "cause-unavailable" },
@@ -58,8 +58,8 @@ describe("closed error origins", () => {
   });
 
   it("names a worker lifecycle refusal only from its closed reason list", () => {
-    assert.deepEqual(serializeErrorCauses(new WorkerControlRefusal("worker-removal-child-close-unproved")).map(({ name, code, reason }) => ({ name, code, reason })),
-      [{ name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "worker-removal-child-close-unproved" }]);
+    assert.deepEqual(serializeErrorCauses(new WorkerControlRefusal("worker-execution-lost")).map(({ name, code, reason }) => ({ name, code, reason })),
+      [{ name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "worker-execution-lost" }]);
   });
 
   it("uses fixed rows for non-errors and bounds long chains", () => {

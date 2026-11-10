@@ -1,4 +1,4 @@
-import { createErrorCatalogFailure,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure,ERROR_CATALOG,ErrorCatalogCodeSchema,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
 import { BulkRunCommandRequestSchema,DashboardCommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type DashboardCommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -80,7 +80,8 @@ function lockKey(request: DashboardCommandRequest): string {
     case "gate": identity = [request.target.runId, request.target.gateId]; break;
     case "start": identity = [request.target.workflowId, request.target.startPlanId]; break;
     case "intake": identity = [request.target.intakeSessionId]; break;
-    case "worker-browser": identity = "workflowId" in request.target ? [request.target.workflowId] : [request.target.workerId]; break;
+    case "worker-browser": identity = request.type === "remove-worker" ? [request.target.workerId]
+      : "workflowId" in request.target ? [request.target.workflowId] : [request.target.workerId]; break;
     case "settings": identity = []; break;
     case "notification": identity = "members" in request.target ? ["collection", request.target.actorId] : [request.target.notificationId, request.target.actorId]; break;
     case "workflow-batch": identity = [request.target.batchId]; break;
@@ -153,7 +154,10 @@ export class CommandExecutor {
         : await this.settle(request, checkedCommandResult(request, observed), options);
     } catch (cause) { outcome = uncertain(commandId, cause); }
     if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
-    // An observed rejection is the recorded proof that no effect happened; anything else short of confirmation stays checkable.
+    if (request.type === "remove-worker" && outcome.kind === "conflict" && outcome.feedback.code === "WORKER_TARGET_STALE") {
+      outcome = { ...outcome, kind: "refused" };
+    }
+    // A recorded refusal proves no effect; anything else short of confirmation stays checkable.
     if (outcome.kind !== "confirmed" && outcome.kind !== "refused") outcome = uncertain(commandId, outcome, outcome.reply);
     attempt.state = "settled"; attempt.release?.();
     attempt.outcome = Object.freeze(outcome);
@@ -185,12 +189,16 @@ export class CommandExecutor {
         case "applied": break;
       }
     } else {
+      const code = request.family === "worker-browser" && (reply.state === "rejected" || reply.state === "conflict")
+        ? ErrorCatalogCodeSchema.safeParse(reply.message).data : undefined;
+      const refusal = code !== undefined && ERROR_CATALOG[code].parameters.safeParse({}).success
+        ? formatErrorCatalogFailure(createErrorCatalogFailure(code, {})) : undefined;
       switch (reply.state) {
         case "pending": return uncertain(commandId, reply, reply);
-        case "conflict": return { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") };
+        case "conflict": return { kind: "conflict", commandId, reply, feedback: refusal ?? feedback("COMMAND_CONFLICT") };
         case "confirmation-required": return { kind: "confirmation-required", commandId, reply, warningDigest: reply.warningDigest, feedback: feedback("COMMAND_CONFIRMATION_REQUIRED") };
         case "rejected": return reply.code === "authority-unjournaled" || reply.code === "authority-uncertain"
-          ? uncertain(commandId, reply, reply) : { kind: "refused", commandId, reply, feedback: feedback("COMMAND_REFUSED") };
+          ? uncertain(commandId, reply, reply) : { kind: "refused", commandId, reply, feedback: refusal ?? feedback("COMMAND_REFUSED") };
         case "applied": case "already-applied": break;
       }
     }

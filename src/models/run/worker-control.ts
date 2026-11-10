@@ -25,5 +25,5 @@ export class WorkerControlRefusal extends Error {
   override readonly name = "WorkerControlRefusal";
 }
 /** The worker lifecycle refusals a log row may name; any other refusal text stays unnamed. */
-const NAMED_WORKER_REFUSALS: ReadonlySet<string> = new Set(["worker-start-failed", "worker-removal-child-close-unproved", "worker-execution-lost"]);
+const NAMED_WORKER_REFUSALS: ReadonlySet<string> = new Set(["worker-start-failed", "worker-execution-lost"]);
 bindErrorOrigin(WorkerControlRefusal, error => ({ key: "worker-refusal", reason: NAMED_WORKER_REFUSALS.has(error.message) ? error.message : "cause-unavailable" }));

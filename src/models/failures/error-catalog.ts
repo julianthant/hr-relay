@@ -570,6 +570,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The worker is busy with a run or another control. Try again when it is idle.",
     EmptyParametersSchema,
   ),
+  WORKER_REMOVAL_CHILD_CLOSE_UNPROVED: catalogEntry(
+    "Relay could not verify that the worker process closed. The worker and its browser profiles were kept.",
+    EmptyParametersSchema,
+  ),
   WORKER_REQUEST_EXPIRED: catalogEntry(
     "The worker request expired before it started. Nothing was done.",
     EmptyParametersSchema,
