@@ -114,3 +114,16 @@
   .log-compare th { margin-bottom: 2px; text-align: left; }
   .log-compare td::before { content: attr(data-label); flex: none; color: var(--ui-muted); text-align: left; }
 }
+
+/* Timeline step hover card: the Analytics chart card (256px, 12px corners, faint edge, soft shadow) inside the shared tooltip shell. */
+.ds-tooltip:has(.log-step-card) { display: block; height: auto; width: 256px; max-width: calc(100vw - 16px); padding: 0; border-radius: 12px; white-space: normal;
+  background: var(--log-step-card-bg, var(--ui-field)); box-shadow: 0 0 0 1px var(--log-step-card-edge, var(--ui-stroke)), 0 8px 24px rgb(0 0 0 / 0.16); }
+[data-demo-theme="dark"] .ds-tooltip:has(.log-step-card) { --log-step-card-bg: color-mix(in srgb, var(--ui-primary) 4.5%, var(--ds-card-bg, var(--ui-panel))); --log-step-card-edge: color-mix(in srgb, var(--ui-primary) 7%, var(--log-step-card-bg));
+  box-shadow: 0 0 0 1px var(--log-step-card-edge), 0 8px 24px rgb(0 0 0 / 0.45); }
+.log-step-card { box-sizing: border-box; padding: 8px 12px; font-size: 12px; line-height: 18px; }
+.log-step-card p { margin: 0; }
+.log-step-card-title { font-weight: 500; color: var(--ui-primary); }
+.log-step-card-meta { color: var(--ui-muted); }
+.log-step-card-rows { margin: 0; padding: 4px 0 0; list-style: none; border-top: 1px solid var(--log-step-card-edge, var(--ui-stroke)); }
+.log-step-card-rows li { display: flex; height: 20px; align-items: center; gap: 8px; line-height: 20px; }
+.log-step-card[data-dense] .log-step-card-rows li { height: 16px; line-height: 16px; }
