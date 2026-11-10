@@ -28,7 +28,8 @@ import { decodeWorkbookReference } from "../../../src/models/processing/workbook
 import { ReadCrmDocumentRows, CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../../src/models/workflows/crm-doc-download/read-document-rows.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../src/models/workflow/gates.js";
-import { ONBOARDING_ROSTER_TYPE_ID, ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_NAME_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_TYPE_ID } from "../../../src/models/workflows/onboarding/roster.js";
+import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../src/models/workflows/crm-doc-download/documents.js";
 import { WorkerIdSchema, WorkflowIdSchema, ActorIdSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -56,7 +57,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: f.clock, sync: unexpectedWorkbookSync });
     let libraryId: string, workbookReferences: { entry: number; libraryId: string; versionId: string; sheetId: string; expectedVersion: number }[];
     if (mode === "split") {
-      const headers = [...ONBOARDING_ROSTER_NAME_FIELDS];
+      const headers = [...CRM_DOCUMENT_ROSTER_FIELDS];
       const csvLibrary = async (name: string, dataRows: readonly (readonly string[])[]) => {
         const csv = [headers.join(","), ...dataRows.map(row => [...row, "", "", ""].join(","))].join("\n");
         const imported = await importWorkbook(name, new TextEncoder().encode(csv).buffer);
@@ -82,7 +83,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       if (mode === "missing") { const row = workbook.sheets[0]?.rows[1]; assert.ok(row); row.cells[0] = { value: "missing@example.test" }; }
       const saved = library.create(workbook);
       libraryId = saved.libraryId;
-      library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
+      library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...CRM_DOCUMENT_ROSTER_FIELDS], defaultWorkbookId: null });
       library.operatorOperation(libraryId, "type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: ONBOARDING_ROSTER_TYPE_ID, sharePoint: null } });
       workbookReferences = [{ entry: 1, libraryId, versionId: "original", sheetId: selectedSheet.id, expectedVersion: library.read(libraryId).version }];
     }
