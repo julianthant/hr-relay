@@ -13,7 +13,6 @@ import { join, relative } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import type { RunRecord } from "../../../../src/models/run/record.js";
-import { isLiveWorker } from "../../../../src/models/run/worker.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDeterministicContactPersistence } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
@@ -147,11 +146,8 @@ function adoptWorkers(database: AuthorityDatabase, path: string, clock: TestCloc
   };
   for (const root of database.authority.runs.listByWorkflow("emergency-contact")) walk(root);
   for (const workflow of workflows) {
-    for (const slot of database.authority.workerSlots.list(workflow)) {
-      if (slot.retiredAt !== null) continue;
-      const lease = database.authority.workerLeases.get(slot.workerId);
-      if (lease === undefined || !isLiveWorker(lease)) continue;
-      registerBoundFixtureWorker({ database, path, workerId: slot.workerId, generation: lease.leaseGeneration, processId: lease.processId, clock });
+    for (const slot of database.authority.workerSlots.active(workflow)) {
+      registerBoundFixtureWorker({ database, path, workerId: slot.workerId, clock });
     }
   }
 }
