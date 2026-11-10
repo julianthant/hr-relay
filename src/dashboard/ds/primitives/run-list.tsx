@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
-import { DsBodyScope, Switch } from "../../ds/ui.js";
+import { DsBodyScope } from "./primitives-layout.js";
+import { Switch } from "./primitives-form.js";
 import { cn } from "../../lib/utils.js";
 
 const TITLE = "text-[length:var(--ds-row-title)] font-normal leading-[var(--ds-row-title-lh)] text-[color:var(--ds-fg)]";

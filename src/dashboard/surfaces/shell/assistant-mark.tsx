@@ -60,9 +60,9 @@ function useIdleOrbit(svg: React.RefObject<SVGSVGElement | null>, active: boolea
     const element = svg.current, satellite = element?.querySelector<SVGGElement>(".mark-spin");
     if (!active || !element || !satellite || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off") return;
     const host = element.closest("button") ?? element;
-    let angle = 0, speed = IDLE_DEGREES_PER_SECOND, target = IDLE_DEGREES_PER_SECOND, last = performance.now(), frame = 0;
+    let angle = 0, speed = IDLE_DEGREES_PER_SECOND, target = IDLE_DEGREES_PER_SECOND, last = -1, frame = 0;
     const tick = (now: number) => {
-      const seconds = (now - last) / 1000; last = now;
+      const seconds = last < 0 ? 0 : (now - last) / 1000; last = now;
       speed += (target - speed) * Math.min(1, seconds * 6); angle = (angle + speed * seconds) % 360;
       satellite.style.transform = `rotate(${angle.toFixed(1)}deg)`; frame = requestAnimationFrame(tick);
     };

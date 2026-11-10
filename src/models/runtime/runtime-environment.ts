@@ -129,6 +129,7 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 const TEST_ONLY_ENVIRONMENT_KEYS = [
   "PARITY_UPDATE", "SESSIONS_BAR_RENDER_DIR", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
   "RELAY_TEST_HOST",
+  "NOTIFICATIONS_MOCK_OUT", "NOTIFICATIONS_MOCK_THEMES", "NOTIFICATIONS_MOCK_SCALE", "SHEETS_V2_OUT", "SHEETS_V2_ONLY", "AX_MOCK_OUT", "AX_MOCK_THEMES", "AX_MOCK_WIDTH", "AX_MOCK_ONLY", "AX_MOCK_SCALE", "STATUS_MOCK_OUT", "STATUS_MOCK_THEMES", "STATUS_MOCK_WIDTH", "STATUS_MOCK_ONLY", "STATUS_MOCK_SCALE", "LOGS_CARDS_OUT", "LOGS_CARDS_ONLY", "LOGS_CARDS_HEIGHT",
   "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
 ] as const;
 
@@ -164,6 +165,24 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   RELAY_TEST_HOST: ["scripts/test/pc.ts"],
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   SESSIONS_BAR_RENDER_DIR: ["tests/parity/sessions-bar-hover.test.ts"],
+  NOTIFICATIONS_MOCK_OUT: ["tests/parity/notifications-mock.test.ts", "tests/parity/notifications-sweep-decisions.test.ts", "tests/parity/notifications-sweep.test.ts"],
+  NOTIFICATIONS_MOCK_THEMES: ["tests/parity/notifications-mock.test.ts", "tests/parity/notifications-sweep-decisions.test.ts", "tests/parity/notifications-sweep.test.ts"],
+  NOTIFICATIONS_MOCK_SCALE: ["tests/parity/notifications-mock.test.ts", "tests/parity/notifications-sweep-decisions.test.ts", "tests/parity/notifications-sweep.test.ts"],
+  SHEETS_V2_OUT: ["tests/parity/sheets-v2-scenes.test.ts"],
+  SHEETS_V2_ONLY: ["tests/parity/sheets-v2-scenes.test.ts"],
+  AX_MOCK_OUT: ["tests/parity/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_THEMES: ["tests/parity/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_WIDTH: ["tests/parity/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_ONLY: ["tests/parity/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_SCALE: ["tests/parity/zz-assistant-explorer-mock.test.ts"],
+  STATUS_MOCK_OUT: ["tests/parity/zz-status-mock.test.ts"],
+  STATUS_MOCK_THEMES: ["tests/parity/zz-status-mock.test.ts"],
+  STATUS_MOCK_WIDTH: ["tests/parity/zz-status-mock.test.ts"],
+  STATUS_MOCK_ONLY: ["tests/parity/zz-status-mock.test.ts"],
+  STATUS_MOCK_SCALE: ["tests/parity/zz-status-mock.test.ts"],
+  LOGS_CARDS_OUT: ["tests/parity/zz-status-mock.test.ts"],
+  LOGS_CARDS_ONLY: ["tests/parity/zz-status-mock.test.ts"],
+  LOGS_CARDS_HEIGHT: ["tests/parity/zz-status-mock.test.ts"],
   TMPDIR: [
     "tests/support/private-temp-setup.ts",
     "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",

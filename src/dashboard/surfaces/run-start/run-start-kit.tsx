@@ -29,7 +29,7 @@ import { fmtClock } from "../shared/status/format.js";
 import type { CommandResult } from "../../../rules/commands/commands.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
-import { RunList, RunListRow, RunSection } from "./run-list.js";
+import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
 import { typedInputMode, typedInputDefaults, inputRunFieldLabel, inputRunDelimiterHint, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */

@@ -34,10 +34,11 @@ export function workflowInitials(labels: readonly string[]): ReadonlyMap<string,
 }
 
 const COLLAPSED_KEY = "relay.workflow-rail.collapsed";
+const STARTS_EXPANDED = false;
 
 /** The minimized rail is remembered per viewer in this browser; storage that is blocked just means it starts expanded. */
 export function useRailCollapsed(): readonly [boolean, (next: boolean) => void] {
-  const [collapsed, setState] = useState(() => { try { return window.localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { return false; } });
+  const [collapsed, setState] = useState(() => { try { return window.localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { return STARTS_EXPANDED; } });
   const set = useCallback((next: boolean) => {
     setState(next);
     try { window.localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0"); } catch { /* not remembered */ }

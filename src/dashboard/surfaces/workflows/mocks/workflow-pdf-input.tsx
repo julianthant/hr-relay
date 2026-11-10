@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { Button, IconButton } from "../../../ds/ui.js";
-import { RunList, RunListRow } from "../../run-start/run-list.js";
+import { RunList, RunListRow } from "../../../ds/primitives/run-list.js";
 
 export function WorkflowPdfInput({ files, busy, onChoose, onRemove }: {
   files: readonly { name: string; size: number }[]; busy: boolean;

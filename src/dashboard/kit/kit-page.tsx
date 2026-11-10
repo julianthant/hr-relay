@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { RunList, RunListRow } from "../surfaces/run-start/run-list.js";
+import { RunList, RunListRow } from "../ds/primitives/run-list.js";
 import {
   ArrowUpDown,
   ArrowUpRight,
