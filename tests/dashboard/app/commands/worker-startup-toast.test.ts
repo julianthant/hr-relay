@@ -2,8 +2,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workerStartupToast, workflowWorkersStopped } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
-import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../parity/helpers/fixture-day.js";
 import { runLaunchAppliedToast } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
@@ -98,17 +96,6 @@ describe("stopped worker toast", () => {
     assert.deepEqual(stoppedWorkerToasts(day("crashed", []), label), []);
     const paused = queued.map(row => ({ ...row, pause: { state: "paused", commandId: "00000000-0000-4000-8000-000000000123", requestedAt: FIXTURE_NOW, pausedAt: FIXTURE_NOW } }));
     assert.deepEqual(stoppedWorkerToasts(day("crashed", DashboardDayWireSchema.shape.queueSurfaces.parse(paused)), label), []);
-  });
-
-  it("sends the operator to Check outcome while an unaudited control on the workflow's worker locks Retry", () => {
-    const stopped = day("operator", queued.slice(0, 1)); const card = stopped.workerCards[0];
-    const command = CommandRequestSchema.parse({ commandId: "00000000-0000-4000-8000-000000000321", family: "worker-browser", type: "pause-worker", requestedAt: FIXTURE_NOW,
-      requestedBy: "local-operator", source: "dashboard-sessions", target: { workerId: card.workerId, expectedVersion: card.leaseVersion, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } });
-    const record = (audited: boolean) => WorkerControlRecordSchema.parse({ commandId: command.commandId, request: command, scope: "worker-pool:person-lookup", executorId: "00000000-0000-4000-8000-000000001f41",
-      admittedAt: FIXTURE_NOW, expiresAt: "2027-01-01T00:00:00Z", basisVersion: 1, ...(audited ? { auditedAt: FIXTURE_NOW, phase: { state: "refused", completedAt: FIXTURE_NOW, message: "refused" } } : { phase: { state: "executing", startedAt: FIXTURE_NOW } }) });
-    const withRecord = (audited: boolean) => DashboardDayWireSchema.parse({ ...stopped, workerOperations: [record(audited)] });
-    assert.equal(stoppedWorkerToasts(withRecord(false), label)[0]?.description, "Person Lookup worker stopped by you. Check its outcome in Sessions.");
-    assert.equal(stoppedWorkerToasts(withRecord(true), label)[0]?.description, "Person Lookup worker stopped by you. Retry it in Sessions.");
   });
 
   it("reports the stop reason only while every worker of the workflow has stopped", () => {

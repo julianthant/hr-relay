@@ -9,7 +9,7 @@ import { crmSession } from "../../../../src/backend/systems/crm/session-provider
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { plan1Parent, plan1Workflows } from "../../fixtures/plan1-operation-workflows.js";
-import { testRunLifecycle, testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { ExecutorSpanEventSchema } from "../../../../src/backend/logs/span-emitter.js";
@@ -117,8 +117,7 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
     const slot = database.authority.workerSlots.list(workflow).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
     if (slot === undefined) throw new Error("executor-fixture-worker-missing");
     database.authority.runs.enqueue(run);
-    const lifetime = testWorkerLifetime(database, workflow, slot.poolIndex);
-    const claimed = database.authority.runs.claimNext({ workflow, workerId: slot.workerId, workerLifetime: lifetime.workerLifetime, now });
+    const claimed = database.authority.runs.claimNext({ workflow, workerId: slot.workerId, now });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     return {
       run: claimed.run,

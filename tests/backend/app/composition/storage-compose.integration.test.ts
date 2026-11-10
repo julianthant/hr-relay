@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { takeStoppedProfileBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
 import { restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -263,7 +264,7 @@ afterEach(_afterEachFixture0);
       const worker = testAdmittedWorker(newer, CLOCK, { path: p.authorityPath, workflow: ATOMIC_WRITE_COMMIT.transaction.workflowId,
         poolIndex: 2, browserSystems: [ATOMIC_WRITE_COMMIT.transaction.system] });
       const claimed = newer.authority.runs.claimNext({ workflow: worker.member.workflow, workerId: worker.workerId,
-        workerLifetime: worker.workerLifetime, now: CLOCK.now().toISOString() });
+        now: CLOCK.now().toISOString() });
       assert.equal(claimed.state, "claimed");
       if (claimed.state !== "claimed") throw new Error("restored-write fixture owner could not claim");
       assert.equal(claimed.run.envelope.runId, WRITE_INTENT_ATTEMPTING.runId);
@@ -301,9 +302,9 @@ afterEach(_afterEachFixture0);
         else if (damage === "corrupt") writeFileSync(source, privateText);
         else copyFileSync(p.authorityPath, source);
       }
-      const original = AuthorityDatabase.inspectTimelineReadOnly.bind(AuthorityDatabase);
-      const spy = vi.spyOn(AuthorityDatabase, "inspectTimelineReadOnly").mockImplementation((admission, path, timeout, recovery) => {
-        const result = original(admission, path, timeout, recovery);
+      const original = AuthorityDatabase.inspectPreservedRecoveryEvidenceReadOnly.bind(AuthorityDatabase);
+      const spy = vi.spyOn(AuthorityDatabase, "inspectPreservedRecoveryEvidenceReadOnly").mockImplementation((admission, path, timeout) => {
+        const result = original(admission, path, timeout);
         if (damage === "changed-during-read" && path === name) writeFileSync(path, privateText);
         return result;
       });
@@ -560,8 +561,7 @@ try {
       writeResolution: createWriteResolutionExecutor({ authority: database, continuation: testRunContinuation(database, clock),
         descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
         ids: { uuid: randomUUID }  }),
-      workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
-        stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+      workerRuntime: { pool: unusedWorkerPool(unused) } });
   }
   const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "known-present-resolution" }, clock);
   try {
@@ -578,11 +578,11 @@ try {
     assert.equal(newer.getMeta().authorityGeneration, generation);
     const worker = testAdmittedWorker(newer, clock, { path: p.authorityPath, workflow: writeFixtureDescriptor.id, poolIndex: 2, browserSystems: [] });
     assert.equal(newer.authority.runs.claimNext({ workflow: writeFixtureDescriptor.id, workerId: worker.workerId,
-      workerLifetime: worker.workerLifetime, now: clock.now().toISOString() }).state, "idle");
+      now: clock.now().toISOString() }).state, "idle");
     assert.deepEqual(inspect(p.authorityPath), before);
     assert.equal(resolutionKernel(newer).execute(command).state, "applied");
     const claimed = newer.authority.runs.claimNext({ workflow: writeFixtureDescriptor.id, workerId: worker.workerId,
-      workerLifetime: worker.workerLifetime, now: clock.now().toISOString() });
+      now: clock.now().toISOString() });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("recheck claim required");
     const recheckClaim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
     const validating = newer.authority.runs.transition({ runId: before.runId, expectedVersion: claimed.run.version,

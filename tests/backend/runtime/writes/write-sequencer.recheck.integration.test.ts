@@ -85,7 +85,7 @@ describe("parked write read-only recheck", () => {
       assert.equal(h.kernel.execute(command).state, "applied");
       const worker = testWorkerLifetime(h.database, run.envelope.workflow, 1);
       const claimed = h.database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId: worker.workerId,
-        workerLifetime: worker.workerLifetime, now: h.clock.now().toISOString() });
+        now: h.clock.now().toISOString() });
       assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("claim required");
       const claim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
       let current = claimed.run;
@@ -103,7 +103,7 @@ describe("parked write read-only recheck", () => {
       if (mode === "canonical") {
         const outcome = service.recoverCrash({ commandId: lifecycleCommandId("lost-recheck", { runId: run.envelope.runId, version: current.version }),
           runId: run.envelope.runId, expectedVersion: current.version, claim,
-          ...h.database.crashRunRecoveryIdentity(run.envelope.runId), now: h.clock.now().toISOString() }, lock);
+          now: h.clock.now().toISOString() }, lock);
         assert.equal(outcome.state, "applied");
       } else reconcileStartupCrash({ machine: h.profile.machine, admission: h.profile.admission, database: h.database,
         clock: h.clock, lifecycle: service, lock });

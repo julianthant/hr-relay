@@ -809,7 +809,7 @@ export function createProfileSession(input: {
         const prepared = input.prepareLogout(session.profileId, current.admission);
         const existing = openLogout(session.profileId);
         const operation = existing ?? LogoutOperationSchema.parse({
-          schemaVersion: 2,
+          schemaVersion: 3,
           kind: "logout",
           operationId: randomUUID(),
           profileId: session.profileId,

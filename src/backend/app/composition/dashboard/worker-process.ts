@@ -1,41 +1,51 @@
-import { readStartupProcessRecords } from "../../../storage/sqlite/runtime-process-locks.js";
-import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
-import { ConfigSchema } from "../../../../models/config/schema.js";
-import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
-import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
-import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
-import { WorkerRetirementProofSchema,workerPoolMember } from "../../../../models/run/worker-slot.js";
-import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
-import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
-import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
-import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-browser-channel.js";
-import { RuntimeAdmission } from "../../../storage/admission/admission.js";
-import { type RuntimePreflight } from "../../preflight/runtime-admission.js";
+import type { ChildProcess } from "node:child_process";
 import { spawn as spawnChildProcess } from "node:child_process";
-import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../runtime/build-id.js";
-import { lstatSync,rmdirSync } from "node:fs";
+import { lstatSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
-import { DEVELOPMENT_DEBUG_MIRROR_ENV,workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
-import { isLiveWorker } from "../../../../models/run/worker.js";
+import { ConfigSchema } from "../../../../models/config/schema.js";
+import { DEVELOPMENT_DEBUG_MIRROR_ENV, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
+import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
+import { workerPoolMember } from "../../../../models/run/worker-slot.js";
+import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import type { Clock } from "../../../../rules/time/clock.js";
-import { type WorkerPoolRuntimeAdoption,type WorkerRuntimeContext } from "../../../runs/commands/command-kernel.js";
+import { BrowserSessionIdSchema } from "../../../../rules/identity/ids.js";
+import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
+import type { IdFactory } from "../../../../rules/identity/identifiers.js";
+import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
+import type { WorkerMemberState, WorkerPoolRuntimeSeam } from "../../../runs/commands/command-kernel.js";
+import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../runtime/build-id.js";
+import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
-import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
-import { createDashboardWorkerProcessSupervisor,type DashboardWorkerProcessSupervisor,type DashboardWorkerSupervisorDependencies,type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
+import { createIpcRouter } from "../../../runtime/workers/worker-ipc-router.js";
+import { WORKER_MESSAGE_PREFIX } from "../../../runtime/workers/worker-messages.js";
+import { createWorkerPool, WorkerPoolError, type WorkerMemberView, type WorkerPool, type WorkerPoolMember,
+  type WorkerProcessPort } from "../../../runtime/workers/worker-pool.js";
+import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
+import { assertPrivateProfilePath, createBrowserRoots } from "../../../storage/browser-roots.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/index.js";
+import { type RuntimePreflight } from "../../preflight/runtime-admission.js";
 
-// Allow the CLI cold start to publish its lease before declaring a failed birth.
-export const WORKER_BIRTH_POLL_MS = 250;
+/** Refresh, reopen, parked-write checks and close-for-removal each get this long to reply. */
+export const WORKER_REQUEST_DEADLINE_MS = 120_000;
+
+export interface WorkerCliLaunchSpec {
+  readonly command: string;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly prefixArgs: readonly string[];
+  readonly cwd: string;
+}
+export interface WorkerSpawnRequest {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly environment: NodeJS.ProcessEnv;
+}
+/** `nativeProcess` lets browser-profile removal prove the child's closure through the lifetime lock. */
+export type WorkerProcessSpawner = (request: WorkerSpawnRequest) => WorkerProcessPort & { readonly nativeProcess?: ChildProcess };
 
 // Launch through the secure environment bootstrap, never a parallel CLI path.
-export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.ProcessEnv, development = false): Readonly<{
-  command: string;
-  environment: NodeJS.ProcessEnv;
-  prefixArgs: readonly string[];
-  cwd: string;
-}> {
+export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.ProcessEnv, development = false): WorkerCliLaunchSpec {
   return Object.freeze({
     command: process.execPath,
     environment: Object.freeze({ ...workerBootstrapEnvironment(environment), [PARENT_BUILD_ID_ENV]: currentBuildId(),
@@ -44,243 +54,164 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
     cwd: repoRoot,
   });
 }
-export const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
-export interface WorkerProcessControlInput {
+export interface WorkerPoolCompositionInput {
   readonly admission: RuntimeAdmission;
-  readonly onExit: DashboardWorkerSupervisorDependencies["onExit"];
+  readonly sessionGeneration: number;
   readonly profileRoot: string;
   readonly database: AuthorityDatabase;
   readonly clock: Clock;
   readonly scheduler: MonotonicDeadlineScheduler;
+  readonly ids: IdFactory;
   readonly launch: WorkerCliLaunchSpec;
   readonly spawn: WorkerProcessSpawner;
-  readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
+  readonly settleExit: (member: WorkerPoolMember) => void | Promise<void>;
+  readonly onChange?: (view: WorkerMemberView) => void;
   readonly onFault: (error: Error) => void;
   readonly preflight?: RuntimePreflight;
   readonly assertAssistantEffect?: (commandId: string) => void;
+  readonly platform?: NodeJS.Platform;
 }
 
-
-export function composeWorkerProcessControl(input: WorkerProcessControlInput): Readonly<{
-  supervisor: DashboardWorkerProcessSupervisor;
-  workerRuntime: WorkerPoolRuntimeAdoption;
+/** One pool per profile runtime, plus the kernel's seam over it. */
+export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
+  pool: WorkerPool;
+  seam: WorkerPoolRuntimeSeam;
+  /** Starts every active member of the workflow that has no live process. */
+  running(workflowId: string): boolean;
+  ensureRunning(workflowId: string): Promise<void>;
+  /** Boot: starts every active member of every pool; each failure shows on its card. */
+  startActive(): Promise<void>;
 }> {
-  const browserChannel = createWorkerBrowserChannel(input);
-  const supervisor = createDashboardWorkerProcessSupervisor({
-    onExit: input.onExit,
-    settleNonBirth: () => input.database.settleNeverSpawnedWorkers(),
-    nonBirthOwner: input.database,
-    launch: input.launch,
-    spawn: input.spawn,
-    browserControl: browserChannel,
-    prepareAdmission: async request => {
-      if (request.command !== "spawn-worker" || input.preflight === undefined) return;
-      try {
-        const scope = input.preflight.currentScope();
-        await input.preflight.admission.prepare(scope, new AbortController().signal);
-        input.preflight.admission.assertReady(input.preflight.currentScope());
-      } catch (error) {
-        if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error });
-        throw error;
-      }
+  const profileId = input.admission.profileBinding.profileId;
+  const children = new Map<string, ChildProcess>();
+  const fault = (error: unknown): Error => error instanceof Error ? error : new Error("worker pool fault", { cause: error });
+  const pool = createWorkerPool({
+    profileId, sessionGeneration: input.sessionGeneration, clock: input.clock, scheduler: input.scheduler, ids: input.ids,
+    platform: input.platform ?? process.platform,
+    spawn: member => {
+      input.admission.assertProfileRuntime();
+      const port = input.spawn({ command: input.launch.command, cwd: input.launch.cwd, environment: input.launch.environment,
+        args: [...input.launch.prefixArgs, "worker", member.workflowId, "--pool-index", String(member.poolIndex), "--worker-id", member.workerId,
+          "--ordinal", String(member.ordinal), "--launch-command-id", input.ids.uuid(), "--profile-id", profileId,
+          "--session-generation", String(input.sessionGeneration)] });
+      if (port.nativeProcess === undefined) children.delete(member.workerId);
+      else children.set(member.workerId, port.nativeProcess);
+      return port;
     },
-    admission: request => input.database.withAuthorityTransaction(repositories => {
-      if (request.commandId === undefined) throw new WorkerControlRefusal("worker-control-command-identity-unavailable");
-      input.assertAssistantEffect?.(request.commandId);
-      if (request.command === "spawn-worker" && input.preflight !== undefined) {
-        try { input.preflight.admission.assertReady(input.preflight.currentScope()); }
-        catch (error) { if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error }); throw error; }
-      }
-      const standing = "member" in request ? repositories.workerSlots.recovery(request.member.workerId) : undefined;
-      if (standing !== undefined && request.command === "spawn-worker") {
-        const binding = standing.request.binding, lease = repositories.workerLeases.get(request.member.workerId), active = repositories.runtimeConfig.get();
-        if (standing.command.commandId !== request.commandId || request.command !== "spawn-worker"
-          || canonicalJsonStringify(binding.member) !== canonicalJsonStringify(request.member) || lease?.lifecycle.state !== "stopped"
-          || lease.leaseGeneration !== binding.lifetime.leaseGeneration || lease.controlRevision !== binding.reservedControlRevision
-          || lease.controlCommandId !== request.commandId || binding.operation.kind !== "retry"
-          || active?.configSnapshotId !== binding.operation.configSnapshotId || active.configFingerprint !== binding.operation.configFingerprint) throw new WorkerControlRefusal("worker-standing-recovery-admission-changed");
-        input.database.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
-        return;
-      }
-      const record = repositories.workerControls.get(request.commandId);
-      if (record === undefined || record.request.type !== request.command && !(request.command === "spawn-worker" && record.lifecycle?.operation.kind === "retry")) throw new WorkerControlRefusal("worker-control-command-not-admitted");
-      if (record.lifecycle?.operation.kind === "retry") {
-        const active = repositories.runtimeConfig.get();
-        const lease = repositories.workerLeases.get(record.lifecycle.member.workerId);
-        if (record.phase.state !== "executing" || lease?.lifecycle.state !== "stopped" || lease.leaseGeneration !== record.lifecycle.lifetime.leaseGeneration
-          || lease.controlRevision !== record.lifecycle.reservedControlRevision || lease.controlCommandId !== record.commandId
-          || active?.configSnapshotId !== record.lifecycle.operation.configSnapshotId || active.configFingerprint !== record.lifecycle.operation.configFingerprint) throw new WorkerControlRefusal("worker-retry-current-authority-changed");
-        return;
-      }
-      if (request.command === "spawn-worker") {
-        const lease = repositories.workerLeases.get(request.member.workerId);
-        if (lease !== undefined) input.database.assertStoppedWorkerLifetime(request.member,
-          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
-      }
-      if (input.clock.nowMs() >= Date.parse(record.expiresAt)) throw new WorkerControlRefusal("worker-control-expired-before-effect");
-      if ("workerId" in record.request.target) {
-        const lease = repositories.workerLeases.get(record.request.target.workerId);
-        const basis = record.request.target.controlBasis;
-        if (lease === undefined || !isLiveWorker(lease) || basis === undefined || lease.leaseGeneration !== basis.leaseGeneration
-          || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== record.commandId) throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
-      } else if ((repositories.workerPools.get(record.request.target.workflowId)?.version ?? 0) !== (record.roster?.admittedVersion ?? record.request.target.expectedVersion)) throw new WorkerControlRefusal("worker-pool-version-changed-before-effect");
-    }),
-    leases: {
-      observe: (workerId) => {
-        const lease = input.database.authority.workerLeases.get(workerId);
-        if (lease === undefined || !isLiveWorker(lease)) return undefined;
-        return { processId: lease.processId, startedAt: lease.lifecycle.startedAt };
-      },
-    },
-    gracefulStop: {
-      request: (member, directive) => input.database.withAuthorityTransaction((repositories) => {
-        const lease = repositories.workerLeases.get(member.workerId);
-        if (lease === undefined) {
-          throw new Error(
-            `graceful stop for ${member.workerId} found no worker lease; the durable directive has nowhere to land`,
-          );
-        }
-        if (!isLiveWorker(lease)) {
-          throw new Error(
-            `graceful stop for ${member.workerId} found the lease ${lease.lifecycle.state}; `
-            + "a stopped lease takes no directive",
-          );
-        }
-        if (directive.commandId !== undefined) {
-          const record = repositories.workerControls.get(directive.commandId);
-          if (record === undefined) throw new WorkerControlRefusal("worker-control-command-not-admitted");
-          if ("workerId" in record.request.target) {
-            const basis = record.request.target.controlBasis;
-            if (basis === undefined || lease.leaseGeneration !== basis.leaseGeneration || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== record.commandId) throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
-          }
-        }
-        const outcome = repositories.workerLeases.control({
-          ...(directive.commandId === undefined ? {} : { commandId: directive.commandId }),
-          workerId: member.workerId,
-          expectedVersion: lease.version,
-          control: {
-            directive: "stop",
-            requestedAt: directive.requestedAt,
-            requestedBy: directive.requestedBy,
-            ...(directive.reason === undefined ? {} : { reason: directive.reason }),
-          },
-          now: directive.requestedAt,
-        });
-        if (outcome.state !== "applied") {
-          throw new Error(
-            `graceful stop for ${member.workerId} could not write the durable directive: ${outcome.message}`,
-          );
-        }
-        return Object.freeze({
-          requestedAt: directive.requestedAt,
-          // The WRITE's own before/after — what command authority audits;
-          // a later lease read would absorb unrelated bumps into it.
-          leaseVersions: Object.freeze({ before: lease.version, after: outcome.lease.version }),
-        });
-      }),
-    },
-    clock: input.clock,
-    scheduler: input.scheduler,
-    birth: input.birth,
-    standingRecoverySettled: commandId => {
-      const audit = input.database.authority.lifecycleJournal.findAuditByCommand(commandId);
-      return audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "worker-recovery";
-    },
-    assertStoppedLifetime: (member, lifetime) => { input.database.assertStoppedWorkerLifetime(member, lifetime); },
-    proveRetirement: async (member, child, stopped) => {
-      const capture = () => input.database.withAuthorityTransaction(repositories => {
-        const slot = repositories.workerSlots.get(member.workerId);
-        const lease = repositories.workerLeases.get(member.workerId);
-        const pending = repositories.workerControls.pending(`worker-pool:${member.workflowId}`);
-        const standing = repositories.workerSlots.recovery(member.workerId);
-        const reservation = pending.find(control => control.request.type === "plan-worker-count" && control.phase.state === "executing"
-          && control.roster?.excess.some(original => canonicalJsonStringify(original) === canonicalJsonStringify(slot))
-          || control.lifecycle !== undefined && control.phase.state === "executing" && canonicalJsonStringify(control.lifecycle.member) === canonicalJsonStringify(member)
-            && (control.lifecycle.operation.kind === "retry" || control.closure !== undefined));
-        if (slot === undefined || slot.retiredAt !== null || slot.membershipRevision !== member.membershipRevision
-          || canonicalJsonStringify(workerPoolMember(slot)) !== canonicalJsonStringify(member) || (standing === undefined ? reservation === undefined || pending.length !== 1
-            : standing.request.binding.member.membershipRevision !== member.membershipRevision || pending.length !== 0)
-          || lease !== undefined && isLiveWorker(lease)
-          || repositories.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed")) throw new WorkerControlRefusal("worker-retirement-closure-not-proved");
-        input.database.assertWorkerLifecycleRelease(member.workerId);
-        const browsers = repositories.workerControls.browsers(member.workerId);
-        for (const browser of browsers) {
-          if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
-        }
-        const launches = repositories.workerControls.list().filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === member.workerId);
-        const requiresNonBirthProof = input.database.workerRequiresNonBirthProof(slot);
-        return { browsers, launches, requiresNonBirthProof, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers, launches, requiresNonBirthProof }) };
-      });
-      const before = capture(), roots = createBrowserRoots(input.admission);
-      const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
-      const retained = roots.inventory().roots.filter(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId);
-      const process = child?.nativeProcess, lifetime = input.admission.lifetime;
-      // A retry of an earlier dashboard's worker keeps its closed roots; only an open root needs a child closed by this process.
-      const priorLifetime = child === undefined && stopped !== undefined && retained.every(row => row.launch.state === "closed" && row.native === undefined);
-      const requiresChild = !priorLifetime && (before.processId !== undefined && before.processId !== null || process !== undefined
-        || retained.length !== 0 || lstatSync(directory, { throwIfNoEntry: false }) !== undefined);
-      if (!requiresChild && !priorLifetime && (before.launches.length !== 0 || before.requiresNonBirthProof)) throw new WorkerControlRefusal("worker-retirement-non-birth-capability-required");
-      const rootAssertions: Array<() => void> = [];
-      const assertCurrent = () => {
-        input.admission.assertProfileRuntime();
-        if (capture().identity !== before.identity) throw new WorkerControlRefusal("worker-retirement-owner-changed");
-        if (priorLifetime && stopped !== undefined) input.database.assertStoppedWorkerLifetime(member, stopped);
-        if (requiresChild) {
-          if (process === undefined || !(lifetime instanceof RuntimeLifetimeLock)
-            || before.processId !== undefined && before.processId !== null && process.pid !== before.processId) throw new WorkerControlRefusal("worker-retirement-child-close-unproved");
-          lifetime.assertOwnedChildClosed(process);
-        }
-        for (const assertRoot of rootAssertions) assertRoot();
-      };
-      if (requiresChild) {
-        if (process === undefined || !(lifetime instanceof RuntimeLifetimeLock)) throw new WorkerControlRefusal("worker-retirement-child-close-unproved");
-        await lifetime.awaitOwnedChildClosed(process);
-        assertCurrent();
-        for (const row of retained) {
-          const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
-          const browser = before.browsers.find(browser => browser.profileDirectory === profileDirectory);
-          if (!before.browserSystems?.some(system => profileDirectory === workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: member.ordinal, system }))
-            || browser === undefined && (row.credentialFingerprint !== null || row.launch.state !== "closed" || row.native !== undefined)) {
-            throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
-          }
-          const assertRoot = await roots.withUnused(profileDirectory, createNativeBrowserProbe({ clock: input.clock, scheduler: input.scheduler,
-            closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs, launchTimeoutMs: ConfigSchema.shape.timeouts.parse(undefined).sessionAcquireMs,
-            signal: new AbortController().signal }), async ({ remove, assertCurrent: assertRoot }) => {
-            assertCurrent();
-            remove();
-            return assertRoot;
-          },
-          { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: browser?.signInFingerprint ?? null,
-            owner: { kind: "worker", database: input.database, workerId: member.workerId, stoppedProcess: process } });
-          rootAssertions.push(assertRoot);
-          assertCurrent();
-        }
-        assertCurrent();
-        assertPrivateProfilePath(input.profileRoot, directory);
-        if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) rmdirSync(directory);
-      }
-      assertCurrent();
-      return Object.freeze({ proof: WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
-        checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true }), assertCurrent });
-    },
-    onFault: input.onFault,
+    // A crashed child can leave a root open; it is probed closed before the exit settles, so the replacement can launch.
+    settleExit: async member => { await settleProfiles(member, "recover"); await input.settleExit(member); },
+    ...(input.onChange === undefined ? {} : { onChange: input.onChange }),
+    onFault: (_member, error) => { input.onFault(fault(error)); },
   });
-  input.database.bindWorkerNonBirthSupervisor(supervisor, slot => {
-    input.admission.assertProfileRuntime();
-    const roots = createBrowserRoots(input.admission).inventory().roots;
-    const installation = input.admission.readInstallationContext();
-    if (installation === undefined) throw new WorkerControlRefusal("worker-non-birth-installation-unavailable");
-    const processes = readStartupProcessRecords(join(installation.workspace, rebuildRuntimeIsolation.processLockRoot));
-    if (processes.some(record => record.name === "workers" && ("workerId" in record ? record.workerId === slot.workerId
-      : record.admission.authorityPath === join(input.admission.stateRoot, "state.db")))
-      || roots.some(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === slot.workerId)
-      || lstatSync(join(input.profileRoot, `w${String(slot.ordinal)}`), { throwIfNoEntry: false }) !== undefined) throw new WorkerControlRefusal("worker-non-birth-retained-profile");
-  });
+  const viewOf = (workerId: string): WorkerMemberView | undefined => pool.snapshot().find(view => view.member.workerId === workerId);
+  const targetOf = (view: WorkerMemberView) => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, expectedVersion: view.version });
+  const live = (view: WorkerMemberView | undefined): view is WorkerMemberView => view !== undefined && view.state !== "exited";
+
+  const ensure = async (member: WorkerPoolMember): Promise<void> => {
+    if (live(viewOf(member.workerId))) return;
+    await pool.start(member);
+  };
+  const stop = async (workerId: string, reason: "operator" | "reset" | "remove"): Promise<void> => {
+    const view = viewOf(workerId);
+    if (view === undefined) return;
+    await pool.stop(targetOf(view), reason);
+  };
+  /** Probes each of the member's registry roots under parent custody of its closed child; `remove` also deletes them. */
+  const settleProfiles = async (member: WorkerPoolMember, mode: "recover" | "remove"): Promise<void> => {
+    const roots = createBrowserRoots(input.admission), lifetime = input.admission.lifetime;
+    const stoppedProcess = children.get(member.workerId);
+    const retained = roots.inventory().roots.filter(row => row.profileId === profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId
+      && (mode === "remove" || row.launch.state !== "closed" || row.native !== undefined));
+    if (retained.length !== 0 && (stoppedProcess === undefined || !(lifetime instanceof RuntimeLifetimeLock))) throw new WorkerControlRefusal("worker-removal-child-close-unproved");
+    if (stoppedProcess !== undefined && lifetime instanceof RuntimeLifetimeLock) await lifetime.awaitOwnedChildClosed(stoppedProcess);
+    for (const row of retained) {
+      const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
+      await roots.withUnused(profileDirectory, createNativeBrowserProbe({ clock: input.clock, scheduler: input.scheduler,
+        closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs, launchTimeoutMs: ConfigSchema.shape.timeouts.parse(undefined).sessionAcquireMs,
+        signal: new AbortController().signal }), async ({ remove }) => { if (mode === "remove") remove(); },
+      { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: row.credentialFingerprint,
+        owner: { kind: "worker", database: input.database, workerId: member.workerId, ...(stoppedProcess === undefined ? {} : { stoppedProcess }) } });
+    }
+  };
+  const removeProfiles = async (member: WorkerPoolMember): Promise<void> => {
+    await settleProfiles(member, "remove");
+    const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
+    assertPrivateProfilePath(input.profileRoot, directory);
+    if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) rmdirSync(directory);
+    children.delete(member.workerId);
+  };
+
+  const preflight = async (): Promise<void> => {
+    if (input.preflight === undefined) return;
+    try {
+      await input.preflight.admission.prepare(input.preflight.currentScope(), new AbortController().signal);
+      input.preflight.admission.assertReady(input.preflight.currentScope());
+    } catch (error) {
+      if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error });
+      throw error;
+    }
+  };
+  const seam: WorkerPoolRuntimeSeam = {
+    async admit(commandId: string, options: Readonly<{ preflight: boolean }>): Promise<void> {
+      let preflightFailure: { readonly error: unknown } | undefined;
+      if (options.preflight) {
+        try { await preflight(); } catch (error) { preflightFailure = { error }; }
+      }
+      // After the awaited preflight, whatever it decided: a grant revoked or expired meanwhile fails the effect before any refusal is audited.
+      input.assertAssistantEffect?.(commandId);
+      if (preflightFailure !== undefined) throw preflightFailure.error;
+    },
+    assertMember(target): WorkerMemberState {
+      const view = viewOf(target.workerId);
+      if (view === undefined ? target.lifetimeId !== null : view.lifetimeId !== target.lifetimeId || view.version !== target.expectedVersion) {
+        throw new WorkerPoolError("WORKER_TARGET_STALE");
+      }
+      return view?.state ?? "absent";
+    },
+    async start(member) { await pool.start(member); },
+    // A failed member start shows on its card and as a worker fault, whichever command asked for it.
+    ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); throw error; }),
+    stop,
+    async remove(member) {
+      const view = viewOf(member.workerId);
+      if (view?.state === "running") await pool.request(targetOf(view), { type: "close-for-removal" }, WORKER_REQUEST_DEADLINE_MS);
+      await stop(member.workerId, "remove");
+      await removeProfiles(member);
+    },
+    async direct(workerId, directive) {
+      const view = viewOf(workerId);
+      if (view?.state !== "running") return;
+      // The slot already holds the directive; a lost message only delays the card's activity.
+      try { await (directive === "pause" ? pool.pause(targetOf(view)) : pool.resume(targetOf(view))); }
+      catch (error) { input.onFault(fault(error)); }
+    },
+    async browser(target, type) {
+      await pool.request(target, { type, browserSessionId: BrowserSessionIdSchema.parse(target.browserSessionId) }, WORKER_REQUEST_DEADLINE_MS);
+    },
+    async checkParkedWrite(target, command) {
+      return await pool.request({ workerId: target.workerId, lifetimeId: target.lifetimeId, expectedVersion: target.expectedVersion },
+        { type: "check-parked-write", command: JsonValueSchema.parse(command) }, WORKER_REQUEST_DEADLINE_MS);
+    },
+  };
+
+  const activeMembers = (workflowId?: string): readonly WorkerPoolMember[] => input.database.authority.workerSlots.list(workflowId)
+    .filter(slot => slot.retiredAt === null).map(workerPoolMember);
+  const startAll = async (members: readonly WorkerPoolMember[]): Promise<void> => {
+    await Promise.all(members.map(member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); })));
+  };
   return Object.freeze({
-    supervisor,
-    workerRuntime: Object.freeze({ recordControlAudit: (commandId: string) => input.database.recordWorkerNonBirthRefusal(commandId), pool: { ...createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots, { database: input.database, clock: input.clock }),
-      checkParkedWrite: (context: WorkerRuntimeContext) => browserChannel.check(context.command.commandId) } }),
+    pool, seam: Object.freeze(seam),
+    running: (workflowId: string) => activeMembers(workflowId).some(member => live(viewOf(member.workerId))),
+    /** Preflights once, then starts every member that is not live; throws when the workflow still has no live member. */
+    ensureRunning: async (workflowId: string) => {
+      const members = activeMembers(workflowId);
+      if (members.every(member => live(viewOf(member.workerId)))) return;
+      await preflight();
+      await startAll(members);
+      if (!members.some(member => live(viewOf(member.workerId)))) throw new WorkerControlRefusal("worker-start-failed");
+    },
+    startActive: () => startAll(activeMembers()),
   });
 }
 
@@ -293,28 +224,32 @@ export function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: R
       env: request.environment,
       stdio: ["inherit", "inherit", "inherit", "ipc"],
     });
-    nominatim.attach(child);
-    let transfer: Promise<void>;
-    try { transfer = lock.share(child); lock.observeOwnedChildClosure(child); }
-    catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
-    void transfer.catch(error => {
-      child.kill("SIGKILL");
-      child.emit("error", error);
-    });
-    return Object.freeze({
+    let workerMessage: (message: unknown) => void = () => undefined;
+    if (child.pid !== undefined) {
+      const router = createIpcRouter({ on: (event, listener) => child.on(event, listener), off: (event, listener) => child.off(event, listener),
+        disconnect: () => { if (child.connected) child.disconnect(); } }, error => { child.emit("error", error); });
+      router.register(WORKER_MESSAGE_PREFIX, message => { workerMessage(message); });
+      nominatim.attach(child, router);
+      child.once("exit", () => { router.close(); });
+      let transfer: Promise<void>;
+      try { transfer = lock.share(child); lock.observeOwnedChildClosure(child); }
+      catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
+      void transfer.catch((error: unknown) => {
+        child.kill("SIGKILL");
+        child.emit("error", error);
+      });
+    }
+    const port: ReturnType<WorkerProcessSpawner> = {
       nativeProcess: child,
       pid: child.pid,
-      kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
-      onExit: (listener: (code: number | null, signal: string | null) => void): void => {
-        child.on("exit", (code, signal) => {
-          listener(code, signal);
-        });
-      },
-      onError: (listener: (error: Error) => void): void => {
-        child.on("error", (error) => {
-          listener(error);
-        });
-      },
-    });
+      send: (message, callback) => { child.send(message, error => { callback(error ?? null); }); },
+      kill: signal => signal === undefined ? child.kill() : child.kill(signal),
+      disconnect: () => { if (child.connected) child.disconnect(); },
+      onDisconnect: listener => { child.on("disconnect", listener); },
+      onExit: listener => { child.on("exit", (code, signal) => { listener(code, signal); }); },
+      onError: listener => { child.on("error", listener); },
+      onWorkerMessage: listener => { workerMessage = listener; },
+    };
+    return Object.freeze(port);
   };
 }

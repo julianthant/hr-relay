@@ -38,10 +38,10 @@
     - paragraph: ChatGPT account, appearance, and account controls for Alex Morgan.
     - heading "Appearance" [level=2]
     - group "Appearance":
-      - switch "Dark theme Saved for Alex Morgan on this Mac." [checked]
-      - text: Dark theme Saved for Alex Morgan on this Mac.
-      - switch "Animations Saved for Alex Morgan. Your reduced-motion preference takes priority." [checked]
-      - text: Animations Saved for Alex Morgan. Your reduced-motion preference takes priority.
+      - text: Theme
+      - button "Switch to light theme": Dark
+      - switch "Animations" [checked]
+      - text: Animations
     - heading "Account" [level=2]
     - group "Account":
       - text: Delete account

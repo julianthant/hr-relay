@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { donePage, READING_ID, sourceFixture } from "../../fixtures/ocr/source-pages.js";
 import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, ocrReviewDigest } from "../../../../src/models/ocr/review.js";
 import { buildOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
@@ -18,20 +19,17 @@ import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../r
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { type AuthorityTableName } from "../../../../src/models/config/authority.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
 import { GATE_RESULT, NOTIFICATION, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_SESSION, START_PLAN } from "../../fixtures/phase1f-run-fixtures.js";
-import { testRunService, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
 import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 
 import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../../src/models/dashboard/xlsx-export.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
@@ -42,7 +40,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, HASH_A, HASH_B, HASH_C, ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, LATER, NOW, UUID_1, UUID_2, UUID_3, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_START_REQUEST, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -237,18 +235,12 @@ export function createAuthorityAccountingTestWorld() {
     if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const path = databasePaths.get(database);
     if (path === undefined) throw new Error("fixture-authority-path-missing");
-    const slot = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1,
-    expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-    processId: process.pid,
-    now: NOW
-}, randomUUID()));
+    const slot = database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, 1, NOW));
     return slot;
   }
 
   function prepareRunning(database: AuthorityDatabase) {
     const slot = prepareWorkerSlot(database);
-    assert.equal(database.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId, processId: process.pid }).state, "started");
     database.authority.runs.enqueue({
       ...QUEUED_RUN,
       envelope: {
@@ -265,14 +257,13 @@ export function createAuthorityAccountingTestWorld() {
         },
       },
     });
-    const workerLifetime = testWorkerLifetime(database, WORKFLOW_ID, slot.poolIndex).workerLifetime;
-    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, workerLifetime, now: NOW });
+    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now: NOW });
     if (claimed.state !== "claimed") throw new Error("generation fixture did not claim a run");
     const validating = database.authority.runs.transition({
       runId: RUN_ID,
       expectedVersion: claimed.run.version,
       claim: { workerId: slot.workerId, claimGeneration: 1 },
-      lifecycle: { state: "validating", workerId: slot.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: { state: "validating", workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW },
       now: NOW,
     });
     if (validating.state !== "applied") throw new Error("generation fixture did not validate");
@@ -280,7 +271,7 @@ export function createAuthorityAccountingTestWorld() {
       runId: RUN_ID,
       expectedVersion: validating.run.version,
       claim: { workerId: slot.workerId, claimGeneration: 1 },
-      lifecycle: { state: "running", workerId: slot.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: { state: "running", workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW },
       now: NOW,
     });
     if (running.state !== "applied") throw new Error("generation fixture did not run");
@@ -446,7 +437,7 @@ export type MutationCase = Readonly<{
     cleanup?: (database: AuthorityDatabase) => void;
   }>;
 
-export function authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }: Pick<ReturnType<typeof createAuthorityAccountingTestWorld>, "prepareRunning" | "terminalFailureRequest" | "terminalSuccessRequest" | "terminalizeForTrust" | "DIAGNOSTIC_BUNDLE" | "FAILURE_RECORD" | "DRY_RUN_SCENARIO_RESULT" | "OPERATOR_XLSX_EXPORT" | "CLOCK" | "ATOMIC_WRITE_COMMIT" | "databasePaths" | "INTAKE_MANIFEST" | "OCR_EXTRACTION" | "prepareWorkerSlot" | "claimedWorkerId" | "prepareDelegationOwners" | "COMMAND_AUDIT" | "RUN_CHECKPOINT" | "OBSERVED_PRESENT_WRITE_INTENT">): readonly MutationCase[] {
+export function authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }: Pick<ReturnType<typeof createAuthorityAccountingTestWorld>, "prepareRunning" | "terminalFailureRequest" | "terminalSuccessRequest" | "terminalizeForTrust" | "DIAGNOSTIC_BUNDLE" | "FAILURE_RECORD" | "DRY_RUN_SCENARIO_RESULT" | "OPERATOR_XLSX_EXPORT" | "CLOCK" | "ATOMIC_WRITE_COMMIT" | "databasePaths" | "INTAKE_MANIFEST" | "OCR_EXTRACTION" | "prepareWorkerSlot" | "claimedWorkerId" | "prepareDelegationOwners" | "COMMAND_AUDIT" | "RUN_CHECKPOINT" | "OBSERVED_PRESENT_WRITE_INTENT">): readonly MutationCase[] {
   function assistant(db: AuthorityDatabase) {
     const path = databasePaths.get(db); assert.ok(path);
     const admission = boundProfileAdmission(path), profileId = admission.profileBinding.profileId;
@@ -459,8 +450,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       configIdentity: { configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint },
       descriptors: { resolve: () => undefined }, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       writeResolution: { recheck: unavailable, resolveAbsent: unavailable },
-      workerRuntime: { pool: { planPoolWorkerCount: unavailable, spawnPoolWorker: unavailable, stopPoolWorker: unavailable,
-        pausePoolWorker: unavailable, resumePoolWorker: unavailable, refreshPoolBrowser: unavailable, reopenPoolBrowser: unavailable } },
+      workerRuntime: { pool: unusedWorkerPool(unavailable) },
       prepareAssistantModelPreference: async () => () => true });
     const fixture = { profileId, kernel, authorization: createAssistantAuthorization({ database: db, kernel, clock: CLOCK,
       current: () => ({ profileId, epoch: 1 }) }), grant() {
@@ -583,10 +573,6 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     },mutate:db=>{db.commitWriteAttempt(ATOMIC_WRITE_COMMIT,atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));} },
     { table: "artifacts", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "artifacts", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
-    { table: "worker_leases", prepare: db => { prepareWorkerSlot(db); }, mutate: db => {
-      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-      db.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId, processId: process.pid });
-    } },
     { table: "exclusive_session_leases", prepare: db => { prepareRunning(db); }, mutate: db => {
       const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
       const acquired = db.authority.exclusiveSessionLeases.acquire({ identityKey: HASH_A, workerId: slot.workerId, sessionId: UUID_8, now: NOW });
@@ -666,36 +652,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "worker_slots", mutate: db => {
       const path = databasePaths.get(db);
       if (path === undefined) throw new Error("fixture-authority-path-missing");
-      db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0,
-    processId: process.pid,
-    now: NOW
-}, randomUUID()));
-    } },
-    { table: "worker_controls", mutate: db => {
-      const request = CommandRequestSchema.parse({ commandId: UUID_1, family: "worker-browser", type: "plan-worker-count",
-        target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers: 1 },
-        requestedAt: NOW, requestedBy: "local-operator", source: "dashboard" });
-      if (request.family !== "worker-browser" || request.type !== "plan-worker-count") throw new Error("fixture-worker-plan-kind");
-      db.withAuthorityTransaction(repositories => {
-        repositories.commands.insert(request);
-        const roster = admitWorkerPoolRoster(repositories, request, NOW);
-        repositories.workerControls.admit({ commandId: request.commandId, request, roster,
-          scope: "worker-pool:person-lookup", executorId: UUID_2, admittedAt: NOW, expiresAt: LATER,
-          basisVersion: 0, phase: { state: "admitted" } });
-      });
-    } },
-    { table: "browser_sessions", prepare: db => { prepareRunning(db); }, mutate: db => {
-      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-      db.authority.workerControls.observe({ workerId: slot.workerId, leaseGeneration: 1,
-        sessionId: UUID_1, system: "crm", configFingerprint: HASH_A, signInFingerprint: HASH_B,
-        browserMode: "headless", acceptDownloads: false, exclusive: false, health: "authenticated",
-        openedAt: NOW, observedAt: NOW, profileRevision: 1 });
-    }, cleanup: db => {
-      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-      for (const browser of db.authority.workerControls.browsers(slot.workerId)) {
-        db.authority.workerControls.observe({ ...browser, health: "closed", observedAt: NOW });
-      }
+      db.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, 1, NOW));
     } },
     { table: "gate_results", prepare: db => {
       db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: GATE_RESULT.runId } });

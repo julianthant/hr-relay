@@ -593,18 +593,15 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
   if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined
     && intent.bindingProof.kind === "subject-match" && ["ucpath/create-termination", "ucpath/delete-pending-terminations", "kuali/save-separation-finalization"].includes(intent.taskId)) {
+    // The check runs on an idle running member of the run's workflow; its card fence is the pool's lifetime and version.
     const worker = repositories.workerSlots.list(authority.envelope.workflow).filter(slot => slot.retiredAt === null)
-      .map(slot => ({ slot, lease: repositories.workerLeases.get(slot.workerId) }))
-      .find(({ slot, lease }) => lease?.lifecycle.state === "idle" && lease.workflow === slot.workflow && lease.controlRevision !== undefined
-        && deps.ownsWorker?.(lease) === true
-        && repositories.workerControls.pending(`worker-pool:${slot.workflow}`).length === 0
+      .map(slot => ({ slot, view: deps.workerMembers?.().find(view => view.member.workerId === slot.workerId) }))
+      .find(({ slot, view }) => view?.state === "running" && (view.activity === undefined || view.activity.state === "idle")
         && !repositories.runs.listByWorker(slot.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state)));
-    if (worker?.lease?.lifecycle.state === "idle" && worker.lease.controlRevision !== undefined) {
-      const { slot, lease } = worker;
-      const target = ParkedWriteCheckTargetSchema.parse({ ...deps.authorityIdentity, workerId: slot.workerId, expectedVersion: lease.version,
-        membershipRevision: slot.membershipRevision, processId: lease.processId, startedAt: lease.lifecycle.startedAt,
-        controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision },
-        workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId, runId, runVersion: authority.version,
+    if (worker?.view !== undefined) {
+      const { slot, view } = worker;
+      const target = ParkedWriteCheckTargetSchema.parse({ ...deps.authorityIdentity, workerId: slot.workerId, lifetimeId: view.lifetimeId, expectedVersion: view.version,
+      workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId, runId, runVersion: authority.version,
         runAttempt: authority.envelope.attempt, traceId: authority.envelope.traceId, nodeId: native.nodeId,
         writeIntentId: intent.writeIntentId, intentVersion: intent.version, intentGeneration: intent.generation,
         writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
@@ -614,18 +611,17 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
       } catch (error) { if (!(error instanceof WorkerControlRefusal)) throw error; }
     }
   }
-  const latest = repositories?.workerControls.list().findLast(record => record.request.type === "check-parked-write"
-    && record.request.requestedBy === "local-operator" && record.request.source === "run-detail"
-    && record.request.target.installationId === deps.authorityIdentity?.installationId && record.request.target.profileId === deps.authorityIdentity?.profileId
-    && record.request.target.workflowId === authority.envelope.workflow && record.request.target.itemId === authority.envelope.itemId
-    && record.request.target.runAttempt === authority.envelope.attempt && record.request.target.traceId === authority.envelope.traceId
-    && record.request.target.nodeId === native?.nodeId
-    && record.request.target.runId === runId && record.request.target.writeIntentId === intent.writeIntentId
-    && record.request.target.intentGeneration === intent.generation && record.request.target.writeAttemptId === intent.currentAttemptId
-    && record.request.target.bindingProofDigest === intent.bindingProofDigest && record.request.target.occurrenceKeyDigest === intent.idempotencyKeyDigest
-    && record.request.target.runVersion === authority.version && record.request.target.intentVersion === intent.version);
-  const lastCheck = latest?.phase.state === "succeeded" && latest.phase.acknowledgement.kind === "parked-write-check"
-    ? latest.phase.acknowledgement.result : undefined;
+  const latest = repositories?.commandAudits.parkedWriteChecks(runId).findLast(({ request }) => request.type === "check-parked-write"
+    && request.requestedBy === "local-operator" && request.source === "run-detail"
+    && request.target.installationId === deps.authorityIdentity?.installationId && request.target.profileId === deps.authorityIdentity?.profileId
+    && request.target.workflowId === authority.envelope.workflow && request.target.itemId === authority.envelope.itemId
+    && request.target.runAttempt === authority.envelope.attempt && request.target.traceId === authority.envelope.traceId
+    && request.target.nodeId === native?.nodeId
+    && request.target.runId === runId && request.target.writeIntentId === intent.writeIntentId
+    && request.target.intentGeneration === intent.generation && request.target.writeAttemptId === intent.currentAttemptId
+    && request.target.bindingProofDigest === intent.bindingProofDigest && request.target.occurrenceKeyDigest === intent.idempotencyKeyDigest
+    && request.target.runVersion === authority.version && request.target.intentVersion === intent.version);
+  const lastCheck = latest?.parkedWriteCheck?.result;
   const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check));
   return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck }),
     ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent, latest) } : {}),

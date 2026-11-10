@@ -372,7 +372,7 @@ it("drains two subscribed tabs before revocation and refuses subscription reconn
     const cookie = signedUp.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
     assert.ok(context);
     const custody = context.database.readProfileResourceCustody();
-    assert.deepEqual(custody.runs, []); assert.deepEqual(custody.slots, []); assert.deepEqual(custody.browsers, []);
+    assert.deepEqual(custody.runs, []); assert.deepEqual(custody.slots, []);
     const epoch = f.machine.readProfileRegistry().sessionGeneration;
     const subscribe = () => fetch(`${base}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { cookie } });
     for (let tab = 0; tab < 2; tab++) {

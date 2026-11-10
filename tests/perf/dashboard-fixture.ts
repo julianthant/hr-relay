@@ -1,6 +1,6 @@
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../support/helpers/run-integration-world.js";
 import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
-import { testWorkerLifetime, testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
 
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -246,8 +246,7 @@ function startRunning(context: SeedContext, spec: RunSpec, workerLabel: string, 
   const now = enqueued.envelope.enqueuedAt;
   const claimMember1 = context.database.authority.workerSlots.get(workerId);
   if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claimed = context.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(context.database, descriptor.id, claimMember1.poolIndex).workerLifetime,
-    workflow: descriptor.id,
+  const claimed = context.database.authority.runs.claimNext({ workflow: descriptor.id,
     workerId,
     now,
   });
@@ -695,8 +694,6 @@ export function seedDashboardPerfFixture(): PerfFixture {
       listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
