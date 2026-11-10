@@ -3,13 +3,13 @@ import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups
 import {
 BulkRunCommandRequestSchema,
 BulkRunCommandResponseSchema,
-CommandRequestSchema,
+DashboardCommandRequestSchema,
 CommandResultSchema,
 commandNoChangeResultMatches,
 needsWorkerCapacity,
 type BulkRunCommandRequest,
 type BulkRunCommandResponse,
-type CommandRequest,
+type DashboardCommandRequest,
 type CommandResult
 } from "../../../rules/commands/commands.js";
 import { DashboardClientError } from "../errors.js";
@@ -22,7 +22,7 @@ function identityMismatch(response: unknown): never {
     cause: response });
 }
 
-export function checkedCommandResult(command: CommandRequest, response: unknown): CommandResult {
+export function checkedCommandResult(command: DashboardCommandRequest, response: unknown): CommandResult {
   const result = parseOrThrow(CommandResultSchema, "POST /api/v1/commands", response);
   if (result.commandId !== command.commandId || result.state === "pending" && command.family !== "worker-browser") identityMismatch(response);
   if (result.state !== "applied" && result.state !== "already-applied") return result;
@@ -105,7 +105,7 @@ export interface SharedCommands {
 export function createSharedCommands(transport: DashboardTransport): SharedCommands { return Object.freeze({
 
     async executeCommand(request: unknown): Promise<CommandResult> {
-      const command = CommandRequestSchema.parse(request);
+      const command = DashboardCommandRequestSchema.parse(request);
       const response = await transport.requestJson("/api/v1/commands", {
         method: "POST",
         body: JSON.stringify(command),

@@ -11,7 +11,7 @@ import { DashboardClientProvider } from '../../../src/dashboard/state/client-con
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from '../../../src/models/failures/error-catalog.js';
 import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../parity/helpers/fixture-queue.js';
-import { CommandRequestSchema, type CommandRequest } from '../../../src/rules/commands/commands.js';
+import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
 import { PARITY_WORKFLOW_COMPOSITION } from '../../parity/helpers/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
@@ -49,14 +49,14 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
   assert(run);
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: 'http://fixture.test', fetchImpl: async (url, init) => app.request(url, init) });
-  const sent: CommandRequest[] = [];
+  const sent: DashboardCommandRequest[] = [];
   const oneClick = IdentityGateDetailWireSchema.parse({ ...FIXTURE_IDENTITY_GATE, approvalShape: 'one-click' });
   const client: DashboardClient = { ...transport,
     runDetail: async (runId, signal) => ({ ...await transport.runDetail(runId, signal), captures: { state: 'absent', reason: 'not-captured' } }),
     runSection: async (runId, section, cursor, signal) => runId === run.runId && section === 'identity-gate'
       ? RunDetailSectionResponseSchema.parse({ section, payload: { state: 'available', value: oneClick } }) : transport.runSection(runId, section, cursor, signal),
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: 'live' }); return { close: () => undefined }; },
-    executeCommand: async (raw: unknown) => { sent.push(CommandRequestSchema.parse(raw)); return transport.executeCommand(raw); } };
+    executeCommand: async (raw: unknown) => { sent.push(DashboardCommandRequestSchema.parse(raw)); return transport.executeCommand(raw); } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   const servedLogs = (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => { const composition = PARITY_WORKFLOW_COMPOSITION(workflows); return Object.freeze({ ...composition, logsSources: composition.sources }); };
@@ -94,6 +94,8 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
   const envelope = sent[0];
   assert.equal(envelope.family, 'gate');
   if (envelope.family === 'gate') assert.deepEqual(envelope.target, { runId: run.runId, gateId: 'identity-approval', expectedVersion: run.rowRevision });
+  assert.deepEqual(envelope.family === 'gate' && envelope.type === 'answer-identity-gate' ? envelope.payload : undefined,
+    { decision: 'approved', gateRef: oneClick.gateRef, optionRef: oneClick.options[0]?.ref });
 });
 
 for (const catchesUp of [false, true]) it(`retains stale Logs during a day refresh and ${catchesUp ? 'loads the caught-up row' : 'refuses persistent lag after one refresh'}`, async () => {
@@ -102,7 +104,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: 'http://fixture.test', fetchImpl: async (url, init) => app.request(url, init) });
   const subscriptions: Parameters<typeof transport.subscribeDay>[0][] = [];
-  const sent: CommandRequest[] = [];
+  const sent: DashboardCommandRequest[] = [];
   let ahead = false;
   const nextRevision = RowRevisionSchema.parse(run.rowRevision + 1);
   const client: DashboardClient = { ...transport,
@@ -118,7 +120,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
       if (subscriptions.length === 1) { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: 'live' }); }
       return { close: () => undefined };
     },
-    executeCommand: async raw => { sent.push(CommandRequestSchema.parse(raw)); return transport.executeCommand(raw); },
+    executeCommand: async raw => { sent.push(DashboardCommandRequestSchema.parse(raw)); return transport.executeCommand(raw); },
   };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);

@@ -29,6 +29,7 @@ import { ocrWorkflow } from "../../../../src/workflows/ocr/workflow.js";
 import { buildOcr } from "../../../../src/workflows/ocr/steps/source-pages/step.js";
 import type { ChildVisibility } from "../../../../src/models/workflow/delegation-policy.js";
 
+import { assertMemberLogsServed } from "../../../support/helpers/backend/member-log-targets.js";
 import { sessionFactoryHarness, healthyCrmDriver, EXECUTOR_EID } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 
@@ -47,6 +48,15 @@ function failAveryLookupOnce(result: Parameters<typeof createDeterministicUcpath
       return driver.searchPersonOrg(input);
     } };
   }, crm: () => healthyCrmDriver() });
+}
+
+function memberDeps(f: Awaited<ReturnType<typeof world.fixture>>) {
+  const descriptors = { resolve: f.resolve };
+  const projection = createOperatorProjection({ database: f.database, stateRoot: f.harness.authority.stateRoot, clock: f.clock, reader: f.canonical.lifecycle,
+    appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(f.database.authority), descriptors });
+  projection.ingestFromTimeline();
+  return createOperatorRunDetail({ database: f.database, stateRoot: f.harness.authority.stateRoot, projection, runReader: f.canonical.lifecycle,
+    canonical: { database: f.database, reader: f.canonical.lifecycle, descriptors } });
 }
 
 const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
@@ -103,6 +113,9 @@ it("binds three records to two native queued lookups and retains their shared fa
   assert.equal(presentation.members.length, 3);
   assert.ok(presentation.members.every(member => member.kind === "record" && member.statusLabel === "Looking up"));
   assert.equal(new Set(presentation.runIds).size, 5);
+  const queuedLookupIds = new Set(f.database.authority.runs.listChildren(f.run.envelope.runId).filter(run => run.envelope.workflow === "person-lookup").map(run => run.envelope.runId));
+  assert.equal(assertMemberLogsServed(memberDeps(f), presentation.members), 3);
+  assert.ok(presentation.members.every(member => queuedLookupIds.has(member.target.runId)), "lookup members open their own lookup child's log");
   assert.equal(new Set(source.bindings.map(binding => binding.currentChildRunId)).size, 2);
   assert.deepEqual(source.bindings.map(binding => binding.record), source.seed.records.map(record => ({
     runId: f.run.envelope.runId, recordId: record.recordId,
@@ -134,6 +147,12 @@ it("binds three records to two native queued lookups and retains their shared fa
   assert.ok(child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
   const failure = execution.outcomes.find(outcome => outcome.state === "failed"); assert.ok(failure?.state === "failed");
   assert.equal(f.database.authority.failures.get(failure.failureId)?.code, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED");
+  const failedMembers = f.database.withAuthorityReadSnapshot(() => readOcrQueueMembers(f.database.authority, f.canonical.lifecycle,
+    f.run.envelope.runId, id => f.resolve(id)?.label ?? id))?.members ?? [];
+  const failedRows = failedMembers.filter(member => member.status === "failed");
+  assert.equal(failedRows.length, 2);
+  assert.ok(failedRows.every(member => member.target.section === "logs" && member.target.runId === child.envelope.runId), "failed members open the failed lookup child's log");
+  assert.equal(assertMemberLogsServed(memberDeps(f), failedMembers), failedMembers.length);
   const retry = { commandId: randomUUID(), family: "run", type: "retry", source: "run-detail", requestedBy: "local-operator",
     requestedAt: f.clock.now().toISOString(), target: { runId: child.envelope.runId, expectedVersion: child.version } };
   assert.equal(f.canonical.kernel.execute(retry).state, "applied");
