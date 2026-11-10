@@ -9,5 +9,5 @@ export function StorageNotice({ storage }: {
   storage: StorageHealthSummary;
 }) {
   if (storage.authority === "healthy") return null;
-  return <Notice sticky tone="danger" title="Storage unavailable" description={`${AUTHORITY_HAZARD} Open Settings > Storage.`} />;
+  return <Notice sticky tone="danger" title="Storage unavailable" description={AUTHORITY_HAZARD} />;
 }

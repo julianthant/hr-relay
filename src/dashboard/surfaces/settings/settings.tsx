@@ -1,8 +1,8 @@
-import { ArrowLeft,ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Settings as SettingsIcon,Sparkles,Table2 } from "lucide-react";
+import { ArrowLeft,ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
@@ -22,8 +22,8 @@ import { StatusMockAccount,StatusMockSubscription } from "./status-mock/status-m
 import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
 import { StatusMockGeneral } from "./status-mock/status-mock-general.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
-import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
-import { storageNeedsAttention,type StorageHealthSummary } from "./storage/storage-settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
 
 
 export type { SettingsSection,StorageHealthSummary };
@@ -106,42 +106,6 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
     <Icon aria-hidden className={dsIcon.md} /><span><span>{result.label}</span><small>{result.context}</small></span>
   </a>;
 }
-
-
-/** Settings navigation is shared because both gear and storage doors open the same page. */
-export function SettingsGear({
-  storage,
-  open,
-  onOpen,
-}: {
-  storage: StorageHealthSummary;
-  open: boolean;
-  onOpen: () => void;
-}) {
-  const attention = storageNeedsAttention(storage);
-  return (
-    <IconButton
-      id={SETTINGS_GEAR_ID}
-      size="sm"
-      label={attention ? "Settings — storage needs attention" : "Settings"}
-      // Expose pressed state visually and accessibly so the takeover never appears closed.
-      aria-pressed={open}
-      onClick={onOpen}
-      className={cn(open && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]")}
-      icon={
-        <span className="relative inline-flex">
-          <SettingsIcon aria-hidden className={dsIcon.md} />
-          {attention && (
-            <span aria-hidden className="pointer-events-none absolute right-[-3px] top-[-3px]">
-              <StatusDot status={storage.authority === "healthy" ? "waiting" : "failed"} />
-            </span>
-          )}
-        </span>
-      }
-    />
-  );
-}
-
 
 
 export function SettingsPage({

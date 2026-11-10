@@ -15,7 +15,6 @@ const servers = registerReferenceServers(["server","storageServer"]);
 async function assertStorageNotice(page: import("@playwright/test").Page): Promise<void> {
   const notice = page.getByRole("alert").filter({ hasText: "Storage unavailable" });
   await expect(notice).toHaveCount(1);
-  await expect(notice).toContainText("Open Settings > Storage.");
   await expect(notice.getByRole("button")).toHaveAccessibleName("Dismiss");
 }
 
