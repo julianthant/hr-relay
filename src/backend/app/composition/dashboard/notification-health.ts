@@ -11,19 +11,31 @@ import type { RunRecordService } from "../../../runs/lifecycle/run-record-servic
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
-const inspected = new WeakMap<AuthorityDatabase, { dataVersion: number; authorityGeneration: number; totalChanges: number; integrityFailed: boolean }>();
+type ChangeKey = ReturnType<AuthorityDatabase["changeKey"]>;
+const inspected = new WeakMap<AuthorityDatabase, { key: ChangeKey; integrityFailed: boolean }>();
+const sameKey = (a: ChangeKey, b: ChangeKey) => a.authorityGeneration === b.authorityGeneration && a.dataVersion === b.dataVersion && a.totalChanges === b.totalChanges;
+/** Runs a synchronous write this observer owns; the remembered key follows it only when nothing else had moved it. */
+function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
+  const before = database.changeKey();
+  const result = write();
+  const entry = inspected.get(database);
+  if (entry !== undefined && sameKey(entry.key, before)) inspected.set(database, { key: database.changeKey(), integrityFailed: entry.integrityFailed });
+  return result;
+}
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */
 export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;
   const filesystem = statfsSync(stateRoot, { bigint: true });
   const wal = join(stateRoot, "state.db-wal");
+  const leaseExpired = ownWrite(input.database, () => listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000));
   const opening = input.database.changeKey();
   const prior = inspected.get(input.database);
   let integrityFailed: boolean;
-  if (prior !== undefined && prior.dataVersion === opening.dataVersion && prior.authorityGeneration === opening.authorityGeneration && prior.totalChanges === opening.totalChanges) integrityFailed = prior.integrityFailed;
+  if (prior !== undefined && sameKey(prior.key, opening)) integrityFailed = prior.integrityFailed;
   else {
     integrityFailed = false;
     try { AuthorityDatabase.inspectExistingReadOnly(input.admission, join(stateRoot, "state.db")); } catch { integrityFailed = true; }
+    inspected.set(input.database, { key: opening, integrityFailed });
   }
   let backupFailed = false;
   const backupRoot = join(stateRoot, "backups", "authority");
@@ -33,10 +45,6 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
       catch { backupFailed = true; }
     }
   }
-  const leaseExpired = listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000);
-  const settled = input.database.changeKey();
-  // dataVersion stays the pre-await value so a same-connection write cannot hide an external commit.
-  inspected.set(input.database, { dataVersion: opening.dataVersion, authorityGeneration: settled.authorityGeneration, totalChanges: settled.totalChanges, integrityFailed });
   return { freeBytes: Number(filesystem.bavail * filesystem.bsize), walBytes: existsSync(wal) ? statSync(wal).size : 0, integrityFailed, backupFailed, leaseExpired };
 }
 
@@ -61,12 +69,7 @@ export function createNotificationHealthObserver(input: { database: AuthorityDat
           diagnosticFingerprint: sha256Hex(`notification-health:${concern}`) },
         { identity: sha256Hex(`notification-health:${concern}:${String(occurrence)}`), occurredAt: at });
       }
-      database.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern, active, occurrence, observedAt: at, samples: concern === "wal-growth" ? samples : [], createdAt: previous?.createdAt ?? at }));
-    }
-    const remembered = inspected.get(database);
-    if (remembered !== undefined) {
-      const after = database.changeKey();
-      inspected.set(database, { dataVersion: remembered.dataVersion, authorityGeneration: after.authorityGeneration, totalChanges: after.totalChanges, integrityFailed: remembered.integrityFailed });
+      ownWrite(database, () => database.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern, active, occurrence, observedAt: at, samples: concern === "wal-growth" ? samples : [], createdAt: previous?.createdAt ?? at })));
     }
   };
 }

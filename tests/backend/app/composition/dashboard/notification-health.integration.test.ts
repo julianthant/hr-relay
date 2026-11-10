@@ -53,7 +53,7 @@ describe("canonical notification producers", () => {
       f.clock.advanceWall(60_000);
       await observe();
       expect(inspect).toHaveBeenCalledTimes(1);
-      other.prepare("UPDATE notification_states SET updated_at=? WHERE id=?").run("2000-01-01T00:00:00.000Z", "disk-space");
+      other.exec("CREATE TABLE external_probe(x); DROP TABLE external_probe");
       f.clock.advanceWall(60_000);
       await observe();
       expect(inspect).toHaveBeenCalledTimes(2);
@@ -62,6 +62,51 @@ describe("canonical notification producers", () => {
       await observe();
       expect(inspect).toHaveBeenCalledTimes(3);
     } finally { inspect.mockRestore(); other.close(); await f.close(); }
+  });
+  it("inspects again after an owner write lands while backup verification is suspended", async () => {
+    const f = await fixture();
+    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    try {
+      const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, "corrupt.manifest.json"), "not a manifest");
+      const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      const pending = read();
+      f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
+      await pending;
+      await read();
+      expect(inspect).toHaveBeenCalledTimes(2);
+      await read();
+      expect(inspect).toHaveBeenCalledTimes(2);
+    } finally { inspect.mockRestore(); await f.close(); }
+  });
+  it("inspects again after an owner write lands while inbox publication is suspended", async () => {
+    const f = await fixture();
+    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const publish = f.inbox.publish.bind(f.inbox);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let published = false;
+    const inbox = { ...f.inbox, publish: async (...args: Parameters<typeof publish>) => {
+      if (!published) {
+        published = true;
+        f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "backup", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
+        await gate;
+      }
+      return publish(...args);
+    } };
+    try {
+      const observe = createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox, read: async () => ({ ...(await readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock })), freeBytes: 0 }) });
+      const pending = observe();
+      release();
+      await pending;
+      expect(inspect).toHaveBeenCalledTimes(1);
+      f.clock.advanceWall(60_000);
+      await observe();
+      expect(inspect).toHaveBeenCalledTimes(2);
+      f.clock.advanceWall(60_000);
+      await observe();
+      expect(inspect).toHaveBeenCalledTimes(2);
+    } finally { inspect.mockRestore(); await f.close(); }
   });
   it("observes a claimed run's heartbeat expiry strictly after sixty seconds", async () => {
     const f = await fixture();
