@@ -248,7 +248,7 @@ describe("served Logs wiring", () => {
   it("retains held-probe evidence alongside the declared parked-write recovery actions", async () => {
     const native = nativeOf(RUN, 40);
     const target = { workerId: "person-lookup-worker-1", workflowId: selection().row.workflowId, expectedVersion: 2,
-      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+      lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000",
       installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selection().row.rowRevision,
       runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
       intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
@@ -284,7 +284,7 @@ describe("served Logs wiring", () => {
     const selected = { ...selection(), row: { ...selection().row, workflowId: WorkflowIdSchema.parse("separations") } };
     const native = nativeOf(RUN, 40);
     const target = { workerId: "separations-worker-1", workflowId: selected.row.workflowId, expectedVersion: 2,
-      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+      lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000",
       installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selected.row.rowRevision,
       runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
       intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };

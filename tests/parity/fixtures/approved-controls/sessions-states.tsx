@@ -19,7 +19,7 @@ const lookupSteps = (done: number, at: StepState = 'active'): Step[] => [['searc
 const rows: Record<string, { seed: number; workflowId: string; title: string; steps: Step[]; message?: string }> = {};
 const row = (key: string, workflowId: string, title: string, steps: Step[], message?: string) => { rows[key] = { seed: 100 + Object.keys(rows).length, workflowId, title, steps, message }; return rows[key].seed; };
 
-const member = (ordinal: number, workflowId: string) => ({ workflowId, workerId: `${workflowId}-worker-${ordinal}`, ordinal, poolIndex: ordinal, membershipRevision: 1 });
+const member = (ordinal: number, workflowId: string) => ({ workflowId, workerId: `${workflowId}-worker-${ordinal}`, ordinal, poolIndex: ordinal });
 const browser = (seed: number, system: string, health: 'authenticated' | 'starting' | 'unknown' | 'failed', signIn?: string) => ({ sessionId: uuidOf(seed), system, openedAt: ago(130),
   observation: { state: 'present', health, observedAt: ago(10), browserMode: 'headed', configFingerprint: 'a'.repeat(64) }, ...(signIn === undefined ? {} : { signIn }) });
 const THREE = ['kuali', 'ucpath', 'new-kronos'];
@@ -48,7 +48,7 @@ const LOOKUP = 'person-lookup';
 const base = (ordinal: number, workflowId: string, key: string, over: Record<string, unknown>) => ({
   member: member(ordinal, workflowId), workerId: `${workflowId}-worker-${ordinal}`, workflowId, state: 'running', directive: 'run', startedAt: ago(134),
   currentRun: runOf(key), browserRequirements: { state: 'present', systems: THREE }, browsers: threeOpen(200 + ordinal * 10), timeline: { state: 'present' },
-  leaseVersion: 1, revision: 1, ...over,
+  revision: 1, ...over,
 });
 
 /** Every card state the served model produces, built as served worker cards and folded through the real day model. The first thirteen reproduce the approved sheet. */

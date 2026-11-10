@@ -78,10 +78,10 @@ describe("gate resolution", () => {
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
-    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
+    const { workerId } = testAdmittedWorker(harness.database, harness.clock, {
       path: join(harness.stateRoot, "state.db"), workflow: identityCheckDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
-    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, workerLifetime, now: NOW });
+    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, now: NOW });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("unreachable");
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
@@ -136,7 +136,7 @@ describe("gate resolution", () => {
     assert.equal(checkpointEvent.payload.workflow, identityCheckDescriptor.id);
     assert.equal(checkpointEvent.payload.attempt, claimed.run.envelope.attempt);
     assert.equal(Number(checkpointEvent.payload.claimGeneration), Number(claimed.run.claimGeneration));
-    const lifecycleBase = { workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW };
+    const lifecycleBase = { workerId, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       const outcome = harness.database.authority.runs.transition({

@@ -4,7 +4,7 @@ import { afterAll } from "vitest";
 import { buildGateParkSection } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
-import { testWorkerLifetime, testRunService, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
@@ -80,14 +80,14 @@ function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running",
   database.authority.runs.enqueue(queued);
   const claimMember5 = database.authority.workerSlots.get(workerId);
   if (claimMember5 === undefined) throw new Error("fixture-claim-member-required");
-  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember5.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId, now: NOW });
+  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed" || target === "claimed") return;
   const validating = database.authority.runs.transition({
     runId: queued.envelope.runId,
     expectedVersion: claimed.run.version,
     claim: { workerId, claimGeneration: 1 },
-    lifecycle: { state: "validating", workerId, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember5.poolIndex).workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
+    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
     now: NOW,
   });
   assert.equal(validating.state, "applied");
@@ -99,7 +99,6 @@ function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running",
     lifecycle: {
       state: "running",
       workerId,
-      workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember5.poolIndex).workerLifetime,
       claimedAt: NOW,
       heartbeatAt: NOW,
       currentNodeId: "searching",

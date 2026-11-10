@@ -184,6 +184,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     duoCeremony: DuoCeremonyGate;
     acquisitionRemainingMs?: () => number;
     claimStaleRequestRecovery?: () => boolean;
+    replacesSessionId?: string;
   }>): Promise<WorkerBrowserResource> {
     const { config } = this.#options;
     const workerId = WorkerIdSchema.parse(input.workerId);
@@ -216,7 +217,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     assertFastDuoReady(config, this.#options.duo);
     const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
     const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, system, instance,
-      signal: input.signal, assertCurrent, ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
+      signal: input.signal, assertCurrent, ...(input.replacesSessionId === undefined ? {} : { replacesSessionId: input.replacesSessionId }), ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
     let launchStarted = false;
     let reserved = false;
     let context: BrowserContext;
@@ -578,7 +579,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
   }
 
   async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; sessionId: string; system: BrowserSystemId; instance: RuntimeInstance;
-    signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number }>): Promise<ExclusiveSessionLease> {
+    signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number; replacesSessionId?: string }>): Promise<ExclusiveSessionLease> {
     const entry = new URL(resolveSystemEntryUrl(this.#options.config, input.system, input.instance, `${input.system} identity lease`));
     const account = requireSecret("ucpathUserId", this.#options.protectedSecrets).trim().toLocaleLowerCase("en-US");
     if (account.length === 0) throw new Error("onbase-session-identity-unavailable");
@@ -587,7 +588,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     for (;;) {
       input.signal.throwIfAborted(); input.assertCurrent();
       const outcome = this.#options.browserOwner.database.authority.exclusiveSessionLeases.acquire({ identityKey,
-        workerId: input.workerId, sessionId: input.sessionId, now: this.#options.clock.now().toISOString() });
+        workerId: input.workerId, sessionId: input.sessionId, now: this.#options.clock.now().toISOString(),
+        ...(input.replacesSessionId === undefined ? {} : { replacesSessionId: input.replacesSessionId }) });
       if (outcome.state === "acquired") return outcome.lease;
       const remaining = Math.min(deadline - this.#options.clock.monotonicMs(), input.remainingMs?.() ?? Infinity);
       if (remaining <= 0) throw new OnbaseSessionHeldError();

@@ -15,11 +15,13 @@ parentStop.signal.throwIfAborted();
 const machine = acquireSharedRuntimeAdmission(workspace, lifetime), admission = machine.admitProfile(profileId);
 const store = createDuoCredentialStore(admission, manualClock(new Date(at)));
 async function close() {
-  admission.release(); machine.release(); await lifetime.close();
+  admission.release(); machine.release();
   if (process.connected) {
       if (process.disconnect === undefined) throw new Error("fixture-worker-ipc-required");
       process.disconnect();
     }
+  // A worker never closes its lifetime listener; exiting releases it.
+  process.exit();
 }
 async function command(input: unknown): Promise<void> {
   if (input === "close") { await close(); return; }

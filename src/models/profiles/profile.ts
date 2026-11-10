@@ -1,6 +1,5 @@
 import { CanonicalCrashRecoveryRequestSchema } from "../run/worker.js";
 import { FileIdentitySchema } from "../storage/file-identity.js";
-import { WorkerPoolMemberSchema } from "../run/worker-slot.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { ProfileDisplayNameSchema, ProfileIdentitySchema, profileInitials } from "./profile-identity.js";
@@ -51,7 +50,7 @@ export type ProfileRegistryDocument = z.infer<typeof ProfileRegistryDocumentSche
 
 export const ProfileSelectionChangeReasonSchema = z.enum([
   "profile-activated", "profile-sign-in-refused", "profile-logout-requested", "profile-logout-continuation",
-  "profile-registry-published", "profile-incomplete-reclassified", "profile-authority-restored",
+  "profile-registry-published", "profile-incomplete-reclassified", "profile-authority-restored", "profile-startup-held",
 ]);
 export type ProfileSelectionChangeReason = z.infer<typeof ProfileSelectionChangeReasonSchema>;
 export const PROFILE_SELECTION_CHANGE_CALLERS = Object.freeze({
@@ -62,6 +61,7 @@ export const PROFILE_SELECTION_CHANGE_CALLERS = Object.freeze({
   "profile-registry-published": "src/backend/storage/admission/admission.ts:publishProfileRegistry",
   "profile-incomplete-reclassified": "src/backend/storage/admission/installation.ts:prepareIncompleteProfileDraft",
   "profile-authority-restored": "src/backend/storage/admission/installation.ts:settleAuthorityRestore",
+  "profile-startup-held": "src/backend/app/composition/storage-compose.ts:initializeRegisteredPersonStores",
 } as const);
 export const ProfileSelectionChangeSchema = z.strictObject({
   reason: ProfileSelectionChangeReasonSchema,
@@ -227,11 +227,10 @@ export const LogoutSettlementSchema = z.strictObject({
   before: LogoutFingerprintSchema,
   after: LogoutFingerprintSchema.optional(),
   requests: z.array(CanonicalCrashRecoveryRequestSchema).max(100_000),
-  workers: z.array(z.strictObject({ member: WorkerPoolMemberSchema, processId: z.number().int().positive(), leaseGeneration: z.number().int().positive() })).max(64),
 }).refine(value => value.phase === "prepared" ? value.after === undefined : value.after !== undefined, "logout settlement fingerprint prefix invalid");
 
 export const LogoutOperationSchema = z.strictObject({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   kind: z.literal("logout"),
   operationId: z.uuid(),
   profileId: z.uuid(),

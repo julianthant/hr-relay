@@ -25,7 +25,7 @@ import { readyProfileOnboarding, syntheticOnboardingDuo } from "../../support/he
 import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import { FakeKeyringEntry, credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
 import { ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
-import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../src/backend/storage/admission/process-identity.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { composeProfileRuntime, initializeRegisteredPersonStores, RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";

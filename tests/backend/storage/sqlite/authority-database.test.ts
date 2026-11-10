@@ -2,7 +2,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +13,7 @@ import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts } from
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createFirstInstallCustodyFixture } from "../../../support/helpers/storage/first-install-custody-fixtures.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
-import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
 import { insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
 import { OcrPageInputSchema } from "../../../../src/models/workflows/ocr/source-manifest.js";
@@ -198,38 +196,6 @@ afterEach(_afterEachFixture0);
       expect(after.prepare("SELECT * FROM database_upgrades").all()).toEqual(baseline);}
     catch (error) { afterPrimary = { error }; throw error; }
     finally {f.close(after, afterPrimary?.error);}
-  });
-});
-}
-
-{
-
-const roots: string[] = [];
-const _afterEachFixture0 = () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-
-describe("first installation worker custody", () => {
-afterEach(_afterEachFixture0);
-
-  async function initialFixture() {
-    return await createFirstInstallCustodyFixture(roots, HASH_A);
-  }
-  it("retains blocking first-install custody on an AuthorityDatabase opening callback failure", async () => {
-    const f = await initialFixture();
-    vi.spyOn(AuthorityDatabase, "open").mockImplementation(() => {
-      expect(f.snapshot().processLocks.workers.state).toBe("active"); throw new Error("initial-open-fault");
-    });
-    expect(f.acquire).toThrow("initial-open-fault");
-    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release(); await f.close();
-  });
-  it("retains blocking custody through a first-install close fault", async () => {
-    const f = await initialFixture();
-    const originalClose = Object.getOwnPropertyDescriptor(AuthorityDatabase.prototype, "close")?.value as (this: AuthorityDatabase) => void;
-    vi.spyOn(AuthorityDatabase.prototype, "close").mockImplementation(function (this: AuthorityDatabase) {
-      expect(f.snapshot().processLocks.workers.state).toBe("active");
-      originalClose.call(this); throw new Error("initial-close-unproved");
-    });
-    expect(f.acquire).toThrow("initial-close-unproved");
-    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release(); await f.close();
   });
 });
 }

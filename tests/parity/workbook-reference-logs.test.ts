@@ -79,6 +79,10 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
           await expect(page.getByRole('button', { name: 'Replay exact decision', exact: true })).toBeEnabled();
           await expect(next).toBeDisabled(); await expect(radios.nth(1)).toBeDisabled();
           await expect(page.getByRole('dialog')).toHaveCount(0);
+          // The shell paints recovery on its next render after publish; capture that settled state.
+          const recovery = page.getByRole('region', { name: 'Commands awaiting recovery' });
+          await expect(recovery).toBeVisible();
+          await expect(recovery.getByRole('button', { name: 'Review resolve-workbook-reference-row (1 run)', exact: true })).toBeVisible();
           await capturePresentationReference(page, info, 'uncertain', day.descriptorHash);
           expect(writes).toHaveLength(1);
         }

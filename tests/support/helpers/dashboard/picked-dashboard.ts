@@ -66,7 +66,7 @@ export function pickedRunWorld(state: PickedRunState) {
   const statusCounts = [{ status, count: 1 }];
   const day = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH, queueSurfaces: [row], attemptHistory: [{ runId: row.runId, startedAt: row.startedAt, endedAt: row.endedAt }],
     monthCounts: [{ day: FIXTURE_DAY_WIRE.day, count: 1 }], workflowCounts: [{ workflowId: row.workflowId, count: 1, statusCounts }], statusCounts,
-    workerCards: [], workerOperations: [], workerPools: [], workerAuthority: { state: "present", members: [] }, notifications: [] });
+    workerCards: [], workerPools: [], workerAuthority: { state: "present", members: [] }, notifications: [] });
   const native = (order: number) => ({ eventId: uuidOf(970 + order), order, runId: row.runId, attempt: row.attempt,
     traceId: row.traceId, nodeId, spanPath: `${row.traceId}/${nodeId}#1` });
   const sessionId = uuidOf(964);

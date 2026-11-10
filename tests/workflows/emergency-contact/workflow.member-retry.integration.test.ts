@@ -403,7 +403,7 @@ it(`refuses accounting with a ${ownership} after manual Resume`, async () => {
     const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
     const claim = (owner: ReturnType<typeof testWorkerLifetime>) => {
       const result = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.descriptor.id,
-        workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: {
+        workerId: owner.workerId, runtimeConfig: {
           generation: runtime.generation, settingsRevision: runtime.settingsRevision,
           settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
       assert.equal(result.state, "applied");
@@ -596,7 +596,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
         assert.equal(f.database.authority.runResults.get(f.parentRun.envelope.runId), undefined);
       }
       const result = f.canonical.lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: request.workerId,
-      workerLifetime: owner.workerLifetime, runtimeConfig: {
+      runtimeConfig: {
       generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint,
       configFingerprint: runtime.configFingerprint } });
       if ((result.state === "applied" || result.state === "applied-already") && "run" in result) claimed.push(result.run.envelope.runId);

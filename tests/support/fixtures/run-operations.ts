@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../helpers/backend/unused-worker-pool.js";
 import { Hono } from "hono";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -43,7 +44,7 @@ export function installRunOperationsRoutes(app: DashboardApp, setup: Awaited<Ret
     preflight: runtime.admission, configIdentity: identity,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } } });
+    workerRuntime: { pool: unusedWorkerPool(unexpected) } });
   const queueApp: DashboardApp = new Hono();
   queueApp.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
   const projection = createOperatorProjection({ database, clock, stateRoot: setup.fixture.stateRoot, appVersion: "0.1.0",

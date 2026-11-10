@@ -109,7 +109,7 @@ const APP_DAY = DashboardDayWireSchema_m1.parse({
   workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
   statusCounts: [],
   queueSurfaces: [],
-  workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [],
+  workerCards: [], workerAuthority: { state: "present", members: [] },
   workerPools: [],
   notifications: [],
 });

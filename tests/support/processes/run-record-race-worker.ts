@@ -11,7 +11,6 @@ import { z } from "zod";
 import { RunRecordService, CreateRunRequestSchema, requireLifecycleApplied } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../src/models/config/runtime-generation.js";
-import { WorkerClaimLifetimeSchema } from "../../../src/models/run/worker.js";
 import { CommandIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -20,7 +19,8 @@ import { basename, dirname, resolve } from "node:path";
 const parentStop = new AbortController();
 const lifetime = await WorkerRuntimeLifetimeLock.receive(z.coerce.number().int().positive().parse(process.argv[2]), () => parentStop.abort(new Error("fixture-parent-disconnected")));
 parentStop.signal.throwIfAborted();
-let closeOwned: () => Promise<void> = () => lifetime.close();
+// A worker never closes its lifetime listener; exiting releases it.
+let closeOwned: () => Promise<void> = async () => { process.exit(); };
 parentStop.signal.addEventListener("abort", () => {
   process.exitCode = 1;
   void closeOwned().catch(error => { setImmediate(() => { throw error; }); });
@@ -37,7 +37,7 @@ const data = z.strictObject({
     z.strictObject({ kind: z.literal("create"), request: CreateRunRequestSchema }),
     z.strictObject({ kind: z.literal("claim"), request: z.strictObject({
       commandId: CommandIdSchema, workflow: WorkflowIdSchema, workerId: WorkerIdSchema,
-      workerLifetime: WorkerClaimLifetimeSchema, runtimeConfig: RuntimeConfigClaimTokenSchema,
+      runtimeConfig: RuntimeConfigClaimTokenSchema,
     }) }),
   ]),
 }).parse(request);
@@ -73,7 +73,7 @@ if (data.operation.kind === "own-terminal-failure") {
   testWorkerPorts(database, clock, { path: data.path, descriptor: personLookupDescriptor, poolIndex: 2 });
   const owner = testWorkerLifetime(database, personLookupDescriptor.id, 2);
   const claimed = requireLifecycleApplied(service.claimNext({ commandId: randomUUID(), workflow: personLookupDescriptor.id,
-    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: data.operation.runtimeConfig }));
+    workerId: owner.workerId, runtimeConfig: data.operation.runtimeConfig }));
   if (claimed.envelope.runId !== data.runId) throw new Error("race-worker-claimed-another-run");
   const claim = { workerId: owner.workerId, claimGeneration: claimed.claimGeneration };
   requireLifecycleApplied(service.workerTransition({ commandId: randomUUID(), runId: data.runId, claim,
@@ -87,11 +87,11 @@ closeOwned = () => closing ??= (async () => {
   database.close();
   if (data.operation.kind === "own-terminal-failure") unregisterBoundProfile(admission);
   admission.release(); machine.release();
-  await lifetime.close();
   if (process.connected) {
     if (process.disconnect === undefined) throw new Error("race worker parent channel disappeared");
     process.disconnect();
   }
+  process.exit();
 })();
 process.on("message", (input: unknown) => {
   const message = z.union([z.enum(["run", "close"]), z.strictObject({ type: z.literal("terminal-failure"),

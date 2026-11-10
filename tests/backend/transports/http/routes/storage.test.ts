@@ -11,7 +11,7 @@ const report = StorageDoctorWireSchema.parse({
   authority: { state: "healthy", schemaVersion: 1, authorityGeneration: 1, pageCount: 1 },
   authorityUpgrades: { state: "absent", reason: "journal-empty" },
   protectedSettings: { state: "unavailable", cause: { code: "unavailable", summary: "unavailable" } },
-  counts: { state: "available", values: { pendingCommands: 0, unresolvedWriteIntents: 0, leases: 0, providerReservations: 0, artifactOutbox: 0 } },
+  counts: { state: "available", values: { pendingCommands: 0, unresolvedWriteIntents: 0, providerReservations: 0, artifactOutbox: 0 } },
   spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] },
   backup: { state: "missing", cause: { code: "missing", summary: "none" } }, restoreCandidates: [],
   service: { state: "never-run", reason: "none" },
