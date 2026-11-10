@@ -67,8 +67,11 @@ describe("start-specific supersede review is atomic", () => {
         assert.ok(claimed.state === "applied" || claimed.state === "applied-already");
       }
       const roots = h.queueRoots; const generation = h.database.getMeta().authorityGeneration;
-      const result = h.kernel.execute(h.command(plan)); assert.ok(result.state === "rejected"); assert.equal(result.code, "replan-required");
-      assert.deepEqual(h.queueRoots, roots); assert.equal(h.database.getMeta().authorityGeneration, generation);
+      const command = h.command(plan);
+      const result = h.kernel.execute(command); assert.ok(result.state === "rejected"); assert.equal(result.code, "replan-required");
+      assert.deepEqual(h.queueRoots, roots); assert.equal(h.database.getMeta().authorityGeneration, generation + 2);
+      assert.deepEqual(h.database.authority.commands.get(command.commandId), command);
+      assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId)?.result, result);
       assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
       if (source !== undefined && change === "claimed") {
         const current = h.fresh(source), claim = runClaim(current);

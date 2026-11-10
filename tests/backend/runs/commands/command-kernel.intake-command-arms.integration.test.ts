@@ -439,7 +439,9 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(result.state === "rejected" ? result.code : "", "invalid-state");
     assert.match(result.state === "rejected" ? result.message : "", /rejection review is mandatory/);
     assert.equal(current().state, "mapping");
-    assert.equal(database.getMeta().authorityGeneration, before, "a refused enqueue moves no authority row");
+    assert.equal(database.authority.commands.get(result.commandId)?.commandId, result.commandId);
+    assert.equal(database.authority.commandAudits.findByCommand(result.commandId)?.result.state, "rejected");
+    assert.equal(database.getMeta().authorityGeneration, before + 2, "the refusal is stored and the session does not move");
   });
 
   it("refuses while a row is still rejected, naming the rows that block it", async () => {
@@ -656,6 +658,8 @@ describe("enqueue-intake-manifest — the fan-out", () => {
     assert.equal(survivingRow1.length, 0, "the run inserted before the refusal rolled back with it");
     assert.equal(current().state, "validated");
     assert.equal(current().version, versionBefore);
-    assert.equal(database.getMeta().authorityGeneration, generationBefore);
+    assert.equal(database.authority.commands.get(result.commandId)?.commandId, result.commandId);
+    assert.equal(database.authority.commandAudits.findByCommand(result.commandId)?.result.state, "rejected");
+    assert.equal(database.getMeta().authorityGeneration, generationBefore + 2);
   });
 });

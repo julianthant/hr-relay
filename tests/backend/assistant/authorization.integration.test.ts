@@ -22,10 +22,12 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { composeProfileAssistantAuthorization, composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createCommandKernel, executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createNotificationInbox } from "../../../src/backend/runs/notifications/inbox.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -141,7 +143,7 @@ it.each(["before-submits", "without-asking"])("refuses an operator attempt to re
   assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
 });
 
-it("claims once and commits the real canonical Settings result in one authority generation", async () => {
+it("claims once and commits the real canonical Settings result across claim, effect, and settlement", async () => {
   const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);
   assert.equal(proposal.state, "prepared");
@@ -150,7 +152,7 @@ it("claims once and commits the real canonical Settings result in one authority 
   assert.equal(approved.revision, 2);
   const before = f.database.getMeta().authorityGeneration;
   assert.equal(f.authorization.consume(chat, proposal.id)?.state, "applied");
-  assert.equal(f.database.getMeta().authorityGeneration, before + 1);
+  assert.equal(f.database.getMeta().authorityGeneration, before + 3);
   assert.ok(f.database.authority.commandAudits.findByCommand(command.commandId));
   assert.equal(f.context.settings.read().record.settings.browser?.headless, false);
   const settled = f.database.getMeta().authorityGeneration;
@@ -461,4 +463,65 @@ it("answers a natural workflow question using production knowledge without priva
   assert.deepEqual(Object.keys(diagnostic).sort(), ["area", "category", "code", "correlationId", "phase", "reason"]);
   assert.deepEqual({ ...diagnostic, correlationId: "generated" }, { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason: "input-projection", code: "ASSISTANT_PROPOSAL_REFUSED" });
   assert.equal(JSON.stringify(debug.records).includes("PRIVATE"), false);
+});
+
+it("keeps an admitted command and its recovery notice when a synchronous consume throws inside an authority transaction", async () => {
+  const f = await fixture();
+  assert.equal(f.grant("every-action").state, "applied");
+  const unavailable = (): never => { throw new Error("unused runtime port invoked"); };
+  const inbox = createNotificationInbox({
+    authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, actorId: "local-operator",
+  });
+  const settings = createSettingsApplicationExecutor(f.context.resolveSettings, f.context.credentials);
+  const config = f.database.authority.runtimeConfig.get();
+  assert.ok(config);
+  const actual = createCommandKernel({
+    authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
+    authorityProfileId: f.active.profileId, settings, commandNotices: inbox,
+    lifecycle: new RunRecordService({ database: f.database, clock: f.clock, ids: { uuid: randomUUID }, publishQueued: () => {} }),
+    descriptors: { resolve: () => undefined }, writeResolution: { recheck: unavailable, resolveAbsent: unavailable },
+    intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+    configIdentity: { configSnapshotId: config.configSnapshotId, configFingerprint: config.configFingerprint },
+    workerRuntime: { pool: unusedWorkerPool(unavailable) },
+  });
+  const authorization = composeProfileAssistantAuthorization(f.runtime, f.active.token, actual, f.clock);
+  const chat = authorization.createChat();
+  const command = CommandRequestSchema.parse({
+    commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+    family: "workflow-batch", type: "set-batch-grouping",
+    target: { batchId: randomUUID(), expectedVersion: 1 }, payload: { groupInQueue: true },
+  });
+  const proposal = authorization.prepare(chat, command);
+  assert.equal(proposal.state, "prepared");
+  authorization.approve(chat, proposal.id, proposal.revision);
+  const transact = f.database.withAuthorityTransaction.bind(f.database);
+  let fail = false;
+  f.database.withAuthorityTransaction = (work) => transact((repositories) => work(fail ? {
+    ...repositories,
+    runSessions: { ...repositories.runSessions, get: () => { throw new Error("injected batch dependency failure"); } },
+  } : repositories));
+  try {
+    f.database.withAuthorityTransaction(() => {
+      fail = true;
+      assert.throws(() => authorization.consume(chat, proposal.id), /injected batch dependency failure/);
+      fail = false;
+    });
+  } finally {
+    f.database.withAuthorityTransaction = transact;
+  }
+  const raw = new DatabaseSync(join(f.context.admission.stateRoot, "state.db"), { readOnly: true });
+  try {
+    const row = z.strictObject({ state: z.literal("admitted") }).parse(raw.prepare("SELECT state FROM commands WHERE id = ?").get(command.commandId));
+    assert.equal(row.state, "admitted");
+  } finally { raw.close(); }
+  assert.equal(f.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+  assert.equal(f.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+  const notices = inbox.list("local-operator", "unread");
+  assert.equal(notices.length, 1);
+  const notice = notices[0];
+  assert.ok(notice);
+  assert.equal(notice.trigger, "command");
+  assert.deepEqual(notice.links, [{ kind: "recovery", commandId: command.commandId }]);
+  assert.equal(f.database.authority.assistantAuthorization.action(proposal.id)?.state, "unknown");
+  assert.throws(() => authorization.consume(chat, proposal.id), /not-consumable/);
 });
