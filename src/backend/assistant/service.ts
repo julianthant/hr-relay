@@ -360,6 +360,11 @@ export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions,
     bindings(table: AssistantReferenceTable, acceptedTurn: AssistantAcceptedTurn): readonly ServerReplyBinding[] | Promise<readonly ServerReplyBinding[]> }>;
 }
 
+/** The turn's own fence failing inside an inference; after the POST the account owner reports it as uncertain delivery. */
+class AssistantInferenceFenceError extends ChatGptAccountError {
+  constructor(readonly fence: unknown) { super("CHATGPT_ASSISTANT_REFUSED"); this.name = "AssistantInferenceFenceError"; }
+}
+
 /** Prepared read-only replacement; composition and the served wire switch together at C0. */
 export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
   const references = createAssistantReferences(), live = new Map<string, AbortController>();
@@ -369,6 +374,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
     | Readonly<{ modelText: string; parts: z.infer<typeof AssistantReplySchema>["parts"]; assertCurrent(): void }>;
   const noReply = (reason: AssistantFailureCode): AssistantM1RespondEnvelope => ({ kind: "result", result: { state: "no-reply", reason, canRetry: false, turn: null } });
   const failure = (error: unknown, signal: AbortSignal): AssistantFailureCode => {
+    if (error instanceof AssistantInferenceFenceError) return failure(error.fence, signal);
     if (closure(error)) return "CHATGPT_RESOURCE_CLOSURE_UNPROVED";
     if (signal.aborted) return "ASSISTANT_CANCELLED";
     if (error instanceof AssistantHistoryRefusal || error instanceof AssistantToolRefusal) return error.code;
@@ -523,7 +529,9 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             assertAuthority();
             if (structureBytes(input) > MAX_HISTORY_BYTES) return { reason: "ASSISTANT_LIMIT" };
             const slot = calls.length; calls.push(undefined);
-            const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model, reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[effort] }, input, tools: [registry.namespace] }, signal, assertAuthority));
+            const turn = AssistantInferenceResultSchema.parse(await options.account.inferAssistant({ model, reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[effort] }, input, tools: [registry.namespace] }, signal, () => {
+              try { assertAuthority(); } catch (error) { if (closure(error)) throw error; throw new AssistantInferenceFenceError(error); }
+            }));
             calls[slot] = turn.usage;
             assertAuthority();
             if (turn.model !== model) return { reason: "ASSISTANT_INVALID" };
