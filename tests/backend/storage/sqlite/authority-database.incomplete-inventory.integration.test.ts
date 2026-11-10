@@ -93,7 +93,7 @@ it("keeps initialization counts visible and uses the same eligibility for stoppe
       try {
         const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(child);
         assert.equal(inventory.empty, true);
-        assert.equal(inventory.counts.length, 49);
+        assert.equal(inventory.counts.length, 50);
         for (const [table, count] of [["commands", 1], ["command_audits", 1], ["settings", 1], ["settings_snapshots", 2], ["workbook_types", 1], ["exclusive_session_leases", 0]] as const) {
           assert.equal(inventory.counts.find(row => row.table === table)?.count, count);
         }

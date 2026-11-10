@@ -162,7 +162,10 @@ it('shows failed library authority without a mock list or a definitive empty res
 });
 it('distinguishes a pending library from a verified empty library', async () => {
   const pending = Promise.withResolvers<void>();
-  const client = createDashboardClient({ baseUrl: 'http://spreadsheets.test', fetchImpl: async () => { await pending.promise; return Response.json([]); } }); await page(client);
+  const client = createDashboardClient({ baseUrl: 'http://spreadsheets.test', fetchImpl: async input => {
+    await pending.promise;
+    return Response.json(String(input).includes('/compatibility') ? { workflows: [], libraries: [] } : []);
+  } }); await page(client);
   assert.match(document.body.textContent, /Loading spreadsheets/); assert.doesNotMatch(document.body.textContent, /No spreadsheets yet/);
   await act(async () => pending.resolve()); assert.match(document.body.textContent, /No spreadsheets yet/); assert.doesNotMatch(document.body.textContent, /Loading spreadsheets/);
 });

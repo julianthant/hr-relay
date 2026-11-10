@@ -40,7 +40,7 @@ it("preserves the keyed reference schema hash and reads each active reference by
 import { WorkbookSelectedRowReferenceRequestSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { WorkbookActiveSelectionSchema } from "../../../src/models/dashboard/workbook-library.js";
 
-it("retains selected physical row authority only with one key, explicit library and immutable version", () => {
+it("retains selected physical row authority with explicit library, version and at least one key", () => {
   const selectedRow = { sheetId: "people", rowId: "person" };
   const request = { typeId: "onboarding-roster", libraryId: "roster", versionId: "saved", selectedRow,
     keys: ["hire@example.test"], fields: ["email"] };
@@ -55,8 +55,8 @@ it("retains selected physical row authority only with one key, explicit library 
   assert.deepEqual(WorkbookActiveSelectionSchema.parse({ entry: 1,
     libraryId: request.libraryId, versionId: request.versionId, sheetId: selectedRow.sheetId,
     expectedVersion: 1, selectedRow }).selectedRow, selectedRow);
-  for (const value of [{ ...request, libraryId: undefined }, { ...request, versionId: undefined },
-    { ...request, keys: [] }, { ...request, keys: [...request.keys, "other@example.test"] }]) {
+  assert.equal(WorkbookSelectedRowReferenceRequestSchema.safeParse({ ...request, keys: [...request.keys, "other@example.test"] }).success, true);
+  for (const value of [{ ...request, libraryId: undefined }, { ...request, versionId: undefined }, { ...request, keys: [] }]) {
     assert.equal(WorkbookSelectedRowReferenceRequestSchema.safeParse(value).success, false);
   }
   for (const value of [{ ...request, selectedRow: { ...selectedRow, sheetId: "foreign" } },

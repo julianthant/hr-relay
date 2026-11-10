@@ -38,7 +38,7 @@ function fixture(path?: string) {
   const rosterType = f.repository.types().find(type => type.id === 'roster');
   if (!rosterType) throw new Error('roster type missing from fixture');
   f.repository.putType({ ...rosterType, defaultWorkbookId: saved.libraryId });
-  const operation = (operationId: string, change: WorkbookOperation['change']): WorkbookOperation => ({ operationId, at, source: { kind: 'run', runId: 'run-1' }, change });
+  const operation = (operationId: string, change: WorkbookOperation['change']): WorkbookOperation => ({ operationId, at, source: { kind: 'run', runId: '10000000-0000-4000-8000-000000000001' }, change });
   const patch = (operationId: string, key: string, note: string) => operation(operationId, { kind: 'patch', key, values: { 'roster.notes': note } });
   return { ...f, id: saved.libraryId, patch, operation };
 }
@@ -46,16 +46,16 @@ function generalFixture() {
   const f = open();
   const saved = f.service.create({ name: 'General.xlsx', themes: [], hasFormulas: false,
     sheets: [{ id: 'people', name: 'People', width: 3, hidden: [], headerRow: 1,
-      columnBindings: ['email', 'result', 'notes'].map((fieldId, index) => ({ id: `field-${index}`,
+      columnBindings: ['email', 'roster.result', 'roster.notes'].map((fieldId, index) => ({ id: `field-${index}`,
         sourceColumn: index, sourceHeader: fieldId, fieldId, basis: 'manual' })),
-      rows: [{ id: 'header', cells: ['email', 'result', 'notes'].map(value => ({ value })) },
+      rows: [{ id: 'header', cells: ['email', 'roster.result', 'roster.notes'].map(value => ({ value })) },
         { id: 'alice', cells: [{ value: 'alice@example.test' }, { value: null }, { value: null }] },
         { id: 'bob', cells: [{ value: 'bob@example.test' }, { value: null }, { value: null }] }] }] });
   const captured = (operationId: string) => ({ operationId, at,
-    source: { kind: 'run-reference' as const, runId: 'run-1', referenceDigest: 'a'.repeat(64),
+    source: { kind: 'run-reference' as const, runId: '10000000-0000-4000-8000-000000000001', referenceDigest: 'a'.repeat(64),
       authority: { versionId: 'original', sheetId: 'people', keyFieldId: 'email',
-        requiredFields: ['email', 'result', 'notes'], writableFields: ['result'] } },
-    change: { kind: 'patch' as const, key: 'alice@example.test', values: { result: 'complete' },
+        requiredFields: ['email', 'roster.result', 'roster.notes'], writableFields: ['roster.result'] } },
+    change: { kind: 'patch' as const, key: 'alice@example.test', values: { 'roster.result': 'complete' },
       expectedVersion: 1, selection: { sheetId: 'people', rowId: 'alice', expectedVersion: 1 } } });
   return { ...f, id: saved.libraryId, captured };
 }
@@ -103,7 +103,7 @@ it('restores a verified missing output header and keeps unrelated new sheets unm
     change: { kind: 'sync', expectedVersion: before.version, workbook: incoming } });
   expect(result.state).toBe('applied');
   const after = f.service.read(f.id).workbook;
-  expect(after.sheets[0].columnBindings?.find(binding => binding.fieldId === 'result')?.sourceHeader).toBe('result');
+  expect(after.sheets[0].columnBindings?.find(binding => binding.fieldId === 'roster.result')?.sourceHeader).toBe('roster.result');
   expect(after.sheets[0].rows[1].cells.at(-1)?.value).toBe('complete');
   expect(after.sheets[1].columnBindings).toBeUndefined();
 });
@@ -115,7 +115,7 @@ it('carries a historical keyed owner through legacy Sync before a captured patch
   expect(f.repository.operation(f.id, { operationId: 'legacy-sync', source: { kind: 'sync', syncId: 'legacy-sync' }, at,
     change: { kind: 'sync', expectedVersion: first.version, workbook: legacyIncoming } })).toMatchObject({ state: 'applied' });
   const afterLegacy = f.service.read(f.id);
-  const captured = { operationId: 'captured-alice', at, source: { kind: 'run-reference' as const, runId: 'run-1',
+  const captured = { operationId: 'captured-alice', at, source: { kind: 'run-reference' as const, runId: '10000000-0000-4000-8000-000000000001',
     referenceDigest: 'a'.repeat(64), authority: { versionId: 'original', sheetId: 'people', keyFieldId: 'eid',
       requiredFields: ['eid', 'roster.notes'], writableFields: ['roster.notes'] } },
     change: { kind: 'patch' as const, key: '001', values: { 'roster.notes': 'captured' },
@@ -136,19 +136,19 @@ it('refuses scoped Sync when two differently keyed old rows would merge into one
   const f = open();
   const saved = f.service.create({ name: 'Dual keys.xlsx', themes: [], hasFormulas: false,
     sheets: [{ id: 'people', name: 'People', width: 4, hidden: [], headerRow: 1,
-      columnBindings: ['email', 'eid', 'result', 'notes'].map((fieldId, index) => ({ id: `field-${index}`,
+      columnBindings: ['email', 'eid', 'roster.result', 'roster.notes'].map((fieldId, index) => ({ id: `field-${index}`,
         sourceColumn: index, sourceHeader: fieldId, fieldId, basis: 'manual' })),
-      rows: [{ id: 'header', cells: ['email', 'eid', 'result', 'notes'].map(value => ({ value })) },
+      rows: [{ id: 'header', cells: ['email', 'eid', 'roster.result', 'roster.notes'].map(value => ({ value })) },
         { id: 'alice', cells: [{ value: 'alice@example.test' }, { value: '001' }, { value: null }, { value: null }] },
         { id: 'bob', cells: [{ value: 'bob@example.test' }, { value: '002' }, { value: null }, { value: null }] }] }] });
   const fill = (operationId: string, rowId: string, keyFieldId: string, key: string, field: string, expectedVersion: number) => ({
-    operationId, at, source: { kind: 'run-reference' as const, runId: 'run-1', referenceDigest: 'a'.repeat(64),
+    operationId, at, source: { kind: 'run-reference' as const, runId: '10000000-0000-4000-8000-000000000001', referenceDigest: 'a'.repeat(64),
       authority: { versionId: 'original', sheetId: 'people', keyFieldId,
-        requiredFields: ['email', 'eid', 'result', 'notes'], writableFields: [field] } },
+        requiredFields: ['email', 'eid', 'roster.result', 'roster.notes'], writableFields: [field] } },
     change: { kind: 'patch' as const, key, values: { [field]: operationId }, expectedVersion,
       selection: { sheetId: 'people', rowId, expectedVersion } } });
-  expect(f.repository.operation(saved.libraryId, fill('alice-result', 'alice', 'email', 'alice@example.test', 'result', 1))).toMatchObject({ state: 'applied' });
-  expect(f.repository.operation(saved.libraryId, fill('bob-notes', 'bob', 'eid', '002', 'notes', 2))).toMatchObject({ state: 'applied' });
+  expect(f.repository.operation(saved.libraryId, fill('alice-result', 'alice', 'email', 'alice@example.test', 'roster.result', 1))).toMatchObject({ state: 'applied' });
+  expect(f.repository.operation(saved.libraryId, fill('bob-notes', 'bob', 'eid', '002', 'roster.notes', 2))).toMatchObject({ state: 'applied' });
   const before = f.service.read(saved.libraryId), incoming = encodeSavedWorkbook(before).workbook;
   delete incoming.sheets[0].columnBindings;
   incoming.sheets[0].rows[1].cells[1].value = '002';

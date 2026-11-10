@@ -6,6 +6,7 @@ import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches, type Workb
 import { WorkbookSnapshotRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookNamedReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
 import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type SavedWorkbook } from "../../../models/dashboard/workbooks.js";
@@ -539,7 +540,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         }));
       const schema = selected === undefined ? WorkbookReferenceSnapshotSchema : WorkbookNamedReferenceSnapshotSchema;
       const { fieldLabels: _labels, requiredFields: _required, ...referenceType } = workbookType;
-      return schema.parse({ libraryId: id, version: record.version, type: referenceType,
+      return deepFreeze(schema.parse({ libraryId: id, version: record.version, type: referenceType,
         ...(selected === undefined ? {} : { versionId: selected.version.id, versionName: selected.version.name }),
         worksheets: workbook.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name })),
         rows: "mode" in request ? workbook.sheets.flatMap(sheet => sheet.rows.slice(sheet.headerRow ?? 1).map(row => ({
@@ -549,7 +550,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
           return { key, state: matches.length === 0 ? 'missing' : matches.length === 1 ? 'matched' : 'ambiguous',
             matches: matches.map(({ sheetId, rowId, sheet, row }) => ({ sheetId, rowId,
               values: values(sheet, row) })) };
-        }) });
+        }) }));
     })),
     enqueue, drain, operation,
     journal: id => storage(() => deps.read(() => { required(id); return database.prepare('SELECT receipt_json FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NOT NULL ORDER BY sequence').all(id).map(row => receipt(row.receipt_json)); })),

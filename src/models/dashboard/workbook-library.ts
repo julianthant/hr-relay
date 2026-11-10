@@ -162,7 +162,10 @@ export interface WorkbookCompatibilitySource {
 
 export function projectWorkbookCompatibility(workflowsInput: readonly WorkflowWorkbookRequirementInput[],
   sources: readonly WorkbookCompatibilitySource[], lastUsedInput: readonly WorkflowWorkbookSelectionInput[] = []): WorkbookCompatibility {
-  const workflows = workflowsInput.map(workflow => WorkflowWorkbookRequirementSchema.parse(workflow));
+  const workflows = workflowsInput.map(workflow => WorkflowWorkbookRequirementSchema.parse({
+    id: workflow.id, label: workflow.label, requiredWorkbookFields: workflow.requiredWorkbookFields,
+    ...(workflow.workbookReference === undefined ? {} : { workbookReference: workflow.workbookReference }),
+  }));
   const lastUsed = lastUsedInput.map(record => WorkflowWorkbookSelectionRecordSchema.parse(record));
   const libraries = sources.filter(source => source.origin.kind === "local" && !source.removed).map(source => ({
     libraryId: source.libraryId, versionId: source.versionId,

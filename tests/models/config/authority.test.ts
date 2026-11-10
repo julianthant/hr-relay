@@ -45,7 +45,8 @@ it("accepts the current library-capable authority baseline and refuses unsupport
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 20 }).success, true);
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 21 }).success, true);
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 23 }).success, true);
-  for (const toSchemaVersion of [0, 24, 16.5, 17.5, 18.5, 19.5]) {
+  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 24 }).success, true);
+  for (const toSchemaVersion of [0, 25, 16.5, 17.5, 18.5, 19.5]) {
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion }).success, false);
   }
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, fromSchemaVersion: 11 }).success, false);

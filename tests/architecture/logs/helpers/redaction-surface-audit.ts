@@ -668,6 +668,7 @@ export const SURFACE_MODULE_ROOTS: readonly string[] = Object.freeze([
 /** Surface-bearing modules outside the scanned roots, named one by one. */
 export const EXTRA_SURFACE_MODULES: readonly string[] = Object.freeze([
   "src/models/intake/wire.ts",
+  "src/models/processing/workbooks/read-result.ts",
   "src/rules/runs/ledger.ts",
   "src/rules/notifications/notification-triggers.ts",
   "src/models/notifications/notifications.ts",
@@ -926,13 +927,12 @@ const DECISION_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
   ...ANSWER_LEAF_ORIGINS.map(([path, origin]) => [`answer.${path}`, origin] as const),
 ];
 const COMPATIBILITY_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
-  ...['workflows[].workflowId', 'workflows[].requiredWorkbookFields[]',
+  ...['workflows[].requiredWorkbookFields[]',
     'workflows[].workbookReference.id', 'workflows[].workbookReference.keyFieldId',
-    'workflows[].workbookReference.writableFields[]', 'workflows[].lastUsed.workflowId',
-    'workflows[].lastUsed.acceptedCommandId', 'workflows[].lastUsed.sources[].libraryId',
+    'workflows[].workbookReference.writableFields[]', 'workflows[].lastUsed.sources[].libraryId',
     'workflows[].staleSources[].libraryId', 'workflows[].sources[].libraryId',
     'workflows[].sources[].versionId', 'libraries[].libraryId', 'libraries[].versionId',
-    'libraries[].sheets[].workflows[].workflowId', 'libraries[].sheets[].workflows[].missingFields[]',
+    'libraries[].sheets[].workflows[].missingFields[]',
     'libraries[].sheets[].workflows[].duplicateFields[]'].map(path => [path, 'repository-authored'] as const),
   ...['workflows[].lastUsed.sources[].sheetId', 'workflows[].staleSources[].sheetId',
     'workflows[].sources[].sheetId', 'workflows[].sources[].sheetName',
@@ -994,15 +994,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookFields[]', origin: 'repository-authored' },
     ...['id', 'keyFieldId', 'writableFields[]'].map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.workbookReference.${path}`, origin: 'repository-authored' as const })),
-    ...['fixAction.workflowId', 'fixAction.requiredFields[]']
-      .map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.readiness.${path}`, origin: 'repository-authored' as const })),
+    { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.fixAction.requiredFields[]', origin: 'repository-authored' },
     { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'repository-authored' },
     ...COMPATIBILITY_LEAF_ORIGINS.flatMap(([path, origin]) => [
       { surface: 'wire/bootstrap', path: `workbookCompatibility.${path}`, origin },
       { surface: 'wire/workbook-compatibility', path, origin },
     ]),
-    { surface: 'request/workbook-reference-write', path: 'referenceDigest', origin: 'repository-authored' },
-    { surface: 'request/workbook-reference-write', path: 'writeId', origin: 'repository-authored' },
     { surface: 'request/workbook-reference-write', path: 'typeId', origin: 'repository-authored' },
     { surface: 'request/workbook-reference-write', path: 'key', origin: 'captured-hr-value' },
     { surface: 'request/workbook-reference-write', path: 'values[].fieldId', origin: 'repository-authored' },
@@ -1085,7 +1082,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       'resolution.action.detail', 'resolution.action.key', 'resolution.action.label', 'resolution.action.navigate.runId',
       'resolution.target.libraryId', 'resolution.target.operationId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].${path}`, origin: 'repository-authored' as const })),
     ...['label', 'sheetId', 'rowId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].resolution.candidates[].${path}`, origin: 'captured-hr-value' as const })),
-    ...['versionId', 'libraryId', 'typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.value.recovery.request.workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
+    ...['versionId', 'libraryId', 'sheetId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.value.recovery.request.workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
     { surface: 'wire/run-detail-section', path: 'payload.value.recovery.request.workbookReferences[].selectedRow.sheetId', origin: 'captured-hr-value' },
     { surface: 'wire/run-detail-section', path: 'payload.value.recovery.request.workbookReferences[].selectedRow.rowId', origin: 'captured-hr-value' },
     { surface: 'wire/run-detail-section', path: 'payload.value.recovery.prefill', origin: 'captured-hr-value' },
@@ -2029,6 +2026,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/workbook-library.ts", state: "audited", reason: "the operator library serves retained workbook bytes and explicit version and source identities on loopback; named versions and action receipts remain in local authority" },
     { module: "src/models/dashboard/run-outputs.ts", state: "audited", reason: "workflow-authored output plans describe captured worksheet and person membership only to the local operator; the plan does not itself produce files" },
     { module: "src/models/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
+    { module: "src/models/processing/workbooks/read-result.ts", state: "audited", reason: "A captured reference write names the library field and the cell value on operator loopback." },
     { module: "src/rules/runs/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },
     { module: "src/rules/notifications/notification-triggers.ts", state: "audited", reason: "the trigger event and its projection become OS-delivered text" },
     { module: "src/models/notifications/notifications.ts", state: "audited", reason: "the durable inbox row retains the delivered title and summary" },

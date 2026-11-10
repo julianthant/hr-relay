@@ -90,7 +90,7 @@ it.each(['swapped', 'missing', 'foreign', 'wrong-version'] as const)('refuses a 
     if (returned !== undefined) {
       if (kind === 'missing') delete returned.selectedRow;
       else if (kind === 'foreign') returned.selectedRow = { sheetId: 'foreign', rowId: 'row-1' };
-      else returned.versionId = 'current';
+      else returned.versionId = 'earlier';
     }
   }
   await expect(launch(proposed).preview(request)).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });

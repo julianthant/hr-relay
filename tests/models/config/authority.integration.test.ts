@@ -158,6 +158,16 @@ afterAll(() => profiles.close());
       assert.deepEqual(database.authority.workbooks.operation(saved.libraryId, accountingVersion(saved)), receipt);
       assert.deepEqual(database.authority.workbooks.history(saved.libraryId), [saved]);
     } },
+    { table: "workflow_workbook_selections", mutate: database => {
+      const saved = database.authority.workbooks.rememberLastUsed({
+        workflowId: "onboarding",
+        acceptedCommandId: "10000000-0000-4000-8000-000000000001",
+        usedAt: IsoInstantSchema.parse(CLOCK.now().toISOString()),
+        sources: [{ libraryId: "library", sheetId: "people" }],
+      });
+      assert.equal(saved.revision, 1);
+      assert.deepEqual(database.authority.workbooks.lastUsed("onboarding"), saved);
+    } },
   ];
 
   it("accounts for every authority table", () => {
