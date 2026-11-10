@@ -3,12 +3,13 @@ import { OcrReviewRevisionSchema, initialOcrReviewRecords } from "../../../../sr
 import { accountOcrPages } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { buildOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { sourceFixture, donePage, READING_ID, SOURCE_RUN_ID, READ_AT } from "../ocr/source-pages.js";
+import type { OcrFormType } from "../../../../src/models/ocr/form-registry.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 
-export function ocrReviewPageFixture(runId: string = SOURCE_RUN_ID, revision = 1) {
-  const source = sourceFixture(2);
+export function ocrReviewPageFixture(runId: string = SOURCE_RUN_ID, revision = 1, formType: OcrFormType = "emergency-contact") {
+  const source = sourceFixture(2, formType);
   const seed = { review: buildOcrReviewSeed({ sourceRunId: RunIdSchema.parse(runId), roster: null,
-    accounting: accountOcrPages(source.manifest, READING_ID, source.inputs.map((input, index) => donePage(input, index === 0 ? "Example, Avery" : "Example, Robin"))) }), identities: [] };
+    accounting: accountOcrPages(source.manifest, READING_ID, source.inputs.map((input, index) => donePage(input, index === 0 ? "Example, Avery" : "Example, Robin")), formType) }), identities: [] };
   const review = OcrReviewRevisionSchema.parse({ id: `${runId}#${revision}`, sourceRunId: runId, revision, seed,
     records: initialOcrReviewRecords(seed), actorId: "local-operator", createdAt: READ_AT,
     origin: revision === 1 ? { kind: "checkpoint", key: "fixture-read-result", digest: "a".repeat(64),
