@@ -1007,7 +1007,9 @@ export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sour
 }
 
 export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number])[] {
-  return [...(version < 10 ? ["explorer_overrides" as const] : []), ...(version < WORKER_CUSTODY_SCHEMA_VERSION ? WORKER_CUSTODY_DROPPED_TABLES : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
+  // Content fingerprints hash tables in this order, so pre-custody stores keep the dropped tables where their backups hashed them.
+  const names = AuthorityTableNameSchema.options.flatMap(name => name === "worker_slots" && version < WORKER_CUSTODY_SCHEMA_VERSION ? [name, ...WORKER_CUSTODY_DROPPED_TABLES] : [name]);
+  return [...(version < 10 ? ["explorer_overrides" as const] : []), ...names.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
     && (version >= 9 || name !== "assistant_model_preference")
