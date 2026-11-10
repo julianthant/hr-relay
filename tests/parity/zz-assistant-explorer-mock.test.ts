@@ -220,10 +220,10 @@ for (const theme of THEMES) test(`assistant full access and Ask mark @ ${theme} 
 
   // The Settings toggle turns the option off again.
   await page.goto(url("assistantOpen=0&assistantFullAccess=1&settings=general"));
-  await page.getByRole("switch", { name: "Allow full access" }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("switch", { name: "Full access" })).toBeChecked();
   await page.screenshot({ path: join(OUT, `settings-assistant-${theme}.png`) });
-  await page.getByText("Allow full access", { exact: true }).click();
-  await expect(page.getByRole("switch", { name: "Allow full access" })).not.toBeChecked();
+  await page.getByText("Full access", { exact: true }).click();
+  await expect(page.getByRole("switch", { name: "Full access" })).not.toBeChecked();
 
   // The Orbit mark circles slowly at idle and faster while hovered.
   await page.goto(url("assistantOpen=0"));

@@ -117,8 +117,10 @@
 
 .log-step-card { box-sizing: border-box; padding: 8px 12px; font-size: 12px; line-height: 18px; }
 .log-step-card p { margin: 0; }
-.log-step-card-title { font-weight: 500; color: var(--ui-primary); }
-.log-step-card-meta { color: var(--ui-muted); }
+.log-step-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.log-step-card-head + .log-step-card-rows { margin-top: 4px; }
+.log-step-card-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ui-primary); }
+.log-step-card-meta { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ui-muted); }
 .log-step-card-rows { margin: 0; padding: 4px 0 0; list-style: none; border-top: 1px solid var(--ui-stroke); }
 .log-step-card-rows li { display: flex; height: 20px; align-items: center; gap: 8px; line-height: 20px; }
 .log-step-card[data-dense] .log-step-card-rows li { height: 16px; line-height: 16px; }

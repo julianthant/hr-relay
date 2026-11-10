@@ -10,8 +10,7 @@ const GLYPH_COLOR: Readonly<Record<LogTimelineState, string>> = { completed: "te
 function StepCard({ stage, label }: { stage: LogTimelineStage; label: string }) {
   const when = stage.state === "pending" ? undefined : stage.durationLabel ?? stage.time;
   return <div className="log-step-card" data-dense={stage.substeps.length > 12 || undefined}>
-    <p className="log-step-card-title">{stage.label}</p>
-    <p className="log-step-card-meta">{when === undefined ? label : `${label} · ${when}`}</p>
+    <p className="log-step-card-head"><span className="log-step-card-title">{stage.label}</span><span className="log-step-card-meta">{when === undefined ? label : `${label} · ${when}`}</span></p>
     {stage.substeps.length > 0 && <ol aria-label={`${stage.label} substeps`} className="log-step-card-rows">{stage.substeps.map(substep => {
       const Glyph = GLYPHS[substep.state];
       return <li key={substep.id}>
