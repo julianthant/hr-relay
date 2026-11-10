@@ -48,6 +48,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       getRunBatch: (id) => database.authority.runSessions.get(id),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       writeInFlight: runId => database.authority.writeIntents.listByRun(runId).some(intent => intent.status === "attempting"),
+      changeKey: () => database.changeKey(),
       delegationWait: runId => database.authority.dependencies.waitState(runId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
       canonicalPerson: (runId) => database.canonicalPerson(runId),

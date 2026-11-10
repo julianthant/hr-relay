@@ -66,7 +66,26 @@ export interface PreflightRunner {
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
 
-export class PreflightRunnerTimeoutError extends Error {}
+/** A detector missed its registered budget. The message names that check and budget only. */
+export class PreflightRunnerTimeoutError extends Error {
+  constructor(check: PreflightCheckId, timeoutMs: number) {
+    super(`preflight runner ${check} exceeded its registered ${String(timeoutMs)}ms timeout`);
+    this.name = "PreflightRunnerTimeoutError";
+  }
+}
+
+/** The timeout itself, the cause of a wrapper, or one failure inside an aggregate of runner failures. */
+export function preflightRunnerTimeout(error: unknown): PreflightRunnerTimeoutError | undefined {
+  if (error instanceof PreflightRunnerTimeoutError) return error;
+  if (error instanceof AggregateError) {
+    for (const failure of error.errors) {
+      const nested = preflightRunnerTimeout(failure);
+      if (nested !== undefined) return nested;
+    }
+  }
+  const cause = error instanceof Error ? error.cause : undefined;
+  return cause === undefined || cause === error ? undefined : preflightRunnerTimeout(cause);
+}
 
 /** Executes one detector under its registered deadline: a timeout rejects the eventual return rather than racing the runner promise away. */
 export async function executePreflightRunner(
@@ -89,9 +108,7 @@ export async function executePreflightRunner(
   if (signal.aborted) forwardAbort();
   signal.addEventListener("abort", forwardAbort, { once: true });
   let timedOut = false;
-  const timeoutError = new PreflightRunnerTimeoutError(
-    `preflight runner ${runner.check} exceeded its registered ${String(check.timeoutMs)}ms timeout`,
-  );
+  const timeoutError = new PreflightRunnerTimeoutError(runner.check, check.timeoutMs);
   const deadline = scheduler.schedule(deadlineMonotonicMs, () => {
     timedOut = true;
     controller.abort(timeoutError);
@@ -264,7 +281,7 @@ interface CreatePreflightAuthorityInput {
 }
 
 function incompleteObservation(check: PreflightCheckId, error: unknown): z.infer<typeof PreflightObservationSchema> {
-  const reason = error instanceof PreflightRunnerTimeoutError ? "timeout"
+  const reason = preflightRunnerTimeout(error) !== undefined ? "timeout"
     : (error instanceof Error ? leadingKebabToken(error.message) : undefined) ?? "error";
   return { check, state: "unhealthy", summary: `check did not complete (${reason})`, impact: "this check's result is unknown" };
 }

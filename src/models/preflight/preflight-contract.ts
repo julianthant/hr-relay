@@ -91,11 +91,19 @@ export const PreflightReadinessWireSchema = z.discriminatedUnion("state", [
 ]);
 export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema>;
 
+export const PreflightRefusalCodeSchema = z.enum(["PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_BLOCKED", "PREFLIGHT_TIMEOUT"]);
 export const WorkerPreflightRefusalSchema = z.strictObject({
-  state: z.literal("preflight-refused"), code: z.enum(["PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_BLOCKED"]), runId: RunIdSchema.optional(),
+  state: z.literal("preflight-refused"), code: PreflightRefusalCodeSchema, runId: RunIdSchema.optional(),
   summary: z.string().min(1).max(4096).optional(),
 });
 export type WorkerPreflightRefusal = z.infer<typeof WorkerPreflightRefusalSchema>;
+/** What a standing worker is waiting out. Cleared on the next claim or idle poll. */
+export const WorkerRefusalStandingSchema = z.strictObject({
+  code: PreflightRefusalCodeSchema,
+  summary: z.string().min(1).max(4096).optional(),
+  retryAt: IsoInstantSchema,
+});
+export type WorkerRefusalStanding = z.infer<typeof WorkerRefusalStandingSchema>;
 
 export const PreflightRerunCommandRequestSchema = z.strictObject({
   commandId: CommandIdSchema,

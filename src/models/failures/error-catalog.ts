@@ -1012,6 +1012,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Storage changed before the next run could be claimed. Re-check readiness; use Sessions for any queued run instead of starting it again.",
     EmptyParametersSchema,
   ),
+  PREFLIGHT_TIMEOUT: catalogEntry(
+    "A readiness check took too long. Check again.",
+    EmptyParametersSchema,
+  ),
   BULK_CHILD_ERRORED: catalogEntry(
     "Relay hit an error on this item and stopped the batch here. Nothing changed for this item.",
     EmptyParametersSchema,

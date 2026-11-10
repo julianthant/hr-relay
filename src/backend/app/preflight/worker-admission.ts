@@ -2,10 +2,14 @@ import type { WorkerBrowserSessionFactory } from "../../../workflow-kit/session.
 import type { RunMutationOutcome } from "../../runs/lifecycle/run-record-service.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { PreflightAdmissionRefusal, PreflightObservationChangedError, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import { preflightRunnerTimeout } from "../../../models/preflight/preflight.js";
 import type { WorkerPreflightRefusal } from "../../../models/preflight/preflight-contract.js";
 import type { RuntimePreflight } from "./runtime-admission.js";
 
 export function workerPreflightRefusal(error: unknown, runId?: RunRecord["envelope"]["runId"]): WorkerPreflightRefusal | undefined {
+  if (preflightRunnerTimeout(error) !== undefined) {
+    return { state: "preflight-refused", code: "PREFLIGHT_TIMEOUT", ...(runId === undefined ? {} : { runId }) };
+  }
   const code = error instanceof PreflightObservationChangedError || (error instanceof PreflightAdmissionRefusal && error.reason === "stale")
     ? "PREFLIGHT_OBSERVATION_CHANGED"
     : error instanceof PreflightAdmissionRefusal && (error.reason === "blocked" || error.reason === "unavailable" || error.reason === "scope-mismatch")
@@ -59,7 +63,7 @@ export async function claimWithPreflight(input: Readonly<{
       } catch (preparationError) {
         const refusal = workerPreflightRefusal(preparationError, error.run.envelope.runId);
         if (refusal === undefined) throw preparationError;
-        if (refusal.code === "PREFLIGHT_BLOCKED" || attempt === CLAIM_ATTEMPTS - 1) return refusal;
+        if (refusal.code === "PREFLIGHT_BLOCKED" || refusal.code === "PREFLIGHT_TIMEOUT" || attempt === CLAIM_ATTEMPTS - 1) return refusal;
         input.onObservationChanged?.(attempt + 1);
       }
     }
