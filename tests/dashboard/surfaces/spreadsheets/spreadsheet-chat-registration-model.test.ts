@@ -13,6 +13,8 @@ function world() {
   const versions: SavedWorkbook[] = [];
   const record = (workbook: unknown, version: number) => SavedWorkbookSchema.parse({ libraryId: 'library-id', version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-01T00:00:00Z', workbook: { ...workbook as EditableWorkbook, libraryId: 'library-id' } });
   const client = {
+    workbookResults: vi.fn<WorkbookLibraryQueries['workbookResults']>(async () => { throw new Error('Unexpected workbookResults call'); }),
+    workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
     workbookList: vi.fn(async () => versions.length ? [versions.at(-1)!] : []),
     workbookOpen: vi.fn(async () => { const saved = versions.at(-1); if (!saved) throw new Error('not found'); return saved; }),
     workbookCreate: vi.fn(async (workbook: unknown) => { const saved = record(workbook, 1); versions.push(saved); return saved; }),

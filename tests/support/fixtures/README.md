@@ -18,6 +18,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | Module | Concept |
 | --- | --- |
+| `helpers/chatgpt-status-fixture.ts` | Parses synthetic account states into the strict ChatGPT status envelope shared by dashboard tests. |
 | `helpers/predecessor-profile-credentials.ts` | Captures disposable profile credential custody and installs predecessor fixture bytes after closure; credential authentication runs only in the explicit installer callback. |
 | `helpers/backend/predecessor-separations-rerun.ts` | Owns a disposable persisted Separations parent and completed Kuali transaction for certified Rerun and stopped-upgrade proofs; caller owns cleanup. |
 | `helpers/dashboard/controls/ocr-records-served-preview.tsx` | shared Records editor driven by a typed native fixture API and command executor |

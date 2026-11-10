@@ -30,7 +30,7 @@ function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ sta
   const skeleton = buildActivityVolumeBoundarySkeleton(empty, "UTC");
   const report = { ...empty, totalRuns: population.length, terminalRuns: terminal.length, inFlightRuns: population.length - terminal.length,
     completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, days: population.length ? [{ day: "2026-08-03", runs: population.length }] : [],
-    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
+    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), needsAttention: count("failed"), typicalTime: { measure: "successful-root-run-mean", measuredRuns: timed.length, unmeasuredRuns: timing.length - timed.length, meanMs: timed.length ? { state: "present", value: timed.reduce((sum, n) => sum + n, 0) / timed.length } : { state: "absent", reason: "No successful root measurement" } }, cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
     categories: population.length ? [{ category: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length }] : [],
     statuses: [...new Set(population.map(row => row.status))].map(status => ({ status, runs: count(status), sample: ["done", "failed", "cancelled", "partial"].includes(status) ? [] : population.filter(row => row.status === status).slice(0, 5).map(row => row.runId) })),
     outcomes: [...new Set(terminal.map(row => row.status))].map(outcome => ({ outcome, runs: count(outcome) })),
@@ -68,6 +68,32 @@ it("preserves full populations, successful root timing, all-terminal duration, n
   assert.equal(empty.total, 0); assert.equal(empty.duration.totalSeconds, 0); assert.equal(empty.duration.measured, 0); assert.equal(empty.duration.unmeasured, 0);
   assert.equal(missing.duration.unmeasured, 1);
   assert.equal(projected.runs?.[0]?.readback, null);
+});
+it("combines failure codes across workflows for the global most common failure", async () => {
+  const buckets = [{ workflowId: "one", code: "A", runs: 3 }, { workflowId: "two", code: "A", runs: 2 }, { workflowId: "three", code: "B", runs: 4 }];
+  const base = selection(buckets.flatMap(bucket => Array.from({ length: bucket.runs }, () => ({ workflowId: bucket.workflowId, status: "failed" as const }))));
+  const workflow = base.report.workflows[0]; assert.ok(workflow);
+  const { snapshot: reportSnapshot, ...baseReport } = base.report;
+  const report = { ...baseReport,
+    workflows: buckets.map(bucket => ({ ...workflow, workflowId: bucket.workflowId, runs: bucket.runs, failed: bucket.runs, needsAttention: bucket.runs })),
+    failures: buckets.map(bucket => ({ ...bucket, sentence: `Synthetic failure ${bucket.code}`, registration: workflow.registration, transient: 0, sample: base.population.filter(row => row.workflowId === bucket.workflowId).map(row => row.runId) })) };
+  const successfulTiming = buckets.map(bucket => ({ workflowId: bucket.workflowId, totalMs: null, measured: 0, unmeasured: 0 }));
+  const reportDigest = sha256Hex(canonicalJsonStringify(report));
+  const selected = ActivityPopulationSelectionSchema.parse({ ...base, report: { ...report, snapshot: { ...reportSnapshot, reportDigest } }, successfulTiming,
+    snapshot: { ...base.snapshot, reportDigest, populationDigest: sha256Hex(canonicalJsonStringify({ population: base.population, successfulTiming })) } });
+
+  const projected = projectActivityPopulation(selected);
+
+  assert.deepEqual(projected.failures, [{ label: "A", runs: 5 }, { label: "B", runs: 4 }]);
+  assert.deepEqual(selected.report.failures.map(row => [row.workflowId, row.code, row.runs]), [["one", "A", 3], ["two", "A", 2], ["three", "B", 4]]);
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} })));
+    const common = [...host.querySelectorAll('table[aria-label="Run performance"] tr')].find(row => row.querySelector("th span")?.textContent === "Most common failure");
+    assert.ok(common);
+    assert.equal(common.querySelector("td")?.textContent, "A");
+    assert.equal(common.querySelectorAll("th span")[1]?.textContent, "5 runs");
+  } finally { await act(async () => root.unmount()); }
 });
 it("uses authoritative page rows once and refuses fixture logs for served identities", async () => {
   const selected = selection(Array.from({ length: 21 }, () => ({ status: "done" as const, durationMs: 1000 })));

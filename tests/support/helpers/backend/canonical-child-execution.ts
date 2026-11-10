@@ -26,7 +26,7 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifec
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
-  options?: Readonly<{ poolIndex?: number; workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
+  options?: Readonly<{ poolIndex?: number; workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types">;
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes"> }>) {
   const { clock } = deps;
   const poolIndex = options?.poolIndex ?? 1;

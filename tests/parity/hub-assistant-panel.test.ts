@@ -1,3 +1,4 @@
+import { chatGptStatusFixture } from "../support/helpers/chatgpt-status-fixture.js";
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 import { z } from 'zod';
@@ -17,7 +18,7 @@ const bff = createHttpServer((request, response) => {
   response.setHeader('access-control-allow-origin', '*');
   if (request.method !== 'GET' || request.url !== '/api/v1/settings/chatgpt-account') { response.writeHead(404).end(); return; }
   response.setHeader('content-type', 'application/json');
-  response.end(JSON.stringify({ state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' }));
+  response.end(JSON.stringify(chatGptStatusFixture({ state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' })));
 });
 test.beforeAll(async () => {
   await new Promise<void>(done => bff.listen(0, '127.0.0.1', done));
@@ -183,7 +184,7 @@ const SERVED_SCENES = {
 } as const;
 for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Object.entries(SERVED_SCENES)) {
   test(`assistant served ${scene} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-served-${scene}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
-    await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: spec.account }));
+    await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: chatGptStatusFixture(spec.account) }));
     if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => route.fulfill({ json: { kind: 'result', result: spec.respond === 'fail' ? { state: 'refused', code: 'ASSISTANT_UNAVAILABLE', message: 'x' } : spec.respond } }));
     await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: ASSISTANT_PAUSE_PROPOSAL.actionId } }));
     await page.goto(`${baseUrl}/?served=1&transport=1&theme=${theme}`);

@@ -328,7 +328,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       if (selected === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       const record = librarySnapshot(current.libraryId, selected.snapshotId), meta = metadata(current.libraryId), workbookType = type(meta.typeId);
       if (workbookType === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      return [WorkbookLibraryEntrySchema.parse({ libraryId: current.libraryId, version: current.version, name: current.workbook.name,
+      return [WorkbookLibraryEntrySchema.parse({ libraryId: current.libraryId, version: current.version, name: current.workbook.name, updatedAt: selected.savedAt,
         worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
         rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
         state, metadata: meta, type: workbookType })];
@@ -476,7 +476,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         versions: [{ id: 'original', snapshotId: JSON.stringify([record.libraryId, 'original']), name: 'Original version', version: 1, savedAt: record.savedAt, source: 'import' }] });
       database.prepare('INSERT INTO workbook_library_state(id,payload_json) VALUES(?,?)').run(record.libraryId, canonicalJsonStringify(state));
       putLibrarySnapshot(record.libraryId, 'original', encodeSavedWorkbook(record).workbook);
-      return { result: record, changes: 4 };
+      return { result: required(record.libraryId), changes: 4 };
     })),
     read: id => storage(() => deps.read(() => {
       const record = current(id);

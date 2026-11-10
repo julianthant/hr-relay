@@ -6,9 +6,8 @@ import { descriptorSetHash } from "../../../../../src/backend/app/registries/wor
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 
 
-export function createFixtureBootstrapSetup({ bootstrapDescriptorHash, at, CONTRACT_FINGERPRINT, FIXTURE_APP_VERSION, FIXTURE_NOW, WORKFLOW_ID }: {
+export function createFixtureBootstrapSetup({ bootstrapDescriptorHash, CONTRACT_FINGERPRINT, FIXTURE_APP_VERSION, FIXTURE_NOW, WORKFLOW_ID }: {
 bootstrapDescriptorHash: (CONTRACT_FINGERPRINT: string) => string;
-at: typeof FixtureIdentityTypes.at;
 CONTRACT_FINGERPRINT: typeof FixtureIdentityTypes.CONTRACT_FINGERPRINT;
 FIXTURE_APP_VERSION: typeof FixtureIdentityTypes.FIXTURE_APP_VERSION;
 FIXTURE_NOW: typeof FixtureIdentityTypes.FIXTURE_NOW;
@@ -16,6 +15,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
 }) {
   const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     wireVersion: 1,
+    workbookReferences: [],
     appVersion: FIXTURE_APP_VERSION,
     descriptorHash: bootstrapDescriptorHash(CONTRACT_FINGERPRINT),
     settingsSchemaHash: descriptorSetHash(["settings-schema"]),
@@ -23,7 +23,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
     projectionGeneration: 1,
     actor: { id: "local-operator", label: "Jordan Lee" },
     serverClock: { now: FIXTURE_NOW, zone: "America/Los_Angeles" },
-    storage: { authority: "healthy", backup: "current", checkedAt: at(0) },
+    storage: { authority: "healthy" },
     workflows: [{
       id: WORKFLOW_ID,
       code: personLookupDescriptor.code,
@@ -134,7 +134,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
           ]
         },
 
-        spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookTypeIds: [...personLookupModule.descriptor.requiredWorkbookTypeIds],
+        readiness: { scope: "default-workbook-references", state: "ready" }, spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookTypeIds: [...personLookupModule.descriptor.requiredWorkbookTypeIds],
       },
     }],
     systemInstances: [

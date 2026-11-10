@@ -382,8 +382,7 @@ export async function harness(options: {
       projection,
       actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
-      // The harness runs no backup lane; "missing" is its true state.
-      backupSummary: () => "missing",
+      workbookReferences: workflows => workbookLibrary.references(workflows),
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,

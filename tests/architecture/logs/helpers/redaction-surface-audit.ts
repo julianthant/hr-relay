@@ -1,7 +1,7 @@
 import { AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_PLUGIN_MODULES, assistantToolEgress } from "./assistant-tool-egress.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
-import { ChatGptAccountViewSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptSignOutResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptSignOutResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
 import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookWireSchema,
   WorkbookListWireSchema, WorkbookHistoryWireSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema,
   WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, IntakeCommandResultWireSchema,
@@ -11,6 +11,7 @@ import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js
 import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema,
   WorkbookLibraryStateSchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionRecordSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { PlannedRunOutputSchema } from "../../../../src/models/dashboard/run-outputs.js";
+import { ProfileFirstRunCheckSchema } from "../../../../src/models/profiles/public-profile.js";
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -683,6 +684,7 @@ export const EXTRA_SURFACE_MODULES: readonly string[] = Object.freeze([
   "src/models/trust/diagnostic.ts",
   "src/models/trust/evidence.ts",
   "src/models/trust/failure.ts",
+  "src/models/profiles/public-profile.ts",
 ]);
 
 export function scannedSurfaceModules(): readonly string[] {
@@ -802,8 +804,9 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   // Replayed rows: operator turns replay as user messages (above); answers and the fixed proposal and decision captions replay as assistant messages.
   { id: "egress/assistant-replay", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ answer: z.string(), caption: z.string() }) },
   ...assistantToolEgress().surfaces,
+  { id: "wire/profile-first-run-check", egress: "operator-loopback", module: "src/models/profiles/public-profile.ts", schema: ProfileFirstRunCheckSchema },
   { id: "wire/chatgpt-ocr-test", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptOcrTestResultSchema },
-  { id: "wire/chatgpt-account", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptAccountViewSchema },
+  { id: "wire/chatgpt-account", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptAccountStatusSchema },
   { id: "wire/chatgpt-start", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInStartResultSchema },
   { id: "wire/chatgpt-completion", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInCompletionSchema },
   { id: "wire/chatgpt-cancel", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptCancelResultSchema },
@@ -988,6 +991,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.label", origin: "repository-authored" },
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookTypeIds[]', origin: 'repository-authored' },
+    { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.fixAction.typeId', origin: 'repository-authored' },
+    { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'captured-hr-value' },
     ...PLANNED_OUTPUT_ORIGINS.flatMap(path => ['wire/planned-run-output', 'wire/start-plan'].map(surface => ({ surface,
       path: surface === 'wire/start-plan' ? `planned[].outputs[].${path}` : path, origin: 'captured-hr-value' as const }))),
     ...([
@@ -1011,6 +1016,19 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
     ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
     ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
+    ...LIBRARY_MUTABLE_TYPE_ORIGINS.flatMap(path => [
+      { surface: 'wire/bootstrap', path: `workbookReferences[].type.${path}`, origin: 'captured-hr-value' as const },
+      { surface: 'wire/bootstrap', path: `workbookReferences[].current.entry.type.${path}`, origin: 'captured-hr-value' as const },
+    ]),
+    ...LIBRARY_STATE_ORIGINS.map(entry => ({ surface: 'wire/bootstrap', path: `workbookReferences[].current.entry.state.${entry.path}`,
+      origin: entry.origin })),
+    ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/bootstrap',
+      path: `workbookReferences[].current.entry.${path}`, origin: 'captured-hr-value' as const })),
+    { surface: 'wire/bootstrap', path: 'workbookReferences[].typeId', origin: 'repository-authored' },
+    { surface: 'wire/bootstrap', path: 'workbookReferences[].current.entry.libraryId', origin: 'repository-authored' },
+    { surface: 'wire/bootstrap', path: 'workbookReferences[].workflowLabel', origin: 'repository-authored' },
+    ...['current.columns[].sheetId', 'current.columns[].sheetName'].map(path => ({ surface: 'wire/bootstrap',
+      path: `workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),
     { surface: 'request/workbook-reference', path: 'versionId', origin: 'repository-authored' },
     { surface: 'request/workbook-reference', path: 'selectedRow.sheetId', origin: 'captured-hr-value' },
@@ -1107,6 +1125,11 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/activity-population", path: "report.volume.timeZone", origin: "external-text" },
   { surface: "wire/activity-population", path: "report.workflows[].registration.label", origin: "repository-authored" },
   { surface: "wire/activity-population", path: "report.workflows[].registration.reason", origin: "repository-authored" },
+  ...['wire/activity-population', 'wire/activity-population-selected', 'wire/activity-population-export', 'wire/activity-report'].flatMap(surface => {
+    const prefix = surface === 'wire/activity-report' ? '' : surface === 'wire/activity-population' ? 'report.' : 'selection.report.';
+    return ['failures[].registration.label', 'failures[].registration.reason', 'failures[].sentence', 'workflows[].typicalTime.meanMs.reason']
+      .map(path => ({ surface, path: `${prefix}${path}`, origin: 'repository-authored' as const }));
+  }),
   { surface: "wire/activity-population", path: "successfulTiming[].workflowId", origin: "repository-authored" },
   { surface: "wire/activity-population-selected", path: "browse.identity.browse.query", origin: "operator-authored" },
   { surface: "wire/activity-population-selected", path: "browse.identity.browse.workflow", origin: "repository-authored" },
@@ -1276,11 +1299,15 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/assistant", path: "result.action.startPlan.planned[].title", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "result.action.startPlan.planned[].subtitle", origin: "captured-hr-value" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].summary", origin: "local-filesystem-name" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].availableFor[]", origin: "repository-authored" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].impact", origin: "repository-authored" },
+  { surface: "wire/profile-first-run-check", path: "report.results[].remediation", origin: "repository-authored" },
   { surface: "wire/chatgpt-ocr-test", path: "message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-account", path: "account.account.message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-account", path: "account.account.name", origin: "external-text" },
   { surface: "wire/chatgpt-account", path: "account.message", origin: "repository-authored" },
   { surface: "wire/chatgpt-account", path: "account.name", origin: "external-text" },
-  { surface: "wire/chatgpt-account", path: "message", origin: "repository-authored" },
-  { surface: "wire/chatgpt-account", path: "name", origin: "external-text" },
   { surface: "wire/chatgpt-start", path: "message", origin: "repository-authored" },
   { surface: "wire/chatgpt-completion", path: "account.message", origin: "repository-authored" },
   { surface: "wire/chatgpt-completion", path: "account.name", origin: "external-text" },
@@ -1952,6 +1979,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
 export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = Object.freeze(
   SurfaceModuleDispositionSchema.array().parse([
+    { module: "src/models/profiles/public-profile.ts", state: "audited", reason: "Signup completion serves its existing local startup report and exact profile epoch only on loopback; detector summaries may name local storage basenames, never credentials or remote diagnostics." },
     { module: "src/models/dashboard/assistant.ts", state: "audited", reason: "Operator request and response stay on loopback: authored questions, reference-substituted answer text, confirmation proposals built from served plans, and the served chat history with its titles, drafts and display rows. Inference transport is a separate account boundary." },
     { module: "src/backend/assistant/service.ts", state: "audited", reason: "The process-egress leaves of the agent loop: the masked user message it sends to ChatGPT (decision D1) and the replayed answers and fixed captions of earlier turns (decision D3)." },
     ...ASSISTANT_PLUGIN_MODULES.map(module => ({ module, state: "audited" as const, reason: "Assistant tool outputs sent to ChatGPT; every free-text leaf is declared by the tool's privacy list and only repository-authored or declared-redacted origins pass." })),

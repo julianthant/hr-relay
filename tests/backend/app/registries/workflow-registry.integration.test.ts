@@ -1,3 +1,4 @@
+import { projectWorkbookReferences } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { Hono } from "hono";
 import { default as assert } from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -93,7 +94,8 @@ describe("workflow definition registry conformance", () => {
         projection: world.projection,
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-        backupSummary: () => "current",
+        workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
+
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);

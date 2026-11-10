@@ -7,7 +7,6 @@ import { FIXTURE_DAY_WIRE } from "../../../../support/fixtures/dashboard/fixture
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { clearSettingsReads } from "../../../../../src/dashboard/state/settings-read-model.js";
 import { ClearRunHistoryRequestSchema, type RunHistoryTarget } from "../../../../../src/models/dashboard/run-history.js";
-import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 // @vitest-environment jsdom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -72,7 +71,7 @@ async function mount(options: { target?: RunHistoryTarget | null; activeRuns?: n
   const render = async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding, children: createElement(StorageSection, {
-      storage: { authority: "healthy", checkedAt: IsoInstantSchema.parse("2026-11-04T12:00:00.000Z"), backup: "current" }, onHistoryCleared() { cleared++; },
+      storage: { authority: "healthy" }, onHistoryCleared() { cleared++; },
     }) }) })));
   };
   await render();

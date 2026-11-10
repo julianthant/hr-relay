@@ -1,3 +1,4 @@
+import { chatGptStatusFixture } from "../support/helpers/chatgpt-status-fixture.js";
 import { expect, type Page, type TestInfo } from "@playwright/test";
 import { resolve } from "node:path";
 import { test } from "./helpers/fixtures.js";
@@ -41,9 +42,9 @@ for (const theme of ["light", "dark"]) for (const [plan, { proposal, facts, reso
     await installFrozenMonotonic(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", false); }, theme);
-    await page.route("**/api/v1/settings/chatgpt-account", route => route.fulfill({ json: {
+    await page.route("**/api/v1/settings/chatgpt-account", route => route.fulfill({ json: chatGptStatusFixture({
       state: "connected", name: "Fixture Operator", email: "operator@example.edu", expiresAt: "2099-10-19T00:00:00Z", planUsage: "enabled",
-    } }));
+    }) }));
     await serveAssistantHistory(page);
     await page.route("**/api/v1/assistant/respond", route => {
       requests.push(AssistantRequestSchema.parse(route.request().postDataJSON()));
