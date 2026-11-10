@@ -48,20 +48,19 @@ it (a delegated child carries its parent's); a transaction refuses to derive its
 under a different build, and a parked-write resolution treats equal contracts as identical code only
 under the same build.
 
-`requiredWorkbookTypeIds` declares the types of existing library reference workbooks or linked
-masters this workflow directly needs. It preserves exact IDs and order, rejects invalid or repeated
-IDs, and is copied and frozen by the definition and descriptor factories. Omission means no
-requirements; production definitions declare an explicit array. It does not describe new output
-workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
-the parent declaration. The descriptor and its sealed planning and projections expose the same
-validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
-and CRM Document Download require `onboarding-roster`; the I-9 PDF parent requires Action History.
+`requiredWorkbookFields` declares the mapped Library fields a workflow directly needs.
+`workbookReference` declares the captured logical ID, lookup key, read mode and writable output
+subset. The factories validate known fields and subset membership, copy and recursively freeze
+the declaration, and include it in the contract fingerprint. An empty field list has no reference.
+Retained step proofs inherit the declaration. Onboarding and CRM Document Download require email
+and name fields; the I-9 PDF parent requires Action History fields.
 
-Start planning takes explicit entry-scoped `workbookReferences`, derives lookup keys and fields from the workflow's admitted ingress declaration, requires
-exactly the declared types, and snapshots the selected or default workbook. Captured references bind
-canonical input before identity and output planning. Schema-bound references retain exact cell values, revision and every worksheet's identity
-in the confirmation fingerprint and native run input. Later master edits or default changes do not
-replace them. No workflow-specific key or field mapping is inferred.
+Start planning takes an explicit entry-scoped Library, named version and worksheet selection.
+For keyed reads it derives keys from admitted ingress; the frozen declaration supplies fields,
+key and logical ID. Each selected worksheet must map every required field exactly once. Captured
+references bind canonical input before identity and output planning. Their schema-bound values
+retain exact cells, revision and selected worksheet identity in the confirmation fingerprint and
+native run input. The confirmed Start rechecks the captured source before accepting it.
 [Run reference planning](frontend-backend-integration.md#run-reference-and-output-plans) owns explicit saved-row selection and public entry coverage.
 
 The I-9 PDF parent captures Action History's named version with no keys until OCR review supplies

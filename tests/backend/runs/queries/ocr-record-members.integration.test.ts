@@ -50,7 +50,7 @@ function failAveryLookupOnce(result: Parameters<typeof createDeterministicUcpath
 }
 
 const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
-  requiredWorkbookTypeIds: ocrWorkflow.requiredWorkbookTypeIds, referenceLookups: ocrWorkflow.referenceLookups,
+  requiredWorkbookFields: ocrWorkflow.requiredWorkbookFields, workbookReference: ocrWorkflow.workbookReference,
   id: "ocr-navigation-parent", version: 1, code: "onp", label: "Navigation parent", icon: "FileScan", category: "documents",
   input: OcrInputSchema, canonicalInput: defineCanonicalInput(OcrInputSchema, OcrCanonicalInputSchema, [OCR_INPUT_EXAMPLE]),
   inputSubject: "document", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,

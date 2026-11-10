@@ -307,7 +307,8 @@ export const WorkbookReferenceRowChoiceTargetSchema = RunVersionTargetSchema.ext
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-workbook-reference-row"),
     target: WorkbookReferenceRowChoiceTargetSchema,
-    payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1) }) }),
+    payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1),
+      referenceDigest: FingerprintSchema.optional(), workbookVersion: PositiveIntSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-workbook-row"),
     target: WorkbookRowChoiceTargetSchema,
     payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1) }) }),
