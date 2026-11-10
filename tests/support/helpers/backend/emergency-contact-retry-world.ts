@@ -32,6 +32,7 @@ import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emerge
 import fixture from "../../fixtures/ui/ucpath/emergency-contact.fixture.json" with { type: "json" };
 import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { registerBoundFixtureWorker, registerBoundProfile, unregisterBoundProfile } from "../synthetic-database-admission.js";
+import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
 
@@ -45,7 +46,7 @@ type RetryOptions = Readonly<{ failures?: number; failApprovedRecordOnce?: boole
 type ContactSeed = Readonly<{ emplId: string; persisted: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>; submissions: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>[] }>;
 type MemberStageSeed = Readonly<{
   ticks: number; approvedReadFailed: boolean; failuresRemaining: number; failAfterSave: boolean;
-  snapshotReads: number; recordReads: number; wall: string; monotonic: number; contacts: readonly ContactSeed[];
+  snapshotReads: number; recordReads: number; wall: string; monotonic: number; mintedIds: number; contacts: readonly ContactSeed[];
 }>;
 type MemberStageTemplate = Readonly<{ workspace: string; profileId: string; dbRelative: string; seed: MemberStageSeed }>;
 
@@ -244,7 +245,8 @@ export function createEmergencyContactRetryWorld() {
   }
   async function build(options: RetryOptions) {
     const live = pieces({ ...options, onFencedSave: undefined });
-    const f = await world.fixture({ coordinator: true, member: live.member, approvedStore: live.accountingStore,
+    const ids = sequentialIdFactory("b");
+    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore,
       approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
       onTransactionSettled: run => {
         live.hooks.onTransactionSettled?.();
@@ -272,7 +274,7 @@ export function createEmergencyContactRetryWorld() {
     }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
-    return { ...f, live };
+    return { ...f, live, mintedIds: ids.minted().length };
   }
   function present(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>) {
     const current = (runId = f.parentRun.envelope.runId) => { const run = f.database.authority.runs.get(runId); assert.ok(run); return run; };
@@ -302,7 +304,7 @@ export function createEmergencyContactRetryWorld() {
     const { live } = built;
     return { workspace, profileId: built.admission.profileBinding.profileId, dbRelative, seed: {
       ticks: live.tickCount(), approvedReadFailed: live.approvedReadFailed(), failuresRemaining: live.control.failuresRemaining, failAfterSave: live.control.failAfterSave,
-      snapshotReads: live.control.snapshotReads, recordReads: live.control.recordReads, wall: built.clock.now().toISOString(), monotonic: built.clock.monotonicMs(),
+      snapshotReads: live.control.snapshotReads, recordReads: live.control.recordReads, wall: built.clock.now().toISOString(), monotonic: built.clock.monotonicMs(), mintedIds: built.mintedIds,
       contacts: [...live.persistence.entries()].map(([emplId, backend]) => ({ emplId, persisted: backend.snapshot(), submissions: backend.submissions.map(submission => UcpathContactPageSnapshotSchema.parse(submission)) })),
     } };
   }
@@ -313,7 +315,9 @@ export function createEmergencyContactRetryWorld() {
     adopted.push(close);
     try {
       const live = pieces(options, template.seed);
-      const f = await adoptedWorld.fixture({ adoptExisting: true, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+      const ids = sequentialIdFactory("b");
+      for (let index = 0; index < template.seed.mintedIds; index += 1) ids.uuid();
+      const f = await adoptedWorld.fixture({ ids, adoptExisting: true, coordinator: true, member: live.member, approvedStore: live.accountingStore,
         approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
         onTransactionSettled: run => {
           live.hooks.onTransactionSettled?.();

@@ -19,7 +19,7 @@ import { OcrInputSchema } from "../../../../src/models/workflows/ocr/input.js";
 import { OcrApprovalReferenceSchema, OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { bindCanonicalManualOcrReading, bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
@@ -72,7 +72,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       manualPageFailure?: (sourcePage: number) => boolean;
       onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void;
       onTransactionSettled?: (run: RunRecord) => void;
-      adoptExisting?: boolean;
+      adoptExisting?: boolean; ids?: { readonly uuid: () => string };
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       if (options.reviewedPages !== undefined) assert.equal(options.reviewedPages.length, options.pageCount);
@@ -126,6 +126,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         ...(sessions === undefined ? {} : { sessions }),
         ...(options.screenshotCapture === undefined ? {} : { screenshotCapture: options.screenshotCapture }),
         ...(options.adoptExisting === true ? { existingProfile: true } : {}),
+        ...(options.ids === undefined ? {} : { ids: options.ids }),
       });
       options.onHarness?.(harness);
       const { database, path, clock } = harness.authority;
@@ -181,7 +182,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         const readings = pageRuns.flatMap(pageRun => {
           const parsed = OcrPageWorkflowInputSchema.parse(pageRun.input.parsed.value);
           if (parsed.reading.kind !== "manual") return [];
-          const reading = bindManualOcrPageReading(parsed.page, actorId, parsed.reading.extraction);
+          const reading = bindCanonicalManualOcrReading(parsed.page, parsed.reading.actorId, parsed.reading.extraction);
           const corrected = reading.extraction.record; assert.ok(corrected);
           return [{ reading, corrected }];
         }).sort((left, right) => left.reading.input.sourcePage - right.reading.input.sourcePage);

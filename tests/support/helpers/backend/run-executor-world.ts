@@ -65,6 +65,7 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
     descriptor?: AnyWorkflowDescriptor;
     screenshotCapture?: Parameters<typeof sessionManagerFor>[5];
     existingProfile?: boolean;
+    ids?: { readonly uuid: () => string };
   }> = {}): Promise<ExecutorHarness<Profile>> {
     const authority = await openAuthorityHarness(profileFixture, { existing: options.existingProfile === true });
     authorityHarnesses.set(authority.database, authority);
@@ -94,7 +95,7 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
       sessions: manager,
       emitter: emitter.emitter,
       clock: authority.clock,
-      ids: sequentialIdFactory("b"),
+      ids: options.ids ?? sequentialIdFactory("b"),
       scheduler,
       taskDeadlineMs: options.taskDeadlineMs ?? 60_000,
       log: recordingLogger().log,
