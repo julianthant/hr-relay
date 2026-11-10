@@ -1,11 +1,30 @@
+import { DatabaseSync } from 'node:sqlite';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryService, projectWorkbookCompatibilityFromRepository } from '../../../../../src/backend/workbooks/workbook-library-service.js';
+import { manualClock } from '../../../../../src/rules/time/clock.js';
+import { unexpectedWorkbookSync } from '../../../../support/helpers/backend/workbook-sync.js';
+import { installRetainedMergeFixture } from '../../../../support/fixtures/storage/retained-workbook-merge.js';
+import { ERROR_CATALOG } from '../../../../../src/models/failures/error-catalog.js';
+import { Hono } from 'hono';
+import type { DashboardApp } from '../../../../../src/backend/transports/http/routes/api-types.js';
+import { registerWorkbookRoutes } from '../../../../../src/backend/transports/http/routes/workbooks.js';
+import { WorkbookLibraryError } from '../../../../../src/backend/workbooks/workbook-library-error.js';
+import { fixtureDescriptor } from '../../../../support/fixtures/descriptor-fixtures.js';
+
 import assert from "node:assert/strict";
-import { afterEach, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { WorkbookImportResultSchema, encodeEditableWorkbook, decodeSavedWorkbook } from "../../../../../src/models/dashboard/workbooks.js";
 import { assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, foreignOriginCases, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 
 afterEach(disposeHttpRouteHarness);
 const headers = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
 const workbook = { name: "Dates.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Dates", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: new Date("2026-01-01T00:00:00.000Z") }] }] }] };
+it('serves current workbook compatibility from server workflow declarations before the dynamic library route', async () => {
+  const h = await harness();
+  const response = await h.app.request('http://localhost/api/v1/workbooks/compatibility');
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), projectWorkbookCompatibilityFromRepository(h.database.authority.workbooks, [fixtureDescriptor]));
+});
 it("serves create/list/open/save/conflict/history with exact Date transport and durable CAS", async () => {
   const h = await harness();
   const created = await h.app.request("http://localhost/api/v1/workbooks", { method: "POST", headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
@@ -99,4 +118,44 @@ it('rejects retired import purpose input and serves a plain import with admitted
   assert.deepEqual(Object.keys(result), ['workbook']);
   assert.equal(result.workbook.version, 1);
   assert.deepEqual(await (await h.app.request('http://localhost/api/v1/workbooks/results')).json(), { workflows: [], unavailable: [] });
+});
+
+it.each(['new-merge', 'merge'])('rejects retired merge %s before service or replay lookup', async operationId => {
+  const app: DashboardApp = new Hono();
+  app.onError((error, context) => {
+    if (!(error instanceof WorkbookLibraryError)) throw error;
+    return context.json({ code: error.code }, 400);
+  });
+  registerWorkbookRoutes(app, {});
+  const response = await app.request('/api/v1/workbooks/historical-target/library-actions', { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId, expectedRevision: 1, expectedVersion: 1,
+      change: { kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [{ libraryId: 'historical-source', expectedRevision: 1, expectedVersion: 1 }] } }) });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ code: 'WORKBOOK_INVALID' });
+});
+
+it('serves a closed retired status without merge payload and rejects its exact completed POST', async () => {
+  const database = new DatabaseSync(':memory:');
+  try {
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
+    const record = installRetainedMergeFixture(database);
+    const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
+    const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date(record.at)), sync: unexpectedWorkbookSync });
+    const app: DashboardApp = new Hono();
+    app.onError((error, context) => {
+      if (!(error instanceof WorkbookLibraryError)) throw error;
+      return context.json({ code: error.code }, 400);
+    });
+    registerWorkbookRoutes(app, { workbooks: { library, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+    const before = database.prepare('SELECT * FROM workbook_library_actions').all();
+    const path = `/api/v1/workbooks/${record.libraryId}/library-actions`;
+    const status = await app.request(`${path}/${record.action.operationId}`);
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: ERROR_CATALOG.WORKBOOK_ACTION_RETIRED.text });
+    const rejected = await app.request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(record.action) });
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toEqual({ code: 'WORKBOOK_INVALID' });
+    expect(database.prepare('SELECT * FROM workbook_library_actions').all()).toEqual(before);
+    expect(repository.libraryActionRecord(record.libraryId, record.action.operationId)).toEqual(record);
+  } finally { database.close(); }
 });

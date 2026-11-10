@@ -1,10 +1,12 @@
 import type { WorkbookType } from '../../../models/dashboard/workbooks.js';
 import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
-import { fieldForSpreadsheetHeader, spreadsheetField } from './spreadsheet-fields-model.js';
+import { fieldForSpreadsheetHeader, spreadsheetField } from '../../../models/fields/workbook-fields.js';
+import { spreadsheetEditorField } from './spreadsheet-fields-model.js';
 
 export type SpreadsheetTypeColumn = { id: string; name: string; required: boolean };
 export function spreadsheetTypeColumns(type?: WorkbookType): SpreadsheetTypeColumn[] {
-  return (type?.fields ?? ['firstName', 'lastName', 'eid']).map(id => ({ id, name: type?.fieldLabels?.[id] ?? spreadsheetField(id).label, required: type?.requiredFields?.includes(id) ?? false }));
+  return (type?.fields ?? ['firstName', 'lastName', 'eid']).map(id => ({ id, name: type === undefined ? spreadsheetField(id).label
+    : spreadsheetEditorField(id, type.fieldLabels?.[id] ?? 'Field label unavailable').label, required: type?.requiredFields?.includes(id) ?? false }));
 }
 export function spreadsheetTypeColumn(name = ''): SpreadsheetTypeColumn {
   return { id: fieldForSpreadsheetHeader(name)?.id ?? `roster.custom${crypto.randomUUID().replaceAll('-', '')}`, name, required: false };

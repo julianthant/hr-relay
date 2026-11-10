@@ -7,7 +7,7 @@ import { afterEach, it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { deriveEvidenceReceiptId } from "../../../../src/models/trust/evidence-identity.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture, restoreSchema23WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -107,7 +107,7 @@ it("converts the populated schema 22 closure, keeps unrelated evidence byte-iden
   try {
     const kept = keptRows(s.raw, s.keptRunId);
     migrateWorkerCustody(s.raw, s.now);
-    assert.equal(inspectNativeAuthority(s.raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(inspectNativeAuthority(s.raw, WORKER_CUSTODY_SCHEMA_VERSION).schemaVersion, WORKER_CUSTODY_SCHEMA_VERSION);
     for (const table of ["runs", "run_results", "run_receipts", "timeline_events"]) {
       assert.equal(s.raw.prepare(`SELECT count(*) AS count FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"}=?`).get(s.runId)?.count, 0, table);
     }

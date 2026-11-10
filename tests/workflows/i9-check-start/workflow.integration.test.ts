@@ -46,7 +46,7 @@ describe("one I-9 PDF Start through admitted children", () => {
     const changed = await f.changeReference();
     expect("versionId" in changed.master ? changed.master.versionId : undefined).not.toBe(f.selectedReference.versionId);
     expect(changed.master.rows[0].matches[0].values.ppsEid).toBe("999999999");
-    expect(changed.currentDefault.libraryId).not.toBe(f.referenceId);
+    expect(changed.otherSource.libraryId).not.toBe(f.referenceId);
     expect(changed.renamed.versionName).toBe("Renamed later");
     const first = f.approveNext();
     const result = await f.canonical.execute(f.run, new AbortController().signal);

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { describe, it, vi } from "vitest";
-import { buildBootstrap } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { buildBootstrap, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
@@ -32,8 +33,8 @@ describe("bootstrap storage authority contract", () => {
       appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock, timeZone: "UTC", modules: [],
       descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), settingsSchemaHash: FingerprintSchema.parse("b".repeat(64)),
       projection: { generation: () => 1 }, authorityMeta,
-      workbookReferences: () => [], preflightReport: () => healthyDashboardPreflightReport(clock),
-    };
+      workbookCompatibility: workflows => projectWorkbookCompatibility(workflows, []), preflightReport: () => healthyDashboardPreflightReport(clock),
+    } satisfies BootstrapQueryDeps;
     vi.mocked(readdirSync).mockClear();
     assert.deepEqual(buildBootstrap(deps).storage, { authority: "healthy" });
     assert.equal(authorityMeta.mock.calls.length, 1);

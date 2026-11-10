@@ -154,7 +154,8 @@ export function composeCommandRequest(
       const choice = context.workbookReferenceChoice?.resolution, answer = context.workbookReferenceAnswer;
       if (choice?.state !== "available" || answer === undefined || canonicalJsonStringify(choice.action) !== canonicalJsonStringify(action)
         || action.referenceTarget?.runId !== target.runId || action.referenceTarget.expectedVersion !== target.expectedVersion
-        || !choice.candidates.some(candidate => candidate.sheetId === answer.sheetId && candidate.rowId === answer.rowId)) {
+        || !choice.candidates.some(candidate => candidate.sheetId === answer.sheetId && candidate.rowId === answer.rowId
+          && candidate.referenceDigest === answer.referenceDigest && candidate.workbookVersion === answer.workbookVersion)) {
         return { state: "refused", reason: "The roster row choice changed. Reload before choosing." };
       }
       const parsed = CommandRequestSchema.safeParse({ ...envelope, family: "run", type: "resolve-workbook-reference-row", target: action.referenceTarget, payload: answer });

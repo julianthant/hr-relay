@@ -992,8 +992,8 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
     if (record.payload.kind === "workbook-write-recorded") {
       const event = record.payload, repositories = timelineEvidenceRepositories(database, read);
       const entry = repositories.workbooks.runOperations(run.envelope.runId).find(entry => entry.libraryId === event.libraryId && entry.operation.operationId === event.operationId);
-      const digest = entry?.operation.source.kind === "run" ? entry.operation.source.referenceDigest : undefined;
-      if (entry === undefined || entry.operation.source.kind !== "run" || entry.operation.source.referenceDigest === undefined
+      const digest = entry?.operation.source.kind === "run" || entry?.operation.source.kind === "run-reference" ? entry.operation.source.referenceDigest : undefined;
+      if (entry === undefined || (entry.operation.source.kind !== "run" && entry.operation.source.kind !== "run-reference") || entry.operation.source.referenceDigest === undefined
         || !run.input.workbookReferences?.some(reference => sha256Hex(canonicalJsonStringify(reference)) === digest)
         || event.runId !== run.envelope.runId || event.workflow !== run.envelope.workflow || event.traceId !== run.envelope.traceId
         || event.attempt > run.envelope.attempt || Number(event.claimGeneration) > Number(run.claimGeneration)
@@ -1114,6 +1114,7 @@ function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeo
   if (table === "run_results") return readIntPragma(database,"user_version") >= 20 ? "id" : "run_id";
   if (table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
+  if (table === "workflow_workbook_selections") return "workflow_id";
   if (table === "workbook_library_history") return readIntPragma(database, "user_version") >= 13
     ? "workbook_id,version,name" : "workbook_id,version,payload_json";
   if (table === "workbook_operations") return "sequence";
@@ -1579,7 +1580,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = predecessorTables.length === 0 ? currentTables : z.array(z.union([currentTables.element,
     z.strictObject({ name: z.enum(predecessorTables), classification: z.literal("authority") }),
   ]));
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
