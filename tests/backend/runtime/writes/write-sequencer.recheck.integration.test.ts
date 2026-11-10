@@ -115,10 +115,10 @@ describe("parked write read-only recheck", () => {
 
   it("refuses stale versions, generations, unsupported transaction IDs and operator proof", async () => {
     const { h, intent, run, command } = await parked();
-    assert.equal(h.kernel.execute({ ...command, target: { ...command.target, expectedVersion: run.version + 1 } }).state, "conflict");
-    assert.equal(h.kernel.execute({ ...command, target: { ...command.target, intentGeneration: intent.generation + 1 } }).state, "rejected");
-    assert.equal(h.kernel.execute({ ...command, payload: { ...command.payload, transactionId: "T998877" } }).state, "rejected");
-    assert.throws(() => h.kernel.execute({ ...command, payload: { ...command.payload, proof: { schemaHash: "a".repeat(64), value: {} } } }));
+    assert.equal(h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000001", target: { ...command.target, expectedVersion: run.version + 1 } }).state, "conflict");
+    assert.equal(h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000002", target: { ...command.target, intentGeneration: intent.generation + 1 } }).state, "rejected");
+    assert.equal(h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000003", payload: { ...command.payload, transactionId: "T998877" } }).state, "rejected");
+    assert.throws(() => h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000004", payload: { ...command.payload, proof: { schemaHash: "a".repeat(64), value: {} } } }));
     assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
     assert.equal(h.kernel.execute(command).state, "applied");
     assert.equal(h.kernel.execute({ ...command, commandId: "dddddddd-1234-4000-8000-123400000000", target: { ...command.target, expectedVersion: run.version + 1 } }).state, "rejected");
