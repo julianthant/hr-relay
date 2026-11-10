@@ -110,7 +110,7 @@ try {
 
 
       await mount();
-      const door=button("Start a run"); assert_m0.equal(door.id,RUN_START_DOOR_ID_m0);
+      const door=button("Start run"); assert_m0.equal(door.id,RUN_START_DOOR_ID_m0);
       if(launch === "external button") await click(door);
       else { button("Settings").focus(); await key("r"); }
       const dialog=document.querySelector('[role="dialog"]'); assert_m0.ok(dialog);
@@ -132,11 +132,11 @@ try {
 
   let uploads = 0;
   await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
-  await click(button("Start a run"));
+  await click(button("Start run"));
   const launch = document.querySelector('[role="dialog"]'); assert_m0.ok(launch);
   assert_m0.equal(launch.querySelectorAll('input[type="file"]').length, 0);
   assert_m0.equal(document.querySelectorAll('#hub-panel-assistant input[type="file"]').length, 1);
-  await key("Escape"); assert_m0.ok(document.activeElement === button("Start a run"));
+  await key("Escape"); assert_m0.ok(document.activeElement === button("Start run"));
   await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
   await click(link);

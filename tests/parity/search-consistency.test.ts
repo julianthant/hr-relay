@@ -58,8 +58,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(runSearch).toHaveValue("");
       await page.keyboard.press("Escape");
       await expect(searchButton).toBeFocused();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
       await expect(dialog).toBeVisible();
       await expectSearchCorners(page);
       expect((await dialog.boundingBox())!.width).toBe(880);

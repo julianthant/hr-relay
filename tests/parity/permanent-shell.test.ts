@@ -53,7 +53,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(bar.locator("kbd")).toHaveCount(0);
       expect(await rail.locator(".workflow-rail-groups").evaluate(node => getComputedStyle(node).scrollbarWidth)).toBe("none");
       await expect(page.getByRole("button", { name: /Workflow Panel|Float|Minimise/iu })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Start run", exact: true })).toBeVisible();
       const queue = page.getByRole("region", { name: "Queue", exact: true }), logs = page.locator(".dashboard-log-column");
       const actions = logs.getByRole("region", { name: "Action panel", exact: true });
       const queueBounds = (await queue.boundingBox())!, logBounds = (await logs.boundingBox())!;
@@ -72,10 +72,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(logPanelBounds.y).toBe(actionBounds.y + actionBounds.height + 12);
       expect(logPanelBounds.y + logPanelBounds.height).toBe(queueBounds.y + queueBounds.height);
       expect(queueBounds.y + queueBounds.height).toBe((await page.getByRole("region", { name: "Session Panel", exact: true }).boundingBox())!.y - 12);
-      await expect(queue.getByRole("button", { name: "Start a run", exact: true })).toHaveCount(0);
+      await expect(queue.getByRole("button", { name: "Start run", exact: true })).toHaveCount(0);
       const controls = actions.getByRole("group", { name: "Action panel controls", exact: true });
       await expect(controls).toBeVisible();
-      for (const control of [page.getByRole("button", { name: "Start a run", exact: true }), page.getByRole("button", { name: "Filter queue by status", exact: true }), page.getByRole("combobox", { name: "Sort the queue", exact: true }), page.getByRole("button", { name: "Attention first", exact: true })]) {
+      for (const control of [page.getByRole("button", { name: "Start run", exact: true }), page.getByRole("button", { name: "Filter queue by status", exact: true }), page.getByRole("combobox", { name: "Sort the queue", exact: true }), page.getByRole("button", { name: "Attention first", exact: true })]) {
         const bounds = (await control.boundingBox())!;
         expect(await controls.locator(control).count()).toBe(1);
         expect(bounds.x).toBeGreaterThanOrEqual(actionBounds.x);

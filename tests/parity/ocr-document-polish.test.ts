@@ -113,8 +113,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(rerun.getByRole("list", { name: "Selected PDFs", exact: true })).toContainText("detect-test.pdf");
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(lookupRetry).toBeFocused();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const launcher = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const launcher = page.getByRole("dialog", { name: "Start run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Oath Upload", exact: true }).click();
       const pdf = launcher.getByRole("region", { name: "PDF documents", exact: true }), roster = launcher.getByRole("button", { name: "Add spreadsheet", exact: true });
       const pdfBox = (await pdf.boundingBox())!, rosterBox = (await roster.boundingBox())!;

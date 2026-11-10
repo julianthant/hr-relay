@@ -47,8 +47,8 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
     for (const [index, type] of types.entries()) {
       const previousType = types[index - 1] ?? "Emergency Contact";
       await rail.getByRole("button", { name: "OnBase", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
       const picker = dialog.getByRole("button", { name: `${previousType} Document type`, exact: true });
       await picker.press("Enter");
       const menu = page.getByRole("menu", { name: `${previousType} Document type`, exact: true });
@@ -112,8 +112,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(rail.getByRole("button")).toHaveCount(14);
       for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
         await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
-        await page.getByRole("button", { name: "Start a run", exact: true }).click();
-        let dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+        await page.getByRole("button", { name: "Start run", exact: true }).click();
+        let dialog = page.getByRole("dialog", { name: "Start run", exact: true });
         const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
         if (!flow.runnable) {
           await expect(picker.getByRole("button", { name: flow.label, exact: true })).toHaveCount(0);
@@ -139,7 +139,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           await page.keyboard.press("Escape");
           continue;
         }
-        dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+        dialog = page.getByRole("dialog", { name: "Start run", exact: true });
         await expect(dialog).toHaveCSS("opacity", "1");
         const box = (await dialog.boundingBox())!;
         expect(box.width).toBe(880); expect(box.height).toBe(628);
@@ -250,8 +250,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true })).toContainText("Jordan Lee");
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const upload = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const upload = page.getByRole("dialog", { name: "Start run", exact: true });
       await upload.getByRole("radio", { name: "Upload-only", exact: true }).press("Space");
       await expect(upload.getByRole("button", { name: /Roster$/u })).toHaveCount(0);
       await upload.locator('input[type="file"]').setInputFiles(pdf);
@@ -285,8 +285,8 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
       await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await dialog.getByRole("radio", { name: "PDFs", exact: true }).press("Space");
     await dialog.locator('input[type="file"]').setInputFiles(pdf);
     await expect(dialog.getByRole("button", { name: "Add spreadsheet", exact: true })).toBeVisible();
@@ -295,7 +295,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).not.toBeChecked();
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     await dialog.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).click();
     await dialog.getByRole("radio", { name: "Match", exact: true }).press("Space");
     const match = dialog.getByRole("textbox", { name: "Name, DOB and SSN", exact: true });
@@ -311,7 +311,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Read employment status · Skipped/u })).toBeVisible();
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     await dialog.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
     await advance(dialog);
     await dialog.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
@@ -334,7 +334,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Create I-9 profile · Skipped/u })).toBeVisible();
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Person Lookup", exact: true }).click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     await dialog.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
     await expect(dialog).toContainText("Emergency Contact · Workflow preview");
     await expect(dialog.getByRole("button", { name: "Choose PDFs", exact: true })).toBeVisible();

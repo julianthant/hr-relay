@@ -40,7 +40,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const bar = page.getByRole('group', { name: 'Action panel controls', exact: true });
-      const start = bar.getByRole('button', { name: 'Start a run', exact: true });
+      const start = bar.getByRole('button', { name: 'Start run', exact: true });
       const status = bar.getByRole('button', { name: 'Filter queue by status', exact: true });
       const sort = bar.getByRole('combobox', { name: 'Sort the queue', exact: true });
       await expect(bar).toBeVisible();
@@ -84,7 +84,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(writes).toEqual([]);
 
       await start.click();
-      const run = page.getByRole('dialog', { name: 'Start a run', exact: true });
+      const run = page.getByRole('dialog', { name: 'Start run', exact: true });
       await expect(run.getByRole('heading', { name: 'Run input', exact: true })).toBeVisible();
       await expect(run.getByText('Examples', { exact: true })).toHaveCount(0);
       await expect(run.getByRole('button', { name: 'One EID', exact: true })).toHaveCount(0);

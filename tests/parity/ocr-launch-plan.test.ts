@@ -29,8 +29,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       for (const extraction of [true, false]) {
         await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
-        await page.getByRole("button", { name: "Start a run", exact: true }).click();
-        const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+        await page.getByRole("button", { name: "Start run", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
         await expect(dialog.getByRole("button", { name: "Add spreadsheet", exact: true })).toBeVisible();
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "contacts.pdf" : "manual-contacts.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();

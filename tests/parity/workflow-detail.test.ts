@@ -42,8 +42,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(logs).toContainText("06/30/2027");
 
       await logs.getByRole("searchbox", { name: "Search logs", exact: true }).fill("");
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const launcher = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const launcher = page.getByRole("dialog", { name: "Start run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await launcher.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
       await launcher.getByRole("button", { name: "Continue", exact: true }).click();

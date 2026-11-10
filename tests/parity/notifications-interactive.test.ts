@@ -72,8 +72,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("EID 10101010");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.doneRun}"] [data-demo-row-title]`)).toBeInViewport();
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const launcher = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const launcher = page.getByRole("dialog", { name: "Start run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await launcher.getByRole("textbox", { name: "Emails", exact: true }).fill("notification.hire@example.com");
       await launcher.getByRole("button", { name: "Continue", exact: true }).click(); await launcher.getByRole("button", { name: "Preview plan", exact: true }).click();

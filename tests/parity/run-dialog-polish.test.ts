@@ -20,9 +20,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.openGateRun}`);
-      const start = page.getByRole("button", { name: "Start a run", exact: true });
+      const start = page.getByRole("button", { name: "Start run", exact: true });
       await start.click();
-      const run = page.getByRole("dialog", { name: "Start a run", exact: true });
+      const run = page.getByRole("dialog", { name: "Start run", exact: true });
       const input = run.getByRole("textbox", { name: "Employee IDs", exact: true });
       await expect(input).toBeFocused();
       await expect(run).toHaveCSS("opacity", "1");

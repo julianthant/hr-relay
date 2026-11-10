@@ -11,7 +11,7 @@ async function openOnboarding(page: Page, fixture: WorkbookRowsFixture, theme: T
   await page.addInitScript(value => Reflect.set(window, 'relayParityTheme', value), theme);
   await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
   await gotoAppState(page, fixture.server.baseUrl, { day: FIXTURE_DAY, start: true });
-  const dialog = page.getByRole('dialog', { name: 'Start a run', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Start run', exact: true });
   await dialog.getByRole('navigation', { name: 'Workflow', exact: true }).getByRole('button', { name: 'Onboarding', exact: true }).click();
   await expect(dialog.getByRole('table', { name: 'Saved spreadsheet rows', exact: true })).toBeVisible();
   await expect(dialog.getByRole('radio', { name: 'New hire', exact: true })).not.toBeChecked();

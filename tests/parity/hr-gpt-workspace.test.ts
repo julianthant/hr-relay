@@ -129,8 +129,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(settings.locator('.shortcut-reference-row').filter({ hasText: 'Start a run' }).locator('kbd')).toHaveText('q');
       await settings.getByRole('button', { name: 'Edit Next run shortcut 1', exact: true }).click(); await edit.getByRole('textbox', { name: 'Shortcut keys', exact: true }).press('q'); await edit.getByRole('button', { name: 'Save shortcut', exact: true }).click(); await expect(edit).toContainText('already assigned'); await edit.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-      await settings.getByRole('button', { name: 'Back to dashboard', exact: true }).click(); await page.getByRole('button', { name: 'Start a run', exact: true }).focus(); await page.keyboard.press('q');
-      await expect(page.getByRole('dialog', { name: 'Start a run', exact: true })).toBeVisible(); await page.keyboard.press('Escape');
+      await settings.getByRole('button', { name: 'Back to dashboard', exact: true }).click(); await page.getByRole('button', { name: 'Start run', exact: true }).focus(); await page.keyboard.press('q');
+      await expect(page.getByRole('dialog', { name: 'Start run', exact: true })).toBeVisible(); await page.keyboard.press('Escape');
       const beforeNumberKeys = page.url();
       await page.keyboard.press('Control+2'); await page.keyboard.press('Meta+2');
       expect(page.url()).toBe(beforeNumberKeys);

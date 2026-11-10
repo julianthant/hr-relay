@@ -325,7 +325,7 @@ describe_m1("served sign-up Finish", () => {
       restarted = true;
       await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
       await vi_m1.waitFor(() => { assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell")); });
-      await act_m1(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Start a run"]')?.click(); });
+      await act_m1(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Start run"]')?.click(); });
       const dialog = document.querySelector('[role="dialog"]'); assert_m1.ok(dialog);
       const workflow = [...dialog.querySelectorAll("button")].find(button => button.textContent?.includes("Person Lookup"));
       assert_m1.ok(workflow); await act_m1(async () => workflow.click());
@@ -602,7 +602,7 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?intake=e1f2a3b4-0000-4000-8000-000000000001");
     await press(buttonNamed("Close"));
 
-    const door = buttonNamed("Start a run");
+    const door = buttonNamed("Start run");
     assert_m1.equal(door.id, RUN_START_DOOR_ID_m1);
     assert_m1.equal(document.activeElement === door, true);
     assert_m1.equal(

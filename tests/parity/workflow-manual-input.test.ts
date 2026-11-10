@@ -30,8 +30,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
       await dialog.getByRole("textbox", { name: "Employee IDs", exact: true }).fill("10000022");
       await advance(dialog);
       await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
@@ -62,7 +62,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
 
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       await dialog.locator('input[type="file"]').setInputFiles(pdf);
       await advance(dialog);
       await dialog.getByRole("checkbox", { name: "Extract with OCR", exact: true }).uncheck();
@@ -99,7 +99,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true })).toContainText("Sam Rivera");
       await rail.getByRole("button", { name: "I-9 Check", exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: "manual-i9.pdf" });
       await advance(dialog);
       await dialog.getByRole("checkbox", { name: "Extract with OCR", exact: true }).uncheck();

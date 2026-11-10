@@ -84,8 +84,8 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       });
       await page.addInitScript(value => Reflect.set(window, 'relayParityTheme', value), theme);
       await page.setViewportSize({ width, height: 1000 }); await page.goto(`${server.baseUrl}/?fixture=hub-integration`);
-      await page.getByRole('button', { name: 'Start a run', exact: true }).click();
-      const dialog = page.getByRole('dialog', { name: 'Start a run', exact: true });
+      await page.getByRole('button', { name: 'Start run', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Start run', exact: true });
       await dialog.getByRole('navigation', { name: 'Workflow', exact: true }).getByRole('button', { name: /Reference fixture/u }).click();
       await dialog.getByRole('textbox', { name: 'Employee IDs', exact: true }).fill('10800000');
       await dialog.getByRole('button', { name: 'Continue', exact: true }).click();

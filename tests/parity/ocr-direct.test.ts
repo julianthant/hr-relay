@@ -25,8 +25,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       for (const extraction of [true, false]) {
         await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
-        await page.getByRole("button", { name: "Start a run", exact: true }).click();
-        const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+        await page.getByRole("button", { name: "Start run", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
         const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
         await expect(picker.getByRole("button", { name: "OCR", exact: true })).toHaveCount(0);
         await expect(picker.getByRole("button", { name: "Emergency Contact", exact: true })).toBeEnabled();

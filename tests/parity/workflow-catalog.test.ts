@@ -22,8 +22,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     await expect(rail.getByRole("button")).toHaveCount(15);
     const labels = await rail.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")));
     expect(labels).toHaveLength(15);
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
-    const run = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
+    const run = page.getByRole("dialog", { name: "Start run", exact: true });
     const picker = run.getByRole("navigation", { name: "Workflow", exact: true });
     const parentOnly = ["SharePoint Download", "I-9 Lookup"];
     expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels.filter(label => !parentOnly.includes(label!)));

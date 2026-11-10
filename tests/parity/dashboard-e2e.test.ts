@@ -74,7 +74,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(queue.getByText(`No ${label} runs`, { exact: true })).toBeVisible();
           await expect(page.getByText("No run open", { exact: true })).toBeVisible();
           await expect(page.getByRole("button", { name: /^Sessions\b/ })).toBeVisible();
-          await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
+          await expect(page.getByRole("button", { name: "Start run", exact: true })).toBeVisible();
           await expect(page.getByText("Page unavailable", { exact: true })).toHaveCount(0);
           expect(errors).toEqual([]);
         }

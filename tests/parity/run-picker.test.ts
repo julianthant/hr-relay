@@ -20,8 +20,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     await expect(rail.getByRole("button")).toHaveCount(15);
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
     await expect(picker.getByRole("button")).toHaveCount(15);
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
@@ -70,10 +70,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     });
     expect(metrics).toEqual({ textAligned: true, rowHeight: 32 });
     await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Start run", exact: true })).toBeFocused();
     for (const label of ["OCR", "I-9 Lookup"]) {
       await rail.getByRole("button", { name: label, exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       if (label === "OCR") {
         await expect(picker.getByRole("button", { name: label, exact: true })).toBeEnabled();
         await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("OCR");

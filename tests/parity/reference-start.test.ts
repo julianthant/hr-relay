@@ -44,7 +44,7 @@ test.describe("start-run picker hierarchy", () => {
 
 
 
-        await page.getByRole("dialog", { name: "Start a run" }).getByRole("button", { name: "Close" }).click();
+        await page.getByRole("dialog", { name: "Start run" }).getByRole("button", { name: "Close" }).click();
         await page.getByRole("button", { name: "Add workers" }).click();
         const workerWorkflow = page.getByRole("dialog", { name: "Add workers" })
           .getByRole("combobox", { name: "Workflow" });
@@ -66,7 +66,7 @@ test.describe("separations start-run continuity", () => {
         await page.goto(`${servers.separationsStartServer.baseUrl}/?day=${FIXTURE_DAY}&start=1&view=${encodeURIComponent(JSON.stringify({ workflow: "separations", launchServed: "separations" }))}`);
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
-        await expect(page.getByRole("dialog", { name: "Start a run", exact: true })).toContainText("New work · Separations");
+        await expect(page.getByRole("dialog", { name: "Start run", exact: true })).toContainText("New work · Separations");
 
         await expect(page.getByRole("tablist", { name: "How to start this run" })).toHaveCount(0);
         const typedDocument = page.getByPlaceholder(
@@ -123,7 +123,7 @@ test.describe("separations start-run continuity", () => {
         expect(request.target.workflowId).toBe("separations");
         const result = CommandResultSchema.parse(await response.json());
         expect(result.state).toBe("applied");
-        await expect(page.getByRole("dialog", { name: "Start a run", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("dialog", { name: "Start run", exact: true })).toHaveCount(0);
         await expect(page.locator("#dashboard-run-start-door")).toBeFocused();
         await expect(page.getByText(/Julian Zaw/u)).toHaveCount(0);
         await assertShellGeometry(page, `separations-start-result @ ${viewport.name} ${theme.name}`);
