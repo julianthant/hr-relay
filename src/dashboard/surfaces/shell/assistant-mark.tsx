@@ -58,7 +58,7 @@ const IDLE_DEGREES_PER_SECOND = 45, HOVER_DEGREES_PER_SECOND = 260;
 function useIdleOrbit(svg: React.RefObject<SVGSVGElement | null>, active: boolean) {
   useEffect(() => {
     const element = svg.current, satellite = element?.querySelector<SVGGElement>(".mark-spin");
-    if (!active || !element || !satellite || window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off") return;
+    if (!active || !element || !satellite || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off") return;
     const host = element.closest("button") ?? element;
     let angle = 0, speed = IDLE_DEGREES_PER_SECOND, target = IDLE_DEGREES_PER_SECOND, last = performance.now(), frame = 0;
     const tick = (now: number) => {

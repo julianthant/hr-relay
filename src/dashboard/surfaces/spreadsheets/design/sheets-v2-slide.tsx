@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import './sheets-v2.css';
 
-const still = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'off';
+const still = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'off';
 
 /** Swaps `children` when `id` changes: the old pane slides out and the new one in, toward higher `index`es from the right. The height eases to the new pane's. */
 export function Slide({ id, index, children, className = '' }: { id: string; index: number; children: ReactNode; className?: string }) {
