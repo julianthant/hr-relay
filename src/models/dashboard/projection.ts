@@ -546,6 +546,33 @@ export function notificationWireOf(
       sourceEvent: sourceEvent ?? { state: "unavailable" },
     });
   }
+  if (record.trigger === "command") {
+    const snoozed = record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
+    const link = record.links[0];
+    if (link?.kind !== "recovery" && link?.kind !== "command-result" && link?.kind !== "bulk-result") {
+      throw new Error("command notice requires a command link");
+    }
+    return NotificationWireSchema.parse({
+      kind: "command",
+      notificationId: record.notificationId,
+      actorId: record.actorId,
+      channel: "ping",
+      count: record.count,
+      publicationId: sha256Hex(`notification-publication:${record.notificationId}:${String(record.count)}:${record.lastSeenAt}`),
+      severity: link.kind === "recovery" ? "error" : "warning",
+      title: record.title,
+      summary: record.summary,
+      readState: record.status,
+      state: snoozed ? "snoozed" : record.status,
+      ...(snoozed && record.snooze.state === "snoozed" ? { snoozedUntil: record.snooze.until } : {}),
+      occurredAt: record.lastSeenAt,
+      revision: record.version,
+      context: context ?? { state: "unavailable" },
+      sourceEvent: sourceEvent ?? { state: "unavailable" },
+      priority: record.status === "unread" && !snoozed,
+      link,
+    });
+  }
   const severity = record.trigger === "failed" || record.trigger === "write-parked"
     ? "error"
     : record.trigger === "verified-done"
@@ -577,7 +604,7 @@ export function notificationWireOf(
 
 /** Compose public text from closed trigger codes, never private diagnostic prose. */
 export function notificationTitle(trigger: z.infer<typeof NotificationTriggerSchema>): string {
-  const titles = { failed: "Run failed", "gate-waiting": "Needs you", "write-parked": "Write parked", repeating: "Repeating failure", storage: "Storage needs attention", "verified-done": "Verified completion", "backfill-gap": "Notification history is incomplete" };
+  const titles: Record<typeof trigger, string> = { failed: "Run failed", "gate-waiting": "Needs you", "write-parked": "Write parked", repeating: "Repeating failure", storage: "Storage needs attention", "verified-done": "Verified completion", "backfill-gap": "Notification history is incomplete", command: "Command needs attention" };
   return titles[trigger];
 }
 const NotificationLinkWireSchema = z.discriminatedUnion("kind", [

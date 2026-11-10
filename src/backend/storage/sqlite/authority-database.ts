@@ -206,11 +206,18 @@ type ReadRepository<RecordValue> = Readonly<{
   get(recordKey: string): RecordValue | undefined;
 }>;
 
+type CommandNoticeRead = Readonly<{
+  request: z.infer<typeof CommandRequestSchema>;
+  state: "admitted" | "executing" | "succeeded" | "refused" | "uncertain";
+  result?: z.infer<typeof CommandAuditRecordSchema>["result"];
+}>;
 type CommandRepository = Readonly<{
   assertIdentity(input: unknown, parentCommandId?: string): void;
   insert(input: unknown, parentCommandId?: string): ImmutableInsertResult<z.infer<typeof CommandRequestSchema>>;
   acceptBulk(input: unknown): ImmutableInsertResult<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   getBulk(commandId: string): z.infer<typeof BulkRunCommandAcceptanceRecordSchema> | undefined;
+  readForNotice(commandId: string): CommandNoticeRead | undefined;
+  listBulkChildren(bulkCommandId: string): readonly CommandNoticeRead[];
   parentId(commandId: string): string | null | undefined;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
@@ -5182,6 +5189,21 @@ export class AuthorityDatabase implements Disposable {
           if (!("kind" in stored) || stored.kind !== "bulk-parent") throw new CommandIdentityConflictError();
           return BulkParentCommandRecordSchema.parse(stored).acceptance;
         },
+        readForNotice: (commandId: string) => {
+          const row = this.#database.prepare("SELECT * FROM commands WHERE id = ?").get(CommandIdSchema.parse(commandId));
+          if (row === undefined) return undefined;
+          const stored = commandFromRow(row);
+          if (!("family" in stored)) return undefined;
+          const request = CommandRequestSchema.parse(stored);
+          const state = z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]).parse(z.object({ state: z.string() }).parse(row).state);
+          const audit = this.authority.commandAudits.findByCommand(request.commandId);
+          return audit === undefined ? { request, state } : { request, state, result: audit.result };
+        },
+        listBulkChildren: (bulkCommandId: string) => this.#database.prepare("SELECT id FROM commands WHERE parent_id = ? ORDER BY id").all(CommandIdSchema.parse(bulkCommandId)).map(row => {
+          const child = this.authority.commands.readForNotice(RecordKeyRowSchema.parse(row).id);
+          if (child === undefined) throw new Error("bulk-child-notice-missing");
+          return child;
+        }),
       }),
       commandAudits: Object.freeze({
         insert: (input: unknown) => {
