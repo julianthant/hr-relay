@@ -42,7 +42,7 @@ function workbookRequest(body: unknown) {
 }
 const rosterType = { id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null };
 function catalogEntry(record: SavedWorkbook) {
-  return WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: record.version, name: record.workbook.name,
+  return WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: record.version, name: record.workbook.name, updatedAt: record.savedAt,
     rowCount: 0, worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
     type: rosterType, metadata: { typeId: rosterType.id, sharePoint: null }, state: { libraryId: record.libraryId, revision: record.version,
       origin: { kind: 'local' }, removed: false, selectedVersionId: 'current', versions: [{ id: 'current', name: 'Current version',
@@ -221,7 +221,7 @@ async function settingsPage(client: DashboardClient) {
     const [route, setRoute] = useState<ViewRoute>({ spreadsheet: 'served-book' });
     return createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: 'local-operator', nowIso: '2026-10-16T12:00:00Z', children:
       createElement(ViewNavigationContext.Provider, { value: { view: route, start: false, setStart() {}, update(patch) { setRoute(previous => ({ ...previous, ...patch })); } }, children: createElement('div', null, createElement(Probe), shown ? createElement(SettingsPage, { profileName: "Synthetic Operator",
-        onClose() {}, storage: StorageHealthSummaryWireSchema.parse({ authority: 'healthy', backup: 'current', checkedAt: '2026-10-16T12:00:00Z' }), sections: [], workflowLabels: new Map(), section: 'spreadsheets', actorId: 'local-operator', descriptorFingerprint: 'd'.repeat(64), preflight: [], onSection() {}, onExitGuardChange(guard) { exitGuard = guard; }
+        onClose() {}, storage: StorageHealthSummaryWireSchema.parse({ authority: 'healthy' }), sections: [], workflowLabels: new Map(), section: 'spreadsheets', actorId: 'local-operator', descriptorFingerprint: 'd'.repeat(64), preflight: [], onSection() {}, onExitGuardChange(guard) { exitGuard = guard; }
       }) : null) }) }) });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);

@@ -132,7 +132,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   const reconcileProblem = async (request: number, code: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE", state: "uncertain" | "refused" = "uncertain") => {
     if (!current(request)) return;
     try {
-      const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
+      const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
       if (current(request)) {
         problem(state, code, account);
       }
@@ -154,7 +154,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
           const result: ChatGptSignInCompletion = await readWithDeadline(signal => client.completeChatGptSignIn(attemptId, signal), "CHATGPT_AUTH_UNAVAILABLE", Math.min(2_147_483_647, Math.max(CHATGPT_COMPLETION_READ_DEADLINE_MS, Date.parse(expiresAt) - nowMs())), controller.signal);
           if (!current(request)) return;
           if (result.state === "completed") {
-            const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE", undefined, controller.signal);
+            const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE", undefined, controller.signal);
             if (!current(request)) return;
             if (account.state === "signing-in") problem("refused", "CHATGPT_AUTH_CANCELLED", account);
             else accept(account);
@@ -184,7 +184,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     completionController?.abort();
     busy = true; notify();
     try {
-      const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
+      const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
       if (!current(request)) return;
       loaded = true;
       if (account.state === "signing-in") {
@@ -254,7 +254,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         if (!current(request)) return;
         if (result.state === "cancelled") {
           closePopup();
-          const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
+          const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
           if (!current(request)) return;
           if (account.state === "signing-in") problem("uncertain", "CHATGPT_AUTH_UNAVAILABLE", account);
           else accept(account);

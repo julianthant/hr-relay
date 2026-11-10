@@ -3,14 +3,17 @@ import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } fr
 import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
-import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire, type WorkflowStartReadiness } from "../../../models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
 import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import { projectStartSteps, startStepWireControl } from "../start/step-selection.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
+import type { WorkbookLibraryService, WorkbookReferenceWorkflow } from "../../workbooks/workbook-library-service.js";
 
+import type { WorkbookReferenceSlot } from "../../../models/dashboard/workbook-library.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 interface BootstrapModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -32,7 +35,7 @@ export interface BootstrapQueryDeps {
   readonly projection: Pick<RunQueueProjection, "generation">;
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
-  readonly backupSummary: () => "current" | "stale" | "missing" | "unavailable";
+  readonly workbookReferences: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["references"]>;
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }
@@ -58,8 +61,27 @@ export function projectWorkflowStartSteps(descriptor: AnyWorkflowDescriptor): Wo
   });
 }
 
+export function projectWorkflowStartReadiness(workflow: WorkbookReferenceWorkflow, references: readonly WorkbookReferenceSlot[]): WorkflowStartReadiness {
+  for (const typeId of workflow.requiredWorkbookTypeIds) {
+    const slot = references.find(slot => slot.workflowId === workflow.id && slot.typeId === typeId);
+    if (slot === undefined) throw new Error(`WORKBOOK_REFERENCE_SLOT_UNAVAILABLE: ${workflow.id}/${typeId}`);
+    if (slot.type === null || slot.current.state === "unavailable") return {
+      scope: "default-workbook-references", state: "unavailable",
+      reason: ERROR_CATALOG[slot.current.state === "unavailable" ? slot.current.code : "WORKBOOK_TYPE_UNAVAILABLE"].text,
+      fixAction: { kind: "review-workbook-reference", workflowId: slot.workflowId, typeId: slot.typeId },
+    };
+    if (slot.current.state === "bound") continue;
+    return {
+      scope: "default-workbook-references", state: "blocked", reason: `${workflow.label} needs ${slot.type.name}.`,
+      fixAction: { kind: "import-workbook", workflowId: slot.workflowId, typeId: slot.typeId },
+    };
+  }
+  return { scope: "default-workbook-references", state: "ready" };
+}
+
 export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire {
   const preflight = PreflightReportSchema.parse(deps.preflightReport());
+  const workbookReferences = deps.workbookReferences(deps.modules.map(module => module.descriptor));
   let storageAuthority: "healthy" | "unavailable" = "healthy";
   try {
     deps.authorityMeta();
@@ -83,8 +105,6 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     serverClock: { now: deps.clock.now().toISOString(), zone: deps.timeZone ?? runtimeTimeZone() },
     storage: {
       authority: storageAuthority,
-      backup: deps.backupSummary(),
-      checkedAt: deps.clock.now().toISOString(),
     },
     preflight: preflight.results.map((result) => ({
       id: result.check,
@@ -96,6 +116,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       checkedAt: preflight.checkedAt,
     })),
 
+    workbookReferences,
     workflows: deps.modules.map(({ descriptor, role, intake }) => ({
       id: descriptor.id,
       code: descriptor.code,
@@ -106,6 +127,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       role,
 
       start: {
+        readiness: projectWorkflowStartReadiness(descriptor, workbookReferences),
         ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
         enqueue: descriptor.enqueue,
         // The modal's Options and Confirm facts use the envelope's descriptor version.

@@ -9,7 +9,6 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { bindOcrRoster } from "../../../../src/models/workflows/ocr/roster.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunWorkbookAllRowsReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
-import { WORKFLOW_REFERENCE_TYPES } from "../../../../src/backend/workbooks/reference-types.js";
 
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const clock = manualClock(new Date("2026-10-15T12:00:00.000Z"));
@@ -56,20 +55,17 @@ it("captures all roster data rows at the selected version and leaves keyed-empty
   } finally { database.close(); }
 });
 
-// Opening the service adds one generation per workflow reference type missing from a fresh store.
-const PROVISIONED_TYPES = WORKFLOW_REFERENCE_TYPES.length;
-
 it("accounts separately for durable admission and atomic master settlement, persists dates, and refuses stale saves", async () => {
   const f = await fixture();
   let database = f.open();
   try {
     const service = () => createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
     const first = service().create(workbook);
-    assert.equal(database.getMeta().authorityGeneration, PROVISIONED_TYPES + 1);
+    assert.equal(database.getMeta().authorityGeneration, 1);
     const second = service().save(first.libraryId, 1, { ...first.workbook, name: "Saved.xlsx" });
-    assert.equal(database.getMeta().authorityGeneration, PROVISIONED_TYPES + 3);
+    assert.equal(database.getMeta().authorityGeneration, 3);
     assert.throws(() => service().save(first.libraryId, 1, first.workbook), { code: "WORKBOOK_VERSION_CONFLICT" });
-    assert.equal(database.getMeta().authorityGeneration, PROVISIONED_TYPES + 5);
+    assert.equal(database.getMeta().authorityGeneration, 5);
     const inspection = database.inspectSchema();
     const fingerprint = inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint;
     database.close(); database = f.open();
@@ -81,7 +77,7 @@ it("accounts separately for durable admission and atomic master settlement, pers
       service().save(second.libraryId, 2, { ...second.workbook, name: "Rolled back.xlsx" });
       throw new Error("rollback-workbook");
     }), /rollback-workbook/u);
-    assert.equal(database.getMeta().authorityGeneration, PROVISIONED_TYPES + 5);
+    assert.equal(database.getMeta().authorityGeneration, 5);
     assert.deepEqual(service().history(first.libraryId), []);
   } finally { database.close(); }
 });
