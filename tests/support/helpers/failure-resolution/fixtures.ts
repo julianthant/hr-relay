@@ -1,3 +1,4 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "../backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../compiled-process.js";
@@ -11,7 +12,7 @@ import { RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids
 import { randomUUID } from "node:crypto";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { FailureResolutionCommandSchema } from "../../../../src/rules/commands/commands.js";
+import { FailureResolutionCommandSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNSTORED_CONFIG_IDENTITY } from "../../fixtures/intake-kernel-seams.js";
@@ -57,7 +58,8 @@ export function resolutionApp(f: Awaited<ReturnType<typeof resolutionFixture>>) 
   return createDashboardApp({
     ...composeActivity({ database: f.db, clock: f.clock, descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined }, ledger: createTransactionHistory(f.db.authority) }),
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
-    bootstrap: { clock: f.clock, appVersion: "0.1.0" }, commandJournal: f.db.authority.commands,
+    bootstrap: { clock: f.clock, appVersion: "0.1.0" }, resolveWriteCommand: (request: CommandRequest) => resolveWriteCommandTarget(request, f.db.authority),
+    commandJournal: f.db.authority.commands,
     protectedCommandAcceptedAt: () => undefined,
     bulkCommandAcceptances: { withTransaction: () => { throw new Error("unrelated bulk route reached"); } },
     intake: UNWIRED_INTAKE_SERVICE,

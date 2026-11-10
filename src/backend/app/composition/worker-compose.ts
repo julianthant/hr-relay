@@ -24,8 +24,8 @@ import { WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
 import { ActorIdSchema, BrowserSystemIdSchema, CommandIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { composeRuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
-import { claimWithPreflight } from "../preflight/worker-admission.js";
-import { PreflightObservationChangedError } from "../../../rules/preflight/preflight-admission.js";
+import { claimWithPreflight, workerPreflightRefusal } from "../preflight/worker-admission.js";
+import { PreflightAdmissionRefusal } from "../../../rules/preflight/preflight-admission.js";
 import { createWorkerChildControls } from "../../runtime/workers/worker-browser-control.js";
 import { checkParkedWrite } from "../../runtime/writes/write-recovery.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
@@ -375,7 +375,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let runtimeError: unknown;
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
-  let bootRefusal: PreflightObservationChangedError | undefined;
+  let bootRefusal: PreflightAdmissionRefusal | undefined;
   let resources: ReturnType<typeof createRunResourcesFactory> | undefined;
   let ocrAccount: ReturnType<typeof createChatGptAccountService> | undefined;
   let accountClosureProven = true;
@@ -435,12 +435,14 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
           configFingerprint: resolved.fingerprint,
         });
       }));
-    const scope = runtimePreflight.currentScope();
     try {
-      await runtimePreflight.admission.prepare(scope, input.stopSignal ?? new AbortController().signal);
-      runtimePreflight.admission.assertReady(runtimePreflight.currentScope());
+      if (drain) {
+        const scope = runtimePreflight.currentScope();
+        await runtimePreflight.admission.prepare(scope, input.stopSignal ?? new AbortController().signal);
+        runtimePreflight.admission.assertReady(runtimePreflight.currentScope());
+      }
     } catch (error) {
-      if (error instanceof PreflightObservationChangedError) bootRefusal = error;
+      if (error instanceof PreflightAdmissionRefusal && workerPreflightRefusal(error) !== undefined) bootRefusal = error;
       throw error;
     }
 
@@ -689,14 +691,15 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     if (report.closure === "unproved") debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(),
       area: "browser-session", code: "WORKER_SESSION_CLOSURE_UNPROVED", reason: "browser-closure-unproved" }, { kind: "worker", workerId });
   } catch (error) {
-    const refusedBeforeEffects = bootRefusal !== undefined && error === bootRefusal;
+    const refusal = bootRefusal !== undefined && error === bootRefusal ? workerPreflightRefusal(error) : undefined;
+    const refusedBeforeEffects = refusal !== undefined;
     if (refusedBeforeEffects) {
       runtimeReport = WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes: [], stopped: "preflight-refused", closure: "proved",
-        preflightRefusal: { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED" } });
+        preflightRefusal: refusal });
     } else runtimeError = error;
     try {
       debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
-        code: refusedBeforeEffects ? "PREFLIGHT_OBSERVATION_CHANGED" : "WORKER_RUNTIME_FAILED",
+        code: refusal?.code ?? "WORKER_RUNTIME_FAILED", ...(refusal?.summary === undefined ? {} : { message: refusal.summary }),
         reason: refusedBeforeEffects ? "operation-refused"
           : hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
     } catch (loggingError) { cleanupErrors.push(loggingError); }

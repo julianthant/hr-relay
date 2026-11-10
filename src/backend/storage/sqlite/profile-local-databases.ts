@@ -84,8 +84,9 @@ function captureProfileDatabaseBinding(path: string) {
     const assertUnchanged = () => {
       snapshot.assertUnchanged();
       const after = fileStatus(path);
-      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || fileModified(before) !== fileModified(after)
-        || fileChanged(before) !== fileChanged(after) || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
+      // An owner image is one point in time, so only the file identity must hold.
+      const contentChanged = snapshot.pointInTime !== true && (before.size !== after.size || fileModified(before) !== fileModified(after) || fileChanged(before) !== fileChanged(after));
+      if (before.dev !== after.dev || before.ino !== after.ino || contentChanged || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
     };
     assertUnchanged();
     return Object.freeze({ binding, path: snapshot.path, assertUnchanged, dispose: snapshot.dispose });

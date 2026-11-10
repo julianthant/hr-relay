@@ -1,6 +1,6 @@
 import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { CredentialMaintenanceHold } from "../../../storage/configuration/canonical-credential-store.js";
-import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, PreflightObservationChangedError } from "../../../../rules/preflight/preflight-admission.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
 import { OcrReviewRefusedError } from "../../../processing/ocr/review-authority.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
@@ -84,6 +84,12 @@ export function failureStatus(
   }
   if (error instanceof DiagnosticBundleCorruptError) {
     return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_CORRUPT", message, false) };
+  }
+  if (error instanceof AggregateError) {
+    const changed = error.errors.find((failure) => failure instanceof PreflightObservationChangedError);
+    if (changed instanceof PreflightObservationChangedError) {
+      return { status: 409, body: wireError(`PREFLIGHT_${changed.reason.toUpperCase().replaceAll("-", "_")}`, errorText(changed), false) };
+    }
   }
   return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
 }

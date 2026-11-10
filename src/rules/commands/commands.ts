@@ -403,6 +403,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
+  "WORKER_PAUSE_SETTLING",
   "OCR_REVIEW_REFUSED",
   "RUN_CONTINUATION_REFUSED",
   "invalid-state",

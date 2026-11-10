@@ -1,3 +1,6 @@
+import { captureSelectedProfileStorage } from "./storage-compose.js";
+import { createCredentialStore } from "../../storage/configuration/credential-store.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 
 import { join } from "node:path";
 import type { z } from "zod";
@@ -97,18 +100,40 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
   }
 
   const clock = input.clock ?? systemClock;
-  const stateRoot = admission.stateRoot;
-  const database = AuthorityDatabase.open(
-    admission,
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-explain" },
-    clock,
-  );
+  const selected = captureSelectedProfileStorage(admission);
+  const person = admission.admitProfile(selected.profileId);
+  let database: AuthorityDatabase | undefined;
+  const close = (primary?: { error: unknown }): void => {
+    try { database?.close(); }
+    catch (error) {
+      const failure = retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database, admission: person });
+      admission.retainSourceClosure(failure); person.retainSourceClosure(failure);
+      throw failure;
+    }
+    person.release();
+  };
+  let output: string;
   try {
+    selected.assertCurrent();
+    person.assertProfileRuntime();
+    const credentials = createCredentialStore({ admission: person, stateRoot: person.stateRoot });
+    database = AuthorityDatabase.open(person,
+      { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-explain" }, clock,
+      undefined, undefined, undefined, credentials);
+    selected.assertCurrent();
     const view = explainRunFrom(database, identity);
-    return json ? JSON.stringify(view, null, 2) : renderExplainRun(view);
-  } finally {
-    database.close();
+    selected.assertCurrent();
+    output = json ? JSON.stringify(view, null, 2) : renderExplainRun(view);
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) {
+      admission.retainSourceClosure(error); person.retainSourceClosure(error);
+      retainUnprovedSourceOwners(error, { database, admission: person });
+    }
+    else close({ error });
+    throw error;
   }
+  close();
+  return output;
 }
 
 /** Resolve either identity form, then assemble the view from authority. */

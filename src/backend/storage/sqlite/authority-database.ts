@@ -631,6 +631,7 @@ const MetaRowSchema = z.strictObject({
   profile_id: z.uuid().optional(),
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
+const TableColumnRowSchema = z.object({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
 // SQL max over no rows is NULL, meaning the item has no run attempt.
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
@@ -1785,10 +1786,22 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     try {
       if (transactionOpen) database.exec("ROLLBACK");
     } finally {
-      try { database.close(); } finally {
-        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
-      }
+      closeSnapshotReader(database, snapshotCopy);
     }
+  }
+}
+
+/** A reader that fails to close keeps its snapshot files with the retained owner. */
+function closeSnapshotReader(database: DatabaseSync, snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot>): void {
+  try { database.close(); } catch (error) { throw retainAuthoritySourceClosure([error], { snapshot, database }); }
+  try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); }
+}
+
+/** A direct reader's unproved close stays registered with the admission that ran it, even when a caller folds the error into a report. */
+function withDirectReaderAdmission<T>(admission: RuntimeAdmission, read: () => T): T {
+  try { return read(); } catch (error) {
+    if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); }
+    throw error;
   }
 }
 
@@ -1856,9 +1869,7 @@ function inspectAuthorityReadIdentityReadOnly(
     try {
       if (transactionOpen) database.exec("ROLLBACK");
     } finally {
-      try { database.close(); } finally {
-        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
-      }
+      closeSnapshotReader(database, snapshotCopy);
     }
   }
 }
@@ -1983,9 +1994,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
     return Object.freeze(snapshot);
   } finally {
     try { if (transactionOpen) database.exec("ROLLBACK"); } finally {
-      try { database.close(); } finally {
-        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
-      }
+      closeSnapshotReader(database, snapshotCopy);
     }
   }
 }
@@ -2023,7 +2032,7 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
         if (table === "deleted_runs") continue;
         const columns = database.prepare(`PRAGMA table_info(${table})`).all()
-          .map(raw => z.object({ name: z.string() }).parse(raw).name)
+          .map(raw => TableColumnRowSchema.parse(raw).name)
           .filter(name => name.endsWith("_json"));
         if (columns.length === 0) continue;
         const retained = table === "diagnostic_snapshots" ? " WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged'"
@@ -2506,7 +2515,7 @@ export class AuthorityDatabase implements Disposable {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     admission.assertStoppedRestoreProjection(options.path);
     if (options.openMode !== "read-write") throw new Error("profile-restore-projection-mode-refused");
-    const inspection = inspectExistingDatabaseReadOnly(options.path, options.busyTimeoutMs);
+    const inspection = withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(options.path, options.busyTimeoutMs));
     if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-restore-projection-schema-refused");
     admission.assertStoppedRestoreProjection(options.path);
     return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection");
@@ -2542,7 +2551,7 @@ export class AuthorityDatabase implements Disposable {
   static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     return withOperationProof(() => {
       requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-      return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+      return withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(path, busyTimeoutMs));
     });
   }
 
@@ -2859,7 +2868,7 @@ export class AuthorityDatabase implements Disposable {
     busyTimeoutMs = 250,
   ): AuthorityReadIdentitySnapshot {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    return inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs);
+    return withDirectReaderAdmission(admission, () => inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs));
   }
 
   static inspectSpanRunAuthorityReadOnly(
@@ -2869,7 +2878,7 @@ export class AuthorityDatabase implements Disposable {
     busyTimeoutMs = 250,
   ): SpanAuthorityReadSnapshot {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
+    return withDirectReaderAdmission(admission, () => inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs));
   }
 
   static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown) {
@@ -2905,7 +2914,7 @@ export class AuthorityDatabase implements Disposable {
         possibleExternalWrite: boolean; attemptIds: readonly string[]; confirmations: readonly string[] }>[];
       deleted: readonly DeletedRunRecord[];
     }> | undefined;
-    const identity = inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
+    const identity = withDirectReaderAdmission(admission, () => inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
       const metrics = z.object({ records: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(),
         largest: z.number().int().nonnegative(), runs: z.number().int().nonnegative() }).parse(database.prepare(`
         SELECT count(*) AS records, COALESCE(sum(length(CAST(payload_json AS BLOB))),0) AS bytes,
@@ -2950,7 +2959,7 @@ export class AuthorityDatabase implements Disposable {
       });
       const deleted = database.prepare("SELECT * FROM deleted_runs").all().map((row) => deletedRunFromRow(row).receipt);
       recoveryEvidence = { runs, deleted };
-    });
+    }));
     if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
     return { ...identity, ...timeline, recoveryEvidence };
   }
@@ -2999,6 +3008,18 @@ export class AuthorityDatabase implements Disposable {
   getSourceDatabaseIdentity(): string {
     this.#assertOpen();
     return AuthorityDatabase.sourceDatabaseIdentity(this.#admission.authorityBackupExpectedSource());
+  }
+
+  /** This connection's committed state for its own doctor pass, bound to the file identity it opened; no other connection's commit can fail or change it. */
+  serializeCommittedImage(): { readonly identity: DirectoryIdentity; readonly image: Uint8Array } | undefined {
+    this.#assertOpen();
+    // Inside a transaction serialize() would include uncommitted writes.
+    if (this.#database.isTransaction) throw new Error("authority-image-inside-transaction");
+    if (this.#openedFileIdentity === undefined) return undefined;
+    // Drop cached pages so the image is read from the files and shows damage written beneath this connection.
+    this.#database.exec("PRAGMA shrink_memory");
+    // shortcut: holds the whole image in memory once; move to a chunked owner backup if state.db reaches hundreds of MB.
+    return Object.freeze({ identity: this.#openedFileIdentity, image: this.#database.serialize() });
   }
 
   async onlineBackupTo(destinationPath: string): Promise<number> {
@@ -3261,20 +3282,29 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  readProfileResourceCustody() {
+  readApplicationActivity() {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
       return Object.freeze({
-        authorityGeneration: this.getMeta().authorityGeneration,
-        upgrades: readAuthorityUpgradeRecords(this.#database),
-        slots: this.authority.workerSlots.list(),
         runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw): PredecessorRunRecord => runRecordFromRow(raw)),
         writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
           .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
         duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()
           .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema)),
-        exclusiveSessionLeases: this.#database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow),
         pendingArtifacts: this.authority.artifactOutbox.listPending(),
+      });
+    });
+  }
+
+  readProfileResourceCustody() {
+    this.#assertOpen();
+    return this.#withReadSnapshot(() => {
+      return Object.freeze({
+        ...this.readApplicationActivity(),
+        authorityGeneration: this.getMeta().authorityGeneration,
+        upgrades: readAuthorityUpgradeRecords(this.#database),
+        slots: this.authority.workerSlots.list(),
+        exclusiveSessionLeases: this.#database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow),
         artifactReferences: this.readManagedArtifactReferences(),
         configSnapshots: this.#database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
           .map(row => this.#parseNativeRow("settings_snapshots", row, ConfigSnapshotRecordSchema)),

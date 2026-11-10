@@ -1,3 +1,4 @@
+import { resolveWriteCommandTarget } from "../../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps } from "../../../fixtures/explorer-seams.js";
@@ -138,6 +139,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         label: "Local operator",
       }),
       intake: UNWIRED_INTAKE_SERVICE,
+      resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
       commandJournal: database.authority.commands,
       protectedCommandAcceptedAt: () => { throw new Error("seeded BFF has no credential command authority"); },
       bulkCommandAcceptances: {
